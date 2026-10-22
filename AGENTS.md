@@ -14,6 +14,8 @@ renders and caches the palette's molecular thumbnails.
 `coordinates_panel.*` provides the native "2 Coordinates" tab.
 `nwchem.*` validates computational settings and generates complete NWChem input;
 `calculation_panel.*` provides the native "3 Calculation conditions" tab.
+`nwchem_advanced.*` defines typed NWChem overrides and their applicability;
+`advanced_panel.*` provides the native "4 Advanced settings" tab.
 
 Tests are in `tests/`, documentation in `docs/`, and resource data in `assets/`.
 Preserve KAGAMI data and fixture attributions.

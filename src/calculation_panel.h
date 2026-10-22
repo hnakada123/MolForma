@@ -15,6 +15,7 @@ class CalculationPanel : public QWidget {
   public:
     explicit CalculationPanel(MainWindow *window);
     void refresh();
+    void exportInput(bool toFile);
     // Stop focus-out callbacks before the owner's document and undo stack are destroyed.
     void stopEditing() {
         busy = true;
@@ -38,6 +39,5 @@ class CalculationPanel : public QWidget {
     void reloadPresets();
     void describePreset();
     void storePreset();
-    void exportInput(bool toFile);
 };
 } // namespace mf

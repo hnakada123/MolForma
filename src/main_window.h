@@ -21,6 +21,7 @@ class QTableWidget;
 namespace mf {
 class CoordinatesPanel;
 class CalculationPanel;
+class AdvancedPanel;
 class MainWindow : public QMainWindow {
     Q_OBJECT
   public:
@@ -56,6 +57,7 @@ class MainWindow : public QMainWindow {
     friend class DocumentCommand;
     friend class CoordinatesPanel;
     friend class CalculationPanel;
+    friend class AdvancedPanel;
     Document doc;
     std::optional<Document> candidate;
     QString candidateName, path;
@@ -69,6 +71,7 @@ class MainWindow : public QMainWindow {
     MoleculeView *view = nullptr;
     CoordinatesPanel *coordinates = nullptr;
     CalculationPanel *calculation = nullptr;
+    AdvancedPanel *advanced = nullptr;
     QTabWidget *workspaceTabs = nullptr;
     QComboBox *tool = nullptr, *unitBox = nullptr, *category = nullptr, *elementBox = nullptr,
               *bondKind = nullptr, *colorBox = nullptr;

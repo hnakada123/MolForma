@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Native NWChem counterpart of KAGAMI's job_tab.py (Copyright 2026 Hiroshi Nakada).
 #include "calculation_panel.h"
+#include "advanced_panel.h"
 #include "main_window.h"
 #include "nwchem.h"
 #include <QtWidgets>
@@ -18,6 +19,11 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     redo->setObjectName("calculationRedo");
     toolbar->addWidget(undo);
     toolbar->addWidget(redo);
+    auto *details = new QPushButton("4 詳細設定へ");
+    details->setObjectName("calculationAdvanced");
+    toolbar->addWidget(details);
+    connect(details, &QPushButton::clicked, this,
+            [this] { window->workspaceTabs->setCurrentWidget(window->advanced); });
     toolbar->addStretch();
     toolbar->addWidget(new QLabel("NWChem · 分子のGaussian基底計算"));
     connect(undo, &QPushButton::clicked, this, [this] { window->history()->undo(); });
@@ -248,7 +254,7 @@ void CalculationPanel::describePreset() {
     QStringList changes;
     for (auto it = selected.begin(); it != selected.end(); ++it)
         if (it.value() != current[it.key()]) {
-            auto valueText = [](const QJsonValue &v) { return v.toVariant().toString(); };
+            auto valueText = [](const QJsonValue &v) { return nwchemAdvancedText(v); };
             changes << it.key() + ": " + valueText(current[it.key()]) + " → " + valueText(it.value());
         }
     presetSummary->setText(QString("変更 %1 項目。分子・電荷・多重度・計算名・メモリ・単位は保持します。"

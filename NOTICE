@@ -19,6 +19,9 @@ coordinate_atom_dialog.py to C++/Qt6, with new NWChem geometry export.
 src/calculation_panel.cpp adapts the settings/preset workflow of job_tab.py
 to native Qt6 and NWChem. src/nwchem.cpp is new NWChem input generation and
 validation code; it does not translate KAGAMI-specific computational methods.
+src/advanced_panel.cpp adapts search, filtering and reset workflows from
+tools/kagami_gui/advanced_tab.py to native Qt6. src/nwchem_advanced.cpp defines
+new NWChem-specific settings rather than reusing KAGAMI's advanced keywords.
 The remaining UI and process worker are new.
 The original license and notice are assets/KAGAMI-LICENSE and KAGAMI-NOTICE.
 The latter describes the full upstream repository; MolForma does not include

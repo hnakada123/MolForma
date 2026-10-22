@@ -1,6 +1,6 @@
-# 「1 分子」「2 座標」「3 計算条件」タブからの機能移植
+# 「1 分子」「2 座標」「3 計算条件」「4 詳細設定」
 
-MolFormaはNWChem向けの分子作成・座標編集・計算入力作成用デスクトップアプリです。KAGAMI GUIの「1 分子」「2 座標」「3 計算条件」をQt6 WidgetsとC++20で実装し、分子座標は倍精度のÅ、原子参照は永続IDで管理します。実行・計算履歴・結果ビューアのタブは今後の実装対象です。
+MolFormaはNWChem向けの分子作成・座標編集・計算入力作成用デスクトップアプリです。KAGAMI GUIの「1 分子」「2 座標」「3 計算条件」「4 詳細設定」をQt6 WidgetsとC++20で実装し、計算条件・詳細設定はNWChem用に構成しています。分子座標は倍精度のÅ、原子参照は永続IDで管理します。実行・計算履歴・結果ビューアのタブは今後の実装対象です。
 
 ## 「2 座標」
 
@@ -46,7 +46,7 @@ MolFormaはNWChem向けの分子作成・座標編集・計算入力作成用デ
 
 def2系ではRb〜Xeに28電子、Cs〜Laに46電子、Hf〜Rnに60電子を除去する `def2-ecp` を自動指定します。実原子だけにECPを付け、電子数を補正してα/β電子数・多重度の整合性を検査します。ゴーストの核電荷は0で、`bqC library C ...` のように基底を明示します。相関計算の `freeze atomic` は既定でオフです。有効にした場合はNWChemの原子別規則で凍結する軌道数を表示し、相関電子が不足する設定を拒否します。ECP中心とゴーストは内殻凍結の対象外です。
 
-振動数はHF/DFTの解析Hessianを基本とし、MP2・ROHF・ECP・COSMOでは数値Hessianを選びます。手動で数値Hessianを選択することもできます。固定・ゴースト・外部点電荷を含む振動数解析と、ゴーストを含むCOSMOは未対応です。最適化に続けて振動数を求める場合は、二つの `task` を順に出力します。SCF収束は標準1e-5・厳密1e-7・さらに厳密1e-9で、HFは `thresh`、DFTはenergy/density/gradientに適用します。CCの収束閾値は1e-7です。
+振動数はHF/DFTの解析Hessianを基本とし、MP2・ROHF・ECP・COSMOでは数値Hessianを選びます。手動で数値Hessianを選択することもできます。固定・ゴースト・外部点電荷を含む振動数解析と、ゴーストを含むCOSMOは未対応です。最適化に続けて振動数を求める場合は、二つの `task` を順に出力します。SCF収束は標準1e-5・厳密1e-7・さらに厳密1e-9で、HFは `thresh`、DFTはenergy/density/gradientに適用します。CCの収束閾値は1e-7です。「4 詳細設定」で個別の閾値を指定すると、対応する値を上書きします。
 
 ### 保存・プリセット・互換性
 
@@ -74,6 +74,57 @@ QT_QPA_PLATFORM=offscreen MOLFORMA_CALCULATION_ARTIFACTS=/tmp/molforma-calculati
 2026-10-22にNWChem 7.3.1（MPI 2プロセス、OMP/OpenBLAS各1スレッド）で23種類の生成入力の正常終了を確認しました。HF、5種のDFT汎関数と分散補正、MP2、CCSD、CCSD(T)、開殻HF/DFT、def2-ECP、内殻凍結、ゴースト・同位体・固定、Å/Bohr、点電荷、COSMO、解析/数値振動数を含みます。水のB3LYP-D3(BJ)/def2-SVPプリセットは最適化と振動数解析が完了し、振動数は1638.93 / 3791.78 / 3886.86 cm⁻¹でした。AddressSanitizerでも計算条件タブのテストを実行しています。
 
 CCSD(T)の検証には水/6-31Gを使用しています。この環境では最小基底のH₂/STO-3GのCCSD(T)がNWChemの三重励起処理中にMPI通信エラーとなりました。入力検査ではこのような実行環境・エンジン固有の問題は検出しません。
+
+## 「4 詳細設定」
+
+KAGAMI固有の詳細キーワードは流用せず、NWChemの分子計算に合わせた7カテゴリ・42項目を用意しています。左側の項目名・キーワード・説明で検索し、「現在の計算で使用する項目」「変更した項目のみ」「全項目」を切り替えます。右側には「3 計算条件」と同じ検査結果・完成した入力を表示し、コピー・`.nw`保存ができます。
+
+| カテゴリ | 設定項目 |
+| --- | --- |
+| HF / 参照SCF（5） | 波動関数の収束 `thresh`、積分の打切り `tol2e`、`direct`、閉殻RHF専用の `diis` と `diisbas`。MP2/CCSDの参照SCFにも適用 |
+| DFT（9） | energy/density/gradientの個別収束、ダンピング率・初期反復数、レベルシフト、DIISのFock行列数、`direct`、`grid nodisk` |
+| MP2 / CCSD（7） | 明示的な凍結占有軌道数、MP2の `tight` とプロセスごとの `scratchdisk`、CCの `thresh`・`tol2e`・`diisbas`・`nodisk` |
+| DRIVER 最適化（7） | `gmax`・`grms`・`xmax`・`xrms`、`trust`、`eprec`、各構造のXYZ出力 |
+| 振動数・熱化学（4） | 1〜20個の温度、数値Hessianの `fd_delta`、解析Hessianの `hessian thresh`、振動モードのXYZ出力 |
+| COSMO（4） | 表面分割 `minbem`、初期多面体 `ificos`、誘電遮蔽 `screen`、表面電荷幅 `zeta` |
+| 軌道・ファイル（6） | 原子密度／一電子Hamiltonian／既存movecsによる初期軌道、入力・出力movecs、`scratch_dir`・`permanent_dir`、`echo` |
+
+数値は `1e-8` / `1D-8` 等の指数表記に対応します。空欄・「既定」は明示指定を解除し、「3 計算条件」またはNWChemの既定値を使います。値の確定時に型・有限性・範囲・手法との整合を検査し、有効な設定だけで入力を生成します。修正途中の不正値もプロジェクトへ保存できますが、使用中の項目にエラーがある間は出力できません。各項目の「戻す」、カテゴリ単位・全体のリセット、共有Undo/Redoに対応します。Ctrl+Sでも入力中の値を確定してから保存します。
+
+### 適用範囲と優先順位
+
+- 明示したSCF/DFT/CCの閾値、凍結軌道数、最適化閾値は基本条件より優先します。DRIVERでは標準・厳密等のプリセット指示の後に個別閾値を出力します。凍結軌道数0は内殻凍結を解除し、相関電子が不足する指定は拒否します。
+- DFTの値を保持したままHFへ変更した場合など、現在の計算に適用できない値は「保留」とし、入力へ出力しません。対応する手法・計算目的へ戻すと再適用します。数値Hessianの差分幅と解析Hessianの精度も、この規則で切り替えます。
+- 最適化の変位・trust radius・数値差分幅はBohr、勾配はHartree/Bohr、エネルギーはHartreeです。座標のÅ/Bohr切替では変更しません。温度はKで指定します。
+- 最適化構造は `<計算名>_opt`、振動モードは `<計算名>_vib` をファイル名の接頭辞にします。XYZの生成は外部でNWChemを実行したときに行われます。
+- 入力movecsは実行先のファイルを指定し、MolFormaでは読みません。原子順・基底との互換性は実行時の確認が必要です。既存movecsを使う場合は、NWChemが入力ファイルを出力先として再利用する既定動作を避けるため、別の出力movecsを指定します。パスの別名・シンボリックリンクによる同一性までは検査しません。
+- movecsのパスは引用符で囲み、空白を含むパスにも対応します。NWChemの起動時ディレクトリ指定は別の構文なので、`scratch_dir` / `permanent_dir` は引用符なしで出力し、空白・コロン・引用符を含むパスを拒否します。各ディレクトリは実行先に存在する必要があります。環境変数展開、ホスト／MPIランク別の保存先指定、複数ディレクトリの指定は未対応です。
+- 候補表示中・整形中は編集と出力を無効化します。詳細設定の変更は分子座標や固定原子を動かしません。
+
+### 保存と互換性
+
+明示指定だけを `document.nwchem.advanced` に保存します。タブを表示しただけでは既定値をプロジェクトへ追加しません。未知の詳細フィールドは保持し、未対応であることを表示して出力から除外します。KAGAMIの `job.sections` やプロジェクトの実行・結果参照も保持します。
+
+ユーザープリセットには「軌道・ファイル」以外の詳細設定を含めます。組込みプリセットや旧形式のプリセットに詳細指定がない場合は、これらの上書きを解除してプリセットの基本条件を有効にします。軌道・保存先・echoと未知フィールドは保持し、プリセット適用全体をUndo一回で戻せます。
+
+任意のキーワード入力、SCF半直接計算の細かなキャッシュ調整、RODFT/CDFT・部分占有、任意の軌道占有、TCE、相対論、距離・角度拘束、スキャン、遷移状態、IRC、MD、周期系などは未対応です。既存KAGAMIの設定をこれらのNWChem指示へ自動変換しません。NWChem本体やPythonは、詳細設定の編集・保存・入力生成には不要です。
+
+仕様の参照: [HF](https://nwchemgit.github.io/Hartree-Fock-Theory-for-Molecules.html)、[DFT](https://nwchemgit.github.io/Density-Functional-Theory-for-Molecules.html)、[MP2](https://nwchemgit.github.io/MP2.html)、[CCSD](https://nwchemgit.github.io/CCSD.html)、[DRIVER](https://nwchemgit.github.io/Geometry-Optimization.html)、[Hessian・振動数](https://nwchemgit.github.io/Hessians-and-Vibrational-Frequencies.html)、[COSMO](https://nwchemgit.github.io/COSMO-Solvation-Model.html)、[Scratch directory](https://nwchemgit.github.io/Scratch_Dir.html)。
+
+### 詳細設定タブの検証
+
+`advanced`のQt Testは、項目の型・値域、適用と保留、閾値の優先順位、HF/DFTの違い、凍結軌道、解析/数値Hessian、温度、パス、未知フィールドの保持、プリセット、検索・絞り込み、リセット、Undo/Redo、候補、Ctrl+S、フォーカス中の終了を検査します。通常のCTestはNWChemもネットワークも不要です。
+
+任意の実機検証用入力と画面画像を生成できます。出力先には空白・コロンを含まないパスを指定してください。
+
+```sh
+QT_QPA_PLATFORM=offscreen MOLFORMA_ADVANCED_ARTIFACTS=/tmp/molforma-advanced \
+  ./build/test_advanced engineArtifacts
+```
+
+軌道の読込試験 `vectors_details.nw` は、軌道を保存する `files_details.nw` の実行後に使用します。
+
+2026-10-22にNWChem 7.3.1（MPI 2プロセス、OMP/OpenBLAS各1スレッド）で9種類の詳細設定入力の正常終了を確認しました。HFのDIIS・積分精度、DFTの個別収束・ダンピング・グリッド、MP2/CCSD、最適化→解析振動数、MP2数値振動数、COSMO、保存先、movecsの書出し・再読込を含みます。温度100/298.15/350 K、数値差分幅0.003 Bohrの反映とXYZ生成も確認しています。初期軌道の保存・再読込は同じSCFエネルギー −74.945628203255 Hartreeを得ました。詳細設定・計算条件のQt TestはAddressSanitizerでも検証しています。
 
 ## 実装済み
 

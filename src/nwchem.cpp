@@ -1,5 +1,6 @@
 #include "nwchem.h"
 #include "coordinates.h"
+#include "nwchem_advanced.h"
 #include <QRegularExpression>
 #include <algorithm>
 #include <cmath>
@@ -148,14 +149,34 @@ QJsonObject nwchemPresetSettings(const QJsonObject &settings) {
     for (auto it = defaults.begin(); it != defaults.end(); ++it)
         if (!QStringList{"start", "title", "memory_mb", "geometry_units"}.contains(it.key()))
             preset[it.key()] = settings.contains(it.key()) ? settings[it.key()] : it.value();
+    preset["advanced"] = nwchemAdvancedPreset(settings["advanced"].toObject());
     return preset;
 }
 void applyNwchemPreset(Document &d, const QJsonObject &settings) {
     auto stored = d.data["nwchem"].toObject();
     const auto preset = nwchemPresetSettings(settings);
     for (auto it = preset.begin(); it != preset.end(); ++it)
-        stored[it.key()] = it.value();
+        if (it.key() != "advanced")
+            stored[it.key()] = it.value();
     d.data["nwchem"] = stored;
+    applyNwchemAdvancedPreset(d, preset["advanced"].toObject());
+}
+bool nwchemNumericalFrequencies(const Document &d) {
+    const auto s = nwchemSettings(d);
+    if (s["numerical_frequencies"].toBool() || s["method"] == "mp2" || s["reference"] == "rohf" ||
+        (s["reference"] == "auto" && s["method"] == "hf" && d.job()["multiplicity"].toInt(1) > 1) ||
+        s["solvent"] == "cosmo")
+        return true;
+    for (const auto &atom : d.atoms)
+        if (!atom.ghost) {
+            try {
+                if (ecpCore(s["basis"].toString(), element(atom.element).number))
+                    return true;
+            } catch (const std::exception &) {
+                // Validation reports unknown atoms separately.
+            }
+        }
+    return false;
 }
 NwchemValidation validateNwchem(const Document &d) {
     NwchemValidation result;
@@ -163,6 +184,7 @@ NwchemValidation validateNwchem(const Document &d) {
     auto &errors = result.errors;
     auto &warnings = result.warnings;
     const auto s = nwchemSettings(d);
+    const auto advanced = nwchemAdvanced(d);
     auto str = [&](const char *key) { return s[key].toString(); };
     const auto defaults = nwchemDefaults();
     if (d.data.contains("nwchem") && !d.data["nwchem"].isObject())
@@ -225,6 +247,8 @@ NwchemValidation validateNwchem(const Document &d) {
     if (!realAtoms)
         errors << "実原子を追加してください（ゴーストのみの計算はできません）。";
     result.electrons -= charge;
+    if (correlated(method) && advanced.contains("corr_freeze"))
+        result.frozenOrbitals = advanced["corr_freeze"].toInt();
     if (result.electrons < 1 || mult > result.electrons + 1 || (result.electrons - mult + 1) % 2 != 0)
         errors << QString("電子数 %1 と多重度 %2 が整合しません。全電荷または多重度を変更してください。")
                       .arg(result.electrons)
@@ -249,9 +273,12 @@ NwchemValidation validateNwchem(const Document &d) {
     if (result.frozenOrbitals &&
         (result.frozenOrbitals > result.beta || result.electrons - 2 * result.frozenOrbitals < 2))
         errors << "内殻凍結後の相関電子が不足します。内殻凍結を解除してください。";
-    if (correlated(method) && s["freeze_core"].toBool())
-        warnings << QString("内殻凍結: %1 軌道。ECP中心とゴーストはfreeze atomicの対象外です。")
-                        .arg(result.frozenOrbitals);
+    if (correlated(method) && (s["freeze_core"].toBool() || advanced.contains("corr_freeze")))
+        warnings << QString("内殻凍結: %1 軌道。%2")
+                        .arg(result.frozenOrbitals)
+                        .arg(advanced.contains("corr_freeze")
+                                 ? "詳細設定の明示的な軌道数を使用します。"
+                                 : "ECP中心とゴーストはfreeze atomicの対象外です。");
     if (str("solvent") == "cosmo" && method != "hf" && method != "dft")
         errors << "COSMOはHFまたはDFTで使用してください。";
     if (str("solvent") == "cosmo" && ghosts)
@@ -266,9 +293,7 @@ NwchemValidation validateNwchem(const Document &d) {
     const bool points = !d.data["point_charges"].toArray().isEmpty();
     if (frequencyTask(task) && points && s["include_point_charges"].toBool())
         errors << "外部点電荷中の振動数解析は未対応です。";
-    result.numericalFrequencies = s["numerical_frequencies"].toBool() || method == "mp2" ||
-                                  result.reference == "rohf" || result.ecpElectrons ||
-                                  str("solvent") == "cosmo";
+    result.numericalFrequencies = nwchemNumericalFrequencies(d);
     if (frequencyTask(task) && result.numericalFrequencies)
         warnings << "振動数には数値Hessianを使用します。複数回の勾配計算を行います。";
     if (task == "frequencies")
@@ -292,6 +317,7 @@ NwchemValidation validateNwchem(const Document &d) {
     } catch (const std::exception &e) {
         errors << QString::fromUtf8(e.what());
     }
+    validateNwchemAdvanced(d, result);
     errors.removeDuplicates();
     return result;
 }
@@ -300,6 +326,7 @@ QString nwchemInput(const Document &d) {
     if (!check.errors.isEmpty())
         fail(check.errors.join('\n'));
     const auto s = nwchemSettings(d);
+    const auto advanced = nwchemAdvanced(d);
     auto str = [&](const char *key) { return s[key].toString(); };
     auto integer = [&](const char *key) { return QString::number(s[key].toInt()); };
     const auto method = str("method"), task = str("task"), basis = str("basis");
@@ -307,6 +334,7 @@ QString nwchemInput(const Document &d) {
     if (!str("title").isEmpty())
         text += "title \"" + str("title") + "\"\n";
     text += "memory total " + integer("memory_mb") + " mb\n";
+    text += nwchemAdvancedLines(d, "files");
     text += "charge " + QString::number(d.job()["charge"].toInt()) + "\n\n";
     text += nwchemGeometry(
         d, str("geometry_units") == "bohr" ? CoordinateUnit::Bohr : CoordinateUnit::Angstrom, false);
@@ -353,27 +381,45 @@ QString nwchemInput(const Document &d) {
                 QString::number(d.job()["multiplicity"].toInt()) + '\n';
         if (check.reference == "uhf")
             text += "  odft\n";
-        text += "  iterations " + integer("scf_maxiter") + "\n  convergence energy " + threshold +
-                " density " + threshold + " gradient " + threshold + "\n  grid " + str("grid") + '\n';
+        text += "  iterations " + integer("scf_maxiter") + "\n  convergence energy " +
+                nwchemAdvancedNumber(d, "dft_energy", threshold) + " density " +
+                nwchemAdvancedNumber(d, "dft_density", threshold) + " gradient " +
+                nwchemAdvancedNumber(d, "dft_gradient", threshold) + "\n  grid " + str("grid") +
+                (advanced["dft_grid_nodisk"].toBool() ? " nodisk" : "") + '\n';
+        text += nwchemAdvancedLines(d, "dft") + nwchemAdvancedLines(d, "vectors");
         if (str("dispersion") != "none")
             text += str("dispersion") == "d3" ? "  disp vdw 3\n" : "  disp vdw 4\n";
         text += "end\n";
     } else {
         text += "\nscf\n  " + check.reference + "\n  nopen " +
                 QString::number(d.job()["multiplicity"].toInt() - 1) + "\n  maxiter " +
-                integer("scf_maxiter") + "\n  thresh " + threshold + "\nend\n";
+                integer("scf_maxiter") + "\n  thresh " + nwchemAdvancedNumber(d, "scf_thresh", threshold) +
+                '\n';
+        text += nwchemAdvancedLines(d, "scf") + nwchemAdvancedLines(d, "vectors") + "end\n";
         if (correlated(method)) {
             text += method == "mp2" ? "\nmp2\n" : "\nccsd\n";
-            text += s["freeze_core"].toBool() ? "  freeze atomic\n" : "  freeze 0\n";
+            text += "  freeze " +
+                    nwchemAdvancedNumber(d, "corr_freeze", s["freeze_core"].toBool() ? "atomic" : "0") + '\n';
             if (method != "mp2")
-                text += "  maxiter " + integer("cc_maxiter") + "\n  thresh 1e-7\n";
+                text += "  maxiter " + integer("cc_maxiter") + "\n  thresh " +
+                        nwchemAdvancedNumber(d, "cc_thresh", "1e-7") + '\n';
+            text += nwchemAdvancedLines(d, "correlation");
             text += "end\n";
         }
     }
     if (str("solvent") == "cosmo")
-        text += "\ncosmo\n  dielec " + number(s["dielectric"].toDouble()) + "\nend\n";
+        text += "\ncosmo\n  dielec " + number(s["dielectric"].toDouble()) + '\n' +
+                nwchemAdvancedLines(d, "cosmo") + "end\n";
     if (optimizationTask(task))
-        text += "\ndriver\n  maxiter " + integer("opt_maxiter") + "\n  " + str("opt_convergence") + "\nend\n";
+        text += "\ndriver\n  maxiter " + integer("opt_maxiter") + "\n  " + str("opt_convergence") + '\n' +
+                nwchemAdvancedLines(d, "driver") + "end\n";
+    if (frequencyTask(task)) {
+        const auto lines = nwchemAdvancedLines(d, "frequency");
+        if (!lines.isEmpty())
+            text += "\nfreq\n" + lines + "end\n";
+        if (!check.numericalFrequencies && advanced.contains("hessian_thresh"))
+            text += "\nhessian\n  thresh " + nwchemAdvancedNumber(d, "hessian_thresh", "1e-6") + "\nend\n";
+    }
     const QString theory = method == "hf" ? "scf" : method;
     text += '\n';
     if (optimizationTask(task))

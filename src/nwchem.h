@@ -23,5 +23,6 @@ QVector<NwchemPreset> nwchemPresets();
 QJsonObject nwchemPresetSettings(const QJsonObject &settings);
 void applyNwchemPreset(Document &document, const QJsonObject &settings);
 NwchemValidation validateNwchem(const Document &document);
+bool nwchemNumericalFrequencies(const Document &document);
 QString nwchemInput(const Document &document);
 } // namespace mf
