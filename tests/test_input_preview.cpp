@@ -47,7 +47,7 @@ class InputPreviewTest : public QObject {
         w.loadDocument(d);
         const auto before = w.document().project();
         auto *tabs = widget<QTabWidget>(w, "workspaceTabs");
-        QCOMPARE(tabs->count(), 7);
+        QCOMPARE(tabs->count(), 8);
         QCOMPARE(tabs->tabText(5), "6 入力プレビュー");
         widget<QPushButton>(w, "executionPreview")->click();
         QCOMPARE(tabs->currentIndex(), 5);

@@ -5,6 +5,7 @@
 #include "coordinates_panel.h"
 #include "coordination.h"
 #include "execution_panel.h"
+#include "history_panel.h"
 #include "input_preview_panel.h"
 #include "operations.h"
 #include "peptide.h"
@@ -366,6 +367,9 @@ void MainWindow::buildUi() {
     workspaceTabs->addTab(inputPreview, "6 入力プレビュー");
     results = new ResultsPanel(this);
     workspaceTabs->addTab(results, "結果ビューア");
+    calculationHistory = new HistoryPanel(this);
+    workspaceTabs->addTab(calculationHistory, "履歴");
+    connect(execution, &ExecutionPanel::bundleChanged, calculationHistory, &HistoryPanel::notifyJob);
     connect(workspaceTabs, &QTabWidget::currentChanged, this, [this](int index) {
         if (workspaceTabs->widget(index) == inputPreview) {
             execution->commitPendingEdits();

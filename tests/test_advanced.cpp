@@ -270,7 +270,7 @@ class AdvancedTest : public QObject {
         auto d = water();
         w.loadDocument(d);
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
-        QCOMPARE(tabs->count(), 7);
+        QCOMPARE(tabs->count(), 8);
         QCOMPARE(tabs->tabText(3), "4 詳細設定");
         tabs->setCurrentIndex(3);
         QCOMPARE(w.document().toJson(), d.toJson());

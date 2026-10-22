@@ -172,7 +172,7 @@ class ResultsTest : public QObject {
         MainWindow w;
         auto *panel = widget<ResultsPanel>(w, "resultsTab");
         auto *tabs = widget<QTabWidget>(w, "workspaceTabs");
-        QCOMPARE(tabs->count(), 7);
+        QCOMPARE(tabs->count(), 8);
         QCOMPARE(tabs->tabText(6), "結果ビューア");
         tabs->setCurrentIndex(6);
         const auto before = w.document().project();

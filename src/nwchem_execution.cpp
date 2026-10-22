@@ -259,6 +259,8 @@ ExecutionPlan executionPlan(const Document &d, const QString &base, const QStrin
                   {"arguments", QJsonArray::fromStringList(p.arguments)},
                   {"environment_overrides", overrides},
                   {"reference_directory", report.referenceDirectory},
+                  {"project_directory", QFileInfo(base).absoluteFilePath()},
+                  {"calculation", nwchemSettings(d)},
                   {"input", "input.nw"},
                   {"stdout", "output.out"},
                   {"stderr", "stderr.err"},
@@ -309,7 +311,13 @@ ExecutionPlan saveExecutionBundle(const Document &d, const QString &base, bool f
             fail("ジョブ内の出力ディレクトリを作成できません: " + path);
     }
     writeFile(directory.filePath("input.nw"), plan.input.toUtf8());
-    d.save(directory.filePath("project.kgui.json"));
+    const auto errors = d.validate();
+    if (!errors.isEmpty())
+        fail(errors.join('\n'));
+    const auto project = QJsonDocument(d.project()).toJson();
+    writeFile(directory.filePath("project.kgui.json"), project);
+    plan.manifest["project_sha256"] =
+        QString::fromLatin1(QCryptographicHash::hash(project, QCryptographicHash::Sha256).toHex());
     writeManifest(plan);
     directory.setAutoRemove(false);
     return plan;

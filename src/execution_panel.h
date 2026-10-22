@@ -25,6 +25,14 @@ class ExecutionPanel : public QWidget {
     }
     void startCalculation();
     void saveBundle();
+    const NwchemRun &currentRun() const {
+        return run;
+    }
+    void stopCalculation() {
+        run.stop();
+    }
+  signals:
+    void bundleChanged(QString directory);
 
   private:
     MainWindow *window;

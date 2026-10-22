@@ -3,6 +3,7 @@
 #include "execution_panel.h"
 #include "advanced_panel.h"
 #include "calculation_panel.h"
+#include "history_panel.h"
 #include "input_preview_panel.h"
 #include "main_window.h"
 #include "nwchem.h"
@@ -31,6 +32,14 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     viewResults = new QPushButton("結果ビューアへ");
     viewResults->setObjectName("executionResults");
     toolbar->addWidget(viewResults);
+    auto *history = new QPushButton("履歴へ");
+    history->setObjectName("executionHistory");
+    toolbar->addWidget(history);
+    connect(history, &QPushButton::clicked, this, [this] {
+        window->workspaceTabs->setCurrentWidget(window->calculationHistory);
+        if (!saved.directory.isEmpty())
+            window->calculationHistory->selectDirectory(saved.directory);
+    });
     connect(viewResults, &QPushButton::clicked, this, [this] {
         window->workspaceTabs->setCurrentWidget(window->results);
         window->results->openDirectory(saved.directory);
@@ -236,6 +245,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
         if (run.state() != previousRunState) {
             previousRunState = run.state();
             refresh();
+            emit bundleChanged(run.plan().directory);
         } else
             updateRun();
     });
@@ -310,6 +320,7 @@ void ExecutionPanel::saveBundle() {
     commitPendingEdits();
     saved = saveExecutionBundle(window->document(), baseDirectory());
     updateRun();
+    emit bundleChanged(saved.directory);
 }
 void ExecutionPanel::startCalculation() {
     if (window->hasCandidate() || window->worker || run.active())
