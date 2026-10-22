@@ -246,7 +246,7 @@ class ExecutionTest : public QObject {
         auto d = configured("large");
         w.loadDocument(d);
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
-        QCOMPARE(tabs->count(), 5);
+        QCOMPARE(tabs->count(), 6);
         QCOMPARE(tabs->tabText(4), "5 実行設定");
         tabs->setCurrentIndex(4);
         QCOMPARE(w.document().toJson(), d.toJson());

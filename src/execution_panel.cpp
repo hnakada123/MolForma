@@ -3,6 +3,7 @@
 #include "execution_panel.h"
 #include "advanced_panel.h"
 #include "calculation_panel.h"
+#include "input_preview_panel.h"
 #include "main_window.h"
 #include "nwchem.h"
 #include <QtWidgets>
@@ -23,6 +24,11 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     for (auto *button : {basic, advanced, undo, redo})
         toolbar->addWidget(button);
     toolbar->addStretch();
+    auto *preview = new QPushButton("6 入力プレビューへ");
+    preview->setObjectName("executionPreview");
+    toolbar->addWidget(preview);
+    connect(preview, &QPushButton::clicked, this,
+            [this] { window->workspaceTabs->setCurrentWidget(window->inputPreview); });
     toolbar->addWidget(new QLabel("NWChem · ローカル実行"));
     connect(basic, &QPushButton::clicked, this,
             [this] { window->workspaceTabs->setCurrentWidget(window->calculation); });
@@ -379,18 +385,12 @@ void ExecutionPanel::refresh() {
     bool portable = false;
     bool runnable = report.errors.isEmpty();
     try {
-        auto root = s["job_root"].toString();
-        if (root.startsWith("~/"))
-            root = QDir::home().filePath(root.mid(2));
-        else if (root == "~")
-            root = QDir::homePath();
-        const auto job = QDir(QDir(baseDirectory()).absoluteFilePath(root)).filePath("計算名-日時-ID");
-        const auto preview = executionPlan(d, baseDirectory(), job, false);
+        const auto preview = executionPreviewPlan(d, baseDirectory());
         command->setPlainText(executionCommand(preview));
         portable = true;
         if (runnable) {
             try {
-                executionPlan(d, baseDirectory(), job, true);
+                executionPreviewPlan(d, baseDirectory(), true);
             } catch (const std::exception &e) {
                 messages << "実行前の確認: " + QString::fromUtf8(e.what());
                 runnable = false;

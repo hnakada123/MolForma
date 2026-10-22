@@ -5,6 +5,7 @@
 #include "coordinates_panel.h"
 #include "coordination.h"
 #include "execution_panel.h"
+#include "input_preview_panel.h"
 #include "operations.h"
 #include "peptide.h"
 #include "template_delegate.h"
@@ -359,6 +360,14 @@ void MainWindow::buildUi() {
     workspaceTabs->addTab(advanced, "4 詳細設定");
     execution = new ExecutionPanel(this);
     workspaceTabs->addTab(execution, "5 実行設定");
+    inputPreview = new InputPreviewPanel(this);
+    workspaceTabs->addTab(inputPreview, "6 入力プレビュー");
+    connect(workspaceTabs, &QTabWidget::currentChanged, this, [this](int index) {
+        if (workspaceTabs->widget(index) == inputPreview) {
+            execution->commitPendingEdits();
+            inputPreview->refresh();
+        }
+    });
     candidateBar = new QWidget;
     candidateBar->setObjectName("candidateBar");
     candidateBar->setStyleSheet(
@@ -901,6 +910,7 @@ void MainWindow::refresh() {
     calculation->refresh();
     advanced->refresh();
     execution->refresh();
+    inputPreview->refresh();
 }
 void MainWindow::refreshSelection() {
     const auto &d = displayDocument();
@@ -1113,6 +1123,7 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
         calculation->refresh();
         advanced->refresh();
         execution->refresh();
+        inputPreview->refresh();
         QMessageBox::warning(this, "処理を起動できません", message);
     });
     running->start();
@@ -1120,6 +1131,7 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
     calculation->refresh();
     advanced->refresh();
     execution->refresh();
+    inputPreview->refresh();
 }
 void MainWindow::cancelWorker() {
     if (!worker)
@@ -1141,6 +1153,8 @@ void MainWindow::cancelWorker() {
         advanced->refresh();
     if (execution)
         execution->refresh();
+    if (inputPreview)
+        inputPreview->refresh();
     statusBar()->showMessage("処理を中止しました。", 4000);
 }
 void MainWindow::closeEvent(QCloseEvent *e) {

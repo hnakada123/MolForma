@@ -24,6 +24,9 @@ struct ExecutionPlan {
 };
 ExecutionPlan executionPlan(const Document &document, const QString &projectDirectory,
                             const QString &jobDirectory, bool checkLocal = true);
+// Side-effect-free plan with a placeholder job directory; never saves or launches anything.
+ExecutionPlan executionPreviewPlan(const Document &document, const QString &projectDirectory,
+                                   bool checkLocal = false);
 QString executionCommand(const ExecutionPlan &plan);
 ExecutionPlan saveExecutionBundle(const Document &document, const QString &projectDirectory,
                                   bool forRun = false);

@@ -18,6 +18,8 @@ renders and caches the palette's molecular thumbnails.
 `advanced_panel.*` provides the native "4 Advanced settings" tab.
 `nwchem_execution.*` validates launch settings, saves immutable run bundles and
 controls cancellable NWChem processes; `execution_panel.*` provides "5 Execution settings".
+`input_preview_panel.*` provides the read-only "6 Input preview" tab using the
+shared NWChem input generator and execution plan.
 
 Tests are in `tests/`, documentation in `docs/`, and resource data in `assets/`.
 Preserve KAGAMI data and fixture attributions.

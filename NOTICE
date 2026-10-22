@@ -25,6 +25,9 @@ new NWChem-specific settings rather than reusing KAGAMI's advanced keywords.
 src/execution_panel.cpp adapts the path, resource and environment settings
 workflow of tools/kagami_gui/app.py. src/nwchem_execution.cpp implements new
 native NWChem/MPI launch validation, job snapshots, logging and cancellation.
+src/input_preview_panel.cpp adapts the read-only input preview and validation
+navigation workflow of tools/kagami_gui/app.py, inspected on 2026-10-23,
+to native Qt6 with NWChem input and execution-path previews.
 The remaining UI and process worker are new.
 The original license and notice are assets/KAGAMI-LICENSE and KAGAMI-NOTICE.
 The latter describes the full upstream repository; MolForma does not include

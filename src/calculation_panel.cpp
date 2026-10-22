@@ -3,6 +3,7 @@
 #include "calculation_panel.h"
 #include "advanced_panel.h"
 #include "execution_panel.h"
+#include "input_preview_panel.h"
 #include "main_window.h"
 #include "nwchem.h"
 #include <QtWidgets>
@@ -31,6 +32,11 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     connect(details, &QPushButton::clicked, this,
             [this] { window->workspaceTabs->setCurrentWidget(window->advanced); });
     toolbar->addStretch();
+    auto *inputPreview = new QPushButton("6 入力プレビューへ");
+    inputPreview->setObjectName("calculationPreview");
+    toolbar->addWidget(inputPreview);
+    connect(inputPreview, &QPushButton::clicked, this,
+            [this] { window->workspaceTabs->setCurrentWidget(window->inputPreview); });
     toolbar->addWidget(new QLabel("NWChem · 分子のGaussian基底計算"));
     connect(undo, &QPushButton::clicked, this, [this] { window->history()->undo(); });
     connect(redo, &QPushButton::clicked, this, [this] { window->history()->redo(); });
@@ -146,8 +152,8 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     }
     integer(output, "メモリ（MB / MPIプロセス）", "memory_mb", 64, 1048576);
     choice(output, "座標の出力単位", "geometry_units");
-    auto *help =
-        new QLabel("条件はプロジェクト保存の対象です。計算実行・出力結果の読込は今後の実装対象です。");
+    auto *help = new QLabel("条件はプロジェクトに保存します。「5 実行設定」で計算を実行し、"
+                            "「6 入力プレビュー」で完成した入力を確認できます。");
     help->setWordWrap(true);
     output->addRow(help);
     forms->addStretch();

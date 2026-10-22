@@ -269,6 +269,11 @@ ExecutionPlan executionPlan(const Document &d, const QString &base, const QStrin
                        QCryptographicHash::hash(p.input.toUtf8(), QCryptographicHash::Sha256).toHex())}};
     return p;
 }
+ExecutionPlan executionPreviewPlan(const Document &d, const QString &base, bool local) {
+    const auto root = executionRoot(executionSettings(d), base);
+    const auto job = QDir(root).filePath(nwchemSettings(d)["start"].toString() + "-YYYYMMDD-HHMMSS-ID");
+    return executionPlan(d, base, job, local);
+}
 QString executionCommand(const ExecutionPlan &p) {
     QString command = "cd -- " + quote(p.directory) + "\nenv";
     for (auto it = p.environment.begin(); it != p.environment.end(); ++it)
