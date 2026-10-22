@@ -3,6 +3,7 @@
 #include "coordination.h"
 #include "operations.h"
 #include "peptide.h"
+#include "template_delegate.h"
 #include <QDrag>
 #include <QJsonDocument>
 #include <QMimeData>
@@ -35,6 +36,7 @@ class PaletteList : public QListWidget {
                       currentItem()->data(Qt::UserRole).toString().toUtf8());
         auto *drag = new QDrag(this);
         drag->setMimeData(mime);
+        drag->setPixmap(viewport()->grab(visualItemRect(currentItem())));
         drag->exec(Qt::CopyAction);
     }
 };
@@ -218,7 +220,7 @@ void MainWindow::buildUi() {
     layout->addWidget(splitter, 1);
     auto *left = new QWidget;
     left->setMinimumWidth(180);
-    left->setMaximumWidth(300);
+    left->setMaximumWidth(320);
     auto *ll = new QVBoxLayout(left);
     ll->setContentsMargins(0, 0, 6, 0);
     ll->addWidget(new QLabel("部品パレット"));
@@ -243,8 +245,11 @@ void MainWindow::buildUi() {
     ll->addWidget(growth);
     palette = new PaletteList;
     palette->setObjectName("templatePalette");
+    palette->setItemDelegate(new TemplateDelegate(palette));
     palette->setDragEnabled(true);
-    palette->setSpacing(3);
+    palette->setDragDropMode(QAbstractItemView::DragOnly);
+    palette->setDefaultDropAction(Qt::CopyAction);
+    palette->setSpacing(0);
     ll->addWidget(palette, 1);
     auto *hint = new QLabel("空白に配置／原子へ付加\n水素へ置換基をドロップ\n配位サイト・末端の＋へ接続");
     hint->setWordWrap(true);
@@ -330,7 +335,7 @@ void MainWindow::buildUi() {
     buildResiduePanel();
     buildFragmentPanel();
     buildChargePanel();
-    splitter->setSizes({230, 760, 340});
+    splitter->setSizes({300, 690, 340});
     candidateBar = new QWidget;
     candidateBar->setObjectName("candidateBar");
     candidateBar->setStyleSheet(
@@ -555,13 +560,19 @@ void MainWindow::buildMenus() {
 }
 void MainWindow::refreshPalette() {
     QString cat = value(category), needle = search->text().trimmed();
+    growth->setVisible(cat == "amino");
+    if (cat != "all" && cat != "amino")
+        growth->setChecked(false);
     QString old = palette->currentItem() ? palette->currentItem()->data(Qt::UserRole).toString() : "";
     palette->clear();
-    auto add = [&](const QString &label, const QString &id, const QString &searchText) {
+    auto add = [&](const QString &label, const QString &id, const QString &searchText,
+                   const QJsonObject &t = QJsonObject()) {
         if (!needle.isEmpty() && !searchText.contains(needle, Qt::CaseInsensitive))
             return;
         auto *item = new QListWidgetItem(label, palette);
         item->setData(Qt::UserRole, id);
+        if (!t.isEmpty())
+            item->setData(TemplateDelegate::TemplateRole, t);
         item->setToolTip(searchText);
         if (id == old)
             palette->setCurrentItem(item);
@@ -585,7 +596,26 @@ void MainWindow::refreshPalette() {
             continue;
         QString text = t["name_ja"].toString() + "  " + t["name_en"].toString() + " " +
                        t["smiles"].toString() + " " + idsFromJson(t["aliases"]).join(' ');
-        add(t["name_ja"].toString() + "\n" + t["name_en"].toString(), t["id"].toString(), text);
+        QString label = t["name_ja"].toString(t["name_en"].toString());
+        if (t["category"] == "amino") {
+            int variants = 0;
+            for (auto other : templates())
+                if (other.toObject()["category"] == "amino" && other.toObject()["code"] == t["code"])
+                    ++variants;
+            if (variants > 1) {
+                QStringList states;
+                bool histidine = t["code"] == "HIS";
+                if (histidine)
+                    states << t["state"].toString();
+                int charge = t["formal_charge"].toInt();
+                if (charge)
+                    states << (charge > 0 ? "+" : "−") + QString::number(std::abs(charge));
+                else if (!histidine)
+                    states << "中性";
+                label += "（" + states.join(", ") + "）";
+            }
+        }
+        add(label, t["id"].toString(), text, t);
     }
     if (!palette->currentItem() && palette->count())
         palette->setCurrentRow(0);

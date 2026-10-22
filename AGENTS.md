@@ -8,7 +8,8 @@ double-precision geometry. `library.*`, `operations.*`, `peptide.*` and
 `coordination.*` implement editing. `chemistry.*` uses the Open Babel C++ API.
 `stereochemistry.*` optionally uses native RDKit for CIP and residue recognition.
 `molecule_view.*` renders with QPainter. `main_window.*` and `editor_panels.cpp`
-provide the Qt UI, candidate edits and undo history.
+provide the Qt UI, candidate edits and undo history. `template_delegate.*`
+renders and caches the palette's molecular thumbnails.
 
 Tests are in `tests/`, documentation in `docs/`, and resource data in `assets/`.
 Preserve KAGAMI data and fixture attributions.
