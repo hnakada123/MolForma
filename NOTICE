@@ -1,0 +1,21 @@
+MolForma
+
+This project contains data and code adapted from KAGAMI.
+KAGAMI: Copyright 2026 Hiroshi Nakada. Apache License, Version 2.0.
+Source: /home/nakada/GitHub/KAGAMI, inspected on 2026-10-22.
+Reference manual: docs/00_gui/molecule_tab.html.
+
+assets/library.json: unchanged tools/kagami_gui/fragments/library.json.
+assets/elements.json: unchanged tools/kagami_gui/elements.json.
+tests/fixtures/*.kgui.json: copies of examples/gui_builder projects.
+
+src/document.cpp, geometry.cpp, library.cpp, operations.cpp, peptide.cpp and
+coordination.cpp adapt the KAGAMI GUI document schema and builder algorithms
+from Python/NumPy to native Qt6/C++/Eigen. The UI and process worker are new.
+The original license and notice are assets/KAGAMI-LICENSE and KAGAMI-NOTICE.
+The latter describes the full upstream repository; MolForma does not include
+KAGAMI's quantum-chemistry engine or its PySCF-derived code.
+
+Qt6, Eigen3, optional RDKit and Open Babel 3 are system dependencies, not vendored here;
+their own license terms apply. Open Babel is GPL-licensed. The Apache notice
+for imported KAGAMI files does not license all linked dependencies.

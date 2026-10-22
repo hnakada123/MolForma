@@ -1,0 +1,322 @@
+{
+  "format": "kagami-gui-project",
+  "version": 2,
+  "coordinate_units": "angstrom",
+  "document": {
+    "atoms": [
+      {
+        "element": "O",
+        "position": [
+          0.0005848433,
+          0.3978146635,
+          0.0
+        ],
+        "id": "aadc05f59a5e4ea2935e889dd8e8ab8c",
+        "formal_charge": 0,
+        "radical": 0,
+        "isotope_mass_number": null,
+        "mass_amu": null,
+        "ghost": false,
+        "stereo": "",
+        "name": "",
+        "fixed": false,
+        "auto_hydrogen": false,
+        "metadata": {
+          "chiral_tag": 0
+        }
+      },
+      {
+        "element": "H",
+        "position": [
+          -0.7637594191,
+          -0.1977852796,
+          0.0
+        ],
+        "id": "82248c119f30467783e9d619a28749f8",
+        "formal_charge": 0,
+        "radical": 0,
+        "isotope_mass_number": null,
+        "mass_amu": null,
+        "ghost": false,
+        "stereo": "",
+        "name": "",
+        "fixed": false,
+        "auto_hydrogen": false,
+        "metadata": {
+          "chiral_tag": 0
+        }
+      },
+      {
+        "element": "H",
+        "position": [
+          0.7631745758,
+          -0.2000293839,
+          0.0
+        ],
+        "id": "13e434fae02e4e8dbe1b2fc947ae5176",
+        "formal_charge": 0,
+        "radical": 0,
+        "isotope_mass_number": null,
+        "mass_amu": null,
+        "ghost": false,
+        "stereo": "",
+        "name": "",
+        "fixed": false,
+        "auto_hydrogen": false,
+        "metadata": {
+          "chiral_tag": 0
+        }
+      },
+      {
+        "element": "O",
+        "position": [
+          0.0005848433,
+          0.3978146635,
+          4.0
+        ],
+        "id": "9219283cf47742c3acf0219ac1ed64af",
+        "formal_charge": 0,
+        "radical": 0,
+        "isotope_mass_number": null,
+        "mass_amu": null,
+        "ghost": false,
+        "stereo": "",
+        "name": "",
+        "fixed": false,
+        "auto_hydrogen": false,
+        "metadata": {
+          "chiral_tag": 0
+        }
+      },
+      {
+        "element": "H",
+        "position": [
+          -0.7637594191,
+          -0.1977852796,
+          4.0
+        ],
+        "id": "b12f9ac5210048f9bc289e2192aac5f7",
+        "formal_charge": 0,
+        "radical": 0,
+        "isotope_mass_number": null,
+        "mass_amu": null,
+        "ghost": false,
+        "stereo": "",
+        "name": "",
+        "fixed": false,
+        "auto_hydrogen": false,
+        "metadata": {
+          "chiral_tag": 0
+        }
+      },
+      {
+        "element": "H",
+        "position": [
+          0.7631745758,
+          -0.2000293839,
+          4.0
+        ],
+        "id": "efd8f4604b2643348809653c3e86231e",
+        "formal_charge": 0,
+        "radical": 0,
+        "isotope_mass_number": null,
+        "mass_amu": null,
+        "ghost": false,
+        "stereo": "",
+        "name": "",
+        "fixed": false,
+        "auto_hydrogen": false,
+        "metadata": {
+          "chiral_tag": 0
+        }
+      }
+    ],
+    "bonds": [
+      {
+        "a": "aadc05f59a5e4ea2935e889dd8e8ab8c",
+        "b": "82248c119f30467783e9d619a28749f8",
+        "kind": "single",
+        "source": "template",
+        "stereo": ""
+      },
+      {
+        "a": "aadc05f59a5e4ea2935e889dd8e8ab8c",
+        "b": "13e434fae02e4e8dbe1b2fc947ae5176",
+        "kind": "single",
+        "source": "template",
+        "stereo": ""
+      },
+      {
+        "a": "9219283cf47742c3acf0219ac1ed64af",
+        "b": "b12f9ac5210048f9bc289e2192aac5f7",
+        "kind": "single",
+        "source": "template",
+        "stereo": ""
+      },
+      {
+        "a": "9219283cf47742c3acf0219ac1ed64af",
+        "b": "efd8f4604b2643348809653c3e86231e",
+        "kind": "single",
+        "source": "template",
+        "stereo": ""
+      }
+    ],
+    "parts": [
+      {
+        "template": "skeleton:water",
+        "atoms": [
+          "aadc05f59a5e4ea2935e889dd8e8ab8c",
+          "82248c119f30467783e9d619a28749f8",
+          "13e434fae02e4e8dbe1b2fc947ae5176"
+        ],
+        "connections": [],
+        "id": "2c22e716098b4afca386d83908a96965",
+        "metadata": {
+          "name_ja": "水",
+          "name_en": "Water",
+          "category": "skeleton"
+        }
+      },
+      {
+        "template": "skeleton:water",
+        "atoms": [
+          "9219283cf47742c3acf0219ac1ed64af",
+          "b12f9ac5210048f9bc289e2192aac5f7",
+          "efd8f4604b2643348809653c3e86231e"
+        ],
+        "connections": [],
+        "id": "a0f94344468e4a9eaddc72c7476e579e",
+        "metadata": {
+          "name_ja": "水",
+          "name_en": "Water",
+          "category": "skeleton"
+        }
+      }
+    ],
+    "residues": [],
+    "chains": {},
+    "centers": [],
+    "point_charges": [],
+    "assignments": {
+      "counterpoise": {
+        "members": {
+          "aadc05f59a5e4ea2935e889dd8e8ab8c": "e5906508713c4f2787491f1ad0ff1570",
+          "13e434fae02e4e8dbe1b2fc947ae5176": "e5906508713c4f2787491f1ad0ff1570",
+          "82248c119f30467783e9d619a28749f8": "e5906508713c4f2787491f1ad0ff1570",
+          "9219283cf47742c3acf0219ac1ed64af": "4da5fc72117c46a79b9f7958759ab3f1",
+          "efd8f4604b2643348809653c3e86231e": "4da5fc72117c46a79b9f7958759ab3f1",
+          "b12f9ac5210048f9bc289e2192aac5f7": "4da5fc72117c46a79b9f7958759ab3f1"
+        },
+        "charges": {
+          "e5906508713c4f2787491f1ad0ff1570": 0,
+          "4da5fc72117c46a79b9f7958759ab3f1": 0
+        },
+        "multiplicities": {
+          "4da5fc72117c46a79b9f7958759ab3f1": 1,
+          "e5906508713c4f2787491f1ad0ff1570": 1
+        },
+        "cuts": [],
+        "status": "compatible",
+        "issues": []
+      }
+    },
+    "job": {
+      "runtype": "counterpoise",
+      "method": "hf",
+      "functional": "",
+      "dispersion": "none",
+      "relativistic": "none",
+      "basis": "STO-3G",
+      "scftype": "RHF",
+      "charge": 0,
+      "multiplicity": 1,
+      "spherical": true,
+      "bohr": false,
+      "fractional_occupations": false,
+      "alpha_occupations": "",
+      "beta_occupations": "",
+      "sections": {
+        "counterpoise": {
+          "fragments": "1,1,1,2,2,2",
+          "charges": "0,0",
+          "multiplicities": "1,1"
+        }
+      }
+    },
+    "id": "b908e049483344a6b690b3164ac29253",
+    "revision": 0,
+    "units": "angstrom",
+    "metadata": {},
+    "references": [],
+    "invalid_settings": []
+  },
+  "job": {
+    "runtype": "counterpoise",
+    "method": "hf",
+    "functional": "",
+    "dispersion": "none",
+    "relativistic": "none",
+    "basis": "STO-3G",
+    "scftype": "RHF",
+    "charge": 0,
+    "multiplicity": 1,
+    "spherical": true,
+    "bohr": false,
+    "fractional_occupations": false,
+    "alpha_occupations": "",
+    "beta_occupations": "",
+    "sections": {
+      "counterpoise": {
+        "fragments": "1,1,1,2,2,2",
+        "charges": "0,0",
+        "multiplicities": "1,1"
+      }
+    }
+  },
+  "atoms": [
+    {
+      "symbol": "O",
+      "x": 0.0005848433,
+      "y": 0.3978146635,
+      "z": 0.0,
+      "mass": ""
+    },
+    {
+      "symbol": "H",
+      "x": -0.7637594191,
+      "y": -0.1977852796,
+      "z": 0.0,
+      "mass": ""
+    },
+    {
+      "symbol": "H",
+      "x": 0.7631745758,
+      "y": -0.2000293839,
+      "z": 0.0,
+      "mass": ""
+    },
+    {
+      "symbol": "O",
+      "x": 0.0005848433,
+      "y": 0.3978146635,
+      "z": 4.0,
+      "mass": ""
+    },
+    {
+      "symbol": "H",
+      "x": -0.7637594191,
+      "y": -0.1977852796,
+      "z": 4.0,
+      "mass": ""
+    },
+    {
+      "symbol": "H",
+      "x": 0.7631745758,
+      "y": -0.2000293839,
+      "z": 4.0,
+      "mass": ""
+    }
+  ],
+  "execution": null,
+  "result_reference": null
+}
