@@ -16,6 +16,9 @@ palette setup in src/main_window.cpp adapt the thumbnails, labels and layout
 in tools/kagami_gui/builder.py. src/coordinates.cpp and coordinates_panel.cpp
 adapt coordinate editing and the atom dialog from builder_integration.py and
 coordinate_atom_dialog.py to C++/Qt6, with new NWChem geometry export.
+src/calculation_panel.cpp adapts the settings/preset workflow of job_tab.py
+to native Qt6 and NWChem. src/nwchem.cpp is new NWChem input generation and
+validation code; it does not translate KAGAMI-specific computational methods.
 The remaining UI and process worker are new.
 The original license and notice are assets/KAGAMI-LICENSE and KAGAMI-NOTICE.
 The latter describes the full upstream repository; MolForma does not include

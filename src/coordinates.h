@@ -14,5 +14,5 @@ Atom coordinateAtom(const QString &symbol, const QStringList &xyz, const QString
                     bool ghost = false, bool fixed = false);
 void replaceCoordinateStructure(Document &document, const Document &structure);
 // NWChem input fragment, not a complete calculation (basis/method/task are configured separately).
-QString nwchemGeometry(const Document &document, CoordinateUnit unit);
+QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragmentComments = true);
 } // namespace mf

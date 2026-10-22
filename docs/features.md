@@ -1,6 +1,6 @@
-# 「1 分子」「2 座標」タブからの機能移植
+# 「1 分子」「2 座標」「3 計算条件」タブからの機能移植
 
-MolFormaはNWChem向けの分子作成・座標編集用デスクトップアプリです。KAGAMI GUIの「1 分子」「2 座標」をQt6 WidgetsとC++20で実装し、分子座標は倍精度のÅ、原子参照は永続IDで管理します。計算条件・実行・計算履歴・結果ビューアのタブは今後の実装対象です。
+MolFormaはNWChem向けの分子作成・座標編集・計算入力作成用デスクトップアプリです。KAGAMI GUIの「1 分子」「2 座標」「3 計算条件」をQt6 WidgetsとC++20で実装し、分子座標は倍精度のÅ、原子参照は永続IDで管理します。実行・計算履歴・結果ビューアのタブは今後の実装対象です。
 
 ## 「2 座標」
 
@@ -21,9 +21,59 @@ MolFormaはNWChem向けの分子作成・座標編集用デスクトップアプ
 - ゴーストは `bqC` 等のゼロ核電荷の中心として出力します。`basis` 内に `bqC library C <basis-name>` 等の明示的な基底割当が必要で、プレビュー末尾に案内を付けます。原子の形式電荷をNWChemの核電荷指定へ転用しません。
 - 固定フラグは `constraints` の `fix atom` へ出力時の原子番号で変換します。先頭の `clear` は以前の固定条件を除去するため、既存入力へ組み込む場合は必要な他の拘束も同じブロックへ追加してください。
 
-出力は**座標と固定原子の入力断片**です。全電荷・多重度・基底/ECP・手法・`task`、点電荷、KAGAMI由来の拘束・スキャン・FMO/CP/SAPT設定を計算入力へ変換する機能は含みません。未確定候補はプレビューのみで、確定・取消まで出力ボタンを無効化します。NWChem入力の読込・計算実行・出力結果の解析は未実装です。NWChem本体のインストールはこのタブの使用には不要です。
+このタブの出力は**座標と固定原子の入力断片**です。完成した計算入力は「3 計算条件」で作成します。未確定候補はプレビューのみで、確定・取消まで出力ボタンを無効化します。NWChem入力の読込・計算実行・出力結果の解析は未実装です。NWChem本体のインストールはこのタブの使用には不要です。
 
 入力仕様の参照: [Cartesian coordinate input](https://nwchemgit.github.io/Cartesian-coordinate-input.html)、[Geometry keywords](https://nwchemgit.github.io/Keywords-for-the-GEOMETRY-directive.html)、[Constraints](https://nwchemgit.github.io/Constraints.html)、[Basis sets](https://nwchemgit.github.io/Basis.html)。
+
+## 「3 計算条件」
+
+左側で条件を設定し、右側で電子数・参照波動関数・エラー・確認事項と完成したNWChem入力を確認します。条件の変更は共有のUndo/Redoへ記録します。矛盾した条件も修正途中の設定として保持しますが、エラーが残る間は入力の生成・コピー・保存を禁止し、以前の有効なプレビューは消去します。候補表示中・整形中は条件の変更と出力を無効にします。
+
+### 対応する計算
+
+| 項目 | 対応範囲 |
+| --- | --- |
+| 手法 | HF、DFT、MP2、CCSD、CCSD(T) |
+| 計算目的 | 一点エネルギー、勾配、構造最適化、振動数、最適化→振動数。CCSD系は閉殻RHFの一点エネルギーのみ |
+| 参照波動関数 | 自動・RHF/RKS・UHF/UKS・ROHF。自動は一重項を制限、開殻HFをROHF、開殻DFT/MP2を非制限にします。DFT/MP2のROHF参照は未対応 |
+| DFT | B3LYP、PBE、PBE0、BLYP、BP86。分散補正なし・D3・D3(BJ)、fine/xfineグリッド。PBE0＋D3(BJ)は未対応 |
+| 基底 | STO-3G、6-31G、6-31G*、6-31G**、6-311G**、cc-pVDZ、cc-pVTZ、aug-cc-pVDZ、def2-SVP、def2-TZVP。球面/Cartesian切替 |
+| 収束 | SCF最大反復・3段階の収束条件、最適化最大反復・標準/厳密/緩い、CC最大反復、相関計算の内殻凍結 |
+| 環境 | HF/DFTのCOSMO（誘電率指定）、保存された点電荷の任意の有効化 |
+| 出力 | 計算名・タイトル・MPIプロセスごとのメモリ、Å/Bohr、完成した`.nw`のコピー・保存 |
+
+基底の元素範囲はNWChemの組込みライブラリに基づく固定リストで検査します。基底ファイル自体は同梱しません。STO-3GはH〜I、6-31G/6-31G**はH〜Zn、6-31G*はH〜Kr、6-311G**はH〜Ca・Ga〜Kr・Iです。cc-pVDZ/cc-pVTZはH〜Kr（Kを除く）、aug-cc-pVDZはH〜Kr（K・Caを除く）、def2系はH〜La・Hf〜Rnに対応します。実行先に選択したライブラリが必要です。任意基底の入力、原子別基底変更、任意ECPは未対応です。
+
+def2系ではRb〜Xeに28電子、Cs〜Laに46電子、Hf〜Rnに60電子を除去する `def2-ecp` を自動指定します。実原子だけにECPを付け、電子数を補正してα/β電子数・多重度の整合性を検査します。ゴーストの核電荷は0で、`bqC library C ...` のように基底を明示します。相関計算の `freeze atomic` は既定でオフです。有効にした場合はNWChemの原子別規則で凍結する軌道数を表示し、相関電子が不足する設定を拒否します。ECP中心とゴーストは内殻凍結の対象外です。
+
+振動数はHF/DFTの解析Hessianを基本とし、MP2・ROHF・ECP・COSMOでは数値Hessianを選びます。手動で数値Hessianを選択することもできます。固定・ゴースト・外部点電荷を含む振動数解析と、ゴーストを含むCOSMOは未対応です。最適化に続けて振動数を求める場合は、二つの `task` を順に出力します。SCF収束は標準1e-5・厳密1e-7・さらに厳密1e-9で、HFは `thresh`、DFTはenergy/density/gradientに適用します。CCの収束閾値は1e-7です。
+
+### 保存・プリセット・互換性
+
+- NWChem固有の条件は `document.nwchem` に保存します。`geometry_units` は「2 座標」と共有します。全電荷・多重度は既存の `job.charge` / `job.multiplicity` を共有し、「1 分子」での変更も反映します。原子の形式電荷と計算の全電荷は区別し、異なるときは確認事項を表示します。
+- KAGAMIの手法・基底・詳細セクションからNWChemの条件を推測しません。NWChem設定がないプロジェクトではHF/STO-3Gの初期条件を表示します。KAGAMIの条件、未知のフィールド、実行・結果参照は保存時に保持します。KAGAMIの拘束・スキャン・FMO/CP/SAPT・相対論・占有数等は変換せず、既存の詳細設定がある場合は画面で案内します。原子の固定フラグはNWChemへ出力します。
+- 点電荷は初期状態では出力しません。このタブで有効にすると `bq units angstrom` へ出力します。KAGAMIのQM/MM有効フラグとは独立です。点電荷の座標は分子の出力単位にかかわらずÅを明示します。
+- HF/STO-3G、B3LYP-D3(BJ)/def2-SVP最適化＋振動数、内殻凍結MP2/cc-pVDZの組込みプリセットがあります。適用はUndo一回で戻せます。適用前の変更点は説明欄のツールチップに表示します。プリセットは分子・電荷・多重度・計算名・タイトル・メモリ・単位・未知フィールドを変更しません。ユーザープリセットの登録・削除はローカルのQSettingsに保存します。
+- タイトルと計算名は入力確定時に反映します。NWChemの別命令が混入しないよう、計算名の文字種・長さ、タイトルの改行・引用符等を検査します。入力プレビューは読取専用です。
+
+計算実行、MPIの起動設定、出力の解析、既存`.nw`の読込、TCE・励起状態・遷移状態・IRC・MD・周期系・任意キーワードの編集は今後の対象です。NWChem本体がなくても条件編集と入力生成はできます。入力検査は収束や物理モデルの妥当性まで保証するものではありません。
+
+仕様の参照: [HF](https://nwchemgit.github.io/Hartree-Fock-Theory-for-Molecules.html)、[DFT](https://nwchemgit.github.io/Density-Functional-Theory-for-Molecules.html)、[MP2](https://nwchemgit.github.io/MP2.html)、[CCSD](https://nwchemgit.github.io/CCSD.html)、[ECP](https://nwchemgit.github.io/ECP.html)、[Optimization](https://nwchemgit.github.io/Geometry-Optimization.html)、[Frequencies](https://nwchemgit.github.io/Hessians-and-Vibrational-Frequencies.html)、[COSMO](https://nwchemgit.github.io/COSMO-Solvation-Model.html)、[TASK](https://nwchemgit.github.io/TASK.html)。
+
+### 計算条件タブの検証
+
+`calculation`のQt Testは入力生成、手法・参照・タスクの組合せ、電子数、基底の元素範囲、ECP、ゴースト、固定番号、同位体、単位、点電荷、入力の不正値、保存互換性、プリセット、Undo/Redo、タブ間同期、候補の操作制御を検査します。通常のCTestではNWChem・ネットワークを使用しません。
+
+任意の実機検証用入力と画面画像を生成できます。
+
+```sh
+QT_QPA_PLATFORM=offscreen MOLFORMA_CALCULATION_ARTIFACTS=/tmp/molforma-calculation \
+  ./build/test_calculation engineArtifacts
+```
+
+2026-10-22にNWChem 7.3.1（MPI 2プロセス、OMP/OpenBLAS各1スレッド）で23種類の生成入力の正常終了を確認しました。HF、5種のDFT汎関数と分散補正、MP2、CCSD、CCSD(T)、開殻HF/DFT、def2-ECP、内殻凍結、ゴースト・同位体・固定、Å/Bohr、点電荷、COSMO、解析/数値振動数を含みます。水のB3LYP-D3(BJ)/def2-SVPプリセットは最適化と振動数解析が完了し、振動数は1638.93 / 3791.78 / 3886.86 cm⁻¹でした。AddressSanitizerでも計算条件タブのテストを実行しています。
+
+CCSD(T)の検証には水/6-31Gを使用しています。この環境では最小基底のH₂/STO-3GのCCSD(T)がNWChemの三重励起処理中にMPI通信エラーとなりました。入力検査ではこのような実行環境・エンジン固有の問題は検出しません。
 
 ## 実装済み
 

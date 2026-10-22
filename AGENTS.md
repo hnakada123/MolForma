@@ -12,6 +12,8 @@ provide the Qt UI, candidate edits and undo history. `template_delegate.*`
 renders and caches the palette's molecular thumbnails.
 `coordinates.*` implements coordinate edits and NWChem geometry fragments;
 `coordinates_panel.*` provides the native "2 Coordinates" tab.
+`nwchem.*` validates computational settings and generates complete NWChem input;
+`calculation_panel.*` provides the native "3 Calculation conditions" tab.
 
 Tests are in `tests/`, documentation in `docs/`, and resource data in `assets/`.
 Preserve KAGAMI data and fixture attributions.

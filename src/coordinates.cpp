@@ -144,14 +144,16 @@ void replaceCoordinateStructure(Document &document, const Document &structure) {
         document.data[key] = structure.data[key];
     document.invalidateAssignments();
 }
-QString nwchemGeometry(const Document &document, CoordinateUnit unit) {
+QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragmentComments) {
     auto errors = document.validate();
     if (!errors.isEmpty())
         fail(errors.join('\n'));
     if (document.atoms.isEmpty())
         fail("原子を追加するとNWChem座標を表示します。");
     auto number = [](double value) { return QString::number(value, 'g', 17); };
-    QString text = "# MolForma: geometry fragment; add basis, charge, method and task separately.\n";
+    QString text = fragmentComments
+                       ? "# MolForma: geometry fragment; add basis, charge, method and task separately.\n"
+                       : QString();
     text += QString("geometry units %1 nocenter noautosym noautoz")
                 .arg(unit == CoordinateUnit::Bohr ? "au" : "angstrom");
     if (unit == CoordinateUnit::Angstrom)
@@ -186,8 +188,9 @@ QString nwchemGeometry(const Document &document, CoordinateUnit unit) {
     text += "end\n";
     auto symbols = ghosts.values();
     std::sort(symbols.begin(), symbols.end());
-    for (const auto &symbol : symbols)
-        text += QString("# Ghost basis required in BASIS: bq%1 library %1 <basis-name>\n").arg(symbol);
+    if (fragmentComments)
+        for (const auto &symbol : symbols)
+            text += QString("# Ghost basis required in BASIS: bq%1 library %1 <basis-name>\n").arg(symbol);
     return text;
 }
 } // namespace mf

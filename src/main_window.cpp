@@ -1,4 +1,5 @@
 #include "main_window.h"
+#include "calculation_panel.h"
 #include "chemistry.h"
 #include "coordinates_panel.h"
 #include "coordination.h"
@@ -64,6 +65,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), settings("MolForm
         restoreGeometry(saved);
 }
 MainWindow::~MainWindow() {
+    calculation->stopEditing();
     cancelWorker();
 }
 void MainWindow::safe(const std::function<void()> &operation) {
@@ -346,6 +348,8 @@ void MainWindow::buildUi() {
     splitter->setSizes({300, 690, 340});
     coordinates = new CoordinatesPanel(this);
     workspaceTabs->addTab(coordinates, "2 座標");
+    calculation = new CalculationPanel(this);
+    workspaceTabs->addTab(calculation, "3 計算条件");
     candidateBar = new QWidget;
     candidateBar->setObjectName("candidateBar");
     candidateBar->setStyleSheet(
@@ -885,6 +889,7 @@ void MainWindow::refresh() {
     refreshing = false;
     refreshSelection();
     coordinates->refresh();
+    calculation->refresh();
 }
 void MainWindow::refreshSelection() {
     const auto &d = displayDocument();
@@ -944,6 +949,8 @@ bool MainWindow::resolveCandidate() {
     return false;
 }
 bool MainWindow::confirmDiscard() {
+    if (auto *focused = QApplication::focusWidget(); focused && calculation->isAncestorOf(focused))
+        focused->clearFocus();
     if (!resolveCandidate())
         return false;
     if (undo.isClean())
@@ -1000,6 +1007,8 @@ void MainWindow::loadPath(const QString &p) {
     refresh();
 }
 bool MainWindow::save(bool as) {
+    if (auto *focused = QApplication::focusWidget(); focused && calculation->isAncestorOf(focused))
+        focused->clearFocus(); // Include the active calculation field when saving via Ctrl+S.
     if (!resolveCandidate())
         return false;
     QString p = path;
@@ -1086,10 +1095,12 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
         workdir.reset();
         cancelWorkerButton->hide();
         coordinates->refresh();
+        calculation->refresh();
         QMessageBox::warning(this, "処理を起動できません", message);
     });
     running->start();
     coordinates->refresh();
+    calculation->refresh();
 }
 void MainWindow::cancelWorker() {
     if (!worker)
@@ -1105,6 +1116,8 @@ void MainWindow::cancelWorker() {
         cancelWorkerButton->hide();
     if (coordinates)
         coordinates->refresh();
+    if (calculation)
+        calculation->refresh();
     statusBar()->showMessage("処理を中止しました。", 4000);
 }
 void MainWindow::closeEvent(QCloseEvent *e) {
