@@ -20,6 +20,8 @@ renders and caches the palette's molecular thumbnails.
 controls cancellable NWChem processes; `execution_panel.*` provides "5 Execution settings".
 `input_preview_panel.*` provides the read-only "6 Input preview" tab using the
 shared NWChem input generator and execution plan.
+`results.*` reads NWChem logs, XYZ, CUBE and MOLDEN and generates bounded isosurfaces;
+`results_panel.*` provides the independent result viewer with cancellable native readers.
 
 Tests are in `tests/`, documentation in `docs/`, and resource data in `assets/`.
 Preserve KAGAMI data and fixture attributions.

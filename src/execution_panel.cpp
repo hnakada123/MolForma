@@ -6,6 +6,7 @@
 #include "input_preview_panel.h"
 #include "main_window.h"
 #include "nwchem.h"
+#include "results_panel.h"
 #include <QtWidgets>
 
 namespace mf {
@@ -27,6 +28,13 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     auto *preview = new QPushButton("6 入力プレビューへ");
     preview->setObjectName("executionPreview");
     toolbar->addWidget(preview);
+    viewResults = new QPushButton("結果ビューアへ");
+    viewResults->setObjectName("executionResults");
+    toolbar->addWidget(viewResults);
+    connect(viewResults, &QPushButton::clicked, this, [this] {
+        window->workspaceTabs->setCurrentWidget(window->results);
+        window->results->openDirectory(saved.directory);
+    });
     connect(preview, &QPushButton::clicked, this,
             [this] { window->workspaceTabs->setCurrentWidget(window->inputPreview); });
     toolbar->addWidget(new QLabel("NWChem · ローカル実行"));
@@ -425,6 +433,7 @@ void ExecutionPanel::updateRun() {
                                                : "入力一式を保存しました。");
     location->setText(saved.directory);
     openFolder->setEnabled(!saved.directory.isEmpty());
+    viewResults->setEnabled(!saved.directory.isEmpty() && !resultFiles(saved.directory).isEmpty());
     stop->setEnabled(run.active() && run.state() != "stopping");
     if (run.active()) {
         start->setEnabled(false);

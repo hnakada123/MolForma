@@ -24,6 +24,7 @@ class CalculationPanel;
 class AdvancedPanel;
 class ExecutionPanel;
 class InputPreviewPanel;
+class ResultsPanel;
 class MainWindow : public QMainWindow {
     Q_OBJECT
   public:
@@ -62,6 +63,7 @@ class MainWindow : public QMainWindow {
     friend class AdvancedPanel;
     friend class ExecutionPanel;
     friend class InputPreviewPanel;
+    friend class ResultsPanel;
     Document doc;
     std::optional<Document> candidate;
     QString candidateName, path;
@@ -78,6 +80,7 @@ class MainWindow : public QMainWindow {
     AdvancedPanel *advanced = nullptr;
     ExecutionPanel *execution = nullptr;
     InputPreviewPanel *inputPreview = nullptr;
+    ResultsPanel *results = nullptr;
     QTabWidget *workspaceTabs = nullptr;
     QComboBox *tool = nullptr, *unitBox = nullptr, *category = nullptr, *elementBox = nullptr,
               *bondKind = nullptr, *colorBox = nullptr;

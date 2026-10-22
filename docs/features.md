@@ -1,6 +1,6 @@
-# 「1 分子」「2 座標」「3 計算条件」「4 詳細設定」「5 実行設定」「6 入力プレビュー」
+# 「1 分子」から「6 入力プレビュー」・「結果ビューア」
 
-MolFormaはNWChem向けの分子作成・座標編集・計算入力作成用デスクトップアプリです。KAGAMI GUIの「1 分子」から「6 入力プレビュー」までをQt6 WidgetsとC++20で実装し、計算条件・詳細設定はNWChem用に構成しています。分子座標は倍精度のÅ、原子参照は永続IDで管理します。ローカルでの計算実行・停止・ログ表示に対応します。計算履歴・結果ビューアのタブは今後の実装対象です。
+MolFormaはNWChem向けの分子作成・座標編集・計算入力作成用デスクトップアプリです。KAGAMI GUIの「1 分子」から「6 入力プレビュー」と「結果ビューア」をQt6 WidgetsとC++20で実装し、計算条件・詳細設定はNWChem用に構成しています。分子座標は倍精度のÅ、原子参照は永続IDで管理します。ローカルでの計算実行・停止・ログ表示と結果の閲覧に対応します。計算履歴の一覧は今後の実装対象です。
 
 ## 「2 座標」
 
@@ -21,7 +21,7 @@ MolFormaはNWChem向けの分子作成・座標編集・計算入力作成用デ
 - ゴーストは `bqC` 等のゼロ核電荷の中心として出力します。`basis` 内に `bqC library C <basis-name>` 等の明示的な基底割当が必要で、プレビュー末尾に案内を付けます。原子の形式電荷をNWChemの核電荷指定へ転用しません。
 - 固定フラグは `constraints` の `fix atom` へ出力時の原子番号で変換します。先頭の `clear` は以前の固定条件を除去するため、既存入力へ組み込む場合は必要な他の拘束も同じブロックへ追加してください。
 
-このタブの出力は**座標と固定原子の入力断片**です。完成した計算入力は「3 計算条件」で作成します。未確定候補はプレビューのみで、確定・取消まで出力ボタンを無効化します。計算実行は「5 実行設定」で行います。NWChem入力の読込・出力結果の解析は未実装です。NWChem本体のインストールはこのタブの使用には不要です。
+このタブの出力は**座標と固定原子の入力断片**です。完成した計算入力は「3 計算条件」で作成します。未確定候補はプレビューのみで、確定・取消まで出力ボタンを無効化します。計算実行は「5 実行設定」、出力の閲覧は「結果ビューア」で行います。NWChem入力の読込は未実装です。NWChem本体のインストールはこのタブの使用には不要です。
 
 入力仕様の参照: [Cartesian coordinate input](https://nwchemgit.github.io/Cartesian-coordinate-input.html)、[Geometry keywords](https://nwchemgit.github.io/Keywords-for-the-GEOMETRY-directive.html)、[Constraints](https://nwchemgit.github.io/Constraints.html)、[Basis sets](https://nwchemgit.github.io/Basis.html)。
 
@@ -56,7 +56,7 @@ def2系ではRb〜Xeに28電子、Cs〜Laに46電子、Hf〜Rnに60電子を除�
 - HF/STO-3G、B3LYP-D3(BJ)/def2-SVP最適化＋振動数、内殻凍結MP2/cc-pVDZの組込みプリセットがあります。適用はUndo一回で戻せます。適用前の変更点は説明欄のツールチップに表示します。プリセットは分子・電荷・多重度・計算名・タイトル・メモリ・単位・未知フィールドを変更しません。ユーザープリセットの登録・削除はローカルのQSettingsに保存します。
 - タイトルと計算名は入力確定時に反映します。NWChemの別命令が混入しないよう、計算名の文字種・長さ、タイトルの改行・引用符等を検査します。入力プレビューは読取専用です。
 
-計算実行とMPIの起動設定は「5 実行設定」で行います。出力の解析、既存`.nw`の読込、TCE・励起状態・遷移状態・IRC・MD・周期系・任意キーワードの編集は今後の対象です。NWChem本体がなくても条件編集と入力生成はできます。入力検査は収束や物理モデルの妥当性まで保証するものではありません。
+計算実行とMPIの起動設定は「5 実行設定」、出力の閲覧は「結果ビューア」で行います。既存`.nw`の読込、TCE・励起状態・遷移状態・IRC・MD・周期系・任意キーワードの編集は今後の対象です。NWChem本体がなくても条件編集と入力生成はできます。入力検査は収束や物理モデルの妥当性まで保証するものではありません。
 
 仕様の参照: [HF](https://nwchemgit.github.io/Hartree-Fock-Theory-for-Molecules.html)、[DFT](https://nwchemgit.github.io/Density-Functional-Theory-for-Molecules.html)、[MP2](https://nwchemgit.github.io/MP2.html)、[CCSD](https://nwchemgit.github.io/CCSD.html)、[ECP](https://nwchemgit.github.io/ECP.html)、[Optimization](https://nwchemgit.github.io/Geometry-Optimization.html)、[Frequencies](https://nwchemgit.github.io/Hessians-and-Vibrational-Frequencies.html)、[COSMO](https://nwchemgit.github.io/COSMO-Solvation-Model.html)、[TASK](https://nwchemgit.github.io/TASK.html)。
 
@@ -173,7 +173,7 @@ MPI起動数1では動作しないMPI-PR版があります。使用するNWChem�
 
 設定は `document.nwchem_execution` に保存し、共有Undo/Redo、Ctrl+S、再読込に対応します。環境変数表の入力途中もCtrl+Sで確定します。既存のKAGAMI `execution`、未知フィールド、実行・結果参照を保持し、KAGAMIの実行パスやオプションをNWChemへ自動適用しません。計算プリセットを適用しても実行設定は変更しません。
 
-現在は1ウィンドウにつき同時に1計算です。複数ジョブのキュー・履歴一覧・終了通知、SSH、Slurm/PBS、任意のMPI追加引数、再起動後の実行監視、NWChemデータベースからのrestart、結果解析と最適化構造の取込みは未対応です。MPI-PRのビルド構成や基底ライブラリの内容までは自動検出しません。
+現在は1ウィンドウにつき同時に1計算です。複数ジョブのキュー・履歴一覧・終了通知、SSH、Slurm/PBS、任意のMPI追加引数、再起動後の実行監視、NWChemデータベースからのrestart、最適化構造を編集中の分子へ適用する操作は未対応です。MPI-PRのビルド構成や基底ライブラリの内容までは自動検出しません。
 
 ### 実行設定タブの検証
 
@@ -224,6 +224,62 @@ QT_QPA_PLATFORM=offscreen MOLFORMA_PREVIEW_ARTIFACTS=/tmp/molforma-preview \
   ./build/test_input_preview focusedSettingAndSaveDialog
 ```
 
+## 「結果ビューア」
+
+「結果ファイルを開く」で単独のファイルを読み込むか、「ジョブフォルダーを開く」で同じフォルダーの対応ファイルを一覧にします。「5 実行設定」の「結果ビューアへ」からは、表示中のジョブフォルダーを開きます。`output.out`があれば優先して選びます。フォルダーの走査は直下のみです。
+
+| 形式 | 表示内容 |
+| --- | --- |
+| NWChem `.out` / `.log` | 出力座標表（Å / a.u.）、SCF・DFT・MP2・CCSD・CCSD(T)全エネルギーの出力順一覧、最適化の収束メッセージ、終了・エラーメッセージ、投影後の振動数・変位・IR強度 |
+| `.xyz` | 単一構造・複数構造。フレーム選択・構造列の再生。NWChem `freq animate`の連結XYZにも対応 |
+| `.cube` / `.cub` | Bohr単位の原子座標・格子、斜交格子、正負の等値面。負の原子数とデータIDを持つ軌道CUBE・`NVAL`による複数データの選択 |
+| `.molden` / `.mld` / `.molde` | `[Atoms]`（Angs / AU）、`[GEOMETRIES] XYZ`、`[GEOCONV] energy`、`[MO]`の対称性・エネルギー・占有数・Alpha/Beta、`[FREQ]`・`[FR-COORD]`・`[FR-NORM-COORD]`・`[INT]` |
+
+表示は編集中の分子から独立しています。ファイル読込、回転・拡大縮小、フレーム切替、振動再生でプロジェクト・固定原子・候補・Undo履歴を変更しません。結果の座標はすべて倍精度のÅへ変換し、結合は原子間距離から推定します。ビューアの結果・等値面・再生状態はプロジェクトに保存しません。既存の結果参照フィールドは従来どおり保持します。
+
+振動はモード表で選択して再生します。負の振動数は虚振動です。振幅は原子の最大変位を指定値へ規格化した表示用の値であり、再生速度は実際の振動数に比例しません。変位のないモードは数値表示のみです。「構造を保存」は選択したフレーム、振動表示中は振動の基準構造をXYZへ保存します。「画像を保存」は現在の構造画面をPNGへ保存します。
+
+CUBEは正の等値面を赤、負の等値面を青で表示します。等値、データ番号、正負の表示、不透明度を変更できます。値そのものはファイルに記録された単位を使い、電子密度・軌道・静電ポテンシャル等を自動判定しません。座標・格子の単位はNWChemが出力するGaussian CUBEのBohrを使用します。負の格子数をÅ指定として使う拡張や、原子番号0のダミー中心は拒否します。各軸は2点以上必要です。等値面はmarching tetrahedraで生成し、QPainterで奥行き順に描きます。透過面の交差・重なりは近似表示です。
+
+読込・等値面生成は同じC++実行ファイルの別プロセスで行い、中止・別ファイルへの切替・ウィンドウ終了で停止します。失敗・中止では前の結果を保持します。読込前後でサイズ・更新日時・参照先が変わったファイルは採用しません。実行途中のログは「再読込」で更新してください。自動追尾は行いません。「正常終了マーカーあり」は全taskの成功や収束を保証しません。エネルギーと構造はそれぞれ出力順で表示し、最適化ステップとの1対1対応を仮定しません。
+
+読込上限は1ファイル128 MiB、1構造2000原子、2000構造かつ合計20万原子、CUBE200万格子点・全データ400万値、等値面10万三角形です。上限を超える場合は明示的にエラーにします。等値面が大きすぎる場合は「CUBE」の等値を変更してファイルを開き直すか、小さな格子を使用してください。「元ファイル」欄は末尾128 KiBを表示します。
+
+MOLDENのGaussian基底・MO係数からの軌道関数の再計算、HOMO/LUMOの自動選択、NWChem入力へのCUBE/MOLDEN出力指示の自動追加、結果を編集分子へ適用する操作、熱化学集計、電荷・NMR・励起状態の解析、任意形式のログ解析は未対応です。軌道の形状はNWChemが出力したCUBEで確認してください。MOLDENの振動セクションは、そのデータを含むファイルを開いた場合に表示します。`MOLDENFILE`だけで振動セクションも出力されることを仮定しません。
+
+### NWChemでCUBE・MOLDENを生成する例
+
+NWChemは両形式を出力できます。SCF/DFTの軌道を計算した後に、次のような指示を追加します。以下はHFで計算名が`water`、軌道ファイルが`water.movecs`、対象軌道がAlphaの5番の場合の例です。使用する計算・軌道番号・ファイル名・空間範囲に合わせて変更してください。DFTでは`task scf property`を`task dft property`へ変更します。
+
+```text
+property
+  moldenfile
+  molden_norm nwchem
+end
+task scf property
+
+dplot
+  vectors water.movecs
+  limitxyz
+    -3 3 24
+    -3 3 24
+    -3 3 24
+  spin alpha
+  orbitals view; 1; 5
+  gaussian
+  output orbital5.cube
+end
+task dplot
+```
+
+`orbitals view`を省略して`spin total`を指定すると全電子密度のCUBEを生成できます。`limitxyz`の24は各方向の分割数で、格子点数は25です。正規化規約はMOLDENの利用先に合わせて選んでください。参照: [NWChem DPLOT](https://nwchemgit.github.io/DPLOT.html)、[NWChem Properties / MOLDENFILE](https://nwchemgit.github.io/Properties.html#moldenfile)、[MOLDEN形式](https://www.theochem.ru.nl/molden/molden_format.html)、[VMD CUBE reader](https://www.ks.uiuc.edu/Research/vmd/plugins/molfile/cubeplugin.html)。
+
+### 結果ビューアの検証
+
+`results`のQt Testは、ログの単位・エネルギー・終了判定・不完全な座標表、投影振動・IR強度、XYZ構造列、MOLDENの単位・軌道・振動、CUBEの斜交格子・正負の等値面・複数データ、不正数値・サイズ上限、プロセス転送、読込中止・古い結果の棄却、編集分子と履歴の保持、振動中の基準構造保存を検査します。通常のテストにNWChem・MPI・ネットワークは不要です。
+
+2026-10-23に全8系列のCTestと、結果ビューア11件（初期化・終了処理・任意実機データ検証を含む）のAddressSanitizer検証が成功しました。NWChem実機で生成した水分子の最適化・投影後9振動モード、7軌道のMOLDEN、25×25×25格子のHOMO CUBE、振動アニメーションXYZを読み込み、画面画像を確認しました。水の6-31G計算ではMP2 −76.106091880695、CCSD −76.112438787689、CCSD(T) −76.113292997246、DFT/B3LYP −76.377870344163 Hartreeの値がログと一致することも確認しています。成功ログと、MOLDEN出力段階で失敗したログを区別して表示することを検証しました。
+
 ## 実装済み
 
 | 分類 | 操作 |
@@ -249,7 +305,7 @@ QT_QPA_PLATFORM=offscreen MOLFORMA_PREVIEW_ARTIFACTS=/tmp/molforma-preview \
 
 - 元GUIのPDB専用ウィザードと画面構成は異なります。「PDBの診断・修復 → FMO」で残基診断・欠損補完・再認識・分割候補を作り、主画面で確認・確定します。補完は主鎖N/CA/Cと標準アミノ酸テンプレートが揃う残基を対象とし、未知の残基や欠損主鎖は自動修復しません。MODEL/ALTLOC選択と原子名・鎖情報を保持します。
 - KAGAMIエンジンと同じ基底/ECP・距離判定を用いる断片検証。ここでは原子の網羅・番号・切断結合・断片数などを検査します。既存の断片設定をNWChem用の計算条件へ変換する機能は未対応です。
-- KAGAMI入力ファイル自体の生成、v1プロジェクト移行、英語UI、VTK/GPU描画、結果ファイル読込。
+- KAGAMI入力ファイル自体の生成、v1プロジェクト移行、英語UI、VTK/GPU描画、KAGAMI固有の結果ファイル読込。
 
 R/S・E/Zの判定・記録と結合グラフからの残基認識には、オプションのRDKit C++ライブラリを使います。この環境では有効です。見つからない環境では該当ボタンを無効化します。
 

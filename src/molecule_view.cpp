@@ -24,6 +24,16 @@ void MoleculeView::setSelection(const Ids &ids) {
     selected = ids;
     update();
 }
+void MoleculeView::setSurface(const QVector<SurfaceTriangle> &triangles) {
+    surface = triangles;
+    update();
+}
+void MoleculeView::setSurfaceStyle(bool positive, bool negative, int opacity) {
+    positiveSurface = positive;
+    negativeSurface = negative;
+    surfaceOpacity = std::clamp(opacity, 0, 255);
+    update();
+}
 Mat MoleculeView::camera() const {
     return rotation(Vec::UnitZ(), roll) * rotation(Vec::UnitX(), pitch) * rotation(Vec::UnitY(), yaw);
 }
@@ -42,6 +52,8 @@ void MoleculeView::fit() {
     QVector<Vec> points;
     for (const auto &a : doc.atoms)
         points << a.position;
+    for (const auto &triangle : surface)
+        points << triangle.a << triangle.b << triangle.c;
     for (auto v : doc.data["point_charges"].toArray())
         points << vectorFromJson(v.toObject()["position"]);
     for (auto v : doc.data["centers"].toArray()) {
@@ -149,13 +161,14 @@ void MoleculeView::paintEvent(QPaintEvent *) {
         f.setPointSize(16);
         p.setFont(f);
         p.drawText(rect().adjusted(20, 20, -20, -20), Qt::AlignCenter,
-                   "分子を作成\n\n左のパレットから原子・骨格を選び、\nこの画面をクリックしてください。\n\n構"
-                   "造ファイル・SMILESも読み込めます。");
+                   emptyMessage.isEmpty() ? "分子を作成\n\n左のパレットから原子・骨格を選び、\nこの画面をクリ"
+                                            "ックしてください。\n\n構造ファイル・SMILESも読み込めます。"
+                                          : emptyMessage);
         return;
     }
     struct Item {
         double z;
-        bool atom;
+        int kind; // 0: bond, 1: atom, 2: isosurface triangle.
         int index;
     };
     QVector<Item> items;
@@ -166,9 +179,23 @@ void MoleculeView::paintEvent(QPaintEvent *) {
         const auto &b = doc.bonds[i];
         items << Item{(r * ((doc.atom(b.a).position + doc.atom(b.b).position) * .5 - center)).z(), false, i};
     }
+    for (int i = 0; i < surface.size(); ++i) {
+        const auto &t = surface[i];
+        if ((t.positive && positiveSurface) || (!t.positive && negativeSurface))
+            items << Item{(r * ((t.a + t.b + t.c) / 3 - center)).z(), 2, i};
+    }
     std::sort(items.begin(), items.end(), [](auto a, auto b) { return a.z < b.z; });
     for (auto item : items) {
-        if (!item.atom) {
+        if (item.kind == 2) {
+            const auto &t = surface[item.index];
+            const Vec normal = r * (t.b - t.a).cross(t.c - t.a).normalized();
+            QColor color(t.positive ? "#ce5268" : "#397cce");
+            color = color.lighter(80 + qRound(30 * std::abs(normal.z())));
+            color.setAlpha(surfaceOpacity);
+            p.setPen(Qt::NoPen);
+            p.setBrush(color);
+            p.drawPolygon(QPolygonF{project(t.a), project(t.b), project(t.c)});
+        } else if (item.kind == 0) {
             const auto &b = doc.bonds[item.index];
             const auto &a = doc.atom(b.a), &c = doc.atom(b.b);
             if (!showHydrogens && (a.element == "H" || c.element == "H"))

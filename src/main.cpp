@@ -6,6 +6,10 @@
 #include <QTimer>
 #include <cstdio>
 int main(int argc, char **argv) {
+    if (argc == 4 && QString::fromLocal8Bit(argv[1]) == "--result-worker") {
+        QCoreApplication app(argc, argv);
+        return mf::resultWorker(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]));
+    }
     // The same native executable acts as a cancellable chemistry worker; no Python runtime.
     if (argc == 4 && QString::fromLocal8Bit(argv[1]) == "--worker") {
         QCoreApplication app(argc, argv);

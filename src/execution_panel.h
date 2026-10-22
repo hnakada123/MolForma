@@ -38,6 +38,7 @@ class ExecutionPanel : public QWidget {
     QLabel *resources, *state, *location;
     QPlainTextEdit *diagnostics, *command, *log;
     QPushButton *start, *stop, *prepare, *undo, *redo, *openFolder;
+    QPushButton *viewResults;
     ExecutionPlan saved;
     QString displayedLog, previousRunState;
     QString baseDirectory() const;

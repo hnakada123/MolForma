@@ -28,6 +28,10 @@ native NWChem/MPI launch validation, job snapshots, logging and cancellation.
 src/input_preview_panel.cpp adapts the read-only input preview and validation
 navigation workflow of tools/kagami_gui/app.py, inspected on 2026-10-23,
 to native Qt6 with NWChem input and execution-path previews.
+src/results_panel.cpp adapts the independent result browsing workflow of
+tools/kagami_gui/results_tab.py (inspected on 2026-10-23). src/results.cpp is
+new native parsing of NWChem output, XYZ, CUBE and MOLDEN, with marching
+tetrahedra for isosurfaces. It does not depend on KAGAMI's readers or Python.
 The remaining UI and process worker are new.
 The original license and notice are assets/KAGAMI-LICENSE and KAGAMI-NOTICE.
 The latter describes the full upstream repository; MolForma does not include

@@ -8,6 +8,7 @@
 #include "input_preview_panel.h"
 #include "operations.h"
 #include "peptide.h"
+#include "results_panel.h"
 #include "template_delegate.h"
 #include <QDrag>
 #include <QJsonDocument>
@@ -68,6 +69,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), settings("MolForm
         restoreGeometry(saved);
 }
 MainWindow::~MainWindow() {
+    results->cancelLoad();
     calculation->stopEditing();
     advanced->stopEditing();
     execution->stopEditing();
@@ -362,6 +364,8 @@ void MainWindow::buildUi() {
     workspaceTabs->addTab(execution, "5 実行設定");
     inputPreview = new InputPreviewPanel(this);
     workspaceTabs->addTab(inputPreview, "6 入力プレビュー");
+    results = new ResultsPanel(this);
+    workspaceTabs->addTab(results, "結果ビューア");
     connect(workspaceTabs, &QTabWidget::currentChanged, this, [this](int index) {
         if (workspaceTabs->widget(index) == inputPreview) {
             execution->commitPendingEdits();

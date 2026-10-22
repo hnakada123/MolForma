@@ -1,5 +1,6 @@
 #pragma once
 #include "document.h"
+#include "results.h"
 #include <QPointF>
 #include <QWidget>
 namespace mf {
@@ -9,6 +10,12 @@ class MoleculeView : public QWidget {
     explicit MoleculeView(QWidget *parent = nullptr);
     void setDocument(const Document &d);
     void setSelection(const Ids &ids);
+    void setSurface(const QVector<SurfaceTriangle> &triangles);
+    void setSurfaceStyle(bool positive, bool negative, int opacity);
+    void setEmptyMessage(const QString &message) {
+        emptyMessage = message;
+        update();
+    }
     Ids selection() const {
         return selected;
     }
@@ -83,6 +90,10 @@ class MoleculeView : public QWidget {
     Qt::MouseButton pressedButton = Qt::NoButton;
     Qt::KeyboardModifiers pressModifiers;
     QVector<Marker> markers;
+    QVector<SurfaceTriangle> surface;
+    bool positiveSurface = true, negativeSurface = true;
+    int surfaceOpacity = 150;
+    QString emptyMessage;
     Mat camera() const;
     QPointF project(const Vec &p) const;
     QString hitAtom(const QPointF &p) const;
