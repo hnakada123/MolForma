@@ -2,6 +2,7 @@
 // Native NWChem settings; navigation/reset workflow inspired by KAGAMI advanced_tab.py.
 #include "advanced_panel.h"
 #include "calculation_panel.h"
+#include "execution_panel.h"
 #include "main_window.h"
 #include <QtWidgets>
 #include <algorithm>
@@ -17,6 +18,11 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
     context->setTextFormat(Qt::PlainText);
     context->setWordWrap(true);
     toolbar->addWidget(context, 1);
+    auto *execution = new QPushButton("5 実行設定へ");
+    execution->setObjectName("advancedExecution");
+    toolbar->addWidget(execution);
+    connect(execution, &QPushButton::clicked, this,
+            [this] { window->workspaceTabs->setCurrentWidget(window->execution); });
     auto *basic = new QPushButton("3 計算条件へ");
     basic->setObjectName("advancedBasic");
     undo = new QPushButton("元に戻す");

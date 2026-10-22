@@ -2,6 +2,7 @@
 // Native NWChem counterpart of KAGAMI's job_tab.py (Copyright 2026 Hiroshi Nakada).
 #include "calculation_panel.h"
 #include "advanced_panel.h"
+#include "execution_panel.h"
 #include "main_window.h"
 #include "nwchem.h"
 #include <QtWidgets>
@@ -22,6 +23,11 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     auto *details = new QPushButton("4 詳細設定へ");
     details->setObjectName("calculationAdvanced");
     toolbar->addWidget(details);
+    auto *execution = new QPushButton("5 実行設定へ");
+    execution->setObjectName("calculationExecution");
+    toolbar->addWidget(execution);
+    connect(execution, &QPushButton::clicked, this,
+            [this] { window->workspaceTabs->setCurrentWidget(window->execution); });
     connect(details, &QPushButton::clicked, this,
             [this] { window->workspaceTabs->setCurrentWidget(window->advanced); });
     toolbar->addStretch();

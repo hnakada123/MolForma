@@ -16,6 +16,8 @@ renders and caches the palette's molecular thumbnails.
 `calculation_panel.*` provides the native "3 Calculation conditions" tab.
 `nwchem_advanced.*` defines typed NWChem overrides and their applicability;
 `advanced_panel.*` provides the native "4 Advanced settings" tab.
+`nwchem_execution.*` validates launch settings, saves immutable run bundles and
+controls cancellable NWChem processes; `execution_panel.*` provides "5 Execution settings".
 
 Tests are in `tests/`, documentation in `docs/`, and resource data in `assets/`.
 Preserve KAGAMI data and fixture attributions.

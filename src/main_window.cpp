@@ -4,6 +4,7 @@
 #include "chemistry.h"
 #include "coordinates_panel.h"
 #include "coordination.h"
+#include "execution_panel.h"
 #include "operations.h"
 #include "peptide.h"
 #include "template_delegate.h"
@@ -68,6 +69,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), settings("MolForm
 MainWindow::~MainWindow() {
     calculation->stopEditing();
     advanced->stopEditing();
+    execution->stopEditing();
+    execution->shutdown();
     cancelWorker();
 }
 void MainWindow::safe(const std::function<void()> &operation) {
@@ -354,6 +357,8 @@ void MainWindow::buildUi() {
     workspaceTabs->addTab(calculation, "3 計算条件");
     advanced = new AdvancedPanel(this);
     workspaceTabs->addTab(advanced, "4 詳細設定");
+    execution = new ExecutionPanel(this);
+    workspaceTabs->addTab(execution, "5 実行設定");
     candidateBar = new QWidget;
     candidateBar->setObjectName("candidateBar");
     candidateBar->setStyleSheet(
@@ -895,6 +900,7 @@ void MainWindow::refresh() {
     coordinates->refresh();
     calculation->refresh();
     advanced->refresh();
+    execution->refresh();
 }
 void MainWindow::refreshSelection() {
     const auto &d = displayDocument();
@@ -954,6 +960,7 @@ bool MainWindow::resolveCandidate() {
     return false;
 }
 bool MainWindow::confirmDiscard() {
+    execution->commitPendingEdits();
     if (auto *focused = QApplication::focusWidget();
         focused && (calculation->isAncestorOf(focused) || advanced->isAncestorOf(focused)))
         focused->clearFocus();
@@ -1013,6 +1020,7 @@ void MainWindow::loadPath(const QString &p) {
     refresh();
 }
 bool MainWindow::save(bool as) {
+    execution->commitPendingEdits();
     if (auto *focused = QApplication::focusWidget();
         focused && (calculation->isAncestorOf(focused) || advanced->isAncestorOf(focused)))
         focused->clearFocus(); // Include the active calculation field when saving via Ctrl+S.
@@ -1104,12 +1112,14 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
         coordinates->refresh();
         calculation->refresh();
         advanced->refresh();
+        execution->refresh();
         QMessageBox::warning(this, "処理を起動できません", message);
     });
     running->start();
     coordinates->refresh();
     calculation->refresh();
     advanced->refresh();
+    execution->refresh();
 }
 void MainWindow::cancelWorker() {
     if (!worker)
@@ -1129,14 +1139,24 @@ void MainWindow::cancelWorker() {
         calculation->refresh();
     if (advanced)
         advanced->refresh();
+    if (execution)
+        execution->refresh();
     statusBar()->showMessage("処理を中止しました。", 4000);
 }
 void MainWindow::closeEvent(QCloseEvent *e) {
+    if (execution->running() &&
+        QMessageBox::question(this, "NWChemを実行中",
+                              "実行中の計算を停止してウィンドウを閉じますか？ログは保存先に残ります。",
+                              QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {
+        e->ignore();
+        return;
+    }
     if (!confirmDiscard()) {
         e->ignore();
         return;
     }
     cancelWorker();
+    execution->shutdown();
     settings.setValue("geometry", saveGeometry());
     settings.setValue("keepSelection", keepSelection->isChecked());
     settings.setValue("keepTool", keepTool->isChecked());

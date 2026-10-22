@@ -53,7 +53,7 @@ class CoordinatesTest : public QObject {
         w.loadDocument(d);
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
         QVERIFY(tabs);
-        QCOMPARE(tabs->count(), 4);
+        QCOMPARE(tabs->count(), 5);
         QCOMPARE(tabs->tabText(1), QString("2 座標"));
         tabs->setCurrentIndex(1);
         auto *t = table(w);

@@ -1,6 +1,6 @@
-# 「1 分子」「2 座標」「3 計算条件」「4 詳細設定」
+# 「1 分子」「2 座標」「3 計算条件」「4 詳細設定」「5 実行設定」
 
-MolFormaはNWChem向けの分子作成・座標編集・計算入力作成用デスクトップアプリです。KAGAMI GUIの「1 分子」「2 座標」「3 計算条件」「4 詳細設定」をQt6 WidgetsとC++20で実装し、計算条件・詳細設定はNWChem用に構成しています。分子座標は倍精度のÅ、原子参照は永続IDで管理します。実行・計算履歴・結果ビューアのタブは今後の実装対象です。
+MolFormaはNWChem向けの分子作成・座標編集・計算入力作成用デスクトップアプリです。KAGAMI GUIの「1 分子」「2 座標」「3 計算条件」「4 詳細設定」「5 実行設定」をQt6 WidgetsとC++20で実装し、計算条件・詳細設定はNWChem用に構成しています。分子座標は倍精度のÅ、原子参照は永続IDで管理します。ローカルでの計算実行・停止・ログ表示に対応します。計算履歴・結果ビューアのタブは今後の実装対象です。
 
 ## 「2 座標」
 
@@ -21,7 +21,7 @@ MolFormaはNWChem向けの分子作成・座標編集・計算入力作成用デ
 - ゴーストは `bqC` 等のゼロ核電荷の中心として出力します。`basis` 内に `bqC library C <basis-name>` 等の明示的な基底割当が必要で、プレビュー末尾に案内を付けます。原子の形式電荷をNWChemの核電荷指定へ転用しません。
 - 固定フラグは `constraints` の `fix atom` へ出力時の原子番号で変換します。先頭の `clear` は以前の固定条件を除去するため、既存入力へ組み込む場合は必要な他の拘束も同じブロックへ追加してください。
 
-このタブの出力は**座標と固定原子の入力断片**です。完成した計算入力は「3 計算条件」で作成します。未確定候補はプレビューのみで、確定・取消まで出力ボタンを無効化します。NWChem入力の読込・計算実行・出力結果の解析は未実装です。NWChem本体のインストールはこのタブの使用には不要です。
+このタブの出力は**座標と固定原子の入力断片**です。完成した計算入力は「3 計算条件」で作成します。未確定候補はプレビューのみで、確定・取消まで出力ボタンを無効化します。計算実行は「5 実行設定」で行います。NWChem入力の読込・出力結果の解析は未実装です。NWChem本体のインストールはこのタブの使用には不要です。
 
 入力仕様の参照: [Cartesian coordinate input](https://nwchemgit.github.io/Cartesian-coordinate-input.html)、[Geometry keywords](https://nwchemgit.github.io/Keywords-for-the-GEOMETRY-directive.html)、[Constraints](https://nwchemgit.github.io/Constraints.html)、[Basis sets](https://nwchemgit.github.io/Basis.html)。
 
@@ -56,7 +56,7 @@ def2系ではRb〜Xeに28電子、Cs〜Laに46電子、Hf〜Rnに60電子を除�
 - HF/STO-3G、B3LYP-D3(BJ)/def2-SVP最適化＋振動数、内殻凍結MP2/cc-pVDZの組込みプリセットがあります。適用はUndo一回で戻せます。適用前の変更点は説明欄のツールチップに表示します。プリセットは分子・電荷・多重度・計算名・タイトル・メモリ・単位・未知フィールドを変更しません。ユーザープリセットの登録・削除はローカルのQSettingsに保存します。
 - タイトルと計算名は入力確定時に反映します。NWChemの別命令が混入しないよう、計算名の文字種・長さ、タイトルの改行・引用符等を検査します。入力プレビューは読取専用です。
 
-計算実行、MPIの起動設定、出力の解析、既存`.nw`の読込、TCE・励起状態・遷移状態・IRC・MD・周期系・任意キーワードの編集は今後の対象です。NWChem本体がなくても条件編集と入力生成はできます。入力検査は収束や物理モデルの妥当性まで保証するものではありません。
+計算実行とMPIの起動設定は「5 実行設定」で行います。出力の解析、既存`.nw`の読込、TCE・励起状態・遷移状態・IRC・MD・周期系・任意キーワードの編集は今後の対象です。NWChem本体がなくても条件編集と入力生成はできます。入力検査は収束や物理モデルの妥当性まで保証するものではありません。
 
 仕様の参照: [HF](https://nwchemgit.github.io/Hartree-Fock-Theory-for-Molecules.html)、[DFT](https://nwchemgit.github.io/Density-Functional-Theory-for-Molecules.html)、[MP2](https://nwchemgit.github.io/MP2.html)、[CCSD](https://nwchemgit.github.io/CCSD.html)、[ECP](https://nwchemgit.github.io/ECP.html)、[Optimization](https://nwchemgit.github.io/Geometry-Optimization.html)、[Frequencies](https://nwchemgit.github.io/Hessians-and-Vibrational-Frequencies.html)、[COSMO](https://nwchemgit.github.io/COSMO-Solvation-Model.html)、[TASK](https://nwchemgit.github.io/TASK.html)。
 
@@ -98,7 +98,7 @@ KAGAMI固有の詳細キーワードは流用せず、NWChemの分子計算に�
 - 最適化の変位・trust radius・数値差分幅はBohr、勾配はHartree/Bohr、エネルギーはHartreeです。座標のÅ/Bohr切替では変更しません。温度はKで指定します。
 - 最適化構造は `<計算名>_opt`、振動モードは `<計算名>_vib` をファイル名の接頭辞にします。XYZの生成は外部でNWChemを実行したときに行われます。
 - 入力movecsは実行先のファイルを指定し、MolFormaでは読みません。原子順・基底との互換性は実行時の確認が必要です。既存movecsを使う場合は、NWChemが入力ファイルを出力先として再利用する既定動作を避けるため、別の出力movecsを指定します。パスの別名・シンボリックリンクによる同一性までは検査しません。
-- movecsのパスは引用符で囲み、空白を含むパスにも対応します。NWChemの起動時ディレクトリ指定は別の構文なので、`scratch_dir` / `permanent_dir` は引用符なしで出力し、空白・コロン・引用符を含むパスを拒否します。各ディレクトリは実行先に存在する必要があります。環境変数展開、ホスト／MPIランク別の保存先指定、複数ディレクトリの指定は未対応です。
+- movecsのパスは引用符で囲み、空白を含むパスにも対応します。NWChemの起動時ディレクトリ指定は別の構文なので、`scratch_dir` / `permanent_dir` は引用符なしで出力し、空白・コロン・引用符を含むパスを拒否します。各ディレクトリは実行先に存在する必要があります。「5 実行設定」ではジョブ内の相対ディレクトリを作成します。環境変数展開、ホスト／MPIランク別の保存先指定、複数ディレクトリの指定は未対応です。
 - 候補表示中・整形中は編集と出力を無効化します。詳細設定の変更は分子座標や固定原子を動かしません。
 
 ### 保存と互換性
@@ -125,6 +125,68 @@ QT_QPA_PLATFORM=offscreen MOLFORMA_ADVANCED_ARTIFACTS=/tmp/molforma-advanced \
 軌道の読込試験 `vectors_details.nw` は、軌道を保存する `files_details.nw` の実行後に使用します。
 
 2026-10-22にNWChem 7.3.1（MPI 2プロセス、OMP/OpenBLAS各1スレッド）で9種類の詳細設定入力の正常終了を確認しました。HFのDIIS・積分精度、DFTの個別収束・ダンピング・グリッド、MP2/CCSD、最適化→解析振動数、MP2数値振動数、COSMO、保存先、movecsの書出し・再読込を含みます。温度100/298.15/350 K、数値差分幅0.003 Bohrの反映とXYZ生成も確認しています。初期軌道の保存・再読込は同じSCFエネルギー −74.945628203255 Hartreeを得ました。詳細設定・計算条件のQt TestはAddressSanitizerでも検証しています。
+
+## 「5 実行設定」
+
+NWChemとMPIの起動条件を設定し、入力一式の保存・ローカル実行・停止・ログ確認を行います。KAGAMI固有のエンジン選択・SIMD経路・実行オプションは使いません。実行ファイルは名前（PATHから検索）またはパスで指定します。プロジェクトを開いただけでは実行しません。
+
+| 項目 | 動作 |
+| --- | --- |
+| NWChem実行ファイル | 既定は `nwchem`。ローカル実行前にファイルと実行権限を確認 |
+| 起動方式 | MPIまたは直接実行。MPIは `mpirun/mpiexec -np <起動数> <NWChem> input.nw` |
+| MPIランチャー・起動数 | 既定は `mpirun`、2プロセス。MPI-PRの補助プロセスを含めた起動数を指定し、自動補正しない |
+| OpenMP / BLAS | 1プロセスごとのスレッド数。既定は各1。OpenMPスタックは空欄で継承、`64M` 等を指定可能 |
+| メモリ | 「3 計算条件」の `memory_mb` と共有。起動数を掛けた合計目安を表示。RSSの上限ではない |
+| 制限時間 | 秒単位、0は制限なし。到達時は停止処理へ移行 |
+| ジョブ保存先 | 既定は `~/MolForma/jobs`。実行ごとに計算名・UTC日時・ランダムIDから専用フォルダーを作成 |
+| 参照ファイルの基準 | 相対指定の入力movecsを探す基準。空欄ではプロジェクトのディレクトリ、未保存ならアプリの作業ディレクトリ |
+| 環境変数 | 有効な行だけを親環境へ上書き。無効な行は保存するが適用しない。名前・値・重複を検査 |
+
+MPI起動数1では動作しないMPI-PR版があります。使用するNWChemとMPIランチャーは同じMPI環境のものを指定してください。UIにはMPI起動数とOpenMP/BLASスレッド数を分けて表示し、論理CPU数を超える並列度や多重並列の注意点を表示します。起動数の制限・CPU割当はMPI側の設定にも依存します。仕様の参照: [NWChem FAQ](https://nwchemgit.github.io/FAQ.html)、[Memory](https://nwchemgit.github.io/Memory.html)、[Open MPI mpirun](https://docs.open-mpi.org/en/main/man-openmpi/man1/mpirun.1.html)。
+
+### 環境とパス
+
+- `OMP_NUM_THREADS`、`OPENBLAS_NUM_THREADS`・`GOTO_NUM_THREADS`・`MKL_NUM_THREADS`・`BLIS_NUM_THREADS`・`VECLIB_MAXIMUM_THREADS` を専用欄から設定します。`OMP_DYNAMIC` と `MKL_DYNAMIC` はFALSEにします。これらと `OMP_STACKSIZE` の重複指定は環境変数表で拒否します。
+- `NWCHEM_BASIS_LIBRARY` を表で指定した場合はプロジェクトの場所を基準に絶対パスへ変換し、末尾に `/` を付けます。ほかの値は文字列として渡し、シェル展開・環境変数展開はしません。通常は親環境とNWChemの `.nwchemrc` による基底設定を利用できます。[NWChem Getting Started](https://nwchemgit.github.io/Getting-Started.html)
+- 実際の作業ディレクトリは毎回新しいジョブフォルダーです。「4 詳細設定」の相対入力movecsだけを参照基準から絶対パスへ解決し、出力movecs・scratch・permanentの相対パスはジョブ内を基準にします。ジョブ内の出力用サブディレクトリは作成します。`../` でジョブ外へ出る相対出力先は拒否します。外部の保存先を指定するときは絶対パスを使用します。
+- 既存の出力movecsや、同じ計算名のファイルが残る外部scratch/permanentへの実行は拒否します。外部ディレクトリは事前に用意してください。ジョブの入力・ログ・実行記録と同じ名前の出力movecsも拒否します。
+- 起動には `QProcess` のプログラム名・引数配列を使い、シェルは起動しません。コマンド欄は確認用のPOSIXシェル表記です。保存前の日時・IDはプレースホルダーです。
+
+### 保存・実行・停止
+
+「入力一式を保存」はNWChemがインストールされていなくても使えます。実行ファイルや参照movecsをコピーする機能ではありません。別環境で実行する場合はパス・MPI・基底ライブラリをその環境に合わせて用意してください。
+
+「計算を実行」は起動前に同じ入力一式を保存し、次のファイルを作成します。
+
+| ファイル | 内容 |
+| --- | --- |
+| `input.nw` | 実行する完成したNWChem入力。入力movecsの相対パスを解決済み |
+| `project.kgui.json` | 起動時の分子・計算条件・詳細設定・実行設定を含むプロジェクトのコピー |
+| `run.json` | 実行ファイル、引数、上書き環境変数、作業先、入力のSHA-256、時刻、状態、終了コード。親環境全体は記録しない |
+| `output.out` / `stderr.err` | 標準出力／標準エラーの全文。プロセスから直接保存 |
+
+計算は非同期で動作します。候補表示中・整形中は実行と入力一式の保存を無効にします。起動後は確定済みのコピーを使い、編集中の分子や設定、別プロジェクトの読込は実行中の計算に影響しません。計算終了時にも分子・座標・既存の結果参照は変更しません。画面では標準出力・標準エラーの末尾128 KiBを表示し、「保存先を開く」で全文にアクセスできます。
+
+停止・制限時間ではまず終了を要求し、2秒で応答しなければ強制終了します。Unixでは専用のプロセスグループを作り、その子プロセスも停止対象にします。非Unix環境の停止は起動プロセスへの終了要求・強制終了です。実行中にウィンドウを閉じる場合は停止を確認します。アプリ終了後のバックグラウンド継続は行いません。
+
+起動失敗、非ゼロ終了、停止、制限時間を区別して表示・記録します。「終了コード0」はプロセスの正常終了を示します。収束・計算内容の成功判定はまだ行わないため、NWChemのログを確認してください。
+
+設定は `document.nwchem_execution` に保存し、共有Undo/Redo、Ctrl+S、再読込に対応します。環境変数表の入力途中もCtrl+Sで確定します。既存のKAGAMI `execution`、未知フィールド、実行・結果参照を保持し、KAGAMIの実行パスやオプションをNWChemへ自動適用しません。計算プリセットを適用しても実行設定は変更しません。
+
+現在は1ウィンドウにつき同時に1計算です。複数ジョブのキュー・履歴一覧・終了通知、SSH、Slurm/PBS、任意のMPI追加引数、再起動後の実行監視、NWChemデータベースからのrestart、結果解析と最適化構造の取込みは未対応です。MPI-PRのビルド構成や基底ライブラリの内容までは自動検出しません。
+
+### 実行設定タブの検証
+
+`execution`のQt TestはC++製の試験用プロセスで、引数・環境・作業先、入力の固定コピー、パス・既存ファイルの保護、保存互換性、起動失敗、非ゼロ終了、停止・制限時間・Unix子プロセスの終了、ログ量の制限、Undo/Redo、候補、編集中のCtrl+S、終了処理を検査します。通常のCTestはNWChem・MPI・ネットワークを必要としません。
+
+NWChemが使用できる環境では、次の任意テストでタブからのMPI実行・計算途中の停止とスクリーンショットを確認できます。
+
+```sh
+QT_QPA_PLATFORM=offscreen MOLFORMA_EXECUTION_ARTIFACTS=/tmp/molforma-execution \
+  MOLFORMA_EXECUTION_ENGINE=/usr/bin/nwchem ./build/test_execution realEngineArtifacts
+```
+
+2026-10-22にNWChem 7.3.1をMPI 2プロセス、OpenMP/BLAS各1、メモリ256 MB/プロセスで起動し、水のHF/STO-3G計算が終了コード0、SCFエネルギー −74.945628203255 Hartreeで完了することを確認しました。DFT/cc-pVTZの最適化・振動数ジョブはDFTモジュール開始後に停止し、Linux上でジョブフォルダーを作業先とする子プロセスが残らないことも確認しています。CTest全6系列と、実行設定テストのAddressSanitizer検証が成功しています。
 
 ## 実装済み
 
