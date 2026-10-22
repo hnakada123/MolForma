@@ -10,6 +10,8 @@ double-precision geometry. `library.*`, `operations.*`, `peptide.*` and
 `molecule_view.*` renders with QPainter. `main_window.*` and `editor_panels.cpp`
 provide the Qt UI, candidate edits and undo history. `template_delegate.*`
 renders and caches the palette's molecular thumbnails.
+`coordinates.*` implements coordinate edits and NWChem geometry fragments;
+`coordinates_panel.*` provides the native "2 Coordinates" tab.
 
 Tests are in `tests/`, documentation in `docs/`, and resource data in `assets/`.
 Preserve KAGAMI data and fixture attributions.

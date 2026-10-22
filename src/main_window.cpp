@@ -1,5 +1,6 @@
 #include "main_window.h"
 #include "chemistry.h"
+#include "coordinates_panel.h"
 #include "coordination.h"
 #include "operations.h"
 #include "peptide.h"
@@ -136,10 +137,17 @@ void MainWindow::cancelCandidate() {
     statusBar()->showMessage("変更候補を取り消しました。", 4000);
 }
 void MainWindow::buildUi() {
+    auto *central = new QWidget;
+    auto *outer = new QVBoxLayout(central);
+    outer->setContentsMargins(6, 6, 6, 6);
+    setCentralWidget(central);
+    workspaceTabs = new QTabWidget;
+    workspaceTabs->setObjectName("workspaceTabs");
+    outer->addWidget(workspaceTabs, 1);
     auto *root = new QWidget;
+    workspaceTabs->addTab(root, "1 分子");
     auto *layout = new QVBoxLayout(root);
     layout->setContentsMargins(10, 6, 10, 8);
-    setCentralWidget(root);
     auto *tools = new QHBoxLayout;
     layout->addLayout(tools);
     tool = new QComboBox;
@@ -336,6 +344,8 @@ void MainWindow::buildUi() {
     buildFragmentPanel();
     buildChargePanel();
     splitter->setSizes({300, 690, 340});
+    coordinates = new CoordinatesPanel(this);
+    workspaceTabs->addTab(coordinates, "2 座標");
     candidateBar = new QWidget;
     candidateBar->setObjectName("candidateBar");
     candidateBar->setStyleSheet(
@@ -352,10 +362,10 @@ void MainWindow::buildUi() {
     cl->addWidget(cancel);
     connect(confirm, &QPushButton::clicked, this, [this] { safe([this] { confirmCandidate(); }); });
     connect(cancel, &QPushButton::clicked, this, &MainWindow::cancelCandidate);
-    layout->addWidget(candidateBar);
+    outer->addWidget(candidateBar);
     summary = new QLabel;
     summary->setObjectName("documentSummary");
-    layout->addWidget(summary);
+    outer->addWidget(summary);
     connect(tool, &QComboBox::currentIndexChanged, this, [this] { view->setTool(value(tool)); });
     connect(unitBox, &QComboBox::currentIndexChanged, this,
             [this] { safe([this] { setSelection(expandedSelection(selected)); }); });
@@ -524,7 +534,8 @@ void MainWindow::buildMenus() {
     });
     redo->setShortcuts({QKeySequence("Ctrl+Y"), QKeySequence("Ctrl+Shift+Z")});
     action(editMenu, "番号で原子を選択…", {}, [this] { selectNumbers(); });
-    action(editMenu, "座標表…", {}, [this] { coordinateDialog(); });
+    action(editMenu, "座標表（2 座標）", {}, [this] { workspaceTabs->setCurrentWidget(coordinates); });
+    action(editMenu, "座標と原子属性の一覧…", {}, [this] { coordinateDialog(); });
     action(editMenu, "構造を確認…", {}, [this] { showReport(); });
     auto *viewMenu = menuBar()->addMenu("表示");
     auto *water = viewMenu->addAction("起動時に水分子を読み込む");
@@ -873,6 +884,7 @@ void MainWindow::refresh() {
     refreshFragmentFields();
     refreshing = false;
     refreshSelection();
+    coordinates->refresh();
 }
 void MainWindow::refreshSelection() {
     const auto &d = displayDocument();
@@ -909,6 +921,8 @@ void MainWindow::refreshSelection() {
     if (selected.size() == 2)
         if (auto b = d.bond(selected[0], selected[1]))
             bondKind->setCurrentIndex(bondKind->findData(b->kind));
+    if (coordinates)
+        coordinates->refreshSelection();
 }
 bool MainWindow::resolveCandidate() {
     if (!candidate)
@@ -1071,9 +1085,11 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
         running->deleteLater();
         workdir.reset();
         cancelWorkerButton->hide();
+        coordinates->refresh();
         QMessageBox::warning(this, "処理を起動できません", message);
     });
     running->start();
+    coordinates->refresh();
 }
 void MainWindow::cancelWorker() {
     if (!worker)
@@ -1087,6 +1103,8 @@ void MainWindow::cancelWorker() {
     workdir.reset();
     if (cancelWorkerButton)
         cancelWorkerButton->hide();
+    if (coordinates)
+        coordinates->refresh();
     statusBar()->showMessage("処理を中止しました。", 4000);
 }
 void MainWindow::closeEvent(QCloseEvent *e) {

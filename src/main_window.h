@@ -19,6 +19,7 @@ class QFormLayout;
 class QPushButton;
 class QTableWidget;
 namespace mf {
+class CoordinatesPanel;
 class MainWindow : public QMainWindow {
     Q_OBJECT
   public:
@@ -52,6 +53,7 @@ class MainWindow : public QMainWindow {
 
   private:
     friend class DocumentCommand;
+    friend class CoordinatesPanel;
     Document doc;
     std::optional<Document> candidate;
     QString candidateName, path;
@@ -63,6 +65,8 @@ class MainWindow : public QMainWindow {
     QByteArray workerBase;
     bool refreshing = false;
     MoleculeView *view = nullptr;
+    CoordinatesPanel *coordinates = nullptr;
+    QTabWidget *workspaceTabs = nullptr;
     QComboBox *tool = nullptr, *unitBox = nullptr, *category = nullptr, *elementBox = nullptr,
               *bondKind = nullptr, *colorBox = nullptr;
     QLineEdit *search = nullptr;

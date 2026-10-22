@@ -13,7 +13,10 @@ src/document.cpp, geometry.cpp, library.cpp, operations.cpp, peptide.cpp and
 coordination.cpp adapt the KAGAMI GUI document schema and builder algorithms
 from Python/NumPy to native Qt6/C++/Eigen. src/template_delegate.cpp and the
 palette setup in src/main_window.cpp adapt the thumbnails, labels and layout
-in tools/kagami_gui/builder.py. The remaining UI and process worker are new.
+in tools/kagami_gui/builder.py. src/coordinates.cpp and coordinates_panel.cpp
+adapt coordinate editing and the atom dialog from builder_integration.py and
+coordinate_atom_dialog.py to C++/Qt6, with new NWChem geometry export.
+The remaining UI and process worker are new.
 The original license and notice are assets/KAGAMI-LICENSE and KAGAMI-NOTICE.
 The latter describes the full upstream repository; MolForma does not include
 KAGAMI's quantum-chemistry engine or its PySCF-derived code.
