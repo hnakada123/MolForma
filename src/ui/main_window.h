@@ -43,6 +43,7 @@ class MainWindow : public QMainWindow {
     void edit(const QString &name, const std::function<void(Document &)> &operation, bool preview = false);
     void confirmCandidate();
     void cancelCandidate();
+    void remoteHistory(const QString &action);
     void loadPath(const QString &path);
     void setSelection(const Ids &ids);
     void loadDocument(const Document &d);

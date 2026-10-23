@@ -52,7 +52,7 @@ static QString value(QComboBox *box) {
     return box->currentData().toString();
 }
 static QByteArray identity(const Document &d) {
-    return QJsonDocument(d.toJson()).toJson(QJsonDocument::Compact);
+    return QJsonDocument(d.project()).toJson(QJsonDocument::Compact);
 }
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), settings("MolForma", "MolForma") {
     setObjectName("mainWindow");
@@ -147,6 +147,27 @@ void MainWindow::cancelCandidate() {
     candidate.reset();
     refresh();
     statusBar()->showMessage("変更候補を取り消しました。", 4000);
+}
+void MainWindow::remoteHistory(const QString &action) {
+    if (worker)
+        fail("整形処理の完了または中止後に操作してください。");
+    if (action == "confirm" || action == "cancel") {
+        if (!candidate)
+            fail("変更候補がありません。");
+        if (action == "confirm")
+            confirmCandidate();
+        else
+            cancelCandidate();
+        return;
+    }
+    if (candidate)
+        fail("先に変更候補を確定するか、取消してください。");
+    if (action == "undo" && undo.canUndo())
+        undo.undo();
+    else if (action == "redo" && undo.canRedo())
+        undo.redo();
+    else
+        fail("対応する編集履歴がありません。");
 }
 void MainWindow::buildUi() {
     auto *central = new QWidget;
