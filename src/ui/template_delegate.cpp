@@ -136,6 +136,9 @@ void TemplateDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     styled.text.clear();
     style->drawControl(QStyle::CE_ItemViewItem, &styled, painter, styled.widget);
     const auto &e = element(symbol);
+    auto detail = index.data(ElementDetailRole).toString();
+    if (detail.isEmpty())
+        detail = QString("原子番号 %1").arg(e.number);
     QFont detailFont(styled.font);
     if (detailFont.pointSizeF() > 0)
         detailFont.setPointSizeF(detailFont.pointSizeF() * .8);
@@ -160,7 +163,8 @@ void TemplateDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
         styled.palette.color(group, selected ? QPalette::HighlightedText : QPalette::PlaceholderText));
     painter->drawText(QRect(textRect.left(), top + styled.fontMetrics.height() + 2, textRect.width(),
                             detailMetrics.height()),
-                      Qt::AlignLeft | Qt::AlignVCenter, QString("原子番号 %1").arg(e.number));
+                      Qt::AlignLeft | Qt::AlignVCenter,
+                      detailMetrics.elidedText(detail, Qt::ElideRight, textRect.width()));
     painter->restore();
 }
 

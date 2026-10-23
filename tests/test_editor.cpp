@@ -223,6 +223,91 @@ class EditorTest : public QObject {
         QCOMPARE(dialog.result(), int(QDialog::Accepted));
         QCOMPARE(dialog.selectedElement(), QString("Og"));
     }
+    void coordinationCenterPalette_data() {
+        QTest::addColumn<QString>("categoryId");
+        QTest::newRow("centers") << QString("center");
+        QTest::newRow("all") << QString("all");
+    }
+    void coordinationCenterPalette() {
+        QFETCH(QString, categoryId);
+        MainWindow w;
+        w.loadDocument(Document());
+        w.show();
+        auto *category = w.findChild<QComboBox *>("paletteCategory");
+        auto *search = w.findChild<QLineEdit *>("paletteSearch");
+        auto *palette = w.findChild<QListWidget *>("templatePalette");
+        category->setCurrentIndex(category->findData(categoryId));
+        QTest::qWait(40);
+        int centers = 0;
+        for (int row = 0; row < palette->count(); ++row) {
+            auto *item = palette->item(row);
+            const auto id = item->data(Qt::UserRole).toString();
+            if (!id.startsWith("center:"))
+                continue;
+            ++centers;
+            const auto &e = element(id.mid(7));
+            QCOMPARE(item->text(), e.nameJa);
+            QVERIFY(palette->visualItemRect(item).height() >= 48);
+            QVERIFY(item->toolTip().contains(e.nameEn));
+            QVERIFY(item->data(Qt::AccessibleTextRole).toString().contains("配位中心"));
+        }
+        QCOMPARE(centers, 25);
+        search->setText("存在しない配位中心");
+        QCOMPARE(palette->count(), 0);
+        for (const auto &query : {"亜鉛", "zinc", "zN", "30"}) {
+            search->setText(QString::fromUtf8(query));
+            QCOMPARE(palette->count(), 1);
+            QCOMPARE(palette->item(0)->data(Qt::UserRole).toString(), QString("center:Zn"));
+            QCOMPARE(palette->item(0)->text(), QString("亜鉛"));
+        }
+        palette->clearSelection();
+        const auto image = palette->viewport()->grab().toImage();
+        int colorPixels = 0;
+        for (int y = 0; y < qRound(48 * image.devicePixelRatio()); ++y)
+            for (int x = 0; x < qRound(64 * image.devicePixelRatio()); ++x)
+                if (image.pixelColor(x, y) == element("Zn").color)
+                    ++colorPixels;
+        QVERIFY2(colorPixels > 100, "The coordination center element icon is missing");
+
+        const auto rowRect = palette->visualItemRect(palette->item(0));
+        QTest::mouseClick(palette->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          QPoint(rowRect.left() + 30, rowRect.center().y()));
+        QCOMPARE(w.findChild<QComboBox *>("toolSelector")->currentData().toString(), QString("center"));
+        QCOMPARE(w.findChild<QComboBox *>("elementSelector")->currentData().toString(), QString("Zn"));
+        QCOMPARE(w.findChild<QTabWidget *>("propertyTabs")->currentIndex(), 1);
+        QVERIFY(w.document().atoms.isEmpty());
+        QCOMPARE(w.history()->count(), 0);
+        QTest::mouseClick(w.canvas(), Qt::LeftButton, Qt::NoModifier, w.canvas()->rect().center());
+        QCOMPARE(w.document().atoms.size(), 1);
+        QCOMPARE(w.document().atoms[0].element, QString("Zn"));
+        const auto centerRows = w.document().data["centers"].toArray();
+        QCOMPARE(centerRows.size(), 1);
+        const auto center = centerRows[0].toObject();
+        QCOMPARE(center["atom"].toString(), w.document().atoms[0].id);
+        QCOMPARE(center["geometry"].toString(), QString("octahedral"));
+        QCOMPARE(center["sites"].toArray().size(), 6);
+        w.history()->undo();
+        QVERIFY(w.document().atoms.isEmpty());
+        QVERIFY(w.document().data["centers"].toArray().isEmpty());
+        w.history()->redo();
+        QCOMPARE(w.document().atoms[0].element, QString("Zn"));
+        QCOMPARE(w.document().data["centers"].toArray(), centerRows);
+
+        search->clear();
+        QCOMPARE(palette->currentItem()->data(Qt::UserRole).toString(), QString("center:Zn"));
+        const auto artifacts = qEnvironmentVariable("MOLFORMA_CENTER_ARTIFACTS");
+        if (!artifacts.isEmpty()) {
+            QVERIFY(QDir().mkpath(artifacts));
+            for (int width : {1380, 900}) {
+                w.resize(width, 900);
+                palette->scrollToItem(palette->currentItem(), QAbstractItemView::PositionAtCenter);
+                QTest::qWait(40);
+                const auto path = QDir(artifacts).filePath(QString("%1-%2").arg(categoryId).arg(width));
+                QVERIFY(w.grab().save(path + ".png"));
+                QVERIFY(palette->grab().save(path + "-palette.png"));
+            }
+        }
+    }
     void periodicTablePlacement() {
         MainWindow w;
         w.loadDocument(Document());

@@ -623,8 +623,9 @@ void MainWindow::buildMenus() {
 void MainWindow::refreshPalette() {
     QString cat = value(category), needle = search->text().trimmed();
     periodicTableButton->setVisible(cat == "all" || cat == "atom");
-    search->setPlaceholderText(cat == "atom" ? "周期表で元素記号・名前・番号を検索"
-                                             : "名前・元素・SMILESを検索");
+    search->setPlaceholderText(cat == "atom"     ? "周期表で元素記号・名前・番号を検索"
+                               : cat == "center" ? "元素記号・名前・原子番号を検索"
+                                                 : "名前・元素・SMILESを検索");
     growth->setVisible(cat == "amino");
     if (cat != "all" && cat != "amino")
         growth->setChecked(false);
@@ -641,6 +642,13 @@ void MainWindow::refreshPalette() {
             item->setData(TemplateDelegate::TemplateRole, t);
         if (id.startsWith("atom:"))
             item->setData(TemplateDelegate::ElementRole, id.mid(5));
+        else if (id.startsWith("center:")) {
+            const auto symbol = id.mid(7);
+            const auto &e = element(symbol);
+            item->setData(TemplateDelegate::ElementRole, e.symbol);
+            item->setData(TemplateDelegate::ElementDetailRole,
+                          QString("配位中心 · 原子番号 %1").arg(e.number));
+        }
         item->setToolTip(searchText);
         item->setData(Qt::AccessibleTextRole, searchText);
         if (id == old)
@@ -654,8 +662,13 @@ void MainWindow::refreshPalette() {
     if (cat == "all" || cat == "center")
         for (auto s :
              QStringList{"Li", "Na", "Mg", "Al", "K",  "Ca", "Ti", "V",  "Cr", "Mn", "Fe", "Co", "Ni",
-                         "Cu", "Zn", "Ru", "Rh", "Pd", "Ag", "Cd", "Pt", "Au", "La", "Ce", "Gd"})
-            add(s + " 配位中心", "center:" + s, s + " 金属 配位中心");
+                         "Cu", "Zn", "Ru", "Rh", "Pd", "Ag", "Cd", "Pt", "Au", "La", "Ce", "Gd"}) {
+            const auto &e = element(s);
+            add(e.nameJa, "center:" + s,
+                QString("%1  %2  %3\n金属 配位中心 · 原子番号 %4")
+                    .arg(e.symbol, e.nameJa, e.nameEn)
+                    .arg(e.number));
+        }
     QJsonArray all = templates();
     for (auto t : customParts)
         all.append(t);
