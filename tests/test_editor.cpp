@@ -1,7 +1,7 @@
-#include "library.h"
-#include "main_window.h"
-#include "periodic_table.h"
-#include "template_delegate.h"
+#include "editing/library.h"
+#include "ui/main_window.h"
+#include "ui/periodic_table.h"
+#include "ui/template_delegate.h"
 #include <QComboBox>
 #include <QDir>
 #include <QGridLayout>

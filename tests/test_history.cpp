@@ -1,9 +1,9 @@
-#include "execution_panel.h"
-#include "history_panel.h"
-#include "main_window.h"
-#include "nwchem.h"
-#include "nwchem_advanced.h"
-#include "results_panel.h"
+#include "nwchem/nwchem.h"
+#include "nwchem/nwchem_advanced.h"
+#include "ui/execution_panel.h"
+#include "ui/history_panel.h"
+#include "ui/main_window.h"
+#include "ui/results_panel.h"
 #include <QtTest>
 #include <QtWidgets>
 using namespace mf;

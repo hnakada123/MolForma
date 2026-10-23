@@ -1,0 +1,27 @@
+#pragma once
+#include "model/document.h"
+#include "results/results.h"
+#include <QVTKOpenGLNativeWidget.h>
+#include <memory>
+
+namespace mf {
+// Retained scene owned by the GUI thread. Chemistry and meshing stay in the worker.
+class VtkMoleculeRenderer : public QVTKOpenGLNativeWidget {
+  public:
+    explicit VtkMoleculeRenderer(QWidget *parent);
+    ~VtkMoleculeRenderer() override;
+    void setMolecule(const Document &document, const QVector<QColor> &colors, bool hydrogens);
+    void setSurface(const QVector<SurfaceTriangle> &triangles);
+    void setSurfaceStyle(bool positive, bool negative, int opacity);
+    void setCamera(const Mat &rotation, const Vec &center, double scale, const QPointF &pan);
+    bool draw();
+    // Diagnostics also allow regression tests to detect accidental mesh reconstruction.
+    quint64 surfaceBuildCount() const;
+    bool depthPeelingUsed() const;
+    QPointF screenPosition(const Vec &position) const;
+
+  private:
+    struct Scene;
+    std::unique_ptr<Scene> scene;
+};
+} // namespace mf

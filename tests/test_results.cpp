@@ -1,7 +1,7 @@
-#include "coordinates.h"
-#include "execution_panel.h"
-#include "main_window.h"
-#include "results_panel.h"
+#include "editing/coordinates.h"
+#include "ui/execution_panel.h"
+#include "ui/main_window.h"
+#include "ui/results_panel.h"
 #include <Eigen/LU>
 #include <QtTest>
 #include <QtWidgets>

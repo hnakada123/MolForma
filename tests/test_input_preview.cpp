@@ -1,7 +1,7 @@
-#include "input_preview_panel.h"
-#include "main_window.h"
-#include "nwchem_advanced.h"
-#include "nwchem_execution.h"
+#include "nwchem/nwchem_advanced.h"
+#include "nwchem/nwchem_execution.h"
+#include "ui/input_preview_panel.h"
+#include "ui/main_window.h"
 #include <QtTest>
 #include <QtWidgets>
 using namespace mf;

@@ -1,6 +1,6 @@
-#include "coordinates_panel.h"
-#include "geometry.h"
-#include "main_window.h"
+#include "model/geometry.h"
+#include "ui/coordinates_panel.h"
+#include "ui/main_window.h"
 #include <QtTest>
 #include <QtWidgets>
 using namespace mf;

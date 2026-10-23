@@ -1,5 +1,5 @@
-#include "chemistry.h"
-#include "main_window.h"
+#include "editing/chemistry.h"
+#include "ui/main_window.h"
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QJsonDocument>

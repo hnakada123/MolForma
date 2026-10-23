@@ -1,7 +1,7 @@
-#include "chemistry.h"
-#include "coordination.h"
-#include "peptide.h"
-#include "stereochemistry.h"
+#include "editing/chemistry.h"
+#include "editing/coordination.h"
+#include "editing/peptide.h"
+#include "editing/stereochemistry.h"
 #include <QJsonDocument>
 #include <QTemporaryDir>
 #include <QtTest>

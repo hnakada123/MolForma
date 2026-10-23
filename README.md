@@ -57,8 +57,20 @@ cmake --install build --prefix /tmp/molforma-install
 
 ソースは `src/`、Qt Testは `tests/`、説明は `docs/`、組み込みデータは `assets/` にあります。データはQt Resourceに埋め込み、実行時の作業ディレクトリに依存しません。
 
+`src/` は責務ごとに分け、対応する `.cpp` と `.h` は同じディレクトリに置きます。
+
+| ディレクトリ | 内容 |
+| --- | --- |
+| `src/model/` | 分子ドキュメント、保存形式、幾何計算 |
+| `src/editing/` | 分子・座標編集、部品ライブラリ、ペプチド・配位構造、化学処理 |
+| `src/nwchem/` | NWChem入力生成、詳細設定、可視化出力設定、実行制御、計算履歴 |
+| `src/results/` | 計算結果の読込み、等値面生成、MOLDEN分子軌道の評価 |
+| `src/ui/` | メインウィンドウ、各パネル、分子描画、UI部品 |
+
+エントリーポイントは `src/main.cpp` です。ヘッダーは `#include "model/document.h"` のように `src/` からのパスで参照します。ビルドターゲットは `molforma_core`（model・editing・nwchem・results）と `molforma_ui`（ui）に分かれています。
+
 ```sh
-clang-format -i src/*.h src/*.cpp tests/*.cpp
+rg --files src tests -g '*.h' -g '*.cpp' -0 | xargs -0 clang-format -i
 QT_QPA_PLATFORM=offscreen ./build/molforma \
   tests/fixtures/ala_gly_ser.kgui.json --screenshot /tmp/molforma.png
 ```

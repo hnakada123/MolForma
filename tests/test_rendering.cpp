@@ -1,5 +1,5 @@
-#include "main_window.h"
-#include "molecule_view.h"
+#include "ui/main_window.h"
+#include "ui/molecule_view.h"
 #include <QApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -7,7 +7,7 @@
 #include <QWheelEvent>
 #include <QtTest>
 #ifdef MOLFORMA_HAS_VTK
-#include "vtk_molecule_renderer.h"
+#include "ui/vtk_molecule_renderer.h"
 #include <vtkGenericOpenGLRenderWindow.h>
 #endif
 #include <algorithm>

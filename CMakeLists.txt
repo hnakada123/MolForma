@@ -14,9 +14,23 @@ if(POLICY CMP0167)
 endif()
 find_package(rdkit CONFIG QUIET)
 add_library(molforma_core STATIC
-    src/document.cpp src/geometry.cpp src/library.cpp src/chemistry.cpp
-    src/operations.cpp src/peptide.cpp src/coordination.cpp src/stereochemistry.cpp src/coordinates.cpp
-    src/nwchem.cpp src/nwchem_advanced.cpp src/nwchem_output.cpp src/nwchem_execution.cpp src/results.cpp src/molden_orbitals.cpp src/history.cpp assets/resources.qrc)
+    src/model/document.cpp
+    src/model/geometry.cpp
+    src/editing/chemistry.cpp
+    src/editing/coordinates.cpp
+    src/editing/coordination.cpp
+    src/editing/library.cpp
+    src/editing/operations.cpp
+    src/editing/peptide.cpp
+    src/editing/stereochemistry.cpp
+    src/nwchem/history.cpp
+    src/nwchem/nwchem.cpp
+    src/nwchem/nwchem_advanced.cpp
+    src/nwchem/nwchem_execution.cpp
+    src/nwchem/nwchem_output.cpp
+    src/results/molden_orbitals.cpp
+    src/results/results.cpp
+    assets/resources.qrc)
 target_include_directories(molforma_core PUBLIC src)
 target_link_libraries(molforma_core PUBLIC Qt6::Widgets Eigen3::Eigen PkgConfig::OPENBABEL)
 if(TARGET RDKit::CIPLabeler)
@@ -24,9 +38,19 @@ if(TARGET RDKit::CIPLabeler)
     target_compile_definitions(molforma_core PUBLIC MOLFORMA_HAS_RDKIT=1)
 endif()
 target_compile_options(molforma_core PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
-add_library(molforma_ui STATIC src/molecule_view.cpp src/main_window.cpp src/editor_panels.cpp
-    src/template_delegate.cpp src/periodic_table.cpp src/coordinates_panel.cpp src/calculation_panel.cpp src/advanced_panel.cpp
-    src/execution_panel.cpp src/input_preview_panel.cpp src/results_panel.cpp src/history_panel.cpp)
+add_library(molforma_ui STATIC
+    src/ui/advanced_panel.cpp
+    src/ui/calculation_panel.cpp
+    src/ui/coordinates_panel.cpp
+    src/ui/editor_panels.cpp
+    src/ui/execution_panel.cpp
+    src/ui/history_panel.cpp
+    src/ui/input_preview_panel.cpp
+    src/ui/main_window.cpp
+    src/ui/molecule_view.cpp
+    src/ui/periodic_table.cpp
+    src/ui/results_panel.cpp
+    src/ui/template_delegate.cpp)
 target_link_libraries(molforma_ui PUBLIC molforma_core)
 target_compile_options(molforma_ui PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 option(MOLFORMA_ENABLE_VTK "Use native VTK for accelerated molecular rendering when available" ON)
@@ -55,7 +79,7 @@ if(MOLFORMA_ENABLE_VTK)
     endwhile()
     if(VTK_FOUND AND VTK_QT_VERSION STREQUAL "6")
         find_package(Qt6 REQUIRED COMPONENTS OpenGLWidgets)
-        target_sources(molforma_ui PRIVATE src/vtk_molecule_renderer.cpp)
+        target_sources(molforma_ui PRIVATE src/ui/vtk_molecule_renderer.cpp)
         target_link_libraries(molforma_ui PRIVATE ${VTK_LIBRARIES} Qt6::OpenGLWidgets)
         target_compile_definitions(molforma_ui PUBLIC MOLFORMA_HAS_VTK=1)
         vtk_module_autoinit(TARGETS molforma_ui MODULES ${VTK_LIBRARIES})

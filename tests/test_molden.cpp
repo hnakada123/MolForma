@@ -1,7 +1,7 @@
-#include "coordinates.h"
-#include "main_window.h"
-#include "molden_orbitals.h"
-#include "results_panel.h"
+#include "editing/coordinates.h"
+#include "results/molden_orbitals.h"
+#include "ui/main_window.h"
+#include "ui/results_panel.h"
 #include <QtTest>
 #include <QtWidgets>
 #include <numbers>

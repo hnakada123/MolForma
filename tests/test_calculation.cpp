@@ -1,6 +1,6 @@
-#include "coordinates.h"
-#include "main_window.h"
-#include "nwchem.h"
+#include "editing/coordinates.h"
+#include "nwchem/nwchem.h"
+#include "ui/main_window.h"
 #include <QtTest>
 #include <QtWidgets>
 #include <algorithm>

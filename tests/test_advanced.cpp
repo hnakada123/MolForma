@@ -1,5 +1,5 @@
-#include "advanced_panel.h"
-#include "main_window.h"
+#include "ui/advanced_panel.h"
+#include "ui/main_window.h"
 #include <QtTest>
 #include <QtWidgets>
 using namespace mf;
