@@ -67,7 +67,7 @@ class ResultsPanel : public QWidget {
     QPlainTextEdit *status, *log;
     QTableWidget *energy, *orbitals, *modes;
     QPushButton *cancel, *reload, *playFrames, *playMode, *saveXyz, *savePng, *applyIso;
-    QPushButton *showOrbital, *homo, *lumo;
+    QPushButton *homo, *lumo;
     void startLoad(const QString &path, double iso, int channel, int orbital = -1,
                    const QString &normalization = "auto", int divisions = 40, bool reuseOrbital = false);
     void renderOrbital(int orbital);

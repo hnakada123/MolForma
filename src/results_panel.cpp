@@ -196,11 +196,9 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     auto *orbitalActions = new QHBoxLayout;
     homo = new QPushButton("HOMO");
     lumo = new QPushButton("LUMO");
-    showOrbital = new QPushButton("選択した軌道を表示");
     homo->setObjectName("resultsHomo");
     lumo->setObjectName("resultsLumo");
-    showOrbital->setObjectName("resultsShowOrbital");
-    for (auto *b : {homo, lumo, showOrbital})
+    for (auto *b : {homo, lumo})
         orbitalActions->addWidget(b);
     orbitalActions->addStretch();
     ol->addLayout(orbitalActions);
@@ -226,11 +224,29 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     orbitalStatus->setWordWrap(true);
     ol->addWidget(orbitalStatus);
     orbitals = table({"番号", "軌道", "対称性", "スピン", "エネルギー / Eh", "占有数"}, "resultsOrbitals");
+    orbitals->verticalHeader()->hide();
     ol->addWidget(orbitals, 1);
     tabs->addTab(orbitalPage, "軌道");
-    connect(showOrbital, &QPushButton::clicked, this, [this] { renderOrbital(orbitals->currentRow()); });
-    connect(orbitals, &QTableWidget::cellDoubleClicked, this, [this](int row, int) { renderOrbital(row); });
-    connect(orbitals, &QTableWidget::currentCellChanged, this, [this] { updateActions(); });
+    connect(orbitals, &QTableWidget::currentCellChanged, this, [this](int row, int, int previousRow, int) {
+        if (row != previousRow)
+            renderOrbital(row);
+        updateActions();
+    });
+    const auto applyOrbitalOptions = [this] {
+        if (loading())
+            return;
+        bool ok;
+        const double iso = orbitalIso->text().toDouble(&ok);
+        if (ok && data.selectedOrbital == orbitals->currentRow() && iso == data.isovalue &&
+            orbitalGrid->value() == data.orbitalDivisions &&
+            orbitalNorm->currentData().toString() == data.normalizationRequest &&
+            sourceStamp(QFileInfo(data.source)) == orbitalCacheSource)
+            return;
+        renderOrbital(orbitals->currentRow());
+    };
+    connect(orbitalIso, &QLineEdit::editingFinished, this, applyOrbitalOptions);
+    connect(orbitalGrid, &QSpinBox::editingFinished, this, applyOrbitalOptions);
+    connect(orbitalNorm, &QComboBox::currentIndexChanged, this, applyOrbitalOptions);
     const auto frontier = [this](bool virtualOrbital) {
         const int row = orbitals->currentRow();
         const auto spin = row >= 0 && row < data.orbitals.size() ? data.orbitals[row].spin : QString("Alpha");
@@ -456,6 +472,7 @@ void ResultsPanel::openDirectory(const QString &path) {
 void ResultsPanel::renderOrbital(int orbital) {
     if (data.format != "MOLDEN" || orbital < 0 || orbital >= data.orbitals.size())
         return;
+    cancelLoad();
     bool ok;
     const double iso = orbitalIso->text().toDouble(&ok);
     if (!ok || !std::isfinite(iso) || iso <= 0 || iso > 1e6) {
@@ -609,7 +626,6 @@ void ResultsPanel::updateActions() {
     dataset->setEnabled(applyIso->isEnabled());
     const int selected = orbitals->currentRow();
     const bool orbitalReady = ready && data.format == "MOLDEN" && data.orbitalBasis;
-    showOrbital->setEnabled(orbitalReady && selected >= 0 && selected < data.orbitals.size());
     orbitalIso->setEnabled(orbitalReady);
     orbitalGrid->setEnabled(orbitalReady);
     orbitalNorm->setEnabled(orbitalReady);
@@ -703,19 +719,22 @@ void ResultsPanel::display(bool orbitalOnly) {
         if (data.selectedOrbital >= 0)
             orbitals->scrollToItem(orbitals->item(data.selectedOrbital, 0));
     }
-    orbitalIso->setText(real(data.isovalue));
-    orbitalGrid->setValue(data.orbitalDivisions);
-    orbitalNorm->setCurrentIndex(orbitalNorm->findData(data.normalizationRequest));
-    orbitalStatus->setText(
-        data.format != "MOLDEN"        ? "MOLDENファイルを開くと分子軌道を表示します。"
-        : !data.orbitalError.isEmpty() ? data.orbitalError
-        : data.selectedOrbital >= 0
-            ? QString("表示中: %1 %2番 / 等値 ±%3 / 正規化: "
-                      "%4\n軌道を選び「選択した軌道を表示」、またはダブルクリック。赤: 正 / 青: 負。")
-                  .arg(data.orbitals[data.selectedOrbital].spin,
-                       orbitals->item(data.selectedOrbital, 0)->text(), real(data.isovalue),
-                       data.orbitalNormalization == "nwchem" ? "NWChem" : "標準MOLDEN")
-            : "このファイルには表示可能な分子軌道がありません。");
+    {
+        const QSignalBlocker isoGuard(orbitalIso), gridGuard(orbitalGrid), normGuard(orbitalNorm);
+        orbitalIso->setText(real(data.isovalue));
+        orbitalGrid->setValue(data.orbitalDivisions);
+        orbitalNorm->setCurrentIndex(orbitalNorm->findData(data.normalizationRequest));
+    }
+    orbitalStatus->setText(data.format != "MOLDEN"        ? "MOLDENファイルを開くと分子軌道を表示します。"
+                           : !data.orbitalError.isEmpty() ? data.orbitalError
+                           : data.selectedOrbital >= 0
+                               ? QString("表示中: %1 %2番 / 等値 ±%3 / 正規化: "
+                                         "%4\n一覧の行を選ぶと表示を切り替えます。赤: 正 / 青: 負。")
+                                     .arg(data.orbitals[data.selectedOrbital].spin,
+                                          orbitals->item(data.selectedOrbital, 0)->text(),
+                                          real(data.isovalue),
+                                          data.orbitalNormalization == "nwchem" ? "NWChem" : "標準MOLDEN")
+                               : "このファイルには表示可能な分子軌道がありません。");
     if (!orbitalOnly) {
         const QSignalBlocker guard(modes);
         modes->setRowCount(data.modes.size());

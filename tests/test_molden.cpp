@@ -199,6 +199,8 @@ class MoldenTest : public QObject {
     void nativeSelectionAndCancellation() {
         MainWindow w;
         auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentWidget(panel);
+        w.show();
         const auto before = w.document().project();
         const int history = w.history()->count();
         QSignalSpy done(panel, &ResultsPanel::loaded), failed(panel, &ResultsPanel::loadFailed);
@@ -206,25 +208,40 @@ class MoldenTest : public QObject {
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
         QCOMPARE(failed.count(), 0);
         QCOMPARE(widget<QTabWidget>(w, "resultsDetails")->currentIndex(), 2);
-        QCOMPARE(widget<QTableWidget>(w, "resultsOrbitals")->currentRow(), 0);
-        widget<QPushButton>(w, "resultsLumo")->click();
+        auto *table = widget<QTableWidget>(w, "resultsOrbitals");
+        QCOMPARE(table->currentRow(), 0);
+        QVERIFY(table->verticalHeader()->isHidden());
+        QVERIFY(!w.findChild<QPushButton *>("resultsShowOrbital"));
+        QCOMPARE(table->item(0, 0)->text(), QString("1"));
+        QCOMPARE(table->item(1, 0)->text(), QString("2"));
+        QCOMPARE(table->item(2, 0)->text(), QString("1")); // Beta numbering is preserved.
+        QTest::mouseClick(table->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          table->visualItemRect(table->item(1, 4)).center());
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 2, 10000);
         QCOMPARE(panel->result().selectedOrbital, 1);
+        QVERIFY(!panel->loading());
+        QTest::keyClick(table, Qt::Key_Up);
+        QCOMPARE(done.count(), 3); // Return to the cached orbital with one key press.
+        QCOMPARE(panel->result().selectedOrbital, 0);
+        QTest::keyClick(table, Qt::Key_Down);
+        QCOMPARE(done.count(), 4);
+        QCOMPARE(panel->result().selectedOrbital, 1);
+        table->setCurrentCell(1, 5); // Moving within the same row must not reload it.
+        QCOMPARE(done.count(), 4);
         widget<QLineEdit>(w, "resultsOrbitalIso")->setText(".05");
         widget<QSpinBox>(w, "resultsOrbitalGrid")->setValue(24);
-        widget<QTableWidget>(w, "resultsOrbitals")->setCurrentCell(2, 0);
-        widget<QPushButton>(w, "resultsShowOrbital")->click();
-        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 3, 10000);
+        table->setCurrentCell(2, 0);
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 5, 10000);
         QCOMPARE(panel->result().selectedOrbital, 2);
         QCOMPARE(panel->result().isovalue, .05);
         QCOMPARE(panel->result().grid[0], 25);
         QVERIFY(!widget<QPushButton>(w, "resultsLumo")->isEnabled());
         widget<QLineEdit>(w, "resultsOrbitalIso")->setText("nan");
-        widget<QPushButton>(w, "resultsShowOrbital")->click();
+        emit widget<QLineEdit>(w, "resultsOrbitalIso")->editingFinished();
         QCOMPARE(failed.count(), 1);
         QCOMPARE(panel->result().selectedOrbital, 2);
         widget<QLineEdit>(w, "resultsOrbitalIso")->setText(".03");
-        widget<QPushButton>(w, "resultsShowOrbital")->click();
+        emit widget<QLineEdit>(w, "resultsOrbitalIso")->editingFinished();
         panel->cancelLoad();
         QVERIFY(!panel->loading());
         QCOMPARE(panel->result().selectedOrbital, 2);
@@ -282,16 +299,19 @@ class MoldenTest : public QObject {
         QCOMPARE(done.count(), count + 1);
         QCOMPARE(panel->result().surface.constData(), firstSurface.constData());
         auto *table = widget<QTableWidget>(w, "resultsOrbitals");
+        const int selectedCount = done.count();
         table->setCurrentCell(24, 0);
-        navigate("resultsOrbitalNext", 1); // Navigation follows the displayed orbital.
-        const int doubleClickCount = done.count();
-        emit table->cellDoubleClicked(0, 0);
-        QCOMPARE(done.count(), doubleClickCount + 1);
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), selectedCount + 1, 10000);
+        QCOMPARE(panel->result().selectedOrbital, 24);
+        navigate("resultsOrbitalNext", 25);
+        const int cachedCount = done.count();
+        table->setCurrentCell(0, 0);
+        QCOMPARE(done.count(), cachedCount + 1);
         QCOMPARE(panel->result().selectedOrbital, 0);
-        // Cancel an in-flight request by double-clicking a cached orbital.
-        emit table->cellDoubleClicked(2, 0);
+        // Cancel an in-flight request by selecting a cached orbital.
+        table->setCurrentCell(2, 0);
         QVERIFY(panel->loading());
-        emit table->cellDoubleClicked(0, 0);
+        table->setCurrentCell(0, 0);
         QVERIFY(!panel->loading());
         QCOMPARE(panel->result().surface.constData(), firstSurface.constData());
         QTest::qWait(100);
@@ -371,10 +391,13 @@ class MoldenTest : public QObject {
         auto *iso = widget<QLineEdit>(w, "resultsOrbitalIso");
         auto *grid = widget<QSpinBox>(w, "resultsOrbitalGrid");
         auto *norm = widget<QComboBox>(w, "resultsOrbitalNorm");
-        auto *show = widget<QPushButton>(w, "resultsShowOrbital");
+        emit iso->editingFinished();
+        emit grid->editingFinished();
+        QCOMPARE(done.count(), 1);
+        QVERIFY(!panel->loading());
         auto recompute = [&] {
             const int count = done.count();
-            show->click();
+            emit iso->editingFinished();
             QVERIFY(panel->loading());
             QTRY_COMPARE_WITH_TIMEOUT(done.count(), count + 1, 10000);
         };
@@ -382,15 +405,20 @@ class MoldenTest : public QObject {
         recompute();
         QCOMPARE(panel->result().isovalue, .05);
         grid->setValue(24);
-        recompute();
+        const int gridCount = done.count();
+        emit grid->editingFinished();
+        QVERIFY(panel->loading());
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), gridCount + 1, 10000);
         QCOMPARE(panel->result().grid[0], 25);
+        const int normCount = done.count();
         norm->setCurrentIndex(norm->findData("standard"));
-        recompute();
+        QVERIFY(panel->loading());
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), normCount + 1, 10000);
         QCOMPARE(panel->result().normalizationRequest, QString("standard"));
         iso->setText(".03");
         grid->setValue(40);
         norm->setCurrentIndex(norm->findData("auto"));
-        show->click();
+        emit iso->editingFinished();
         QVERIFY(!panel->loading());
         QCOMPARE(panel->result().surface.constData(), firstSurface.constData());
         // Explicit reload bypasses the cache even when the file metadata is unchanged.
@@ -407,7 +435,7 @@ class MoldenTest : public QObject {
         QVERIFY(file.open(QIODevice::ReadWrite));
         QVERIFY(file.setFileTime(oldTime, QFileDevice::FileModificationTime));
         file.close();
-        show->click();
+        emit iso->editingFinished();
         QVERIFY(panel->loading());
         panel->cancelLoad(); // A canceled refresh must not mark old metadata as current.
         QCOMPARE(panel->result().orbitals[0].energy, -.5);
@@ -416,7 +444,7 @@ class MoldenTest : public QObject {
         QCOMPARE(widget<QTableWidget>(w, "resultsOrbitals")->item(0, 4)->text(), QString("-0.6"));
         QVERIFY(file.remove());
         const int count = failed.count();
-        show->click();
+        emit iso->editingFinished();
         QTRY_COMPARE_WITH_TIMEOUT(failed.count(), count + 1, 10000);
         QCOMPARE(panel->result().orbitals[0].energy, -.6);
     }
@@ -475,7 +503,7 @@ class MoldenTest : public QObject {
                     connect(panel, &ResultsPanel::loaded, this, [&] { elapsed = timer.nsecsElapsed(); });
                 const int count = done.count();
                 timer.start();
-                emit widget<QTableWidget>(w, "resultsOrbitals")->cellDoubleClicked(orbital, 0);
+                widget<QTableWidget>(w, "resultsOrbitals")->setCurrentCell(orbital, 0);
                 QTRY_COMPARE_WITH_TIMEOUT(done.count(), count + 1, 15000);
                 disconnect(connection);
                 QCOMPARE(panel->result().selectedOrbital, orbital);
