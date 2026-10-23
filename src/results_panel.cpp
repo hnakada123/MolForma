@@ -95,6 +95,24 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     view->setEmptyMessage("NWChem出力・XYZ・CUBE・MOLDENを開いて\n構造・軌道の等値面・振動を確認できます。");
     visual->addWidget(view, 1);
     connect(fit, &QPushButton::clicked, view, &MoleculeView::fit);
+    auto *angles = new QHBoxLayout;
+    visual->addLayout(angles);
+    QSlider *sliders[3];
+    const int initialAngles[] = {-25, 25, 0};
+    for (int i = 0; i < 3; ++i) {
+        angles->addWidget(new QLabel(QStringList{"左右", "上下", "画面内"}[i]));
+        sliders[i] = new QSlider(Qt::Horizontal);
+        sliders[i]->setObjectName(QStringList{"resultsYaw", "resultsPitch", "resultsRoll"}[i]);
+        sliders[i]->setRange(-180, 180);
+        sliders[i]->setValue(initialAngles[i]);
+        sliders[i]->setMaximumWidth(160);
+        angles->addWidget(sliders[i]);
+    }
+    for (int i = 0; i < 3; ++i)
+        connect(sliders[i], &QSlider::valueChanged, this,
+                [this, a = sliders[0], b = sliders[1], c = sliders[2]] {
+                    view->setAngles(a->value(), b->value(), c->value());
+                });
     auto *frames = new QHBoxLayout;
     visual->addLayout(frames);
     frames->addWidget(new QLabel("構造"));

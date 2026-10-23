@@ -213,6 +213,57 @@ class ResultsTest : public QObject {
         // Destruction cancels an in-flight reader and stops animation.
         panel->openFile(a);
     }
+    void cameraSlidersPreserveGeometry() {
+        MainWindow w;
+        auto editor = Document::fromXyz("2\neditor\nH 0 0 0\nH 0 0 .74\n");
+        editor.atoms[0].fixed = true;
+        w.loadDocument(editor);
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentWidget(panel);
+        w.show();
+        QSignalSpy done(panel, &ResultsPanel::loaded);
+        panel->openFile(save("camera.xyz", "3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        auto *view = widget<MoleculeView>(w, "resultsView");
+        const auto molecule = panel->result().frames[0].molecule;
+        const auto before = w.document().project();
+        const int history = w.history()->count();
+        const auto editorPosition = w.canvas()->atomScreenPosition(w.document().atoms[0].id);
+        const auto output = files.filePath("camera-saved.xyz");
+        panel->saveGeometry(output);
+        const auto saved = readFile(output);
+        MoleculeView expected;
+        expected.resize(view->size());
+        expected.setDocument(molecule);
+        expected.fit();
+        int angles[] = {-25, 25, 0};
+        const int rotated[] = {60, -45, 90};
+        const char *names[] = {"resultsYaw", "resultsPitch", "resultsRoll"};
+        expected.setAngles(angles[0], angles[1], angles[2]);
+        for (const auto &atom : molecule.atoms)
+            QCOMPARE(view->atomScreenPosition(atom.id), expected.atomScreenPosition(atom.id));
+        for (int i = 0; i < 3; ++i) {
+            auto *slider = widget<QSlider>(w, names[i]);
+            QVERIFY(slider->isVisible());
+            QCOMPARE(slider->orientation(), Qt::Horizontal);
+            QCOMPARE(slider->minimum(), -180);
+            QCOMPARE(slider->maximum(), 180);
+            QCOMPARE(slider->value(), angles[i]);
+            const auto position = view->atomScreenPosition(molecule.atoms[1].id);
+            slider->setValue(rotated[i]);
+            angles[i] = rotated[i];
+            expected.setAngles(angles[0], angles[1], angles[2]);
+            QVERIFY(QLineF(position, view->atomScreenPosition(molecule.atoms[1].id)).length() > 1);
+            for (const auto &atom : molecule.atoms)
+                QCOMPARE(view->atomScreenPosition(atom.id), expected.atomScreenPosition(atom.id));
+            panel->saveGeometry(output);
+            QCOMPARE(readFile(output), saved);
+        }
+        QCOMPARE(panel->result().frames[0].molecule.toJson(), molecule.toJson());
+        QCOMPARE(w.document().project(), before);
+        QCOMPARE(w.history()->count(), history);
+        QCOMPARE(w.canvas()->atomScreenPosition(w.document().atoms[0].id), editorPosition);
+    }
     void changedSourceRejected() {
         MainWindow w;
         auto *panel = widget<ResultsPanel>(w, "resultsTab");
