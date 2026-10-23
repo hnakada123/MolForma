@@ -12,6 +12,7 @@ class QSpinBox;
 class QDoubleSpinBox;
 class QPlainTextEdit;
 class QTableWidget;
+class QTabWidget;
 namespace mf {
 class MainWindow;
 class MoleculeView;
@@ -45,14 +46,19 @@ class ResultsPanel : public QWidget {
     QString folder, pendingPath;
     MoleculeView *view;
     QLabel *source, *status, *summary;
-    QComboBox *files, *dataset;
-    QSpinBox *frame;
+    QComboBox *files, *dataset, *orbitalNorm;
+    QSpinBox *frame, *orbitalGrid;
     QDoubleSpinBox *amplitude;
-    QLineEdit *isovalue;
+    QLineEdit *isovalue, *orbitalIso;
+    QLabel *orbitalStatus;
+    QTabWidget *details;
     QPlainTextEdit *log;
     QTableWidget *energy, *orbitals, *modes;
     QPushButton *cancel, *reload, *playFrames, *playMode, *saveXyz, *savePng, *applyIso;
-    void startLoad(const QString &path, double iso, int channel);
+    QPushButton *showOrbital, *homo, *lumo;
+    void startLoad(const QString &path, double iso, int channel, int orbital = -1,
+                   const QString &normalization = "auto", int divisions = 40);
+    void renderOrbital(int orbital);
     void display();
     void showFrame();
     void showMode();

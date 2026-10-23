@@ -87,10 +87,11 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     pathField(paths, "参照ファイルの基準", "reference_directory", true);
     qobject_cast<QLineEdit *>(fields["reference_directory"])
         ->setPlaceholderText("空欄: プロジェクトの場所（未保存時は起動時の場所）");
-    auto *pathHint =
-        new QLabel("実行ファイルは名前またはパスで指定します。MPIはmpirun/mpiexecの -np を使用します。"
-                   "入力movecsの相対パスは参照基準から、出力・scratch・permanentの相対パスは"
-                   "新しいジョブフォルダーから解決します。");
+    auto *pathHint = new QLabel(
+        "実行ファイルは名前またはパスで指定します。MPIはmpirun/mpiexecの -np を使用します。"
+        "入力movecsの相対パスは参照基準から解決します。scratch・permanentは新しいジョブ"
+        "フォルダーが基準です。出力movecs・CUBE・MOLDENはpermanent（未指定ならジョブ）に保存します。"
+        "出力movecsを./で始めるとジョブ内、絶対パスなら指定先に保存します。");
     pathHint->setWordWrap(true);
     paths->addRow(pathHint);
     auto *parallel = group("計算資源");

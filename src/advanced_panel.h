@@ -31,7 +31,7 @@ class AdvancedPanel : public QWidget {
     QMap<QString, QPushButton *> groupResets;
     QLineEdit *search;
     QComboBox *category, *filter;
-    QLabel *context, *count, *empty, *message;
+    QLabel *context, *count, *empty, *message, *outputSummary;
     QPlainTextEdit *diagnostics, *preview;
     QPushButton *undo, *redo, *resetAll, *copy, *save;
     void change(const QString &key, const QJsonValue &value);

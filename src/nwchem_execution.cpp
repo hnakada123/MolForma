@@ -1,6 +1,7 @@
 #include "nwchem_execution.h"
 #include "nwchem.h"
 #include "nwchem_advanced.h"
+#include "nwchem_output.h"
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
@@ -226,13 +227,15 @@ ExecutionPlan executionPlan(const Document &d, const QString &base, const QStrin
         const auto clean = QDir::cleanPath(value);
         if (!absolute && (clean == ".." || clean.startsWith("../")))
             fail(QString("%1 の相対パスはジョブフォルダー内を指定してください。").arg(key));
-        const auto target = absolutePath(value, directory);
+        const auto actual = QString(key) == "vectors_output" ? nwchemPermanentFile(d, value) : value;
+        const auto target = absolutePath(actual, directory);
         if (QString(key) == "vectors_output") {
             if (!absolute && bundleFiles.contains(clean))
                 fail("出力movecsにはジョブ保存用ファイルと異なる名前を指定してください。");
             if (local && (QFileInfo::exists(target) || QFileInfo(target).isSymLink()))
                 fail("出力movecsは既に存在します。別の名前を指定してください: " + target);
-            if (local && absolute && !writableDirectory(QFileInfo(target).absolutePath(), false))
+            if (local && QDir::isAbsolutePath(actual) &&
+                !writableDirectory(QFileInfo(target).absolutePath(), false))
                 fail("出力movecsの保存先がないか、書込みできません: " + target);
         } else if (local && absolute) {
             if (!writableDirectory(target, false))
@@ -245,6 +248,15 @@ ExecutionPlan executionPlan(const Document &d, const QString &base, const QStrin
                 fail("同じ計算名のファイルが指定ディレクトリにあります。計算名か保存先を変更してください: " +
                      target);
         }
+    }
+    const auto outputs = nwchemOutputFiles(d, validateNwchem(d));
+    for (const auto &file : outputs) {
+        const auto target = absolutePath(file, directory);
+        if (local && (QFileInfo::exists(target) || QFileInfo(target).isSymLink()))
+            fail("可視化ファイルは既に存在します。別の計算名・出力名を指定してください: " + target);
+        if (advanced["vectors_guess"] == "file" &&
+            target == resolved.data["nwchem"].toObject()["advanced"].toObject()["vectors_input"].toString())
+            fail("可視化ファイルと入力movecsには別の保存先を指定してください。");
     }
     p.input = nwchemInput(resolved);
     QJsonObject overrides;
@@ -269,6 +281,8 @@ ExecutionPlan executionPlan(const Document &d, const QString &base, const QStrin
                   {"input_sha256",
                    QString::fromLatin1(
                        QCryptographicHash::hash(p.input.toUtf8(), QCryptographicHash::Sha256).toHex())}};
+    if (!outputs.isEmpty())
+        p.manifest["visualization_files"] = QJsonArray::fromStringList(outputs);
     return p;
 }
 ExecutionPlan executionPreviewPlan(const Document &d, const QString &base, bool local) {
@@ -303,6 +317,8 @@ ExecutionPlan saveExecutionBundle(const Document &d, const QString &base, bool f
         if (!advanced.contains(key))
             continue;
         QString path = advanced[key].toString();
+        if (QString(key) == "vectors_output")
+            path = nwchemPermanentFile(d, path);
         if (QDir::isAbsolutePath(path))
             continue;
         if (QString(key) == "vectors_output")

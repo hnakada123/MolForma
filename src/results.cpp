@@ -1,5 +1,6 @@
 #include "results.h"
 #include "coordinates.h"
+#include "molden_orbitals.h"
 #include <Eigen/Geometry>
 #include <QDataStream>
 #include <QDir>
@@ -215,7 +216,8 @@ void nwchem(ResultData &r, const QStringList &lines) {
         r.status = "正常終了マーカーあり（収束・全taskの成否はログを確認）";
     r.warnings.removeDuplicates();
 }
-void molden(ResultData &r, const QStringList &lines) {
+void mesh(ResultData &r, const QVector<double> &values, const Vec &origin, const Mat &axes);
+void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
     QMap<QString, QStringList> blocks;
     QMap<QString, QString> headers;
     QString current;
@@ -245,6 +247,7 @@ void molden(ResultData &r, const QStringList &lines) {
             d.atoms << atom(symbol(integer(row[2], 1, 86)), point(row, 3, scale));
         }
         addFrame(r, d, "MOLDEN原子座標");
+        r.orbitalFrame = 0;
     }
     if (blocks.contains("GEOMETRIES")) {
         if (headers["GEOMETRIES"] != "XYZ")
@@ -263,6 +266,10 @@ void molden(ResultData &r, const QStringList &lines) {
         xyz(r, geometry);
     }
     ResultOrbital orbital;
+    QVector<QVector<double>> coefficients;
+    QVector<double> mo;
+    QSet<int> seenCoefficients;
+    qint64 totalCoefficients = 0;
     QSet<QString> fields;
     auto finishOrbital = [&] {
         if (fields.isEmpty())
@@ -275,13 +282,30 @@ void molden(ResultData &r, const QStringList &lines) {
         if (r.orbitals.size() >= 20000)
             fail("MOLDENの軌道は2万件まで読み込めます。");
         r.orbitals << orbital;
+        totalCoefficients += mo.size();
+        if (totalCoefficients > 4000000)
+            fail("MOLDENのMO係数は400万個までです。");
+        coefficients << mo;
+        mo.clear();
+        seenCoefficients.clear();
         orbital = {};
         fields.clear();
     };
     for (const auto &line : blocks["MO"]) {
         const auto pair = line.split('=');
-        if (pair.size() != 2)
-            continue; // AO coefficients are not evaluated by this viewer.
+        if (pair.size() != 2) {
+            const auto row = words(line);
+            if (row.size() != 2 || fields.isEmpty())
+                fail("MOLDENのMO係数の行が不正です。");
+            const int ao = integer(row[0], 1, 4000) - 1;
+            if (seenCoefficients.contains(ao))
+                fail("MOLDENのMO係数番号が重複しています。");
+            seenCoefficients.insert(ao);
+            if (mo.size() <= ao)
+                mo.resize(ao + 1);
+            mo[ao] = number(row[1]);
+            continue;
+        }
         const QString key = pair[0].trimmed().toUpper(), value = pair[1].trimmed();
         if (key == "SYM" || fields.contains(key))
             finishOrbital();
@@ -296,9 +320,49 @@ void molden(ResultData &r, const QStringList &lines) {
             orbital.spin = value.left(1).toUpper() + value.mid(1).toLower();
     }
     finishOrbital();
-    if (!r.orbitals.isEmpty())
-        r.warnings << "MOLDENの軌道エネルギー・占有数を表示します。係数からの軌道再計算は未対応です。形状はCU"
-                      "BEを開いてください。";
+    if (!r.orbitals.isEmpty()) {
+        r.orbitalBasis = blocks.contains("GTO") && r.orbitalFrame >= 0;
+        try {
+            if (!r.orbitalBasis)
+                fail("軌道の形状表示には[Atoms]・[GTO]・[MO]が必要です。");
+            const auto &atoms = r.frames[r.orbitalFrame].molecule;
+            const auto wavefunction = moldenWavefunction(blocks, atoms, coefficients, r.normalizationRequest);
+            int selected = requestedOrbital;
+            if (selected < 0) {
+                selected = frontierOrbital(r.orbitals, "Alpha");
+                if (selected < 0)
+                    selected = frontierOrbital(r.orbitals, "Beta");
+                if (selected < 0)
+                    selected = 0;
+            }
+            Vec lo = atoms.atoms.first().position, hi = lo;
+            for (const auto &atom : atoms.atoms) {
+                lo = lo.cwiseMin(atom.position);
+                hi = hi.cwiseMax(atom.position);
+            }
+            lo.array() -= 3.;
+            hi.array() += 3.;
+            const Vec step = (hi - lo) / r.orbitalDivisions;
+            r.grid.fill(r.orbitalDivisions + 1);
+            const auto values = moldenOrbitalGrid(wavefunction, selected, lo, step, r.grid);
+            r.minimum = *std::min_element(values.cbegin(), values.cend());
+            r.maximum = *std::max_element(values.cbegin(), values.cend());
+            mesh(r, values, lo, step.asDiagonal());
+            r.selectedOrbital = selected;
+            r.orbitalNormalization = wavefunction.normalization;
+            if (r.surface.isEmpty())
+                r.warnings << "指定した等値の面がありません。「軌道」の等値を小さくしてください。";
+            r.warnings
+                << "MOLDENの分子軌道を表示しています。赤が正、青が負です。全体の位相の符号は任意です。";
+        } catch (const std::exception &e) {
+            r.surface.clear();
+            r.grid = {};
+            if (requestedOrbital >= 0)
+                throw;
+            r.orbitalError = QString::fromUtf8(e.what());
+            r.warnings << "軌道形状を表示できません: " + r.orbitalError;
+        }
+    }
     if (blocks.contains("FR-COORD")) {
         Document d;
         for (const auto &line : blocks["FR-COORD"]) {
@@ -477,7 +541,8 @@ void cube(ResultData &r, QString text) {
                   "条件を確認してください。";
 }
 } // namespace
-ResultData readResult(const QString &path, double iso, int dataset) {
+ResultData readResult(const QString &path, double iso, int dataset, int orbital, const QString &normalization,
+                      int orbitalDivisions) {
     if (!std::isfinite(iso) || iso <= 0 || iso > 1e6)
         fail("等値は0より大きい有限の値で指定してください。");
     const auto bytes = boundedRead(path);
@@ -486,6 +551,10 @@ ResultData readResult(const QString &path, double iso, int dataset) {
     r.source = QFileInfo(path).absoluteFilePath();
     r.isovalue = iso;
     r.dataset = dataset;
+    if (orbitalDivisions < 16 || orbitalDivisions > 100)
+        fail("MOLDENの格子分割数は16〜100を指定してください。");
+    r.orbitalDivisions = orbitalDivisions;
+    r.normalizationRequest = normalization;
     r.log = QString::fromUtf8(bytes.right(128 * 1024));
     if (bytes.size() > 128 * 1024)
         r.log.prepend("…末尾128 KiBを表示しています。\n");
@@ -500,7 +569,7 @@ ResultData readResult(const QString &path, double iso, int dataset) {
         cube(r, text);
     } else if (text.trimmed().startsWith("[Molden Format]", Qt::CaseInsensitive)) {
         r.format = "MOLDEN";
-        molden(r, lines);
+        molden(r, lines, orbital);
     } else if (suffix == "xyz") {
         r.format = "XYZ";
         xyz(r, lines);
@@ -532,7 +601,9 @@ void saveResultData(const QString &path, const ResultData &r) {
     QByteArray bytes;
     QDataStream s(&bytes, QIODevice::WriteOnly);
     s.setVersion(QDataStream::Qt_6_4);
-    s << QString("MolFormaResult1") << r.source << r.format << r.status << r.log << r.warnings;
+    s << QString("MolFormaResult2") << r.source << r.format << r.status << r.log << r.warnings;
+    s << r.orbitalBasis << qint32(r.selectedOrbital) << qint32(r.orbitalFrame) << qint32(r.orbitalDivisions)
+      << r.orbitalError << r.orbitalNormalization << r.normalizationRequest;
     auto doc = [&](const Document &d) { s << QJsonDocument(d.toJson()).toJson(QJsonDocument::Compact); };
     auto vec = [&](const Vec &v) { s << v.x() << v.y() << v.z(); };
     s << qint32(r.frames.size());
@@ -573,10 +644,16 @@ ResultData loadResultData(const QString &path) {
     s.setVersion(QDataStream::Qt_6_4);
     QString magic;
     s >> magic;
-    if (magic != "MolFormaResult1")
+    if (magic != "MolFormaResult2")
         fail("結果の転送形式が不正です。");
     ResultData r;
     s >> r.source >> r.format >> r.status >> r.log >> r.warnings;
+    qint32 orbital, orbitalFrame, divisions;
+    s >> r.orbitalBasis >> orbital >> orbitalFrame >> divisions >> r.orbitalError >> r.orbitalNormalization >>
+        r.normalizationRequest;
+    r.selectedOrbital = orbital;
+    r.orbitalFrame = orbitalFrame;
+    r.orbitalDivisions = divisions;
     auto count = [&](int max) {
         qint32 n;
         s >> n;
@@ -644,7 +721,9 @@ int resultWorker(const QString &request, const QString &response) {
     try {
         const auto q = parseJson(boundedRead(request));
         saveResultData(response,
-                       readResult(q["path"].toString(), q["isovalue"].toDouble(.03), q["dataset"].toInt()));
+                       readResult(q["path"].toString(), q["isovalue"].toDouble(.03), q["dataset"].toInt(),
+                                  q["orbital"].toInt(-1), q["normalization"].toString("auto"),
+                                  q["orbital_divisions"].toInt(40)));
         return 0;
     } catch (const std::exception &e) {
         try {
@@ -655,8 +734,32 @@ int resultWorker(const QString &request, const QString &response) {
     }
 }
 QStringList resultFiles(const QString &directory) {
-    return QDir(directory).entryList(
+    auto files = QDir(directory).entryList(
         {"*.out", "*.log", "*.xyz", "*.cube", "*.cub", "*.molden", "*.mld", "*.molde"},
         QDir::Files | QDir::Readable, QDir::Name);
+    // Generated files can live in permanent_dir; do not recursively scan it or trust the saved cwd.
+    QFile record(QDir(directory).filePath("run.json"));
+    if (record.open(QIODevice::ReadOnly) && record.size() <= 256 * 1024) {
+        const auto m = QJsonDocument::fromJson(record.read(256 * 1024)).object();
+        if (m["format"] == "molforma-nwchem-run" && m["version"].toDouble() == 1) {
+            QSet<QString> known;
+            for (const auto &file : files)
+                known.insert(QFileInfo(QDir(directory).filePath(file)).canonicalFilePath());
+            const auto outputs = m["visualization_files"].toArray();
+            for (int i = 0; i < std::min(2, int(outputs.size())); ++i) {
+                const auto name = outputs[i].toString();
+                const auto clean = QDir::cleanPath(name);
+                if (clean == ".." || clean.startsWith("../"))
+                    continue;
+                const QFileInfo info(QDir(directory).filePath(name));
+                if (!QStringList{"cube", "cub", "molden"}.contains(info.suffix().toLower()) ||
+                    !info.isFile() || !info.isReadable() || known.contains(info.canonicalFilePath()))
+                    continue;
+                known.insert(info.canonicalFilePath());
+                files << name;
+            }
+        }
+    }
+    return files;
 }
 } // namespace mf

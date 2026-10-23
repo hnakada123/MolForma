@@ -1,6 +1,7 @@
 #include "nwchem.h"
 #include "coordinates.h"
 #include "nwchem_advanced.h"
+#include "nwchem_output.h"
 #include <QRegularExpression>
 #include <algorithm>
 #include <cmath>
@@ -428,6 +429,6 @@ QString nwchemInput(const Document &d) {
         text += "task " + theory + " frequencies" + (check.numericalFrequencies ? " numerical" : "") + '\n';
     else if (!optimizationTask(task))
         text += "task " + theory + ' ' + task + '\n';
-    return text;
+    return text + nwchemOutputLines(d, check);
 }
 } // namespace mf

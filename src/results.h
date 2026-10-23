@@ -38,9 +38,13 @@ struct ResultData {
     std::array<int, 3> grid{};
     int dataset = 0;
     double isovalue = .03, minimum = 0, maximum = 0;
+    bool orbitalBasis = false;
+    int selectedOrbital = -1, orbitalFrame = -1, orbitalDivisions = 40;
+    QString orbitalError, orbitalNormalization, normalizationRequest = "auto";
 };
 // Parsing/meshing is bounded and runs in a cancellable native process in the UI.
-ResultData readResult(const QString &path, double isovalue = .03, int dataset = 0);
+ResultData readResult(const QString &path, double isovalue = .03, int dataset = 0, int orbital = -1,
+                      const QString &normalization = "auto", int orbitalDivisions = 40);
 void saveResultData(const QString &path, const ResultData &data);
 ResultData loadResultData(const QString &path);
 int resultWorker(const QString &request, const QString &response);

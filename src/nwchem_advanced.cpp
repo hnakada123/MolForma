@@ -1,4 +1,5 @@
 #include "nwchem_advanced.h"
+#include "nwchem_output.h"
 #include <QJsonDocument>
 #include <QLocale>
 #include <QRegularExpression>
@@ -21,8 +22,8 @@ AdvancedOption numeric(QString key, QString group, QString label, QString keywor
             {}};
 }
 AdvancedOption choice(QString key, QString group, QString label, QString keyword, QString help,
-                      QVector<NwchemChoice> values) {
-    return {key, group, label, keyword, help, "NWChem既定", AdvancedKind::Choice, 0, 0, values};
+                      QVector<NwchemChoice> values, QString defaults = "NWChem既定") {
+    return {key, group, label, keyword, help, defaults, AdvancedKind::Choice, 0, 0, values};
 }
 AdvancedOption flag(QString key, QString group, QString label, QString keyword, QString help) {
     return {key, group, label, keyword, help, "オフ（指定なし）", AdvancedKind::Flag, 0, 0, {}};
@@ -147,19 +148,91 @@ const QVector<AdvancedOption> &nwchemAdvancedOptions() {
              "初期分子軌道がファイル指定のときに使用します。パスは計算実行先を基準とし、ここではファイルを読"
              "みません。"),
         path("vectors_output", "出力movecsファイル", "vectors output",
-             "既存movecsを読む場合は入力とは別の出力先を指定してください。それ以外は空欄でNWChem既定です。"),
+             "相対パスはpermanent内、./で始めるとジョブ内に保存します。既存movecsを読む場合は入力とは別の"
+             "出力先を指定してください。それ以外は空欄でNWChem既定です。"),
         path("scratch_dir", "作業ファイルのディレクトリ", "scratch_dir",
              "実行先に存在する、空白・:を含まないパスを指定します。MolFormaは作成しません。"),
         path("permanent_dir", "永続ファイルのディレクトリ", "permanent_dir",
              "データベース・軌道等の保存先。空白・:は未対応です。環境変数は展開しません。"),
-        flag("echo", "files", "入力を出力ログへ表示", "echo", "NWChemの入力エコーを有効にします。")};
+        flag("echo", "files", "入力を出力ログへ表示", "echo", "NWChemの入力エコーを有効にします。"),
+        flag("molden_output", "visualization", "MOLDENファイルを出力", "property moldenfile",
+             "計算終了後のHF/KS分子軌道を〈計算名〉.moldenへ出力します。MP2/CCSDでは参照HFの軌道です。"),
+        choice("molden_norm", "visualization", "MOLDENの基底正規化", "molden_norm",
+               "NWChem規約または未正規化。利用先の解析ソフトの規約に合わせて指定します。",
+               {{"nwchem", "NWChem規約"}, {"none", "未正規化（NONE）"}}, "NWChem規約"),
+        flag("cube_output", "visualization", "CUBEファイルを出力", "dplot gaussian",
+             "計算終了後のHF/KS電子密度または分子軌道を出力します。MP2/CCSDの相関密度は出力しません。"),
+        choice("cube_type", "visualization", "CUBEの内容", "spin / orbitals view",
+               "密度は占有数を反映し、分子軌道は符号付きの軌道関数を出力します。",
+               {{"density", "全電子密度（Alpha + Beta）"},
+                {"alpha_density", "Alpha電子密度"},
+                {"beta_density", "Beta電子密度"},
+                {"spin_density", "スピン密度（Alpha − Beta）"},
+                {"orbital", "分子軌道"}},
+               "全電子密度"),
+        choice("cube_spin", "visualization", "分子軌道のスピン", "spin",
+               "Betaの軌道関数はUHF/UKSで指定できます。制限計算ではAlphaを使ってください。",
+               {{"alpha", "Alpha"}, {"beta", "Beta（非制限計算）"}}, "Alpha"),
+        choice("cube_orbital", "visualization", "出力する分子軌道", "orbitals view",
+               "HOMO/LUMOは電子数・多重度とスピンから番号を決めます。番号指定は1から数えます。",
+               {{"homo", "HOMO"}, {"lumo", "LUMO"}, {"index", "軌道番号で指定"}}, "HOMO"),
+        numeric("cube_index", "visualization", "分子軌道番号", "orbitals view; 1; index",
+                "番号指定時に必要です。軌道の総数は実行時の基底に依存し、NWChemが確認します。",
+                "番号を指定してください", 1, 100000, true),
+        {"cube_filename",
+         "visualization",
+         "CUBEファイル名",
+         "output",
+         "英数字・_・-・.で指定し、拡張子は.cubeまたは.cub。ディレクトリは永続ファイルの設定に従います。",
+         "〈計算名〉_〈内容・軌道番号〉.cube",
+         AdvancedKind::Path,
+         0,
+         0,
+         {}},
+        numeric(
+            "cube_padding", "visualization", "入力構造からの余白 / Å", "limitxyz units angstrom",
+            "空欄の軸範囲は入力構造の最小・最大座標にこの余白を加えます。最適化後の範囲を自動追跡しません。",
+            "3", 0.1, 100),
+        numeric("cube_divisions", "visualization", "各軸の分割数", "limitxyz",
+                "格子点数は各軸で分割数+1です。X/Y/Zの個別指定を優先します。全体で200万格子点まで。", "40", 1,
+                1000, true),
+        {"cube_x",
+         "visualization",
+         "X範囲・分割数",
+         "limitxyz X",
+         "最小値 最大値 分割数を空白区切りで指定。座標はÅ。例: -3 3 40。",
+         "入力構造＋余白 / 各軸の分割数",
+         AdvancedKind::GridAxis,
+         -100000,
+         100000,
+         {}},
+        {"cube_y",
+         "visualization",
+         "Y範囲・分割数",
+         "limitxyz Y",
+         "最小値 最大値 分割数を空白区切りで指定。座標はÅ。例: -3 3 40。",
+         "入力構造＋余白 / 各軸の分割数",
+         AdvancedKind::GridAxis,
+         -100000,
+         100000,
+         {}},
+        {"cube_z",
+         "visualization",
+         "Z範囲・分割数",
+         "limitxyz Z",
+         "最小値 最大値 分割数を空白区切りで指定。座標はÅ。例: -3 3 40。",
+         "入力構造＋余白 / 各軸の分割数",
+         AdvancedKind::GridAxis,
+         -100000,
+         100000,
+         {}}};
     return options;
 }
 QVector<NwchemChoice> nwchemAdvancedGroups() {
     return {{"scf", "HF / 参照SCF"},         {"dft", "DFT"},
             {"correlation", "MP2 / CCSD"},   {"driver", "DRIVER 最適化"},
             {"frequency", "振動数・熱化学"}, {"cosmo", "COSMO"},
-            {"files", "軌道・ファイル"}};
+            {"files", "軌道・ファイル"},     {"visualization", "可視化ファイル出力（CUBE / MOLDEN）"}};
 }
 QJsonObject nwchemAdvanced(const Document &d) {
     return d.data["nwchem"].toObject()["advanced"].toObject();
@@ -168,6 +241,21 @@ bool nwchemAdvancedApplies(const AdvancedOption &o, const Document &d) {
     const auto s = nwchemSettings(d);
     const auto a = nwchemAdvanced(d);
     const auto method = s["method"].toString(), task = s["task"].toString();
+    if (o.group == "visualization") {
+        if (o.key == "cube_output" || o.key == "molden_output")
+            return true;
+        if (o.key == "molden_norm")
+            return a["molden_output"].toBool();
+        if (!a["cube_output"].toBool())
+            return false;
+        if (o.key == "cube_index")
+            return a["cube_type"] == "orbital" && a["cube_orbital"] == "index";
+        if (o.key == "cube_spin" || o.key == "cube_orbital")
+            return a["cube_type"] == "orbital";
+        if (o.key == "cube_padding" || o.key == "cube_divisions")
+            return !a.contains("cube_x") || !a.contains("cube_y") || !a.contains("cube_z");
+        return true;
+    }
     if (o.key == "scf_diisbas")
         return method != "dft" && a["scf_solver"] == "diis";
     if (o.key == "vectors_input")
@@ -220,6 +308,24 @@ QString nwchemAdvancedError(const AdvancedOption &o, const QJsonValue &v) {
         if (o.key == "vectors_input" &&
             QStringList{"atomic", "hcore", "project", "fragment"}.contains(text.toLower()))
             return "予約語と同じファイル名には ./ を付けてください。";
+        if (o.key == "cube_filename" && !QRegularExpression("^[A-Za-z0-9][A-Za-z0-9_.-]{0,114}\\.(cube|cub)$",
+                                                            QRegularExpression::CaseInsensitiveOption)
+                                             .match(text)
+                                             .hasMatch())
+            return "パスを含めず、英数字で始まる120文字以内の.cube / .cubファイル名を指定してください。";
+    } else if (o.kind == AdvancedKind::GridAxis) {
+        const auto values = v.toArray();
+        if (!v.isArray() || values.size() != 3)
+            return "最小値 最大値 分割数の3個を指定してください。";
+        for (const auto &value : values)
+            if (!value.isDouble() || !std::isfinite(value.toDouble()))
+                return "有限の数値を指定してください。";
+        if (values[0].toDouble() < o.minimum || values[1].toDouble() > o.maximum ||
+            values[0].toDouble() >= values[1].toDouble())
+            return "範囲は−100000〜100000 Åで、最小値 < 最大値にしてください。";
+        const auto n = values[2].toDouble();
+        if (n < 1 || n > 1000 || n != std::floor(n))
+            return "分割数は1〜1000の整数にしてください。";
     } else if (o.kind == AdvancedKind::Temperatures) {
         if (!v.isArray() || v.toArray().isEmpty() || v.toArray().size() > 20)
             return "温度を空白区切りで1〜20個指定してください。";
@@ -238,7 +344,7 @@ QJsonValue parseNwchemAdvanced(const AdvancedOption &o, const QString &text) {
         double n;
         return realNumber(trimmed, n) ? QJsonValue(n) : QJsonValue(trimmed);
     }
-    if (o.kind == AdvancedKind::Temperatures) {
+    if (o.kind == AdvancedKind::Temperatures || o.kind == AdvancedKind::GridAxis) {
         QJsonArray values;
         for (const auto &part : trimmed.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts)) {
             double n;
@@ -321,6 +427,7 @@ void validateNwchemAdvanced(const Document &d, NwchemValidation &r) {
         r.errors << "入力・出力movecsには別のファイル名を指定してください。";
     if (s["solvent"] == "cosmo" && a["cosmo_screen"] == "ideal")
         r.warnings << "COSMOのideal指定により、比誘電率の設定は使用しません。";
+    validateNwchemOutput(d, r);
 }
 QString nwchemAdvancedNumber(const Document &d, const QString &key, const QString &fallback) {
     const auto a = nwchemAdvanced(d);
@@ -330,7 +437,8 @@ QString nwchemAdvancedLines(const Document &d, const QString &group) {
     const auto a = nwchemAdvanced(d), s = nwchemSettings(d);
     QString text;
     for (const auto &o : nwchemAdvancedOptions()) {
-        if (o.group != group || !a.contains(o.key) || !nwchemAdvancedApplies(o, d))
+        if (o.group == "visualization" || o.group != group || !a.contains(o.key) ||
+            !nwchemAdvancedApplies(o, d))
             continue;
         if (!nwchemAdvancedError(o, a[o.key]).isEmpty())
             fail("不正なNWChem詳細設定: " + o.key);
@@ -372,13 +480,13 @@ QString nwchemAdvancedLines(const Document &d, const QString &group) {
 QJsonObject nwchemAdvancedPreset(const QJsonObject &settings) {
     QJsonObject result;
     for (const auto &o : nwchemAdvancedOptions())
-        if (o.group != "files" && settings.contains(o.key))
+        if (o.group != "files" && o.group != "visualization" && settings.contains(o.key))
             result[o.key] = settings[o.key];
     return result;
 }
 void applyNwchemAdvancedPreset(Document &d, const QJsonObject &settings) {
     for (const auto &o : nwchemAdvancedOptions())
-        if (o.group != "files")
+        if (o.group != "files" && o.group != "visualization")
             setNwchemAdvanced(d, o.key, settings.value(o.key));
 }
 } // namespace mf

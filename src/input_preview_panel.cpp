@@ -17,7 +17,7 @@ class InputHighlighter : public QSyntaxHighlighter {
     void highlightBlock(const QString &text) override {
         // Only color the generated input; this is not an NWChem parser.
         static const QRegularExpression tokens(
-            R"re(#[^\n]*|"[^"]*"|\b(?:start|title|memory|echo|scratch_dir|permanent_dir|charge|geometry|constraints|basis|ecp|bq|scf|dft|mp2|ccsd|driver|freq|cosmo|task|end)\b|(?<!\w)[+-]?(?:\d+\.?\d*|\.\d+)(?:[eEdD][+-]?\d+)?\b)re",
+            R"re(#[^\n]*|"[^"]*"|\b(?:start|title|memory|echo|scratch_dir|permanent_dir|charge|geometry|constraints|basis|ecp|bq|scf|dft|mp2|ccsd|driver|freq|cosmo|property|dplot|moldenfile|molden_norm|gaussian|limitxyz|orbitals|vectors|task|end)\b|(?<!\w)[+-]?(?:\d+\.?\d*|\.\d+)(?:[eEdD][+-]?\d+)?\b)re",
             QRegularExpression::CaseInsensitiveOption);
         auto matches = tokens.globalMatch(text);
         while (matches.hasNext()) {

@@ -4,6 +4,7 @@
 #include "calculation_panel.h"
 #include "execution_panel.h"
 #include "main_window.h"
+#include "nwchem_output.h"
 #include <QtWidgets>
 #include <algorithm>
 
@@ -83,6 +84,14 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
         groups[g.value] = box;
         forms->addWidget(box);
         auto *entries = new QVBoxLayout(box);
+        if (g.value == "visualization") {
+            outputSummary = new QLabel;
+            outputSummary->setObjectName("advancedOutputSummary");
+            outputSummary->setTextFormat(Qt::PlainText);
+            outputSummary->setWordWrap(true);
+            outputSummary->setTextInteractionFlags(Qt::TextSelectableByMouse);
+            entries->addWidget(outputSummary);
+        }
         auto *resetGroup = new QPushButton("このカテゴリを既定へ");
         resetGroup->setObjectName("advancedReset_" + g.value);
         groupResets[g.value] = resetGroup;
@@ -109,7 +118,8 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
                 });
             } else if (o.kind == AdvancedKind::Choice) {
                 auto *choices = new QComboBox;
-                choices->addItem("既定（指定なし）", "");
+                choices->addItem(
+                    o.group == "visualization" ? "既定（" + o.defaultText + "）" : "既定（指定なし）", "");
                 for (const auto &c : o.choices)
                     choices->addItem(c.label, c.value);
                 row.editor = choices;
@@ -286,6 +296,11 @@ void AdvancedPanel::refresh() {
                                       : QString());
     message->setVisible(!message->text().isEmpty());
     const auto report = validateNwchem(d);
+    const auto outputs = nwchemOutputFiles(d, report);
+    outputSummary->setText(
+        "HF/KSの軌道・密度を、計算後に出力します。保存先は「軌道・ファイル」の永続ディレクトリに従います。\n"
+        "この出力設定は計算プリセットの切替後も保持します。\n" +
+        (outputs.isEmpty() ? QString("CUBE・MOLDENの出力はオフです。") : "出力予定:\n" + outputs.join('\n')));
     QStringList messages;
     if (report.errors.isEmpty())
         messages << "✓ 入力を生成できます。";

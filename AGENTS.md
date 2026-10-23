@@ -16,11 +16,13 @@ renders and caches the palette's molecular thumbnails.
 `calculation_panel.*` provides the native "3 Calculation conditions" tab.
 `nwchem_advanced.*` defines typed NWChem overrides and their applicability;
 `advanced_panel.*` provides the native "4 Advanced settings" tab.
+`nwchem_output.*` validates visualization settings and generates CUBE/MOLDEN output tasks.
 `nwchem_execution.*` validates launch settings, saves immutable run bundles and
 controls cancellable NWChem processes; `execution_panel.*` provides "5 Execution settings".
 `input_preview_panel.*` provides the read-only "6 Input preview" tab using the
 shared NWChem input generator and execution plan.
 `results.*` reads NWChem logs, XYZ, CUBE and MOLDEN and generates bounded isosurfaces;
+`molden_orbitals.*` evaluates normalized Gaussian MOs with Cartesian/spherical s–g bases.
 `results_panel.*` provides the independent result viewer with cancellable native readers.
 `history.*` scans saved NWChem bundles and validates snapshots; `history_panel.*`
 provides calculation history, log browsing, reuse and result navigation.

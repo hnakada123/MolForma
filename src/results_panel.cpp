@@ -2,6 +2,7 @@
 // Independent result browsing workflow inspired by KAGAMI results_tab.py; native NWChem readers.
 #include "results_panel.h"
 #include "main_window.h"
+#include "molden_orbitals.h"
 #include <QtWidgets>
 #include <cmath>
 
@@ -56,6 +57,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     files->setMinimumContentsLength(20);
     fileRow->addWidget(files, 1);
     auto *selected = new QPushButton("選択した結果を開く");
+    selected->setObjectName("resultsOpenSelected");
     fileRow->addWidget(selected);
     source = new QLabel("結果ファイルを開いてください。");
     source->setObjectName("resultsSource");
@@ -104,7 +106,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     frames->addWidget(playFrames);
     frames->addStretch();
     split->addWidget(left);
-    auto *tabs = new QTabWidget;
+    auto *tabs = details = new QTabWidget;
     tabs->setObjectName("resultsDetails");
     split->addWidget(tabs);
     summary = new QLabel;
@@ -118,8 +120,53 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     tabs->addTab(scroll, "概要");
     energy = table({"手法", "全エネルギー / Eh", "ログ行"}, "resultsEnergy");
     tabs->addTab(energy, "エネルギー");
-    orbitals = table({"対称性", "スピン", "エネルギー / Eh", "占有数"}, "resultsOrbitals");
-    tabs->addTab(orbitals, "軌道");
+    auto *orbitalPage = new QWidget;
+    auto *ol = new QVBoxLayout(orbitalPage);
+    auto *orbitalActions = new QHBoxLayout;
+    homo = new QPushButton("HOMO");
+    lumo = new QPushButton("LUMO");
+    showOrbital = new QPushButton("選択した軌道を表示");
+    homo->setObjectName("resultsHomo");
+    lumo->setObjectName("resultsLumo");
+    showOrbital->setObjectName("resultsShowOrbital");
+    for (auto *b : {homo, lumo, showOrbital})
+        orbitalActions->addWidget(b);
+    orbitalActions->addStretch();
+    ol->addLayout(orbitalActions);
+    auto *orbitalOptions = new QFormLayout;
+    orbitalIso = new QLineEdit("0.03");
+    orbitalIso->setObjectName("resultsOrbitalIso");
+    orbitalOptions->addRow("等値 / bohr⁻³ᐟ²（±）", orbitalIso);
+    orbitalGrid = new QSpinBox;
+    orbitalGrid->setObjectName("resultsOrbitalGrid");
+    orbitalGrid->setRange(16, 100);
+    orbitalGrid->setValue(40);
+    orbitalOptions->addRow("各軸の格子分割数", orbitalGrid);
+    orbitalNorm = new QComboBox;
+    orbitalNorm->setObjectName("resultsOrbitalNorm");
+    orbitalNorm->addItem("自動判定", "auto");
+    orbitalNorm->addItem("標準MOLDEN（NWChemのNONE / JANPA）", "standard");
+    orbitalNorm->addItem("NWChem（正規化因子を含む係数）", "nwchem");
+    orbitalOptions->addRow("基底係数の正規化", orbitalNorm);
+    ol->addLayout(orbitalOptions);
+    orbitalStatus = new QLabel;
+    orbitalStatus->setObjectName("resultsOrbitalStatus");
+    orbitalStatus->setTextFormat(Qt::PlainText);
+    orbitalStatus->setWordWrap(true);
+    ol->addWidget(orbitalStatus);
+    orbitals = table({"番号", "軌道", "対称性", "スピン", "エネルギー / Eh", "占有数"}, "resultsOrbitals");
+    ol->addWidget(orbitals, 1);
+    tabs->addTab(orbitalPage, "軌道");
+    connect(showOrbital, &QPushButton::clicked, this, [this] { renderOrbital(orbitals->currentRow()); });
+    connect(orbitals, &QTableWidget::cellDoubleClicked, this, [this](int row, int) { renderOrbital(row); });
+    connect(orbitals, &QTableWidget::currentCellChanged, this, [this] { updateActions(); });
+    const auto frontier = [this](bool virtualOrbital) {
+        const int row = orbitals->currentRow();
+        const auto spin = row >= 0 && row < data.orbitals.size() ? data.orbitals[row].spin : QString("Alpha");
+        renderOrbital(frontierOrbital(data.orbitals, spin, virtualOrbital));
+    };
+    connect(homo, &QPushButton::clicked, this, [frontier] { frontier(false); });
+    connect(lumo, &QPushButton::clicked, this, [frontier] { frontier(true); });
     auto *vibrations = new QWidget;
     auto *vl = new QVBoxLayout(vibrations);
     modes = table({"振動数 / cm⁻¹", "IR強度 / km mol⁻¹"}, "resultsModes");
@@ -168,11 +215,11 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     connect(positive, &QCheckBox::toggled, this, style);
     connect(negative, &QCheckBox::toggled, this, style);
     connect(opacity, &QSlider::valueChanged, this, style);
-    auto *surfaceHint = new QLabel("電子密度・軌道・静電ポテンシャル等を含むCUBEを表示します。値の意味は生成"
-                                   "条件で確認してください。MOLDENの係数からの等値面生成は未対応です。");
+    auto *surfaceHint = new QLabel("CUBEとMOLDEN軌道の正負・不透明度を変更できます。CUBEの値の意味は生成"
+                                   "条件で確認してください。MOLDENの軌道と等値は「軌道」で選択します。");
     surfaceHint->setWordWrap(true);
     sf->addRow(surfaceHint);
-    tabs->addTab(surfaces, "CUBE");
+    tabs->addTab(surfaces, "CUBE / 等値面");
     log = new QPlainTextEdit;
     log->setObjectName("resultsLog");
     log->setReadOnly(true);
@@ -198,8 +245,10 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         if (files->currentIndex() >= 0)
             openFile(QDir(folder).filePath(files->currentText()));
     });
-    connect(reload, &QPushButton::clicked, this,
-            [this] { startLoad(data.source, data.isovalue, data.dataset); });
+    connect(reload, &QPushButton::clicked, this, [this] {
+        startLoad(data.source, data.isovalue, data.dataset, data.selectedOrbital, data.normalizationRequest,
+                  data.orbitalDivisions);
+    });
     connect(cancel, &QPushButton::clicked, this, &ResultsPanel::cancelLoad);
     connect(frame, &QSpinBox::valueChanged, this, [this] {
         if (!animation.isActive())
@@ -331,7 +380,19 @@ void ResultsPanel::openDirectory(const QString &path) {
     files->setCurrentIndex(index >= 0 ? index : 0);
     openFile(dir.filePath(files->currentText()));
 }
-void ResultsPanel::startLoad(const QString &path, double iso, int channel) {
+void ResultsPanel::renderOrbital(int orbital) {
+    if (data.format != "MOLDEN" || orbital < 0 || orbital >= data.orbitals.size())
+        return;
+    bool ok;
+    const double iso = orbitalIso->text().toDouble(&ok);
+    if (!ok || !std::isfinite(iso) || iso <= 0 || iso > 1e6) {
+        error("軌道の等値は0より大きい有限の数で指定してください。");
+        return;
+    }
+    startLoad(data.source, iso, 0, orbital, orbitalNorm->currentData().toString(), orbitalGrid->value());
+}
+void ResultsPanel::startLoad(const QString &path, double iso, int channel, int orbital,
+                             const QString &normalization, int divisions) {
     cancelLoad();
     stopAnimation();
     if (path.isEmpty())
@@ -348,9 +409,13 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel) {
     pendingPath = before.absoluteFilePath();
     const QString request = work->filePath("request.json"), response = work->filePath("result.bin");
     try {
-        writeFile(request,
-                  QJsonDocument(QJsonObject{{"path", pendingPath}, {"isovalue", iso}, {"dataset", channel}})
-                      .toJson());
+        writeFile(request, QJsonDocument(QJsonObject{{"path", pendingPath},
+                                                     {"isovalue", iso},
+                                                     {"dataset", channel},
+                                                     {"orbital", orbital},
+                                                     {"normalization", normalization},
+                                                     {"orbital_divisions", divisions}})
+                               .toJson());
     } catch (const std::exception &e) {
         error(QString::fromUtf8(e.what()));
         work.reset();
@@ -391,8 +456,15 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel) {
                         after.lastModified() != originalTime || after.canonicalFilePath() != originalTarget)
                         fail("読込中にファイルが更新されました。再読込してください。");
                     auto next = loadResultData(response);
+                    const bool newSource = data.source != next.source;
                     data = std::move(next);
                     display();
+                    if (newSource)
+                        view->fit();
+                    if (newSource && data.format == "MOLDEN" && !data.orbitals.isEmpty())
+                        details->setCurrentIndex(2);
+                    else if (newSource && data.format == "NWChem" && !data.energies.isEmpty())
+                        details->setCurrentIndex(1);
                     emit loaded();
                 } catch (const std::exception &e) {
                     error(QString::fromUtf8(e.what()));
@@ -418,14 +490,34 @@ void ResultsPanel::updateActions() {
                          !data.modes[mode].displacement.isEmpty());
     applyIso->setEnabled(ready && data.format == "CUBE");
     dataset->setEnabled(applyIso->isEnabled());
+    const int selected = orbitals->currentRow();
+    const bool orbitalReady = ready && data.format == "MOLDEN" && data.orbitalBasis;
+    showOrbital->setEnabled(orbitalReady && selected >= 0 && selected < data.orbitals.size());
+    orbitalIso->setEnabled(orbitalReady);
+    orbitalGrid->setEnabled(orbitalReady);
+    orbitalNorm->setEnabled(orbitalReady);
+    const auto spin =
+        selected >= 0 && selected < data.orbitals.size() ? data.orbitals[selected].spin : QString("Alpha");
+    homo->setEnabled(orbitalReady && frontierOrbital(data.orbitals, spin) >= 0);
+    lumo->setEnabled(orbitalReady && frontierOrbital(data.orbitals, spin, true) >= 0);
 }
 void ResultsPanel::display() {
     source->setText(data.source);
     status->setText(data.status);
-    folder = QFileInfo(data.source).absolutePath();
+    QString selectedFile;
+    for (int i = 0; i < files->count(); ++i)
+        if (QFileInfo(QDir(folder).filePath(files->itemText(i))).absoluteFilePath() ==
+            QFileInfo(data.source).absoluteFilePath()) {
+            selectedFile = files->itemText(i);
+            break;
+        }
+    if (selectedFile.isEmpty()) {
+        folder = QFileInfo(data.source).absolutePath();
+        selectedFile = QFileInfo(data.source).fileName();
+    }
     files->clear();
     files->addItems(resultFiles(folder));
-    files->setCurrentText(QFileInfo(data.source).fileName());
+    files->setCurrentText(selectedFile);
     QString info = QString("形式: %1\n構造: %2 / エネルギー: %3 / 軌道: %4 / 振動: %5\n")
                        .arg(data.format)
                        .arg(data.frames.size())
@@ -439,7 +531,7 @@ void ResultsPanel::display() {
     if (!data.energies.isEmpty())
         info += "最後の記録: " + data.energies.last().method + " " + real(data.energies.last().hartree) +
                 " Eh\nエネルギーは出力順です。最適化ステップとの1対1対応ではありません。\n";
-    if (data.format == "CUBE")
+    if (data.format == "CUBE" || data.selectedOrbital >= 0)
         info += QString("格子: %1 × %2 × %3\n値の範囲: %4 ～ %5\n等値: ±%6 / 三角形: %7\n")
                     .arg(data.grid[0])
                     .arg(data.grid[1])
@@ -454,11 +546,40 @@ void ResultsPanel::display() {
         const auto &e = data.energies[i];
         row(energy, i, {e.method, real(e.hartree), e.line ? QString::number(e.line) : "—"});
     }
-    orbitals->setRowCount(data.orbitals.size());
-    for (int i = 0; i < data.orbitals.size(); ++i) {
-        const auto &o = data.orbitals[i];
-        row(orbitals, i, {o.symmetry, o.spin, real(o.energy), real(o.occupation)});
+    {
+        const QSignalBlocker guard(orbitals);
+        orbitals->setRowCount(data.orbitals.size());
+        QMap<QString, int> indices;
+        QMap<QString, int> homos, lumos;
+        for (const auto &spin : {QString("Alpha"), QString("Beta")}) {
+            homos[spin] = frontierOrbital(data.orbitals, spin);
+            lumos[spin] = frontierOrbital(data.orbitals, spin, true);
+        }
+        for (int i = 0; i < data.orbitals.size(); ++i) {
+            const auto &o = data.orbitals[i];
+            const QString frontier = i == homos[o.spin] ? "HOMO" : i == lumos[o.spin] ? "LUMO" : QString();
+            row(orbitals, i,
+                {QString::number(++indices[o.spin]), frontier, o.symmetry, o.spin, real(o.energy),
+                 real(o.occupation)});
+        }
+        orbitals->clearSelection();
+        orbitals->setCurrentCell(data.selectedOrbital, 0);
+        if (data.selectedOrbital >= 0)
+            orbitals->scrollToItem(orbitals->item(data.selectedOrbital, 0));
     }
+    orbitalIso->setText(real(data.isovalue));
+    orbitalGrid->setValue(data.orbitalDivisions);
+    orbitalNorm->setCurrentIndex(orbitalNorm->findData(data.normalizationRequest));
+    orbitalStatus->setText(
+        data.format != "MOLDEN"        ? "MOLDENファイルを開くと分子軌道を表示します。"
+        : !data.orbitalError.isEmpty() ? data.orbitalError
+        : data.selectedOrbital >= 0
+            ? QString("表示中: %1 %2番 / 等値 ±%3 / 正規化: "
+                      "%4\n軌道を選び「選択した軌道を表示」、またはダブルクリック。赤: 正 / 青: 負。")
+                  .arg(data.orbitals[data.selectedOrbital].spin,
+                       orbitals->item(data.selectedOrbital, 0)->text(), real(data.isovalue),
+                       data.orbitalNormalization == "nwchem" ? "NWChem" : "標準MOLDEN")
+            : "このファイルには表示可能な分子軌道がありません。");
     {
         const QSignalBlocker guard(modes);
         modes->setRowCount(data.modes.size());
@@ -472,7 +593,7 @@ void ResultsPanel::display() {
     {
         const QSignalBlocker guard(frame);
         frame->setRange(data.frames.isEmpty() ? 0 : 1, data.frames.size());
-        frame->setValue(data.frames.size());
+        frame->setValue(data.selectedOrbital >= 0 ? data.orbitalFrame + 1 : data.frames.size());
         frame->setSuffix(QString(" / %1").arg(data.frames.size()));
     }
     dataset->clear();
@@ -481,14 +602,14 @@ void ResultsPanel::display() {
     dataset->setCurrentIndex(data.dataset);
     isovalue->setText(real(data.isovalue));
     showFrame();
-    view->fit();
     updateActions();
 }
 void ResultsPanel::showFrame() {
     modeDisplayed = false;
     const int i = frame->value() - 1;
     view->setDocument(i >= 0 && i < data.frames.size() ? data.frames[i].molecule : Document());
-    view->setSurface(data.surface);
+    view->setSurface(data.format != "MOLDEN" || i == data.orbitalFrame ? data.surface
+                                                                       : QVector<SurfaceTriangle>{});
 }
 void ResultsPanel::showMode() {
     modeDisplayed = true;

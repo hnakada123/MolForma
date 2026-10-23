@@ -145,7 +145,7 @@ class ExecutionTest : public QObject {
         QVERIFY(p.input.contains("output \"orbitals/new.movecs\""));
         QVERIFY(QFileInfo(p.directory + "/scratch").isDir());
         QVERIFY(QFileInfo(p.directory + "/permanent").isDir());
-        QVERIFY(QFileInfo(p.directory + "/orbitals").isDir());
+        QVERIFY(QFileInfo(p.directory + "/permanent/orbitals").isDir());
         QCOMPARE(d.toJson(), before);
         setNwchemAdvanced(d, "vectors_output", files.filePath("seed orbitals.movecs"));
         QVERIFY_EXCEPTION_THROWN(executionPlan(d, files.path(), p.directory), std::runtime_error);

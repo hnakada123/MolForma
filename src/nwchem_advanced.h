@@ -2,7 +2,7 @@
 #include "nwchem.h"
 
 namespace mf {
-enum class AdvancedKind { Real, Integer, Choice, Flag, Path, Temperatures };
+enum class AdvancedKind { Real, Integer, Choice, Flag, Path, Temperatures, GridAxis };
 struct AdvancedOption {
     QString key, group, label, keyword, help, defaultText;
     AdvancedKind kind = AdvancedKind::Real;
