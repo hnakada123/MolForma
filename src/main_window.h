@@ -94,7 +94,8 @@ class MainWindow : public QMainWindow {
     QWidget *candidateBar = nullptr;
     QCheckBox *autoH = nullptr, *keepSelection = nullptr, *keepTool = nullptr, *showH = nullptr,
               *growth = nullptr;
-    QPushButton *cancelWorkerButton = nullptr;
+    QPushButton *cancelWorkerButton = nullptr, *periodicTableButton = nullptr;
+    QString paletteElement = "C";
     QDoubleSpinBox *dimension = nullptr;
     QJsonArray customParts;
     QDoubleSpinBox *positionFields[3]{}, *translateFields[3]{}, *duplicateFields[3]{}, *chargeFields[3]{};

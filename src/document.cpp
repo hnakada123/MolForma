@@ -67,7 +67,8 @@ const QVector<Element> &elements() {
         for (auto v : parseJson(readFile(":/data/elements.json"))["elements"].toArray()) {
             auto o = v.toObject();
             result.append({o["symbol"].toString(), o["z"].toInt(), o["mass"].toDouble(),
-                           o["covalent_radius"].toDouble(), QColor(o["color"].toString())});
+                           o["covalent_radius"].toDouble(), QColor(o["color"].toString()),
+                           o["name_ja"].toString(), o["name_en"].toString()});
         }
         return result;
     }();

@@ -6,602 +6,1062 @@
    "z": 1,
    "mass": 1.00784,
    "covalent_radius": 0.31,
-   "color": "#f7f7f7"
+   "color": "#f7f7f7",
+   "name_ja": "水素",
+   "name_en": "Hydrogen"
   },
   {
    "symbol": "He",
    "z": 2,
    "mass": 4.002602,
    "covalent_radius": 0.28,
-   "color": "#d9ffff"
+   "color": "#d9ffff",
+   "name_ja": "ヘリウム",
+   "name_en": "Helium"
   },
   {
    "symbol": "Li",
    "z": 3,
    "mass": 6.94,
    "covalent_radius": 1.28,
-   "color": "#cc80ff"
+   "color": "#cc80ff",
+   "name_ja": "リチウム",
+   "name_en": "Lithium"
   },
   {
    "symbol": "Be",
    "z": 4,
    "mass": 9.0121831,
    "covalent_radius": 0.96,
-   "color": "#c2ff00"
+   "color": "#c2ff00",
+   "name_ja": "ベリリウム",
+   "name_en": "Beryllium"
   },
   {
    "symbol": "B",
    "z": 5,
    "mass": 10.81,
    "covalent_radius": 0.84,
-   "color": "#ffb5b5"
+   "color": "#ffb5b5",
+   "name_ja": "ホウ素",
+   "name_en": "Boron"
   },
   {
    "symbol": "C",
    "z": 6,
    "mass": 12.011,
    "covalent_radius": 0.76,
-   "color": "#3a3f47"
+   "color": "#3a3f47",
+   "name_ja": "炭素",
+   "name_en": "Carbon"
   },
   {
    "symbol": "N",
    "z": 7,
    "mass": 14.007,
    "covalent_radius": 0.71,
-   "color": "#2867d8"
+   "color": "#2867d8",
+   "name_ja": "窒素",
+   "name_en": "Nitrogen"
   },
   {
    "symbol": "O",
    "z": 8,
    "mass": 15.999,
    "covalent_radius": 0.66,
-   "color": "#d33c32"
+   "color": "#d33c32",
+   "name_ja": "酸素",
+   "name_en": "Oxygen"
   },
   {
    "symbol": "F",
    "z": 9,
    "mass": 18.998403163,
    "covalent_radius": 0.57,
-   "color": "#37a85b"
+   "color": "#37a85b",
+   "name_ja": "フッ素",
+   "name_en": "Fluorine"
   },
   {
    "symbol": "Ne",
    "z": 10,
    "mass": 20.1797,
    "covalent_radius": 0.58,
-   "color": "#b3e3f5"
+   "color": "#b3e3f5",
+   "name_ja": "ネオン",
+   "name_en": "Neon"
   },
   {
    "symbol": "Na",
    "z": 11,
    "mass": 22.98976928,
    "covalent_radius": 1.66,
-   "color": "#ab5cf2"
+   "color": "#ab5cf2",
+   "name_ja": "ナトリウム",
+   "name_en": "Sodium"
   },
   {
    "symbol": "Mg",
    "z": 12,
    "mass": 24.305,
    "covalent_radius": 1.41,
-   "color": "#8aff00"
+   "color": "#8aff00",
+   "name_ja": "マグネシウム",
+   "name_en": "Magnesium"
   },
   {
    "symbol": "Al",
    "z": 13,
    "mass": 26.9815385,
    "covalent_radius": 1.21,
-   "color": "#bfa6a6"
+   "color": "#bfa6a6",
+   "name_ja": "アルミニウム",
+   "name_en": "Aluminium"
   },
   {
    "symbol": "Si",
    "z": 14,
    "mass": 28.085,
    "covalent_radius": 1.11,
-   "color": "#f0c8a0"
+   "color": "#f0c8a0",
+   "name_ja": "ケイ素",
+   "name_en": "Silicon"
   },
   {
    "symbol": "P",
    "z": 15,
    "mass": 30.973761998,
    "covalent_radius": 1.07,
-   "color": "#e08a1e"
+   "color": "#e08a1e",
+   "name_ja": "リン",
+   "name_en": "Phosphorus"
   },
   {
    "symbol": "S",
    "z": 16,
    "mass": 32.06,
    "covalent_radius": 1.05,
-   "color": "#d6b22e"
+   "color": "#d6b22e",
+   "name_ja": "硫黄",
+   "name_en": "Sulfur"
   },
   {
    "symbol": "Cl",
    "z": 17,
    "mass": 35.45,
    "covalent_radius": 1.02,
-   "color": "#2fb34f"
+   "color": "#2fb34f",
+   "name_ja": "塩素",
+   "name_en": "Chlorine"
   },
   {
    "symbol": "Ar",
    "z": 18,
    "mass": 39.948,
    "covalent_radius": 1.06,
-   "color": "#80d1e3"
+   "color": "#80d1e3",
+   "name_ja": "アルゴン",
+   "name_en": "Argon"
   },
   {
    "symbol": "K",
    "z": 19,
    "mass": 39.0983,
    "covalent_radius": 2.03,
-   "color": "#8f40d4"
+   "color": "#8f40d4",
+   "name_ja": "カリウム",
+   "name_en": "Potassium"
   },
   {
    "symbol": "Ca",
    "z": 20,
    "mass": 40.078,
    "covalent_radius": 1.76,
-   "color": "#3dff00"
+   "color": "#3dff00",
+   "name_ja": "カルシウム",
+   "name_en": "Calcium"
   },
   {
    "symbol": "Sc",
    "z": 21,
    "mass": 44.955908,
    "covalent_radius": 1.7,
-   "color": "#e6e6e6"
+   "color": "#e6e6e6",
+   "name_ja": "スカンジウム",
+   "name_en": "Scandium"
   },
   {
    "symbol": "Ti",
    "z": 22,
    "mass": 47.867,
    "covalent_radius": 1.6,
-   "color": "#bfc2c7"
+   "color": "#bfc2c7",
+   "name_ja": "チタン",
+   "name_en": "Titanium"
   },
   {
    "symbol": "V",
    "z": 23,
    "mass": 50.9415,
    "covalent_radius": 1.53,
-   "color": "#a6a6ab"
+   "color": "#a6a6ab",
+   "name_ja": "バナジウム",
+   "name_en": "Vanadium"
   },
   {
    "symbol": "Cr",
    "z": 24,
    "mass": 51.9961,
    "covalent_radius": 1.39,
-   "color": "#8a99c7"
+   "color": "#8a99c7",
+   "name_ja": "クロム",
+   "name_en": "Chromium"
   },
   {
    "symbol": "Mn",
    "z": 25,
    "mass": 54.938044,
    "covalent_radius": 1.39,
-   "color": "#9c7ac7"
+   "color": "#9c7ac7",
+   "name_ja": "マンガン",
+   "name_en": "Manganese"
   },
   {
    "symbol": "Fe",
    "z": 26,
    "mass": 55.845,
    "covalent_radius": 1.32,
-   "color": "#e06633"
+   "color": "#e06633",
+   "name_ja": "鉄",
+   "name_en": "Iron"
   },
   {
    "symbol": "Co",
    "z": 27,
    "mass": 58.933194,
    "covalent_radius": 1.26,
-   "color": "#f090a0"
+   "color": "#f090a0",
+   "name_ja": "コバルト",
+   "name_en": "Cobalt"
   },
   {
    "symbol": "Ni",
    "z": 28,
    "mass": 58.6934,
    "covalent_radius": 1.24,
-   "color": "#50d050"
+   "color": "#50d050",
+   "name_ja": "ニッケル",
+   "name_en": "Nickel"
   },
   {
    "symbol": "Cu",
    "z": 29,
    "mass": 63.546,
    "covalent_radius": 1.32,
-   "color": "#c88033"
+   "color": "#c88033",
+   "name_ja": "銅",
+   "name_en": "Copper"
   },
   {
    "symbol": "Zn",
    "z": 30,
    "mass": 65.38,
    "covalent_radius": 1.22,
-   "color": "#7d80b0"
+   "color": "#7d80b0",
+   "name_ja": "亜鉛",
+   "name_en": "Zinc"
   },
   {
    "symbol": "Ga",
    "z": 31,
    "mass": 69.723,
    "covalent_radius": 1.22,
-   "color": "#c28f8f"
+   "color": "#c28f8f",
+   "name_ja": "ガリウム",
+   "name_en": "Gallium"
   },
   {
    "symbol": "Ge",
    "z": 32,
    "mass": 72.63,
    "covalent_radius": 1.2,
-   "color": "#668f8f"
+   "color": "#668f8f",
+   "name_ja": "ゲルマニウム",
+   "name_en": "Germanium"
   },
   {
    "symbol": "As",
    "z": 33,
    "mass": 74.921595,
    "covalent_radius": 1.19,
-   "color": "#bd80e3"
+   "color": "#bd80e3",
+   "name_ja": "ヒ素",
+   "name_en": "Arsenic"
   },
   {
    "symbol": "Se",
    "z": 34,
    "mass": 78.971,
    "covalent_radius": 1.2,
-   "color": "#ffa100"
+   "color": "#ffa100",
+   "name_ja": "セレン",
+   "name_en": "Selenium"
   },
   {
    "symbol": "Br",
    "z": 35,
    "mass": 79.904,
    "covalent_radius": 1.2,
-   "color": "#8b3a2b"
+   "color": "#8b3a2b",
+   "name_ja": "臭素",
+   "name_en": "Bromine"
   },
   {
    "symbol": "Kr",
    "z": 36,
    "mass": 83.798,
    "covalent_radius": 1.16,
-   "color": "#5cb8d1"
+   "color": "#5cb8d1",
+   "name_ja": "クリプトン",
+   "name_en": "Krypton"
   },
   {
    "symbol": "Rb",
    "z": 37,
    "mass": 85.4678,
    "covalent_radius": 2.2,
-   "color": "#702eb0"
+   "color": "#702eb0",
+   "name_ja": "ルビジウム",
+   "name_en": "Rubidium"
   },
   {
    "symbol": "Sr",
    "z": 38,
    "mass": 87.62,
    "covalent_radius": 1.95,
-   "color": "#00ff00"
+   "color": "#00ff00",
+   "name_ja": "ストロンチウム",
+   "name_en": "Strontium"
   },
   {
    "symbol": "Y",
    "z": 39,
    "mass": 88.90584,
    "covalent_radius": 1.9,
-   "color": "#94ffff"
+   "color": "#94ffff",
+   "name_ja": "イットリウム",
+   "name_en": "Yttrium"
   },
   {
    "symbol": "Zr",
    "z": 40,
    "mass": 91.224,
    "covalent_radius": 1.75,
-   "color": "#94e0e0"
+   "color": "#94e0e0",
+   "name_ja": "ジルコニウム",
+   "name_en": "Zirconium"
   },
   {
    "symbol": "Nb",
    "z": 41,
    "mass": 92.90637,
    "covalent_radius": 1.64,
-   "color": "#73c2c9"
+   "color": "#73c2c9",
+   "name_ja": "ニオブ",
+   "name_en": "Niobium"
   },
   {
    "symbol": "Mo",
    "z": 42,
    "mass": 95.95,
    "covalent_radius": 1.54,
-   "color": "#54b5b5"
+   "color": "#54b5b5",
+   "name_ja": "モリブデン",
+   "name_en": "Molybdenum"
   },
   {
    "symbol": "Tc",
    "z": 43,
    "mass": 97.90721,
    "covalent_radius": 1.47,
-   "color": "#3b9e9e"
+   "color": "#3b9e9e",
+   "name_ja": "テクネチウム",
+   "name_en": "Technetium"
   },
   {
    "symbol": "Ru",
    "z": 44,
    "mass": 101.07,
    "covalent_radius": 1.46,
-   "color": "#248f8f"
+   "color": "#248f8f",
+   "name_ja": "ルテニウム",
+   "name_en": "Ruthenium"
   },
   {
    "symbol": "Rh",
    "z": 45,
    "mass": 102.9055,
    "covalent_radius": 1.42,
-   "color": "#0a7d8c"
+   "color": "#0a7d8c",
+   "name_ja": "ロジウム",
+   "name_en": "Rhodium"
   },
   {
    "symbol": "Pd",
    "z": 46,
    "mass": 106.42,
    "covalent_radius": 1.39,
-   "color": "#006985"
+   "color": "#006985",
+   "name_ja": "パラジウム",
+   "name_en": "Palladium"
   },
   {
    "symbol": "Ag",
    "z": 47,
    "mass": 107.8682,
    "covalent_radius": 1.45,
-   "color": "#c0c0c0"
+   "color": "#c0c0c0",
+   "name_ja": "銀",
+   "name_en": "Silver"
   },
   {
    "symbol": "Cd",
    "z": 48,
    "mass": 112.414,
    "covalent_radius": 1.44,
-   "color": "#ffd98f"
+   "color": "#ffd98f",
+   "name_ja": "カドミウム",
+   "name_en": "Cadmium"
   },
   {
    "symbol": "In",
    "z": 49,
    "mass": 114.818,
    "covalent_radius": 1.42,
-   "color": "#a67573"
+   "color": "#a67573",
+   "name_ja": "インジウム",
+   "name_en": "Indium"
   },
   {
    "symbol": "Sn",
    "z": 50,
    "mass": 118.71,
    "covalent_radius": 1.39,
-   "color": "#668080"
+   "color": "#668080",
+   "name_ja": "スズ",
+   "name_en": "Tin"
   },
   {
    "symbol": "Sb",
    "z": 51,
    "mass": 121.76,
    "covalent_radius": 1.39,
-   "color": "#9e63b5"
+   "color": "#9e63b5",
+   "name_ja": "アンチモン",
+   "name_en": "Antimony"
   },
   {
    "symbol": "Te",
    "z": 52,
    "mass": 127.6,
    "covalent_radius": 1.38,
-   "color": "#d47a00"
+   "color": "#d47a00",
+   "name_ja": "テルル",
+   "name_en": "Tellurium"
   },
   {
    "symbol": "I",
    "z": 53,
    "mass": 126.90447,
    "covalent_radius": 1.39,
-   "color": "#7a4cb0"
+   "color": "#7a4cb0",
+   "name_ja": "ヨウ素",
+   "name_en": "Iodine"
   },
   {
    "symbol": "Xe",
    "z": 54,
    "mass": 131.293,
    "covalent_radius": 1.4,
-   "color": "#429eb0"
+   "color": "#429eb0",
+   "name_ja": "キセノン",
+   "name_en": "Xenon"
   },
   {
    "symbol": "Cs",
    "z": 55,
    "mass": 132.90545196,
    "covalent_radius": 2.44,
-   "color": "#57178f"
+   "color": "#57178f",
+   "name_ja": "セシウム",
+   "name_en": "Caesium"
   },
   {
    "symbol": "Ba",
    "z": 56,
    "mass": 137.327,
    "covalent_radius": 2.15,
-   "color": "#00c900"
+   "color": "#00c900",
+   "name_ja": "バリウム",
+   "name_en": "Barium"
   },
   {
    "symbol": "La",
    "z": 57,
    "mass": 138.90547,
    "covalent_radius": 2.07,
-   "color": "#70d4ff"
+   "color": "#70d4ff",
+   "name_ja": "ランタン",
+   "name_en": "Lanthanum"
   },
   {
    "symbol": "Ce",
    "z": 58,
    "mass": 140.116,
    "covalent_radius": 2.04,
-   "color": "#ffffc7"
+   "color": "#ffffc7",
+   "name_ja": "セリウム",
+   "name_en": "Cerium"
   },
   {
    "symbol": "Pr",
    "z": 59,
    "mass": 140.90766,
    "covalent_radius": 2.03,
-   "color": "#d9ffc7"
+   "color": "#d9ffc7",
+   "name_ja": "プラセオジム",
+   "name_en": "Praseodymium"
   },
   {
    "symbol": "Nd",
    "z": 60,
    "mass": 144.242,
    "covalent_radius": 2.01,
-   "color": "#c7ffc7"
+   "color": "#c7ffc7",
+   "name_ja": "ネオジム",
+   "name_en": "Neodymium"
   },
   {
    "symbol": "Pm",
    "z": 61,
    "mass": 144.91276,
    "covalent_radius": 1.99,
-   "color": "#a3ffc7"
+   "color": "#a3ffc7",
+   "name_ja": "プロメチウム",
+   "name_en": "Promethium"
   },
   {
    "symbol": "Sm",
    "z": 62,
    "mass": 150.36,
    "covalent_radius": 1.98,
-   "color": "#8fffc7"
+   "color": "#8fffc7",
+   "name_ja": "サマリウム",
+   "name_en": "Samarium"
   },
   {
    "symbol": "Eu",
    "z": 63,
    "mass": 151.964,
    "covalent_radius": 1.98,
-   "color": "#61ffc7"
+   "color": "#61ffc7",
+   "name_ja": "ユウロピウム",
+   "name_en": "Europium"
   },
   {
    "symbol": "Gd",
    "z": 64,
    "mass": 157.25,
    "covalent_radius": 1.96,
-   "color": "#45ffc7"
+   "color": "#45ffc7",
+   "name_ja": "ガドリニウム",
+   "name_en": "Gadolinium"
   },
   {
    "symbol": "Tb",
    "z": 65,
    "mass": 158.92535,
    "covalent_radius": 1.94,
-   "color": "#30ffc7"
+   "color": "#30ffc7",
+   "name_ja": "テルビウム",
+   "name_en": "Terbium"
   },
   {
    "symbol": "Dy",
    "z": 66,
    "mass": 162.5,
    "covalent_radius": 1.92,
-   "color": "#1fffc7"
+   "color": "#1fffc7",
+   "name_ja": "ジスプロシウム",
+   "name_en": "Dysprosium"
   },
   {
    "symbol": "Ho",
    "z": 67,
    "mass": 164.93033,
    "covalent_radius": 1.92,
-   "color": "#00ff9c"
+   "color": "#00ff9c",
+   "name_ja": "ホルミウム",
+   "name_en": "Holmium"
   },
   {
    "symbol": "Er",
    "z": 68,
    "mass": 167.259,
    "covalent_radius": 1.89,
-   "color": "#00e675"
+   "color": "#00e675",
+   "name_ja": "エルビウム",
+   "name_en": "Erbium"
   },
   {
    "symbol": "Tm",
    "z": 69,
    "mass": 168.93422,
    "covalent_radius": 1.9,
-   "color": "#00d452"
+   "color": "#00d452",
+   "name_ja": "ツリウム",
+   "name_en": "Thulium"
   },
   {
    "symbol": "Yb",
    "z": 70,
    "mass": 173.054,
    "covalent_radius": 1.87,
-   "color": "#00bf38"
+   "color": "#00bf38",
+   "name_ja": "イッテルビウム",
+   "name_en": "Ytterbium"
   },
   {
    "symbol": "Lu",
    "z": 71,
    "mass": 174.9668,
    "covalent_radius": 1.87,
-   "color": "#00ab24"
+   "color": "#00ab24",
+   "name_ja": "ルテチウム",
+   "name_en": "Lutetium"
   },
   {
    "symbol": "Hf",
    "z": 72,
    "mass": 178.49,
    "covalent_radius": 1.75,
-   "color": "#4dc2ff"
+   "color": "#4dc2ff",
+   "name_ja": "ハフニウム",
+   "name_en": "Hafnium"
   },
   {
    "symbol": "Ta",
    "z": 73,
    "mass": 180.94788,
    "covalent_radius": 1.7,
-   "color": "#4da6ff"
+   "color": "#4da6ff",
+   "name_ja": "タンタル",
+   "name_en": "Tantalum"
   },
   {
    "symbol": "W",
    "z": 74,
    "mass": 183.84,
    "covalent_radius": 1.62,
-   "color": "#2194d6"
+   "color": "#2194d6",
+   "name_ja": "タングステン",
+   "name_en": "Tungsten"
   },
   {
    "symbol": "Re",
    "z": 75,
    "mass": 186.207,
    "covalent_radius": 1.51,
-   "color": "#267dab"
+   "color": "#267dab",
+   "name_ja": "レニウム",
+   "name_en": "Rhenium"
   },
   {
    "symbol": "Os",
    "z": 76,
    "mass": 190.23,
    "covalent_radius": 1.44,
-   "color": "#266696"
+   "color": "#266696",
+   "name_ja": "オスミウム",
+   "name_en": "Osmium"
   },
   {
    "symbol": "Ir",
    "z": 77,
    "mass": 192.217,
    "covalent_radius": 1.41,
-   "color": "#175487"
+   "color": "#175487",
+   "name_ja": "イリジウム",
+   "name_en": "Iridium"
   },
   {
    "symbol": "Pt",
    "z": 78,
    "mass": 195.084,
    "covalent_radius": 1.36,
-   "color": "#d0d0e0"
+   "color": "#d0d0e0",
+   "name_ja": "白金",
+   "name_en": "Platinum"
   },
   {
    "symbol": "Au",
    "z": 79,
    "mass": 196.966569,
    "covalent_radius": 1.36,
-   "color": "#ffd123"
+   "color": "#ffd123",
+   "name_ja": "金",
+   "name_en": "Gold"
   },
   {
    "symbol": "Hg",
    "z": 80,
    "mass": 200.592,
    "covalent_radius": 1.32,
-   "color": "#b8b8d0"
+   "color": "#b8b8d0",
+   "name_ja": "水銀",
+   "name_en": "Mercury"
   },
   {
    "symbol": "Tl",
    "z": 81,
    "mass": 204.38,
    "covalent_radius": 1.45,
-   "color": "#a6544d"
+   "color": "#a6544d",
+   "name_ja": "タリウム",
+   "name_en": "Thallium"
   },
   {
    "symbol": "Pb",
    "z": 82,
    "mass": 207.2,
    "covalent_radius": 1.46,
-   "color": "#575961"
+   "color": "#575961",
+   "name_ja": "鉛",
+   "name_en": "Lead"
   },
   {
    "symbol": "Bi",
    "z": 83,
    "mass": 208.9804,
    "covalent_radius": 1.48,
-   "color": "#9e4fb5"
+   "color": "#9e4fb5",
+   "name_ja": "ビスマス",
+   "name_en": "Bismuth"
   },
   {
    "symbol": "Po",
    "z": 84,
    "mass": 208.98243,
    "covalent_radius": 1.4,
-   "color": "#ab5c00"
+   "color": "#ab5c00",
+   "name_ja": "ポロニウム",
+   "name_en": "Polonium"
   },
   {
    "symbol": "At",
    "z": 85,
    "mass": 209.98715,
    "covalent_radius": 1.5,
-   "color": "#754f45"
+   "color": "#754f45",
+   "name_ja": "アスタチン",
+   "name_en": "Astatine"
   },
   {
    "symbol": "Rn",
    "z": 86,
    "mass": 222.01758,
    "covalent_radius": 1.5,
-   "color": "#428296"
+   "color": "#428296",
+   "name_ja": "ラドン",
+   "name_en": "Radon"
+  },
+  {
+   "symbol": "Fr",
+   "z": 87,
+   "mass": 223.0,
+   "covalent_radius": 2.6,
+   "color": "#420066",
+   "name_ja": "フランシウム",
+   "name_en": "Francium"
+  },
+  {
+   "symbol": "Ra",
+   "z": 88,
+   "mass": 226.0,
+   "covalent_radius": 2.21,
+   "color": "#007d00",
+   "name_ja": "ラジウム",
+   "name_en": "Radium"
+  },
+  {
+   "symbol": "Ac",
+   "z": 89,
+   "mass": 227.0,
+   "covalent_radius": 2.15,
+   "color": "#70abfa",
+   "name_ja": "アクチニウム",
+   "name_en": "Actinium"
+  },
+  {
+   "symbol": "Th",
+   "z": 90,
+   "mass": 232.0381,
+   "covalent_radius": 2.06,
+   "color": "#00baff",
+   "name_ja": "トリウム",
+   "name_en": "Thorium"
+  },
+  {
+   "symbol": "Pa",
+   "z": 91,
+   "mass": 231.03588,
+   "covalent_radius": 2.0,
+   "color": "#00a1ff",
+   "name_ja": "プロトアクチニウム",
+   "name_en": "Protactinium"
+  },
+  {
+   "symbol": "U",
+   "z": 92,
+   "mass": 238.02891,
+   "covalent_radius": 1.96,
+   "color": "#008fff",
+   "name_ja": "ウラン",
+   "name_en": "Uranium"
+  },
+  {
+   "symbol": "Np",
+   "z": 93,
+   "mass": 237.05,
+   "covalent_radius": 1.9,
+   "color": "#0080ff",
+   "name_ja": "ネプツニウム",
+   "name_en": "Neptunium"
+  },
+  {
+   "symbol": "Pu",
+   "z": 94,
+   "mass": 244.06,
+   "covalent_radius": 1.87,
+   "color": "#006bff",
+   "name_ja": "プルトニウム",
+   "name_en": "Plutonium"
+  },
+  {
+   "symbol": "Am",
+   "z": 95,
+   "mass": 243.06,
+   "covalent_radius": 1.8,
+   "color": "#545cf2",
+   "name_ja": "アメリシウム",
+   "name_en": "Americium"
+  },
+  {
+   "symbol": "Cm",
+   "z": 96,
+   "mass": 247.07,
+   "covalent_radius": 1.69,
+   "color": "#785ce3",
+   "name_ja": "キュリウム",
+   "name_en": "Curium"
+  },
+  {
+   "symbol": "Bk",
+   "z": 97,
+   "mass": 247.07,
+   "covalent_radius": 1.6,
+   "color": "#8a4fe3",
+   "name_ja": "バークリウム",
+   "name_en": "Berkelium"
+  },
+  {
+   "symbol": "Cf",
+   "z": 98,
+   "mass": 251.08,
+   "covalent_radius": 1.6,
+   "color": "#a136d4",
+   "name_ja": "カリホルニウム",
+   "name_en": "Californium"
+  },
+  {
+   "symbol": "Es",
+   "z": 99,
+   "mass": 252.08,
+   "covalent_radius": 1.6,
+   "color": "#b21fd4",
+   "name_ja": "アインスタイニウム",
+   "name_en": "Einsteinium"
+  },
+  {
+   "symbol": "Fm",
+   "z": 100,
+   "mass": 257.1,
+   "covalent_radius": 1.6,
+   "color": "#b21fba",
+   "name_ja": "フェルミウム",
+   "name_en": "Fermium"
+  },
+  {
+   "symbol": "Md",
+   "z": 101,
+   "mass": 258.1,
+   "covalent_radius": 1.6,
+   "color": "#b20da6",
+   "name_ja": "メンデレビウム",
+   "name_en": "Mendelevium"
+  },
+  {
+   "symbol": "No",
+   "z": 102,
+   "mass": 259.1,
+   "covalent_radius": 1.6,
+   "color": "#bd0d87",
+   "name_ja": "ノーベリウム",
+   "name_en": "Nobelium"
+  },
+  {
+   "symbol": "Lr",
+   "z": 103,
+   "mass": 262.11,
+   "covalent_radius": 1.6,
+   "color": "#c70066",
+   "name_ja": "ローレンシウム",
+   "name_en": "Lawrencium"
+  },
+  {
+   "symbol": "Rf",
+   "z": 104,
+   "mass": 265.12,
+   "covalent_radius": 1.6,
+   "color": "#cc0059",
+   "name_ja": "ラザホージウム",
+   "name_en": "Rutherfordium"
+  },
+  {
+   "symbol": "Db",
+   "z": 105,
+   "mass": 268.13,
+   "covalent_radius": 1.6,
+   "color": "#d1004f",
+   "name_ja": "ドブニウム",
+   "name_en": "Dubnium"
+  },
+  {
+   "symbol": "Sg",
+   "z": 106,
+   "mass": 271.13,
+   "covalent_radius": 1.6,
+   "color": "#d90045",
+   "name_ja": "シーボーギウム",
+   "name_en": "Seaborgium"
+  },
+  {
+   "symbol": "Bh",
+   "z": 107,
+   "mass": 270.0,
+   "covalent_radius": 1.6,
+   "color": "#e00038",
+   "name_ja": "ボーリウム",
+   "name_en": "Bohrium"
+  },
+  {
+   "symbol": "Hs",
+   "z": 108,
+   "mass": 277.15,
+   "covalent_radius": 1.6,
+   "color": "#e6002e",
+   "name_ja": "ハッシウム",
+   "name_en": "Hassium"
+  },
+  {
+   "symbol": "Mt",
+   "z": 109,
+   "mass": 276.15,
+   "covalent_radius": 1.6,
+   "color": "#eb0026",
+   "name_ja": "マイトネリウム",
+   "name_en": "Meitnerium"
+  },
+  {
+   "symbol": "Ds",
+   "z": 110,
+   "mass": 281.16,
+   "covalent_radius": 1.6,
+   "color": "#ed0024",
+   "name_ja": "ダームスタチウム",
+   "name_en": "Darmstadtium"
+  },
+  {
+   "symbol": "Rg",
+   "z": 111,
+   "mass": 280.16,
+   "covalent_radius": 1.6,
+   "color": "#f00021",
+   "name_ja": "レントゲニウム",
+   "name_en": "Roentgenium"
+  },
+  {
+   "symbol": "Cn",
+   "z": 112,
+   "mass": 285.17,
+   "covalent_radius": 1.6,
+   "color": "#f2001f",
+   "name_ja": "コペルニシウム",
+   "name_en": "Copernicium"
+  },
+  {
+   "symbol": "Nh",
+   "z": 113,
+   "mass": 284.18,
+   "covalent_radius": 1.6,
+   "color": "#f5001c",
+   "name_ja": "ニホニウム",
+   "name_en": "Nihonium"
+  },
+  {
+   "symbol": "Fl",
+   "z": 114,
+   "mass": 289.19,
+   "covalent_radius": 1.6,
+   "color": "#f7001a",
+   "name_ja": "フレロビウム",
+   "name_en": "Flerovium"
+  },
+  {
+   "symbol": "Mc",
+   "z": 115,
+   "mass": 288.19,
+   "covalent_radius": 1.6,
+   "color": "#fa0017",
+   "name_ja": "モスコビウム",
+   "name_en": "Moscovium"
+  },
+  {
+   "symbol": "Lv",
+   "z": 116,
+   "mass": 293.0,
+   "covalent_radius": 1.6,
+   "color": "#fc0014",
+   "name_ja": "リバモリウム",
+   "name_en": "Livermorium"
+  },
+  {
+   "symbol": "Ts",
+   "z": 117,
+   "mass": 294.0,
+   "covalent_radius": 1.6,
+   "color": "#fc0012",
+   "name_ja": "テネシン",
+   "name_en": "Tennessine"
+  },
+  {
+   "symbol": "Og",
+   "z": 118,
+   "mass": 294.0,
+   "covalent_radius": 1.6,
+   "color": "#fc000f",
+   "name_ja": "オガネソン",
+   "name_en": "Oganesson"
   }
  ],
  "isotopes": {
@@ -902,5 +1362,6 @@
   "86:211": 210.9906011,
   "86:220": 220.0113941,
   "86:222": 222.0175782
- }
+ },
+ "extension_provenance": "MolForma: Japanese element names; English names and Z=87-118 mass, covalent radius and Jmol colors from Open Babel 3.2.1 OBElements API (src/elementtable.h). Heavy-element radii include Open Babel estimates/fallbacks; masses are database reference values, not measured standard atomic weights. NWChem named-element coverage H-Og checked against src/geom/periodic.fh; provisional Z=119,120 excluded."
 }

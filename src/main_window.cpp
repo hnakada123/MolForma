@@ -9,6 +9,7 @@
 #include "input_preview_panel.h"
 #include "operations.h"
 #include "peptide.h"
+#include "periodic_table.h"
 #include "results_panel.h"
 #include "template_delegate.h"
 #include <QDrag>
@@ -251,7 +252,7 @@ void MainWindow::buildUi() {
     category = new QComboBox;
     category->setObjectName("paletteCategory");
     for (auto pair : QList<QPair<QString, QString>>{{"すべて", "all"},
-                                                    {"原子 H〜Rn", "atom"},
+                                                    {"原子（周期表 H〜Og）", "atom"},
                                                     {"骨格", "skeleton"},
                                                     {"置換基", "substituent"},
                                                     {"配位中心", "center"},
@@ -260,6 +261,19 @@ void MainWindow::buildUi() {
                                                     {"マイ部品", "my"}})
         category->addItem(pair.first, pair.second);
     ll->addWidget(category);
+    periodicTableButton = new QPushButton("周期表から原子を選択…");
+    periodicTableButton->setObjectName("openPeriodicTable");
+    ll->addWidget(periodicTableButton);
+    connect(periodicTableButton, &QPushButton::clicked, this, [this] {
+        PeriodicTableDialog dialog(paletteElement, search->text(), this);
+        if (dialog.exec() != QDialog::Accepted)
+            return;
+        paletteElement = dialog.selectedElement();
+        search->clear();
+        refreshPalette();
+        palette->setCurrentRow(0);
+        paletteChosen();
+    });
     growth = new QCheckBox("アミノ酸の連続追加");
     ll->addWidget(growth);
     palette = new PaletteList;
@@ -609,6 +623,9 @@ void MainWindow::buildMenus() {
 }
 void MainWindow::refreshPalette() {
     QString cat = value(category), needle = search->text().trimmed();
+    periodicTableButton->setVisible(cat == "all" || cat == "atom");
+    search->setPlaceholderText(cat == "atom" ? "周期表で元素記号・名前・番号を検索"
+                                             : "名前・元素・SMILESを検索");
     growth->setVisible(cat == "amino");
     if (cat != "all" && cat != "amino")
         growth->setChecked(false);
@@ -616,20 +633,25 @@ void MainWindow::refreshPalette() {
     palette->clear();
     auto add = [&](const QString &label, const QString &id, const QString &searchText,
                    const QJsonObject &t = QJsonObject()) {
-        if (!needle.isEmpty() && !searchText.contains(needle, Qt::CaseInsensitive))
+        if (!(id.startsWith("atom:") && cat == "atom") && !needle.isEmpty() &&
+            !searchText.contains(needle, Qt::CaseInsensitive))
             return;
         auto *item = new QListWidgetItem(label, palette);
         item->setData(Qt::UserRole, id);
         if (!t.isEmpty())
             item->setData(TemplateDelegate::TemplateRole, t);
+        if (id.startsWith("atom:"))
+            item->setData(TemplateDelegate::ElementRole, id.mid(5));
         item->setToolTip(searchText);
+        item->setData(Qt::AccessibleTextRole, searchText);
         if (id == old)
             palette->setCurrentItem(item);
     };
-    if (cat == "all" || cat == "atom")
-        for (const auto &e : elements())
-            if (e.number <= 86)
-                add(e.symbol + "  ·  " + QString::number(e.number), "atom:" + e.symbol, e.symbol);
+    if (cat == "all" || cat == "atom") {
+        const auto &e = element(paletteElement);
+        add(e.nameJa, "atom:" + e.symbol,
+            QString("%1  %2  %3\n原子番号 %4").arg(e.symbol, e.nameJa, e.nameEn).arg(e.number));
+    }
     if (cat == "all" || cat == "center")
         for (auto s :
              QStringList{"Li", "Na", "Mg", "Al", "K",  "Ca", "Ti", "V",  "Cr", "Mn", "Fe", "Co", "Ni",

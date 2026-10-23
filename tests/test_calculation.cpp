@@ -155,6 +155,14 @@ class CalculationTest : public QObject {
         QCOMPARE(validateNwchem(d).electrons, 10);
         d.atoms[0].element = "Ce";
         QVERIFY(errorContains(d, "対応元素"));
+        for (const auto &symbol : {"U", "Og"}) {
+            d.atoms[0].element = symbol;
+            d.setJobValue("charge", 0);
+            QCOMPARE(validateNwchem(d).electrons, element(symbol).number);
+            QVERIFY(nwchemGeometry(d, CoordinateUnit::Angstrom).contains(QString(symbol) + " "));
+            QVERIFY(errorContains(d, "対応元素"));
+            QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
+        }
         d.atoms[0].element = "Kr";
         d.setJobValue("charge", 0);
         set(d, "basis", "6-31g");

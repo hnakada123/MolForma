@@ -9,6 +9,28 @@ using namespace mf;
 class CoreTest : public QObject {
     Q_OBJECT
   private slots:
+    void namedElements() {
+        QCOMPARE(elements().size(), 118);
+        QCOMPARE(elements().first().symbol, QString("H"));
+        QCOMPARE(elements().last().symbol, QString("Og"));
+        for (int i = 0; i < elements().size(); ++i) {
+            const auto &e = elements()[i];
+            QCOMPARE(e.number, i + 1);
+            QVERIFY(e.mass > 0 && e.radius > 0 && e.color.isValid());
+            QVERIFY(!e.nameJa.isEmpty() && !e.nameEn.isEmpty());
+            auto d = Document::fromXyz(QString("1\nelement\n%1 1.2 -3.4 5.6\n").arg(e.symbol));
+            d.envelope["custom"] = "preserved";
+            const auto restored = Document::fromProject(d.project());
+            QCOMPARE(restored.atoms[0].element, e.symbol);
+            QCOMPARE(restored.atoms[0].id, d.atoms[0].id);
+            QCOMPARE(restored.envelope["custom"], d.envelope["custom"]);
+            QCOMPARE(Document::fromXyz(d.xyz()).atoms[0].element, e.symbol);
+        }
+        QCOMPARE(element("U").number, 92);
+        QCOMPARE(element("Nh").number, 113);
+        QVERIFY_EXCEPTION_THROWN(element("Uue"), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(element("Ubn"), std::runtime_error);
+    }
     void nativeStereochemistry() {
         if (!hasStereochemistryBackend())
             QSKIP("RDKit C++ backend not installed");

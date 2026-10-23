@@ -25,7 +25,7 @@ if(TARGET RDKit::CIPLabeler)
 endif()
 target_compile_options(molforma_core PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 add_library(molforma_ui STATIC src/molecule_view.cpp src/main_window.cpp src/editor_panels.cpp
-    src/template_delegate.cpp src/coordinates_panel.cpp src/calculation_panel.cpp src/advanced_panel.cpp
+    src/template_delegate.cpp src/periodic_table.cpp src/coordinates_panel.cpp src/calculation_panel.cpp src/advanced_panel.cpp
     src/execution_panel.cpp src/input_preview_panel.cpp src/results_panel.cpp src/history_panel.cpp)
 target_link_libraries(molforma_ui PUBLIC molforma_core)
 target_compile_options(molforma_ui PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)

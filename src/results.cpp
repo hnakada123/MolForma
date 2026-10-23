@@ -246,7 +246,7 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
             auto row = words(line);
             if (row.size() != 6 || integer(row[1], 1, maxAtoms) != d.atoms.size() + 1)
                 fail("MOLDEN原子表の形式・番号が不正です。");
-            d.atoms << atom(symbol(integer(row[2], 1, 86)), point(row, 3, scale));
+            d.atoms << atom(symbol(integer(row[2], 1, elements().last().number)), point(row, 3, scale));
         }
         addFrame(r, d, "MOLDEN原子座標");
         r.orbitalFrame = 0;
@@ -499,7 +499,7 @@ void cube(ResultData &r, QString text) {
         row = words(stream.readLine());
         if (row.size() != 5)
             fail("CUBE原子表が不正です。");
-        d.atoms << atom(symbol(integer(row[0], 1, 86)), point(row, 2, BohrToAngstrom));
+        d.atoms << atom(symbol(integer(row[0], 1, elements().last().number)), point(row, 2, BohrToAngstrom));
         number(row[1]); // Nuclear charge may differ from Z when an ECP is used.
     }
     addFrame(r, d, "CUBE原子座標");

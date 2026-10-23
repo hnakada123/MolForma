@@ -152,6 +152,31 @@ class ResultsTest : public QObject {
               QString(cubeText()).replace("0.5", "nan")})
             QVERIFY_EXCEPTION_THROWN(readResult(save("invalid.cube", bad)), std::runtime_error);
     }
+    void heavyElementResults() {
+        for (const auto &symbol : {"Fr", "U", "Nh", "Og"}) {
+            const int z = element(symbol).number;
+            auto cube = cubeText();
+            cube.replace("6 4 1 2 3", QString("%1 %1 1 2 3").arg(z));
+            const auto c = readResult(save("heavy.cube", cube), .25);
+            QCOMPARE(c.frames[0].molecule.atoms[0].element, QString(symbol));
+            const auto molden = QString("[Molden Format]\n[Atoms] Angs\n%1 1 %2 0 0 0\n").arg(symbol).arg(z);
+            const auto m = readResult(save("heavy.molden", molden));
+            QCOMPARE(m.frames[0].molecule.atoms[0].element, QString(symbol));
+            const auto log = QString("NWChem\n Output coordinates in angstroms\n\n"
+                                     " No. Tag Charge X Y Z\n ---- ---- ------ ----- ----- -----\n"
+                                     " 1 %1 %2.0 0.0 0.0 0.0\n\n")
+                                 .arg(symbol)
+                                 .arg(z);
+            const auto l = readResult(save("heavy.out", log));
+            QCOMPARE(l.frames[0].molecule.atoms[0].element, QString(symbol));
+        }
+        auto invalid = cubeText();
+        invalid.replace("6 4 1 2 3", "119 119 1 2 3");
+        QVERIFY_EXCEPTION_THROWN(readResult(save("unknown.cube", invalid)), std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(
+            readResult(save("unknown.molden", "[Molden Format]\n[Atoms] Angs\nUue 1 119 0 0 0\n")),
+            std::runtime_error);
+    }
     void transferAndBounds() {
         auto r = readResult(save("transfer.cube", cubeText()), .25);
         auto path = files.filePath("result.bin");

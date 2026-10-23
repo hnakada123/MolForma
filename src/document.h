@@ -39,6 +39,7 @@ struct Element {
     int number;
     double mass, radius;
     QColor color;
+    QString nameJa, nameEn;
 };
 const QVector<Element> &elements();
 const Element &element(const QString &symbol);
