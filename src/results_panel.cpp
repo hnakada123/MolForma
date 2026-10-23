@@ -65,16 +65,11 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     savePng->setObjectName("resultsSavePng");
     actions->addWidget(saveXyz);
     actions->addWidget(savePng);
-    auto *fileRow = new QHBoxLayout;
-    layout->addLayout(fileRow);
     files = new QComboBox;
     files->setObjectName("resultsFiles");
     files->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     files->setMinimumContentsLength(20);
-    fileRow->addWidget(files, 1);
-    auto *selected = new QPushButton("選択した結果を開く");
-    selected->setObjectName("resultsOpenSelected");
-    fileRow->addWidget(selected);
+    layout->addWidget(files);
     source = new QLabel("結果ファイルを開いてください。");
     source->setObjectName("resultsSource");
     source->setTextFormat(Qt::PlainText);
@@ -317,9 +312,9 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         if (!p.isEmpty())
             openDirectory(p);
     });
-    connect(selected, &QPushButton::clicked, this, [this] {
-        if (files->currentIndex() >= 0)
-            openFile(QDir(folder).filePath(files->currentText()));
+    connect(files, &QComboBox::currentIndexChanged, this, [this](int index) {
+        if (index >= 0)
+            openFile(QDir(folder).filePath(files->itemText(index)));
     });
     connect(reload, &QPushButton::clicked, this, [this] {
         startLoad(data.source, data.isovalue, data.dataset, data.selectedOrbital, data.normalizationRequest,
@@ -429,6 +424,7 @@ void ResultsPanel::cancelLoad() {
     updateActions();
 }
 void ResultsPanel::openFile(const QString &path) {
+    cancelLoad();
     bool ok = true;
     const auto suffix = QFileInfo(path).suffix().toLower();
     const double iso = suffix == "cube" || suffix == "cub" ? isovalue->text().toDouble(&ok) : .03;
@@ -446,6 +442,7 @@ void ResultsPanel::openDirectory(const QString &path) {
         return;
     }
     folder = dir.absolutePath();
+    const QSignalBlocker guard(files);
     files->clear();
     files->addItems(resultFiles(folder));
     if (files->count() == 0) {
@@ -633,6 +630,7 @@ void ResultsPanel::display(bool orbitalOnly) {
     source->setText(data.source);
     status->setPlainText(data.status);
     if (!orbitalOnly) {
+        const QSignalBlocker guard(files);
         QString selectedFile;
         for (int i = 0; i < files->count(); ++i)
             if (QFileInfo(QDir(folder).filePath(files->itemText(i))).absoluteFilePath() ==
@@ -646,6 +644,8 @@ void ResultsPanel::display(bool orbitalOnly) {
         }
         files->clear();
         files->addItems(resultFiles(folder));
+        if (files->findText(selectedFile) < 0)
+            files->addItem(selectedFile);
         files->setCurrentText(selectedFile);
     }
     QString info = QString("形式: %1\n構造: %2 / エネルギー: %3 / 軌道: %4 / 振動: %5\n")

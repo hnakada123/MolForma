@@ -213,6 +213,81 @@ class ResultsTest : public QObject {
         // Destruction cancels an in-flight reader and stops animation.
         panel->openFile(a);
     }
+    void fileSelectionLoadsAndCancels() {
+        QTemporaryDir job;
+        QVERIFY(job.isValid());
+        const auto output = job.filePath("output.out"), xyz = job.filePath("a.xyz"),
+                   cube = job.filePath("z.cube");
+        writeFile(output, ("NWChem\n" + geometry()).toUtf8());
+        writeFile(xyz, "1\nhydrogen\nH 0 0 0\n");
+        writeFile(cube, cubeText().toUtf8());
+        writeFile(job.filePath("broken.xyz"), "invalid XYZ\n");
+        MainWindow w;
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentWidget(panel);
+        w.show();
+        auto *chooser = widget<QComboBox>(w, "resultsFiles");
+        auto *view = widget<MoleculeView>(w, "resultsView");
+        const auto before = w.document().project();
+        const int history = w.history()->count();
+        QVERIFY(!w.findChild<QPushButton *>("resultsOpenSelected"));
+        QSignalSpy done(panel, &ResultsPanel::loaded), failed(panel, &ResultsPanel::loadFailed);
+        panel->openDirectory(job.path());
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        QCOMPARE(chooser->currentText(), "output.out"); // Prefer the log over the first list item.
+        QCOMPARE(panel->result().source, output);
+        QVERIFY(!panel->loading());
+        chooser->setCurrentText("a.xyz");
+        QVERIFY(panel->loading());
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 2, 10000);
+        QCOMPARE(panel->result().source, xyz);
+        QCOMPARE(panel->result().frames[0].molecule.atoms.size(), 1);
+        const auto atomId = panel->result().frames[0].molecule.atoms[0].id;
+        QVERIFY(view->rect().contains(view->atomScreenPosition(atomId).toPoint()));
+        // Keyboard selection also opens the newly chosen file without an extra action.
+        chooser->setFocus();
+        QTest::keyClick(chooser, Qt::Key_End);
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 3, 10000);
+        QCOMPARE(chooser->currentText(), "z.cube");
+        QCOMPARE(panel->result().source, cube);
+        QVERIFY(!panel->result().surface.isEmpty());
+        chooser->setCurrentText("a.xyz");
+        QVERIFY(panel->loading());
+        chooser->setCurrentText("output.out");
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 4, 10000);
+        QCOMPARE(panel->result().source, output);
+        QVERIFY(panel->result().surface.isEmpty());
+        QVERIFY(!panel->loading()); // Refreshing the list must not start another reader.
+        QCOMPARE(failed.count(), 0);
+        chooser->setCurrentText("broken.xyz");
+        QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 10000);
+        QCOMPARE(panel->result().source, output);
+        QCOMPARE(done.count(), 4);
+        chooser->setCurrentText("a.xyz");
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 5, 10000);
+        QCOMPARE(panel->result().source, xyz);
+        chooser->setCurrentText("output.out");
+        QVERIFY(panel->loading());
+        widget<QLineEdit>(w, "resultsIsovalue")->setText("nan");
+        chooser->setCurrentText("z.cube");
+        QCOMPARE(failed.count(), 2);
+        QVERIFY(!panel->loading()); // Even a rejected selection cancels the older request.
+        QTest::qWait(100);
+        QCOMPARE(done.count(), 5);
+        QCOMPARE(panel->result().source, xyz);
+        chooser->setCurrentText("output.out");
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 6, 10000);
+        QCOMPARE(panel->result().source, output);
+        const auto other = job.filePath("result.dat");
+        writeFile(other, ("NWChem\n" + geometry()).toUtf8());
+        panel->openFile(other);
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 7, 10000);
+        QCOMPARE(chooser->currentText(), "result.dat");
+        QCOMPARE(panel->result().source, other);
+        QVERIFY(!panel->loading());
+        QCOMPARE(w.document().project(), before);
+        QCOMPARE(w.history()->count(), history);
+    }
     void cameraSlidersPreserveGeometry() {
         MainWindow w;
         auto editor = Document::fromXyz("2\neditor\nH 0 0 0\nH 0 0 .74\n");

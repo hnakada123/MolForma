@@ -188,7 +188,6 @@ class OutputTest : public QObject {
         const int index = files->findText("permanent/molforma_density.cube");
         QVERIFY(index >= 0);
         files->setCurrentIndex(index);
-        widget<QPushButton>(w, "resultsOpenSelected")->click();
         QTRY_VERIFY(!viewer->loading());
         QCOMPARE(viewer->result().format, "CUBE");
         QVERIFY(files->findText("output.out") >= 0);
