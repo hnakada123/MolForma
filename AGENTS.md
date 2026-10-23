@@ -7,7 +7,9 @@ owns the stable-ID document and KAGAMI v2 serialization; `geometry.*` owns
 double-precision geometry. `library.*`, `operations.*`, `peptide.*` and
 `coordination.*` implement editing. `chemistry.*` uses the Open Babel C++ API.
 `stereochemistry.*` optionally uses native RDKit for CIP and residue recognition.
-`molecule_view.*` renders with QPainter. `main_window.*` and `editor_panels.cpp`
+`molecule_view.*` owns camera/input, Qt annotations and the QPainter fallback;
+`vtk_molecule_renderer.*` provides optional retained native VTK/OpenGL rendering.
+`main_window.*` and `editor_panels.cpp`
 provide the Qt UI, candidate edits and undo history. `template_delegate.*`
 renders and caches the palette's molecular thumbnails.
 `coordinates.*` implements coordinate edits and NWChem geometry fragments;

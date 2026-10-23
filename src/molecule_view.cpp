@@ -1,41 +1,175 @@
 #include "molecule_view.h"
 #include "geometry.h"
+#ifdef MOLFORMA_HAS_VTK
+#include "vtk_molecule_renderer.h"
+#include <QOffscreenSurface>
+#include <QOpenGLContext>
+#include <QSurfaceFormat>
+#endif
+#include <QApplication>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QKeyEvent>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QResizeEvent>
+#include <QShowEvent>
 #include <QWheelEvent>
 #include <algorithm>
+#include <functional>
+#include <utility>
 namespace mf {
+namespace {
+class ViewOverlay : public QWidget {
+  public:
+    std::function<void(QPainter &)> draw;
+    explicit ViewOverlay(QWidget *parent) : QWidget(parent) {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setAttribute(Qt::WA_NoSystemBackground);
+        setFocusPolicy(Qt::NoFocus);
+    }
+    void paintEvent(QPaintEvent *) override {
+        QPainter painter(this);
+        draw(painter);
+    }
+};
+} // namespace
+void MoleculeView::configureDefaultSurfaceFormat() {
+#ifdef MOLFORMA_HAS_VTK
+    auto format = QVTKOpenGLNativeWidget::defaultFormat();
+    format.setSamples(0);
+    format.setAlphaBufferSize(8);
+    QSurfaceFormat::setDefaultFormat(format);
+#endif
+}
 MoleculeView::MoleculeView(QWidget *parent) : QWidget(parent) {
     setObjectName("moleculeView");
     setFocusPolicy(Qt::StrongFocus);
     setAcceptDrops(true);
     setMouseTracking(true);
+    renderTimer.setSingleShot(true);
+    connect(&renderTimer, &QTimer::timeout, this, &MoleculeView::renderScene);
+#ifdef MOLFORMA_HAS_VTK
+    const auto platform = QApplication::platformName();
+    if (qEnvironmentVariable("MOLFORMA_RENDERER").toLower() != "painter" && platform != "offscreen" &&
+        platform != "minimal") {
+        // Probe before adding an OpenGL widget to the top-level window's composition path.
+        QOpenGLContext context;
+        context.setFormat(QVTKOpenGLNativeWidget::defaultFormat());
+        QOffscreenSurface probe;
+        if (context.create()) {
+            probe.setFormat(context.format());
+            probe.create();
+            const auto version = context.format().version();
+            if (version >= qMakePair(3, 2) && probe.isValid() && context.makeCurrent(&probe)) {
+                context.doneCurrent();
+                renderer = new VtkMoleculeRenderer(this);
+                auto *layer = new ViewOverlay(this);
+                layer->draw = [this](QPainter &p) { paintContents(p, true); };
+                overlay = layer;
+            }
+        }
+        if (!renderer)
+            qWarning("MolForma: OpenGL 3.2 is unavailable; using QPainter rendering.");
+    }
+#endif
+}
+QString MoleculeView::rendererName() const {
+    return renderer ? "vtk" : "painter";
+}
+void MoleculeView::scheduleRender() {
+    if (renderer) {
+        // Render before scheduling composition, so Qt does not first present the old 3D frame.
+        if (!renderTimer.isActive())
+            renderTimer.start(0);
+    } else {
+        update();
+    }
+}
+void MoleculeView::refreshColors() {
+    atomColors.clear();
+    atomColors.reserve(doc.atoms.size());
+    for (const auto &atom : doc.atoms)
+        atomColors << atomColor(atom);
+    moleculeDirty = true;
+}
+void MoleculeView::renderScene() {
+#ifdef MOLFORMA_HAS_VTK
+    if (!renderer || !isVisible())
+        return;
+    if (moleculeDirty) {
+        renderer->setMolecule(doc, atomColors, showHydrogens);
+        moleculeDirty = false;
+    }
+    if (surfaceDirty) {
+        renderer->setSurface(surface);
+        surfaceDirty = false;
+    }
+    renderer->setSurfaceStyle(positiveSurface, negativeSurface, surfaceOpacity);
+    renderer->setCamera(camera(), center, scale, pan);
+    if (renderer->draw()) {
+        overlay->update();
+    } else {
+        qWarning("MolForma: OpenGL widget initialization failed; using QPainter rendering.");
+        delete overlay;
+        overlay = nullptr;
+        delete renderer;
+        renderer = nullptr;
+        update();
+    }
+#endif
+}
+void MoleculeView::resizeEvent(QResizeEvent *event) {
+    QWidget::resizeEvent(event);
+#ifdef MOLFORMA_HAS_VTK
+    if (renderer) {
+        renderer->setGeometry(rect());
+        overlay->setGeometry(rect());
+        overlay->raise();
+    }
+#endif
+    scheduleRender();
+}
+void MoleculeView::showEvent(QShowEvent *event) {
+    QWidget::showEvent(event);
+    scheduleRender();
 }
 void MoleculeView::setDocument(const Document &d) {
     doc = d;
+    atomIndices.clear();
+    for (int i = 0; i < doc.atoms.size(); ++i)
+        atomIndices.insert(doc.atoms[i].id, i);
     selected.removeIf([&](auto id) { return !doc.contains(id); });
-    update();
+    refreshColors();
+    scheduleRender();
 }
 void MoleculeView::setSelection(const Ids &ids) {
     selected = ids;
-    update();
+    scheduleRender();
 }
 void MoleculeView::setSurface(const QVector<SurfaceTriangle> &triangles) {
-    surface = triangles;
-    update();
+    // Result-frame navigation can supply the same implicitly shared mesh repeatedly.
+    if (surface.constData() != triangles.constData() || surface.size() != triangles.size()) {
+        surface = triangles;
+        surfaceDirty = true;
+    }
+    scheduleRender();
 }
 void MoleculeView::setSurfaceStyle(bool positive, bool negative, int opacity) {
     positiveSurface = positive;
     negativeSurface = negative;
     surfaceOpacity = std::clamp(opacity, 0, 255);
-    update();
+    scheduleRender();
 }
 Mat MoleculeView::camera() const {
-    return rotation(Vec::UnitZ(), roll) * rotation(Vec::UnitX(), pitch) * rotation(Vec::UnitY(), yaw);
+    const Vec angles(yaw, pitch, roll);
+    if (cachedAngles != angles) {
+        cachedCamera =
+            rotation(Vec::UnitZ(), roll) * rotation(Vec::UnitX(), pitch) * rotation(Vec::UnitY(), yaw);
+        cachedAngles = angles;
+    }
+    return cachedCamera;
 }
 QPointF MoleculeView::project(const Vec &p) const {
     Vec v = camera() * (p - center);
@@ -52,7 +186,7 @@ void MoleculeView::fit() {
     QVector<Vec> points;
     for (const auto &a : doc.atoms)
         points << a.position;
-    for (const auto &triangle : surface)
+    for (const auto &triangle : std::as_const(surface))
         points << triangle.a << triangle.b << triangle.c;
     for (auto v : doc.data["point_charges"].toArray())
         points << vectorFromJson(v.toObject()["position"]);
@@ -74,7 +208,7 @@ void MoleculeView::fit() {
         radius = std::max(radius, (p - center).norm() + .6);
     scale = std::clamp(std::min(width(), height()) / (2.5 * radius), 4., 100.);
     pan = {};
-    update();
+    scheduleRender();
 }
 void MoleculeView::viewFrom(int axis) {
     yaw = axis == 0 ? -90 : 0;
@@ -86,7 +220,7 @@ void MoleculeView::setAngles(double y, double p, double r) {
     yaw = y;
     pitch = p;
     roll = r;
-    update();
+    scheduleRender();
 }
 QString MoleculeView::hitAtom(const QPointF &p) const {
     QString result;
@@ -107,9 +241,10 @@ const Bond *MoleculeView::hitBond(const QPointF &p) const {
     const Bond *result = nullptr;
     double best = 8;
     for (const auto &b : doc.bonds) {
-        if (!doc.contains(b.a) || !doc.contains(b.b))
+        const int ai = atomIndices.value(b.a, -1), bi = atomIndices.value(b.b, -1);
+        if (ai < 0 || bi < 0)
             continue;
-        const auto &a = doc.atom(b.a), &c = doc.atom(b.b);
+        const auto &a = doc.atoms[ai], &c = doc.atoms[bi];
         if (!showHydrogens && (a.element == "H" || c.element == "H"))
             continue;
         QPointF from = project(a.position), to = project(c.position), v = to - from;
@@ -148,14 +283,27 @@ QColor MoleculeView::atomColor(const Atom &a) const {
     return element(a.element).color;
 }
 void MoleculeView::paintEvent(QPaintEvent *) {
+#ifdef MOLFORMA_HAS_VTK
+    // QWidget::grab() can paint synchronously before the coalescing timer fires.
+    if (renderer && renderer->isValid() && renderTimer.isActive()) {
+        renderTimer.stop();
+        renderScene();
+    }
+#endif
+    if (renderer)
+        return;
     QPainter p(this);
+    paintContents(p, false);
+}
+void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
     p.setRenderHint(QPainter::Antialiasing);
     QLinearGradient bg(0, 0, 0, height());
     bg.setColorAt(0, QColor("#f8fafc"));
     bg.setColorAt(1, QColor("#e9eff4"));
-    p.fillRect(rect(), bg);
+    if (!overlayOnly)
+        p.fillRect(rect(), bg);
     markers.clear();
-    if (doc.atoms.isEmpty() && doc.data["point_charges"].toArray().isEmpty()) {
+    if (doc.atoms.isEmpty() && surface.isEmpty() && doc.data["point_charges"].toArray().isEmpty()) {
         p.setPen(QColor("#617487"));
         QFont f = font();
         f.setPointSize(16);
@@ -175,19 +323,22 @@ void MoleculeView::paintEvent(QPaintEvent *) {
     Mat r = camera();
     for (int i = 0; i < doc.atoms.size(); ++i)
         items << Item{(r * (doc.atoms[i].position - center)).z(), true, i};
-    for (int i = 0; i < doc.bonds.size(); ++i) {
+    for (int i = 0; !overlayOnly && i < doc.bonds.size(); ++i) {
         const auto &b = doc.bonds[i];
-        items << Item{(r * ((doc.atom(b.a).position + doc.atom(b.b).position) * .5 - center)).z(), false, i};
+        const int ai = atomIndices.value(b.a, -1), bi = atomIndices.value(b.b, -1);
+        if (ai >= 0 && bi >= 0)
+            items << Item{(r * ((doc.atoms[ai].position + doc.atoms[bi].position) * .5 - center)).z(), false,
+                          i};
     }
-    for (int i = 0; i < surface.size(); ++i) {
-        const auto &t = surface[i];
+    for (int i = 0; !overlayOnly && i < surface.size(); ++i) {
+        const auto &t = surface.at(i);
         if ((t.positive && positiveSurface) || (!t.positive && negativeSurface))
             items << Item{(r * ((t.a + t.b + t.c) / 3 - center)).z(), 2, i};
     }
     std::sort(items.begin(), items.end(), [](auto a, auto b) { return a.z < b.z; });
     for (auto item : items) {
         if (item.kind == 2) {
-            const auto &t = surface[item.index];
+            const auto &t = surface.at(item.index);
             const Vec normal = r * (t.b - t.a).cross(t.c - t.a).normalized();
             QColor color(t.positive ? "#ce5268" : "#397cce");
             color = color.lighter(80 + qRound(30 * std::abs(normal.z())));
@@ -197,7 +348,7 @@ void MoleculeView::paintEvent(QPaintEvent *) {
             p.drawPolygon(QPolygonF{project(t.a), project(t.b), project(t.c)});
         } else if (item.kind == 0) {
             const auto &b = doc.bonds[item.index];
-            const auto &a = doc.atom(b.a), &c = doc.atom(b.b);
+            const auto &a = doc.atoms[atomIndices.value(b.a)], &c = doc.atoms[atomIndices.value(b.b)];
             if (!showHydrogens && (a.element == "H" || c.element == "H"))
                 continue;
             QPointF from = project(a.position), to = project(c.position), v = to - from;
@@ -236,25 +387,27 @@ void MoleculeView::paintEvent(QPaintEvent *) {
             }
             double radius =
                 std::clamp(scale * (hydrogen ? .12 : .20), hydrogen ? 5. : 8., hydrogen ? 11. : 20.);
-            QColor color = atomColor(a);
+            QColor color = atomColors[item.index];
             if (selected.contains(a.id)) {
                 p.setPen(QPen(QColor("#de9c25"), 3));
                 p.setBrush(QColor(250, 199, 85, 80));
                 p.drawEllipse(pos, radius + 5, radius + 5);
             }
-            QRadialGradient sphere(pos - QPointF(radius * .35, radius * .4), radius * 1.5);
-            sphere.setColorAt(0, color.lighter(160));
-            sphere.setColorAt(.6, color);
-            sphere.setColorAt(1, color.darker(160));
-            p.setBrush(a.ghost ? QBrush(Qt::NoBrush) : QBrush(sphere));
-            p.setPen(QPen(color.darker(150), a.ghost ? 2 : 1, a.ghost ? Qt::DashLine : Qt::SolidLine));
-            p.drawEllipse(pos, radius, radius);
+            if (!overlayOnly || a.ghost) {
+                QRadialGradient sphere(pos - QPointF(radius * .35, radius * .4), radius * 1.5);
+                sphere.setColorAt(0, color.lighter(160));
+                sphere.setColorAt(.6, color);
+                sphere.setColorAt(1, color.darker(160));
+                p.setBrush(a.ghost ? QBrush(Qt::NoBrush) : QBrush(sphere));
+                p.setPen(QPen(color.darker(150), a.ghost ? 2 : 1, a.ghost ? Qt::DashLine : Qt::SolidLine));
+                p.drawEllipse(pos, radius, radius);
+            }
             QString label = a.isotope == 2 && hydrogen ? "D"
                             : a.isotope == 3 && hydrogen
                                 ? "T"
                                 : (a.isotope ? QString::number(a.isotope) : "") + a.element;
             if (showIndices)
-                label += QString::number(doc.index(a.id) + 1);
+                label += QString::number(item.index + 1);
             if (a.charge)
                 label += QString("(%1%2)").arg(a.charge > 0 ? "+" : "").arg(a.charge);
             p.setPen(QColor("#20364b"));
@@ -357,7 +510,7 @@ void MoleculeView::mouseMoveEvent(QMouseEvent *e) {
         }
     }
     last = e->position();
-    update();
+    scheduleRender();
 }
 void MoleculeView::mouseReleaseEvent(QMouseEvent *e) {
     auto button = pressedButton;
@@ -371,7 +524,7 @@ void MoleculeView::mouseReleaseEvent(QMouseEvent *e) {
                     ids << a.id;
             emit rectangleSelected(ids, pressModifiers.testFlag(Qt::ControlModifier));
             boxing = false;
-            update();
+            scheduleRender();
         } else if (button == Qt::LeftButton && tool == "move" && !pressedAtom.isEmpty() &&
                    !pressModifiers.testFlag(Qt::AltModifier))
             emit atomDragged(pressedAtom, worldPosition(e->position()) - worldPosition(press));
@@ -402,7 +555,7 @@ void MoleculeView::mouseReleaseEvent(QMouseEvent *e) {
 }
 void MoleculeView::wheelEvent(QWheelEvent *e) {
     scale = std::clamp(scale * std::pow(1.0015, e->angleDelta().y()), .5, 600.);
-    update();
+    scheduleRender();
     e->accept();
 }
 void MoleculeView::keyPressEvent(QKeyEvent *e) {

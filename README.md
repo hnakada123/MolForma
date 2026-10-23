@@ -22,6 +22,10 @@ ctest --test-dir build --output-on-failure
 
 Qt Testが不要な配布用ビルドでは `-DBUILD_TESTING=OFF` を指定します。Open Babelの共有ライブラリに加え、フォーマットプラグインと力場データも必要です。Pythonバインディングは使用しません。RDKit C++開発パッケージをCMakeが検出すると、厳密な立体判定・記録と残基認識も有効になります。
 
+Qt6対応のVTK 9.1以上の開発パッケージ（`GUISupportQt`、`RenderingOpenGL2`など）とQt6 OpenGL Widgetsがある場合、分子編集画面と結果ビューアの3D描画にVTKを使用します。VTKの外部依存の開発パッケージも必要です（配布によってMPI、FastFloat、nlohmann_jsonなど）。VTKはC++ APIで使用し、Python/PyVistaは不要です。配布時はVTKの共有ライブラリも含めてください。CMakeの `MolForma rendering:` 行で有効な構成を確認できます。
+
+VTKがない場合や `-DMOLFORMA_ENABLE_VTK=OFF` を指定したビルドはQPainterで描画します。実行時に `MOLFORMA_RENDERER=painter ./build/molforma` で従来描画を選択できます。Qtのoffscreen/minimal環境とOpenGL 3.2コンテキストを作成できない環境では自動的にQPainterを使用します。詳しい動作と検証方法は [描画の説明](docs/features.md#3d描画) を参照してください。
+
 ```sh
 cmake --install build --prefix /tmp/molforma-install
 /tmp/molforma-install/bin/molforma

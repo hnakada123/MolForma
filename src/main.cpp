@@ -31,6 +31,7 @@ int main(int argc, char **argv) {
             return 1;
         }
     }
+    mf::MoleculeView::configureDefaultSurfaceFormat();
     QApplication app(argc, argv);
     QCoreApplication::setApplicationName("MolForma");
     QCoreApplication::setApplicationVersion("0.1.0");
