@@ -16,7 +16,8 @@ namespace {
 constexpr qint64 maxBytes = 128 * 1024 * 1024;
 constexpr int maxAtoms = 2000, maxFrames = 2000, maxPoints = 2000000, maxTriangles = 100000;
 QStringList words(const QString &line) {
-    return line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+    static const QRegularExpression whitespace("\\s+");
+    return line.split(whitespace, Qt::SkipEmptyParts);
 }
 double number(QString text) {
     text.replace('D', 'E', Qt::CaseInsensitive);
@@ -221,8 +222,9 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
     QMap<QString, QStringList> blocks;
     QMap<QString, QString> headers;
     QString current;
+    const QRegularExpression section("^\\s*\\[([^]]+)\\](.*)$");
     for (const auto &line : lines) {
-        auto match = QRegularExpression("^\\s*\\[([^]]+)\\](.*)$").match(line);
+        auto match = section.match(line);
         if (match.hasMatch()) {
             current = match.captured(1).trimmed().toUpper();
             if (blocks.contains(current))

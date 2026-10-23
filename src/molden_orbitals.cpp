@@ -299,13 +299,57 @@ QVector<double> moldenOrbitalGrid(const MoldenWavefunction &w, int orbital, cons
     if (points * primitives > 250000000)
         fail("軌道表示の計算量が大きすぎます。格子の分割数を小さくしてください。");
     const auto polynomials = orbitalPolynomials(w, orbital);
-    QVector<double> values;
-    values.reserve(points);
-    for (int x = 0; x < grid[0]; ++x)
-        for (int y = 0; y < grid[1]; ++y)
-            for (int z = 0; z < grid[2]; ++z)
-                values << evaluate(w, polynomials,
-                                   (origin + step.cwiseProduct(Vec(x, y, z))) / BohrToAngstrom);
+    QVector<double> values(points, 0.);
+    auto *output = values.data();
+    for (int shell = 0; shell < w.shells.size(); ++shell) {
+        const auto &s = w.shells[shell];
+        const auto &polynomial = polynomials[shell];
+        if (polynomial.isEmpty())
+            continue;
+        // On an axis-aligned grid exp(-a*r^2) separates into three 1D tables.
+        // Reuse exponentials and coordinate powers without screening or reducing grid precision.
+        std::array<std::array<std::array<double, 5>, 101>, 3> powers;
+        for (int axis = 0; axis < 3; ++axis)
+            for (int i = 0; i < grid[axis]; ++i) {
+                const double r = (origin[axis] + step[axis] * i) / BohrToAngstrom - s.center[axis];
+                powers[axis][i][0] = 1;
+                powers[axis][i][1] = r;
+                for (int n = 2; n <= s.angularMomentum; ++n)
+                    powers[axis][i][n] = powers[axis][i][n - 1] * r;
+            }
+        using AxisValues = std::array<std::array<double, 101>, 3>;
+        QVector<AxisValues> exponentials(s.primitives.size());
+        for (int p = 0; p < s.primitives.size(); ++p)
+            for (int axis = 0; axis < 3; ++axis)
+                for (int i = 0; i < grid[axis]; ++i) {
+                    const double r = powers[axis][i][1];
+                    exponentials[p][axis][i] = std::exp(-s.primitives[p].exponent * r * r);
+                }
+        const auto *exps = exponentials.constData();
+        for (int x = 0; x < grid[0]; ++x)
+            for (int y = 0; y < grid[1]; ++y) {
+                std::array<double, 101> radial{};
+                for (int p = 0; p < s.primitives.size(); ++p) {
+                    const double xy = s.primitives[p].coefficient * exps[p][0][x] * exps[p][1][y];
+                    for (int z = 0; z < grid[2]; ++z)
+                        radial[z] += xy * exps[p][2][z];
+                }
+                std::array<double, 5> angular{};
+                for (const auto &t : polynomial)
+                    angular[t.powers[2]] +=
+                        t.coefficient * powers[0][x][t.powers[0]] * powers[1][y][t.powers[1]];
+                const int offset = (x * grid[1] + y) * grid[2];
+                for (int z = 0; z < grid[2]; ++z) {
+                    double a = angular[s.angularMomentum];
+                    for (int n = s.angularMomentum - 1; n >= 0; --n)
+                        a = a * powers[2][z][1] + angular[n];
+                    output[offset + z] += radial[z] * a;
+                }
+            }
+    }
+    for (double value : values)
+        if (!std::isfinite(value))
+            fail("MOLDENの軌道評価が有限値になりません。");
     return values;
 }
 int frontierOrbital(const QVector<ResultOrbital> &orbitals, const QString &spin, bool lumo) {

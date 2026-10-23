@@ -127,6 +127,39 @@ class MoldenTest : public QObject {
             b["GTO"] << "g 1 0" << "1 1";
         QVERIFY_EXCEPTION_THROWN(moldenWavefunction(b, hydrogen(), sparse), std::runtime_error);
     }
+    void separableGridMatchesPointEvaluation() {
+        auto atoms = Document::fromXyz("2\noff-center\nH .23 -.41 .37\nH -.71 .53 -.29\n");
+        for (bool spherical : {false, true}) {
+            QMap<QString, QStringList> blocks{{"GTO",
+                                               {"1 0", "sp 2 0", ".7 .3 -.4", "2.1 .8 .9", "2 0", "d 2 0",
+                                                ".9 .6", "3.2 -.2", "f 1 0", "1.3 1", "g 1 0", "1.7 1"}}};
+            if (spherical)
+                blocks["5D7F9G"] = {};
+            const int basis = spherical ? 25 : 35;
+            QVector<double> coefficients(basis);
+            for (int i = 0; i < basis; ++i)
+                coefficients[i] = std::sin(i + .4);
+            const auto w =
+                moldenWavefunction(blocks, atoms, {coefficients, QVector<double>(basis)}, "standard");
+            const Vec origin(-1.21, -.83, -.47), step(.31, .27, .19);
+            const std::array<int, 3> grid{7, 6, 5};
+            const auto values = moldenOrbitalGrid(w, 0, origin, step, grid);
+            QCOMPARE(values.size(), 7 * 6 * 5);
+            int index = 0;
+            for (int x = 0; x < grid[0]; ++x)
+                for (int y = 0; y < grid[1]; ++y)
+                    for (int z = 0; z < grid[2]; ++z) {
+                        const auto expected = w.value(0, origin + step.cwiseProduct(Vec(x, y, z)));
+                        QVERIFY(std::abs(values[index++] - expected) < 1e-12);
+                    }
+            for (double v : moldenOrbitalGrid(w, 1, origin, step, grid))
+                QCOMPARE(v, 0.);
+            const auto edge = moldenOrbitalGrid(w, 0, origin, step, {101, 2, 3});
+            QVERIFY(std::abs(edge.last() - w.value(0, origin + step.cwiseProduct(Vec(100, 1, 2)))) < 1e-12);
+            QVERIFY_EXCEPTION_THROWN(moldenOrbitalGrid(w, 2, origin, step, grid), std::runtime_error);
+            QVERIFY_EXCEPTION_THROWN(moldenOrbitalGrid(w, 0, origin, step, {102, 2, 3}), std::runtime_error);
+        }
+    }
     void metadataSelectionAndTransfer() {
         const auto path = save("orbitals.molden", sample());
         const auto r = readResult(path);
@@ -198,6 +231,195 @@ class MoldenTest : public QObject {
         QCOMPARE(w.document().project(), before);
         QCOMPARE(w.history()->count(), history);
     }
+    void navigationAndCachedSurfaces() {
+        QString text = sample().section("[MO]", 0, 0) + "[MO]\n";
+        for (int i = 0; i < 26; ++i)
+            text += QString("Sym= %1\nEne= %2\nSpin= %3\nOccup= %4\n%5 1\n")
+                        .arg(i)
+                        .arg(i * .1)
+                        .arg(i < 13 ? "Alpha" : "Beta")
+                        .arg(i == 0 ? 1 : 0)
+                        .arg(i % 4 + 1);
+        MainWindow w;
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        auto button = [&](const char *name) { return widget<QPushButton>(w, name); };
+        QVERIFY(!button("resultsOrbitalFirst")->isEnabled());
+        const auto before = w.document().project();
+        const auto history = w.history()->count();
+        QSignalSpy done(panel, &ResultsPanel::loaded), failed(panel, &ResultsPanel::loadFailed);
+        panel->openFile(save("navigation.molden", text));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        const auto firstSurface = panel->result().surface;
+        const auto firstItem = widget<QTableWidget>(w, "resultsOrbitals")->item(0, 0);
+        auto navigate = [&](const char *name, int expected) {
+            const int count = done.count();
+            QVERIFY(button(name)->isEnabled());
+            button(name)->click();
+            QTRY_COMPARE_WITH_TIMEOUT(done.count(), count + 1, 10000);
+            QCOMPARE(panel->result().selectedOrbital, expected);
+            QCOMPARE(widget<QTableWidget>(w, "resultsOrbitals")->currentRow(), expected);
+        };
+        for (const auto *name : {"resultsOrbitalFirst", "resultsOrbitalBack10", "resultsOrbitalPrevious"})
+            QVERIFY(!button(name)->isEnabled());
+        navigate("resultsOrbitalForward10", 10);
+        navigate("resultsOrbitalNext", 11);
+        navigate("resultsOrbitalPrevious", 10);
+        navigate("resultsOrbitalForward10", 20);
+        QCOMPARE(widget<QLabel>(w, "resultsOrbitalPosition")->text(), QString("Beta 8番"));
+        navigate("resultsOrbitalForward10", 25);
+        for (const auto *name : {"resultsOrbitalLast", "resultsOrbitalForward10", "resultsOrbitalNext"})
+            QVERIFY(!button(name)->isEnabled());
+        navigate("resultsOrbitalBack10", 15);
+        navigate("resultsOrbitalBack10", 5);
+        navigate("resultsOrbitalBack10", 0);
+        QCOMPARE(panel->result().surface.constData(), firstSurface.constData());
+        QCOMPARE(widget<QTableWidget>(w, "resultsOrbitals")->item(0, 0), firstItem);
+        navigate("resultsOrbitalLast", 25);
+        // Already rendered orbitals are restored synchronously, with no worker or mesh copy.
+        const int count = done.count();
+        button("resultsOrbitalFirst")->click();
+        QVERIFY(!panel->loading());
+        QCOMPARE(done.count(), count + 1);
+        QCOMPARE(panel->result().surface.constData(), firstSurface.constData());
+        auto *table = widget<QTableWidget>(w, "resultsOrbitals");
+        table->setCurrentCell(24, 0);
+        navigate("resultsOrbitalNext", 1); // Navigation follows the displayed orbital.
+        const int doubleClickCount = done.count();
+        emit table->cellDoubleClicked(0, 0);
+        QCOMPARE(done.count(), doubleClickCount + 1);
+        QCOMPARE(panel->result().selectedOrbital, 0);
+        // Cancel an in-flight request by double-clicking a cached orbital.
+        emit table->cellDoubleClicked(2, 0);
+        QVERIFY(panel->loading());
+        emit table->cellDoubleClicked(0, 0);
+        QVERIFY(!panel->loading());
+        QCOMPARE(panel->result().surface.constData(), firstSurface.constData());
+        QTest::qWait(100);
+        QCOMPARE(panel->result().selectedOrbital, 0);
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(w.document().project(), before);
+        QCOMPARE(w.history()->count(), history);
+        panel->openFile(save("navigation.xyz", "1\nH\nH 0 0 0\n"));
+        QTRY_VERIFY_WITH_TIMEOUT(!panel->loading(), 10000);
+        for (const auto *name : {"resultsOrbitalFirst", "resultsOrbitalBack10", "resultsOrbitalPrevious",
+                                 "resultsOrbitalNext", "resultsOrbitalForward10", "resultsOrbitalLast"})
+            QVERIFY(!button(name)->isEnabled());
+    }
+    void statusMessagesKeepViewerGeometry() {
+        MainWindow w;
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentWidget(panel);
+        w.show();
+        const auto path = save(QString(180, 'a') + ".molden", sample());
+        auto *status = widget<QPlainTextEdit>(w, "resultsStatus");
+        auto *next = widget<QPushButton>(w, "resultsOrbitalNext");
+        auto *previous = widget<QPushButton>(w, "resultsOrbitalPrevious");
+        QSignalSpy done(panel, &ResultsPanel::loaded), failed(panel, &ResultsPanel::loadFailed);
+        auto geometry = [&] {
+            // Deliver layout changes while leaving worker completion queued, so the loading
+            // message is checked deterministically even when the worker finishes quickly.
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
+            QVector<QRect> rectangles;
+            for (const auto *name :
+                 {"resultsView", "resultsYaw", "resultsPitch", "resultsRoll", "resultsOrbitalFirst",
+                  "resultsOrbitalNext", "resultsDetails", "resultsStatus"}) {
+                auto *control = widget<QWidget>(w, name);
+                rectangles << QRect(control->mapTo(panel, QPoint()), control->size());
+            }
+            return rectangles;
+        };
+        for (const auto &size : {QSize(1380, 900), QSize(1000, 760)}) {
+            w.resize(size);
+            const int count = done.count();
+            panel->openFile(path);
+            QTRY_COMPARE_WITH_TIMEOUT(done.count(), count + 1, 10000);
+            const auto before = geometry();
+            QVERIFY(status->isReadOnly());
+            QVERIFY(before.last().top() > before[6].bottom());
+            next->click();
+            QVERIFY(panel->loading());
+            QVERIFY(status->toPlainText().contains("\n完了まで前の結果を表示します。"));
+            QCOMPARE(geometry(), before);
+            QVERIFY(status->verticalScrollBar()->maximum() > 0); // Wrapped long path is accessible.
+            panel->cancelLoad();
+            QVERIFY(status->toPlainText().contains("中止"));
+            QCOMPARE(geometry(), before);
+            next->click();
+            QCOMPARE(geometry(), before);
+            QTRY_COMPARE_WITH_TIMEOUT(done.count(), count + 2, 10000);
+            QCOMPARE(panel->result().selectedOrbital, 1);
+            QCOMPARE(geometry(), before);
+            previous->click(); // Cached orbital: no loading message or worker.
+            QVERIFY(!panel->loading());
+            QCOMPARE(panel->result().selectedOrbital, 0);
+            QCOMPARE(geometry(), before);
+            widget<QLineEdit>(w, "resultsOrbitalIso")->setText("nan");
+            next->click();
+            QVERIFY(status->toPlainText().startsWith("読込・表示エラー:"));
+            QCOMPARE(geometry(), before);
+        }
+        QCOMPARE(failed.count(), 2);
+    }
+    void cacheSettingsAndSourceInvalidation() {
+        MainWindow w;
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        const auto path = save("cache.molden", sample());
+        QSignalSpy done(panel, &ResultsPanel::loaded), failed(panel, &ResultsPanel::loadFailed);
+        panel->openFile(path);
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        const auto firstSurface = panel->result().surface;
+        auto *iso = widget<QLineEdit>(w, "resultsOrbitalIso");
+        auto *grid = widget<QSpinBox>(w, "resultsOrbitalGrid");
+        auto *norm = widget<QComboBox>(w, "resultsOrbitalNorm");
+        auto *show = widget<QPushButton>(w, "resultsShowOrbital");
+        auto recompute = [&] {
+            const int count = done.count();
+            show->click();
+            QVERIFY(panel->loading());
+            QTRY_COMPARE_WITH_TIMEOUT(done.count(), count + 1, 10000);
+        };
+        iso->setText(".05");
+        recompute();
+        QCOMPARE(panel->result().isovalue, .05);
+        grid->setValue(24);
+        recompute();
+        QCOMPARE(panel->result().grid[0], 25);
+        norm->setCurrentIndex(norm->findData("standard"));
+        recompute();
+        QCOMPARE(panel->result().normalizationRequest, QString("standard"));
+        iso->setText(".03");
+        grid->setValue(40);
+        norm->setCurrentIndex(norm->findData("auto"));
+        show->click();
+        QVERIFY(!panel->loading());
+        QCOMPARE(panel->result().surface.constData(), firstSurface.constData());
+        // Explicit reload bypasses the cache even when the file metadata is unchanged.
+        widget<QPushButton>(w, "resultsReload")->click();
+        QVERIFY(panel->loading());
+        QTRY_VERIFY_WITH_TIMEOUT(!panel->loading(), 10000);
+        QVERIFY(panel->result().surface.constData() != firstSurface.constData());
+        const auto oldTime = QFileInfo(path).lastModified();
+        QTest::qWait(5);
+        auto changed = sample();
+        changed.replace("Ene= -0.5", "Ene= -0.6");
+        save("cache.molden", changed);
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::ReadWrite));
+        QVERIFY(file.setFileTime(oldTime, QFileDevice::FileModificationTime));
+        file.close();
+        show->click();
+        QVERIFY(panel->loading());
+        panel->cancelLoad(); // A canceled refresh must not mark old metadata as current.
+        QCOMPARE(panel->result().orbitals[0].energy, -.5);
+        recompute(); // Same size and mtime: metadata change time must still invalidate it.
+        QCOMPARE(panel->result().orbitals[0].energy, -.6);
+        QCOMPARE(widget<QTableWidget>(w, "resultsOrbitals")->item(0, 4)->text(), QString("-0.6"));
+        QVERIFY(file.remove());
+        const int count = failed.count();
+        show->click();
+        QTRY_COMPARE_WITH_TIMEOUT(failed.count(), count + 1, 10000);
+        QCOMPARE(panel->result().orbitals[0].energy, -.6);
+    }
     void realBenzeneArtifacts() {
         const auto path = qEnvironmentVariable("MOLFORMA_MOLDEN_REAL");
         if (path.isEmpty())
@@ -244,6 +466,34 @@ class MoldenTest : public QObject {
         QVERIFY(!panel->result().surface.isEmpty());
         if (!root.isEmpty())
             QVERIFY(w.grab().save(root + "/molden-lumo.png"));
+        const auto baseline = qEnvironmentVariable("MOLFORMA_MOLDEN_BASELINE");
+        for (int pass = 0; pass < 2; ++pass)
+            for (int orbital : {0, 20, 21, 40, 65}) {
+                QElapsedTimer timer;
+                qint64 elapsed = -1;
+                const auto connection =
+                    connect(panel, &ResultsPanel::loaded, this, [&] { elapsed = timer.nsecsElapsed(); });
+                const int count = done.count();
+                timer.start();
+                emit widget<QTableWidget>(w, "resultsOrbitals")->cellDoubleClicked(orbital, 0);
+                QTRY_COMPARE_WITH_TIMEOUT(done.count(), count + 1, 15000);
+                disconnect(connection);
+                QCOMPARE(panel->result().selectedOrbital, orbital);
+                qInfo("Orbital %d, pass %d: %.3f ms to apply surface", orbital + 1, pass + 1, elapsed / 1e6);
+                if (!baseline.isEmpty()) {
+                    const auto old = loadResultData(baseline + QString("/before-%1.bin").arg(orbital));
+                    const auto &now = panel->result();
+                    QCOMPARE(now.surface.size(), old.surface.size());
+                    QVERIFY(std::abs(now.minimum - old.minimum) < 1e-12);
+                    QVERIFY(std::abs(now.maximum - old.maximum) < 1e-12);
+                    for (int i = 0; i < now.surface.size(); ++i) {
+                        QCOMPARE(now.surface[i].positive, old.surface[i].positive);
+                        QVERIFY((now.surface[i].a - old.surface[i].a).norm() < 1e-10);
+                        QVERIFY((now.surface[i].b - old.surface[i].b).norm() < 1e-10);
+                        QVERIFY((now.surface[i].c - old.surface[i].c).norm() < 1e-10);
+                    }
+                }
+            }
     }
     void realAngularReferences() {
         const auto root = qEnvironmentVariable("MOLFORMA_MOLDEN_REFERENCES");

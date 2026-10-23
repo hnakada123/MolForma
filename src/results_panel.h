@@ -1,5 +1,6 @@
 #pragma once
 #include "results.h"
+#include <QCache>
 #include <QProcess>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -44,22 +45,34 @@ class ResultsPanel : public QWidget {
     double phase = 0;
     bool modeDisplayed = false;
     QString folder, pendingPath;
+    struct OrbitalSurface {
+        QVector<SurfaceTriangle> triangles;
+        std::array<int, 3> grid;
+        double minimum, maximum;
+        QString normalization;
+        QStringList warnings;
+    };
+    QCache<QString, OrbitalSurface> orbitalCache{64 * 1024 * 1024};
+    QString orbitalCacheSource;
     MoleculeView *view;
-    QLabel *source, *status, *summary;
+    QLabel *source, *summary;
     QComboBox *files, *dataset, *orbitalNorm;
     QSpinBox *frame, *orbitalGrid;
     QDoubleSpinBox *amplitude;
     QLineEdit *isovalue, *orbitalIso;
     QLabel *orbitalStatus;
+    QLabel *orbitalPosition;
+    std::array<QPushButton *, 6> orbitalNavigation;
     QTabWidget *details;
-    QPlainTextEdit *log;
+    QPlainTextEdit *status, *log;
     QTableWidget *energy, *orbitals, *modes;
     QPushButton *cancel, *reload, *playFrames, *playMode, *saveXyz, *savePng, *applyIso;
     QPushButton *showOrbital, *homo, *lumo;
     void startLoad(const QString &path, double iso, int channel, int orbital = -1,
-                   const QString &normalization = "auto", int divisions = 40);
+                   const QString &normalization = "auto", int divisions = 40, bool reuseOrbital = false);
     void renderOrbital(int orbital);
-    void display();
+    void cacheOrbital();
+    void display(bool orbitalOnly = false);
     void showFrame();
     void showMode();
     void stopAnimation();
