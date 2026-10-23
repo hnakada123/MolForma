@@ -69,6 +69,18 @@ int main(int argc, char **argv) {
             return 1;
         }
     }
+#ifdef Q_OS_LINUX
+    // MCP clients may filter the child environment. Diagnose missing desktop variables
+    // before Qt aborts while loading its platform plugin, closing the handshake pipe.
+    if (guiMcp && qEnvironmentVariableIsEmpty("DISPLAY") && qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY") &&
+        qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) {
+        std::fprintf(stderr, "MolForma MCP: --mcp-gui requires a desktop display. Forward DISPLAY, "
+                             "WAYLAND_DISPLAY, XDG_RUNTIME_DIR and XAUTHORITY through the MCP client's "
+                             "environment (Codex: mcp_servers.molforma.env_vars), or use --mcp for "
+                             "headless operation.\n");
+        return 1;
+    }
+#endif
     mf::MoleculeView::configureDefaultSurfaceFormat();
     QApplication app(argc, argv);
     QCoreApplication::setApplicationName("MolForma");

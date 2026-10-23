@@ -39,6 +39,25 @@ MCPクライアントのサーバー設定で、実行ファイルの絶対パ�
 
 通常の起動ではMCPは無効です。ネットワークポートは開きません。MCPクライアントが許可した呼び出しによって、起動したMolFormaプロセスの権限でローカルファイルを読み書きします。ファイル操作のパスは各呼び出しで明示的に指定します。
 
+### Codexでの登録
+
+LinuxでGUIを表示する場合、Codexが子プロセスへ渡す環境変数も指定します。`codex mcp add molforma -- /absolute/path/to/molforma --mcp-gui` だけでは、デスクトップの接続情報が引き継がれず、初期化前に終了する場合があります。
+
+`~/.codex/config.toml` の該当サーバーを次のように設定してください。既存の `[mcp_servers.molforma]` があれば、そのセクションを編集します。
+
+```toml
+[mcp_servers.molforma]
+command = "/absolute/path/to/molforma"
+args = ["--mcp-gui"]
+env_vars = ["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS"]
+```
+
+`env_vars` は変数の値を固定せず、Codexの起動環境から引き継ぐ設定です。Codex自体も同じ利用者のデスクトップ環境から起動してください。画面のない環境では `args = ["--mcp"]` を使い、`env_vars` は不要です。通常は互換モードのMCP 2025-11-25で接続します。
+
+設定を反映するためCodexのMCP設定を再読み込みするかCodexを再起動し、`/mcp` で `molforma: connected (17 tools)` を確認します。アカウントへの再ログインやMolForma用の認証は不要です。[Codex公式のMCP設定](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) も参照してください。
+
+`failed (0 tools)` と初期化時の `connection closed` が表示される場合は、上記の環境変数を最初に確認してください。Linuxで表示先が未指定のときは、MolFormaも標準エラーに `requires a desktop display` と設定方法を出します。無効な表示先や画面のアクセス権の問題も、GUIの起動前に解決する必要があります。
+
 ## 編集の流れ
 
 1. `list_documents` から `documentId` を取得します。

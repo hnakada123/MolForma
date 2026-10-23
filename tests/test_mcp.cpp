@@ -358,6 +358,36 @@ class McpTest : public QObject {
         QCOMPARE(output.count('\n'), 32);
         QVERIFY(truncated.readAllStandardError().contains("Truncated"));
     }
+    void missingDesktopEnvironment() {
+#ifdef Q_OS_LINUX
+        auto env = QProcessEnvironment::systemEnvironment();
+        for (const auto *name :
+             {"DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XAUTHORITY", "QT_QPA_PLATFORM"})
+            env.remove(name);
+        QProcess gui;
+        gui.setProcessEnvironment(env);
+        gui.start(QCoreApplication::applicationDirPath() + "/molforma", {"--mcp-gui"});
+        QVERIFY(gui.waitForStarted());
+        QVERIFY(gui.waitForFinished(10000));
+        QCOMPARE(gui.exitStatus(), QProcess::NormalExit);
+        QCOMPARE(gui.exitCode(), 1);
+        QVERIFY(gui.readAllStandardOutput().isEmpty());
+        const auto diagnostic = gui.readAllStandardError();
+        QVERIFY(diagnostic.contains("requires a desktop display"));
+        QVERIFY(diagnostic.contains("env_vars"));
+        QVERIFY(diagnostic.contains("--mcp for headless"));
+
+        QProcess headless;
+        headless.setProcessEnvironment(env);
+        headless.start(QCoreApplication::applicationDirPath() + "/molforma", {"--mcp"});
+        QVERIFY(headless.waitForStarted());
+        headless.write(message("server/discover") + '\n');
+        QVERIFY(readReply(headless).contains("result"));
+        headless.closeWriteChannel();
+        QVERIFY(headless.waitForFinished(10000));
+        QCOMPARE(headless.exitCode(), 0);
+#endif
+    }
 };
 QTEST_MAIN(McpTest)
 #include "test_mcp.moc"

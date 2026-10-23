@@ -489,6 +489,8 @@ QT_QPA_PLATFORM=offscreen MOLFORMA_MOLDEN_REAL=/path/to/molforma.molden \
 
 文書・部品取得、原子・結合・座標編集、測定、ファイル読込・保存、候補の確定・取消とUndo/Redo、NWChem条件検査・入力生成を公開します。文書IDと内容の版を指定して編集し、GUI側の変更との競合は拒否します。固定原子や未知のプロジェクトフィールドを保護し、変更を検証してから候補または履歴へ追加します。
 
+LinuxのCodexでGUI連携する場合は、`env_vars` に `DISPLAY` / `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR` / `XAUTHORITY` 等を設定し、デスクトップの接続情報を引き継ぎます。表示先が未指定の場合は、Qtの初期化前に標準エラーへ設定方法を出して終了します。[Codexの設定例](mcp.md#codexでの登録) を参照してください。
+
 現状はPOSIXのstdioのみです。HTTP/Windows転送、MCP経由のSMILES生成・整形・計算実行・結果操作、購読やTasks等の任意機能は未対応です。受信1メッセージ・読込ファイル8 MiB、文書10,000原子、ヘッドレスUndo100回の制限があります。標準入力を閉じるとGUIモードも終了するため、切断前に必要な文書を保存してください。[接続設定と詳細](mcp.md) を参照してください。
 
 ## 元GUIとの差異・未移植部分
