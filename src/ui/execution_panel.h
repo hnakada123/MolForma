@@ -35,6 +35,7 @@ class ExecutionPanel : public QWidget {
     void bundleChanged(QString directory);
 
   private:
+    friend class McpGui;
     MainWindow *window;
     NwchemRun run;
     bool busy = false, environmentDirty = false;

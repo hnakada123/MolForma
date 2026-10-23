@@ -37,6 +37,7 @@ class ResultsPanel : public QWidget {
     void loadFailed(QString message);
 
   private:
+    friend class McpGui;
     MainWindow *window;
     ResultData data;
     QProcess *process = nullptr;

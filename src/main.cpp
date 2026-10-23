@@ -2,6 +2,7 @@
 #include "mcp/server.h"
 #include "mcp/stdio_transport.h"
 #include "ui/main_window.h"
+#include "ui/mcp_gui.h"
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QJsonDocument>
@@ -82,6 +83,8 @@ int main(int argc, char **argv) {
     }
 #endif
     mf::MoleculeView::configureDefaultSurfaceFormat();
+    if (guiMcp)
+        QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QApplication app(argc, argv);
     QCoreApplication::setApplicationName("MolForma");
     QCoreApplication::setApplicationVersion("0.1.0");
@@ -97,29 +100,28 @@ int main(int argc, char **argv) {
     parser.process(app);
     try {
         mf::MainWindow window;
-        if (!parser.positionalArguments().isEmpty())
+        if (!guiMcp && !parser.positionalArguments().isEmpty())
             window.loadPath(parser.positionalArguments().first());
         window.show();
         std::unique_ptr<mf::McpServer> server;
+        std::unique_ptr<mf::McpGui> gui;
         std::unique_ptr<mf::McpStdioTransport> transport;
         if (parser.isSet("mcp-gui")) {
             if (parser.isSet("screenshot"))
                 mf::fail("--mcp-gui and --screenshot cannot be combined.");
-            mf::McpEditor editor{
-                [&] { return window.document(); },
-                [&]() -> std::optional<mf::Document> {
-                    return window.hasCandidate() ? std::optional(window.displayDocument()) : std::nullopt;
-                },
-                [&](const QString &name, const std::function<void(mf::Document &)> &operation, bool preview) {
-                    window.edit(name, operation, preview);
-                },
-                [&](const QString &action) { window.remoteHistory(action); }};
-            server = std::make_unique<mf::McpServer>(editor);
+            gui = std::make_unique<mf::McpGui>(window);
+            server = std::make_unique<mf::McpServer>(gui->editor());
             transport = std::make_unique<mf::McpStdioTransport>(server.get());
             QObject::connect(transport.get(), &mf::McpStdioTransport::finished, &app,
                              &QCoreApplication::exit);
             transport->start();
             window.statusBar()->addPermanentWidget(new QLabel("MCP stdio 接続中", &window));
+            // PDB MODEL/ALTLOC and load-error dialogs must already be reachable over MCP.
+            if (!parser.positionalArguments().isEmpty()) {
+                const auto path = parser.positionalArguments().first();
+                QTimer::singleShot(0, &window,
+                                   [&window, path] { window.safe([&] { window.loadPath(path); }); });
+            }
         }
         if (parser.isSet("screenshot")) {
             QTimer::singleShot(500, &window, [&] {

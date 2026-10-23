@@ -67,6 +67,7 @@ class MainWindow : public QMainWindow {
     friend class InputPreviewPanel;
     friend class ResultsPanel;
     friend class HistoryPanel;
+    friend class McpGui;
     Document doc;
     std::optional<Document> candidate;
     QString candidateName, path;

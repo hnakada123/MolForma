@@ -47,6 +47,7 @@ add_library(molforma_ui STATIC
     src/ui/history_panel.cpp
     src/ui/input_preview_panel.cpp
     src/ui/main_window.cpp
+    src/ui/mcp_gui.cpp
     src/ui/molecule_view.cpp
     src/ui/periodic_table.cpp
     src/ui/results_panel.cpp
@@ -128,6 +129,7 @@ if(BUILD_TESTING)
     add_test(NAME advanced COMMAND test_advanced)
     add_executable(fake_nwchem tests/fake_nwchem.cpp)
     target_link_libraries(fake_nwchem PRIVATE Qt6::Core)
+    add_dependencies(test_mcp fake_nwchem)
     add_executable(test_execution tests/test_execution.cpp)
     target_link_libraries(test_execution PRIVATE molforma_ui Qt6::Test)
     add_dependencies(test_execution fake_nwchem)

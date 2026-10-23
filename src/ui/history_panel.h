@@ -30,6 +30,7 @@ class HistoryPanel : public QWidget {
     void showEvent(QShowEvent *event) override;
 
   private:
+    friend class McpGui;
     MainWindow *window;
     HistoryScan scan;
     QTimer timer;

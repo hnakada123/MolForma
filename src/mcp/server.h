@@ -14,6 +14,9 @@ struct McpEditor {
     std::function<std::optional<Document>()> candidate;
     std::function<void(const QString &, const std::function<void(Document &)> &, bool)> edit;
     std::function<void(const QString &)> history;
+    std::function<QJsonArray()> additionalTools;
+    std::function<QJsonObject(const QString &, const QJsonObject &)> callAdditionalTool;
+    std::function<QString()> baseDirectory;
 };
 
 class McpServer : public QObject {

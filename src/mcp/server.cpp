@@ -3,7 +3,10 @@
 #include "editing/coordinates.h"
 #include "editing/operations.h"
 #include "nwchem/nwchem.h"
+#include "nwchem/nwchem_advanced.h"
+#include "nwchem/nwchem_execution.h"
 #include <QCryptographicHash>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -25,7 +28,10 @@ QString instructions() {
     return "Use list_documents to obtain the explicit documentId, then get_document for stable atom IDs "
            "and the current revision. All mutations require expectedRevision. Edits default to a separate "
            "candidate; inspect it before history(confirm). Coordinates are in angstrom. The workspace "
-           "belongs to this MolForma process and expires when it exits. Export or save to retain work.";
+           "belongs to this MolForma process and expires when it exits. Export or save to retain work. "
+           "In GUI mode, get_ui discovers controls and dialogs. GUI mutations return a commandId: poll "
+           "get_ui_command and inspect get_ui for modal dialogs; answer them with explicit calls. "
+           "A completed GUI command is not proof that a background calculation converged.";
 }
 QJsonObject error(const QJsonValue &id, int code, const QString &message, QJsonObject data = {},
                   bool legacyNullId = false) {
@@ -45,12 +51,13 @@ QJsonObject result(const QJsonValue &id, QJsonObject value, bool modern) {
     }
     return {{"jsonrpc", "2.0"}, {"id", id}, {"result", value}};
 }
-QJsonObject toolResult(const QJsonObject &value) {
-    return {{"content", QJsonArray{QJsonObject{{"type", "text"},
-                                               {"text", QString::fromUtf8(QJsonDocument(value).toJson(
-                                                            QJsonDocument::Compact))}}}},
-            {"structuredContent", value},
-            {"isError", false}};
+QJsonObject toolResult(QJsonObject value) {
+    const auto image = value.take("_mcpImage");
+    QJsonArray content{QJsonObject{
+        {"type", "text"}, {"text", QString::fromUtf8(QJsonDocument(value).toJson(QJsonDocument::Compact))}}};
+    if (image.isObject())
+        content.append(image);
+    return {{"content", content}, {"structuredContent", value}, {"isError", false}};
 }
 QJsonObject type(const QString &name, const QString &description = {}) {
     QJsonObject o{{"type", name}};
@@ -70,17 +77,27 @@ QJsonObject idsSchema() {
 // Validate the fixed schemas published by this server (JSON Schema 2020-12).
 // No client-supplied schemas or remote $refs are evaluated.
 void validateValue(const QJsonValue &value, const QJsonObject &schema, const QString &path) {
-    auto t = schema["type"].toString();
-    bool valid = t == "object"    ? value.isObject()
-                 : t == "array"   ? value.isArray()
-                 : t == "string"  ? value.isString()
-                 : t == "boolean" ? value.isBool()
-                 : t == "integer" ? value.isDouble() && std::isfinite(value.toDouble()) &&
-                                        std::floor(value.toDouble()) == value.toDouble()
-                 : t == "number"  ? value.isDouble() && std::isfinite(value.toDouble())
-                                  : false;
+    const auto matches = [&](const QString &t) {
+        return t == "object"    ? value.isObject()
+               : t == "array"   ? value.isArray()
+               : t == "string"  ? value.isString()
+               : t == "boolean" ? value.isBool()
+               : t == "integer" ? value.isDouble() && std::isfinite(value.toDouble()) &&
+                                      std::floor(value.toDouble()) == value.toDouble()
+               : t == "number"  ? value.isDouble() && std::isfinite(value.toDouble())
+               : t == "null"    ? value.isNull()
+                                : false;
+    };
+    const auto t = schema["type"];
+    bool valid = matches(t.toString());
+    for (const auto &alternative : t.toArray())
+        valid |= matches(alternative.toString());
     if (!valid)
-        fail(path + ": expected " + t);
+        fail(path + ": incorrect value type");
+    if (value.isDouble() &&
+        ((schema.contains("minimum") && value.toDouble() < schema["minimum"].toDouble()) ||
+         (schema.contains("maximum") && value.toDouble() > schema["maximum"].toDouble())))
+        fail(path + ": value out of range");
     if (schema.contains("enum") && !schema["enum"].toArray().contains(value))
         fail(path + ": unsupported value");
     if (value.isObject()) {
@@ -124,6 +141,8 @@ void validateDocument(const Document &d) {
 McpServer::McpServer(McpEditor hooks, QObject *parent) : QObject(parent), editor(std::move(hooks)) {
     if (editor.document && (!editor.candidate || !editor.edit || !editor.history))
         fail("Incomplete MCP editor hooks");
+    if (bool(editor.additionalTools) != bool(editor.callAdditionalTool))
+        fail("Incomplete MCP additional tool hooks");
 }
 QString McpServer::documentId() const {
     return id;
@@ -284,6 +303,12 @@ QJsonArray McpServer::toolList() const {
         {{"path", type("string")}, {"overwrite", type("boolean")}, {"expectedRevision", type("string")}},
         {"path", "expectedRevision"});
     add("get_nwchem", "Read NWChem settings, defaults and validation errors/warnings.");
+    add("get_advanced", "Read all advanced/output options, their types, applicability and stored values.");
+    add("set_advanced", "Merge typed advanced/output settings. A null value resets that option.",
+        {{"settings", type("object")}}, {"settings"}, true, true);
+    add("get_execution", "Read launch settings and local validation. Never starts a process.");
+    add("set_execution", "Merge launch settings (including explicit environment overrides). Does not run.",
+        {{"settings", type("object")}}, {"settings"}, true, true);
     add("set_nwchem",
         "Merge NWChem settings and optional charge/multiplicity. Unknown keys or invalid "
         "calculation conditions are rejected.",
@@ -291,6 +316,9 @@ QJsonArray McpServer::toolList() const {
         {"settings"}, true, true);
     add("history", "Confirm/cancel a candidate, or undo/redo a committed edit.",
         {{"action", choice({"confirm", "cancel", "undo", "redo"})}}, {"action"}, true, true);
+    if (editor.additionalTools)
+        for (auto tool : editor.additionalTools())
+            list.append(tool);
     return list;
 }
 
@@ -315,9 +343,41 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
         fail("Unknown documentId; call list_documents to discover this process's workspace.");
     if (args.contains("expectedRevision") && args["expectedRevision"] != revision())
         fail("Document or candidate changed. Read get_document and review before retrying.");
+    if (editor.additionalTools)
+        for (const auto &tool : editor.additionalTools())
+            if (tool.toObject()["name"] == name)
+                return editor.callAdditionalTool(name, args);
     if (name == "get_document")
         return snapshot();
     const auto d = document();
+    if (name == "get_execution") {
+        const auto report =
+            validateExecution(d, editor.baseDirectory ? editor.baseDirectory() : QDir::currentPath());
+        return {{"settings", executionSettings(d)},
+                {"defaults", executionDefaults()},
+                {"errors", QJsonArray::fromStringList(report.errors)},
+                {"warnings", QJsonArray::fromStringList(report.warnings)}};
+    }
+    if (name == "get_advanced") {
+        QJsonArray options;
+        for (const auto &o : nwchemAdvancedOptions()) {
+            QJsonArray choices;
+            for (const auto &c : o.choices)
+                choices.append(QJsonObject{{"value", c.value}, {"label", c.label}});
+            const QStringList kinds{"real", "integer", "choice", "flag", "path", "temperatures", "grid_axis"};
+            options.append(QJsonObject{{"key", o.key},
+                                       {"group", o.group},
+                                       {"label", o.label},
+                                       {"help", o.help},
+                                       {"type", kinds[int(o.kind)]},
+                                       {"minimum", o.minimum},
+                                       {"maximum", o.maximum},
+                                       {"choices", choices},
+                                       {"default", o.defaultText},
+                                       {"applicable", nwchemAdvancedApplies(o, d)}});
+        }
+        return {{"settings", nwchemAdvanced(d)}, {"options", options}};
+    }
     if (name == "measure") {
         auto ids = idsFromJson(args["ids"]);
         if (ids.size() < 2 || ids.size() > 4)
@@ -423,6 +483,36 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                 if (!info.isFile() || info.size() > 8 * 1024 * 1024)
                     fail("Expected a regular structure file no larger than 8 MiB.");
                 next = importStructure(path);
+            } else if (name == "set_advanced") {
+                const auto settings = args["settings"].toObject();
+                for (auto it = settings.begin(); it != settings.end(); ++it) {
+                    if (std::none_of(nwchemAdvancedOptions().cbegin(), nwchemAdvancedOptions().cend(),
+                                     [&](const auto &o) { return o.key == it.key(); }))
+                        fail("Unknown advanced setting: " + it.key());
+                    if (!it.value().isNull())
+                        for (const auto &o : nwchemAdvancedOptions())
+                            if (o.key == it.key()) {
+                                const auto error = nwchemAdvancedError(o, it.value());
+                                if (!error.isEmpty())
+                                    fail(error);
+                            }
+                    setNwchemAdvanced(next, it.key(),
+                                      it.value().isNull() ? QJsonValue(QJsonValue::Undefined) : it.value());
+                }
+                const auto report = validateNwchem(next);
+                if (!report.errors.isEmpty())
+                    fail(report.errors.join('\n'));
+            } else if (name == "set_execution") {
+                const auto settings = args["settings"].toObject();
+                for (auto it = settings.begin(); it != settings.end(); ++it) {
+                    if (!executionDefaults().contains(it.key()))
+                        fail("Unknown execution setting: " + it.key());
+                    setExecutionSetting(next, it.key(), it.value());
+                }
+                const auto report = validateExecution(
+                    next, editor.baseDirectory ? editor.baseDirectory() : QDir::currentPath(), false);
+                if (!report.errors.isEmpty())
+                    fail(report.errors.join('\n'));
             } else if (name == "set_nwchem") {
                 auto settings = nwchemSettings(next), defaults = nwchemDefaults();
                 const auto requested = args["settings"].toObject();

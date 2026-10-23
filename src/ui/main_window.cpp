@@ -1253,7 +1253,7 @@ void MainWindow::closeEvent(QCloseEvent *e) {
 void MainWindow::contextMenu(const QPoint &p, const QString &id) {
     if (!id.isEmpty() && !selected.contains(id))
         setSelection(expandedSelection({id}));
-    QMenu menu;
+    QMenu menu(this);
     auto add = [&](const QString &text, auto fn) {
         auto *a = menu.addAction(text);
         connect(a, &QAction::triggered, this, [this, fn] { safe(fn); });
