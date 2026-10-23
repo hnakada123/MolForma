@@ -96,17 +96,22 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     visual->addWidget(view, 1);
     connect(fit, &QPushButton::clicked, view, &MoleculeView::fit);
     auto *angles = new QHBoxLayout;
+    angles->setSpacing(16);
     visual->addLayout(angles);
     QSlider *sliders[3];
     const int initialAngles[] = {-25, 25, 0};
     for (int i = 0; i < 3; ++i) {
-        angles->addWidget(new QLabel(QStringList{"左右", "上下", "画面内"}[i]));
+        auto *control = new QVBoxLayout;
+        control->setSpacing(2);
+        auto *label = new QLabel(QStringList{"左右回転", "上下回転", "画面内回転"}[i]);
+        control->addWidget(label);
         sliders[i] = new QSlider(Qt::Horizontal);
         sliders[i]->setObjectName(QStringList{"resultsYaw", "resultsPitch", "resultsRoll"}[i]);
         sliders[i]->setRange(-180, 180);
         sliders[i]->setValue(initialAngles[i]);
-        sliders[i]->setMaximumWidth(160);
-        angles->addWidget(sliders[i]);
+        label->setBuddy(sliders[i]);
+        control->addWidget(sliders[i]);
+        angles->addLayout(control, 1);
     }
     for (int i = 0; i < 3; ++i)
         connect(sliders[i], &QSlider::valueChanged, this,

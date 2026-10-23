@@ -2,9 +2,12 @@
 #include "main_window.h"
 #include "template_delegate.h"
 #include <QComboBox>
+#include <QDir>
+#include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QSlider>
 #include <QStandardItemModel>
 #include <QStyleOptionViewItem>
 #include <QTabWidget>
@@ -63,6 +66,57 @@ class EditorTest : public QObject {
         QTest::keyClick(w.canvas(), Qt::Key_Escape);
         QVERIFY(!w.hasCandidate());
         QCOMPARE(w.document().formula(), QString("CH4"));
+    }
+    void rotationControlsLayout_data() {
+        QTest::addColumn<int>("tab");
+        QTest::addColumn<int>("width");
+        for (int tab : {0, 6})
+            for (int width : {900, 1380, 2200})
+                QTest::newRow(qPrintable(QString("%1-%2").arg(tab == 0 ? "molecule" : "results").arg(width)))
+                    << tab << width;
+    }
+    void rotationControlsLayout() {
+        QFETCH(int, tab);
+        QFETCH(int, width);
+        MainWindow w;
+        auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
+        tabs->setCurrentIndex(tab);
+        w.resize(width, 900);
+        w.show();
+        QTest::qWait(40);
+        const auto labels = tabs->currentWidget()->findChildren<QLabel *>();
+        QRect previous, controls;
+        int sliderWidth = 0;
+        for (const auto &text : {QString("左右回転"), QString("上下回転"), QString("画面内回転")}) {
+            QLabel *label = nullptr;
+            for (auto *candidate : labels)
+                if (candidate->text() == text && qobject_cast<QSlider *>(candidate->buddy()))
+                    label = candidate;
+            QVERIFY(label);
+            auto *slider = qobject_cast<QSlider *>(label->buddy());
+            QVERIFY(label->isVisible());
+            QVERIFY(slider->isVisible());
+            const QRect labelRect(label->mapTo(&w, QPoint()), label->size());
+            const QRect sliderRect(slider->mapTo(&w, QPoint()), slider->size());
+            QCOMPARE(labelRect.left(), sliderRect.left());
+            QVERIFY(labelRect.bottom() < sliderRect.top());
+            QVERIFY(sliderRect.top() - labelRect.bottom() <= 6);
+            QVERIFY(label->width() >= label->sizeHint().width());
+            if (!previous.isNull()) {
+                QVERIFY(sliderRect.left() - previous.right() >= 12);
+                QVERIFY(std::abs(slider->width() - sliderWidth) <= 1);
+            }
+            previous = sliderRect;
+            sliderWidth = slider->width();
+            controls = controls.united(labelRect).united(sliderRect);
+        }
+        const auto artifacts = qEnvironmentVariable("MOLFORMA_ROTATION_ARTIFACTS");
+        if (!artifacts.isEmpty()) {
+            QVERIFY(QDir().mkpath(artifacts));
+            const auto path = QDir(artifacts).filePath(QString::fromLatin1(QTest::currentDataTag()));
+            QVERIFY(w.grab().save(path + ".png"));
+            QVERIFY(w.grab(controls.adjusted(-4, -4, 4, 4)).save(path + "-controls.png"));
+        }
     }
     void skeletonPalette() {
         MainWindow w;

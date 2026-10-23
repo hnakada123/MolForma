@@ -294,24 +294,32 @@ void MainWindow::buildUi() {
     view = new MoleculeView;
     ml->addWidget(view, 1);
     auto *angles = new QHBoxLayout;
+    angles->setSpacing(16);
     ml->addLayout(angles);
     QSlider *sliders[3];
     for (int i = 0; i < 3; ++i) {
-        angles->addWidget(new QLabel(QStringList{"左右", "上下", "画面内"}[i]));
+        auto *control = new QVBoxLayout;
+        control->setSpacing(2);
+        auto *label = new QLabel(QStringList{"左右回転", "上下回転", "画面内回転"}[i]);
+        control->addWidget(label);
         sliders[i] = new QSlider(Qt::Horizontal);
         sliders[i]->setRange(-180, 180);
-        sliders[i]->setMaximumWidth(160);
-        angles->addWidget(sliders[i]);
+        label->setBuddy(sliders[i]);
+        control->addWidget(sliders[i]);
+        angles->addLayout(control, 1);
     }
     for (int i = 0; i < 3; ++i)
         connect(sliders[i], &QSlider::valueChanged, this,
                 [this, a = sliders[0], b = sliders[1], c = sliders[2]] {
                     view->setAngles(a->value(), b->value(), c->value());
                 });
+    auto *axes = new QHBoxLayout;
+    axes->setSpacing(4);
+    angles->addLayout(axes);
     for (int i = 0; i < 3; ++i) {
         auto *b = new QPushButton(QString("+") + QString("XYZ")[i]);
         b->setMaximumWidth(40);
-        angles->addWidget(b);
+        axes->addWidget(b, 0, Qt::AlignBottom);
         connect(b, &QPushButton::clicked, this, [this, i] { view->viewFrom(i); });
     }
     measurement = new QLabel("原子を順にクリックすると距離・角度・二面角を測定します。");
