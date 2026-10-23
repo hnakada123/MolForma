@@ -5,6 +5,7 @@
 #include <QPointF>
 #include <QTimer>
 #include <QWidget>
+class QLabel;
 class QPainter;
 namespace mf {
 class VtkMoleculeRenderer;
@@ -106,6 +107,7 @@ class MoleculeView : public QWidget {
     QString emptyMessage;
     VtkMoleculeRenderer *renderer = nullptr;
     QWidget *overlay = nullptr;
+    QLabel *rendererStatus = nullptr;
     QTimer renderTimer;
     bool moleculeDirty = true, surfaceDirty = true;
     QVector<QColor> atomColors;
@@ -115,6 +117,7 @@ class MoleculeView : public QWidget {
     void scheduleRender();
     void renderScene();
     void refreshColors();
+    void updateRendererStatus();
     void paintContents(QPainter &painter, bool overlayOnly);
     Mat camera() const;
     QPointF project(const Vec &p) const;

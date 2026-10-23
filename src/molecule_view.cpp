@@ -10,6 +10,7 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
@@ -74,9 +75,21 @@ MoleculeView::MoleculeView(QWidget *parent) : QWidget(parent) {
             qWarning("MolForma: OpenGL 3.2 is unavailable; using QPainter rendering.");
     }
 #endif
+    rendererStatus = new QLabel(this);
+    rendererStatus->setObjectName("rendererStatus");
+    rendererStatus->setAttribute(Qt::WA_TransparentForMouseEvents);
+    rendererStatus->setStyleSheet("QLabel { color: #52677c; background: rgba(248, 250, 252, 230); "
+                                  "border: 1px solid #cbd5e1; border-radius: 5px; padding: 4px 8px; }");
+    rendererStatus->move(12, 12);
+    updateRendererStatus();
 }
 QString MoleculeView::rendererName() const {
     return renderer ? "vtk" : "painter";
+}
+void MoleculeView::updateRendererStatus() {
+    rendererStatus->setText(renderer ? "描画: VTK（OpenGL）" : "描画: QPainter（CPU）");
+    rendererStatus->adjustSize();
+    rendererStatus->raise();
 }
 void MoleculeView::scheduleRender() {
     if (renderer) {
@@ -116,6 +129,7 @@ void MoleculeView::renderScene() {
         overlay = nullptr;
         delete renderer;
         renderer = nullptr;
+        updateRendererStatus();
         update();
     }
 #endif
@@ -129,6 +143,7 @@ void MoleculeView::resizeEvent(QResizeEvent *event) {
         overlay->raise();
     }
 #endif
+    rendererStatus->raise();
     scheduleRender();
 }
 void MoleculeView::showEvent(QShowEvent *event) {
