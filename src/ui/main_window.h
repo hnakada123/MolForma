@@ -86,12 +86,14 @@ class MainWindow : public QMainWindow {
     HistoryPanel *calculationHistory = nullptr;
     QTabWidget *workspaceTabs = nullptr;
     QComboBox *tool = nullptr, *unitBox = nullptr, *category = nullptr, *elementBox = nullptr,
-              *bondKind = nullptr, *colorBox = nullptr;
+              *bondKind = nullptr;
     QLineEdit *search = nullptr;
     QListWidget *palette = nullptr, *residueList = nullptr, *pointList = nullptr;
     QTabWidget *properties = nullptr, *editPages = nullptr;
     QLabel *summary = nullptr, *measurement = nullptr, *candidateLabel = nullptr, *sequenceLabel = nullptr;
-    QWidget *candidateBar = nullptr;
+    QWidget *candidateBar = nullptr, *chargeEditor = nullptr;
+    QLabel *chargeSummary = nullptr;
+    QCheckBox *includePointCharges = nullptr;
     QCheckBox *autoH = nullptr, *keepSelection = nullptr, *keepTool = nullptr, *showH = nullptr,
               *growth = nullptr;
     QPushButton *cancelWorkerButton = nullptr, *periodicTableButton = nullptr;
@@ -102,10 +104,9 @@ class MainWindow : public QMainWindow {
     QDoubleSpinBox *twist = nullptr, *distance = nullptr, *chargeValue = nullptr;
     QSpinBox *formal = nullptr, *radical = nullptr, *oxidation = nullptr, *totalCharge = nullptr,
              *multiplicity = nullptr;
-    QLineEdit *mass = nullptr, *siteInput = nullptr, *sequenceInput = nullptr, *fragmentMembers = nullptr,
-              *fragmentCharges = nullptr, *fragmentMult = nullptr, *fragmentCuts = nullptr;
+    QLineEdit *mass = nullptr, *siteInput = nullptr, *sequenceInput = nullptr;
     QComboBox *geometryBox = nullptr, *aminoState = nullptr, *chiralityBox = nullptr, *nTerm = nullptr,
-              *cTerm = nullptr, *fragmentTarget = nullptr, *fragmentMode = nullptr;
+              *cTerm = nullptr;
     QString growthResidue;
     bool growthN = false;
     void buildUi();
@@ -113,12 +114,11 @@ class MainWindow : public QMainWindow {
     void buildEditPanel();
     void buildCoordinationPanel();
     void buildResiduePanel();
-    void buildFragmentPanel();
     void buildChargePanel();
     void refresh();
     void refreshPalette();
     void refreshSelection();
-    void refreshFragmentFields();
+    void refreshChargePanel();
     QFormLayout *panel(const QString &title);
     QPushButton *button(QFormLayout *form, const QString &text, const std::function<void()> &slot,
                         const QString &objectName = {});

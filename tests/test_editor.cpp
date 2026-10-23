@@ -1,15 +1,20 @@
 #include "editing/library.h"
+#include "editing/operations.h"
+#include "nwchem/nwchem.h"
 #include "ui/main_window.h"
 #include "ui/periodic_table.h"
 #include "ui/template_delegate.h"
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
+#include <QDoubleSpinBox>
 #include <QGridLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
 #include <QSlider>
+#include <QSpinBox>
 #include <QStandardItemModel>
 #include <QStyleOptionViewItem>
 #include <QTabWidget>
@@ -306,6 +311,190 @@ class EditorTest : public QObject {
         QCOMPARE(w.document().atoms.size(), 31);
         w.history()->undo();
         QVERIFY(w.document().atoms.isEmpty());
+    }
+    void nwchemMoleculeControls() {
+        MainWindow w;
+        auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");
+        d.atoms[0].fixed = true;
+        w.loadDocument(d);
+        auto *tabs = w.findChild<QTabWidget *>("propertyTabs");
+        QStringList names;
+        for (int i = 0; i < tabs->count(); ++i)
+            names << tabs->tabText(i);
+        QCOMPARE(names, QStringList({"編集", "配位", "残基", "電荷"}));
+        for (auto *b : tabs->findChildren<QPushButton *>()) {
+            QVERIFY(!b->text().contains("FMO"));
+            QVERIFY(!b->text().contains("QM/MM"));
+            QVERIFY(!b->text().contains("スキャン"));
+            QVERIFY(!b->text().contains("拘束に追加"));
+            QVERIFY(!b->text().contains("KAGAMI最適化"));
+        }
+        auto *color = w.findChild<QComboBox *>("moleculeColorMode");
+        QCOMPARE(color->count(), 2);
+        QVERIFY(w.findChild<QPushButton *>("preparePdb"));
+
+        auto *optimize = w.findChild<QPushButton *>("setNwchemOptimization");
+        QVERIFY(optimize);
+        optimize->click();
+        QVERIFY(nwchemInput(w.document()).endsWith("task scf optimize\n"));
+        QCOMPARE(w.document().job(), d.job());
+        QCOMPARE(w.findChild<QComboBox *>("nwchem_task")->currentData().toString(), "optimize");
+        w.history()->undo();
+        QVERIFY(nwchemInput(w.document()).endsWith("task scf energy\n"));
+        w.history()->redo();
+
+        // Mixed selections must be fixed explicitly regardless of the first atom's state.
+        w.setSelection({d.atoms[0].id, d.atoms[1].id});
+        w.findChild<QPushButton *>("fixSelectedAtoms")->click();
+        QVERIFY(nwchemInput(w.document()).contains("fix atom 1 2\n"));
+        for (int i = 0; i < d.atoms.size(); ++i)
+            QCOMPARE(w.document().atoms[i].position, d.atoms[i].position);
+        w.history()->undo();
+        QVERIFY(w.document().atoms[0].fixed);
+        QVERIFY(!w.document().atoms[1].fixed);
+        w.history()->redo();
+        const auto fixedId = d.atoms[0].id;
+        w.edit("reorder", [](Document &next) { std::swap(next.atoms[0], next.atoms[2]); });
+        QVERIFY(nwchemInput(w.document()).contains("fix atom 2 3\n"));
+        w.setSelection({fixedId});
+        w.findChild<QPushButton *>("unfixSelectedAtoms")->click();
+        QVERIFY(nwchemInput(w.document()).contains("fix atom 2\n"));
+        QVERIFY(!w.document().atom(fixedId).fixed);
+        w.history()->undo();
+        QVERIFY(w.document().atom(fixedId).fixed);
+
+        const auto artifacts = qEnvironmentVariable("MOLFORMA_MOLECULE_ARTIFACTS");
+        if (!artifacts.isEmpty()) {
+            QVERIFY(QDir().mkpath(artifacts));
+            w.resize(1380, 1000);
+            w.show();
+            for (int i = 0; i < tabs->count(); ++i) {
+                tabs->setCurrentIndex(i);
+                QTest::qWait(40);
+                QVERIFY(w.grab().save(QDir(artifacts).filePath(QString("molecule-%1.png").arg(i))));
+            }
+        }
+    }
+    void moleculeElectronicState() {
+        MainWindow w;
+        auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");
+        w.loadDocument(d);
+        auto *charge = w.findChild<QSpinBox *>("moleculeTotalCharge");
+        auto *mult = w.findChild<QSpinBox *>("moleculeMultiplicity");
+        auto *apply = w.findChild<QPushButton *>("applyMoleculeCharge");
+        auto *summary = w.findChild<QLabel *>("moleculeChargeSummary");
+        QVERIFY(charge && mult && apply && summary);
+        charge->setValue(1);
+        apply->click();
+        QVERIFY(summary->text().contains("整合しません"));
+        QVERIFY(!w.findChild<QPushButton *>("calculationCopy")->isEnabled());
+        mult->setValue(2);
+        apply->click();
+        QVERIFY(summary->text().contains("電子数 9"));
+        QVERIFY(summary->text().contains("α 5 / β 4"));
+        QVERIFY(nwchemInput(w.document()).contains("charge 1\n"));
+        QVERIFY(nwchemInput(w.document()).contains("nopen 1\n"));
+        QCOMPARE(w.findChild<QSpinBox *>("nwchem_charge")->value(), 1);
+        QCOMPARE(w.findChild<QSpinBox *>("nwchem_multiplicity")->value(), 2);
+        w.history()->undo();
+        QCOMPARE(mult->value(), 1);
+        w.history()->undo();
+        QCOMPARE(charge->value(), 0);
+        w.history()->redo();
+        w.history()->redo();
+        w.findChild<QSpinBox *>("nwchem_charge")->setValue(0);
+        w.findChild<QSpinBox *>("nwchem_multiplicity")->setValue(1);
+        QCOMPARE(charge->value(), 0);
+        QCOMPARE(mult->value(), 1);
+        w.edit("candidate", [](Document &next) { next.setJobValue("charge", 2); }, true);
+        QVERIFY(!apply->isEnabled());
+        QCOMPARE(charge->value(), 2);
+        QVERIFY(summary->text().contains("未確定候補"));
+        w.cancelCandidate();
+        QVERIFY(apply->isEnabled());
+        QCOMPARE(charge->value(), 0);
+
+        // ECP electrons and ghost centers use the same validation as the input generator.
+        d = Document::fromXyz("2\nRb ghost\nRb 0 0 0\nH 0 0 3\n");
+        d.atoms[0].charge = 1;
+        d.atoms[1].ghost = true;
+        d.data["nwchem"] = QJsonObject{{"basis", "def2-svp"}};
+        w.loadDocument(d);
+        w.findChild<QPushButton *>("applyMoleculeFormalCharge")->click();
+        QCOMPARE(charge->value(), 1);
+        QVERIFY(summary->text().contains("電子数 8（ECP適用後）"));
+        QVERIFY(summary->text().contains("α 4 / β 4"));
+        QVERIFY(validateNwchem(w.document()).errors.isEmpty());
+        w.findChild<QPushButton *>("moleculeInputPreview")->click();
+        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 5);
+    }
+    void moleculePointChargesAndCompatibility() {
+        MainWindow w;
+        auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");
+        addReference(d, {d.atoms[0].id}, "freeze");
+        d.data["assignments"] = QJsonObject{{"legacy", QJsonObject{{"note", "preserve"}}}};
+        d.setJobValue("sections", QJsonObject{{"qmmm", QJsonObject{{"enabled", "t"}}}});
+        d.envelope["external_field"] = "preserve";
+        d.data["nwchem"] = QJsonObject{{"geometry_units", "bohr"}, {"future_setting", 42}};
+        w.loadDocument(d);
+        const auto original = w.document().project();
+        auto *enabled = w.findChild<QCheckBox *>("moleculeIncludePointCharges");
+        auto *calculation = w.findChild<QCheckBox *>("nwchem_include_point_charges");
+        auto *x = w.findChild<QDoubleSpinBox *>("pointChargeX");
+        auto *q = w.findChild<QDoubleSpinBox *>("pointChargeValue");
+        QVERIFY(enabled && calculation && x && q);
+        QVERIFY(!enabled->isChecked()); // The legacy QM/MM flag is not an NWChem switch.
+        x->setValue(5);
+        q->setValue(-.5);
+        w.findChild<QPushButton *>("addPointCharge")->click();
+        QCOMPARE(w.document().data["point_charges"].toArray().size(), 1);
+        QVERIFY(!nwchemInput(w.document()).contains("\nbq units"));
+        enabled->click();
+        QVERIFY(calculation->isChecked());
+        QVERIFY(nwchemInput(w.document()).contains("\nbq units angstrom\n"));
+        QVERIFY(nwchemInput(w.document()).contains("5 0 0 -0.5"));
+        QCOMPARE(validateNwchem(w.document()).electrons, 10);
+        QCOMPARE(w.document().job(), d.job());
+        QCOMPARE(w.document().data["references"], d.data["references"]);
+        QCOMPARE(w.document().data["assignments"], d.data["assignments"]);
+        QCOMPARE(w.document().data["nwchem"].toObject()["future_setting"].toInt(), 42);
+        w.history()->undo();
+        QVERIFY(!enabled->isChecked());
+        QVERIFY(!calculation->isChecked());
+        w.history()->redo();
+        QVERIFY(enabled->isChecked());
+        calculation->click();
+        QVERIFY(!enabled->isChecked());
+        w.history()->undo();
+        QVERIFY(enabled->isChecked());
+
+        auto *list = w.findChild<QListWidget *>("pointChargeList");
+        list->setCurrentRow(0);
+        const auto id = w.document().data["point_charges"].toArray()[0].toObject().value("id");
+        x->setValue(6);
+        q->setValue(.25);
+        w.findChild<QPushButton *>("updatePointCharge")->click();
+        QCOMPARE(w.document().data["point_charges"].toArray()[0].toObject()["id"], id);
+        QVERIFY(nwchemInput(w.document()).contains("6 0 0 0.25"));
+        w.findChild<QPushButton *>("deletePointCharge")->click();
+        QVERIFY(w.document().data["point_charges"].toArray().isEmpty());
+        QVERIFY(!nwchemInput(w.document()).contains("\nbq units"));
+        w.history()->undo();
+        QVERIFY(nwchemInput(w.document()).contains("6 0 0 0.25"));
+        w.edit("candidate", [](Document &next) { next.data["point_charges"] = QJsonArray(); }, true);
+        QVERIFY(!enabled->isEnabled());
+        w.cancelCandidate();
+        QVERIFY(enabled->isEnabled());
+
+        QTemporaryDir dir;
+        const auto path = dir.filePath("legacy.kgui.json");
+        w.document().save(path);
+        const auto loaded = Document::load(path);
+        QCOMPARE(loaded.project(), w.document().project());
+        QCOMPARE(loaded.envelope["external_field"].toString(), "preserve");
+        while (w.history()->canUndo())
+            w.history()->undo();
+        QCOMPARE(w.document().project(), original);
     }
     void failedEditIsAtomic() {
         MainWindow w;

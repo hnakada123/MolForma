@@ -3,6 +3,7 @@
 #include "editing/operations.h"
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
+#include "nwchem/nwchem.h"
 #include "ui/main_window.h"
 #include <QJsonDocument>
 #include <QtWidgets>
@@ -64,6 +65,10 @@ QComboBox *MainWindow::choices(QFormLayout *f, const QString &label, const QStri
 }
 void MainWindow::buildEditPanel() {
     auto *outer = panel("編集");
+    auto *color = choices(outer, "色分け", {"元素", "残基"}, {"element", "residue"});
+    color->setObjectName("moleculeColorMode");
+    connect(color, &QComboBox::currentIndexChanged, this,
+            [this, color] { view->setColorMode(value(color)); });
     editPages = new QTabWidget;
     outer->addRow(editPages);
     auto sub = [&](QString name) {
@@ -220,6 +225,8 @@ void MainWindow::buildEditPanel() {
     radical->setRange(-1, 8);
     radical->setSpecialValueText("変更なし");
     f->addRow("不対電子", radical);
+    formal->setToolTip("水素補完などの構造準備に使用します。計算の全電荷は「電荷」で設定します。");
+    radical->setToolTip("原子のラジカル属性です。計算のスピン多重度は「電荷」で設定します。");
     mass = new QLineEdit;
     mass->setPlaceholderText("整数: 質量数 / 小数: amu");
     f->addRow("同位体 / 質量", mass);
@@ -261,34 +268,18 @@ void MainWindow::buildEditPanel() {
                 d.atom(id).ghost = v;
         });
     });
-    button(f, "選択を固定 / 解除", [this] {
-        auto ids = requireSelection();
-        edit("固定を切替", [=](Document &d) {
-            bool v = !d.atom(ids.first()).fixed;
-            for (auto id : ids)
-                d.atom(id).fixed = v;
-        });
-    });
-    button(f, "凍結原子に追加", [this] {
-        auto ids = requireSelection();
-        edit("凍結原子を設定", [=](Document &d) { addReference(d, ids, "freeze"); });
-    });
-    button(f, "距離・角度・二面角の拘束に追加", [this] {
-        auto ids = requireSelection();
-        double v = measure(doc, ids);
-        edit("拘束を設定", [=](Document &d) { addReference(d, ids, "constraint", v); });
-    });
-    button(f, "スキャンに設定", [this] {
-        auto ids = requireSelection();
-        double start = measure(doc, ids);
-        bool ok;
-        double end = QInputDialog::getDouble(this, "スキャン", "終点（Å / °）", start, -10000, 10000, 4, &ok);
-        if (!ok)
-            return;
-        int steps = QInputDialog::getInt(this, "スキャン", "分割数", 10, 1, 10000, 1, &ok);
-        if (ok)
-            edit("スキャンを設定", [=](Document &d) { addReference(d, ids, "scan", start, end, steps); });
-    });
+    for (bool fixed : {true, false})
+        button(
+            f, fixed ? "選択原子を固定" : "選択原子の固定を解除",
+            [this, fixed] {
+                auto ids = requireSelection();
+                edit(fixed ? "原子を固定" : "原子の固定を解除", [=](Document &d) {
+                    for (auto id : ids)
+                        d.atom(id).fixed = fixed;
+                });
+            },
+            fixed ? "fixSelectedAtoms" : "unfixSelectedAtoms")
+            ->setToolTip("編集時の移動・削除を防ぎ、NWChemの構造最適化でも座標を固定します。");
     auto *order =
         choices(f, "原子の並べ替え", {"元素順", "残基順", "選択を先頭"}, {"element", "residue", "selected"});
     button(f, "原子を並べ替え", [this, order] {
@@ -323,9 +314,18 @@ void MainWindow::buildEditPanel() {
     });
     button(f, "局所整形（選択原子だけ移動）", [this] { runWorker("refine", {}, requireSelection()); });
     button(f, "3Dを再生成", [this] { runWorker("regenerate"); });
-    button(f, "KAGAMI最適化を設定",
-           [this] { edit("構造最適化を設定", [](Document &d) { d.setJobValue("runtype", "optimize"); }); });
-    button(f, "保留設定を確認…", [this] {
+    button(
+        f, "NWChem構造最適化を設定",
+        [this] {
+            edit("NWChem構造最適化を設定", [](Document &d) {
+                auto s = d.data["nwchem"].toObject();
+                s["task"] = "optimize";
+                d.data["nwchem"] = s;
+            });
+        },
+        "setNwchemOptimization")
+        ->setToolTip("計算目的を構造最適化にします。手法・基底は「3 計算条件」で設定します。");
+    button(f, "旧形式の保留設定を確認…", [this] {
         QDialog dialog(this);
         dialog.setWindowTitle("原子参照と保留設定");
         dialog.resize(680, 500);
@@ -340,13 +340,6 @@ void MainWindow::buildEditPanel() {
         l->addWidget(close);
         connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
         dialog.exec();
-    });
-    button(f, "2D座標を初期値として承認", [this] {
-        edit("2D座標を承認", [](Document &d) {
-            auto meta = d.data["metadata"].toObject();
-            meta["accept_2d"] = true;
-            d.data["metadata"] = meta;
-        });
     });
 }
 QString MainWindow::selectedResidue() const {
@@ -452,7 +445,7 @@ void MainWindow::buildCoordinationPanel() {
             true);
     });
     auto *info =
-        new QLabel("酸化数は構造準備の補助情報です。計算の全電荷・多重度は「割当」で設定してください。");
+        new QLabel("酸化数は構造準備の補助情報です。計算の全電荷・多重度は「電荷」で設定してください。");
     info->setWordWrap(true);
     f->addRow(info);
 }
@@ -475,6 +468,9 @@ void MainWindow::addAmino(const QString &rid, bool n) {
 }
 void MainWindow::buildResiduePanel() {
     auto *f = panel("残基");
+    button(f, "PDBを読み込む…", [this] { open(); });
+    button(f, "PDBの診断・修復…", [this] { pdbPreparation(); }, "preparePdb");
+    button(f, "構造・電荷を検査", [this] { showReport(); });
     button(f, "結合グラフから残基を認識", [this] {
         edit("残基を認識", [](Document &d) { recognizeResidues(d); }, true);
     })->setEnabled(hasStereochemistryBackend());
@@ -597,99 +593,13 @@ void MainWindow::buildResiduePanel() {
         if (ok)
             edit("残基を登録", [=](Document &d) { registerResidue(d, ids, code.toUpper()); });
     });
-}
-void MainWindow::refreshFragmentFields() {
-    if (!fragmentTarget)
-        return;
-    auto values = displayDocument().emittedJob()["sections"].toObject()[value(fragmentTarget)].toObject();
-    fragmentMembers->setText(values["fragments"].toString());
-    fragmentCharges->setText(values["charges"].toString());
-    fragmentMult->setText(values["multiplicities"].toString());
-    fragmentCuts->setText(values["bda_pair"].toString());
-}
-void MainWindow::buildFragmentPanel() {
-    auto *f = panel("割当");
-    button(f, "PDBの診断・修復 → FMO", [this] { pdbPreparation(); });
-    button(f, "PDBを読み込む…", [this] { open(); });
-    button(f, "構造・電荷を検査", [this] { showReport(); });
-    fragmentTarget = choices(f, "反映先", {"FMO", "Counterpoise", "SAPT0"}, {"fmo", "counterpoise", "sapt0"});
-    fragmentMode =
-        choices(f, "分割案", {"連結成分", "1残基ずつ", "2残基ずつ"}, {"component", "residue1", "residue2"});
-    button(
-        f, "分割案を生成",
-        [this] {
-            auto target = value(fragmentTarget), mode = value(fragmentMode);
-            edit("断片割当", [=](Document &d) { proposeFragments(d, target, mode); }, true);
-            colorBox->setCurrentIndex(colorBox->findData(target));
-        },
-        "proposeFragments");
-    fragmentMembers = new QLineEdit;
-    fragmentCharges = new QLineEdit;
-    fragmentMult = new QLineEdit;
-    fragmentCuts = new QLineEdit;
-    f->addRow("geom順の割当", fragmentMembers);
-    f->addRow("断片電荷", fragmentCharges);
-    f->addRow("断片多重度", fragmentMult);
-    f->addRow("BDA:BAA", fragmentCuts);
-    connect(fragmentTarget, &QComboBox::currentIndexChanged, this, &MainWindow::refreshFragmentFields);
-    button(f, "選択2原子をBDA:BAAへ追加", [this] {
-        auto ids = requireSelection(2);
-        QString old = fragmentCuts->text().trimmed();
-        fragmentCuts->setText(old + (old.isEmpty() ? "" : ",") +
-                              QString("%1:%2").arg(doc.index(ids[0]) + 1).arg(doc.index(ids[1]) + 1));
-    });
-    button(f, "手動指定をプレビュー", [this] {
-        auto target = value(fragmentTarget);
-        auto members = integers(fragmentMembers->text()), q = integers(fragmentCharges->text()),
-             m = integers(fragmentMult->text());
-        QList<QPair<int, int>> cuts;
-        for (auto token : fragmentCuts->text().split(QRegularExpression("[,\\s]+"), Qt::SkipEmptyParts)) {
-            auto a = token.split(':');
-            if (a.size() != 2)
-                fail("切断位置は1:2の形式で指定してください。");
-            auto pair = integers(a.join(','));
-            cuts.append({pair[0], pair[1]});
-        }
-        edit("手動断片割当", [=](Document &d) { assignFragments(d, target, members, q, m, cuts); }, true);
-    });
-    button(f, "分割を適用", [this] {
-        if (!candidate || !candidateName.contains("割当"))
-            fail("先に分割案を生成してください。");
-        confirmCandidate();
-    });
-    button(f, "金属と近接するFMO断片を統合", [this] {
-        edit("FMO断片割当の統合", [](Document &d) { mergeIonContacts(d); }, true);
-        colorBox->setCurrentIndex(colorBox->findData("fmo"));
-        showReport();
-    });
-    colorBox = choices(f, "色分け", {"元素", "残基", "FMO", "CP", "SAPT0"},
-                       {"element", "residue", "fmo", "counterpoise", "sapt0"});
-    connect(colorBox, &QComboBox::currentIndexChanged, this, [this] { view->setColorMode(value(colorBox)); });
-    totalCharge = new QSpinBox;
-    totalCharge->setRange(-1000, 1000);
-    multiplicity = new QSpinBox;
-    multiplicity->setRange(1, 1000);
-    f->addRow("計算の全電荷", totalCharge);
-    f->addRow("計算の多重度", multiplicity);
-    button(f, "全電荷・多重度を適用", [this] {
-        int q = totalCharge->value(), m = multiplicity->value();
-        edit("電荷・多重度を変更", [=](Document &d) {
-            d.setJobValue("charge", q);
-            d.setJobValue("multiplicity", m);
-        });
-    });
-    button(f, "形式電荷の合計を適用", [this] {
-        edit("全電荷を合わせる", [](Document &d) { d.setJobValue("charge", d.formalCharge()); });
-    });
     button(f, "原子対応表をCSVで保存…", [this] {
         if (!resolveCandidate())
             return;
         QString p = QFileDialog::getSaveFileName(this, "対応表を保存", "atoms.csv", "CSV (*.csv)");
         if (p.isEmpty())
             return;
-        QString csv = "index,element,atom_name,residue,fragment\n";
-        auto assignment =
-            doc.data["assignments"].toObject()[value(fragmentTarget)].toObject()["members"].toObject();
+        QString csv = "index,element,atom_name,residue\n";
         auto quote = [](QString s) {
             s.replace('"', "\"\"");
             return '"' + s + '"';
@@ -698,21 +608,70 @@ void MainWindow::buildFragmentPanel() {
             const auto &a = doc.atoms[i];
             auto rid = residueForAtom(doc, a.id);
             QString name = rid.isEmpty() ? "" : residue(doc, rid)["code"].toString();
-            csv += QString("%1,%2,%3,%4,%5\n")
-                       .arg(i + 1)
-                       .arg(quote(a.element), quote(a.name), quote(name), quote(assignment[a.id].toString()));
+            csv += QString("%1,%2,%3,%4\n").arg(i + 1).arg(quote(a.element), quote(a.name), quote(name));
         }
         writeFile(p, csv.toUtf8());
     });
 }
 void MainWindow::buildChargePanel() {
     auto *f = panel("電荷");
+    chargeEditor = f->parentWidget();
+    auto *info = new QLabel("分子の全電荷・スピン多重度は「3 計算条件」と共通です。"
+                            "外部点電荷は分子の全電荷に含めません。");
+    info->setWordWrap(true);
+    f->addRow(info);
+    totalCharge = new QSpinBox;
+    totalCharge->setObjectName("moleculeTotalCharge");
+    totalCharge->setRange(-1000, 1000);
+    multiplicity = new QSpinBox;
+    multiplicity->setObjectName("moleculeMultiplicity");
+    multiplicity->setRange(1, 1000);
+    f->addRow("計算の全電荷", totalCharge);
+    f->addRow("スピン多重度 (2S+1)", multiplicity);
+    button(
+        f, "全電荷・多重度を適用",
+        [this] {
+            int q = totalCharge->value(), m = multiplicity->value();
+            edit("電荷・多重度を変更", [=](Document &d) {
+                d.setJobValue("charge", q);
+                d.setJobValue("multiplicity", m);
+            });
+        },
+        "applyMoleculeCharge");
+    button(
+        f, "形式電荷の合計を適用",
+        [this] { edit("全電荷を合わせる", [](Document &d) { d.setJobValue("charge", d.formalCharge()); }); },
+        "applyMoleculeFormalCharge");
+    chargeSummary = new QLabel;
+    chargeSummary->setObjectName("moleculeChargeSummary");
+    chargeSummary->setTextFormat(Qt::PlainText);
+    chargeSummary->setWordWrap(true);
+    f->addRow(chargeSummary);
+    button(f, "NWChem入力を確認", [this] { workspaceTabs->setCurrentIndex(5); }, "moleculeInputPreview");
+    includePointCharges = new QCheckBox("外部点電荷をNWChem入力に含める");
+    includePointCharges->setObjectName("moleculeIncludePointCharges");
+    includePointCharges->setToolTip("点電荷の静電場を含めます。QM/MMの力場・結合相互作用は設定しません。");
+    f->addRow(includePointCharges);
+    connect(includePointCharges, &QCheckBox::toggled, this, [this](bool enabled) {
+        safe([&] {
+            edit("NWChem外部点電荷を変更", [=](Document &d) {
+                auto s = d.data["nwchem"].toObject();
+                s["include_point_charges"] = enabled;
+                d.data["nwchem"] = s;
+            });
+        });
+        refreshChargePanel();
+    });
     pointList = new QListWidget;
+    pointList->setObjectName("pointChargeList");
     pointList->setMaximumHeight(180);
     f->addRow(pointList);
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 3; ++i) {
         chargeFields[i] = number(f, QString("XYZ")[i] + QString(" / Å"));
+        chargeFields[i]->setObjectName(QString("pointCharge") + QString("XYZ")[i]);
+    }
     chargeValue = number(f, "電荷 / e", .5);
+    chargeValue->setObjectName("pointChargeValue");
     connect(pointList, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
         for (auto v : displayDocument().data["point_charges"].toArray()) {
             auto q = v.toObject();
@@ -740,66 +699,54 @@ void MainWindow::buildChargePanel() {
             });
         },
         "addPointCharge");
-    button(f, "点電荷を更新", [this] {
-        if (!pointList->currentItem())
-            fail("点電荷を選択してください。");
-        QString id = pointList->currentItem()->data(Qt::UserRole).toString();
-        Vec p = fields(chargeFields);
-        double q = chargeValue->value();
-        edit("点電荷を更新", [=](Document &d) {
-            auto charges = d.data["point_charges"].toArray();
-            for (int i = 0; i < charges.size(); ++i) {
-                auto c = charges[i].toObject();
-                if (c["id"] == id) {
-                    c["position"] = vectorToJson(p);
-                    c["charge"] = q;
-                    charges[i] = c;
+    button(
+        f, "点電荷を更新",
+        [this] {
+            if (!pointList->currentItem())
+                fail("点電荷を選択してください。");
+            QString id = pointList->currentItem()->data(Qt::UserRole).toString();
+            Vec p = fields(chargeFields);
+            double q = chargeValue->value();
+            edit("点電荷を更新", [=](Document &d) {
+                auto charges = d.data["point_charges"].toArray();
+                for (int i = 0; i < charges.size(); ++i) {
+                    auto c = charges[i].toObject();
+                    if (c["id"] == id) {
+                        c["position"] = vectorToJson(p);
+                        c["charge"] = q;
+                        charges[i] = c;
+                    }
                 }
-            }
-            d.data["point_charges"] = charges;
-        });
-    });
-    button(f, "点電荷を削除", [this] {
-        if (!pointList->currentItem())
-            fail("点電荷を選択してください。");
-        QString id = pointList->currentItem()->data(Qt::UserRole).toString();
-        edit("点電荷を削除", [=](Document &d) {
-            auto charges = d.data["point_charges"].toArray();
-            for (int i = charges.size() - 1; i >= 0; --i)
-                if (charges[i].toObject()["id"] == id)
-                    charges.removeAt(i);
-            d.data["point_charges"] = charges;
-        });
-    });
+                d.data["point_charges"] = charges;
+            });
+        },
+        "updatePointCharge");
+    button(
+        f, "点電荷を削除",
+        [this] {
+            if (!pointList->currentItem())
+                fail("点電荷を選択してください。");
+            QString id = pointList->currentItem()->data(Qt::UserRole).toString();
+            edit("点電荷を削除", [=](Document &d) {
+                auto charges = d.data["point_charges"].toArray();
+                for (int i = charges.size() - 1; i >= 0; --i)
+                    if (charges[i].toObject()["id"] == id)
+                        charges.removeAt(i);
+                d.data["point_charges"] = charges;
+            });
+        },
+        "deletePointCharge");
     button(f, "選択した水をTIP3P点電荷へ", [this] {
         auto ids = requireSelection();
         edit("水を点電荷へ変換", [=](Document &d) { waterToCharges(d, ids); }, true);
     });
-    for (bool enabled : {true, false})
-        button(f, enabled ? "点電荷をQM/MMへ反映・有効化" : "QM/MMを無効化", [this, enabled] {
-            edit(
-                enabled ? "QM/MMを有効化" : "QM/MMを無効化",
-                [=](Document &d) {
-                    if (enabled && d.data["point_charges"].toArray().isEmpty())
-                        fail("点電荷がありません。");
-                    auto j = d.job(), sections = j["sections"].toObject(), qmmm = sections["qmmm"].toObject();
-                    qmmm["enabled"] = enabled ? "t" : "f";
-                    sections["qmmm"] = qmmm;
-                    j["sections"] = sections;
-                    d.data["job"] = j;
-                    auto meta = d.data["metadata"].toObject();
-                    meta["qmmm_applied"] = enabled;
-                    d.data["metadata"] = meta;
-                },
-                true);
-        });
     button(f, "点電荷をファイルへ保存…", [this] {
         if (!resolveCandidate())
             return;
         QString p = QFileDialog::getSaveFileName(this, "点電荷を保存", "charges.dat", "点電荷 (*.dat *.txt)");
         if (p.isEmpty())
             return;
-        QString text = "# KAGAMI point charges; units=angstrom; x y z q\n";
+        QString text = "# MolForma point charges; units=angstrom; x y z q\n";
         for (auto v : doc.data["point_charges"].toArray()) {
             auto q = v.toObject();
             Vec xyz = vectorFromJson(q["position"]);
@@ -812,16 +759,40 @@ void MainWindow::buildChargePanel() {
         writeFile(p, text.toUtf8());
     });
 }
+void MainWindow::refreshChargePanel() {
+    const auto &d = displayDocument();
+    const QSignalBlocker blocker(includePointCharges);
+    includePointCharges->setChecked(nwchemSettings(d)["include_point_charges"].toBool());
+    totalCharge->setValue(d.job()["charge"].toInt());
+    multiplicity->setValue(d.job()["multiplicity"].toInt(1));
+    chargeEditor->setEnabled(!candidate && !worker);
+    const auto check = validateNwchem(d);
+    QStringList text{QString("形式電荷の合計 %1 · 電子数 %2%3")
+                         .arg(d.formalCharge())
+                         .arg(check.electrons)
+                         .arg(check.ecpElectrons ? "（ECP適用後）" : "")};
+    if (check.errors.isEmpty())
+        text << QString("α %1 / β %2 · 入力を生成できます。").arg(check.alpha).arg(check.beta);
+    for (const auto &error : check.errors)
+        text << "エラー: " + error;
+    for (const auto &warning : check.warnings)
+        text << "確認: " + warning;
+    if (candidate)
+        text.prepend("未確定候補です。確定・取消後に設定を変更できます。");
+    else if (worker)
+        text.prepend("分子の整形中です。終了後に設定を変更できます。");
+    chargeSummary->setText(text.join('\n'));
+}
 void MainWindow::pdbPreparation() {
     if (candidate)
         fail("先に候補を確定または取消してください。");
     if (doc.atoms.isEmpty())
         fail("PDBファイルを開いてから診断してください。");
     QDialog dialog(this);
-    dialog.setWindowTitle("PDBの診断・修復とFMO準備");
+    dialog.setWindowTitle("PDBの診断・修復");
     dialog.resize(820, 620);
     auto *layout = new QVBoxLayout(&dialog);
-    auto *intro = new QLabel("残基を選ぶと診断を表示します。修復と分割は3D画面で候補を確認して確定します。");
+    auto *intro = new QLabel("残基を選ぶと診断を表示します。修復は3D画面で候補を確認して確定します。");
     intro->setWordWrap(true);
     layout->addWidget(intro);
     auto *list = new QListWidget;
@@ -874,20 +845,6 @@ void MainWindow::pdbPreparation() {
         edit("PDBの残基を認識", [](Document &d) { recognizeResidues(d); }, true);
         dialog.accept();
     })->setEnabled(hasStereochemistryBackend());
-    auto *units = new QComboBox;
-    units->addItems({"1残基相当", "2残基相当"});
-    layout->addWidget(units);
-    auto *propose = new QPushButton("FMO分割候補を生成して3Dで確認");
-    layout->addWidget(propose);
-    connect(propose, &QPushButton::clicked, &dialog, [&] {
-        safe([&] {
-            auto mode = units->currentIndex() == 0 ? "residue1" : "residue2";
-            edit("FMO断片割当", [=](Document &d) { proposeFragments(d, "fmo", mode); }, true);
-            fragmentTarget->setCurrentIndex(0);
-            colorBox->setCurrentIndex(colorBox->findData("fmo"));
-            dialog.accept();
-        });
-    });
     auto *close = new QDialogButtonBox(QDialogButtonBox::Close);
     layout->addWidget(close);
     connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);

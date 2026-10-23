@@ -374,7 +374,6 @@ void MainWindow::buildUi() {
     buildEditPanel();
     buildCoordinationPanel();
     buildResiduePanel();
-    buildFragmentPanel();
     buildChargePanel();
     splitter->setSizes({300, 690, 340});
     coordinates = new CoordinatesPanel(this);
@@ -606,7 +605,7 @@ void MainWindow::buildMenus() {
             "左のパレットを選び、3D画面へクリックまたはドロップして配置します。\n\n原子をクリックするたびに選"
             "択へ追加・解除します。2〜4原子を順に選ぶと距離・角度・二面角を測定できます。\n\n配位子・ペプチド"
             "配列・削除・整形は画面下の「変更を確定」で適用します。Escで候補を取消、Ctrl+"
-            "Zで確定済みの変更を戻します。\n\n部品・残基・割当・点電荷を残すにはプロジェクト形式で保存してく"
+            "Zで確定済みの変更を戻します。\n\n部品・残基・点電荷を残すにはプロジェクト形式で保存してく"
             "ださい。XYZは座標の交換用です。\n\n詳しい対応状況と操作手順: docs/features.md");
     });
     action(help, "MolFormaについて", {}, [this] {
@@ -939,9 +938,7 @@ void MainWindow::refresh() {
         if (q["id"] == current)
             pointList->setCurrentItem(item);
     }
-    totalCharge->setValue(d.job()["charge"].toInt());
-    multiplicity->setValue(d.job()["multiplicity"].toInt(1));
-    refreshFragmentFields();
+    refreshChargePanel();
     refreshing = false;
     refreshSelection();
     coordinates->refresh();
@@ -1157,6 +1154,7 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
         running->deleteLater();
         workdir.reset();
         cancelWorkerButton->hide();
+        refreshChargePanel();
         coordinates->refresh();
         calculation->refresh();
         advanced->refresh();
@@ -1165,6 +1163,7 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
         QMessageBox::warning(this, "処理を起動できません", message);
     });
     running->start();
+    refreshChargePanel();
     coordinates->refresh();
     calculation->refresh();
     advanced->refresh();
@@ -1183,6 +1182,8 @@ void MainWindow::cancelWorker() {
     workdir.reset();
     if (cancelWorkerButton)
         cancelWorkerButton->hide();
+    if (chargeEditor)
+        refreshChargePanel();
     if (coordinates)
         coordinates->refresh();
     if (calculation)
