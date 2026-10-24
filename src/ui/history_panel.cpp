@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/history_panel.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"

@@ -91,6 +91,8 @@ Key cross-cutting designs:
 - Add deterministic regression tests, especially for file compatibility, connectivity, geometry, undo and
   candidates. Preserve project envelope fields in `.kgui.json`.
 - Document feature limitations in `docs/features.md` (Japanese); MCP tool changes belong in `docs/mcp.md`.
-- Keep `LICENSE` (Apache-2.0) and `NOTICE` current. Do not add runtime dependence on Python.
+- MolForma is GPL-2.0-or-later (Open Babel, which it links, is GPL-2.0-only; keep new dependencies
+  GPLv2-compatible). New source files start with `// SPDX-License-Identifier: GPL-2.0-or-later`. Keep `LICENSE` and
+  `NOTICE` current. Do not add runtime dependence on Python.
 - Commits use short imperative subjects. PRs describe behavior and checks, with screenshots for UI changes.
   Keep build dirs, logs and generated outputs out of version control.

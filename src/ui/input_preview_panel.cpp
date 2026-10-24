@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/input_preview_panel.h"
 #include "editing/coordinates.h"
 #include "nwchem/nwchem_advanced.h"

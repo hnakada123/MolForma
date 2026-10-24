@@ -1,11 +1,21 @@
 MolForma
 
-Licensed under the Apache License, Version 2.0 (see LICENSE).
+This program is free software; you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software Foundation;
+either version 2 of the License, or (at your option) any later version. The license
+text is in LICENSE.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
 assets/library.json (molecule-builder fragments) and assets/elements.json (element
-data) are part of MolForma. Some fragment geometries were generated with RDKit
-(BSD-3-Clause).
+data) are part of MolForma and are under the same license. Some fragment geometries
+were generated with RDKit (BSD-3-Clause).
 
-Qt6, Eigen3, optional RDKit and VTK, and Open Babel 3 are system dependencies, not
-vendored here; their own license terms apply. Open Babel is GPL-licensed. The Apache
-license of MolForma does not license the linked dependencies.
+Qt6, Eigen3, Open Babel 3 and the optional RDKit and VTK are system dependencies, not
+vendored here; their own license terms apply. Open Babel 3 is licensed under the GNU
+GPL version 2 only, so binaries linked with it are distributed under GPL version 2.
+The Qt modules MolForma uses (Core, Gui, Widgets, OpenGL, OpenGL Widgets) are also
+offered under GPL-2.0-only; binaries linked with Open Babel use Qt under that option.
+Eigen (MPL-2.0), RDKit and VTK (BSD-3-Clause) are compatible with GPL version 2.

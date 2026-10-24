@@ -85,4 +85,4 @@ QT_QPA_PLATFORM=offscreen ./build/molforma \
 
 ## ライセンス
 
-MolFormaは [Apache License 2.0](LICENSE) で配布します。101件の部品データと元素データを同梱しています。リンクする外部ライブラリ（Qt6・Eigen3・Open Babel 3・RDKit・VTK）はそれぞれのライセンスに従います（[NOTICE](NOTICE)）。
+MolFormaは [GNU General Public License](LICENSE) バージョン2、または（選択により）それ以降のバージョン（GPL-2.0-or-later）で配布します。同梱の部品データ101件と元素データも同じ条件です。リンクする外部ライブラリ（Qt6・Eigen3・Open Babel 3・RDKit・VTK）はそれぞれのライセンスに従います。Open BabelがGPL-2.0-onlyのため、Open Babelとリンクしたバイナリを配布する場合はGPLバージョン2の条件に従います（[NOTICE](NOTICE)）。

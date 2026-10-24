@@ -81,7 +81,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -189,7 +189,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -316,7 +316,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -405,7 +405,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -589,7 +589,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -735,7 +735,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -843,7 +843,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -1108,7 +1108,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -1492,7 +1492,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -1700,7 +1700,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -1965,7 +1965,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -2287,7 +2287,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -2666,7 +2666,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported",
         "geometry_adjustment": "lowest-energy chair from 24 ETKDGv3/MMFF94 conformers; alternating 52–58 degree ring torsions"
       },
@@ -2913,7 +2913,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -3140,7 +3140,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -3348,7 +3348,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -3556,7 +3556,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -3764,7 +3764,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -3991,7 +3991,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -4120,7 +4120,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -4306,7 +4306,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -4549,7 +4549,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -4792,7 +4792,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -5092,7 +5092,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -5240,7 +5240,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -5350,7 +5350,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -5617,7 +5617,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -5865,7 +5865,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -6113,7 +6113,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -6361,7 +6361,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -6452,7 +6452,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -6600,7 +6600,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -6710,7 +6710,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -6934,7 +6934,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -7025,7 +7025,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -7135,7 +7135,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -7302,7 +7302,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -7431,7 +7431,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -7541,7 +7541,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -7632,7 +7632,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -7723,7 +7723,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -7852,7 +7852,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -7924,7 +7924,7 @@
         "embedding": "ETKDGv3",
         "force_field": "UFF",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -7996,7 +7996,7 @@
         "embedding": "ETKDGv3",
         "force_field": "UFF",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -8068,7 +8068,7 @@
         "embedding": "ETKDGv3",
         "force_field": "UFF",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -8140,7 +8140,7 @@
         "embedding": "ETKDGv3",
         "force_field": "UFF",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -8288,7 +8288,7 @@
         "embedding": "ETKDGv3",
         "force_field": "UFF",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -8436,7 +8436,7 @@
         "embedding": "ETKDGv3",
         "force_field": "UFF",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -8622,7 +8622,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -8770,7 +8770,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -8975,7 +8975,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -9066,7 +9066,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -9176,7 +9176,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -9248,7 +9248,7 @@
         "embedding": "ETKDGv3",
         "force_field": "UFF",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -9496,7 +9496,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -9606,7 +9606,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -9887,7 +9887,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -10582,7 +10582,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -10730,7 +10730,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -10782,7 +10782,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -10834,7 +10834,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -10886,7 +10886,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -10938,7 +10938,7 @@
         "embedding": "ETKDGv3",
         "force_field": "UFF",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -11010,7 +11010,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -11082,7 +11082,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported",
         "geometry_adjustment": "authored linear C–N triple-bond seed, 1.16 angstrom; not an optimized structure"
       },
@@ -11346,7 +11346,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -11771,7 +11771,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -12072,7 +12072,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -12540,7 +12540,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -12689,7 +12689,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -12741,7 +12741,7 @@
         "embedding": "ETKDGv3",
         "force_field": "UFF",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -12793,7 +12793,7 @@
         "embedding": "ETKDGv3",
         "force_field": "UFF",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -12960,7 +12960,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -13245,7 +13245,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -13801,7 +13801,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -14338,7 +14338,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -14704,7 +14704,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -15032,7 +15032,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -15379,7 +15379,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -15688,7 +15688,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -15978,7 +15978,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -16401,7 +16401,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -16786,7 +16786,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -17190,7 +17190,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -17423,7 +17423,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -17849,7 +17849,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -18277,7 +18277,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -18724,7 +18724,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -19185,7 +19185,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -19647,7 +19647,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -20165,7 +20165,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -20664,7 +20664,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -21087,7 +21087,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -21572,7 +21572,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -21943,7 +21943,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -22252,7 +22252,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -22618,7 +22618,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -23185,7 +23185,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -23689,7 +23689,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -24174,7 +24174,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {
@@ -24578,7 +24578,7 @@
         "embedding": "ETKDGv3",
         "force_field": "MMFF94",
         "optimization_status": 0,
-        "source_license": "MolForma authored SMILES/geometry: Apache-2.0; RDKit: BSD-3-Clause",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause",
         "atom_names": "conventional peptide heavy-atom names; no CCD coordinates imported"
       },
       "validation": {

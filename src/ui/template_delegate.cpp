@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/template_delegate.h"
 #include "model/document.h"
 #include <QApplication>

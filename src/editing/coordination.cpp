@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordination.h"
 #include <cmath>
 namespace mf {

@@ -48,7 +48,8 @@ contains model, editing, nwchem and results; `molforma_ui` contains ui and links
 to core and mcp; `molforma_mcp` contains mcp and links to core.
 
 Tests are in `tests/`, documentation in `docs/`, and resource data in `assets/`.
-Keep `LICENSE` (Apache-2.0) and `NOTICE` current.
+MolForma is GPL-2.0-or-later (it links the GPL-2.0-only Open Babel); keep new
+dependencies GPLv2-compatible and `LICENSE` and `NOTICE` current.
 
 ## Build and test
 

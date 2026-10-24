@@ -578,7 +578,7 @@ QT_QPA_PLATFORM=offscreen MOLFORMA_MOLDEN_REAL=/path/to/benzene.molden \
 - **ドラッグ＆ドロップ**: ウィンドウへ構造ファイル・プロジェクト・NWChem/Gaussian入力をドロップすると開きます（未保存の変更は確認）。`.out`・`.log`・CUBE・MOLDENとフォルダーは結果ビューアで開きます。「1 分子」のパレットからの部品のドロップは従来どおり分子へ配置します。
 - **自動保存と復旧**: 対話的な起動では、未保存の変更があるとき1分ごとにプロジェクトのコピーをデータフォルダー（Linuxでは `~/.local/share/MolForma/autosave/`）へ保存します。保存・正常終了でコピーを消します。異常終了したセッションのコピーが残っていると、次の起動時に保存日時・元のファイル・分子を示して「復旧する／破棄する／後で決める」を尋ねます。復旧した分子は未保存のプロジェクトとして開くので、名前を付けて保存してください。他のMolFormaウィンドウが使用中のコピーには触れません。`--mcp-gui` の起動は自動保存しますが、復旧の確認は出しません（`--mcp` と `--screenshot` は対象外）。
 - **操作ガイド・マニュアル**: 「ヘルプ → 操作ガイド・マニュアル」（F1）で、このファイルとMCPの説明を実行ファイルに組み込んだ表示で読めます（インストール先の文書ファイルは不要）。検索欄でEnterを押すと次の一致へ移動します。
-- **デスクトップ連携**: `cmake --install` で、ランチャー（`share/applications/molforma.desktop`）、アイコン（`share/icons/hicolor` の `molforma`）、プロジェクト（`*.kgui.json`）とNWChem入力（`*.nw`）のMIME型（`share/mime/packages/molforma.xml`）を配置します。システムのデータベースへの反映は `update-desktop-database` / `update-mime-database` が必要な場合があります。ウィンドウのアイコンにも同じ図案を使います。`LICENSE`（Apache License 2.0）・`NOTICE`・`README.md` を `share/molforma` に配置します。
+- **デスクトップ連携**: `cmake --install` で、ランチャー（`share/applications/molforma.desktop`）、アイコン（`share/icons/hicolor` の `molforma`）、プロジェクト（`*.kgui.json`）とNWChem入力（`*.nw`）のMIME型（`share/mime/packages/molforma.xml`）を配置します。システムのデータベースへの反映は `update-desktop-database` / `update-mime-database` が必要な場合があります。ウィンドウのアイコンにも同じ図案を使います。`LICENSE`（GNU GPL バージョン2。MolFormaはバージョン2以降）・`NOTICE`・`README.md` を `share/molforma` に配置します。
 
 ## 実装済み
 
