@@ -237,9 +237,10 @@ QJsonObject outputSchema(const QString &name) {
     if (name == "get_nwchem")
         return object({{"settings", type("object")},
                        {"defaults", type("object")},
+                       {"choices", type("object")},
                        {"errors", strings()},
                        {"warnings", strings()}},
-                      {"settings", "defaults", "errors", "warnings"});
+                      {"settings", "defaults", "choices", "errors", "warnings"});
     if (name == "get_advanced")
         return object({{"settings", type("object")}, {"options", type("array")}}, {"settings", "options"});
     if (name == "get_execution")
@@ -666,7 +667,8 @@ QJsonArray McpServer::toolList() const {
         "overwrite is true; reject pending candidates. Does not mark GUI history clean.",
         {{"path", type("string")}, {"overwrite", type("boolean")}, {"expectedRevision", type("string")}},
         {"path", "expectedRevision"});
-    add("get_nwchem", "Read NWChem settings, defaults and validation errors/warnings.");
+    add("get_nwchem",
+        "Read NWChem settings, defaults, allowed choice values and validation errors/warnings.");
     add("get_advanced", "Read all advanced/output options, their types, applicability and stored values.");
     add("set_advanced", "Merge typed advanced/output settings. A null value resets that option.",
         {{"settings", type("object")}}, {"settings"}, true, true);
@@ -801,8 +803,17 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
     }
     if (name == "get_nwchem") {
         auto validation = validateNwchem(d);
+        QJsonObject choices; // Allowed values of each choice setting, as offered in the GUI.
+        for (const auto &key : nwchemDefaults().keys()) {
+            QJsonArray values;
+            for (const auto &c : nwchemChoices(key))
+                values.append(QJsonObject{{"value", c.value}, {"label", c.label}});
+            if (!values.isEmpty())
+                choices[key] = values;
+        }
         return {{"settings", nwchemSettings(d)},
                 {"defaults", nwchemDefaults()},
+                {"choices", choices},
                 {"charge", d.job()["charge"]},
                 {"multiplicity", d.job()["multiplicity"]},
                 {"errors", QJsonArray::fromStringList(validation.errors)},

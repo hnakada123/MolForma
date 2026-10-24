@@ -4,6 +4,7 @@
 #include "editing/coordination.h"
 #include "editing/operations.h"
 #include "editing/peptide.h"
+#include "editing/stereochemistry.h"
 #include "ui/advanced_panel.h"
 #include "ui/calculation_panel.h"
 #include "ui/coordinates_panel.h"
@@ -639,19 +640,36 @@ void MainWindow::buildMenus() {
     });
     auto *help = menuBar()->addMenu("ヘルプ");
     action(help, "操作ガイド", QKeySequence::HelpContents, [this] {
-        QMessageBox::information(
-            this, "MolForma の操作",
+        // Installed builds ship the manual in share/molforma/docs; a build tree sits beside docs/.
+        const QDir application(QCoreApplication::applicationDirPath());
+        QString manual;
+        for (const auto *candidate : {"../share/molforma/docs/features.md", "../docs/features.md"})
+            if (QFileInfo::exists(application.filePath(candidate))) {
+                manual = QFileInfo(application.filePath(candidate)).canonicalFilePath();
+                break;
+            }
+        QMessageBox box(
+            QMessageBox::Information, "MolForma の操作",
             "左のパレットを選び、3D画面へクリックまたはドロップして配置します。\n\n原子をクリックするたびに選"
             "択へ追加・解除します。2〜4原子を順に選ぶと距離・角度・二面角を測定できます。\n\n配位子・ペプチド"
             "配列・削除・整形は画面下の「変更を確定」で適用します。Escで候補を取消、Ctrl+"
             "Zで確定済みの変更を戻します。\n\n部品・残基・点電荷を残すにはプロジェクト形式で保存してく"
-            "ださい。XYZは座標の交換用です。\n\n詳しい対応状況と操作手順: docs/features.md");
+            "ださい。XYZは座標の交換用です。\n\n詳しい対応状況と操作手順: " +
+                (manual.isEmpty() ? QString("インストール先の share/molforma/docs/features.md") : manual),
+            QMessageBox::Close, this);
+        auto *open = manual.isEmpty() ? nullptr : box.addButton("説明を開く", QMessageBox::ActionRole);
+        box.exec();
+        if (open && box.clickedButton() == open && !QDesktopServices::openUrl(QUrl::fromLocalFile(manual)))
+            fail("説明を開けません: " + manual);
     });
     action(help, "MolFormaについて", {}, [this] {
         QMessageBox::about(
             this, "MolForma",
-            "MolForma 0.1\nQt6 / C++ 分子エディタ\nKAGAMI GUI「1 分子」から独立した実装\n部品・元素データ: "
-            "KAGAMI (Apache-2.0)\n化学ファイル・力場: Open Babel");
+            QString("MolForma %1\nNWChem向けの分子作成・計算入力・実行・結果表示（Qt6 / C++）\n"
+                    "KAGAMI GUIを基に移植\n部品・元素データ: KAGAMI (Apache-2.0)\n"
+                    "化学ファイル・力場: Open Babel\n立体判定・残基認識（RDKit）: %2\n3D描画: %3")
+                .arg(MOLFORMA_VERSION, hasStereochemistryBackend() ? "有効" : "無効",
+                     view->rendererName() == "vtk" ? "VTK（OpenGL）" : "QPainter（CPU）"));
     });
     auto *bar = addToolBar("ファイル");
     bar->setMovable(false);

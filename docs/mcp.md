@@ -182,7 +182,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `open_file` | ローカルXYZ/MOL/SDF/PDB/KAGAMIファイルの取込 |
 | `export_document` | 確定文書のXYZ、KAGAMI v2 JSON、検証済みNWChem入力文字列 |
 | `save_file` | 確定文書をKAGAMI v2として保存。既存ファイルは `overwrite: true` か、利用者の上書き承認が必要 |
-| `get_nwchem` / `set_nwchem` | 計算条件・既定値・検証結果の取得と条件変更 |
+| `get_nwchem` / `set_nwchem` | 計算条件・既定値・選択肢（`choices`）・検証結果の取得と条件変更 |
 | `get_advanced` / `set_advanced` | 詳細・可視化出力設定の型、選択肢、適用条件、値を取得・変更。`null` で個別リセット |
 | `get_execution` / `set_execution` | 実行ファイル、MPI、スレッド数、作業場所、環境変数、時間制限の取得・変更 |
 | `history` | 候補の確定・取消、Undo/Redo |

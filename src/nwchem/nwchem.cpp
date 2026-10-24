@@ -288,8 +288,6 @@ NwchemValidation validateNwchem(const Document &d) {
         errors << "CCSD / CCSD(T)は閉殻RHFの一点エネルギーに対応します。";
     if (correlated(method) && result.electrons < 2)
         errors << "相関計算には2個以上の電子が必要です。";
-    if (method == "dft" && str("functional") == "pbe0" && str("dispersion") == "d3bj")
-        errors << "PBE0のD3(BJ)はこのタブでは未対応です。D3または補正なしを選んでください。";
     if (result.frozenOrbitals &&
         (result.frozenOrbitals > result.beta || result.electrons - 2 * result.frozenOrbitals < 2))
         errors << "内殻凍結後の相関電子が不足します。内殻凍結を解除してください。";

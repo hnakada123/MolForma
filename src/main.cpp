@@ -110,7 +110,7 @@ int main(int argc, char **argv) {
     QCoreApplication::setApplicationVersion(MOLFORMA_VERSION);
     QApplication::setStyle("Fusion");
     QCommandLineParser parser;
-    parser.setApplicationDescription("Qt6/C++ molecular builder extracted from KAGAMI GUI");
+    parser.setApplicationDescription("Qt6/C++ molecular editor and NWChem input, run and result front end");
     parser.addHelpOption();
     parser.addVersionOption();
     parser.addPositionalArgument("file", "XYZ/MOL/SDF/PDB/KAGAMI project");

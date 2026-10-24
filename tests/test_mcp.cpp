@@ -688,6 +688,12 @@ class McpTest : public QObject {
         auto exported = call(server, "export_document", scoped(server, {{"format", "nwchem"}}));
         QVERIFY(!failed(exported));
         QVERIFY(data(exported)["text"].toString().contains("task scf energy"));
+        // The geometry_optimization prompt relies on get_nwchem listing the allowed values.
+        const auto choices = data(call(server, "get_nwchem", scoped(server)))["choices"].toObject();
+        QVERIFY(
+            choices["basis"].toArray().contains(QJsonObject{{"value", "def2-svp"}, {"label", "def2-svp"}}));
+        QCOMPARE(choices["basis_functions"].toArray().size(), 3);
+        QVERIFY(!choices.contains("memory_mb"));
         auto before = server.snapshot();
         QVERIFY(failed(change(server, "set_nwchem", {{"settings", QJsonObject{{"basis", "bad\ninput"}}}})));
         QCOMPARE(server.snapshot(), before);

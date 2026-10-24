@@ -227,7 +227,7 @@ Ids Document::bondSide(const QString &a, const QString &b) const {
         fail("結合の両端を選択してください。");
     auto side = component(b, a, b);
     if (side.contains(a))
-        fail("環内の結合は片側だけ動かせません。全体整形または拘束を使用してください。");
+        fail("環内の結合は片側だけ動かせません。全体を回転・移動するか、整形を使用してください。");
     return side;
 }
 void Document::invalidateAssignments() {
@@ -235,7 +235,8 @@ void Document::invalidateAssignments() {
     for (auto it = assignments.begin(); it != assignments.end(); ++it) {
         auto a = it.value().toObject();
         a["status"] = "candidate";
-        a["issues"] = QJsonArray{"原子構成が変更されました。割当を確認して再適用してください。"};
+        a["issues"] = QJsonArray{
+            "原子構成が変更されたため、旧KAGAMIの断片割当は無効です（NWChem入力には使いません）。"};
         it.value() = a;
     }
     data["assignments"] = assignments;

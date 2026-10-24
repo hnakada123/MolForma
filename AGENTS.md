@@ -73,12 +73,12 @@ cancellable process, and stale results must be rejected.
 
 Add deterministic regression tests, especially for file compatibility,
 connectivity, geometry, undo and candidates. Preserve project envelope fields.
-Document limitations in `docs/features.md`.
+Document limitations in `docs/features.md` (Japanese); MCP tool changes belong
+in `docs/mcp.md`.
 
 ## Changes and security
 
 Use short imperative commit subjects. PRs describe behavior, checks and
-screenshots for UI changes. Git metadata was unavailable at initial setup;
-verify it before Git operations. Keep builds, logs, credentials and generated
+screenshots for UI changes. Keep builds, logs, credentials and generated
 outputs out of version control. Do not add runtime dependence on the original
 KAGAMI checkout or Python GUI.

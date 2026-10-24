@@ -62,8 +62,10 @@ Key cross-cutting designs:
   the server owns its own headless document and undo stack. Fixed atoms must never move.
 - **MCP access policy**: MCP must not choose the NWChem executable, launcher or environment overrides (only
   `--mcp-allow-execution-settings` permits it). `MainWindow::mcp` records the values last changed outside MCP;
-  runs started over MCP must match them. `--mcp-allow-dir` confines MCP file paths. Widgets with the
-  `mcpExecutionSetting`, `mcpPath` or `mcpProtected` property are refused by `McpGui`.
+  runs started over MCP must match them. `--mcp-allow-dir` confines MCP file paths, including paths reached through GUI actions
+  (`MainWindow::checkMcpPath`). Widgets with `mcpExecutionSetting` or `mcpProtected` are refused by
+  `McpGui`; `mcpPath` widgets only while `--mcp-allow-dir` is set. Edits made or confirmed over MCP
+  never make execution settings trusted, even on undo/redo.
 - **Out-of-process work**: long chemistry operations (Open Babel refinement, SMILES → 3D) and heavy result reading
   re-launch the same executable with `--worker` / `--result-worker` via `QProcess`, exchanging JSON through temp
   files, so they are cancellable. Results returning after the document changed must be rejected as stale.

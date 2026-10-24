@@ -76,10 +76,7 @@ class CalculationTest : public QObject {
             QVERIFY(text.contains("  disp vdw 3\n"));
             QVERIFY(!text.contains("\nscf\n"));
             set(d, "dispersion", "d3bj");
-            if (it.key() == "pbe0")
-                QVERIFY(errorContains(d, "D3(BJ)"));
-            else
-                QVERIFY(nwchemInput(d).contains("  disp vdw 4\n"));
+            QVERIFY(nwchemInput(d).contains("  disp vdw 4\n"));
         }
         set(d, "functional", "b3lyp");
         set(d, "task", "optimize_frequencies");
@@ -498,7 +495,7 @@ class CalculationTest : public QObject {
             auto d = h2;
             set(d, "method", "dft");
             set(d, "functional", functional.value);
-            set(d, "dispersion", functional.value == "pbe0" ? "d3" : "d3bj");
+            set(d, "dispersion", "d3bj");
             emitInput(functional.value, d);
         }
         for (const auto &method : {"mp2", "ccsd", "ccsd(t)"}) {
