@@ -31,11 +31,18 @@ by responsibility, with paired headers and implementations in the same directory
   "6 Input preview" tab using the shared NWChem input generator and execution plan.
   `results_panel.*` provides the independent result viewer with cancellable native
   readers. `history_panel.*` provides calculation history, log browsing, reuse and
-  result navigation.
+  result navigation. `mcp_gui.*` exposes GUI, execution and result tools to MCP
+  by driving the editor window.
+- `src/mcp/`: `server.*` implements the MCP JSON-RPC server (protocols 2026-07-28
+  and legacy 2025-11-25) with document tools, candidates and undo; editor hooks
+  let it operate a GUI document, otherwise it owns a headless one.
+  `stdio_transport.*` provides newline-delimited stdio transport. See `docs/mcp.md`.
 
-`src/main.cpp` is the entry point. Include project headers relative to `src/`,
-for example `#include "model/document.h"`. The `molforma_core` target contains
-model, editing, nwchem and results; `molforma_ui` contains ui and links to core.
+`src/main.cpp` is the entry point; `--mcp` runs the headless MCP server and
+`--mcp-gui` runs it with the editor window. Include project headers relative to
+`src/`, for example `#include "model/document.h"`. The `molforma_core` target
+contains model, editing, nwchem and results; `molforma_ui` contains ui and links
+to core; `molforma_mcp` contains mcp and links to core.
 
 Tests are in `tests/`, documentation in `docs/`, and resource data in `assets/`.
 Preserve KAGAMI data and fixture attributions.

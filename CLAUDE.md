@@ -1,0 +1,82 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+MolForma is a native Qt6 Widgets / C++20 molecular editor and NWChem input/run/result front end, ported from
+the KAGAMI Python GUI. The UI text and user docs (`README.md`, `docs/`) are Japanese. `AGENTS.md` has the same
+repository guidelines in a per-file form.
+
+## Build and test
+
+```sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j 4
+ctest --test-dir build --output-on-failure
+ctest --test-dir build -R '^editor$' --output-on-failure   # one test executable
+QT_QPA_PLATFORM=offscreen ./build/test_editor someTestFunction   # one Qt Test slot
+```
+
+- Dependencies: Qt6 (>= 6.4) Widgets/Test, Eigen3, Open Babel 3 (pkg-config `openbabel-3`, C++ API only),
+  CMake >= 3.21. Optional: RDKit C++ (defines `MOLFORMA_HAS_RDKIT`, enables strict CIP/residue recognition)
+  and Qt6-built VTK >= 9.1 (defines `MOLFORMA_HAS_VTK`). Code must build and pass tests with neither.
+- Alternate trees exist locally: `build-no-vtk` (`-DMOLFORMA_ENABLE_VTK=OFF`) and `build-asan`
+  (`-DCMAKE_CXX_FLAGS='-fsanitize=address -fno-omit-frame-pointer'`). Check rendering changes against the
+  QPainter path too.
+- Each `tests/test_*.cpp` is its own executable/CTest test (`core`, `editor`, `coordinates`, `calculation`,
+  `advanced`, `execution`, `input_preview`, `results`, `history`, `output`, `molden`, `rendering`, `mcp`).
+  All run with `QT_QPA_PLATFORM=offscreen` and need no network, credentials or NWChem install:
+  `tests/fake_nwchem.cpp` builds a stand-in NWChem used by execution/history/output/mcp tests.
+  `test_mcp` launches the built `molforma` binary. Fixtures live in `tests/fixtures/` (`FIXTURE_DIR` in `test_core`).
+- New source files must be added to the explicit lists in `CMakeLists.txt` (no globbing).
+- Format: `rg --files src tests -g '*.h' -g '*.cpp' -0 | xargs -0 clang-format -i` (uses `.clang-format`).
+- Headless screenshot for UI checks:
+  `QT_QPA_PLATFORM=offscreen ./build/molforma tests/fixtures/ala_gly_ser.kgui.json --screenshot /tmp/molforma.png`.
+  `MOLFORMA_RENDERER=painter` forces the QPainter renderer.
+
+## Architecture
+
+Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#include "model/document.h"`):
+
+- `molforma_core` — `src/model`, `src/editing`, `src/nwchem`, `src/results`, plus `assets/resources.qrc`
+  (KAGAMI template/element data embedded as Qt resources; no runtime file dependency). No UI code here.
+- `molforma_ui` — `src/ui`, links core. `main_window.*` + `editor_panels.cpp` host the editor; numbered tabs
+  "2 Coordinates" … "6 Input preview" are separate `*_panel.*` classes; result viewer and history are panels too.
+- `molforma_mcp` — `src/mcp`, links core only. A JSON-RPC MCP server over stdio (protocols 2026-07-28 and legacy
+  2025-11-25); see `docs/mcp.md`.
+- `molforma` executable (`src/main.cpp`) links all of them and has several modes selected by argv:
+  normal GUI, `--screenshot`, `--mcp` (headless, `QCoreApplication`), `--mcp-gui` (MCP driving a real
+  `MainWindow` via `src/ui/mcp_gui.*`), and the internal `--worker` / `--result-worker <in> <out>` modes.
+
+Key cross-cutting designs:
+
+- **Document model**: `mf::Document` (`model/document.*`) holds atoms with stable IDs, bonds, residues,
+  coordination centers, fragments, fixed atoms, isotopes, point charges and calculation/execution settings, and
+  serializes to the KAGAMI v2 `.kgui.json` project envelope. Atom references are stored by stable ID and only
+  translated to indices at export (NWChem input, XYZ). Coordinates are doubles in Å; camera/view never edits them.
+- **Edit → candidate → commit**: UI edits operate on a copy of the document and commit only after validation.
+  Operations such as ligand placement, sequence building, deletion and refinement produce a *candidate* shown
+  separately until the user confirms ("変更を確定"); Esc discards it, Ctrl+Z undoes committed edits. The MCP server
+  mirrors this: `McpEditor` hooks (`mcp/server.h`) expose `document`/`candidate`/`edit`/`history`, and without hooks
+  the server owns its own headless document and undo stack. Fixed atoms must never move.
+- **Out-of-process work**: long chemistry operations (Open Babel refinement, SMILES → 3D) and heavy result reading
+  re-launch the same executable with `--worker` / `--result-worker` via `QProcess`, exchanging JSON through temp
+  files, so they are cancellable. Results returning after the document changed must be rejected as stale.
+- **NWChem pipeline**: `nwchem/nwchem.*` validates settings and generates full input; `nwchem_advanced.*` layers typed
+  overrides (blank = default) on the base settings; `nwchem_output.*` adds CUBE/MOLDEN tasks; `nwchem_execution.*`
+  saves immutable run bundles and controls NWChem/MPI processes; `history.*` scans those bundles. The Input preview
+  tab and the MCP tools reuse the same generator and execution plan — don't fork generation logic in the UI.
+- **Rendering**: `ui/molecule_view.*` owns camera, input and Qt annotations and has a QPainter fallback;
+  `ui/vtk_molecule_renderer.*` is compiled only with VTK. Offscreen/minimal Qt platforms or missing OpenGL 3.2
+  automatically fall back to QPainter.
+- Persistence: UI prefs and user presets go to `QSettings("MolForma", "MolForma")`; molecule, calculation and
+  execution settings go into the project file.
+
+## Conventions
+
+- Add deterministic regression tests, especially for file compatibility, connectivity, geometry, undo and
+  candidates. Preserve project envelope fields in `.kgui.json`.
+- Document feature limitations in `docs/features.md` (Japanese); MCP tool changes belong in `docs/mcp.md`.
+- Preserve KAGAMI data and fixture attributions (`NOTICE`, `assets/KAGAMI-*`). Do not add runtime dependence on
+  the KAGAMI checkout, Python, or the original Python GUI.
+- Commits use short imperative subjects. PRs describe behavior and checks, with screenshots for UI changes.
+  Keep build dirs, logs and generated outputs out of version control.
