@@ -33,7 +33,7 @@ cmake --install build --prefix /tmp/molforma-install
 
 ## 操作
 
-MCPクライアントからも操作できます。GUIを表示する場合は `molforma --mcp-gui`、画面なしの場合は `molforma --mcp` をサーバーの起動コマンドに指定してください。最新の安定版MCP **2026-07-28** と **2025-11-25** をstdioでサポートします。接続設定・公開ツール・制限は [MCPサーバー](docs/mcp.md) を参照してください。
+MCPクライアントからも操作できます。GUIを表示する場合は `molforma --mcp-gui`、画面なしの場合は `molforma --mcp` をサーバーの起動コマンドに指定してください。最新の安定版MCP **2026-07-28** と **2025-11-25** をstdioでサポートします。Claude Codeでは `claude mcp add molforma -- /absolute/path/to/molforma --mcp-gui` で登録できます。Claude Code・Codexの設定例、公開ツール、制限は [MCPサーバー](docs/mcp.md) を参照してください。
 
 - 左のパレットで原子・骨格などを選び、中央をクリックして配置します。部品のドラッグ＆ドロップにも対応します。
 - 原子を順にクリックして選択・解除します。2 / 3 / 4原子で距離 / 角度 / 二面角を測定し、「寸法を適用」で変更します。

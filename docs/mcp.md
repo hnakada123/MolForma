@@ -42,13 +42,39 @@ MCPクライアントのサーバー設定で、実行ファイルの絶対パ�
 
 ### Claude Codeでの登録
 
-Claude Code 2.1.310で、新しい仕様（2026-07-28）による接続と、ツールの呼び出しを確認しています。
+Claude Code 2.1.310で、新しい仕様（2026-07-28）による接続とツールの呼び出しを確認しています。Claude Codeは `server/discover` で接続するため、互換モードは使いません。
+
+自分の環境だけで使う場合は、`claude mcp add` で登録します。`--` より後ろがMolFormaの起動コマンドです。
 
 ```sh
 claude mcp add molforma -- /absolute/path/to/molforma --mcp-gui
 ```
 
-プロジェクトで設定を共有する場合は `--scope project` を付けます。設定はリポジトリの `.mcp.json` に保存されます。Claude Codeは起動時の環境変数をそのまま子プロセスへ渡すため、Linuxでも `DISPLAY` などの追加設定は通常不要です。Claude Code内の `/mcp` で接続状態とツール数を確認できます。画面が不要な場合は `--mcp-gui` の代わりに `--mcp` を指定します。
+既定の登録範囲は `local` で、現在のプロジェクトだけで有効です。すべてのプロジェクトで使う場合は `--scope user` を付けます。どちらも設定は `~/.claude.json` に保存されます。
+
+チームで設定を共有する場合は `--scope project` を付けます。設定はリポジトリ直下の `.mcp.json` に保存されます。利用者ごとに実行ファイルの場所が違う場合は、環境変数の展開を使い、絶対パスを書かないようにします。
+
+```json
+{
+  "mcpServers": {
+    "molforma": {
+      "command": "${MOLFORMA_BIN:-molforma}",
+      "args": ["--mcp-gui"]
+    }
+  }
+}
+```
+
+`${MOLFORMA_BIN:-molforma}` は、環境変数 `MOLFORMA_BIN` が設定されていればその値、なければ `PATH` 上の `molforma` を使います。プロジェクトの `.mcp.json` を対話セッションで初めて使うときは、Claude Codeが利用の承認を求めます。承認をやり直す場合は `claude mcp reset-project-choices` を実行します。
+
+Claude Codeは起動時の環境変数をそのまま子プロセスへ渡すため、Linuxでも `DISPLAY` などの追加設定は通常不要です。画面のない環境で起動したClaude Codeから `--mcp-gui` を使うと、表示先がないためMolFormaが起動直後に終了します。その場合は `--mcp` を指定してください。
+
+接続の確認と問題の調査には次の方法を使います。
+
+- Claude Code内で `/mcp` を開き、`molforma` が接続済みであることとツール数（`--mcp-gui` は38、`--mcp` は21）を確認します。
+- 端末で `claude mcp list` または `claude mcp get molforma` を実行します。接続に失敗した場合は、`Issue:` 行に原因が表示されます。
+- GUIの起動に時間がかかって接続待ちが時間切れになる場合は、`MCP_TIMEOUT=30000 claude` のように起動の待ち時間（ミリ秒）を延ばします。
+- MolFormaを更新した後は、`/mcp` から再接続するか、Claude Codeを再起動します。
 
 Claude Codeは1回のツール結果が既定で25,000トークン（環境変数 `MAX_MCP_OUTPUT_TOKENS` で変更可能）、または50,000文字を超えると、結果を会話に直接入れずファイルへ保存します。MolFormaは編集結果を変更の要約にとどめ、GUI一覧・表・結果を約40 KiBで区切るため、通常はこの上限内に収まります。大きな文書では `get_document` の `include` で必要な部分だけを取得してください。詳細は[Claude Code公式のMCP設定](https://code.claude.com/docs/en/mcp)を参照してください。
 
