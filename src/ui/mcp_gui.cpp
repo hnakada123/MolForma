@@ -43,12 +43,13 @@
 
 namespace mf {
 namespace {
-constexpr qsizetype PageBytes = 2 * 1024 * 1024;
+// Pages stay below LLM clients' inline tool-output limits; a larger entry is returned alone.
+constexpr qsizetype PageBytes = 40 * 1024, EntryBytes = 2 * 1024 * 1024;
 bool appendPage(QJsonArray &items, const QJsonObject &item, qsizetype &bytes) {
     const auto size = QJsonDocument(item).toJson(QJsonDocument::Compact).size();
-    if (size > PageBytes)
-        fail("A UI/result entry exceeds the 2 MiB page limit.");
-    if (bytes + size > PageBytes)
+    if (size > EntryBytes)
+        fail("A UI/result entry exceeds the 2 MiB entry limit.");
+    if (!items.isEmpty() && bytes + size > PageBytes)
         return false;
     bytes += size;
     items.append(item);

@@ -27,6 +27,8 @@ class McpServer : public QObject {
     QJsonObject receive(const QByteArray &line);
     QString documentId() const;
     QJsonObject snapshot() const;
+    // Compact edit result: revision, formula and candidate atom differences without the project.
+    QJsonObject summary() const;
 
   private:
     McpEditor editor;

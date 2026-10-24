@@ -120,6 +120,13 @@ class McpTest : public QObject {
         const auto list = server.receive(message("tools/list", {}, "list-1"));
         QCOMPARE(list["id"].toString(), QString("list-1"));
         QVERIFY(list["result"].toObject()["tools"].toArray().size() >= 15);
+        // CacheableResult hints are required on modern discovery, list and read results.
+        for (const auto &method :
+             {"server/discover", "tools/list", "resources/list", "resources/templates/list"}) {
+            const auto cached = server.receive(message(method))["result"].toObject();
+            QVERIFY2(cached["ttlMs"].isDouble() && cached["ttlMs"].toInt() >= 0, method);
+            QCOMPARE(cached["cacheScope"].toString(), QString("private"));
+        }
         // Each request carries its own metadata; no initialization or cached version is used.
         auto unsupported = server.receive(message("ping", {{"_meta", metadata("1900-01-01")}}, 2, false));
         QCOMPARE(unsupported["error"].toObject()["code"].toInt(), -32022);
@@ -242,15 +249,29 @@ class McpTest : public QObject {
         table.setObjectName("largeTable");
         for (int row = 0; row < table.rowCount(); ++row)
             for (int col = 0; col < table.columnCount(); ++col)
-                table.setItem(row, col, new QTableWidgetItem(QString(4096, 'x')));
-        const auto first =
-            data(call(s, "get_ui_item", scoped(s, {{"target", "largeTable"}, {"limit", 200}})));
-        const int next = first["nextOffset"].toInt();
-        QVERIFY(next > 0 && next < 100);
-        const auto second = data(
-            call(s, "get_ui_item", scoped(s, {{"target", "largeTable"}, {"offset", next}, {"limit", 200}})));
-        QCOMPARE(second["nextOffset"].toInt(), 100);
-        QCOMPARE(first["items"].toArray().size() + second["items"].toArray().size(), 100);
+                table.setItem(row, col, new QTableWidgetItem(QString(1024, 'x')));
+        // Pages stay below Claude Code's 50,000-character inline limit; an oversized row comes alone.
+        for (int col = 0; col < table.columnCount(); ++col)
+            table.setItem(0, col, new QTableWidgetItem(QString(8192, 'y')));
+        int offset = 0, pages = 0, rows = 0;
+        while (offset < 100) {
+            const auto reply = call(
+                s, "get_ui_item", scoped(s, {{"target", "largeTable"}, {"offset", offset}, {"limit", 200}}));
+            const auto page = data(reply);
+            const auto items = page["items"].toArray();
+            QVERIFY(!items.isEmpty());
+            if (offset == 0)
+                QCOMPARE(items.size(), 1);
+            else
+                QVERIFY(
+                    reply["result"].toObject()["content"].toArray()[0].toObject()["text"].toString().size() <
+                    50000);
+            rows += items.size();
+            offset = page["nextOffset"].toInt();
+            ++pages;
+        }
+        QCOMPARE(rows, 100);
+        QVERIFY(pages > 2);
     }
     void modalCommandRemainsResponsive() {
         MainWindow w;
@@ -491,10 +512,13 @@ class McpTest : public QObject {
         const auto init = server.receive(message("initialize", params, 1, false));
         QCOMPARE(init["result"].toObject()["protocolVersion"].toString(), QString(McpLegacyVersion));
         QVERIFY(!init["result"].toObject().contains("resultType"));
+        QVERIFY(!init["result"].toObject().contains("ttlMs"));
         QVERIFY(server.receive(message("tools/list", {}, 2, false)).contains("error"));
         QVERIFY(
             server.receive(message("notifications/initialized", {}, QJsonValue::Undefined, false)).isEmpty());
-        QVERIFY(!server.receive(message("tools/list", {}, 3, false)).contains("error"));
+        const auto legacyList = server.receive(message("tools/list", {}, 3, false));
+        QVERIFY(!legacyList.contains("error"));
+        QVERIFY(!legacyList["result"].toObject().contains("cacheScope"));
         // Interleaving modern requests never changes the legacy connection's negotiated version.
         QVERIFY(!server.receive(message("server/discover")).contains("error"));
         QVERIFY(!server.receive(message("ping", {}, 4, false))["result"].toObject().contains("resultType"));
@@ -536,7 +560,24 @@ class McpTest : public QObject {
                              {{"templateId", "skeleton:water"}, {"position", QJsonArray{0, 0, 0}}});
         QVERIFY2(!failed(placed), qPrintable(QString::fromUtf8(QJsonDocument(placed).toJson())));
         QCOMPARE(committed(server).atoms.size(), 0);
-        QCOMPARE(Document::fromProject(data(placed)["candidate"].toObject()).formula(), QString("H2O"));
+        // Edit results summarize the candidate instead of repeating the whole project.
+        QVERIFY(!data(placed).contains("project"));
+        QCOMPARE(data(placed)["revision"], server.snapshot()["revision"]);
+        const auto summary = data(placed)["candidate"].toObject();
+        QCOMPARE(summary["formula"].toString(), QString("H2O"));
+        QCOMPARE(summary["addedIds"].toArray().size(), 3);
+        QVERIFY(summary["removedIds"].toArray().isEmpty());
+        QCOMPARE(Document::fromProject(server.snapshot()["candidate"].toObject()).formula(), QString("H2O"));
+        const auto full = data(call(server, "get_document", scoped(server)));
+        QVERIFY(full["project"].isObject() && full["candidate"].isObject());
+        const auto light = data(call(server, "get_document", scoped(server, {{"include", QJsonArray{}}})));
+        QVERIFY(!light.contains("project") && !light.contains("candidate"));
+        QVERIFY(light["hasCandidate"].toBool());
+        QCOMPARE(light["revision"], full["revision"]);
+        const auto onlyCandidate =
+            data(call(server, "get_document", scoped(server, {{"include", QJsonArray{"candidate"}}})));
+        QVERIFY(!onlyCandidate.contains("project") && onlyCandidate["candidate"].isObject());
+        QVERIFY(failed(call(server, "get_document", scoped(server, {{"include", QJsonArray{"atoms"}}}))));
         QVERIFY(failed(call(
             server, "history",
             {{"documentId", server.documentId()}, {"expectedRevision", initial}, {"action", "confirm"}})));
@@ -553,7 +594,9 @@ class McpTest : public QObject {
         QVERIFY(!failed(change(server, "history", {{"action", "undo"}})));
         QCOMPARE(committed(server).atom(id).position, water.atom(id).position);
         QVERIFY(!failed(change(server, "history", {{"action", "redo"}})));
-        QVERIFY(!failed(change(server, "delete_atoms", {{"ids", QJsonArray{id}}})));
+        const auto deleted = change(server, "delete_atoms", {{"ids", QJsonArray{id}}});
+        QVERIFY(!failed(deleted));
+        QCOMPARE(data(deleted)["candidate"].toObject()["removedIds"].toArray(), QJsonArray{id});
         QVERIFY(!failed(change(server, "history", {{"action", "cancel"}})));
         QCOMPARE(committed(server).atoms.size(), 3);
     }
@@ -610,6 +653,8 @@ class McpTest : public QObject {
         auto listing = server.receive(message("resources/list"));
         const QJsonValue uri = listing["result"].toObject()["resources"].toArray()[0].toObject().value("uri");
         auto resource = server.receive(message("resources/read", {{"uri", uri}}));
+        QCOMPARE(resource["result"].toObject()["ttlMs"].toInt(-1), 0);
+        QCOMPARE(resource["result"].toObject()["cacheScope"].toString(), QString("private"));
         auto resourceText =
             resource["result"].toObject()["contents"].toArray()[0].toObject()["text"].toString();
         QCOMPARE(QJsonDocument::fromJson(resourceText.toUtf8()).object(), server.snapshot());

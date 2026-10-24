@@ -15,6 +15,7 @@
 namespace mf {
 namespace {
 constexpr int MaxAtoms = 10000;
+constexpr int SummaryIds = 100;
 QJsonObject serverInfo() {
     return {{"name", "molforma"}, {"title", "MolForma"}, {"version", "0.1.0"}};
 }
@@ -24,10 +25,20 @@ QJsonArray versions() {
 QJsonObject capabilities() {
     return {{"tools", QJsonObject{}}, {"resources", QJsonObject{}}};
 }
+// CacheableResult hints (2026-07-28). Documents change through GUI edits, so nothing is cached.
+QJsonObject cacheable(QJsonObject value, bool modern) {
+    if (modern) {
+        value["ttlMs"] = 0;
+        value["cacheScope"] = "private";
+    }
+    return value;
+}
 QString instructions() {
     return "Use list_documents to obtain the explicit documentId, then get_document for stable atom IDs "
            "and the current revision. All mutations require expectedRevision. Edits default to a separate "
-           "candidate; inspect it before history(confirm). Coordinates are in angstrom. The workspace "
+           "candidate and return only a change summary; inspect the candidate with get_document before "
+           "history(confirm). get_document include:[] returns only metadata for large documents. Coordinates "
+           "are in angstrom. The workspace "
            "belongs to this MolForma process and expires when it exits. Export or save to retain work. "
            "In GUI mode, get_ui discovers controls and dialogs. GUI mutations return a commandId: poll "
            "get_ui_command and inspect get_ui for modal dialogs; answer them with explicit calls. "
@@ -167,6 +178,38 @@ QJsonObject McpServer::snapshot() const {
             {"formula", d.formula()}, {"atomCount", d.atoms.size()},
             {"project", d.project()}, {"candidate", c ? QJsonValue(c->project()) : QJsonValue()}};
 }
+QJsonObject McpServer::summary() const {
+    const auto d = document();
+    const auto c = candidate();
+    QJsonObject out{{"documentId", id},
+                    {"revision", revision()},
+                    {"formula", d.formula()},
+                    {"atomCount", d.atoms.size()},
+                    {"candidate", QJsonValue()}};
+    if (!c)
+        return out;
+    // Atom-level differences let a client review a candidate without reading the full project.
+    QJsonArray added, removed, changed;
+    bool truncated = false;
+    const auto note = [&](QJsonArray &list, const QString &atomId) {
+        if (list.size() < SummaryIds)
+            list.append(atomId);
+        else
+            truncated = true;
+    };
+    for (const auto &a : c->atoms)
+        if (!d.contains(a.id))
+            note(added, a.id);
+        else if (d.atom(a.id).toJson() != a.toJson())
+            note(changed, a.id);
+    for (const auto &a : d.atoms)
+        if (!c->contains(a.id))
+            note(removed, a.id);
+    out["candidate"] =
+        QJsonObject{{"formula", c->formula()}, {"atomCount", c->atoms.size()}, {"addedIds", added},
+                    {"removedIds", removed},   {"changedIds", changed},        {"idsTruncated", truncated}};
+    return out;
+}
 void McpServer::commit(const Document &next) {
     if (QJsonDocument(memory.project()) == QJsonDocument(next.project()))
         return;
@@ -254,7 +297,12 @@ QJsonArray McpServer::toolList() const {
     };
     add("list_documents", "List the workspace owned by this process. Its ID expires on process exit.", {}, {},
         false);
-    add("get_document", "Read the committed project, separate candidate, stable atom IDs and revision.");
+    add("get_document",
+        "Read the revision with the committed project and/or separate candidate (stable atom IDs). "
+        "include defaults to both; [] returns only metadata.",
+        {{"include", QJsonObject{{"type", "array"},
+                                 {"items", choice({"project", "candidate"})},
+                                 {"uniqueItems", true}}}});
     add("list_templates", "List built-in molecular templates and their IDs.", {}, {}, false);
     add("place_template", "Place a built-in template at an angstrom position.",
         {{"templateId", type("string")}, {"position", vectorSchema()}}, {"templateId", "position"}, true,
@@ -347,8 +395,17 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
         for (const auto &tool : editor.additionalTools())
             if (tool.toObject()["name"] == name)
                 return editor.callAdditionalTool(name, args);
-    if (name == "get_document")
-        return snapshot();
+    if (name == "get_document") {
+        auto out = snapshot();
+        if (args.contains("include")) {
+            const auto include = args["include"].toArray();
+            for (const auto &section : {"project", "candidate"})
+                if (!include.contains(QJsonValue(section)))
+                    out.remove(section);
+            out["hasCandidate"] = candidate().has_value();
+        }
+        return out;
+    }
     const auto d = document();
     if (name == "get_execution") {
         const auto report =
@@ -428,7 +485,7 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
     }
     if (name == "history") {
         history(args["action"].toString());
-        return snapshot();
+        return summary();
     }
     edit(
         "MCP: " + name,
@@ -531,7 +588,7 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
             }
         },
         args["preview"].toBool(true));
-    return snapshot();
+    return summary();
 }
 
 QJsonObject McpServer::receive(const QByteArray &line) {
@@ -604,33 +661,37 @@ QJsonObject McpServer::receive(const QByteArray &line) {
             return result(requestId, {}, modern);
         if (method == "server/discover" && modern)
             return result(requestId,
-                          {{"supportedVersions", versions()},
-                           {"capabilities", capabilities()},
-                           {"instructions", instructions()}},
+                          cacheable({{"supportedVersions", versions()},
+                                     {"capabilities", capabilities()},
+                                     {"instructions", instructions()}},
+                                    true),
                           true);
         if (method == "tools/list" || method == "resources/list" || method == "resources/templates/list") {
             if (params.contains("cursor"))
                 return error(requestId, -32602, "This server has one page; omit cursor");
             if (method == "tools/list")
-                return result(requestId, {{"tools", toolList()}}, modern);
+                return result(requestId, cacheable({{"tools", toolList()}}, modern), modern);
             if (method == "resources/templates/list")
-                return result(requestId, {{"resourceTemplates", QJsonArray{}}}, modern);
-            return result(requestId,
-                          {{"resources", QJsonArray{QJsonObject{{"uri", "molforma://documents/" + id},
+                return result(requestId, cacheable({{"resourceTemplates", QJsonArray{}}}, modern), modern);
+            return result(
+                requestId,
+                cacheable({{"resources", QJsonArray{QJsonObject{{"uri", "molforma://documents/" + id},
                                                                 {"name", "MolForma document"},
                                                                 {"mimeType", "application/json"}}}}},
-                          modern);
+                          modern),
+                modern);
         }
         if (method == "resources/read") {
             if (params["uri"] != "molforma://documents/" + id)
                 return error(requestId, modern ? -32602 : -32002, "Unknown document resource");
-            return result(
-                requestId,
-                {{"contents",
-                  QJsonArray{QJsonObject{{"uri", params["uri"]},
-                                         {"mimeType", "application/json"},
-                                         {"text", QString::fromUtf8(QJsonDocument(snapshot()).toJson())}}}}},
-                modern);
+            return result(requestId,
+                          cacheable({{"contents",
+                                      QJsonArray{QJsonObject{
+                                          {"uri", params["uri"]},
+                                          {"mimeType", "application/json"},
+                                          {"text", QString::fromUtf8(QJsonDocument(snapshot()).toJson())}}}}},
+                                    modern),
+                          modern);
         }
         if (method == "tools/call") {
             if (!params["name"].isString() ||

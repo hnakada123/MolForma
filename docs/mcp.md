@@ -2,7 +2,7 @@
 
 MolFormaのネイティブ実行ファイルに、分子編集、NWChemの入力生成・実行、計算履歴、結果表示とGUI操作用のMCPサーバーを内蔵しています。追加のPython/Node.jsランタイムやMCP SDKのインストールは不要です。
 
-2026-10-23に確認した最新の安定版 **2026-07-28** と、従来の **2025-11-25** に対応します。新しい仕様は初期化を省略し、リクエストごとにプロトコル情報を指定します。旧版の `initialize` に対しては `2025-11-25` を返します。それより古い版のみ対応するクライアントは更新してください。
+2026-10-24に確認した最新の安定版 **2026-07-28** と、従来の **2025-11-25** に対応します。新しい仕様は初期化を省略し、リクエストごとにプロトコル情報を指定します。新しい仕様の `server/discover`、`tools/list`、`resources/list`、`resources/templates/list`、`resources/read` の結果には、必須のキャッシュ情報 `ttlMs: 0` と `cacheScope: "private"` を付けます。文書はGUI操作でも変わるため、クライアントにキャッシュさせません。旧版の `initialize` に対しては `2025-11-25` を返します。それより古い版のみ対応するクライアントは更新してください。
 
 参照した公式仕様:
 
@@ -10,6 +10,7 @@ MolFormaのネイティブ実行ファイルに、分子編集、NWChemの入力
 - [基本プロトコルとリクエストメタデータ](https://modelcontextprotocol.io/specification/2026-07-28/basic)
 - [stdioトランスポート](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio)
 - [ツール](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)
+- [キャッシュ](https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/caching)
 - [2026-07-28の公式スキーマ](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2026-07-28/schema.ts)
 
 ## 接続設定
@@ -39,6 +40,18 @@ MCPクライアントのサーバー設定で、実行ファイルの絶対パ�
 
 通常の起動ではMCPは無効です。ネットワークポートは開きません。MCPクライアントが許可した呼び出しによって、起動したMolFormaプロセスの権限でローカルファイルを読み書きします。ファイル操作のパスは各呼び出しで明示的に指定します。
 
+### Claude Codeでの登録
+
+Claude Code 2.1.310で、新しい仕様（2026-07-28）による接続と、ツールの呼び出しを確認しています。
+
+```sh
+claude mcp add molforma -- /absolute/path/to/molforma --mcp-gui
+```
+
+プロジェクトで設定を共有する場合は `--scope project` を付けます。設定はリポジトリの `.mcp.json` に保存されます。Claude Codeは起動時の環境変数をそのまま子プロセスへ渡すため、Linuxでも `DISPLAY` などの追加設定は通常不要です。Claude Code内の `/mcp` で接続状態とツール数を確認できます。画面が不要な場合は `--mcp-gui` の代わりに `--mcp` を指定します。
+
+Claude Codeは1回のツール結果が既定で25,000トークン（環境変数 `MAX_MCP_OUTPUT_TOKENS` で変更可能）、または50,000文字を超えると、結果を会話に直接入れずファイルへ保存します。MolFormaは編集結果を変更の要約にとどめ、GUI一覧・表・結果を約40 KiBで区切るため、通常はこの上限内に収まります。大きな文書では `get_document` の `include` で必要な部分だけを取得してください。詳細は[Claude Code公式のMCP設定](https://code.claude.com/docs/en/mcp)を参照してください。
+
 ### Codexでの登録
 
 LinuxでGUIを表示する場合、Codexが子プロセスへ渡す環境変数も指定します。`codex mcp add molforma -- /absolute/path/to/molforma --mcp-gui` だけでは、デスクトップの接続情報が引き継がれず、初期化前に終了する場合があります。
@@ -61,9 +74,9 @@ env_vars = ["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XAUTHORITY", "DBUS
 ## 編集の流れ
 
 1. `list_documents` から `documentId` を取得します。
-2. `get_document` にそのIDを渡し、`revision`、確定済み `project`、未確定の `candidate` を読みます。原子参照には `project.document.atoms` の安定IDを使います。
+2. `get_document` にそのIDを渡し、`revision`、確定済み `project`、未確定の `candidate` を読みます。原子参照には `project.document.atoms` の安定IDを使います。`include` に `["project"]` / `["candidate"]` を指定するとその部分だけを、`[]` を指定すると版・組成式・原子数と `hasCandidate` だけを返します。省略時は両方を返します。
 3. 編集ツールに `documentId` と `expectedRevision` を渡します。標準では候補だけを作成します（`preview: true`）。
-4. 返された `candidate` を確認し、その返答の新しい `revision` を `expectedRevision` に指定して `history` の `action: "confirm"` で確定、`"cancel"` で取消します。
+4. 編集ツールと `history` は、プロジェクト全体ではなく要約を返します。要約は新しい `revision`、確定文書の `formula` / `atomCount`、候補の `formula` / `atomCount` と、追加・削除・変更された原子ID（`addedIds` / `removedIds` / `changedIds`、各100件まで。超過時は `idsTruncated: true`）です。候補がなければ `candidate` は `null` です。候補の内容は `get_document`（`include: ["candidate"]`）で確認します。その後、新しい `revision` を `expectedRevision` に指定して `history` の `action: "confirm"` で確定、`"cancel"` で取消します。
 5. `export_document` で文字列を取得するか、`save_file` でプロジェクトを保存します。
 
 GUIでも候補は通常の「確定」「取消」で扱えます。`preview: false` を明示すると検証後に直接確定し、GUIのUndo履歴に追加します。`history` の `undo` / `redo` も同じ履歴を使います。候補がある間の別の編集とUndo/Redoは拒否します。GUI側で整形ワーカーが動作中の場合も編集を拒否します。
@@ -76,7 +89,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 
 | ツール | 用途 |
 | --- | --- |
-| `list_documents` / `get_document` | 文書ID、版、プロジェクト、候補の取得 |
+| `list_documents` / `get_document` | 文書ID、版、プロジェクト、候補の取得。`include` で取得範囲を指定 |
 | `list_templates` / `place_template` | 組み込み部品の検索と配置 |
 | `add_atom` | 元素・Å座標による追加。任意の結合先と水素補完を指定 |
 | `set_positions` / `translate` | 安定IDによる座標変更・平行移動 |
@@ -129,7 +142,7 @@ GUI変更は `documentId` と `expectedRevision` を必要とし、`queued` の 
 
 モーダル表示中は、そのダイアログ内の操作を受け付けます。背景の文書編集は拒否します。保留操作は最大16件、完了記録は保留分と合わせて直近128件までです。読み取り・設定操作を含め、他アプリケーションの画面や任意のシェル実行を操作するツールではありません。
 
-一覧・表・結果は `offset` / `limit` で分割取得します。`nextOffset` がある場合は次回の `offset` に使い、件数が0になったら終了します。GUI一覧・表行・結果行は1ページ約2 MiBで区切ります。表の `parentRows` はツリーの親を指定する0始まりの行番号列です。`get_ui_item` は表の `viewport` とセルの画面座標も返すため、クリックで動くリスト項目にも `ui_input` を使えます。タブ・表・結果の番号は0始まり、原子の指定は安定IDです。ログの `offset` / `limit` は文字数で、最大65,536文字を取得できます。
+一覧・表・結果は `offset` / `limit` で分割取得します。`nextOffset` がある場合は次回の `offset` に使い、件数が0になったら終了します。GUI一覧・表行・結果行は1ページ約40 KiBで区切ります。1件だけで40 KiBを超える項目（大きな構造の構造列など）は、そのページに単独で返します。1件が2 MiBを超える場合は失敗します。表の `parentRows` はツリーの親を指定する0始まりの行番号列です。`get_ui_item` は表の `viewport` とセルの画面座標も返すため、クリックで動くリスト項目にも `ui_input` を使えます。タブ・表・結果の番号は0始まり、原子の指定は安定IDです。ログの `offset` / `limit` は文字数で、最大65,536文字を取得できます。
 
 既存GUIの各操作は次の経路で利用できます。
 
