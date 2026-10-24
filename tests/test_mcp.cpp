@@ -3,6 +3,7 @@
 #include "mcp/server.h"
 #include "mcp/stdio_transport.h"
 #include "mcp/tools.h"
+#include "model/geometry.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
@@ -112,6 +113,7 @@ void startProcess(QProcess &process, const QString &mode) {
     static QTemporaryDir config; // Never read the user's saved MolForma preferences.
     auto env = QProcessEnvironment::systemEnvironment();
     env.insert("XDG_CONFIG_HOME", config.path());
+    env.insert("XDG_DATA_HOME", config.path()); // Autosave copies of --mcp-gui sessions.
     env.remove("DISPLAY");
     env.remove("WAYLAND_DISPLAY");
     env.insert("QT_QPA_PLATFORM", mode == "--mcp" ? "nonexistent-platform-plugin" : "offscreen");
@@ -151,10 +153,13 @@ QJsonObject processCommand(QProcess &process, const QString &tool, QJsonObject a
 
 class McpTest : public QObject {
     Q_OBJECT
+    QTemporaryDir settingsHome;
   private slots:
     void initTestCase() {
         QSettings::setDefaultFormat(QSettings::IniFormat);
-        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, "/tmp/molforma-mcp-test-settings");
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsHome.path());
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
+                           settingsHome.path()); // MolForma uses NativeFormat.
     }
     void modernProtocol() {
         McpServer server;
@@ -400,6 +405,7 @@ class McpTest : public QObject {
         env.insert("QT_QPA_PLATFORM", "offscreen");
         env.insert("MOLFORMA_RENDERER", "painter");
         env.insert("XDG_CONFIG_HOME", files.filePath("settings"));
+        env.insert("XDG_DATA_HOME", files.filePath("data"));
         process.setProcessEnvironment(env);
         process.start(QCoreApplication::applicationDirPath() + "/molforma",
                       {"--mcp-gui", files.filePath("missing.xyz")});
@@ -429,6 +435,7 @@ class McpTest : public QObject {
         env.insert("QT_QPA_PLATFORM", "offscreen");
         env.insert("MOLFORMA_RENDERER", "painter");
         env.insert("XDG_CONFIG_HOME", files.filePath("settings"));
+        env.insert("XDG_DATA_HOME", files.filePath("data"));
         process.setProcessEnvironment(env);
         process.start(QCoreApplication::applicationDirPath() + "/molforma",
                       {"--mcp-gui", "--mcp-allow-execution-settings"});
@@ -658,6 +665,44 @@ class McpTest : public QObject {
         QVERIFY(!failed(change(server, "history", {{"action", "cancel"}})));
         QCOMPARE(committed(server).atoms.size(), 3);
     }
+    void dimensionsAndAtomProperties() {
+        McpServer server;
+        QVERIFY(!failed(change(
+            server, "place_template",
+            {{"templateId", "skeleton:water"}, {"position", QJsonArray{0, 0, 0}}, {"preview", false}})));
+        auto d = committed(server);
+        const auto o = d.atoms[0].id, h1 = d.atoms[1].id, h2 = d.atoms[2].id;
+        QVERIFY(!failed(change(server, "set_dimension",
+                               {{"ids", QJsonArray{o, h1}}, {"value", 1.1}, {"preview", false}})));
+        QVERIFY(std::abs(measure(committed(server), {o, h1}) - 1.1) < 1e-9);
+        QVERIFY(!failed(change(server, "set_dimension",
+                               {{"ids", QJsonArray{h1, o, h2}}, {"value", 120}, {"preview", false}})));
+        QVERIFY(std::abs(measure(committed(server), {h1, o, h2}) - 120) < 1e-9);
+        QVERIFY(failed(change(server, "set_dimension",
+                              {{"ids", QJsonArray{o, h1}}, {"value", -1}, {"preview", false}})));
+        // Properties: isotope and fixed flags, charge, ghost and name; fixed atoms block later moves.
+        QVERIFY(!failed(change(server, "set_atom_properties",
+                               {{"ids", QJsonArray{h1}},
+                                {"isotope", 2},
+                                {"fixed", true},
+                                {"name", "HD1"},
+                                {"preview", false}})));
+        d = committed(server);
+        QCOMPARE(d.atom(h1).isotope, 2);
+        QVERIFY(d.atom(h1).fixed);
+        QCOMPARE(d.atom(h1).name, QString("HD1"));
+        QVERIFY(failed(change(server, "set_dimension",
+                              {{"ids", QJsonArray{o, h1}}, {"value", 1.0}, {"preview", false}})));
+        QVERIFY(failed(change(server, "set_atom_properties",
+                              {{"ids", QJsonArray{h2}}, {"isotope", 2}, {"mass", 2.0}, {"preview", false}})));
+        QVERIFY(
+            !failed(change(server, "set_atom_properties",
+                           {{"ids", QJsonArray{o}}, {"element", "S"}, {"charge", 0}, {"preview", false}})));
+        QCOMPARE(committed(server).atom(o).element, QString("S"));
+        QVERIFY(!failed(change(server, "set_atom_properties",
+                               {{"ids", QJsonArray{h2}}, {"ghost", true}, {"preview", false}})));
+        QVERIFY(committed(server).atom(h2).ghost);
+    }
     void atomicEditsAndFixedAtoms() {
         McpServer server;
         Document d;
@@ -736,6 +781,23 @@ class McpTest : public QObject {
         QCOMPARE(committed(server).formula(), QString("H2"));
         QCOMPARE(nwchemSettings(committed(server))["basis"].toString(), QString("6-31g*"));
         QCOMPARE(executionSettings(committed(server))["mpi_ranks"].toInt(), 5);
+        // Multi-frame XYZ files need a frame; NWChem inputs bring charge, multiplicity and settings
+        // but keep the additional input chosen in MolForma.
+        const auto frames = dir.filePath("frames.xyz");
+        writeFile(frames, "1\na\nHe 0 0 0\n1\nb\nNe 0 0 0\n");
+        QVERIFY(failed(change(server, "open_file", {{"path", frames}, {"preview", false}})));
+        QVERIFY(!failed(change(server, "open_file", {{"path", frames}, {"frame", 1}, {"preview", false}})));
+        QCOMPARE(committed(server).formula(), QString("Ne"));
+        const auto nw = dir.filePath("input.nw");
+        writeFile(nw, "charge 1\ngeometry\n O 0 0 0\n H 0 0 0.97\nend\nbasis\n * library cc-pvdz\nend\n"
+                      "dft\n xc b3lyp\n mult 1\nend\ntask dft optimize\n");
+        QVERIFY(!failed(change(server, "open_file", {{"path", nw}, {"preview", false}})));
+        const auto opened = committed(server);
+        QCOMPARE(opened.formula(), QString("HO"));
+        QCOMPARE(opened.job()["charge"].toInt(), 1);
+        QCOMPARE(nwchemSettings(opened)["basis"].toString(), QString("cc-pvdz"));
+        QCOMPARE(nwchemSettings(opened)["task"].toString(), QString("optimize"));
+        QCOMPARE(executionSettings(opened)["mpi_ranks"].toInt(), 5);
     }
     void filesResourcesAndNwchem() {
         McpServer server;
@@ -1086,6 +1148,7 @@ class McpTest : public QObject {
         env.insert("QT_QPA_PLATFORM", "offscreen");
         env.insert("MOLFORMA_RENDERER", "painter");
         env.insert("XDG_CONFIG_HOME", files.filePath("settings"));
+        env.insert("XDG_DATA_HOME", files.filePath("data"));
         process.setProcessEnvironment(env);
         process.start(QCoreApplication::applicationDirPath() + "/molforma",
                       {"--mcp-gui", "--mcp-allow-execution-settings"});
@@ -1202,6 +1265,23 @@ class McpTest : public QObject {
         QVERIFY(toolNamed(allowed, "set_execution")["_meta"]
                     .toObject()["anthropic/requiresUserInteraction"]
                     .toBool());
+        // Unchecked NWChem input could start programs through NWChem: protected the same way.
+        const auto extra =
+            change(server, "set_nwchem",
+                   {{"settings", QJsonObject{{"extra_tasks", "task scf property"}}}, {"preview", false}});
+        QVERIFY(failed(extra));
+        QVERIFY(text(extra).contains("only the user can change it"));
+        QVERIFY(!failed(change(
+            server, "set_nwchem",
+            {{"settings", QJsonObject{{"extra_tasks", ""}, {"task", "optimize"}}}, {"preview", false}})));
+        QVERIFY(!failed(
+            change(allowed, "set_nwchem",
+                   {{"settings", QJsonObject{{"extra_tasks", "task scf property"}}}, {"preview", false}})));
+        auto edited = committed(server);
+        auto s = edited.data["nwchem"].toObject();
+        s["extra_input"] = "set cphf:maxiter 50";
+        edited.data["nwchem"] = s;
+        QVERIFY(protectedExecution(edited) != protectedExecution(committed(server)));
     }
     void guiExecutionGuard() {
         QTemporaryDir jobs;
@@ -1505,9 +1585,11 @@ class McpTest : public QObject {
                                      .toObject()["resources"]
                                      .toArray())
                 listed << r.toObject()["uri"].toString();
-            for (const auto *uri : {"molforma://app/state", "molforma://calculation/output",
-                                    "molforma://results/summary", "molforma://results/log"})
+            for (const auto *uri :
+                 {"molforma://app/state", "molforma://calculation/output", "molforma://calculation/stderr",
+                  "molforma://results/summary", "molforma://results/log"})
                 QVERIFY2(listed.contains(uri), uri);
+            QVERIFY(resourceText(*runtimeServer, "molforma://calculation/stderr").contains("No calculation"));
             QVERIFY(QJsonDocument::fromJson(resourceText(*runtimeServer, "molforma://app/state").toUtf8())
                         .object()
                         .contains("calculation"));
@@ -1529,6 +1611,7 @@ class McpTest : public QObject {
             env.remove("WAYLAND_DISPLAY");
             env.insert("QT_QPA_PLATFORM", "nonexistent-platform-plugin");
             env.insert("XDG_CONFIG_HOME", files.filePath("settings"));
+            env.insert("XDG_DATA_HOME", files.filePath("data"));
             process.setProcessEnvironment(env);
             process.start(QCoreApplication::applicationDirPath() + "/molforma", QStringList{"--mcp"} + extra);
             return process.waitForStarted();

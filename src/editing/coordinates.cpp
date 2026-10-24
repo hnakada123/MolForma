@@ -2,6 +2,7 @@
 // Coordinate editing adapted from KAGAMI tools/kagami_gui/builder_integration.py
 // and coordinate_atom_dialog.py (Copyright 2026 Hiroshi Nakada).
 #include "editing/coordinates.h"
+#include "model/geometry.h"
 #include <QRegularExpression>
 #include <cmath>
 #include <openbabel/elements.h>
@@ -174,7 +175,8 @@ std::pair<double, double> applyResultGeometry(Document &document, const Document
             document.atoms[i].position = result.atoms[i].position;
     return {document.atoms.isEmpty() ? 0 : std::sqrt(squares / document.atoms.size()), largest};
 }
-QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragmentComments) {
+QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragmentComments,
+                       const NwchemGeometryOptions &options) {
     auto errors = document.validate();
     if (!errors.isEmpty())
         fail(errors.join('\n'));
@@ -184,8 +186,10 @@ QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragm
     QString text = fragmentComments
                        ? "# MolForma: geometry fragment; add basis, charge, method and task separately.\n"
                        : QString();
-    text += QString("geometry units %1 nocenter noautosym noautoz")
-                .arg(unit == CoordinateUnit::Bohr ? "au" : "angstrom");
+    text += QString("geometry %1units %2 nocenter noautosym%3")
+                .arg(options.name.isEmpty() ? QString() : options.name + ' ',
+                     unit == CoordinateUnit::Bohr ? "au" : "angstrom",
+                     options.zcoord.isEmpty() ? " noautoz" : "");
     if (unit == CoordinateUnit::Angstrom)
         text += " angstrom_to_au " + number(1. / BohrToAngstrom);
     text += '\n';
@@ -211,16 +215,89 @@ QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragm
         if (atom.ghost)
             ghosts.insert(atom.element);
     }
-    text += "end\n\nconstraints\n  clear\n";
-    // Keep lines short for NWChem's input parser, even for large structures.
-    for (int i = 0; i < fixed.size(); i += 12)
-        text += "  fix atom " + fixed.mid(i, 12).join(' ') + '\n';
+    if (!options.zcoord.isEmpty())
+        text += "  zcoord\n    " + options.zcoord.join("\n    ") + "\n  end\n";
     text += "end\n";
+    if (options.constraints) {
+        text += "\nconstraints\n  clear\n";
+        // Keep lines short for NWChem's input parser, even for large structures.
+        for (int i = 0; i < fixed.size(); i += 12)
+            text += "  fix atom " + fixed.mid(i, 12).join(' ') + '\n';
+        text += "end\n";
+    }
     auto symbols = ghosts.values();
     std::sort(symbols.begin(), symbols.end());
     if (fragmentComments)
         for (const auto &symbol : symbols)
             text += QString("# Ghost basis required in BASIS: bq%1 library %1 <basis-name>\n").arg(symbol);
+    return text;
+}
+QVector<ZMatrixRow> zMatrix(const Document &d) {
+    const int n = d.atoms.size();
+    QVector<ZMatrixRow> rows(n);
+    const auto position = [&](int i) { return d.atoms[i].position; };
+    const auto bonded = [&](int a, int b) { return d.bond(d.atoms[a].id, d.atoms[b].id) != nullptr; };
+    // Angle at b between a and c, in degrees.
+    const auto angle = [&](int a, int b, int c) {
+        const Vec u = (position(a) - position(b)).normalized(), v = (position(c) - position(b)).normalized();
+        return std::acos(std::clamp(u.dot(v), -1., 1.)) * 180 / M_PI;
+    };
+    // An earlier atom, preferring one bonded to `to`, then the nearest; never in `excluded`, and
+    // not collinear with `line` (angle within 2° of 0° or 180°).
+    const auto reference = [&](int before, int to, QVector<int> excluded, int line) {
+        int best = -1;
+        double bestScore = 1e300;
+        for (int k = 0; k < before; ++k) {
+            if (excluded.contains(k))
+                continue;
+            if (line >= 0) {
+                const double a = angle(line, to, k);
+                if (a < 2 || a > 178)
+                    continue;
+            }
+            const double score = (bonded(k, to) ? 0 : 1000) + (position(k) - position(to)).norm();
+            if (score < bestScore) {
+                bestScore = score;
+                best = k;
+            }
+        }
+        return best;
+    };
+    for (int i = 1; i < n; ++i) {
+        auto &row = rows[i];
+        row.bond = reference(i, i, {i}, -1);
+        if (row.bond < 0)
+            continue;
+        row.distance = (position(i) - position(row.bond)).norm();
+        if (i < 2)
+            continue;
+        row.angle = reference(i, row.bond, {i, row.bond}, i);
+        if (row.angle < 0)
+            continue;
+        row.angleValue = angle(i, row.bond, row.angle);
+        if (i < 3)
+            continue;
+        row.dihedral = reference(i, row.angle, {i, row.bond, row.angle}, row.bond);
+        if (row.dihedral >= 0)
+            row.dihedralValue = measure(
+                d, {d.atoms[i].id, d.atoms[row.bond].id, d.atoms[row.angle].id, d.atoms[row.dihedral].id});
+    }
+    return rows;
+}
+QString zMatrixText(const Document &d) {
+    const auto rows = zMatrix(d);
+    QString text;
+    for (int i = 0; i < rows.size(); ++i) {
+        const auto &r = rows[i];
+        text += (d.atoms[i].ghost ? "bq" : "") + d.atoms[i].element;
+        if (r.bond >= 0)
+            text += QString(" %1 %2").arg(r.bond + 1).arg(r.distance, 0, 'f', 6);
+        if (r.angle >= 0)
+            text += QString(" %1 %2").arg(r.angle + 1).arg(r.angleValue, 0, 'f', 4);
+        if (r.dihedral >= 0)
+            text += QString(" %1 %2").arg(r.dihedral + 1).arg(r.dihedralValue, 0, 'f', 4);
+        text += '\n';
+    }
     return text;
 }
 } // namespace mf

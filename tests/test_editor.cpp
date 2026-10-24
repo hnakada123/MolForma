@@ -1,24 +1,33 @@
 #include "editing/library.h"
 #include "editing/operations.h"
+#include "model/geometry.h"
 #include "nwchem/nwchem.h"
 #include "ui/main_window.h"
 #include "ui/periodic_table.h"
 #include "ui/template_delegate.h"
+#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
 #include <QDoubleSpinBox>
+#include <QDropEvent>
 #include <QGridLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
+#include <QMessageBox>
+#include <QMimeData>
 #include <QPushButton>
 #include <QSlider>
 #include <QSpinBox>
 #include <QStandardItemModel>
+#include <QStandardPaths>
 #include <QStyleOptionViewItem>
 #include <QTabWidget>
+#include <QTableWidget>
 #include <QTemporaryDir>
+#include <QTextBrowser>
 #include <QTimer>
 #include <QtTest>
 using namespace mf;
@@ -28,10 +37,163 @@ class InspectableTemplateDelegate : public TemplateDelegate {
 };
 class EditorTest : public QObject {
     Q_OBJECT
+    QTemporaryDir settingsHome;
   private slots:
     void initTestCase() {
+        // Autosave copies go to the data directory: keep them out of the user's home.
+        qputenv("XDG_DATA_HOME", settingsHome.filePath("data").toUtf8());
         QSettings::setDefaultFormat(QSettings::IniFormat);
-        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, "/tmp/molforma-test-settings");
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsHome.path());
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
+                           settingsHome.path()); // MolForma uses NativeFormat.
+    }
+    void recentFilesDropsAndManual() {
+        QTemporaryDir dir;
+        const auto xyz = dir.filePath("water.xyz");
+        writeFile(xyz, "3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n");
+        MainWindow w;
+        w.loadPath(xyz);
+        QCOMPARE(w.recentFiles().first(), QFileInfo(xyz).absoluteFilePath());
+        auto *recent = w.findChild<QMenu *>("recentMenu");
+        QVERIFY(recent && recent->actions().first()->text().contains("water.xyz"));
+        // Dropping a structure file opens it; result files go to the result viewer.
+        const auto other = dir.filePath("neon.xyz");
+        writeFile(other, "1\nneon\nNe 0 0 0\n");
+        QMimeData mime;
+        mime.setUrls({QUrl::fromLocalFile(other)});
+        QDragEnterEvent enter(QPointF(10, 10), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(&w, &enter);
+        QVERIFY(enter.isAccepted());
+        QDropEvent drop(QPointF(10, 10), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(&w, &drop);
+        QTRY_COMPARE(w.document().formula(), QString("Ne"));
+        QCOMPARE(w.recentFiles().size(), 2);
+        // The manual is embedded in the program.
+        QString text;
+        QTimer::singleShot(0, &w, [&] {
+            if (auto *dialog = w.findChild<QDialog *>("manualDialog")) {
+                text = dialog->findChild<QTextBrowser *>("manualText")->toPlainText();
+                dialog->reject();
+            }
+        });
+        w.findChild<QAction *>("manualAction")->trigger();
+        QVERIFY(text.contains("MolForma") && text.size() > 1000);
+    }
+    void autosaveAndRecovery() {
+        QDir(settingsHome.filePath("data")).removeRecursively();
+        {
+            MainWindow w;
+            Document d;
+            placeTemplate(d, findTemplate("skeleton:benzene"), Vec::Zero());
+            w.loadDocument(d);
+            w.startAutosave();
+            w.edit("削除", [&](Document &next) { next.remove({next.atoms.last().id}); });
+            w.autosave();
+            const QDir autosaves(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
+                                 "/autosave");
+            QVERIFY(autosaves.absolutePath().startsWith(settingsHome.path()));
+            const auto copies = autosaves.entryList({"session-*.kgui.json"});
+            QCOMPARE(copies.size(), 1);
+            // Simulate a crash: keep the copy and leave a lock file of a process that no longer runs.
+            QFile::copy(autosaves.filePath(copies.first()), autosaves.filePath("session-1-2.kgui.json"));
+            writeFile(autosaves.filePath("session-1-2.lock"),
+                      QByteArray("999999\nmolforma\n") + QSysInfo::machineHostName().toUtf8() + "\n");
+            // Undo and a different edit return to the same undo index: the copy still follows.
+            w.history()->undo();
+            w.edit("削除", [&](Document &next) { next.remove({next.atoms.first().id}); }, false);
+            w.autosave();
+            const auto saved = Document::fromProject(parseJson(readFile(autosaves.filePath(copies.first()))));
+            QCOMPARE(saved.formula(), w.document().formula());
+            w.history()->undo(); // Clean again: the copy of this session is removed.
+            w.autosave();
+            QVERIFY(!autosaves.exists(copies.first()));
+        }
+        const auto answer = [](const QString &label) {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()))
+                for (auto *b : box->buttons())
+                    if (b->text() == label)
+                        b->click();
+        };
+        {
+            // "後で決める" keeps the copy, so the next start asks again.
+            MainWindow later;
+            QTimer::singleShot(0, &later, [&] { answer("後で決める"); });
+            later.offerRecovery();
+            QCOMPARE(later.document().atoms.size(), 3); // The startup water.
+        }
+        const QDir autosaves(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
+                             "/autosave");
+        QVERIFY(autosaves.exists("session-1-2.kgui.json"));
+        MainWindow next;
+        QTimer::singleShot(0, &next, [&] { answer("復旧する"); });
+        next.offerRecovery();
+        QVERIFY(!autosaves.exists("session-1-2.kgui.json"));
+        QCOMPARE(next.document().atoms.size(), 11); // Benzene without one hydrogen.
+        QVERIFY(!next.history()->isClean());
+    }
+    void symmetryAndZMatrix() {
+        MainWindow w;
+        Document d;
+        placeTemplate(d, findTemplate("skeleton:water"), Vec::Zero());
+        d.atoms[1].position += (d.atoms[1].position - d.atoms[0].position).normalized() * .02;
+        w.loadDocument(d);
+        QString found;
+        QTimer::singleShot(0, &w, [&] {
+            if (auto *dialog = w.findChild<QDialog *>("symmetryDialog")) {
+                found = dialog->findChild<QLabel *>("symmetryResult")->text();
+                dialog->findChild<QPushButton *>("symmetryApply")->click();
+            }
+        });
+        w.findChild<QAction *>("symmetryAction")->trigger();
+        QVERIFY(found.contains("C2v"));
+        QVERIFY(w.hasCandidate());
+        w.confirmCandidate();
+        const auto &sym = w.document();
+        QVERIFY(std::abs(measure(sym, {sym.atoms[0].id, sym.atoms[1].id}) -
+                         measure(sym, {sym.atoms[0].id, sym.atoms[2].id})) < 1e-9);
+        // Z-matrix: editing a distance moves that atom.
+        QTimer::singleShot(0, &w, [&] {
+            if (auto *dialog = w.findChild<QDialog *>("zMatrixDialog")) {
+                auto *table = dialog->findChild<QTableWidget *>("zMatrixTable");
+                table->item(1, 2)->setText("1.2");
+                dialog->reject();
+            }
+        });
+        w.findChild<QAction *>("zMatrixAction")->trigger();
+        const auto &edited = w.document();
+        QVERIFY(std::abs(measure(edited, {edited.atoms[0].id, edited.atoms[1].id}) - 1.2) < 1e-9);
+    }
+    void viewStylesMonitorsAndHydrogenBonds() {
+        MainWindow w;
+        w.loadDocument(Document::fromXyz("6\nwater dimer\nO -1.551007 -0.114520 0\nH -1.934259 0.762503 0\n"
+                                         "H -0.599677 0.040712 0\nO 1.350625 0.111469 0\n"
+                                         "H 1.680398 -0.373741 -0.758561\nH 1.680398 -0.373741 0.758561\n"));
+        const auto ids = w.document().ids();
+        auto *view = w.canvas();
+        w.findChild<QAction *>("viewStyleSpacefill")->trigger();
+        QCOMPARE(view->style(), QString("spacefill"));
+        auto *hbonds = w.findChild<QAction *>("viewHydrogenBonds");
+        hbonds->setChecked(true);
+        QCOMPARE(view->hydrogenBonds().size(), 1);
+        QCOMPARE(view->hydrogenBonds().first(), std::make_pair(ids[2], ids[3]));
+        w.setSelection({ids[0], ids[3]});
+        w.findChild<QAction *>("viewAddMonitor")->trigger();
+        QCOMPARE(view->monitorList().size(), 1);
+        w.setSelection({ids[3], ids[4], ids[5]});
+        w.findChild<QAction *>("viewHideSelection")->trigger();
+        QCOMPARE(view->hiddenAtoms().size(), 3);
+        w.findChild<QAction *>("viewShowAll")->trigger();
+        QVERIFY(view->hiddenAtoms().isEmpty());
+        // Monitors and hidden atoms follow deleted atoms.
+        w.edit("削除", [&](Document &d) { d.remove({ids[3], ids[4], ids[5]}); });
+        QVERIFY(view->monitorList().isEmpty());
+        hbonds->setChecked(false);
+        w.findChild<QAction *>("viewStyleBallAndStick")->trigger();
+        // A monitor whose atoms became coincident or collinear still paints (as "—").
+        auto line = Document::fromXyz("4\nline\nC 0 0 0\nC 1.5 0 0\nC 3 0 0\nC 4.5 0 0\n");
+        view->setDocument(line);
+        view->setMonitors({line.ids()});
+        QVERIFY(!view->grab().isNull());
     }
     void candidateUndoRedo() {
         MainWindow w;

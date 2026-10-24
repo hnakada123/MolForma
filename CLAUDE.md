@@ -27,6 +27,9 @@ QT_QPA_PLATFORM=offscreen ./build/test_editor someTestFunction   # one Qt Test s
   All run with `QT_QPA_PLATFORM=offscreen` and need no network, credentials or NWChem install:
   `tests/fake_nwchem.cpp` builds a stand-in NWChem used by execution/history/output/mcp tests.
   `test_mcp` launches the built `molforma` binary. Fixtures live in `tests/fixtures/` (`FIXTURE_DIR` in `test_core`).
+  Tests must not touch the user's files: `QSettings("MolForma", "MolForma")` uses NativeFormat, so redirect
+  `QSettings::setPath(QSettings::NativeFormat, …)` (not only IniFormat) and set `XDG_CONFIG_HOME` / `XDG_DATA_HOME`
+  (autosave copies) to temporary directories, also for launched `molforma` processes.
 - New source files must be added to the explicit lists in `CMakeLists.txt` (no globbing).
 - Format: `rg --files src tests -g '*.h' -g '*.cpp' -0 | xargs -0 clang-format -i` (uses `.clang-format`).
 - Headless screenshot for UI checks:
@@ -77,7 +80,10 @@ Key cross-cutting designs:
   `ui/vtk_molecule_renderer.*` is compiled only with VTK. Offscreen/minimal Qt platforms or missing OpenGL 3.2
   automatically fall back to QPainter.
 - Persistence: UI prefs and user presets go to `QSettings("MolForma", "MolForma")`; molecule, calculation and
-  execution settings go into the project file.
+  execution settings go into the project file. Interactive sessions autosave unsaved work to
+  `AppLocalDataLocation/autosave` (with a `QLockFile` per session) and offer recovery at startup.
+- The manual (`docs/features.md`, `docs/mcp.md`) and the window icon are embedded via `docs/manual.qrc` in
+  `molforma_ui`; `packaging/` holds the desktop entry, icon and MIME types installed by `cmake --install`.
 
 ## Conventions
 

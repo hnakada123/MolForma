@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- MolForma icon: formaldehyde (H2C=O) in ball-and-stick on a rounded tile. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d4f7a"/>
+      <stop offset="1" stop-color="#23807f"/>
+    </linearGradient>
+    <radialGradient id="oxygen" cx="0.35" cy="0.32" r="0.75">
+      <stop offset="0" stop-color="#ffb1a8"/>
+      <stop offset="0.55" stop-color="#e0473c"/>
+      <stop offset="1" stop-color="#9c1f1a"/>
+    </radialGradient>
+    <radialGradient id="carbon" cx="0.35" cy="0.32" r="0.75">
+      <stop offset="0" stop-color="#9aa6b2"/>
+      <stop offset="0.55" stop-color="#46525e"/>
+      <stop offset="1" stop-color="#1f262d"/>
+    </radialGradient>
+    <radialGradient id="hydrogen" cx="0.35" cy="0.32" r="0.75">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.6" stop-color="#e5ebf0"/>
+      <stop offset="1" stop-color="#a9b5c0"/>
+    </radialGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#tile)"/>
+  <g stroke="#e8f1f7" stroke-linecap="round">
+    <line x1="116" y1="150" x2="116" y2="78" stroke-width="12"/>
+    <line x1="140" y1="150" x2="140" y2="78" stroke-width="12"/>
+    <line x1="128" y1="152" x2="70" y2="194" stroke-width="13"/>
+    <line x1="128" y1="152" x2="186" y2="194" stroke-width="13"/>
+  </g>
+  <circle cx="128" cy="68" r="36" fill="url(#oxygen)"/>
+  <circle cx="128" cy="152" r="34" fill="url(#carbon)"/>
+  <circle cx="64" cy="198" r="24" fill="url(#hydrogen)"/>
+  <circle cx="192" cy="198" r="24" fill="url(#hydrogen)"/>
+</svg>

@@ -36,16 +36,17 @@ class HistoryPanel : public QWidget {
     QTimer timer;
     QVector<HistoryEntry> entries;
     QString root, pendingSelection;
+    QString reference; // Job directory whose final energy ΔE refers to.
     QSet<QString> changedJobs;
     bool followsExecution = true;
     QLineEdit *rootField, *search;
-    QComboBox *filter;
+    QComboBox *filter, *energyUnit;
     QCheckBox *follow;
     QTableWidget *table;
     QTabWidget *details;
     QPlainTextEdit *summary, *input, *output, *errors, *record;
     QLabel *status;
-    QPushButton *cancel, *refreshButton, *reuse, *viewer, *folder, *stop, *trash, *csv;
+    QPushButton *cancel, *refreshButton, *reuse, *viewer, *folder, *stop, *trash, *csv, *setReference;
     const HistoryEntry *selectedEntry() const;
     QString activeDirectory() const;
     void populate(bool reloadDetails = true);

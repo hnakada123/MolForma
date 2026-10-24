@@ -54,10 +54,13 @@ QVector<SurfaceTriangle> sphereMesh(int rings, int sectors) {
 } // namespace
 class RenderingTest : public QObject {
     Q_OBJECT
+    QTemporaryDir settingsHome;
   private slots:
     void initTestCase() {
         QSettings::setDefaultFormat(QSettings::IniFormat);
-        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, "/tmp/molforma-test-settings");
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsHome.path());
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
+                           settingsHome.path()); // MolForma uses NativeFormat.
     }
     void backendSelection() {
         MoleculeView view;

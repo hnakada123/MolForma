@@ -47,6 +47,8 @@ class ExecutionTest : public QObject {
         QVERIFY(settings.isValid());
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settings.path());
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
+                           settings.path()); // MolForma uses NativeFormat.
         helper = files.filePath("native engine");
         QVERIFY(QFile::copy(QCoreApplication::applicationDirPath() + "/fake_nwchem", helper));
         QVERIFY(QFile::setPermissions(helper, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
@@ -316,6 +318,12 @@ class ExecutionTest : public QObject {
         QVERIFY(run);
         QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 5000);
         QCOMPARE(run->state(), "finished");
+        // The end is announced, and the job folder loads into the result viewer (tab unchanged).
+        QVERIFY(w.findChild<QCheckBox *>("executionOpenResults")->isChecked());
+        QTRY_VERIFY(w.statusBar()->currentMessage().contains("計算が終了しました"));
+        // (This test executable is not a result worker, so only the request is checked.)
+        QTRY_COMPARE(w.findChild<QComboBox *>("resultsFiles")->currentText(), QString("output.out"));
+        QCOMPARE(tabs->currentIndex(), 4);
         auto *log = w.findChild<QPlainTextEdit *>("executionLog");
         QVERIFY(log->toPlainText().contains("log tail marker"));
         QVERIFY(log->toPlainText().size() < 132000);

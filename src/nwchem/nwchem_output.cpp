@@ -104,7 +104,7 @@ void validateNwchemOutput(const Document &d, NwchemValidation &v) {
                 grid.minimum[axis] >= grid.maximum[axis])
                 v.errors << "CUBEの範囲が不正です。範囲・余白を確認してください。";
         }
-        if (s["task"].toString().startsWith("optimize"))
+        if (nwchemDriverTask(s))
             v.warnings
                 << "CUBEの格子範囲は入力構造から決めます。最適化後の構造に十分な余白を指定してください。";
     }
@@ -128,9 +128,14 @@ QString nwchemOutputLines(const Document &d, const NwchemValidation &v) {
     QString text = "\n# Visualization of the " + theory + " reference orbitals\n";
     if (s["task"].toString().contains("frequencies"))
         text += "task " + theory + " energy\n";
+    // Property requests stay in the runtime database; clear them so MOLDEN output does not repeat
+    // NMR or polarizability calculations requested in the calculation settings.
+    const bool properties =
+        s["prop_mulliken"].toBool() || s["prop_nmr"].toBool() || s["prop_polarizability"].toBool();
     if (a["molden_output"].toBool())
-        text += "\nproperty\n  vectors \"" + vectors + "\"\n  moldenfile\n  molden_norm " +
-                a["molden_norm"].toString("nwchem") + "\nend\ntask " + theory + " property\n";
+        text += QString(properties ? "\nunset prop:*" : "") + "\nproperty\n  vectors \"" + vectors +
+                "\"\n  moldenfile\n  molden_norm " + a["molden_norm"].toString("nwchem") + "\nend\ntask " +
+                theory + " property\n";
     if (a["cube_output"].toBool()) {
         text += "\ndplot\n  vectors \"" + vectors + "\"\n  limitxyz units angstrom\n";
         const auto grid = nwchemCubeGrid(d);

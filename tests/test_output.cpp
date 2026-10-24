@@ -42,6 +42,8 @@ class OutputTest : public QObject {
         QVERIFY(settings.isValid());
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settings.path());
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
+                           settings.path()); // MolForma uses NativeFormat.
     }
     void defaultsAndTasks() {
         auto d = water();

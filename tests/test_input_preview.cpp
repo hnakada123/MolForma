@@ -37,6 +37,8 @@ class InputPreviewTest : public QObject {
         QVERIFY(files.isValid());
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settings.path());
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
+                           settings.path()); // MolForma uses NativeFormat.
     }
     void nativeTabReadOnlyCopyAndSave() {
         auto d = water();

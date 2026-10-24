@@ -50,7 +50,7 @@ MCPクライアントのサーバー設定で、実行ファイルの絶対パ�
 "args": ["--mcp-gui", "/absolute/path/to/molecule.kgui.json"]
 ```
 
-画面が不要な自動処理では `"args": ["--mcp"]` を指定します。このモードは空の文書で始まり、DISPLAYやQtの画面用プラグインを必要としません。両モードは21個の文書・設定ツールを共有します。`--mcp` はさらに計算・結果用の4ツールを提供し、合計25個です。`--mcp-gui` は同名の4ツールを含む17個のGUI・実行・結果ツールを提供し、合計38個です。GUI機能を表示なしで自動検証する場合は `--mcp-gui` に `QT_QPA_PLATFORM=offscreen`、`MOLFORMA_RENDERER=painter` を設定できます。
+画面が不要な自動処理では `"args": ["--mcp"]` を指定します。このモードは空の文書で始まり、DISPLAYやQtの画面用プラグインを必要としません。両モードは23個の文書・設定ツールを共有します。`--mcp` はさらに計算・結果用の4ツールを提供し、合計27個です。`--mcp-gui` は同名の4ツールを含む17個のGUI・実行・結果ツールを提供し、合計40個です。GUI機能を表示なしで自動検証する場合は `--mcp-gui` に `QT_QPA_PLATFORM=offscreen`、`MOLFORMA_RENDERER=painter` を設定できます。
 
 通信は標準入力・標準出力の改行区切りUTF-8 JSON-RPCです。標準出力にはプロトコルメッセージだけを書き、診断は標準エラーへ出します。標準入力を閉じると、GUIモードを含めてプロセスが終了します。**必要な文書は切断前に保存してください。** 接続終了時の保存ダイアログや自動保存はありません。
 
@@ -87,7 +87,7 @@ Claude Codeは起動時の環境変数をそのまま子プロセスへ渡すた
 
 接続の確認と問題の調査には次の方法を使います。
 
-- Claude Code内で `/mcp` を開き、`molforma` が接続済みであることとツール数（`--mcp-gui` は38、`--mcp` は25）を確認します。
+- Claude Code内で `/mcp` を開き、`molforma` が接続済みであることとツール数（`--mcp-gui` は40、`--mcp` は27）を確認します。
 - 端末で `claude mcp list` または `claude mcp get molforma` を実行します。接続に失敗した場合は、`Issue:` 行に原因が表示されます。
 - GUIの起動に時間がかかって接続待ちが時間切れになる場合は、`MCP_TIMEOUT=30000 claude` のように起動の待ち時間（ミリ秒）を延ばします。
 - MolFormaを更新した後は、`/mcp` から再接続するか、Claude Codeを再起動します。
@@ -125,12 +125,12 @@ env_vars = ["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XAUTHORITY", "DBUS
 
 MCPクライアント（とその背後のLLM）は、読み込んだファイルや計算結果の内容に影響されることがあります。MolFormaは次の制限をサーバー側で適用します。どちらも起動引数でだけ変更でき、MCPのリクエストからは変更できません。現在の制限は `get_execution` の `policy` で確認できます。
 
-### 実行ファイル・ランチャー・環境変数の保護
+### 実行ファイル・ランチャー・環境変数・追加入力の保護
 
-NWChem実行ファイル（`executable`）、MPIランチャー（`launcher`）、追加の環境変数（`environment`）を変えると、任意のプログラムを起動したり、`LD_PRELOAD` などで任意のコードを読み込ませたりできます。既定では、これらをMCPから変更できません。
+NWChem実行ファイル（`executable`）、MPIランチャー（`launcher`）、追加の環境変数（`environment`）を変えると、任意のプログラムを起動したり、`LD_PRELOAD` などで任意のコードを読み込ませたりできます。計算条件の追加入力（`set_nwchem` の `extra_input` / `extra_tasks`）はMolFormaが検査せずにNWChem入力へ加えるため、同じ扱いにしています（`task shell` と `python` ブロックは常に拒否します）。既定では、これらをMCPから変更できません。
 
-- `set_execution` でこれらを現在と異なる値にすると失敗します。MPI起動数・スレッド数・ジョブ保存先・時間制限など、その他の実行設定は変更できます。
-- GUIモードでは、「5 実行設定」タブの実行ファイル・ランチャーの欄と参照ボタン、環境変数の表と追加・削除ボタンをMCPから操作できません。`get_ui` の `blocked` に理由を示します。
+- `set_execution` で実行ファイル・ランチャー・環境変数を、`set_nwchem` で追加入力を現在と異なる値にすると失敗します。MPI起動数・スレッド数・ジョブ保存先・時間制限など、その他の実行設定と計算条件は変更できます。
+- GUIモードでは、「5 実行設定」タブの実行ファイル・ランチャーの欄と参照ボタン、環境変数の表と追加・削除ボタン、「3 計算条件」の追加入力の欄と「追加入力を適用」ボタンをMCPから操作できません。`get_ui` の `blocked` に理由を示します。
 - プロジェクトの読込や履歴の再利用でも値は変わるため、計算の開始時にも確認します。MolFormaは、MCP以外の操作（利用者のGUI操作や、起動時に指定したファイル）で最後に設定された値を「信頼済み」として記録します。MCPから開始する計算は、信頼済みの値と一致する場合だけ実行します。MCPが作成した候補を利用者が「変更を確定」した場合や、MCPによる編集を利用者がUndo/Redoした場合も、その値は信頼済みになりません。
 - 一致しない設定で利用者が「実行」を押すと、設定内容を示す確認ダイアログを表示します。このダイアログはMCPから取得・操作できず、Elicitationにもなりません。「はい」を選ぶと、その値が信頼済みになります。
 - 画面なしの `--mcp` では、利用者がGUIの「編集 → 環境設定」で保存した値（未設定なら `PATH` 上の `nwchem` と `mpirun`、追加の環境変数なし）だけを信頼し、その値で文書を開始します。環境設定のダイアログとメニューはMCPから操作できません。
@@ -166,7 +166,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 
 `revision` は確定文書と候補の内容から生成します。GUIでの編集や候補確定により内容が変わると、古い版を指定した変更は失敗します。失敗時は再取得して差分を確認してください。文書IDはプロセスごとに異なり、切断後は無効になります。複数の呼び出し元が同じプロセスを共有する場合も、各操作にIDを渡す必要があります。
 
-固定原子の移動、不正な参照、重複座標、不正な引数などは文書を変えずに失敗します。部分編集はプロジェクトの未知のenvelopeフィールドも保持します。`open_file`（プロジェクト）と `import_document(format: "project")` は指定したプロジェクト全体を読み込み、元のプロジェクトはUndoで復元できます。`open_file` でXYZ/MOL/SDF/PDBを開いた場合は、「2 座標」での読込と同じく構造だけを置き換え、計算条件・実行設定を保持します。
+固定原子の移動、不正な参照、重複座標、不正な引数などは文書を変えずに失敗します。部分編集はプロジェクトの未知のenvelopeフィールドも保持します。`open_file`（プロジェクト）と `import_document(format: "project")` は指定したプロジェクト全体を読み込み、元のプロジェクトはUndoで復元できます。`open_file` でXYZ/MOL/SDF/Mol2/CML/PDBを開いた場合は、「2 座標」での読込と同じく構造だけを置き換え、計算条件・実行設定を保持します。NWChem入力（`.nw`）とGaussian入力（`.gjf` / `.com`）は電荷・多重度も設定し、NWChem入力はMolFormaと共通の計算条件も取り込みます（詳細設定と追加入力は保持）。複数フレームのXYZは `frame`（0始まり）が必要です。
 
 ## 公開ツール
 
@@ -178,11 +178,13 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `set_positions` / `translate` | 安定IDによる座標変更・平行移動 |
 | `set_bond` / `delete_atoms` | 結合の変更・除去、原子削除と参照更新 |
 | `measure` | 2/3/4原子の距離・角度・二面角 |
+| `set_dimension` | 2/3/4原子の距離（Å）・角度・二面角（度）の設定。GUIと同じく後の原子の側（結合していない別々の分子では後の原子の分子全体）を動かす |
+| `set_atom_properties` | 安定IDの原子の元素（`hydrogens` で水素の調整）、形式電荷、不対電子、同位体（質量数、0で解除）または質量（amu）、固定、ゴースト、原子名の変更 |
 | `import_document` | XYZ文字列またはKAGAMI v2 JSON文字列の取込。XYZは `append: true` で今の分子の横に追加 |
-| `open_file` | ローカルXYZ/MOL/SDF/PDB/KAGAMIファイルの取込 |
+| `open_file` | ローカルXYZ/MOL/SDF/Mol2/CML/PDB/KAGAMIファイル、NWChem・Gaussian入力の取込。複数フレームのXYZは `frame` で選択 |
 | `export_document` | 確定文書のXYZ、KAGAMI v2 JSON、検証済みNWChem入力文字列 |
 | `save_file` | 確定文書をKAGAMI v2として保存。既存ファイルは `overwrite: true` か、利用者の上書き承認が必要 |
-| `get_nwchem` / `set_nwchem` | 計算条件・既定値・選択肢（`choices`）・検証結果の取得と条件変更 |
+| `get_nwchem` / `set_nwchem` | 計算条件・既定値・選択肢（`choices`）・検証結果の取得と条件変更。溶媒（SMD・溶媒名）、相対論、RI-J、物性、遷移状態探索・IRC・拘束（`constraints`、原子は安定ID）・スキャン（`scan_atoms` 等）、BSSE、後続の一点計算を含む。追加入力（`extra_input` / `extra_tasks`）は変更不可 |
 | `get_advanced` / `set_advanced` | 詳細・可視化出力設定の型、選択肢、適用条件、値を取得・変更。`null` で個別リセット |
 | `get_execution` / `set_execution` | 実行ファイル、MPI、スレッド数、作業場所、環境変数、時間制限の取得・変更 |
 | `history` | 候補の確定・取消、Undo/Redo |
@@ -193,7 +195,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | --- | --- |
 | `get_app_state` | 候補の有無、計算・結果読込の状態 |
 | `calculation` | NWChem実行・停止、入力一式の保存 |
-| `get_results` | 読込済み結果の要約（熱化学・双極子・最適化状態を含む `properties`）、構造列・エネルギー・軌道・振動数・励起状態・最適化ステップ・変位・ログ |
+| `get_results` | 読込済み結果の要約（熱化学・双極子・最適化状態・スキャンとIRCの各点・BSSE・溶媒和・原子ごとのMulliken/ESP/RESP電荷・NMR遮蔽・分極率を含む `properties`）、構造列・エネルギー・軌道・振動数（並進・回転は `rigid`）・励起状態・最適化ステップ・変位・ログ |
 | `results_action` | 結果ファイル・計算フォルダーの読込、再読込、読込の取消 |
 
 画面なしモードの計算と読込はバックグラウンドで進み、`calculation` / `results_action` はすぐに戻ります。完了はタスクか `get_app_state` で確認します。計算はMolFormaの終了（標準入力を閉じる）とともに停止します。結果の表示・再生・画像取得はGUIモードだけです。
@@ -212,7 +214,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `ui_file_dialog` | ファイル選択・保存ダイアログのパスとフィルター指定、確定・取消 |
 | `capture_screenshot` | MolFormaのウィンドウまたは指定部品のPNG取得・保存 |
 | `set_selection` | 安定IDによる原子選択。空配列で解除 |
-| `chemistry` | SMILES生成（置換）、SMILESからの断片の追加（`fragment`）、全体・局所整形、3D再生成、中止。結果は候補として確認 |
+| `chemistry` | SMILES生成（置換）、SMILESからの断片の追加（`fragment`）、全体・局所整形、3D再生成、配座探索（`conformers`、最安定の配座を候補にする）、中止。結果は候補として確認 |
 | `calculation` | 入力一式の保存、NWChem実行・停止 |
 | `get_results` / `results_action` | 結果読込・取消、構造列・エネルギー・軌道・振動数・励起状態・最適化ステップ・変位・ログ取得、選択・再生・停止、XYZ保存、表示中の構造を文書の候補にする `apply_structure` |
 | `history_action` | 履歴の走査・取消、ジョブ選択・再利用・結果表示、ごみ箱への移動、絞り込まれた一覧のCSV保存 |
@@ -230,6 +232,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `molforma://documents/<documentId>/nwchem` | テキスト | 確定文書から生成したNWChem入力。生成できない場合は `-32603` と理由を返す |
 | `molforma://app/state` | JSON | `get_app_state` と同じ状態 |
 | `molforma://calculation/output` | テキスト | 現在または最後の計算の `output.out` の末尾 |
+| `molforma://calculation/stderr` | テキスト | 現在または最後の計算の `stderr.err`（MPI・ランチャーのメッセージ）の末尾 |
 | `molforma://results/summary` | JSON | `get_results` の要約 |
 | `molforma://results/log` | テキスト | 読込済み結果のログの末尾 |
 
@@ -342,7 +345,7 @@ GUI変更は `documentId` と `expectedRevision` を必要とし、`queued` の 
 - Streamable HTTP、OAuth、リモート接続、Sampling、Roots、Logging、補完（`completion/complete`）、購読（`subscriptions/listen`）、MCP Appsは提供せず、対応機能としても宣言しません。
 - Elicitationはform形式だけを使います。対象は `save_file` の上書き確認と、Tasks実行中の `QMessageBox` だけです。ファイル選択などその他のダイアログは `get_ui` → `ui_*` で操作します。
 - Tasks拡張の対象は、GUI変更ツールと、画面なしモードの計算開始・結果読込です。文書ツールは同期で結果を返します。
-- GUI操作、結果の表示・再生、画面取得、SMILES生成・整形、計算履歴は `--mcp-gui` だけです。画面を作らない `--mcp` は文書・設定用の21ツールと計算・結果用の4ツールを提供します。
+- GUI操作、結果の表示・再生、画面取得、SMILES生成・整形、計算履歴は `--mcp-gui` だけです。画面を作らない `--mcp` は文書・設定用の23ツールと計算・結果用の4ツールを提供します。
 - 読み込みは1ファイル8 MiB、受信は1メッセージ8 MiB、文書は10,000原子までです。送信待ちデータが32 MiBを超える読み取り停止クライアントは切断します。JSON-RPCバッチには対応しません。
 - `open_file` によるPDB読込はMODEL 1・ALTLOC自動選択です。選択が必要な場合はGUIのファイルメニューから読み込み、ダイアログをMCPで操作します。
 - 文書ツールは同期、GUI変更ツールは操作IDを返します。長時間処理の取消は `chemistry` / `calculation` / `results_action` / `history_action` の中止操作を使います。完了済みRPCへの `notifications/cancelled` は無視します。ヘッドレスモードのUndo履歴は直近100回までです。

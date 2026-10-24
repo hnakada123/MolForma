@@ -3,6 +3,7 @@
 #include "editing/coordinates.h"
 #include "editing/operations.h"
 #include "mcp/tools.h"
+#include "model/geometry.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
@@ -12,6 +13,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QMessageAuthenticationCode>
+#include <QRegularExpression>
 #include <cmath>
 
 namespace mf {
@@ -183,6 +185,8 @@ QString toolTitle(const QString &name) {
                                                 {"delete_atoms", "Delete atoms"},
                                                 {"translate", "Translate atoms"},
                                                 {"measure", "Measure geometry"},
+                                                {"set_dimension", "Set distance, angle or dihedral"},
+                                                {"set_atom_properties", "Set atom properties"},
                                                 {"import_document", "Import structure"},
                                                 {"open_file", "Open structure file"},
                                                 {"export_document", "Export document"},
@@ -658,6 +662,28 @@ QJsonArray McpServer::toolList() const {
         {{"ids", idsSchema()}, {"offset", vectorSchema()}}, {"ids", "offset"}, true, true);
     add("measure", "Measure 2/3/4 ordered atoms: distance (angstrom), angle/dihedral (degrees).",
         {{"ids", idsSchema()}}, {"ids"});
+    add("set_dimension",
+        "Set the distance (angstrom), angle or dihedral (degrees) of 2/3/4 ordered atoms, as in the editor: "
+        "the side of the later atom moves (for unbonded atoms of different molecules, the whole later "
+        "molecule). Fixed atoms cannot move.",
+        {{"ids", idsSchema()}, {"value", type("number")}}, {"ids", "value"}, true, true);
+    add("set_atom_properties",
+        "Set properties of atoms by stable ID, as in the editor's atom panel. element replaces the element "
+        "(hydrogens: adjust automatic hydrogens); charge is the formal charge; radical the unpaired "
+        "electrons; "
+        "isotope a mass number (0 clears it) or mass an exact mass in amu; fixed keeps atoms still in edits "
+        "and optimizations; ghost makes basis-only centers; name the atom name.",
+        {{"ids", idsSchema()},
+         {"element", type("string")},
+         {"hydrogens", type("boolean")},
+         {"charge", QJsonObject{{"type", "integer"}, {"minimum", -20}, {"maximum", 20}}},
+         {"radical", QJsonObject{{"type", "integer"}, {"minimum", 0}, {"maximum", 10}}},
+         {"isotope", QJsonObject{{"type", "integer"}, {"minimum", 0}, {"maximum", 400}}},
+         {"mass", QJsonObject{{"type", "number"}, {"exclusiveMinimum", 0}, {"maximum", 1000}}},
+         {"fixed", type("boolean")},
+         {"ghost", type("boolean")},
+         {"name", type("string")}},
+        {"ids"}, true, true);
     add("import_document",
         "Replace structure from XYZ text (preserving project metadata) or a complete "
         "KAGAMI v2 project JSON string. With format xyz and append true, the XYZ molecule is added 3 Å "
@@ -665,9 +691,13 @@ QJsonArray McpServer::toolList() const {
         {{"format", choice({"xyz", "project"})}, {"text", type("string")}, {"append", type("boolean")}},
         {"format", "text"}, true, true);
     add("open_file",
-        "Load a local XYZ/MOL/SDF/PDB/KAGAMI file as an undoable edit. PDB uses model 1 "
-        "and automatic alternate-location selection. Maximum file size: 8 MiB.",
-        {{"path", type("string")}}, {"path"}, true, true);
+        "Load a local XYZ/MOL/SDF/Mol2/CML/PDB/KAGAMI file, NWChem input (.nw) or Gaussian input (.gjf/.com) "
+        "as an undoable edit. Structure files keep the calculation settings; NWChem and Gaussian inputs also "
+        "set charge and multiplicity, and NWChem inputs the calculation settings they share with MolForma. "
+        "Multi-frame XYZ files need frame (0-based). PDB uses model 1 and automatic alternate-location "
+        "selection. Maximum file size: 8 MiB.",
+        {{"path", type("string")}, {"frame", QJsonObject{{"type", "integer"}, {"minimum", 0}}}}, {"path"},
+        true, true);
     add("export_document", "Return the committed document as XYZ, KAGAMI v2 JSON, or validated NWChem input.",
         {{"format", choice({"xyz", "project", "nwchem"})}}, {"format"});
     add("save_file",
@@ -908,6 +938,47 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                     fail("A bond requires two different atoms.");
                 next.setBond(a, b, args["kind"].toString());
                 next.invalidateAssignments();
+            } else if (name == "set_dimension") {
+                const auto ids = idsFromJson(args["ids"]);
+                for (const auto &atomId : ids)
+                    next.atom(atomId);
+                setDimension(next, ids, args["value"].toDouble());
+            } else if (name == "set_atom_properties") {
+                const auto ids = idsFromJson(args["ids"]);
+                if (ids.isEmpty())
+                    fail("Specify atom IDs.");
+                for (const auto &atomId : ids)
+                    next.atom(atomId);
+                if (args.contains("isotope") && args.contains("mass"))
+                    fail("Set either isotope or mass.");
+                if (args.contains("element"))
+                    replaceElement(next, ids, args["element"].toString(), args["hydrogens"].toBool());
+                for (const auto &atomId : ids) {
+                    auto &a = next.atom(atomId);
+                    if (args.contains("charge"))
+                        a.charge = args["charge"].toInt();
+                    if (args.contains("radical"))
+                        a.radical = args["radical"].toInt();
+                    if (args.contains("isotope")) {
+                        a.isotope = args["isotope"].toInt();
+                        a.mass = 0;
+                    }
+                    if (args.contains("mass")) {
+                        a.mass = args["mass"].toDouble();
+                        a.isotope = 0;
+                    }
+                    if (args.contains("fixed"))
+                        a.fixed = args["fixed"].toBool();
+                    if (args.contains("ghost"))
+                        a.ghost = args["ghost"].toBool();
+                    if (args.contains("name")) {
+                        const auto label = args["name"].toString();
+                        if (label.size() > 16 || label.contains(QRegularExpression("[\\x00-\\x1f\\x7f]")))
+                            fail("Atom names are up to 16 characters without control characters.");
+                        a.name = label;
+                    }
+                }
+                next.invalidateAssignments();
             } else if (name == "delete_atoms" || name == "translate") {
                 auto ids = idsFromJson(args["ids"]);
                 for (const auto &atomId : ids) {
@@ -935,11 +1006,29 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                 if (!info.isFile() || info.size() > 8 * 1024 * 1024)
                     fail("Expected a regular structure file no larger than 8 MiB.");
                 // A project replaces everything; a structure file only the structure, as in the GUI's
-                // coordinate table, so calculation and execution settings stay.
-                if (info.suffix().compare("json", Qt::CaseInsensitive) == 0)
+                // coordinate table, so calculation and execution settings stay. NWChem and Gaussian
+                // inputs also set charge and multiplicity, and NWChem inputs the calculation settings
+                // (keeping the advanced options and the additional input the user chose).
+                const auto suffix = info.suffix().toLower();
+                const int frame = args.contains("frame") ? args["frame"].toInt() : -1;
+                if (suffix == "json")
                     next = importStructure(path);
-                else
-                    replaceCoordinateStructure(next, importStructure(path));
+                else {
+                    const auto imported = importStructure(path, 1, {}, frame);
+                    replaceCoordinateStructure(next, imported);
+                    if (QStringList{"nw", "nwinp", "gjf", "com", "gau"}.contains(suffix))
+                        for (const auto *key : {"charge", "multiplicity"})
+                            if (imported.job().contains(key))
+                                next.setJobValue(key, imported.job()[key]);
+                    if (suffix == "nw" || suffix == "nwinp") {
+                        auto settings = imported.data["nwchem"].toObject();
+                        const auto current = next.data["nwchem"].toObject();
+                        for (const auto *key : {"advanced", "extra_input", "extra_tasks"})
+                            if (current.contains(key))
+                                settings[key] = current[key];
+                        next.data["nwchem"] = settings;
+                    }
+                }
             } else if (name == "set_advanced") {
                 const auto settings = args["settings"].toObject();
                 for (auto it = settings.begin(); it != settings.end(); ++it) {
@@ -988,6 +1077,11 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                 for (auto it = requested.begin(); it != requested.end(); ++it) {
                     if (!defaults.contains(it.key()) || defaults[it.key()].type() != it.value().type())
                         fail("Unknown NWChem setting or incorrect type: " + it.key());
+                    if (!policy.allowExecutionSettings && isProtectedNwchemKey(it.key()) &&
+                        it.value() != settings[it.key()])
+                        fail(it.key() + " is additional NWChem input that MolForma does not check; only the "
+                                        "user can change it in the calculation tab. Start the server with "
+                                        "--mcp-allow-execution-settings to permit it.");
                     settings[it.key()] = it.value();
                 }
                 next.data["nwchem"] = settings;

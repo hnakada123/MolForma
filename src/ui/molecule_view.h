@@ -19,12 +19,48 @@ class MoleculeView : public QWidget {
     void setSelection(const Ids &ids);
     void setSurface(const QVector<SurfaceTriangle> &triangles);
     void setSurfaceStyle(bool positive, bool negative, int opacity);
+    // Arrows drawn over the molecule: (origin, vector) in Å, e.g. normal-mode displacements.
+    void setArrows(const QVector<std::pair<Vec, Vec>> &list) {
+        arrows = list;
+        scheduleRender();
+    }
+    // Renders pending changes at once (VTK), so the widget can be grabbed as an image.
+    void renderNow();
+    // "ball_and_stick" (default), "stick", "spacefill" or "wireframe".
+    void setStyle(const QString &style);
+    QString style() const {
+        return displayStyle;
+    }
+    // Atoms left out of the picture (view only; they stay in the molecule and calculations).
+    void setHidden(const QSet<QString> &ids);
+    const QSet<QString> &hiddenAtoms() const {
+        return hidden;
+    }
+    // Measurements kept on screen: 2–4 ordered atom IDs each, drawn with their current value.
+    void setMonitors(const QVector<Ids> &list) {
+        monitors = list;
+        scheduleRender();
+    }
+    QVector<Ids> monitorList() const {
+        return monitors;
+    }
+    void setHydrogenBonds(bool on);
+    // Hydrogen bonds X–H···Y (X, Y = N, O, F) found by distance and angle in the shown molecule.
+    QVector<std::pair<QString, QString>> hydrogenBonds() const {
+        return hbonds;
+    }
     void setEmptyMessage(const QString &message) {
         emptyMessage = message;
         scheduleRender();
     }
     Ids selection() const {
         return selected;
+    }
+    const Document &documentRef() const {
+        return doc;
+    }
+    Document documentCopy() const {
+        return doc;
     }
     void fit();
     void viewFrom(int axis);
@@ -102,6 +138,17 @@ class MoleculeView : public QWidget {
     Qt::KeyboardModifiers pressModifiers;
     QVector<Marker> markers;
     QVector<SurfaceTriangle> surface;
+    QVector<std::pair<Vec, Vec>> arrows;
+    QString displayStyle = "ball_and_stick";
+    QSet<QString> hidden;
+    QVector<Ids> monitors;
+    bool showHydrogenBonds = false;
+    QVector<std::pair<QString, QString>> hbonds; // (hydrogen, acceptor)
+    void findHydrogenBonds();
+    bool shown(const Atom &a) const {
+        return !hidden.contains(a.id);
+    }
+    double atomRadius(const Atom &a) const;
     bool positiveSurface = true, negativeSurface = true;
     int surfaceOpacity = 150;
     QString emptyMessage;

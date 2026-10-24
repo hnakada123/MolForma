@@ -81,6 +81,18 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     reuse = button("分子・条件を再利用", "historyReuse");
     folder = button("保存先を開く", "historyFolder");
     csv = button("一覧CSVを保存", "historyCsv");
+    setReference = button("選択した計算をΔEの基準にする", "historyReference");
+    energyUnit = new QComboBox;
+    energyUnit->setObjectName("historyEnergyUnit");
+    for (const auto &[label, unit] :
+         {std::pair{"kcal/mol", "kcal"}, {"kJ/mol", "kj"}, {"eV", "ev"}, {"Hartree", "hartree"}})
+        energyUnit->addItem(label, unit);
+    actions->addWidget(energyUnit);
+    connect(setReference, &QPushButton::clicked, this, [this] {
+        reference = selectedDirectory();
+        populate(false);
+    });
+    connect(energyUnit, &QComboBox::currentIndexChanged, this, [this] { populate(false); });
     actions->addStretch();
     stop = button("選択した計算を停止", "historyStop");
     trash = button("ごみ箱へ", "historyTrash");
@@ -92,10 +104,10 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     layout->addWidget(status);
     auto *split = new QSplitter(Qt::Vertical);
     layout->addWidget(split, 1);
-    table = new QTableWidget(0, 7);
+    table = new QTableWidget(0, 8);
     table->setObjectName("historyTable");
     table->setHorizontalHeaderLabels({"作成日時（ローカル）", "計算名", "手法 / 基底", "目的", "実行状態",
-                                      "最終検出E / Hartree", "経過 / 秒"});
+                                      "最終検出E / Hartree", "経過 / 秒", "ΔE"});
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -313,6 +325,17 @@ void HistoryPanel::populate(bool reloadDetails) {
         QSignalBlocker block(table);
         table->setSortingEnabled(false);
         table->setRowCount(0);
+        const auto unit = energyUnit->currentData().toString();
+        const double factor = unit == "kcal" ? 627.509474
+                              : unit == "kj" ? 2625.499639
+                              : unit == "ev" ? 27.211386245988
+                                             : 1.;
+        std::optional<double> referenceEnergy;
+        for (const auto &e : entries)
+            if (e.directory == reference)
+                referenceEnergy = e.energy;
+        table->setHorizontalHeaderItem(7, new QTableWidgetItem("ΔE / " + energyUnit->currentText() +
+                                                               (referenceEnergy ? "" : "（基準未選択）")));
         for (const auto &e : entries) {
             const bool owned = e.directory == active;
             const bool uncertain =
@@ -326,6 +349,9 @@ void HistoryPanel::populate(bool reloadDetails) {
                 continue;
             const int row = table->rowCount();
             table->insertRow(row);
+            std::optional<double> delta;
+            if (e.energy && referenceEnergy)
+                delta = (*e.energy - *referenceEnergy) * factor;
             const QStringList labels{
                 e.created.isValid() ? e.created.toLocalTime().toString("yyyy-MM-dd HH:mm:ss") : "—",
                 e.name,
@@ -333,7 +359,10 @@ void HistoryPanel::populate(bool reloadDetails) {
                 e.task,
                 historyStatus(e.status, owned),
                 e.energy ? QString::number(*e.energy, 'f', 10) + " (" + e.energyMethod + ")" : "—",
-                e.seconds < 0 ? "—" : QString::number(e.seconds)};
+                e.seconds < 0 ? "—" : QString::number(e.seconds),
+                delta ? QString::number(*delta, 'f', unit == "hartree" ? 8 : 3) +
+                            (e.directory == reference ? "（基準）" : "")
+                      : "—"};
             for (int col = 0; col < labels.size(); ++col) {
                 QVariant key = labels[col];
                 if (col == 0)
@@ -342,6 +371,8 @@ void HistoryPanel::populate(bool reloadDetails) {
                     key = e.energy.value_or(-std::numeric_limits<double>::infinity());
                 if (col == 6)
                     key = e.seconds;
+                if (col == 7)
+                    key = delta.value_or(-std::numeric_limits<double>::infinity());
                 auto *item = new SortItem(labels[col], key);
                 item->setData(Qt::UserRole, e.directory);
                 item->setToolTip(e.directory + (e.warnings.isEmpty() ? "" : "\n" + e.warnings.join('\n')));
@@ -427,6 +458,7 @@ void HistoryPanel::updateActions() {
     trash->setEnabled(exists && e->valid && e->directory != activeDirectory() &&
                       !QStringList{"starting", "running", "stopping"}.contains(e->status));
     csv->setEnabled(table->rowCount() > 0);
+    setReference->setEnabled(e && e->energy.has_value());
 }
 void HistoryPanel::notifyJob(const QString &path) {
     if (!isVisible() || QFileInfo(path).absolutePath() != root)

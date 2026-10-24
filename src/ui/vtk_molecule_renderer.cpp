@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <openbabel/elements.h>
 #include <vtkActor.h>
 #include <vtkCamera.h>
 #include <vtkCellArray.h>
@@ -53,6 +54,10 @@ struct VtkMoleculeRenderer::Scene {
     Document document;
     QHash<QString, int> atomIndices;
     QVector<int> visibleAtoms;
+    QVector<QColor> colors;
+    QSet<QString> bonded; // Atoms with a bond: drawn as lines only in the wireframe style.
+    QString style = "ball_and_stick";
+    QSet<QString> hidden;
     bool hydrogens = true, bondsDirty = true;
     double atomScale = -1;
     Mat bondRotation = Mat::Zero();
@@ -131,11 +136,19 @@ VtkMoleculeRenderer::~VtkMoleculeRenderer() {
     // Release VTK resources while the Qt context and render-window adapter still exist.
     setRenderWindow(static_cast<vtkGenericOpenGLRenderWindow *>(nullptr));
 }
-void VtkMoleculeRenderer::setMolecule(const Document &document, const QVector<QColor> &colors,
-                                      bool hydrogens) {
+void VtkMoleculeRenderer::setMolecule(const Document &document, const QVector<QColor> &colors, bool hydrogens,
+                                      const QString &style, const QSet<QString> &hidden) {
     auto &s = *scene;
     s.document = document;
     s.hydrogens = hydrogens;
+    s.colors = colors;
+    s.style = style;
+    s.hidden = hidden;
+    s.bonded.clear();
+    for (const auto &bond : document.bonds)
+        s.bonded << bond.a << bond.b;
+    s.bonds.actor->SetVisibility(style != "spacefill");
+    s.arrows.actor->SetVisibility(style == "ball_and_stick");
     s.visibleAtoms.clear();
     s.atomIndices.clear();
     vtkNew<vtkPoints> points;
@@ -146,7 +159,7 @@ void VtkMoleculeRenderer::setMolecule(const Document &document, const QVector<QC
         const auto &atom = document.atoms[i];
         s.atomIndices.insert(atom.id, i);
         // Ghosts and hidden-hydrogen handles retain their established 2D notation.
-        if (atom.ghost || (!hydrogens && atom.element == "H"))
+        if (atom.ghost || (!hydrogens && atom.element == "H") || hidden.contains(atom.id))
             continue;
         s.visibleAtoms << i;
         points->InsertNextPoint(atom.position.data());
@@ -220,13 +233,29 @@ void VtkMoleculeRenderer::setCamera(const Mat &rotation, const Vec &center, doub
     if (scale != s.atomScale) {
         s.radii->SetNumberOfValues(s.visibleAtoms.size());
         for (int i = 0; i < s.visibleAtoms.size(); ++i) {
-            const bool h = s.document.atoms[s.visibleAtoms[i]].element == "H";
-            s.radii->SetValue(i, std::clamp(scale * (h ? .12 : .20), h ? 5. : 8., h ? 11. : 20.) / scale);
+            const auto &atom = s.document.atoms[s.visibleAtoms[i]];
+            const bool h = atom.element == "H";
+            double radius = std::clamp(scale * (h ? .12 : .20), h ? 5. : 8., h ? 11. : 20.) / scale;
+            if (s.style == "stick")
+                radius = std::clamp(scale * .1, 3., 7.) / scale;
+            else if (s.style == "wireframe") // Isolated atoms (ions) stay visible as small dots.
+                radius = s.bonded.contains(atom.id) ? 0 : std::clamp(scale * .12, 4., 8.) / scale;
+            else if (s.style == "spacefill")
+                try {
+                    radius = OpenBabel::OBElements::GetVdwRad(element(atom.element).number);
+                } catch (const std::exception &) {
+                    radius = 1.7;
+                }
+            s.radii->SetValue(i, radius);
         }
         s.radii->Modified();
         s.atomScale = scale;
     }
-    s.bonds.actor->GetProperty()->SetLineWidth(3.5 * devicePixelRatioF());
+    const bool halfBonds = s.style == "stick" || s.style == "wireframe";
+    s.bonds.actor->GetProperty()->SetLineWidth((s.style == "stick"       ? std::clamp(scale * .2, 5., 12.)
+                                                : s.style == "wireframe" ? 2.
+                                                                         : 3.5) *
+                                               devicePixelRatioF());
     if (!s.bondsDirty && scale == s.bondScale && rotation == s.bondRotation)
         return;
     // Only the small camera-facing bond strokes change on rotation, never the isosurface.
@@ -247,8 +276,16 @@ void VtkMoleculeRenderer::setCamera(const Mat &rotation, const Vec &center, doub
         if (ai < 0 || bi < 0)
             continue;
         const auto &a = s.document.atoms[ai], &b = s.document.atoms[bi];
-        if (!s.hydrogens && (a.element == "H" || b.element == "H"))
+        if ((!s.hydrogens && (a.element == "H" || b.element == "H")) || s.hidden.contains(a.id) ||
+            s.hidden.contains(b.id))
             continue;
+        if (halfBonds) {
+            // Half bonds in the atom colors, one line per bond.
+            const Vec middle = (a.position + b.position) / 2;
+            line(a.position, middle, s.colors.value(ai));
+            line(middle, b.position, s.colors.value(bi));
+            continue;
+        }
         const Vec delta = rotation * (b.position - a.position);
         const double length = std::hypot(delta.x(), delta.y());
         if (length * scale < 1)

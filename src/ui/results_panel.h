@@ -14,6 +14,7 @@ class QDoubleSpinBox;
 class QPlainTextEdit;
 class QTableWidget;
 class QTabWidget;
+class QCheckBox;
 namespace mf {
 class ChartView;
 class MainWindow;
@@ -69,10 +70,19 @@ class ResultsPanel : public QWidget {
     std::array<QPushButton *, 6> orbitalNavigation;
     QTabWidget *details;
     QPlainTextEdit *status, *log;
-    QTableWidget *energy, *orbitals, *modes, *steps, *excitations;
-    ChartView *energyChart, *gradientChart, *spectrum;
-    QComboBox *spectrumAxis;
-    QDoubleSpinBox *broadening;
+    QTableWidget *energy, *orbitals, *modes, *steps, *excitations, *path, *atomProperties;
+    ChartView *energyChart, *gradientChart, *spectrum, *pathChart, *irSpectrum;
+    QComboBox *spectrumAxis, *energyUnit;
+    QDoubleSpinBox *broadening, *irWidth;
+    QLabel *propertySummary, *energyNote;
+    QCheckBox *arrows;
+    QPushButton *energyReference, *saveModeImages, *saveModeTrajectory, *compareGeometry;
+    int referenceEnergy = -1;  // Row of data.energies that ΔE refers to (-1: the last energy).
+    QVector<bool> rigidMotion; // Translations and rotations among data.modes.
+    // Measurement by atom number, so it follows frames and vibration snapshots (new atom IDs).
+    QVector<int> picked;
+    QVector<QVector<int>> pinned;
+    QLabel *measurementLabel;
     QPushButton *cancel, *reload, *playFrames, *playMode, *saveXyz, *savePng, *applyIso, *applyGeometry;
     QPushButton *homo, *lumo;
     void startLoad(const QString &path, double iso, int channel, int orbital = -1,
@@ -83,6 +93,14 @@ class ResultsPanel : public QWidget {
     void showFrame();
     void showMode();
     void showSpectrum();
+    void showEnergies();
+    void showPath();
+    void showProperties();
+    void showIrSpectrum();
+    void showArrows();
+    void exportMode(bool images);
+    void setViewDocument(const Document &document);
+    void pickAtom(const QString &id);
     const Document &displayedGeometry() const;
     void stopAnimation();
     void updateActions();

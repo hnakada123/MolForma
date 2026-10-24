@@ -79,10 +79,11 @@ QJsonObject mcpTool(const QString &name, const QString &title, const QString &de
 QJsonObject resultsTool() {
     return mcpTool(
         "get_results", "Read results",
-        "Read the loaded result summary (with thermochemistry, dipole and optimization state from NWChem "
-        "logs) or paginated frames/energies/orbitals/modes/excitations (TDDFT)/steps (optimization)/log. "
-        "mode_displacements returns one mode with its reference geometry. Frequencies retain negative "
-        "values for imaginary modes.",
+        "Read the loaded result summary (properties from NWChem logs: thermochemistry, dipole, optimization "
+        "state, scan and irc paths with frame indices, bsse, solvation, mulliken/esp/resp charges per atom, "
+        "NMR shielding, polarizability in a.u.) or paginated frames/energies/orbitals/modes/excitations "
+        "(TDDFT)/steps (optimization)/log. mode_displacements returns one mode with its reference geometry. "
+        "Frequencies retain negative values for imaginary modes; rigid marks translations and rotations.",
         {{"section", QJsonObject{{"type", "string"},
                                  {"enum", QJsonArray{"summary", "frames", "energies", "orbitals", "modes",
                                                      "excitations", "steps", "mode_displacements", "log"}}}},
@@ -118,6 +119,7 @@ QJsonObject resultsJson(const ResultData &r, const QJsonObject &args, QJsonObjec
     int offset = args["offset"].toInt(), limit = std::min(args["limit"].toInt(100), 1000);
     QJsonArray rows;
     qsizetype bytes = 0;
+    const auto rigid = resultRigidModes(r);
     if (section == "mode_displacements") {
         int i = index(args["index"].toInt(-1), r.modes.size());
         out["frequency"] = r.modes[i].frequency;
@@ -156,7 +158,8 @@ QJsonObject resultsJson(const ResultData &r, const QJsonObject &args, QJsonObjec
             if (section == "modes") {
                 const auto &m = r.modes[i];
                 row["frequency"] = m.frequency;
-                row["imaginary"] = m.frequency < 0;
+                row["imaginary"] = m.frequency < 0 && !rigid.value(i);
+                row["rigid"] = rigid.value(i);
                 row["intensity"] = std::isfinite(m.intensity) ? QJsonValue(m.intensity) : QJsonValue();
                 row["hasDisplacements"] = !m.displacement.isEmpty();
             }
@@ -204,6 +207,9 @@ QJsonArray runtimeResources() {
                      "Calculation and result-loading state (same as get_app_state).", "application/json"),
             resource("molforma://calculation/output", "calculation-output", "NWChem output",
                      "End of output.out of the current or last calculation of this process.", "text/plain"),
+            resource("molforma://calculation/stderr", "calculation-stderr", "NWChem standard error",
+                     "End of stderr.err (MPI and launcher messages) of the current or last calculation.",
+                     "text/plain"),
             resource("molforma://results/summary", "results-summary", "Result summary",
                      "Summary of the loaded result (same as get_results summary).", "application/json"),
             resource("molforma://results/log", "results-log", "Result log", "End of the loaded result's log.",
@@ -215,13 +221,14 @@ std::optional<QJsonObject> runtimeResource(const QString &uri, const QJsonObject
     if (uri == "molforma://app/state") {
         text = json(state);
         mimeType = "application/json";
-    } else if (uri == "molforma://calculation/output") {
+    } else if (uri == "molforma://calculation/output" || uri == "molforma://calculation/stderr") {
+        const auto file = uri.endsWith("stderr") ? QString("stderr.err") : QString("output.out");
         if (run.directory.isEmpty())
             text = "No calculation has been started in this MolForma process.";
-        else if (!QFile::exists(QDir(run.directory).filePath("output.out")))
-            text = "output.out has not been written yet: " + run.directory;
+        else if (!QFile::exists(QDir(run.directory).filePath(file)))
+            text = file + " has not been written yet: " + run.directory;
         else
-            text = fileTail(QDir(run.directory).filePath("output.out"));
+            text = fileTail(QDir(run.directory).filePath(file));
     } else if (uri == "molforma://results/summary") {
         text = json(resultsJson(result, {{"section", "summary"}}, state["results"].toObject()));
         mimeType = "application/json";

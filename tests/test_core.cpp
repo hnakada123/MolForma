@@ -1,4 +1,5 @@
 #include "editing/chemistry.h"
+#include "editing/coordinates.h"
 #include "editing/coordination.h"
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
@@ -259,6 +260,159 @@ class CoreTest : public QObject {
         instantiate(hdo, findTemplate("skeleton:water"));
         hdo.atoms[1].isotope = 2;
         QCOMPARE(rotationalSymmetryNumber(hdo), 0);
+    }
+    void pointGroups() {
+        for (const auto &[id, expected] : {std::pair{"skeleton:water", "C2v"},
+                                           {"skeleton:ammonia", "C3v"},
+                                           {"skeleton:methane", "Td"},
+                                           {"skeleton:carbon_dioxide", "D∞h"},
+                                           {"skeleton:acetylene", "D∞h"},
+                                           {"skeleton:ethylene", "D2h"},
+                                           {"skeleton:benzene", "D6h"},
+                                           {"skeleton:naphthalene", "D2h"},
+                                           {"skeleton:pyridine", "C2v"},
+                                           {"skeleton:imidazole", "Cs"}}) {
+            Document d;
+            instantiate(d, findTemplate(id));
+            const auto group = pointGroup(d);
+            QVERIFY2(group.name == expected, qPrintable(QString("%1: %2").arg(id, group.name)));
+        }
+        // Built from exact coordinates: octahedral SF6, icosahedral B12, allene (D2d), HCN (C∞v),
+        // a twisted H2O2 (C2), CHFClBr (C1), an inversion-only center (Ci) and S4.
+        const auto build = [](const QVector<std::pair<QString, Vec>> &atoms) {
+            Document d;
+            for (const auto &[symbol, position] : atoms) {
+                Atom a;
+                a.element = symbol;
+                a.position = position;
+                d.atoms << a;
+            }
+            return d;
+        };
+        QVector<std::pair<QString, Vec>> sf6{{"S", Vec::Zero()}};
+        for (int axis = 0; axis < 3; ++axis)
+            for (double sign : {1., -1.})
+                sf6.append({"F", Vec::Unit(axis) * 1.56 * sign});
+        QCOMPARE(pointGroup(build(sf6)).name, QString("Oh"));
+        QVector<std::pair<QString, Vec>> icosahedron;
+        const double phi = (1 + std::sqrt(5.)) / 2;
+        for (double a : {1., -1.})
+            for (double b : {phi, -phi}) {
+                icosahedron.append({"B", Vec(0, a, b)});
+                icosahedron.append({"B", Vec(a, b, 0)});
+                icosahedron.append({"B", Vec(b, 0, a)});
+            }
+        const auto ih = pointGroup(build(icosahedron));
+        QCOMPARE(ih.name, QString("Ih"));
+        QCOMPARE(ih.operations.size(), 120);
+        QCOMPARE(pointGroup(build({{"C", Vec(0, 0, 0)},
+                                   {"C", Vec(0, 0, 1.31)},
+                                   {"C", Vec(0, 0, -1.31)},
+                                   {"H", Vec(.93, 0, 1.87)},
+                                   {"H", Vec(-.93, 0, 1.87)},
+                                   {"H", Vec(0, .93, -1.87)},
+                                   {"H", Vec(0, -.93, -1.87)}}))
+                     .name,
+                 QString("D2d"));
+        QCOMPARE(
+            pointGroup(build({{"H", Vec(0, 0, -1.06)}, {"C", Vec(0, 0, 0)}, {"N", Vec(0, 0, 1.15)}})).name,
+            QString("C∞v"));
+        QCOMPARE(pointGroup(build({{"O", Vec(.7, 0, 0)},
+                                   {"O", Vec(-.7, 0, 0)},
+                                   {"H", Vec(.9, .9, .2)},
+                                   {"H", Vec(-.9, -.9, .2)}}))
+                     .name,
+                 QString("C2"));
+        QCOMPARE(pointGroup(build({{"C", Vec(0, 0, 0)},
+                                   {"H", Vec(0, 0, 1.09)},
+                                   {"F", Vec(1.3, 0, -.4)},
+                                   {"Cl", Vec(-.8, 1.4, -.5)},
+                                   {"Br", Vec(-.9, -1.5, -.6)}}))
+                     .name,
+                 QString("C1"));
+        QCOMPARE(pointGroup(build({{"C", Vec(1, .2, .3)},
+                                   {"C", Vec(-1, -.2, -.3)},
+                                   {"F", Vec(.4, 1.1, -.7)},
+                                   {"F", Vec(-.4, -1.1, .7)},
+                                   {"Cl", Vec(.2, -.9, 1.3)},
+                                   {"Cl", Vec(-.2, .9, -1.3)}}))
+                     .name,
+                 QString("Ci"));
+        // Symmetrization averages a slightly distorted water onto C2v; fixed atoms must not move.
+        Document water;
+        instantiate(water, findTemplate("skeleton:water"));
+        // Stretch one O–H bond by 0.02 Å.
+        water.atoms[1].position += (water.atoms[1].position - water.atoms[0].position).normalized() * .02;
+        const auto group = pointGroup(water);
+        QCOMPARE(group.name, QString("C2v"));
+        QVERIFY(group.deviation > .01);
+        auto fixed = water;
+        fixed.atoms[1].fixed = true;
+        QVERIFY_THROWS_EXCEPTION(std::exception, symmetrize(fixed, group));
+        QVERIFY(symmetrize(water, group) > 0);
+        const auto exact = pointGroup(water, 1e-6);
+        QCOMPARE(exact.name, QString("C2v"));
+        QVERIFY(exact.deviation < 1e-9);
+        QVERIFY(pointGroup(water, .001).name == "C2v");
+    }
+    void conformersAndSuperposition() {
+        const auto butane = fromSmiles("CCCC");
+        const auto conformers = searchConformers(butane, 5);
+        QVERIFY(conformers.size() >= 2); // anti and gauche
+        for (int i = 1; i < conformers.size(); ++i)
+            QVERIFY(conformers[i].energy >= conformers[i - 1].energy);
+        const auto &best = conformers.first().document;
+        QCOMPARE(best.atoms.size(), butane.atoms.size());
+        const auto carbons = [](const Document &d) {
+            Ids ids;
+            for (const auto &a : d.atoms)
+                if (a.element == "C")
+                    ids << a.id;
+            return ids;
+        };
+        // The lowest conformer is anti (C–C–C–C near 180°).
+        QVERIFY(std::abs(measure(best, carbons(best))) > 150);
+        auto fixed = butane;
+        fixed.atoms[0].fixed = true;
+        QVERIFY_THROWS_EXCEPTION(std::exception, searchConformers(fixed));
+        // Superposition removes rigid motion; different conformers keep a residual RMSD.
+        auto moved = best;
+        transform(moved, moved.ids(), Eigen::AngleAxisd(.7, Vec(1, 2, 3).normalized()).toRotationMatrix(),
+                  Vec(3, -1, 2));
+        const auto fit = superpose(moved, best);
+        QVERIFY(fit.raw > 1);
+        QVERIFY(fit.rmsd < 1e-9 && fit.maximum < 1e-9);
+        QVERIFY(superpose(conformers[1].document, best).heavyRmsd > .25);
+        QVERIFY_THROWS_EXCEPTION(std::exception, superpose(best, fromSmiles("CCC")));
+    }
+    void zMatrixRows() {
+        Document d;
+        instantiate(d, findTemplate("skeleton:ethane"));
+        const auto rows = zMatrix(d);
+        QCOMPARE(rows.size(), d.atoms.size());
+        QCOMPARE(rows[0].bond, -1);
+        for (int i = 1; i < rows.size(); ++i) {
+            const auto &r = rows[i];
+            QVERIFY(r.bond >= 0 && r.bond < i);
+            QVERIFY(std::abs(r.distance - measure(d, {d.atoms[i].id, d.atoms[r.bond].id})) < 1e-12);
+            // Bonded references first: every atom of ethane hangs on a bonded earlier atom.
+            QVERIFY(d.bond(d.atoms[i].id, d.atoms[r.bond].id));
+            if (i >= 2) {
+                QVERIFY(r.angle >= 0 && r.angle < i && r.angle != r.bond);
+                QVERIFY(std::abs(r.angleValue - measure(d, {d.atoms[i].id, d.atoms[r.bond].id,
+                                                            d.atoms[r.angle].id})) < 1e-9);
+            }
+            if (i >= 3) {
+                QVERIFY(r.dihedral >= 0 && r.dihedral < i);
+                QVERIFY(std::abs(r.dihedralValue -
+                                 measure(d, {d.atoms[i].id, d.atoms[r.bond].id, d.atoms[r.angle].id,
+                                             d.atoms[r.dihedral].id})) < 1e-9);
+            }
+        }
+        const auto text = zMatrixText(d).split('\n', Qt::SkipEmptyParts);
+        QCOMPARE(text.size(), d.atoms.size());
+        QCOMPARE(text[0], d.atoms[0].element);
+        QCOMPARE(text[3].split(' ').size(), 7);
     }
     void hydrogenAndAttachment() {
         Document d;

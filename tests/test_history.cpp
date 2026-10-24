@@ -42,6 +42,8 @@ class HistoryTest : public QObject {
         QVERIFY(settings.isValid());
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settings.path());
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
+                           settings.path()); // MolForma uses NativeFormat.
     }
     void init() {
         QSettings("MolForma", "MolForma").clear();
@@ -214,6 +216,24 @@ class HistoryTest : public QObject {
         panel->selectDirectory(first.directory);
         QTRY_VERIFY(!panel->scanning());
         QCOMPARE(panel->selectedDirectory(), first.directory);
+        // ΔE against the selected job, in the chosen unit.
+        writeFile(second.directory + "/output.out", "NWChem\n Total DFT energy = -75.01\n");
+        widget<QPushButton>(w, "historyRefresh")->click();
+        QTRY_VERIFY(!panel->scanning());
+        panel->selectDirectory(first.directory);
+        QTRY_VERIFY(!panel->scanning());
+        widget<QPushButton>(w, "historyReference")->click();
+        QStringList deltas;
+        for (int row = 0; row < table->rowCount(); ++row)
+            deltas << table->item(row, 7)->text();
+        QVERIFY2(deltas.contains("0.000（基準）") && deltas.contains("-6.275"),
+                 qPrintable(deltas.join(", ")));
+        auto *unit = widget<QComboBox>(w, "historyEnergyUnit");
+        unit->setCurrentIndex(unit->findData("hartree"));
+        deltas.clear();
+        for (int row = 0; row < table->rowCount(); ++row)
+            deltas << table->item(row, 7)->text();
+        QVERIFY2(deltas.contains("-0.01000000"), qPrintable(deltas.join(", ")));
         QVERIFY(widget<QPlainTextEdit>(w, "historyInput")->toPlainText().contains("task scf energy"));
         QVERIFY(widget<QPlainTextEdit>(w, "historySummary")->toPlainText().contains("SHA-256一致"));
         table->sortItems(6, Qt::AscendingOrder);

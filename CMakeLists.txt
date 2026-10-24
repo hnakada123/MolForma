@@ -27,6 +27,7 @@ add_library(molforma_core STATIC
     src/nwchem/nwchem.cpp
     src/nwchem/nwchem_advanced.cpp
     src/nwchem/nwchem_execution.cpp
+    src/nwchem/nwchem_import.cpp
     src/nwchem/nwchem_output.cpp
     src/results/molden_orbitals.cpp
     src/results/results.cpp
@@ -53,7 +54,8 @@ add_library(molforma_ui STATIC
     src/ui/periodic_table.cpp
     src/ui/result_charts.cpp
     src/ui/results_panel.cpp
-    src/ui/template_delegate.cpp)
+    src/ui/template_delegate.cpp
+    docs/manual.qrc)
 # McpGui shares tool definitions, result views and the access policy with the headless server.
 target_link_libraries(molforma_ui PUBLIC molforma_core molforma_mcp)
 target_compile_options(molforma_ui PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
@@ -166,3 +168,8 @@ install(TARGETS molforma RUNTIME DESTINATION bin)
 install(FILES NOTICE README.md DESTINATION share/molforma)
 install(FILES assets/KAGAMI-LICENSE assets/KAGAMI-NOTICE DESTINATION share/molforma/assets)
 install(FILES docs/features.md docs/mcp.md DESTINATION share/molforma/docs)
+# Desktop integration (freedesktop.org): launcher, icon and file types.
+install(FILES packaging/molforma.desktop DESTINATION share/applications)
+install(FILES packaging/molforma.svg DESTINATION share/icons/hicolor/scalable/apps)
+install(FILES packaging/molforma-256.png DESTINATION share/icons/hicolor/256x256/apps RENAME molforma.png)
+install(FILES packaging/molforma-mime.xml DESTINATION share/mime/packages RENAME molforma.xml)

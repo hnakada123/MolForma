@@ -283,6 +283,23 @@ void Document::remove(const Ids &removed) {
         }
         data[key] = out;
     }
+    // NWChem internal-coordinate constraints and the scan coordinate refer to atoms by ID.
+    if (auto nwchem = data.value("nwchem").toObject(); !nwchem.isEmpty()) {
+        auto refersToGone = [&](const QJsonValue &atoms) {
+            const auto list = idsFromJson(atoms);
+            return std::any_of(list.begin(), list.end(), [&](const auto &id) { return gone.contains(id); });
+        };
+        if (nwchem.value("constraints").isArray()) {
+            QJsonArray kept;
+            for (const auto &c : nwchem.value("constraints").toArray())
+                if (!refersToGone(c.toObject()["atoms"]))
+                    kept.append(c);
+            nwchem["constraints"] = kept;
+        }
+        if (refersToGone(nwchem.value("scan_atoms")))
+            nwchem["scan_atoms"] = QJsonArray();
+        data["nwchem"] = nwchem;
+    }
     QSet<QString> residueIds;
     for (auto r : data["residues"].toArray())
         residueIds.insert(r.toObject()["id"].toString());

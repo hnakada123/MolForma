@@ -274,11 +274,11 @@ bool nwchemAdvancedApplies(const AdvancedOption &o, const Document &d) {
                : o.key.startsWith("cc_") ? method.startsWith("ccsd")
                                          : correlated(method);
     if (o.group == "driver")
-        return task.startsWith("optimize");
+        return nwchemDriverTask(s);
     if (o.group == "frequency")
         return task.contains("frequencies");
     if (o.group == "cosmo")
-        return s["solvent"] == "cosmo" && (method == "hf" || method == "dft");
+        return s["solvent"] != "none" && (method == "hf" || method == "dft");
     return true;
 }
 QString nwchemAdvancedError(const AdvancedOption &o, const QJsonValue &v) {
@@ -426,7 +426,7 @@ void validateNwchemAdvanced(const Document &d, NwchemValidation &r) {
     if (a.contains("vectors_input") && a["vectors_guess"] == "file" &&
         a["vectors_input"] == a["vectors_output"])
         r.errors << "入力・出力movecsには別のファイル名を指定してください。";
-    if (s["solvent"] == "cosmo" && a["cosmo_screen"] == "ideal")
+    if (s["solvent"] != "none" && a["cosmo_screen"] == "ideal")
         r.warnings << "COSMOのideal指定により、比誘電率の設定は使用しません。";
     validateNwchemOutput(d, r);
 }

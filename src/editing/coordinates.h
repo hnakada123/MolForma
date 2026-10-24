@@ -17,6 +17,20 @@ void replaceCoordinateStructure(Document &document, const Document &structure);
 // ghost flag). Fixed atoms must already sit at the result position (NWChem keeps them); IDs,
 // bonds, residues and settings stay. Returns the RMSD and the largest displacement in Å.
 std::pair<double, double> applyResultGeometry(Document &document, const Document &result);
+// One Z-matrix line: references are earlier atoms (indices), bonded ones preferred.
+struct ZMatrixRow {
+    int bond = -1, angle = -1, dihedral = -1;
+    double distance = 0, angleValue = 0, dihedralValue = 0;
+};
+QVector<ZMatrixRow> zMatrix(const Document &document);
+// "O" / "H 1 0.96" / "H 1 0.96 2 104.5" / ... with 1-based references (Å, degrees).
+QString zMatrixText(const Document &document);
+struct NwchemGeometryOptions {
+    QString name;            // Named geometry (scan points); empty for NWChem's default "geometry".
+    QStringList zcoord;      // ZCOORD internal coordinates; switches AUTOZ on so they can be constrained.
+    bool constraints = true; // CONSTRAINTS block with the fixed atoms.
+};
 // NWChem input fragment, not a complete calculation (basis/method/task are configured separately).
-QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragmentComments = true);
+QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragmentComments = true,
+                       const NwchemGeometryOptions &options = {});
 } // namespace mf

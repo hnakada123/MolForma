@@ -95,11 +95,11 @@ QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
         if (run.active())
             fail("A calculation is already running.");
         if (!policy.allowExecutionSettings && protectedExecution(d) != trusted)
-            fail(
-                "The NWChem executable, MPI launcher or environment overrides differ from the defaults this "
-                "headless server trusts (MolForma's saved Preferences, otherwise nwchem and mpirun from PATH "
-                "with no overrides). MCP clients cannot choose them; restart the server with "
-                "--mcp-allow-execution-settings to permit it.");
+            fail("The NWChem executable, MPI launcher, environment overrides or additional NWChem input "
+                 "differ from the defaults this headless server trusts (MolForma's saved Preferences, "
+                 "otherwise nwchem and mpirun from PATH with no overrides and no additional input). MCP "
+                 "clients cannot choose them; restart the server with --mcp-allow-execution-settings to "
+                 "permit it.");
         runWork = "calculation-" + QString::number(++nextWork);
         run.start(d, base);
         return {{"tool", name},

@@ -1,5 +1,8 @@
+#include "editing/chemistry.h"
 #include "editing/coordinates.h"
 #include "nwchem/nwchem.h"
+#include "nwchem/nwchem_advanced.h"
+#include "nwchem/nwchem_import.h"
 #include "ui/main_window.h"
 #include <QtTest>
 #include <QtWidgets>
@@ -38,6 +41,8 @@ class CalculationTest : public QObject {
         QVERIFY(settingsDir.isValid());
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
+                           settingsDir.path()); // MolForma uses NativeFormat.
     }
     void completeHfInput() {
         const auto d = water();
@@ -294,6 +299,374 @@ class CalculationTest : public QObject {
         set(d, "method", "dft");
         set(d, "tddft_roots", 0);
         QVERIFY(errorContains(d, "tddft_roots"));
+    }
+    void solventRelativityAndFitting() {
+        auto d = water();
+        set(d, "method", "dft");
+        set(d, "solvent", "smd");
+        QVERIFY(errorContains(d, "溶媒名"));
+        set(d, "solvent_name", "acetntrl");
+        QVERIFY(nwchemInput(d).contains("\ncosmo\n  do_cosmo_smd true\n  solvent acetntrl\nend\n"));
+        QVERIFY(nwchemNumericalFrequencies(d));
+        set(d, "method", "hf");
+        QVERIFY(errorContains(d, "SMDはDFT専用"));
+        set(d, "solvent", "cosmo");
+        QVERIFY(nwchemInput(d).contains("\ncosmo\n  solvent acetntrl\nend\n"));
+        set(d, "solvent_name", "dielectric");
+        QVERIFY(nwchemInput(d).contains("\ncosmo\n  dielec 78.4\nend\n"));
+        // Scalar-relativistic Hamiltonians need all-electron bases; NWChem's ZORA is DFT-only.
+        auto r = water();
+        set(r, "basis", "x2c-svpall");
+        set(r, "relativistic", "zora");
+        QVERIFY(errorContains(r, "ZORAはDFT専用"));
+        set(r, "relativistic", "dkh");
+        QVERIFY(nwchemInput(r).contains("\nrelativistic\n  douglas-kroll dkh\nend\n"));
+        QVERIFY(nwchemInput(r).contains("\nbasis spherical\n  * library \"x2c-svpall\"\nend\n"));
+        QVERIFY(nwchemNumericalFrequencies(r));
+        auto heavy = Document::fromXyz("2\nhydrogen iodide\nH 0 0 0\nI 0 0 1.61\n");
+        set(heavy, "basis", "def2-svp");
+        set(heavy, "relativistic", "x2c");
+        QVERIFY(errorContains(heavy, "ECPと併用"));
+        set(heavy, "basis", "x2c-svpall");
+        QVERIFY(validateNwchem(heavy).errors.isEmpty());
+        QVERIFY(nwchemInput(heavy).contains("\nrelativistic\n  x2c on\nend\n"));
+        set(heavy, "basis", "3-21g");
+        QVERIFY(validateNwchem(heavy).warnings.join('\n').contains("相対論用の基底"));
+        // RI-J: Weigend's Coulomb fitting set, also on ghost centers.
+        auto fit = water();
+        set(fit, "method", "dft");
+        set(fit, "basis", "def2-svp");
+        set(fit, "ri_j", true);
+        fit.atoms.append(coordinateAtom("He", {"0", "0", "3"}, "", CoordinateUnit::Angstrom, true));
+        const auto text = nwchemInput(fit);
+        QVERIFY(text.contains("\nbasis \"cd basis\" spherical\n  * library \"weigend coulomb fitting\"\n"
+                              "  bqHe library He \"weigend coulomb fitting\"\nend\n"));
+        QVERIFY(nwchemNumericalFrequencies(fit));
+        set(fit, "method", "hf");
+        QVERIFY(errorContains(fit, "RI-J"));
+        auto cerium = Document::fromXyz("1\ncerium\nCe 0 0 0\n");
+        set(cerium, "method", "dft");
+        set(cerium, "basis", "x2c-svpall");
+        set(cerium, "ri_j", true);
+        QVERIFY(errorContains(cerium, "フィッティング基底の対応元素に含まれません: Ce"));
+        set(fit, "method", "dft");
+        set(fit, "grid", "huge");
+        QVERIFY(nwchemInput(fit).contains("  grid huge\n"));
+    }
+    void pathsConstraintsAndScans() {
+        auto d = water();
+        const auto ids = d.ids();
+        set(d, "task", "saddle_frequencies");
+        auto text = nwchemInput(d);
+        QVERIFY(text.contains("\ndriver\n"));
+        QVERIFY(text.contains("\ntask scf saddle\ntask scf frequencies\n"));
+        set(d, "task", "irc");
+        set(d, "irc_points", 12);
+        set(d, "irc_stride", 0.05);
+        text = nwchemInput(d);
+        QVERIFY(text.contains("\nmepgs\n  maxmep 12\n  maxiter 100\n  stride 0.05\nend\n"));
+        QVERIFY(text.contains("\ntask scf mepgs\n"));
+        QVERIFY(!text.contains("\ndriver\n"));
+        // ZCOORD constraints switch AUTOZ on; distances follow the GEOMETRY units.
+        set(d, "task", "optimize");
+        set(d, "constraints",
+            QJsonArray{QJsonObject{{"atoms", idsToJson({ids[0], ids[1]})}, {"value", 1.0}},
+                       QJsonObject{{"atoms", idsToJson({ids[1], ids[0], ids[2]})}, {"value", 110.0}}});
+        text = nwchemInput(d);
+        QVERIFY(!text.contains("noautoz"));
+        QVERIFY(text.contains(
+            "  zcoord\n    bond 1 2 1 mfc1 constant\n    angle 2 1 3 110 mfc2 constant\n  end\nend\n"));
+        set(d, "geometry_units", "bohr");
+        QVERIFY(nwchemInput(d).contains(
+            QString("    bond 1 2 %1 mfc1 constant\n").arg(QString::number(1 / BohrToAngstrom, 'g', 17))));
+        set(d, "geometry_units", "angstrom");
+        auto fixed = d;
+        fixed.atoms[2].fixed = true;
+        QVERIFY(errorContains(fixed, "固定原子・ゴーストと併用できません"));
+        set(d, "task", "energy");
+        QVERIFY(errorContains(d, "構造最適化・遷移状態探索・緩和スキャン"));
+        set(d, "task", "optimize");
+        set(d, "constraints",
+            QJsonArray{QJsonObject{{"atoms", idsToJson({ids[1], ids[0], ids[2]})}, {"value", 190.0}}});
+        QVERIFY(errorContains(d, "拘束1: 角度は"));
+        // Deleting an atom drops the constraints and the scan coordinate that refer to it.
+        set(d, "constraints",
+            QJsonArray{QJsonObject{{"atoms", idsToJson({ids[0], ids[1]})}, {"value", 1.0}},
+                       QJsonObject{{"atoms", idsToJson({ids[0], ids[2]})}, {"value", 1.0}}});
+        set(d, "scan_atoms", idsToJson({ids[0], ids[1]}));
+        auto removed = d;
+        removed.remove({ids[1]});
+        QCOMPARE(nwchemSettings(removed)["constraints"].toArray().size(), 1);
+        QVERIFY(nwchemSettings(removed)["scan_atoms"].toArray().isEmpty());
+        // Scans: a named geometry and a title marker per point; the later atom's side moves.
+        auto scan = water();
+        const auto sids = scan.ids();
+        set(scan, "task", "scan");
+        QVERIFY(errorContains(scan, "スキャンする座標"));
+        set(scan, "scan_atoms", idsToJson({sids[0], sids[1]}));
+        set(scan, "scan_start", 0.9);
+        set(scan, "scan_end", 1.2);
+        set(scan, "scan_steps", 4);
+        text = nwchemInput(scan);
+        QCOMPARE(text.count("\nset geometry scan"), 4);
+        QCOMPARE(text.count("\ntask scf optimize\n"), 4);
+        QVERIFY(text.contains("\ntitle \"MolForma scan 4/4 bond 1 2 = 1.2\"\ngeometry scan4 units angstrom"));
+        QVERIFY(text.contains("    bond 1 2 1.2 mfscan constant\n"));
+        QVERIFY(!text.contains("\ngeometry units"));
+        set(scan, "scan_relaxed", false);
+        text = nwchemInput(scan);
+        QCOMPARE(text.count("\ntask scf energy\n"), 4);
+        QVERIFY(!text.contains("zcoord") && !text.contains("\ndriver\n"));
+        const auto first = text.mid(text.indexOf("geometry scan1"), 200),
+                   last = text.mid(text.indexOf("geometry scan4"), 200);
+        QVERIFY(first.section('\n', 1, 1) == last.section('\n', 1, 1)); // Oxygen stays.
+        QVERIFY(first.section('\n', 2, 2) != last.section('\n', 2, 2)); // The scanned hydrogen moves.
+        set(scan, "scan_end", 60.0);
+        QVERIFY(errorContains(scan, "スキャン終了値: 距離は"));
+        set(scan, "scan_end", 1.2);
+        scan.atoms[1].fixed = true;
+        QVERIFY(errorContains(scan, "スキャン: 固定原子"));
+    }
+    void bsseFollowupPropertiesAndExtraInput() {
+        auto dimer = Document::fromXyz("6\nwater dimer\nO -1.551007 -0.114520 0\nH -1.934259 0.762503 0\n"
+                                       "H -0.599677 0.040712 0\nO 1.350625 0.111469 0\n"
+                                       "H 1.680398 -0.373741 -0.758561\nH 1.680398 -0.373741 0.758561\n");
+        QCOMPARE(nwchemBsseMonomers(dimer).size(), 2);
+        set(dimer, "bsse", true);
+        auto text = nwchemInput(dimer);
+        QVERIFY(text.contains(
+            "\nbsse\n  mon m1 1 2 3\n  charge 0\n  mult 1\n  mon m2 4 5 6\n  charge 0\n  mult 1\nend\n"));
+        // NWChem's BSSE module needs a basis entry for the ghosts it creates.
+        QVERIFY(text.contains(
+            "  * library \"sto-3g\"\n  bqH library H \"sto-3g\"\n  bqO library O \"sto-3g\"\n"));
+        set(dimer, "task", "frequencies");
+        QVERIFY(errorContains(dimer, "BSSE補正は一点エネルギー"));
+        set(dimer, "task", "energy");
+        dimer.setJobValue("multiplicity", 3);
+        QVERIFY(errorContains(dimer, "閉殻の単量体"));
+        auto single = water();
+        set(single, "bsse", true);
+        QVERIFY(errorContains(single, "2個以上の分子"));
+        // Follow-up single point: method blocks are cleared so first-level options do not leak.
+        auto f = water();
+        set(f, "method", "dft");
+        set(f, "dispersion", "d3bj");
+        set(f, "task", "optimize");
+        set(f, "followup", true);
+        set(f, "followup_functional", "pbe0");
+        set(f, "followup_basis", "def2-tzvp");
+        text = nwchemInput(f);
+        const int follow = text.indexOf("\nunset scf:*\nunset dft:*\n");
+        QVERIFY(follow > text.indexOf("\ntask dft optimize\n"));
+        QVERIFY(text.mid(follow).contains("\nbasis spherical\n  * library \"def2-tzvp\"\nend\n"));
+        QVERIFY(text.mid(follow).contains("  xc pbe0\n"));
+        QVERIFY(!text.mid(follow).contains("disp vdw"));
+        QVERIFY(text.endsWith("\ntask dft energy\n"));
+        set(f, "followup_method", "ccsd");
+        set(f, "followup_basis", "cc-pvdz");
+        text = nwchemInput(f);
+        QVERIFY(text.contains("\nunset ccsd:*\n") && text.endsWith("\ntask ccsd energy\n"));
+        set(f, "task", "energy");
+        QVERIFY(errorContains(f, "後続の一点計算は構造最適化"));
+        auto xenon = Document::fromXyz("1\nxenon\nXe 0 0 0\n");
+        set(xenon, "basis", "def2-svp");
+        set(xenon, "task", "optimize");
+        set(xenon, "followup", true);
+        set(xenon, "followup_method", "hf");
+        set(xenon, "followup_basis", "x2c-svpall");
+        QVERIFY(errorContains(xenon, "ECPを使う基底"));
+        // Properties after the last calculation; MOLDEN output clears the requests first.
+        auto p = water();
+        for (const auto *key : {"prop_mulliken", "prop_nmr", "prop_polarizability", "prop_esp"})
+            set(p, key, true);
+        text = nwchemInput(p);
+        QVERIFY(text.contains(
+            "\nproperty\n  mulliken\n  shielding\n  aoresponse 1 0.0\nend\ntask scf property\n"));
+        QVERIFY(text.contains("\nesp\n  restrain\nend\ntask esp\n"));
+        setNwchemAdvanced(p, "molden_output", true);
+        QVERIFY(nwchemInput(p).contains("\nunset prop:*\nproperty\n  vectors"));
+        auto later = p; // Properties at a follow-up level are cleared before MOLDEN output too.
+        set(later, "task", "optimize");
+        set(later, "followup", true);
+        set(later, "followup_method", "hf");
+        set(later, "followup_basis", "6-31g*");
+        text = nwchemInput(later);
+        QVERIFY(text.indexOf("task scf property") > text.indexOf("unset dft:*"));
+        QVERIFY(text.contains("\nunset prop:*\nproperty\n  vectors"));
+        set(p, "method", "mp2");
+        QVERIFY(errorContains(p, "物性計算は最後の計算レベル"));
+        // Additional input is copied unchecked, except for program starts.
+        auto e = water();
+        set(e, "extra_input", "set cphf:maxiter 50");
+        set(e, "extra_tasks", "task scf property");
+        text = nwchemInput(e);
+        QVERIFY(text.indexOf("set cphf:maxiter 50") < text.indexOf("\ntask scf energy\n"));
+        QVERIFY(text.endsWith("task scf property\n"));
+        QVERIFY(validateNwchem(e).warnings.join('\n').contains("検査せずに"));
+        set(e, "extra_tasks", "TASK  Shell \"ls\"");
+        QVERIFY(errorContains(e, "task shell"));
+        set(e, "extra_tasks", "");
+        set(e, "extra_input", "python\n  print('x')\nend");
+        QVERIFY(errorContains(e, "pythonブロック"));
+        // NWChem statements, not physical lines: ";" separators and "\\" continuations.
+        for (const auto *text : {"print none; task shell echo hi", "task \\\nshell echo hi", "task python"}) {
+            set(e, "extra_input", text);
+            QVERIFY2(errorContains(e, "task shell"), text);
+        }
+        set(e, "extra_input", "");
+        // Presets keep the method, not atom references or additional input.
+        set(e, "constraints",
+            QJsonArray{QJsonObject{{"atoms", idsToJson({e.ids()[0], e.ids()[1]})}, {"value", 1.0}}});
+        const auto preset = nwchemPresetSettings(nwchemSettings(e));
+        QVERIFY(!preset.contains("extra_input") && !preset.contains("constraints") &&
+                !preset.contains("scan_atoms"));
+        QVERIFY(preset.contains("relativistic") && preset.contains("followup_basis"));
+    }
+    void panelConstraintsScanAndExtraInput() {
+        MainWindow w;
+        w.loadDocument(water());
+        const auto ids = w.document().ids();
+        choose(w, "task", "optimize");
+        w.setSelection({ids[1], ids[0], ids[2]});
+        button(w, "calculationAddConstraint")->click();
+        auto constraints = nwchemSettings(w.document())["constraints"].toArray();
+        QCOMPARE(constraints.size(), 1);
+        QCOMPARE(idsFromJson(constraints[0].toObject()["atoms"]), (Ids{ids[1], ids[0], ids[2]}));
+        auto *table = w.findChild<QTableWidget *>("nwchem_constraints");
+        QCOMPARE(table->item(0, 0)->text(), QString("角度 2–1–3"));
+        table->item(0, 1)->setText("110");
+        QCOMPARE(nwchemSettings(w.document())["constraints"][0].toObject()["value"].toDouble(), 110.0);
+        QVERIFY(nwchemInput(w.document()).contains("angle 2 1 3 110 mfc1 constant"));
+        w.setSelection({ids[0], ids[1]});
+        button(w, "calculationScanAtoms")->click();
+        const auto s = nwchemSettings(w.document());
+        QCOMPARE(s["task"].toString(), QString("scan"));
+        QCOMPARE(idsFromJson(s["scan_atoms"]), (Ids{ids[0], ids[1]}));
+        QVERIFY(std::abs(s["scan_start"].toDouble() - 0.9103) < 1e-3);
+        QVERIFY(std::abs(s["scan_end"].toDouble() - s["scan_start"].toDouble() - 0.5) < 1e-9);
+        QCOMPARE(w.findChild<QLabel *>("calculationScanCoordinate")->text(), QString("距離 1–2"));
+        // Additional input: applied explicitly, and protected from MCP like the executable.
+        auto *extra = w.findChild<QPlainTextEdit *>("nwchem_extra_input");
+        QVERIFY(extra->property("mcpExecutionSetting").toBool());
+        QVERIFY(button(w, "calculationApplyExtra")->property("mcpExecutionSetting").toBool());
+        extra->setPlainText("set cphf:maxiter 50");
+        QVERIFY(nwchemSettings(w.document())["extra_input"].toString().isEmpty());
+        button(w, "calculationApplyExtra")->click();
+        QCOMPARE(nwchemSettings(w.document())["extra_input"].toString(), QString("set cphf:maxiter 50"));
+        w.history()->undo();
+        QVERIFY(extra->toPlainText().isEmpty()); // Undo shows the stored text again.
+    }
+    void nwchemImportRoundTrip() {
+        // MolForma's own inputs read back to the same structure and settings.
+        auto d = water();
+        d.setJobValue("charge", 1);
+        d.setJobValue("multiplicity", 2);
+        for (const auto &[key, value] : {std::pair<const char *, QJsonValue>{"method", "dft"},
+                                         {"functional", "pbe0"},
+                                         {"dispersion", "d3bj"},
+                                         {"basis", "def2-tzvp"},
+                                         {"task", "optimize_frequencies"},
+                                         {"solvent", "smd"},
+                                         {"solvent_name", "acetntrl"},
+                                         {"grid", "xfine"},
+                                         {"relativistic", "dkh"},
+                                         {"opt_maxiter", 40},
+                                         {"start", "roundtrip"},
+                                         {"title", "Round trip"},
+                                         {"memory_mb", 2048}})
+            set(d, key, value);
+        set(d, "relativistic", "none"); // Relativity needs all-electron bases; tested separately.
+        const auto imported = importNwchemInput(nwchemInput(d));
+        const auto &r = imported.document;
+        QCOMPARE(r.atoms.size(), d.atoms.size());
+        for (int i = 0; i < d.atoms.size(); ++i)
+            QVERIFY((r.atoms[i].position - d.atoms[i].position).norm() < 1e-9);
+        QCOMPARE(r.job()["charge"].toInt(), 1);
+        QCOMPARE(r.job()["multiplicity"].toInt(), 2);
+        const auto a = nwchemSettings(d), b = nwchemSettings(r);
+        for (const auto *key :
+             {"method", "functional", "dispersion", "basis", "task", "solvent", "solvent_name", "grid",
+              "opt_maxiter", "start", "title", "memory_mb", "reference"})
+            QVERIFY2(a[key] == b[key] || (QString(key) == "reference" && b[key] == "uhf"), key);
+        QVERIFY2(imported.notes.isEmpty(), qPrintable(imported.notes.join('\n')));
+        // A hand-written input: comments, ";", continuations, units, ghosts, masses and other blocks.
+        const auto other = importNwchemInput(
+            "start h2o # comment\n"
+            "geometry units bohr noautoz\n  symmetry c1\n  O 0 0 0\n  H1 1.43 0 \\\n 1.1 mass 2.014\n"
+            "  H2 -1.43 0 1.1\n  bqHe 0 0 6\nend\n"
+            "basis cartesian; * library 6-31g*; O library cc-pvdz; bqHe library He 6-31g*; end\n"
+            "scf; uhf; triplet; end\nnwpw\n  cutoff 30\nend\nconstraints\n  clear\n  fix atom 1 3:4\nend\n"
+            "task scf optimize\ntask scf freq\ntask esp\n");
+        const auto &o = other.document;
+        QCOMPARE(o.atoms.size(), 4);
+        QVERIFY(std::abs(o.atoms[1].position.z() - 1.1 * BohrToAngstrom) < 1e-9);
+        QCOMPARE(o.atoms[1].mass, 2.014);
+        QVERIFY(o.atoms[0].fixed && !o.atoms[1].fixed && o.atoms[2].fixed && o.atoms[3].fixed);
+        QVERIFY(o.atoms[3].ghost && o.atoms[3].element == "He");
+        const auto os = nwchemSettings(o);
+        QCOMPARE(os["basis"].toString(), QString("6-31g*"));
+        QCOMPARE(os["basis_overrides"].toObject()["O"].toString(), QString("cc-pvdz"));
+        QCOMPARE(os["basis_functions"].toString(), QString("cartesian"));
+        QCOMPARE(os["reference"].toString(), QString("uhf"));
+        QCOMPARE(o.job()["multiplicity"].toInt(), 3);
+        QCOMPARE(os["task"].toString(), QString("optimize_frequencies"));
+        QVERIFY(os["prop_esp"].toBool());
+        QVERIFY(other.notes.join('\n').contains("nwpw"));
+        // NWChem numbers point charges too; frozen core only from "freeze atomic"; memory parts add up.
+        const auto charges = importNwchemInput("memory heap 100 mb stack 1000 mb global 2400 mb\n"
+                                               "geometry\n bq 0 0 5 charge 0.5\n O 0 0 0\n H 0 0.76 0.5\n"
+                                               " H 0 -0.76 0.5\nend\nconstraints\n fix atom 2\nend\n"
+                                               "mp2\n freeze 0\nend\ntask mp2 energy\n");
+        QCOMPARE(charges.document.atoms.size(), 3);
+        QVERIFY(charges.document.atoms[0].fixed && !charges.document.atoms[1].fixed);
+        QVERIFY(!nwchemSettings(charges.document)["freeze_core"].toBool());
+        QCOMPARE(nwchemSettings(charges.document)["memory_mb"].toInt(), 3500);
+        QVERIFY(nwchemSettings(importNwchemInput("geometry\n Ne 0 0 0\nend\nccsd\n freeze atomic\nend\n")
+                                   .document)["freeze_core"]
+                    .toBool());
+        // Custom XC lines and Z-matrix geometries.
+        const auto custom =
+            importNwchemInput("geometry\n He 0 0 0\nend\ndft\n xc xpbe96 0.75 cpbe96 1.0 hfexch 0.25\nend\n"
+                              "task dft energy\n");
+        QCOMPARE(nwchemSettings(custom.document)["functional"].toString(), QString("custom"));
+        QCOMPARE(nwchemSettings(custom.document)["xc_custom"].toString(),
+                 QString("xpbe96 0.75 cpbe96 1.0 hfexch 0.25"));
+        QVERIFY_THROWS_EXCEPTION(std::exception,
+                                 importNwchemInput("geometry\n zmatrix\n O\n H 1 0.96\n end\nend\n"));
+        // A follow-up level after the first task does not replace the main one.
+        auto f = water();
+        set(f, "method", "dft");
+        set(f, "task", "optimize");
+        set(f, "followup", true);
+        set(f, "followup_functional", "pbe0");
+        const auto first = importNwchemInput(nwchemInput(f));
+        QCOMPARE(nwchemSettings(first.document)["functional"].toString(), QString("b3lyp"));
+        QVERIFY(first.notes.join('\n').contains("後続の計算"));
+    }
+    void gaussianAndXyzFrames() {
+        const auto g =
+            gaussianStructure("%chk=water.chk\n%mem=1GB\n#p B3LYP/6-31G(d) opt ! route\n\nwater\n\n"
+                              "-1 2\nO 0 0 0\nH(Fragment=1) 0.758 0 0.504\n1 0 -0.758 0 0.504\n\n");
+        QCOMPARE(g.atoms.size(), 3);
+        QCOMPARE(g.atoms[2].element, QString("H"));
+        QCOMPARE(g.atoms[2].position.x(), -0.758);
+        QCOMPARE(g.job()["charge"].toInt(), -1);
+        QCOMPARE(g.job()["multiplicity"].toInt(), 2);
+        QVERIFY_THROWS_EXCEPTION(std::exception, gaussianStructure("#p hf\n\nzmat\n\n0 1\nO\nH 1 0.96\n\n"));
+        // ONIOM rows: freeze code, coordinates, then the layer.
+        const auto oniom = gaussianStructure("#p oniom(b3lyp/6-31g*:uff)\n\nlayers\n\n0 1\n"
+                                             "O 0 0.0 0.0 0.0 H\nH -1 0.758 0.0 0.504 L\nH 0 0 0 1 H\n\n");
+        QCOMPARE(oniom.atoms[1].position, Vec(0.758, 0, 0.504));
+        QCOMPARE(oniom.atoms[2].position, Vec(0, 0, 1));
+        QTemporaryDir dir;
+        const auto path = dir.filePath("trajectory.xyz");
+        writeFile(path, "1\nfirst\nHe 0 0 0\n\n1\nsecond\nHe 0 0 1\n");
+        QCOMPARE(xyzFrames(QString::fromUtf8(readFile(path))).size(), 2);
+        QVERIFY_THROWS_EXCEPTION(std::exception, importStructure(path));
+        QCOMPARE(importStructure(path, 1, {}, 1).atoms[0].position.z(), 1.0);
+        const auto nw = dir.filePath("input.nw");
+        writeFile(nw, "geometry\n Ne 0 0 0\nend\ncharge 0\ntask scf energy\n");
+        QCOMPARE(importStructure(nw).atoms[0].element, QString("Ne"));
     }
     void basisLibraryAndElementBases() {
         // LANL2DZ: all-electron for light elements, ECP from sodium on ("nelec" of NWChem's library).

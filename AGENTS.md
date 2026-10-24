@@ -73,6 +73,9 @@ cancellable process, and stale results must be rejected.
 
 Add deterministic regression tests, especially for file compatibility,
 connectivity, geometry, undo and candidates. Preserve project envelope fields.
+Tests must not write the user's settings or data: redirect
+`QSettings::NativeFormat` (MolForma's `QSettings("MolForma", "MolForma")`) and
+`XDG_CONFIG_HOME` / `XDG_DATA_HOME` (autosave) to temporary directories.
 Document limitations in `docs/features.md` (Japanese); MCP tool changes belong
 in `docs/mcp.md`.
 

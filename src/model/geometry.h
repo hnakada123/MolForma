@@ -17,4 +17,32 @@ void centerMass(Document &d, const Ids &ids, bool principal);
 // or explicit masses, fewer than 2 or more than 60 atoms).
 int rotationalSymmetryNumber(const Document &d);
 Vec internalPoint(const Vec &a, const Vec &b, const Vec &c, double length, double angle, double dihedral);
+struct Superposition {
+    double raw = 0;       // RMSD of the coordinates as they are (Å).
+    double rmsd = 0;      // After the best rotation and translation, all atoms.
+    double heavyRmsd = 0; // Same fit, non-hydrogen atoms only.
+    double maximum = 0;   // Largest single-atom distance after the fit.
+    Mat rotation = Mat::Identity();
+    Vec shift = Vec::Zero(); // rotation * moving + shift ≈ reference
+};
+// Kabsch superposition of `moving` onto `reference`: same number of atoms with the same elements
+// in the same order.
+Superposition superpose(const Document &moving, const Document &reference);
+struct SymmetryOperation {
+    Mat matrix;         // About PointGroup::center.
+    QVector<int> image; // The operation carries atom i onto atom image[i].
+};
+struct PointGroup {
+    QString name; // Schoenflies symbol such as "C2v", "Td" or "D∞h"; empty if not determined.
+    Vec center = Vec::Zero();
+    Vec axis = Vec::Zero();                // Principal axis (also the axis of linear molecules).
+    QVector<SymmetryOperation> operations; // The whole group, identity first.
+    double deviation = 0;                  // Largest distance between an atom's image and its partner (Å).
+};
+// Point group of all atoms within tolerance (Å); ghosts, isotopes and masses count as distinct
+// kinds. Structures of more than 200 atoms are not analyzed (empty name).
+PointGroup pointGroup(const Document &d, double tolerance = .05);
+// Averages the coordinates over the group, so the structure becomes exactly symmetric. Fixed
+// atoms must not move. Returns the largest displacement (Å).
+double symmetrize(Document &d, const PointGroup &group);
 } // namespace mf

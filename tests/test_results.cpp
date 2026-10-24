@@ -1,6 +1,7 @@
 #include "editing/coordinates.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
+#include "ui/molecule_view.h"
 #include "ui/results_panel.h"
 #include <Eigen/LU>
 #include <QtTest>
@@ -56,6 +57,8 @@ class ResultsTest : public QObject {
         QVERIFY(settings.isValid());
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settings.path());
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
+                           settings.path()); // MolForma uses NativeFormat.
     }
     void logGeometryEnergyAndFailure() {
         auto source = "NWChem\n" + geometry() +
@@ -388,6 +391,106 @@ class ResultsTest : public QObject {
         QCOMPARE(w.document().project(), before);
         QCOMPARE(w.history()->count(), history);
     }
+    void pathsAndProperties() {
+        // MolForma's scan titles mark the points; the last energy and structure of each point count.
+        QString scan = "NWChem\n";
+        for (int k = 1; k <= 2; ++k)
+            scan += QString("                                 MolForma scan %1/2 bond 1 2 = %2\n")
+                        .arg(k)
+                        .arg(0.9 + k * .1) +
+                    geometry() + QString("         Total SCF energy =    -76.0%1\n").arg(k) +
+                    QString("         Total SCF energy =    -76.1%1\n").arg(k) +
+                    // The stored title of an earlier point may be printed again later.
+                    "MolForma scan 1/2 bond 1 2 = 1\n";
+        auto r = readResult(save("scan.out", scan));
+        const auto points = r.properties["scan"].toArray();
+        QCOMPARE(points.size(), 2);
+        QCOMPARE(points[1].toObject()["energy"].toDouble(), -76.12);
+        QCOMPARE(points[1].toObject()["value"].toDouble(), 1.1);
+        QCOMPARE(points[1].toObject()["coordinate"].toString(), QString("bond 1 2"));
+        QCOMPARE(points[1].toObject()["frame"].toInt(), 1);
+        QVERIFY(r.frames[1].label.startsWith("スキャン 2"));
+        // IRC: the transition state before the path, then forward and backward points.
+        const QString irc =
+            "NWChem\n" + geometry() + "         Total SCF energy =    -92.79195\n" +
+            "          Gonzalez & Schlegel IRC Optimization\n          Forward IRC optimization\n" +
+            geometry() + "&    0     -92.79330941  0.14572  0.14572  0.00652  0.01232   -1.26D-03\n" +
+            "      IRC Optimization converged\n          Backward IRC optimization\n" + geometry() +
+            "&    0     -92.79334658  0.14062  0.14062  0.00693  0.01296   -1.29D-03\n" +
+            "      IRC Optimization converged\n";
+        r = readResult(save("irc.out", irc));
+        const auto path = r.properties["irc"].toObject();
+        QCOMPARE(path["ts_energy"].toDouble(), -92.79195);
+        QCOMPARE(path["ts_frame"].toInt(), 0);
+        QVERIFY(path["complete"].toBool());
+        QCOMPARE(path["points"].toArray().size(), 2);
+        QCOMPARE(path["points"][1].toObject()["direction"].toString(), QString("backward"));
+        QCOMPARE(path["points"][1].toObject()["s"].toDouble(), 0.14062);
+        QCOMPARE(path["points"][1].toObject()["frame"].toInt(), 2);
+        // Properties, BSSE and solvation in the layout of NWChem 7.3.1.
+        const QString properties =
+            "NWChem\n" + geometry() +
+            "          ----- Total      gross population on atoms ----\n\n"
+            "              1  O    8.0     8.77813\n              2  H    1.0     0.61093\n"
+            "              3  H    1.0     0.61093\n\n"
+            "    Atom              Coordinates                           Charge\n\n"
+            "                                                  ESP         RESP        RESP2 \n"
+            "                                                                         constr \n \n"
+            "    1 O     0.000000    0.000000    0.011730   -0.760660   -0.759168   -0.759168\n"
+            "    2 H     0.000000    0.075720   -0.046920    0.380037    0.379287    0.379287\n"
+            "    3 H     0.000000   -0.075720   -0.046920    0.380623    0.379881    0.379881\n"
+            "                                            ------------------------------------\n"
+            "                                                0.000000    0.000000    0.000000\n\n"
+            "      Atom:    1  O \n           isotropic =     323.1942\n          anisotropy =      40.5748\n"
+            "      Atom:    2  H \n           isotropic =      32.3344\n          anisotropy =      18.0490\n"
+            " DFT Linear Response polarizability / au \n Frequency  =       0.0000000 / au\n"
+            "              X              Y              Z\n "
+            "-----------------------------------------------\n"
+            " X       2.8404754     -0.0000000      0.0000000\n Y      -0.0000000      7.1938924     "
+            "-0.0000000\n"
+            " Z       0.0000000     -0.0000000      5.2699243\n "
+            "-----------------------------------------------\n"
+            " Isotropic   =       5.1014307\n Anisotropic =       3.7786317\n"
+            "             BSSE error =       0.000430051349\n  Supermolecular energy =    -152.829244137478\n"
+            "       Corrected energy =    -152.828814086129\n"
+            "    1 M fixed-concentration free energy of solvation =        -0.013350123100 (   -8.38 "
+            "kcal/mol)\n"
+            "    total free energy in solvent including G(SMD-CDS) =       -76.422081467149\n";
+        r = readResult(save("properties.out", properties));
+        const auto mulliken = r.properties["mulliken"].toArray();
+        QCOMPARE(mulliken.size(), 3);
+        QVERIFY(std::abs(mulliken[0].toDouble() + 0.77813) < 1e-9);
+        QCOMPARE(r.properties["esp"].toArray()[2].toDouble(), 0.380623);
+        QCOMPARE(r.properties["resp"].toArray()[0].toDouble(), -0.759168);
+        QCOMPARE(r.properties["shielding"].toArray().size(), 2);
+        QCOMPARE(r.properties["shielding"][1].toObject()["anisotropy"].toDouble(), 18.049);
+        QCOMPARE(r.properties["polarizability"].toObject()["isotropic"].toDouble(), 5.1014307);
+        QCOMPARE(r.properties["polarizability"].toObject()["tensor"].toArray()[4].toDouble(), 7.1938924);
+        QCOMPARE(r.properties["bsse"].toObject()["error"].toDouble(), 0.000430051349);
+        QCOMPARE(r.properties["bsse"].toObject()["corrected"].toDouble(), -152.828814086129);
+        QCOMPARE(r.properties["solvation"].toObject()["smd_dg"].toDouble(), -0.0133501231);
+        QCOMPARE(loadResultData([&] {
+                     const auto file = files.filePath("properties.bin");
+                     saveResultData(file, r);
+                     return file;
+                 }())
+                     .properties,
+                 r.properties);
+    }
+    void rigidModes() {
+        ResultData r;
+        r.vibrationGeometry = Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n");
+        for (double f : {-0.02, 1600.0, 0.01, -1.5, 0.0, 3700.0, 2.0, 0.5, 3800.0})
+            r.modes.append({f, 1, {}});
+        const auto rigid = resultRigidModes(r);
+        QCOMPARE(rigid, (QVector<bool>{true, false, true, true, true, false, true, true, false}));
+        // Linear molecules have five rigid motions; incomplete mode sets are left alone.
+        r.vibrationGeometry = Document::fromXyz("3\nCO2\nO -1.16 0 0\nC 0 0 0\nO 1.16 0 0\n");
+        r.modes[6].frequency = 667;
+        QCOMPARE(resultRigidModes(r).count(true), 5);
+        r.modes.removeLast();
+        QCOMPARE(resultRigidModes(r).count(true), 0);
+    }
     void applyResultStructure() {
         // Core rule: same atoms in the same order; fixed atoms must not have moved.
         auto editor = Document::fromXyz("3\nwater\nO 0 0 0\nH .9 0 .6\nH -.9 0 .6\n");
@@ -425,6 +528,57 @@ class ResultsTest : public QObject {
         QVERIFY((w.document().atoms[2].position - Vec(-.758, 0, .504)).norm() < 1e-9);
         w.history()->undo();
         QVERIFY((w.document().atoms[2].position - Vec(-.9, 0, .6)).norm() < 1e-12);
+    }
+    void viewerPathsPropertiesAndMeasurement() {
+        MainWindow w;
+        w.loadDocument(Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n"));
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentWidget(panel);
+        w.show();
+        QSignalSpy done(panel, &ResultsPanel::loaded);
+        QString scan = "NWChem\n";
+        for (int k = 1; k <= 3; ++k)
+            scan += QString("MolForma scan %1/3 bond 1 2 = %2\n").arg(k).arg(0.8 + k * .1) + geometry() +
+                    QString("         Total SCF energy =    -76.0%1\n").arg(k == 2 ? 3 : k);
+        panel->openFile(save("scan-view.out", scan));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        auto *path = widget<QTableWidget>(w, "resultsPath");
+        QCOMPARE(path->rowCount(), 3);
+        QCOMPARE(path->item(1, 4)->text(), QString("0.000")); // The lowest point is the reference.
+        QCOMPARE(path->item(0, 1)->text(), QString("距離 1–2"));
+        path->selectRow(0);
+        QCOMPARE(widget<QSpinBox>(w, "resultsFrame")->value(), 1);
+        // ΔE in the energy table against a chosen row.
+        auto *energy = widget<QTableWidget>(w, "resultsEnergy");
+        energy->selectRow(0);
+        widget<QPushButton>(w, "resultsEnergyReference")->click();
+        QCOMPARE(energy->item(0, 2)->text(), QString("0.000"));
+        auto *unit = widget<QComboBox>(w, "resultsEnergyUnit");
+        unit->setCurrentIndex(unit->findData("hartree"));
+        QCOMPARE(energy->item(1, 2)->text(), QString("-0.02000000"));
+        // Measuring atoms in the viewer, and comparing with the editor molecule.
+        auto *view = widget<MoleculeView>(w, "resultsView");
+        const auto ids = view->documentRef().ids();
+        emit view->atomClicked(ids[0], Qt::NoModifier);
+        emit view->atomClicked(ids[1], Qt::NoModifier);
+        QVERIFY(widget<QLabel>(w, "resultsMeasurement")->text().contains("距離 0.9103 Å"));
+        widget<QPushButton>(w, "resultsPinMeasurement")->click();
+        QCOMPARE(view->monitorList().size(), 1);
+        widget<QPushButton>(w, "resultsCompare")->click();
+        QVERIFY(widget<QPlainTextEdit>(w, "resultsStatus")->toPlainText().contains("RMSD"));
+        // Per-atom properties.
+        panel->openFile(
+            save("properties-view.out",
+                 "NWChem\n" + geometry() +
+                     "          ----- Total      gross population on atoms ----\n\n"
+                     "              1  O    8.0     8.77813\n              2  H    1.0     0.61093\n"
+                     "              3  H    1.0     0.61093\n\n"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 2, 10000);
+        auto *atoms = widget<QTableWidget>(w, "resultsAtomProperties");
+        QCOMPARE(atoms->rowCount(), 3);
+        QCOMPARE(atoms->item(0, 2)->text(), QString("-0.7781"));
+        QCOMPARE(atoms->item(1, 1)->text(), QString("H"));
+        QVERIFY(view->monitorList().isEmpty()); // Measurements belong to the previous result.
     }
     void cameraSlidersPreserveGeometry() {
         MainWindow w;

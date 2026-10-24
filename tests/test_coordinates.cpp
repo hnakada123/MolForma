@@ -24,6 +24,8 @@ class CoordinatesTest : public QObject {
         QVERIFY(settingsDir.isValid());
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
+                           settingsDir.path()); // MolForma uses NativeFormat.
     }
     void nativeAtomInput() {
         auto a = coordinateAtom("D", {"1D0", "-2e-1", "0"}, "", CoordinateUnit::Bohr);

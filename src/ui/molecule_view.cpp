@@ -1,6 +1,7 @@
 #include "ui/molecule_view.h"
 #include "model/geometry.h"
 #include <QSettings>
+#include <openbabel/elements.h>
 #ifdef MOLFORMA_HAS_VTK
 #include "ui/vtk_molecule_renderer.h"
 #include <QOffscreenSurface>
@@ -102,6 +103,78 @@ void MoleculeView::scheduleRender() {
         update();
     }
 }
+void MoleculeView::renderNow() {
+    renderTimer.stop();
+    if (renderer)
+        renderScene();
+    else
+        repaint();
+}
+void MoleculeView::setStyle(const QString &style) {
+    displayStyle = QStringList{"ball_and_stick", "stick", "spacefill", "wireframe"}.contains(style)
+                       ? style
+                       : QString("ball_and_stick");
+    moleculeDirty = true;
+    scheduleRender();
+}
+void MoleculeView::setHidden(const QSet<QString> &ids) {
+    hidden = ids;
+    selected.removeIf([&](const auto &id) { return hidden.contains(id); });
+    moleculeDirty = true;
+    scheduleRender();
+}
+void MoleculeView::setHydrogenBonds(bool on) {
+    showHydrogenBonds = on;
+    findHydrogenBonds();
+    scheduleRender();
+}
+void MoleculeView::findHydrogenBonds() {
+    hbonds.clear();
+    if (!showHydrogenBonds || doc.atoms.size() > 5000)
+        return;
+    const auto polar = [](const QString &e) { return e == "N" || e == "O" || e == "F"; };
+    QVector<int> acceptors;
+    for (int i = 0; i < doc.atoms.size(); ++i)
+        if (!doc.atoms[i].ghost && polar(doc.atoms[i].element))
+            acceptors << i;
+    for (const auto &h : doc.atoms) {
+        if (h.element != "H" || h.ghost)
+            continue;
+        const auto neighbors = doc.neighbors(h.id, false);
+        if (neighbors.size() != 1 || !polar(doc.atom(neighbors[0]).element))
+            continue;
+        const Vec donor = doc.atom(neighbors[0]).position;
+        for (int i : acceptors) {
+            const auto &a = doc.atoms[i];
+            if (a.id == neighbors[0])
+                continue;
+            const double distance = (a.position - h.position).norm();
+            // H···A 1.5–2.6 Å and D–H···A at least 120°.
+            if (distance < 1.5 || distance > 2.6)
+                continue;
+            const double cosine =
+                (donor - h.position).normalized().dot((a.position - h.position).normalized());
+            if (cosine <= std::cos(120 * M_PI / 180))
+                hbonds.append({h.id, a.id});
+        }
+    }
+}
+double MoleculeView::atomRadius(const Atom &a) const {
+    const bool hydrogen = a.element == "H";
+    if (displayStyle == "spacefill") {
+        double vdw = 1.7;
+        try {
+            vdw = OpenBabel::OBElements::GetVdwRad(element(a.element).number);
+        } catch (const std::exception &) {
+        }
+        return std::max(2., vdw * scale);
+    }
+    if (displayStyle == "stick")
+        return std::clamp(scale * .1, 3., 7.);
+    if (displayStyle == "wireframe")
+        return 2;
+    return std::clamp(scale * (hydrogen ? .12 : .20), hydrogen ? 5. : 8., hydrogen ? 11. : 20.);
+}
 void MoleculeView::refreshColors() {
     atomColors.clear();
     atomColors.reserve(doc.atoms.size());
@@ -114,7 +187,7 @@ void MoleculeView::renderScene() {
     if (!renderer || !isVisible())
         return;
     if (moleculeDirty) {
-        renderer->setMolecule(doc, atomColors, showHydrogens);
+        renderer->setMolecule(doc, atomColors, showHydrogens, displayStyle, hidden);
         moleculeDirty = false;
     }
     if (surfaceDirty) {
@@ -158,6 +231,11 @@ void MoleculeView::setDocument(const Document &d) {
     for (int i = 0; i < doc.atoms.size(); ++i)
         atomIndices.insert(doc.atoms[i].id, i);
     selected.removeIf([&](auto id) { return !doc.contains(id); });
+    hidden.removeIf([&](const auto &id) { return !doc.contains(id); });
+    monitors.removeIf([&](const Ids &ids) {
+        return std::any_of(ids.begin(), ids.end(), [&](const auto &id) { return !doc.contains(id); });
+    });
+    findHydrogenBonds();
     refreshColors();
     scheduleRender();
 }
@@ -244,7 +322,11 @@ QString MoleculeView::hitAtom(const QPointF &p) const {
     double front = -1e100;
     Mat r = camera();
     for (const auto &a : doc.atoms) {
-        double radius = a.element == "H" ? showHydrogens ? 10 : 6 : 14;
+        if (!shown(a))
+            continue;
+        double radius = displayStyle == "spacefill" ? atomRadius(a)
+                        : a.element == "H"          ? showHydrogens ? 10 : 6
+                                                    : 14;
         double dist = QLineF(project(a.position), p).length();
         double z = (r * (a.position - center)).z();
         if (dist <= radius && z > front) {
@@ -262,7 +344,8 @@ const Bond *MoleculeView::hitBond(const QPointF &p) const {
         if (ai < 0 || bi < 0)
             continue;
         const auto &a = doc.atoms[ai], &c = doc.atoms[bi];
-        if (!showHydrogens && (a.element == "H" || c.element == "H"))
+        if ((!showHydrogens && (a.element == "H" || c.element == "H")) || !shown(a) || !shown(c) ||
+            displayStyle == "spacefill")
             continue;
         QPointF from = project(a.position), to = project(c.position), v = to - from;
         double length = QPointF::dotProduct(v, v);
@@ -339,11 +422,12 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
     QVector<Item> items;
     Mat r = camera();
     for (int i = 0; i < doc.atoms.size(); ++i)
-        items << Item{(r * (doc.atoms[i].position - center)).z(), true, i};
-    for (int i = 0; !overlayOnly && i < doc.bonds.size(); ++i) {
+        if (shown(doc.atoms[i]))
+            items << Item{(r * (doc.atoms[i].position - center)).z(), true, i};
+    for (int i = 0; !overlayOnly && displayStyle != "spacefill" && i < doc.bonds.size(); ++i) {
         const auto &b = doc.bonds[i];
         const int ai = atomIndices.value(b.a, -1), bi = atomIndices.value(b.b, -1);
-        if (ai >= 0 && bi >= 0)
+        if (ai >= 0 && bi >= 0 && shown(doc.atoms[ai]) && shown(doc.atoms[bi]))
             items << Item{(r * ((doc.atoms[ai].position + doc.atoms[bi].position) * .5 - center)).z(), false,
                           i};
     }
@@ -373,6 +457,16 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             if (len < 1)
                 continue;
             QPointF normal(-v.y() / len, v.x() / len);
+            if (displayStyle == "stick" || displayStyle == "wireframe") {
+                // Half bonds in the atom colors; multiple bonds as one line.
+                const double width = displayStyle == "stick" ? std::clamp(scale * .2, 5., 12.) : 2.;
+                const QPointF middle = (from + to) / 2;
+                p.setPen(QPen(atomColors[atomIndices.value(b.a)], width, Qt::SolidLine, Qt::RoundCap));
+                p.drawLine(from, middle);
+                p.setPen(QPen(atomColors[atomIndices.value(b.b)], width, Qt::SolidLine, Qt::RoundCap));
+                p.drawLine(middle, to);
+                continue;
+            }
             QColor color = b.kind == "dative"     ? QColor("#2879bd")
                            : b.kind == "aromatic" ? QColor("#a36a2b")
                                                   : QColor("#748595");
@@ -402,15 +496,15 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
                 p.drawEllipse(pos, 4, 4);
                 continue;
             }
-            double radius =
-                std::clamp(scale * (hydrogen ? .12 : .20), hydrogen ? 5. : 8., hydrogen ? 11. : 20.);
+            const double radius = atomRadius(a);
             QColor color = atomColors[item.index];
             if (selected.contains(a.id)) {
                 p.setPen(QPen(QColor("#de9c25"), 3));
                 p.setBrush(QColor(250, 199, 85, 80));
                 p.drawEllipse(pos, radius + 5, radius + 5);
             }
-            if (!overlayOnly || a.ghost) {
+            if ((!overlayOnly || a.ghost) &&
+                (displayStyle != "wireframe" || a.ghost || doc.neighbors(a.id).isEmpty())) {
                 QRadialGradient sphere(pos - QPointF(radius * .35, radius * .4), radius * 1.5);
                 sphere.setColorAt(0, color.lighter(160));
                 sphere.setColorAt(.6, color);
@@ -485,6 +579,58 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
         if (q["charge"].toDouble() > 0)
             p.drawLine(pos - QPointF(0, 5), pos + QPointF(0, 5));
         p.drawText(pos + QPointF(12, 4), QString::number(q["charge"].toDouble(), 'g', 3));
+    }
+    if (!hbonds.isEmpty()) {
+        p.setPen(QPen(QColor("#2a7bd6"), 1.6, Qt::DashLine));
+        for (const auto &[h, acceptor] : hbonds) {
+            if (!doc.contains(h) || !doc.contains(acceptor) || !shown(doc.atom(h)) ||
+                !shown(doc.atom(acceptor)))
+                continue;
+            p.drawLine(project(doc.atom(h).position), project(doc.atom(acceptor).position));
+        }
+    }
+    for (const auto &ids : monitors) {
+        if (std::any_of(ids.begin(), ids.end(),
+                        [&](const auto &id) { return !doc.contains(id) || !shown(doc.atom(id)); }))
+            continue;
+        QPolygonF points;
+        for (const auto &id : ids)
+            points << project(doc.atom(id).position);
+        p.setPen(QPen(QColor("#8a4fb8"), 1.6, Qt::DashLine));
+        p.setBrush(Qt::NoBrush);
+        p.drawPolyline(points);
+        QPointF middle(0, 0);
+        for (const auto &point : points)
+            middle += point;
+        middle /= points.size();
+        // Coincident or collinear atoms have no angle or dihedral; never throw from painting.
+        QString text = "—";
+        try {
+            const double value = measure(doc, ids);
+            text = ids.size() == 2 ? QString::number(value, 'f', 3) + " Å"
+                                   : QString::number(value, 'f', 1) + "°";
+        } catch (const std::exception &) {
+        }
+        const QRectF box = QRectF(p.fontMetrics().boundingRect(text)).adjusted(-4, -2, 4, 2);
+        const QRectF placed(middle - QPointF(box.width() / 2, box.height() / 2), box.size());
+        p.setPen(QPen(QColor("#8a4fb8"), 1));
+        p.setBrush(QColor(255, 255, 255, 220));
+        p.drawRoundedRect(placed, 4, 4);
+        p.setPen(QColor("#4b2a66"));
+        p.drawText(placed, Qt::AlignCenter, text);
+    }
+    for (const auto &[from, vector] : arrows) {
+        const QPointF a = project(from), b = project(from + vector), v = b - a;
+        const double length = QLineF(a, b).length();
+        if (length < 3)
+            continue;
+        const QPointF unit = v / length, normal(-unit.y(), unit.x());
+        const QColor color("#178a55");
+        p.setPen(QPen(color, 2.5, Qt::SolidLine, Qt::RoundCap));
+        p.drawLine(a, b - unit * 6);
+        p.setPen(Qt::NoPen);
+        p.setBrush(color);
+        p.drawPolygon(QPolygonF{b, b - unit * 10 + normal * 5, b - unit * 10 - normal * 5});
     }
     QPointF origin(width() - 48, height() - 48);
     for (int axis = 0; axis < 3; ++axis) {

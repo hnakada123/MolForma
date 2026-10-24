@@ -10,6 +10,7 @@
 #include <QTextStream>
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 
 namespace mf {
 namespace {
@@ -136,10 +137,22 @@ void nwchem(ResultData &r, const QStringList &lines) {
         const double n = text.replace('D', 'E', Qt::CaseInsensitive).toDouble(&ok);
         return ok && std::isfinite(n) ? n : std::numeric_limits<double>::quiet_NaN();
     };
+    // Markers written by MolForma's scan input ("title" of each point) and IRC point lines.
+    static const QRegularExpression scanMark(R"(MolForma scan (\d+)/(\d+) ([a-z]+(?: \d+)+) = (\S+))");
+    static const QRegularExpression ircPoint(R"(^&\s+(\d+)((?:\s+\S+){6})\s*$)");
+    static const QRegularExpression atomRow(R"(^\s*(\d+)\s+([A-Za-z]{1,3}\w*)\s+(\S+)\s+(\S+)\s*$)");
     QString abort, orbitalSpin;
     QVector<ResultOrbital> logOrbitals;
     QJsonArray thermochemistry;
     QJsonObject thresholds;
+    QMap<int, QJsonObject> scan;
+    int scanPoint = 0;
+    QJsonArray ircPoints;
+    QString ircDirection;
+    QJsonObject irc, solvation;
+    QJsonArray shielding;
+    int shieldingAtom = 0;
+    QString shieldingElement;
     for (int i = 0; i < lines.size(); ++i) {
         const auto &line = lines[i];
         recognized |= line.contains("NWChem");
@@ -161,6 +174,128 @@ void nwchem(ResultData &r, const QStringList &lines) {
                 r.warnings << QString("行 %1: %2").arg(i + 1).arg(line.trimmed().left(250));
         }
         ended |= line.contains("Total times  cpu:");
+        if (auto m = scanMark.match(line); m.hasMatch() && m.captured(1).toInt() > scanPoint) {
+            scanPoint = m.captured(1).toInt();
+            if (scan.size() < 1000)
+                scan[scanPoint] = QJsonObject{{"point", scanPoint},
+                                              {"points", m.captured(2).toInt()},
+                                              {"coordinate", m.captured(3)},
+                                              {"value", value(m.captured(4))}};
+        }
+        if (line.contains("Forward IRC optimization") || line.contains("Backward IRC optimization")) {
+            if (ircDirection.isEmpty()) {
+                // The transition state: its energy and structure were computed before the path.
+                if (!r.energies.isEmpty())
+                    irc["ts_energy"] = r.energies.last().hartree;
+                irc["ts_frame"] = r.frames.size() - 1;
+            }
+            ircDirection = line.contains("Forward") ? "forward" : "backward";
+        }
+        if (auto m = ircPoint.match(line);
+            m.hasMatch() && !ircDirection.isEmpty() && ircPoints.size() < 5000) {
+            const auto columns = words(m.captured(2));
+            ircPoints << QJsonObject{{"direction", ircDirection},
+                                     {"point", m.captured(1).toInt()},
+                                     {"energy", value(columns[0])},
+                                     {"s", value(columns[2])},
+                                     {"frame", r.frames.size() - 1}};
+        }
+        const auto field = [&](const char *label) {
+            return value(words(line.section(label, 1).section('=', 1)).value(0));
+        };
+        if (line.contains("BSSE error =")) {
+            auto bsse = r.properties["bsse"].toObject();
+            bsse["error"] = field("BSSE error");
+            r.properties["bsse"] = bsse;
+        }
+        if (line.contains("Supermolecular energy =") || line.contains("Corrected energy =")) {
+            auto bsse = r.properties["bsse"].toObject();
+            bsse[line.contains("Corrected") ? "corrected" : "supermolecular"] = field("energy");
+            r.properties["bsse"] = bsse;
+        }
+        if (line.contains("gas phase energy =") || line.contains("sol phase energy ="))
+            solvation[line.contains("gas phase") ? "gas" : "solution"] = field("energy");
+        if (line.contains("fixed-concentration free energy of solvation ="))
+            solvation["smd_dg"] = field("solvation");
+        if (line.contains("total free energy in solvent including G(SMD-CDS) ="))
+            solvation["smd_total"] = field("G(SMD-CDS)");
+        // Mulliken charges of the PROPERTY module (nuclear charge minus gross population).
+        if (line.contains("Total      gross population on atoms")) {
+            QJsonArray charges;
+            for (int j = i + 1; j < lines.size() && j < i + 2 + maxAtoms; ++j) {
+                if (lines[j].trimmed().isEmpty() && charges.isEmpty())
+                    continue;
+                const auto m = atomRow.match(lines[j]);
+                if (!m.hasMatch() || m.captured(1).toInt() != charges.size() + 1)
+                    break;
+                charges << value(m.captured(3)) - value(m.captured(4));
+            }
+            if (!charges.isEmpty())
+                r.properties["mulliken"] = charges;
+        }
+        // ESP (and RESP with "restrain") charges of the ESP module.
+        if (line.contains("Atom") && line.contains("Coordinates") && line.contains("Charge")) {
+            QJsonArray esp, resp;
+            for (int j = i + 1; j < lines.size() && j < i + 8 + maxAtoms; ++j) {
+                const auto row = words(lines[j]);
+                if (row.size() < 6 || !QRegularExpression("^\\d+$").match(row[0]).hasMatch()) {
+                    if (!esp.isEmpty())
+                        break;
+                    continue;
+                }
+                if (row[0].toInt() != esp.size() + 1)
+                    break;
+                esp << value(row[5]);
+                if (row.size() >= 7)
+                    resp << value(row[6]);
+            }
+            if (!esp.isEmpty()) {
+                r.properties["esp"] = esp;
+                if (resp.size() == esp.size())
+                    r.properties["resp"] = resp;
+                else
+                    r.properties.remove("resp");
+            }
+        }
+        // GIAO shielding tensors: "Atom:  n  X" followed by "isotropic =" and "anisotropy =".
+        if (const auto t = line.trimmed(); t.startsWith("Atom:")) {
+            const auto w = words(t);
+            shieldingAtom = w.value(1).toInt();
+            shieldingElement = w.value(2);
+        }
+        if (shieldingAtom > 0 && line.contains("isotropic =")) {
+            if (shieldingAtom == 1)
+                shielding = {}; // A later NMR calculation replaces the earlier one.
+            shielding << QJsonObject{{"atom", shieldingAtom},
+                                     {"element", shieldingElement},
+                                     {"isotropic", value(words(line.section('=', 1)).value(0))}};
+        }
+        if (shieldingAtom > 0 && line.contains("anisotropy =") && !shielding.isEmpty()) {
+            auto last = shielding.last().toObject();
+            last["anisotropy"] = value(words(line.section('=', 1)).value(0));
+            shielding[shielding.size() - 1] = last;
+            shieldingAtom = 0;
+        }
+        if (line.contains("Linear Response polarizability / au")) {
+            QJsonArray tensor;
+            QJsonObject polarizability;
+            for (int j = i + 1; j < lines.size() && j < i + 16; ++j) {
+                const auto row = words(lines[j]);
+                if (row.size() == 4 && QStringList{"X", "Y", "Z"}.contains(row[0]))
+                    for (int k = 1; k < 4; ++k)
+                        tensor << value(row[k]);
+                if (lines[j].contains("Isotropic   ="))
+                    polarizability["isotropic"] = value(words(lines[j].section('=', 1)).value(0));
+                if (lines[j].contains("Anisotropic ="))
+                    polarizability["anisotropy"] = value(words(lines[j].section('=', 1)).value(0));
+                if (lines[j].contains("Frequency  ="))
+                    polarizability["frequency"] = value(words(lines[j].section('=', 1)).value(0));
+            }
+            if (tensor.size() == 9 && polarizability.contains("isotropic")) {
+                polarizability["tensor"] = tensor;
+                r.properties["polarizability"] = polarizability;
+            }
+        }
         if (auto m = root.match(line); m.hasMatch() && r.excitations.size() < 2000) {
             ResultExcitation x{m.captured(1).toInt(), m.captured(2), m.captured(3), value(m.captured(5))};
             if (x.root == 1 && std::any_of(r.excitations.begin(), r.excitations.end(),
@@ -241,6 +376,8 @@ void nwchem(ResultData &r, const QStringList &lines) {
             if (r.energies.size() >= 20000)
                 fail("エネルギーの記録数が2万件を超えています。");
             r.energies << ResultEnergy{match.captured(1).toUpper(), number(match.captured(2)), i + 1};
+            if (scanPoint > 0 && scan.contains(scanPoint))
+                scan[scanPoint]["energy"] = r.energies.last().hartree;
         }
         if (line.contains("Output coordinates in ")) {
             const double scale = line.contains("angstroms") ? 1 : line.contains("a.u.") ? BohrToAngstrom : 0;
@@ -270,9 +407,13 @@ void nwchem(ResultData &r, const QStringList &lines) {
             }
             // Only accept a terminated table, never a partial last row at EOF.
             if (!d.atoms.isEmpty() && j < lines.size() && lines[j].trimmed().isEmpty() &&
-                (r.frames.isEmpty() || r.frames.first().molecule.atoms.size() == d.atoms.size()))
-                addFrame(r, d, QString("ログ 行 %1").arg(i + 1));
-            else
+                (r.frames.isEmpty() || r.frames.first().molecule.atoms.size() == d.atoms.size())) {
+                addFrame(r, d,
+                         scanPoint > 0 ? QString("スキャン %1・ログ 行 %2").arg(scanPoint).arg(i + 1)
+                                       : QString("ログ 行 %1").arg(i + 1));
+                if (scanPoint > 0 && scan.contains(scanPoint))
+                    scan[scanPoint]["frame"] = r.frames.size() - 1;
+            } else
                 r.warnings << QString("行 %1の不完全な座標表を読み飛ばしました。").arg(i + 1);
         }
         if (line.contains("(Projected Frequencies expressed")) {
@@ -323,6 +464,24 @@ void nwchem(ResultData &r, const QStringList &lines) {
         r.properties["thermochemistry"] = thermochemistry;
     if (!thresholds.isEmpty())
         r.properties["thresholds"] = thresholds;
+    if (!scan.isEmpty()) {
+        QJsonArray points;
+        for (const auto &point : scan)
+            if (point.contains("energy"))
+                points << point;
+        r.properties["scan"] = points;
+    }
+    if (!ircPoints.isEmpty()) {
+        irc["points"] = ircPoints;
+        irc["complete"] = std::count_if(lines.begin(), lines.end(), [](const auto &l) {
+                              return l.contains("IRC Optimization converged");
+                          }) >= 2;
+        r.properties["irc"] = irc;
+    }
+    if (!shielding.isEmpty())
+        r.properties["shielding"] = shielding;
+    if (!solvation.isEmpty())
+        r.properties["solvation"] = solvation;
     if (!r.steps.isEmpty() && !r.properties.contains("optimization"))
         r.properties["optimization"] = "not_converged";
     if (!abort.isEmpty())
@@ -903,5 +1062,33 @@ QStringList resultFiles(const QString &directory) {
         }
     }
     return files;
+}
+QVector<bool> resultRigidModes(const ResultData &data) {
+    QVector<bool> rigid(data.modes.size(), false);
+    const auto &atoms = data.vibrationGeometry.atoms;
+    if (atoms.isEmpty() || data.modes.size() != 3 * atoms.size())
+        return rigid;
+    // Linear: every atom within 1e-3 Å of the line through the first two separated atoms.
+    bool linear = true;
+    Vec axis = Vec::Zero();
+    for (const auto &a : atoms)
+        if ((a.position - atoms[0].position).norm() > 1e-3) {
+            axis = (a.position - atoms[0].position).normalized();
+            break;
+        }
+    for (const auto &a : atoms) {
+        const Vec d = a.position - atoms[0].position;
+        if ((d - d.dot(axis) * axis).norm() > 1e-3)
+            linear = false;
+    }
+    const int count = atoms.size() == 1 ? 3 : linear ? 5 : 6;
+    QVector<int> order(data.modes.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+        return std::abs(data.modes[a].frequency) < std::abs(data.modes[b].frequency);
+    });
+    for (int i = 0; i < count && i < order.size(); ++i)
+        rigid[order[i]] = true;
+    return rigid;
 }
 } // namespace mf

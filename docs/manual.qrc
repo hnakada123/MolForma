@@ -1,0 +1,5 @@
+<RCC><qresource prefix="/docs">
+  <file>features.md</file><file>mcp.md</file>
+</qresource><qresource prefix="/icons">
+  <file alias="molforma.png">../packaging/molforma-256.png</file>
+</qresource></RCC>

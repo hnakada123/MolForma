@@ -237,6 +237,15 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
             [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(saved.directory)); });
     connect(logChannel, &QComboBox::currentIndexChanged, this, &ExecutionPanel::updateRun);
     output->addLayout(logs);
+    openResults = new QCheckBox("終了したら結果ビューアに読み込む");
+    openResults->setObjectName("executionOpenResults");
+    openResults->setToolTip(
+        "計算が終わると、ジョブフォルダーを「結果ビューア」に読み込みます（タブは切り替えません）。"
+        "終了はステータスバーとデスクトップ通知でも知らせます。");
+    openResults->setChecked(window->settings.value("execution/open_results", true).toBool());
+    connect(openResults, &QCheckBox::toggled, this,
+            [this](bool on) { window->settings.setValue("execution/open_results", on); });
+    output->addWidget(openResults);
     log = new QPlainTextEdit;
     log->setObjectName("executionLog");
     log->setReadOnly(true);
@@ -247,9 +256,13 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     split->setSizes({620, 700});
     connect(&run, &NwchemRun::changed, this, [this] {
         if (run.state() != previousRunState) {
+            const bool ended =
+                QStringList{"starting", "running", "stopping"}.contains(previousRunState) && !run.active();
             previousRunState = run.state();
             refresh();
             emit bundleChanged(run.plan().directory);
+            if (ended)
+                runEnded();
         } else
             updateRun();
     });
@@ -345,10 +358,10 @@ void ExecutionPanel::startCalculation() {
         const auto settings = protectedExecution(window->document());
         if (!mcp.policy->allowExecutionSettings && settings != mcp.trustedExecution) {
             if (remote)
-                fail("NWChem実行ファイル・MPIランチャー・追加の環境変数が、"
+                fail("NWChem実行ファイル・MPIランチャー・追加の環境変数・NWChemの追加入力が、"
                      "MolForma上で最後に設定した値と異なります（MCP経由の変更や"
                      "プロジェクトの読込による）。MCPからはこの設定で実行できません。"
-                     "利用者が「5 実行設定」タブで設定を確認してください。");
+                     "利用者が「3 計算条件」「5 実行設定」タブで設定を確認してください。");
             // A person started the run: confirm in a dialog that MCP cannot see or press.
             QStringList environment;
             for (const auto &row : settings["environment"].toArray())
@@ -356,12 +369,16 @@ void ExecutionPanel::startCalculation() {
                     environment << row.toObject()["name"].toString() + "=" +
                                        row.toObject()["value"].toString();
             QMessageBox box(QMessageBox::Warning, "実行設定の確認",
-                            "実行ファイル・ランチャー・環境変数が、MCP接続中に画面の外から変更されています。"
-                            "この設定で実行しますか？",
+                            "実行ファイル・ランチャー・環境変数・NWChemの追加入力が、MCP接続中に画面の外から"
+                            "変更されています。この設定で実行しますか？",
                             QMessageBox::Yes | QMessageBox::No, window);
+            const bool extra = !settings["extra_input"].toString().trimmed().isEmpty() ||
+                               !settings["extra_tasks"].toString().trimmed().isEmpty();
             box.setInformativeText("実行ファイル: " + settings["executable"].toString() +
                                    "\nランチャー: " + settings["launcher"].toString() + "\n環境変数: " +
-                                   (environment.isEmpty() ? QString("なし") : environment.join(", ")));
+                                   (environment.isEmpty() ? QString("なし") : environment.join(", ")) +
+                                   "\nNWChemの追加入力: " +
+                                   (extra ? QString("あり（「6 入力プレビュー」で確認）") : QString("なし")));
             box.setDefaultButton(QMessageBox::No);
             box.setProperty("mcpProtected", true);
             if (box.exec() != QMessageBox::Yes)
@@ -511,6 +528,36 @@ void ExecutionPanel::updateRun() {
         log->setPlainText(text);
         log->verticalScrollBar()->setValue(atEnd ? log->verticalScrollBar()->maximum() : position);
     }
+}
+void ExecutionPanel::runEnded() {
+    const QMap<QString, QString> names{{"finished", "計算が終了しました（終了コード0）"},
+                                       {"failed", "計算が失敗しました"},
+                                       {"cancelled", "計算を停止しました"},
+                                       {"timed_out", "計算が制限時間で停止しました"}};
+    const auto directory = run.plan().directory;
+    const auto message =
+        names.value(run.state(), "計算が終了しました") + ": " + QFileInfo(directory).fileName();
+    window->statusBar()->showMessage(message, 60000);
+    QApplication::alert(window); // Taskbar attention while MolForma is in the background.
+    if (!window->isActiveWindow() && QSystemTrayIcon::isSystemTrayAvailable() &&
+        QSystemTrayIcon::supportsMessages()) {
+        if (!tray) {
+            const auto icon = QApplication::windowIcon();
+            tray = new QSystemTrayIcon(icon.isNull() ? style()->standardIcon(QStyle::SP_ComputerIcon) : icon,
+                                       this);
+            connect(tray, &QSystemTrayIcon::messageClicked, window, [this] {
+                window->showNormal();
+                window->raise();
+                window->activateWindow();
+            });
+        }
+        tray->show();
+        tray->showMessage("MolForma", message, QSystemTrayIcon::Information, 10000);
+        QTimer::singleShot(15000, tray, &QSystemTrayIcon::hide);
+    }
+    if (openResults->isChecked() && run.state() == "finished" && !resultFiles(directory).isEmpty() &&
+        !window->results->loading())
+        window->results->openDirectory(directory);
 }
 void ExecutionPanel::stopEditing() {
     busy = true;

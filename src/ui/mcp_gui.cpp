@@ -301,10 +301,12 @@ QJsonArray McpGui::tools() const {
         "Select editor atoms by stable IDs, without changing geometry. Empty ids clears selection.",
         {{"ids", array(type("string"))}}, {"ids"}, true);
     add("chemistry",
-        "Start cancellable SMILES/refine/regenerate work, or cancel it. smiles replaces the structure; "
-        "fragment adds the SMILES molecule 3 Å beside the current one. moving limits refinement to "
-        "specified stable atom IDs. Inspect candidate after completion; confirm with history.",
-        {{"action", choice({"smiles", "fragment", "refine", "regenerate", "cancel"})},
+        "Start cancellable SMILES/refine/regenerate/conformer-search work, or cancel it. smiles replaces the "
+        "structure; fragment adds the SMILES molecule 3 Å beside the current one. moving limits refinement "
+        "to "
+        "specified stable atom IDs. conformers searches rotamers with the force field and proposes the "
+        "lowest-energy one. Inspect candidate after completion; confirm with history.",
+        {{"action", choice({"smiles", "fragment", "refine", "regenerate", "conformers", "cancel"})},
          {"smiles", type("string")},
          {"moving", array(type("string"))}},
         {"action"}, true);

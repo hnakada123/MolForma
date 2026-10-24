@@ -10,7 +10,8 @@ class VtkMoleculeRenderer : public QVTKOpenGLNativeWidget {
   public:
     explicit VtkMoleculeRenderer(QWidget *parent);
     ~VtkMoleculeRenderer() override;
-    void setMolecule(const Document &document, const QVector<QColor> &colors, bool hydrogens);
+    void setMolecule(const Document &document, const QVector<QColor> &colors, bool hydrogens,
+                     const QString &style = "ball_and_stick", const QSet<QString> &hidden = {});
     void setSurface(const QVector<SurfaceTriangle> &triangles);
     void setSurfaceStyle(bool positive, bool negative, int opacity);
     void setCamera(const Mat &rotation, const Vec &center, double scale, const QPointF &pan);

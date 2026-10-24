@@ -6,6 +6,8 @@
 #include "ui/mcp_gui.h"
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QIcon>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QLabel>
 #include <QStatusBar>
@@ -80,6 +82,14 @@ int main(int argc, char **argv) {
         try {
             auto request = mf::parseJson(mf::readFile(input));
             auto mode = request["mode"].toString();
+            if (mode == "conformers") {
+                QJsonArray list;
+                for (const auto &c : mf::searchConformers(
+                         mf::Document::fromJson(request["document"].toObject()), request["count"].toInt(10)))
+                    list.append(QJsonObject{{"document", c.document.toJson()}, {"energy", c.energy}});
+                mf::writeFile(output, QJsonDocument(QJsonObject{{"conformers", list}}).toJson());
+                return 0;
+            }
             auto d = mode == "smiles" || mode == "fragment"
                          ? mf::fromSmiles(request["smiles"].toString())
                          : mf::refine(mf::Document::fromJson(request["document"].toObject()),
@@ -114,6 +124,9 @@ int main(int argc, char **argv) {
     QCoreApplication::setApplicationName("MolForma");
     QCoreApplication::setApplicationVersion(MOLFORMA_VERSION);
     QApplication::setStyle("Fusion");
+    Q_INIT_RESOURCE(manual);
+    QApplication::setWindowIcon(QIcon(":/icons/molforma.png"));
+    QGuiApplication::setDesktopFileName("molforma"); // Matches packaging/molforma.desktop.
     QCommandLineParser parser;
     parser.setApplicationDescription("Qt6/C++ molecular editor and NWChem input, run and result front end");
     parser.addHelpOption();
@@ -129,6 +142,12 @@ int main(int argc, char **argv) {
         if (!guiMcp && !parser.positionalArguments().isEmpty())
             window.loadPath(parser.positionalArguments().first());
         window.show();
+        if (!parser.isSet("screenshot")) {
+            window.startAutosave();
+            // A person decides about recovered work; MCP sessions start without the question.
+            if (!guiMcp)
+                QTimer::singleShot(0, &window, [&window] { window.safe([&] { window.offerRecovery(); }); });
+        }
         std::unique_ptr<mf::McpServer> server;
         std::unique_ptr<mf::McpGui> gui;
         std::unique_ptr<mf::McpStdioTransport> transport;

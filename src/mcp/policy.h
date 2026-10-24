@@ -3,9 +3,12 @@
 #include <QStringList>
 
 namespace mf {
-// Settings that choose the program a calculation runs and the environment it inherits.
+// Settings that choose the program a calculation runs and the environment it inherits, and the
+// unchecked additional NWChem input (which could start other programs through NWChem).
 QJsonObject protectedExecution(const Document &document);
 bool isProtectedExecutionKey(const QString &key);
+// NWChem settings with the same protection: the additional input lines.
+bool isProtectedNwchemKey(const QString &key);
 
 // Restrictions fixed on the command line. MCP requests can read but never change them.
 struct McpPolicy {

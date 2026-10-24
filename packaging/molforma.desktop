@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=MolForma
+GenericName=Molecular Editor for NWChem
+GenericName[ja]=NWChem向け分子エディター
+Comment=Build molecules, prepare and run NWChem calculations, and view the results
+Comment[ja]=分子の作成、NWChem計算の入力・実行・結果の表示
+Exec=molforma %f
+Icon=molforma
+Terminal=false
+Categories=Science;Chemistry;
+Keywords=chemistry;molecule;NWChem;quantum;DFT;化学;分子;
+MimeType=application/x-molforma-project;text/x-nwchem-input;chemical/x-xyz;chemical/x-mdl-molfile;chemical/x-mdl-sdfile;chemical/x-mol2;chemical/x-cml;chemical/x-pdb;
+StartupWMClass=molforma

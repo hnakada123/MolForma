@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-molforma-project">
+    <comment>MolForma (KAGAMI GUI) project</comment>
+    <comment xml:lang="ja">MolForma（KAGAMI GUI）プロジェクト</comment>
+    <sub-class-of type="application/json"/>
+    <generic-icon name="molforma"/>
+    <glob pattern="*.kgui.json" weight="60"/>
+  </mime-type>
+  <mime-type type="text/x-nwchem-input">
+    <comment>NWChem input</comment>
+    <comment xml:lang="ja">NWChem入力</comment>
+    <sub-class-of type="text/plain"/>
+    <glob pattern="*.nw"/>
+  </mime-type>
+</mime-info>

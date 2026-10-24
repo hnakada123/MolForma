@@ -31,16 +31,25 @@ class CalculationPanel : public QWidget {
     QLabel *summary, *presetSummary, *message;
     QPlainTextEdit *validation, *preview;
     QTableWidget *elementBases; // Per-element library basis for the elements of the molecule.
+    QTableWidget *constraints;  // Internal-coordinate constraints (ZCOORD) of optimizations.
+    QLabel *scanCoordinate, *monomers;
+    QPlainTextEdit *extraInput, *extraTasks;
+    QString appliedExtra[2]; // Stored additional input last shown, so typing is not overwritten.
     QPushButton *copy, *save, *undo, *redo, *removePreset;
     QJsonArray userPresets;
     QFormLayout *group(const QString &title, QVBoxLayout *layout);
     void choice(QFormLayout *form, const QString &label, const QString &key);
     void integer(QFormLayout *form, const QString &label, const QString &key, int minimum, int maximum);
+    void real(QFormLayout *form, const QString &label, const QString &key, double minimum, double maximum,
+              int decimals);
     void flag(QFormLayout *form, const QString &label, const QString &key);
     void change(const QString &key, const QJsonValue &value);
     void reloadPresets();
     void describePreset();
     void storePreset();
     void refreshElementBases(const QJsonObject &settings);
+    void refreshConstraints(const QJsonObject &settings);
+    void addConstraint();
+    void setScanCoordinate();
 };
 } // namespace mf

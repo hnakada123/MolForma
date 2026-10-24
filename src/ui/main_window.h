@@ -1,6 +1,7 @@
 #pragma once
 #include "mcp/policy.h"
 #include "ui/molecule_view.h"
+#include <QLockFile>
 #include <QMainWindow>
 #include <QProcess>
 #include <QSettings>
@@ -19,6 +20,8 @@ class QSpinBox;
 class QFormLayout;
 class QPushButton;
 class QTableWidget;
+class QMenu;
+class QTimer;
 namespace mf {
 class CoordinatesPanel;
 class CalculationPanel;
@@ -55,9 +58,18 @@ class MainWindow : public QMainWindow {
         return view;
     }
     void safe(const std::function<void()> &operation);
+    // Interactive sessions: periodic autosave of unsaved work, and recovery after a crash.
+    void startAutosave();
+    void offerRecovery();
+    // Writes the recovery copy now if there is unsaved work (the timer calls it every minute).
+    void autosave();
+    // Recently opened or saved files (QSettings "recentFiles"), newest first.
+    QStringList recentFiles() const;
 
   protected:
     void closeEvent(QCloseEvent *) override;
+    void dragEnterEvent(QDragEnterEvent *) override;
+    void dropEvent(QDropEvent *) override;
 
   private:
     friend class DocumentCommand;
@@ -81,6 +93,12 @@ class MainWindow : public QMainWindow {
     QString candidateName, path;
     bool candidateRemote = false, workerRemote = false; // Candidate or worker started over MCP.
     Ids selected;
+    QVector<Ids> monitors; // Measurements kept on screen (view state, not saved).
+    QMenu *recentMenu = nullptr;
+    QTimer *autosaveTimer = nullptr;
+    QString autosavePath;
+    std::unique_ptr<QLockFile> autosaveLock;
+    QByteArray autosavedIdentity; // Content of the last recovery copy.
     QUndoStack undo;
     QSettings settings;
     QProcess *worker = nullptr;
@@ -158,10 +176,13 @@ class MainWindow : public QMainWindow {
     bool resolveCandidate();
     bool confirmDiscard();
     void exportFile();
+    // Asks which structure of a multi-frame XYZ file to read (0-based; 0 for single frames).
+    int chooseXyzFrame(const QString &path);
     void importSmiles();
     void addFragmentFromSmiles();
     void addFragmentFromFile();
-    void runWorker(const QString &mode, const QString &smiles = {}, const Ids &moving = {});
+    // mode: smiles, fragment, refine, regenerate or conformers (count: conformers to keep).
+    void runWorker(const QString &mode, const QString &smiles = {}, const Ids &moving = {}, int count = 10);
     void cancelWorker();
     void contextMenu(const QPoint &p, const QString &id);
     void coordinateDialog();
@@ -169,6 +190,14 @@ class MainWindow : public QMainWindow {
     void loadPart();
     void selectNumbers();
     void showReport();
+    void showManual();
+    void addRecent(const QString &path);
+    void refreshRecent();
+    void removeAutosave();
+    void openDropped(const QString &path);
+    void symmetryDialog();
+    void zMatrixDialog();
+    void compareDialog();
     void preferences();
     void pdbPreparation();
     void addAmino(const QString &rid, bool n);

@@ -66,4 +66,7 @@ ResultData loadResultData(const QString &path);
 int resultWorker(const QString &request, const QString &response);
 QStringList resultFiles(const QString &directory);
 Document resultModeGeometry(const ResultData &data, int mode, double phase, double amplitude);
+// Translations and rotations among the normal modes: the 6 (linear: 5, atom: 3) modes with the
+// smallest |frequency| of a complete 3N-mode set. Other mode sets are all treated as vibrations.
+QVector<bool> resultRigidModes(const ResultData &data);
 } // namespace mf

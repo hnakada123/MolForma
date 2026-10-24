@@ -28,5 +28,13 @@ bool nwchemNumericalFrequencies(const Document &document);
 // custom XC line).
 QString nwchemBasisLabel(const QJsonObject &settings);
 QString nwchemFunctionalLabel(const QJsonObject &settings);
+// The XC line MolForma writes for a functional choice (empty for "custom" or unknown values).
+QString nwchemFunctionalXc(const QString &value);
+// Tasks that run NWChem's DRIVER optimizer: minimizations, saddle searches and relaxed scans.
+bool nwchemDriverTask(const QJsonObject &settings);
+// "距離 1–2" / "角度 1–2–3" / "二面角 1–2–3–4" with the current 1-based atom numbers.
+QString nwchemCoordinateLabel(const Document &document, const Ids &ids);
+// The bonded molecules that act as counterpoise (BSSE) monomers, in atom order.
+QVector<Ids> nwchemBsseMonomers(const Document &document);
 QString nwchemInput(const Document &document);
 } // namespace mf
