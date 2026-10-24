@@ -131,30 +131,14 @@ void MainWindow::buildEditPanel() {
         auto ids = requireSelection(2);
         setSelection(doc.bondSide(ids[0], ids[1]));
     });
-    auto *terminate = new QCheckBox("削除後に水素で終端化");
-    terminate->setChecked(true);
-    f->addRow(terminate);
-    button(
-        f, "選択を削除（候補）",
-        [this, terminate] {
-            auto ids = requireSelection();
-            bool h = terminate->isChecked();
-            edit(
-                "選択を削除",
-                [=](Document &d) {
-                    Ids neighbors;
-                    for (auto id : ids)
-                        if (d.atom(id).element != "H")
-                            for (auto n : d.neighbors(id))
-                                if (!ids.contains(n) && !neighbors.contains(n))
-                                    neighbors << n;
-                    d.remove(ids);
-                    if (h)
-                        completeHydrogens(d, neighbors);
-                },
-                true);
-        },
-        "deletePreview");
+    deleteTerminate = new QCheckBox("削除後に水素で終端化");
+    deleteTerminate->setObjectName("deleteTerminate");
+    deleteTerminate->setChecked(true);
+    deleteTerminate->setToolTip(
+        "すべての削除（Delete・ツールバー・削除ツール・右クリック）に適用します。削除した原子"
+        "だけに付いていた水素も一緒に削除します。");
+    f->addRow(deleteTerminate);
+    button(f, "選択を削除（候補）", [this] { deleteAtoms(requireSelection()); }, "deletePreview");
     f = sub("寸法・立体");
     auto *axis = choices(f, "回転軸", {"Z", "X", "Y"}, {"2", "0", "1"});
     twist = number(f, "回転角 / °", 0, -360, 360);

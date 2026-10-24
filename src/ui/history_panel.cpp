@@ -104,18 +104,20 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     layout->addWidget(status);
     auto *split = new QSplitter(Qt::Vertical);
     layout->addWidget(split, 1);
-    table = new QTableWidget(0, 8);
+    table = new QTableWidget(0, 10);
     table->setObjectName("historyTable");
     table->setHorizontalHeaderLabels({"作成日時（ローカル）", "計算名", "手法 / 基底", "目的", "実行状態",
-                                      "最終検出E / Hartree", "経過 / 秒", "ΔE"});
-    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+                                      "最終検出E / Hartree", "経過 / 秒", "ΔE", "組成", "メモ"});
+    // Only the memo column is editable (double click or F2); the composition sits beside the name.
+    table->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
+    table->horizontalHeader()->moveSection(8, 2);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setSelectionMode(QAbstractItemView::SingleSelection);
     table->verticalHeader()->hide();
     table->setAlternatingRowColors(true);
     table->setSortingEnabled(true);
     table->sortItems(0, Qt::DescendingOrder);
-    const QList<int> widths{175, 160, 240, 145, 205, 180, 85};
+    const QList<int> widths{175, 160, 240, 145, 205, 180, 85, 140, 110, 200};
     for (int i = 0; i < widths.size(); ++i)
         table->setColumnWidth(i, widths[i]);
     table->horizontalHeader()->setStretchLastSection(true);
@@ -194,8 +196,22 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
             status->setText(status->text() + "\n" + scan.message);
     });
     connect(table, &QTableWidget::itemSelectionChanged, this, &HistoryPanel::showDetails);
-    connect(table, &QTableWidget::cellDoubleClicked, this,
-            [this] { window->safe([this] { openResult(); }); });
+    connect(table, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
+        if (item->column() != 9)
+            return;
+        const auto directory = item->data(Qt::UserRole).toString();
+        window->safe([&] {
+            window->checkMcpPath(directory);
+            setHistoryMemo(directory, item->text());
+            for (auto &e : entries)
+                if (e.directory == directory)
+                    e.memo = item->text().trimmed();
+        });
+    });
+    connect(table, &QTableWidget::cellDoubleClicked, this, [this](int, int column) {
+        if (column != 9) // Double click on the memo edits it.
+            window->safe([this] { openResult(); });
+    });
     connect(viewer, &QPushButton::clicked, this, [this] { window->safe([this] { openResult(); }); });
     connect(reuse, &QPushButton::clicked, this, [this] { window->safe([this] { reuseSelected(); }); });
     connect(folder, &QPushButton::clicked, this, [this] {
@@ -362,7 +378,9 @@ void HistoryPanel::populate(bool reloadDetails) {
                 e.seconds < 0 ? "—" : QString::number(e.seconds),
                 delta ? QString::number(*delta, 'f', unit == "hartree" ? 8 : 3) +
                             (e.directory == reference ? "（基準）" : "")
-                      : "—"};
+                      : "—",
+                e.formula.isEmpty() ? "—" : e.formula,
+                e.memo};
             for (int col = 0; col < labels.size(); ++col) {
                 QVariant key = labels[col];
                 if (col == 0)
@@ -375,6 +393,8 @@ void HistoryPanel::populate(bool reloadDetails) {
                     key = delta.value_or(-std::numeric_limits<double>::infinity());
                 auto *item = new SortItem(labels[col], key);
                 item->setData(Qt::UserRole, e.directory);
+                if (col != 9 || !e.valid)
+                    item->setFlags(item->flags() & ~Qt::ItemIsEditable);
                 item->setToolTip(e.directory + (e.warnings.isEmpty() ? "" : "\n" + e.warnings.join('\n')));
                 table->setItem(row, col, item);
             }

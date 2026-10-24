@@ -4,6 +4,7 @@
 #include "editing/chemistry.h"
 #include "model/geometry.h"
 #include "ui/main_window.h"
+#include "ui/theme.h"
 #include <QtWidgets>
 
 namespace mf {
@@ -67,7 +68,9 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     message = new QLabel;
     message->setObjectName("coordinateMessage");
     message->setWordWrap(true);
-    message->setStyleSheet("color:#b91c1c;");
+    auto messagePalette = message->palette();
+    messagePalette.setColor(QPalette::WindowText, errorColor(messagePalette));
+    message->setPalette(messagePalette);
     message->hide();
     layout->addWidget(message);
     auto *splitter = new QSplitter;

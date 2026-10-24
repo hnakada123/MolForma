@@ -79,6 +79,13 @@ class ResultsPanel : public QWidget {
     QPushButton *energyReference, *saveModeImages, *saveModeTrajectory, *compareGeometry;
     int referenceEnergy = -1;  // Row of data.energies that ΔE refers to (-1: the last energy).
     QVector<bool> rigidMotion; // Translations and rotations among data.modes.
+    // NWChem "freq animate" writes one XYZ per mode and step (<name>.m-001.s-001.xyz). The file
+    // list shows one entry per mode; choosing it loads the steps joined into one trajectory.
+    QTemporaryDir animationDir;
+    QMap<QString, QStringList> animationFrames; // "animation:<name>:<mode>" → step files
+    QMap<QString, QString> animationSources;    // joined file → its list entry
+    void fillFiles(const QString &selected);
+    void openEntry(const QString &entry);
     // Measurement by atom number, so it follows frames and vibration snapshots (new atom IDs).
     QVector<int> picked;
     QVector<QVector<int>> pinned;

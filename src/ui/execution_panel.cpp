@@ -213,7 +213,20 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     output->addLayout(actions);
     connect(prepare, &QPushButton::clicked, this, [this] { window->safe([this] { saveBundle(); }); });
     connect(start, &QPushButton::clicked, this, [this] { window->safe([this] { startCalculation(); }); });
-    connect(stop, &QPushButton::clicked, &run, &NwchemRun::stop);
+    connect(stop, &QPushButton::clicked, this, [this] {
+        if (QMessageBox::question(this, "計算の停止",
+                                  "実行中のNWChemを停止しますか？途中までのログと出力は保存先に残ります。",
+                                  QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
+            run.stop();
+    });
+    runStatus = new QToolButton;
+    runStatus->setObjectName("runStatusButton");
+    runStatus->setAutoRaise(true);
+    runStatus->setToolTip("「5 実行設定」を表示します。");
+    runStatus->hide();
+    window->statusBar()->addPermanentWidget(runStatus);
+    connect(runStatus, &QToolButton::clicked, this,
+            [this] { window->workspaceTabs->setCurrentWidget(this); });
     state = new QLabel;
     state->setObjectName("executionState");
     state->setWordWrap(true);
@@ -510,24 +523,70 @@ void ExecutionPanel::updateRun() {
         start->setEnabled(false);
         prepare->setEnabled(false);
     }
-    QString text;
-    if (!saved.directory.isEmpty()) {
-        QFile file(QDir(saved.directory).filePath(logChannel->currentData().toString()));
-        if (file.open(QIODevice::ReadOnly)) {
-            const bool truncated = file.size() > 128 * 1024;
-            if (truncated)
-                file.seek(file.size() - 128 * 1024);
-            text = (truncated ? "…ログの末尾を表示しています。全文は保存先にあります。\n" : "") +
-                   QString::fromUtf8(file.read(128 * 1024));
-        }
+    // Always visible in the status bar, whatever the tab.
+    if (!run.plan().directory.isEmpty()) {
+        const QMap<QString, QString> brief{{"starting", "NWChemを起動中"},
+                                           {"running", "NWChem実行中"},
+                                           {"stopping", "NWChemを停止中"},
+                                           {"cancelled", "最後の計算: 停止"},
+                                           {"timed_out", "最後の計算: 時間制限"},
+                                           {"failed", "最後の計算: 失敗"},
+                                           {"finished", "最後の計算: 終了（コード0）"}};
+        runStatus->setText(QString("%1%2 · %3")
+                               .arg(run.active() ? "▶ " : "", brief.value(run.state(), run.state()))
+                               .arg(run.active() ? QString("%1秒").arg(run.elapsedSeconds())
+                                                 : QFileInfo(run.plan().directory).fileName()));
+        runStatus->show();
     }
-    if (text != displayedLog) {
-        const bool atEnd = log->verticalScrollBar()->value() == log->verticalScrollBar()->maximum();
-        const int position = log->verticalScrollBar()->value();
-        displayedLog = text;
-        log->setPlainText(text);
-        log->verticalScrollBar()->setValue(atEnd ? log->verticalScrollBar()->maximum() : position);
+    appendLog();
+}
+void ExecutionPanel::appendLog() {
+    constexpr qint64 tail = 128 * 1024;
+    const QString path = saved.directory.isEmpty()
+                             ? QString()
+                             : QDir(saved.directory).filePath(logChannel->currentData().toString());
+    QFile file(path);
+    const bool readable = !path.isEmpty() && file.open(QIODevice::ReadOnly);
+    if (path != logPath || !readable || file.size() < logOffset) {
+        // Another job, channel or a rewritten file: start again from its last 128 KiB.
+        logPath = path;
+        logOffset = -1;
+        logDecoder = QStringDecoder(QStringDecoder::Utf8);
+        log->clear();
     }
+    if (!readable)
+        return;
+    auto *bar = log->verticalScrollBar();
+    const bool atEnd = bar->value() == bar->maximum();
+    QString added;
+    if (logOffset < 0) {
+        const bool truncated = file.size() > tail;
+        if (truncated)
+            file.seek(file.size() - tail);
+        added = (truncated ? "…ログの末尾を表示しています。全文は保存先にあります。\n" : "") +
+                QString(logDecoder.decode(file.read(tail)));
+        logOffset = file.size();
+    } else if (file.size() > logOffset) {
+        file.seek(logOffset);
+        const auto chunk = file.read(std::min<qint64>(file.size() - logOffset, 4 * tail));
+        logOffset += chunk.size();
+        added = logDecoder.decode(chunk);
+    }
+    if (added.isEmpty())
+        return;
+    // Insert at the end without touching the user's selection, then keep at most 128 Ki characters.
+    QTextCursor cursor(log->document());
+    cursor.movePosition(QTextCursor::End);
+    cursor.insertText(added);
+    if (log->document()->characterCount() > tail) {
+        QTextCursor head(log->document());
+        head.setPosition(int(log->document()->characterCount() - tail));
+        head.movePosition(QTextCursor::EndOfBlock);
+        head.setPosition(0, QTextCursor::KeepAnchor);
+        head.removeSelectedText();
+    }
+    if (atEnd)
+        bar->setValue(bar->maximum());
 }
 void ExecutionPanel::runEnded() {
     const QMap<QString, QString> names{{"finished", "計算が終了しました（終了コード0）"},

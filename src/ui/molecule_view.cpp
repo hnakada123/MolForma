@@ -1,5 +1,6 @@
 #include "ui/molecule_view.h"
 #include "model/geometry.h"
+#include <Eigen/Geometry>
 #include <QSettings>
 #include <openbabel/elements.h>
 #ifdef MOLFORMA_HAS_VTK
@@ -258,13 +259,21 @@ void MoleculeView::setSurfaceStyle(bool positive, bool negative, int opacity) {
     scheduleRender();
 }
 Mat MoleculeView::camera() const {
-    const Vec angles(yaw, pitch, roll);
-    if (cachedAngles != angles) {
-        cachedCamera =
-            rotation(Vec::UnitZ(), roll) * rotation(Vec::UnitX(), pitch) * rotation(Vec::UnitY(), yaw);
-        cachedAngles = angles;
+    return orientation;
+}
+Vec MoleculeView::angles() const {
+    // orientation = Rz(roll)·Rx(pitch)·Ry(yaw): its third row is (−cos p sin y, sin p, cos p cos y).
+    const Mat &r = orientation;
+    const double pitch = std::asin(std::clamp(r(2, 1), -1., 1.));
+    double yaw, roll;
+    if (std::abs(std::cos(pitch)) > 1e-6) {
+        yaw = std::atan2(-r(2, 0), r(2, 2));
+        roll = std::atan2(-r(0, 1), r(1, 1));
+    } else { // Looking along the rotated Y axis: only yaw + roll is defined.
+        yaw = 0;
+        roll = std::atan2(r(1, 0), r(0, 0));
     }
-    return cachedCamera;
+    return Vec(yaw, pitch, roll) * 180 / M_PI;
 }
 QPointF MoleculeView::project(const Vec &p) const {
     Vec v = camera() * (p - center);
@@ -306,15 +315,12 @@ void MoleculeView::fit() {
     scheduleRender();
 }
 void MoleculeView::viewFrom(int axis) {
-    yaw = axis == 0 ? -90 : 0;
-    pitch = axis == 1 ? 90 : 0;
-    roll = 0;
+    setAngles(axis == 0 ? -90 : 0, axis == 1 ? 90 : 0, 0);
     fit();
+    emit orientationChanged();
 }
 void MoleculeView::setAngles(double y, double p, double r) {
-    yaw = y;
-    pitch = p;
-    roll = r;
+    orientation = rotation(Vec::UnitZ(), r) * rotation(Vec::UnitX(), p) * rotation(Vec::UnitY(), y);
     scheduleRender();
 }
 QString MoleculeView::hitAtom(const QPointF &p) const {
@@ -437,6 +443,13 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             items << Item{(r * ((t.a + t.b + t.c) / 3 - center)).z(), 2, i};
     }
     std::sort(items.begin(), items.end(), [](auto a, auto b) { return a.z < b.z; });
+    struct Label {
+        QPointF at;
+        QString text;
+        double z;
+        bool selected, hydrogen;
+    };
+    QVector<Label> labels;
     for (auto item : items) {
         if (item.kind == 2) {
             const auto &t = surface.at(item.index);
@@ -521,13 +534,54 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
                 label += QString::number(item.index + 1);
             if (a.charge)
                 label += QString("(%1%2)").arg(a.charge > 0 ? "+" : "").arg(a.charge);
-            p.setPen(QColor("#20364b"));
-            p.drawText(pos + QPointF(radius + 3, -radius - 1), label);
+            const bool chosen = selected.contains(a.id);
+            if (labelMode != "none" && (labelMode == "all" || chosen || (labelMode == "heavy" && !hydrogen)))
+                // Placed after all atoms, so labels stay readable in front of the drawing.
+                labels << Label{pos + QPointF(radius + 3, -radius - 1), label, item.z, chosen, hydrogen};
             if (a.fixed) {
                 p.setPen(QColor("#c47b12"));
                 p.drawText(pos + QPointF(-radius, radius + 14), "■");
             }
         }
+    }
+    // Labels: selected atoms first, then heavy atoms, front to back; skip any that would overlap.
+    std::stable_sort(labels.begin(), labels.end(), [](const Label &a, const Label &b) {
+        if (a.selected != b.selected)
+            return a.selected;
+        if (a.hydrogen != b.hydrogen)
+            return !a.hydrogen;
+        return a.z > b.z;
+    });
+    QVector<QRectF> placed;
+    const auto metrics = p.fontMetrics();
+    for (const auto &label : labels) {
+        const QRectF box =
+            QRectF(metrics.boundingRect(label.text)).translated(label.at).adjusted(-1, -1, 1, 1);
+        if (std::any_of(placed.begin(), placed.end(), [&](const QRectF &r) { return r.intersects(box); }))
+            continue;
+        placed << box;
+        p.setPen(QColor("#20364b"));
+        p.drawText(label.at, label.text);
+    }
+    // Candidate changes: removed atoms at their old place (red), added (green) and moved (orange).
+    for (const auto &[position, symbol] : removedAtoms) {
+        const QPointF at = project(position);
+        p.setPen(QPen(QColor("#d23c3c"), 2, Qt::DashLine));
+        p.setBrush(QColor(210, 60, 60, 40));
+        p.drawEllipse(at, 12, 12);
+        p.setPen(QPen(QColor("#d23c3c"), 2));
+        p.drawLine(at + QPointF(-6, -6), at + QPointF(6, 6));
+        p.drawLine(at + QPointF(-6, 6), at + QPointF(6, -6));
+        p.drawText(at + QPointF(13, 13), symbol);
+    }
+    for (const auto &a : doc.atoms) {
+        const bool added = addedAtoms.contains(a.id), moved = movedAtoms.contains(a.id);
+        if ((!added && !moved) || !shown(a))
+            continue;
+        p.setPen(QPen(added ? QColor("#25a35a") : QColor("#e08a1e"), 2.5));
+        p.setBrush(Qt::NoBrush);
+        const double r = atomRadius(a) + 4;
+        p.drawEllipse(project(a.position), r, r);
     }
     for (auto v : doc.data["centers"].toArray()) {
         auto c = v.toObject();
@@ -668,8 +722,12 @@ void MoleculeView::mouseMoveEvent(QMouseEvent *e) {
             boxing = true;
         else if (tool != "move" || pressedAtom.isEmpty() || pressModifiers.testFlag(Qt::AltModifier) ||
                  pressedButton == Qt::MiddleButton) {
-            yaw += delta.x() * .6;
-            pitch += delta.y() * .6;
+            // Trackball: turn about the screen's vertical and horizontal axes, whatever the
+            // current orientation (no gimbal lock), and keep the matrix orthonormal.
+            orientation =
+                rotation(Vec::UnitY(), delta.x() * .6) * rotation(Vec::UnitX(), delta.y() * .6) * orientation;
+            orientation = Eigen::Quaterniond(orientation).normalized().toRotationMatrix();
+            emit orientationChanged();
         }
     }
     last = e->position();
@@ -717,7 +775,11 @@ void MoleculeView::mouseReleaseEvent(QMouseEvent *e) {
         emit blankClicked(worldPosition(e->position()));
 }
 void MoleculeView::wheelEvent(QWheelEvent *e) {
-    scale = std::clamp(scale * std::pow(1.0015, e->angleDelta().y()), .5, 600.);
+    // Zoom about the cursor: the point under it stays in place.
+    const double next = std::clamp(scale * std::pow(1.0015, e->angleDelta().y()), .5, 600.);
+    const QPointF cursor = e->position(), middle(width() * .5, height() * .5);
+    pan = cursor - middle - (cursor - middle - pan) * (next / scale);
+    scale = next;
     scheduleRender();
     e->accept();
 }

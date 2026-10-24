@@ -64,7 +64,27 @@ class MoleculeView : public QWidget {
     }
     void fit();
     void viewFrom(int axis);
+    // Absolute orientation from the rotation sliders: Rz(roll)·Rx(pitch)·Ry(yaw), in degrees.
     void setAngles(double yaw, double pitch, double roll);
+    // The current orientation as (yaw, pitch, roll) for the sliders; pitch is within ±90°.
+    Vec angles() const;
+    // Which atoms carry element/number labels: "all", "heavy" (no hydrogens), "selection" or "none".
+    // Overlapping labels are left out, front atoms and selected atoms first.
+    void setLabelMode(const QString &mode) {
+        labelMode = mode;
+        scheduleRender();
+    }
+    QString labels() const {
+        return labelMode;
+    }
+    // Candidate changes: atoms that would be removed (drawn at their old place), added or moved.
+    void setChanges(const QVector<std::pair<Vec, QString>> &removed, const QSet<QString> &added,
+                    const QSet<QString> &moved) {
+        removedAtoms = removed;
+        addedAtoms = added;
+        movedAtoms = moved;
+        scheduleRender();
+    }
     void setTool(const QString &t) {
         tool = t;
     }
@@ -95,6 +115,8 @@ class MoleculeView : public QWidget {
         return {280, 240};
     }
   signals:
+    // The user rotated the view with the mouse or a +X/+Y/+Z button (not from setAngles).
+    void orientationChanged();
     void atomClicked(QString id, Qt::KeyboardModifiers modifiers);
     void blankClicked(mf::Vec position);
     void bondClicked(QString a, QString b);
@@ -130,7 +152,11 @@ class MoleculeView : public QWidget {
     Ids selected;
     QString tool = "select", colorMode = "element";
     Vec center = Vec::Zero();
-    double scale = 65, yaw = 0, pitch = 0, roll = 0, depth = 0;
+    double scale = 65, depth = 0;
+    Mat orientation = Mat::Identity(); // Camera rotation; mouse drags turn it about screen axes.
+    QString labelMode = "all";
+    QVector<std::pair<Vec, QString>> removedAtoms;
+    QSet<QString> addedAtoms, movedAtoms;
     QPointF pan, press, last;
     QString pressedAtom;
     bool showHydrogens = true, showIndices = true, aminoHandles = false, dragging = false, boxing = false;
@@ -159,8 +185,6 @@ class MoleculeView : public QWidget {
     bool moleculeDirty = true, surfaceDirty = true;
     QVector<QColor> atomColors;
     QHash<QString, int> atomIndices;
-    mutable Vec cachedAngles = Vec::Constant(std::numeric_limits<double>::infinity());
-    mutable Mat cachedCamera = Mat::Identity();
     void scheduleRender();
     void renderScene();
     void refreshColors();

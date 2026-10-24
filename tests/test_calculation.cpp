@@ -4,6 +4,7 @@
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_import.h"
 #include "ui/main_window.h"
+#include <QListWidget>
 #include <QtTest>
 #include <QtWidgets>
 #include <algorithm>
@@ -555,6 +556,41 @@ class CalculationTest : public QObject {
         QCOMPARE(nwchemSettings(w.document())["extra_input"].toString(), QString("set cphf:maxiter 50"));
         w.history()->undo();
         QVERIFY(extra->toPlainText().isEmpty()); // Undo shows the stored text again.
+    }
+    void diagnosticsChangesAndSearch() {
+        MainWindow w;
+        w.loadDocument(water());
+        choose(w, "method", "dft");
+        choose(w, "dispersion", "d3");
+        choose(w, "functional", "pbe0");
+        // Changes from the defaults, in the form's words.
+        const auto changes = w.findChild<QLabel *>("calculationChanges")->text();
+        QVERIFY2(changes.contains("電子状態の手法: DFT") && changes.contains("DFT汎関数: PBE0"),
+                 qPrintable(changes));
+        // A diagnostic with a quick fix (PBE0-D3 is fine; SCAN-D3 has no parameters).
+        choose(w, "functional", "scan");
+        auto *list = w.findChild<QListWidget *>("calculationValidation");
+        QListWidgetItem *fixable = nullptr;
+        for (int i = 0; i < list->count(); ++i)
+            if (!list->item(i)->data(Qt::UserRole + 2).toString().isEmpty())
+                fixable = list->item(i);
+        QVERIFY(fixable);
+        QVERIFY(fixable->text().contains("分散補正を「なし」にする"));
+        emit list->itemDoubleClicked(fixable);
+        QCOMPARE(nwchemSettings(w.document())["dispersion"].toString(), QString("none"));
+        w.findChild<QSpinBox *>("nwchem_charge")->setValue(1); // Odd electron count: the fix gives a doublet.
+        for (int i = 0; i < list->count(); ++i)
+            if (list->item(i)->text().contains("多重度"))
+                emit list->itemDoubleClicked(list->item(i));
+        QCOMPARE(w.document().job()["multiplicity"].toInt(), 2);
+        // The complete input is folded by default; searching an advanced option opens "4 詳細設定".
+        QVERIFY(!w.findChild<QPlainTextEdit *>("calculationInput")->isVisibleTo(&w));
+        auto *search = w.findChild<QLineEdit *>("calculationSearch");
+        search->setText("DIIS部分空間");
+        QMetaObject::invokeMethod(search, "returnPressed");
+        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentWidget()->objectName(),
+                 QString("advancedTab"));
+        QCOMPARE(w.findChild<QLineEdit *>("advancedSearch")->text(), QString("DIIS部分空間"));
     }
     void nwchemImportRoundTrip() {
         // MolForma's own inputs read back to the same structure and settings.

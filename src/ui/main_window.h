@@ -68,6 +68,7 @@ class MainWindow : public QMainWindow {
 
   protected:
     void closeEvent(QCloseEvent *) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *) override;
     void dropEvent(QDropEvent *) override;
 
@@ -123,6 +124,12 @@ class MainWindow : public QMainWindow {
     QWidget *candidateBar = nullptr, *chargeEditor = nullptr;
     QLabel *chargeSummary = nullptr;
     QCheckBox *includePointCharges = nullptr;
+    QCheckBox *deleteTerminate = nullptr; // "削除後に水素で終端化" in the edit panel.
+    QWidget *moleculePage = nullptr, *banner = nullptr;
+    QLabel *bannerLabel = nullptr;
+    QPushButton *undoButton = nullptr, *redoButton = nullptr;
+    QAction *undoAction = nullptr, *redoAction = nullptr;
+    QComboBox *labelModeBox = nullptr;
     QCheckBox *autoH = nullptr, *keepSelection = nullptr, *keepTool = nullptr, *showH = nullptr,
               *growth = nullptr;
     QPushButton *cancelWorkerButton = nullptr, *periodicTableButton = nullptr;
@@ -191,6 +198,14 @@ class MainWindow : public QMainWindow {
     void selectNumbers();
     void showReport();
     void showManual();
+    void showShortcuts();
+    // The one deletion of the editor: the atoms, hydrogens bonded only to them, and (when
+    // "削除後に水素で終端化" is on) new hydrogens on the cut atoms, shown as a candidate.
+    void deleteAtoms(const Ids &ids);
+    void selectAll();
+    void copySelection();
+    void pasteFragment();
+    void positionBanner();
     void addRecent(const QString &path);
     void refreshRecent();
     void removeAutosave();

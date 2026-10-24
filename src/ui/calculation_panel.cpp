@@ -3,7 +3,9 @@
 #include "ui/calculation_panel.h"
 #include "model/geometry.h"
 #include "nwchem/nwchem.h"
+#include "nwchem/nwchem_advanced.h"
 #include "ui/advanced_panel.h"
+#include "ui/diagnostics_list.h"
 #include "ui/execution_panel.h"
 #include "ui/input_preview_panel.h"
 #include "ui/main_window.h"
@@ -47,14 +49,23 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     layout->addWidget(message);
     auto *split = new QSplitter;
     layout->addWidget(split, 1);
-    auto *scroll = new QScrollArea;
+    auto *left = new QWidget;
+    auto *leftLayout = new QVBoxLayout(left);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    search = new QLineEdit;
+    search->setObjectName("calculationSearch");
+    search->setPlaceholderText("設定を検索（計算条件と「4 詳細設定」）…");
+    search->setClearButtonEnabled(true);
+    leftLayout->addWidget(search);
+    scroll = new QScrollArea;
     scroll->setWidgetResizable(true);
     scroll->setMinimumWidth(360);
+    leftLayout->addWidget(scroll, 1);
     formWidget = new QWidget;
     formWidget->setObjectName("calculationForm");
     auto *forms = new QVBoxLayout(formWidget);
     scroll->setWidget(formWidget);
-    split->addWidget(scroll);
+    split->addWidget(left);
     auto *presetForm = group("プリセット", forms);
     presets = new QComboBox;
     presets->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
@@ -333,13 +344,28 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     summary->setObjectName("calculationSummary");
     summary->setWordWrap(true);
     result->addWidget(summary);
-    validation = new QPlainTextEdit;
+    validation = new DiagnosticsList;
     validation->setObjectName("calculationValidation");
-    validation->setReadOnly(true);
-    validation->setMaximumHeight(175);
-    result->addWidget(validation);
+    result->addWidget(validation, 1);
+    connect(validation, &DiagnosticsList::messageClicked, this,
+            [this](const QString &message) { showField(fieldFor(message)); });
+    connect(validation, &DiagnosticsList::fixRequested, this, &CalculationPanel::applyFix);
+    result->addWidget(new QLabel("既定値から変更した条件"));
+    changesFromDefaults = new QLabel;
+    changesFromDefaults->setObjectName("calculationChanges");
+    changesFromDefaults->setWordWrap(true);
+    changesFromDefaults->setTextFormat(Qt::PlainText);
+    changesFromDefaults->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    result->addWidget(changesFromDefaults);
     auto *actions = new QHBoxLayout;
-    actions->addWidget(new QLabel("NWChem入力（.nw）"));
+    // The complete input is in "6 入力プレビュー"; here it is folded unless asked for.
+    showInput = new QToolButton;
+    showInput->setObjectName("calculationShowInput");
+    showInput->setText("入力全文（.nw）");
+    showInput->setCheckable(true);
+    showInput->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    showInput->setArrowType(Qt::RightArrow);
+    actions->addWidget(showInput);
     actions->addStretch();
     copy = new QPushButton("コピー");
     save = new QPushButton("保存…");
@@ -353,7 +379,15 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     preview->setReadOnly(true);
     preview->setLineWrapMode(QPlainTextEdit::NoWrap);
     preview->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    result->addWidget(preview, 1);
+    result->addWidget(preview, 3);
+    showInput->setChecked(window->settings.value("calculation/showInput", false).toBool());
+    preview->setVisible(showInput->isChecked());
+    showInput->setArrowType(showInput->isChecked() ? Qt::DownArrow : Qt::RightArrow);
+    connect(showInput, &QToolButton::toggled, this, [this](bool on) {
+        preview->setVisible(on);
+        showInput->setArrowType(on ? Qt::DownArrow : Qt::RightArrow);
+        window->settings.setValue("calculation/showInput", on);
+    });
     split->addWidget(right);
     split->setStretchFactor(0, 1);
     split->setStretchFactor(1, 1);
@@ -361,6 +395,168 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     connect(copy, &QPushButton::clicked, this, [this] { exportInput(false); });
     connect(save, &QPushButton::clicked, this, [this] { exportInput(true); });
     connect(window->history(), &QUndoStack::indexChanged, this, [this] { refresh(); });
+    // Labels for search and the list of changes: form rows, plus the fields with their own rows.
+    for (const auto &[key, text] : {std::pair{"xc_custom", "任意のxc"},
+                                    {"dielectric", "比誘電率"},
+                                    {"basis_overrides", "元素別の基底"},
+                                    {"constraints", "内部座標の拘束"},
+                                    {"scan_atoms", "スキャン座標"},
+                                    {"extra_input", "追加入力（タスクの前）"},
+                                    {"extra_tasks", "追加入力（入力の末尾）"}})
+        labels[key] = text;
+    QStringList completions = labels.values();
+    for (const auto &o : nwchemAdvancedOptions())
+        completions << o.label + "（詳細設定）";
+    auto *completer = new QCompleter(completions, search);
+    completer->setCaseSensitivity(Qt::CaseInsensitive);
+    completer->setFilterMode(Qt::MatchContains);
+    search->setCompleter(completer);
+    connect(completer, qOverload<const QString &>(&QCompleter::activated), this,
+            &CalculationPanel::searchSettings);
+    connect(search, &QLineEdit::returnPressed, this, [this] { searchSettings(search->text()); });
+}
+QString CalculationPanel::valueText(const QString &key, const QJsonValue &value) const {
+    for (const auto &c : nwchemChoices(key))
+        if (c.value == value.toString())
+            return c.label;
+    if (value.isBool())
+        return value.toBool() ? "オン" : "オフ";
+    if (value.isDouble())
+        return QLocale().toString(value.toDouble());
+    if (value.isArray())
+        return QString("%1件").arg(value.toArray().size());
+    if (value.isObject()) {
+        QStringList parts;
+        const auto object = value.toObject();
+        for (auto it = object.begin(); it != object.end(); ++it)
+            parts << it.key() + ": " + it.value().toString();
+        return parts.join("、");
+    }
+    const auto text = value.toString();
+    return text.contains('\n') || text.size() > 40 ? QString("あり（%1文字）").arg(text.size()) : text;
+}
+void CalculationPanel::showField(const QString &key) {
+    QWidget *target = key == "constraints"       ? static_cast<QWidget *>(constraints)
+                      : key == "scan_atoms"      ? static_cast<QWidget *>(scanCoordinate)
+                      : key == "extra_input"     ? static_cast<QWidget *>(extraInput)
+                      : key == "extra_tasks"     ? static_cast<QWidget *>(extraTasks)
+                      : key == "basis_overrides" ? static_cast<QWidget *>(elementBases)
+                                                 : fields.value(key);
+    if (key == "advanced") {
+        window->workspaceTabs->setCurrentWidget(window->advanced);
+        return;
+    }
+    if (!target)
+        return;
+    scroll->ensureWidgetVisible(target, 20, 60);
+    target->setFocus(Qt::OtherFocusReason);
+}
+QString CalculationPanel::fieldFor(const QString &message) const {
+    // The wording of validateNwchem's messages names the setting; the first match wins.
+    static const QVector<std::pair<const char *, const char *>> words{{"詳細設定", "advanced"},
+                                                                      {"後続の一点計算", "followup"},
+                                                                      {"追加入力", "extra_input"},
+                                                                      {"拘束", "constraints"},
+                                                                      {"スキャン", "scan_atoms"},
+                                                                      {"IRC", "irc_points"},
+                                                                      {"BSSE", "bsse"},
+                                                                      {"物性", "prop_mulliken"},
+                                                                      {"NMR", "prop_nmr"},
+                                                                      {"ESP", "prop_esp"},
+                                                                      {"TDDFT", "tddft"},
+                                                                      {"任意のxc", "xc_custom"},
+                                                                      {"分散補正", "dispersion"},
+                                                                      {"D3", "dispersion"},
+                                                                      {"SMD", "solvent"},
+                                                                      {"COSMO", "solvent"},
+                                                                      {"溶媒", "solvent_name"},
+                                                                      {"誘電率", "dielectric"},
+                                                                      {"相対論", "relativistic"},
+                                                                      {"ZORA", "relativistic"},
+                                                                      {"RI-J", "ri_j"},
+                                                                      {"フィッティング", "ri_j"},
+                                                                      {"元素別の基底", "basis_overrides"},
+                                                                      {"ECP", "basis"},
+                                                                      {"基底", "basis"},
+                                                                      {"多重度", "multiplicity"},
+                                                                      {"電子数", "multiplicity"},
+                                                                      {"全電荷", "charge"},
+                                                                      {"RHF", "reference"},
+                                                                      {"ROHF", "reference"},
+                                                                      {"UHF", "reference"},
+                                                                      {"内殻凍結", "freeze_core"},
+                                                                      {"CCSD", "method"},
+                                                                      {"計算名", "start"},
+                                                                      {"タイトル", "title"},
+                                                                      {"メモリ", "memory_mb"},
+                                                                      {"振動数", "task"},
+                                                                      {"最適化", "task"},
+                                                                      {"固定原子", "task"},
+                                                                      {"点電荷", "include_point_charges"}};
+    for (const auto &[word, key] : words)
+        if (message.contains(QString::fromUtf8(word)))
+            return key;
+    for (auto it = fields.begin(); it != fields.end(); ++it)
+        if (message.contains(it.key()))
+            return it.key();
+    return {};
+}
+QMap<QString, QString> CalculationPanel::fixes(const QStringList &errors) const {
+    QMap<QString, QString> result;
+    for (const auto &e : errors) {
+        if (e.contains("と多重度") && e.contains("整合しません"))
+            result[e] = "電子数に合う多重度にする";
+        else if (e.contains("分散補正") || e.contains("パラメータがありません") || e.contains("一致しないか"))
+            result[e] = "分散補正を「なし」にする";
+        else if (e.contains("RHF / RKSは多重度1"))
+            result[e] = "参照波動関数を「自動」にする";
+        else if (e.contains("TDDFTは計算目的"))
+            result[e] = "計算目的を「一点エネルギー」にする";
+        else if (e.contains("SMDでは溶媒名"))
+            result[e] = "溶媒を水にする";
+        else if (e.contains("SMDはDFT専用"))
+            result[e] = "溶媒モデルをCOSMOにする";
+        else if (e.contains("ZORAはDFT専用"))
+            result[e] = "相対論をDKHにする";
+        else if (e.contains("RI-J（Coulombフィッティング）はDFT"))
+            result[e] = "RI-Jをオフにする";
+    }
+    return result;
+}
+void CalculationPanel::applyFix(const QString &message) {
+    const auto &d = window->document();
+    const auto fix = fixes({message}).value(message);
+    if (fix.startsWith("電子数")) {
+        const int electrons = validateNwchem(d).electrons;
+        change("multiplicity", electrons % 2 ? 2 : 1);
+    } else if (fix.startsWith("分散補正"))
+        change("dispersion", "none");
+    else if (fix.startsWith("参照波動関数"))
+        change("reference", "auto");
+    else if (fix.startsWith("計算目的"))
+        change("task", "energy");
+    else if (fix.startsWith("溶媒を水"))
+        change("solvent_name", "h2o");
+    else if (fix.startsWith("溶媒モデル"))
+        change("solvent", "cosmo");
+    else if (fix.startsWith("相対論"))
+        change("relativistic", "dkh");
+    else if (fix.startsWith("RI-J"))
+        change("ri_j", false);
+}
+void CalculationPanel::searchSettings(const QString &text) {
+    const auto query = QString(text).remove("（詳細設定）").trimmed();
+    if (query.isEmpty())
+        return;
+    for (auto it = labels.begin(); it != labels.end(); ++it)
+        if (it.value().contains(query, Qt::CaseInsensitive)) {
+            showField(it.key());
+            return;
+        }
+    // Not a field of this tab: show it in "4 詳細設定", filtered by the same words.
+    window->workspaceTabs->setCurrentWidget(window->advanced);
+    if (auto *field = window->advanced->findChild<QLineEdit *>("advancedSearch"))
+        field->setText(query);
 }
 QFormLayout *CalculationPanel::group(const QString &title, QVBoxLayout *layout) {
     auto *box = new QGroupBox(title);
@@ -376,6 +572,8 @@ void CalculationPanel::choice(QFormLayout *form, const QString &label, const QSt
     for (const auto &c : nwchemChoices(key))
         combo->addItem(c.label, c.value);
     fields[key] = combo;
+    labels[key] = label;
+    fieldOrder << key;
     form->addRow(label, combo);
     connect(combo, &QComboBox::currentIndexChanged, this,
             [this, combo, key] { change(key, combo->currentData().toString()); });
@@ -387,6 +585,8 @@ void CalculationPanel::integer(QFormLayout *form, const QString &label, const QS
     spin->setRange(minimum, maximum);
     spin->setKeyboardTracking(false);
     fields[key] = spin;
+    labels[key] = label;
+    fieldOrder << key;
     form->addRow(label, spin);
     connect(spin, &QSpinBox::valueChanged, this, [this, key](int n) { change(key, n); });
 }
@@ -398,6 +598,8 @@ void CalculationPanel::real(QFormLayout *form, const QString &label, const QStri
     spin->setDecimals(decimals);
     spin->setKeyboardTracking(false);
     fields[key] = spin;
+    labels[key] = label;
+    fieldOrder << key;
     form->addRow(label, spin);
     connect(spin, &QDoubleSpinBox::valueChanged, this, [this, key](double n) { change(key, n); });
 }
@@ -405,6 +607,8 @@ void CalculationPanel::flag(QFormLayout *form, const QString &label, const QStri
     auto *check = new QCheckBox(label);
     check->setObjectName("nwchem_" + key);
     fields[key] = check;
+    labels[key] = label;
+    fieldOrder << key;
     form->addRow(check);
     connect(check, &QCheckBox::toggled, this, [this, key](bool b) { change(key, b); });
 }
@@ -553,15 +757,28 @@ void CalculationPanel::describePreset() {
     const auto selected = presets->currentData().toJsonObject();
     const auto current = nwchemPresetSettings(nwchemSettings(window->displayDocument()));
     QStringList changes;
-    for (auto it = selected.begin(); it != selected.end(); ++it)
-        if (it.value() != current[it.key()]) {
-            auto valueText = [](const QJsonValue &v) { return nwchemAdvancedText(v); };
-            changes << it.key() + ": " + valueText(current[it.key()]) + " → " + valueText(it.value());
+    auto keys = fieldOrder; // In the order of the form.
+    for (const auto &key : selected.keys())
+        if (!keys.contains(key))
+            keys << key;
+    for (const auto &key : keys) {
+        if (!selected.contains(key) || selected[key] == current[key])
+            continue;
+        if (key == "advanced") {
+            changes << "詳細設定: " + QString::number(selected[key].toObject().size()) + "項目";
+            continue;
         }
-    presetSummary->setText(QString("変更 %1 項目。分子・電荷・多重度・計算名・メモリ・単位は保持します。"
-                                   "変更内容はここにマウスを置くと表示します。")
-                               .arg(changes.size()));
-    presetSummary->setToolTip(changes.isEmpty() ? "現在の条件と同じです。" : changes.join('\n'));
+        changes << labels.value(key, key) + ": " + valueText(key, current[key]) + " → " +
+                       valueText(key, selected[key]);
+    }
+    presetSummary->setText(
+        changes.isEmpty()
+            ? QString("現在の条件と同じです。")
+            : QString(
+                  "適用すると %1 項目が変わります（分子・電荷・多重度・計算名・メモリ・単位は保持）:\n・%2")
+                  .arg(changes.size())
+                  .arg(changes.mid(0, 8).join("\n・") + (changes.size() > 8 ? "\n・…" : "")));
+    presetSummary->setToolTip(changes.join('\n'));
     removePreset->setEnabled(presets->currentIndex() >= nwchemPresets().size());
 }
 void CalculationPanel::storePreset() {
@@ -676,15 +893,24 @@ void CalculationPanel::refresh() {
                                   ? (check.reference == "rhf" ? "RKS" : "UKS")
                                   : check.reference.toUpper(),
                               check.ecpElectrons ? "（ECP適用後）" : ""));
-    QStringList diagnostics;
-    if (check.errors.isEmpty())
-        diagnostics << "✓ 入力を生成できます。";
-    for (const auto &error : check.errors)
-        diagnostics << "エラー: " + error;
-    for (const auto &warning : check.warnings)
-        diagnostics << "確認: " + warning;
-    validation->setPlainText(diagnostics.join('\n'));
-    validation->setFixedHeight(std::clamp(30 + int(diagnostics.size()) * 24, 65, 175));
+    validation->setMessages(
+        check.errors, check.warnings,
+        "✓ 入力を生成できます。全文は「6 入力プレビュー」または下の「入力全文」で確認できます。",
+        fixes(check.errors));
+    QStringList changed;
+    const auto defaults = nwchemDefaults();
+    auto order = fieldOrder; // In the order of the form, then the fields with their own rows.
+    for (const auto &key : labels.keys())
+        if (!order.contains(key))
+            order << key;
+    for (const auto &key : order)
+        if (defaults.contains(key) && s[key] != defaults[key])
+            changed << labels[key] + ": " + valueText(key, s[key]);
+    const int advancedCount = nwchemAdvanced(d).size();
+    if (advancedCount)
+        changed << QString("「4 詳細設定」: %1項目").arg(advancedCount);
+    changesFromDefaults->setText(changed.isEmpty() ? QString("なし（HF / STO-3G・一点エネルギー）")
+                                                   : changed.join("\n"));
     preview->setPlainText(check.errors.isEmpty() ? nwchemInput(d)
                                                  : "入力を生成できません。上のエラーを修正してください。");
     copy->setEnabled(editable && check.errors.isEmpty());

@@ -7,8 +7,10 @@ class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
 class QPushButton;
+class QScrollArea;
 namespace mf {
 class MainWindow;
+class DiagnosticsList;
 class AdvancedPanel : public QWidget {
     Q_OBJECT
   public:
@@ -32,7 +34,9 @@ class AdvancedPanel : public QWidget {
     QLineEdit *search;
     QComboBox *category, *filter;
     QLabel *context, *count, *empty, *message, *outputSummary;
-    QPlainTextEdit *diagnostics, *preview;
+    QPlainTextEdit *preview;
+    DiagnosticsList *diagnostics;
+    QScrollArea *scroll;
     QPushButton *undo, *redo, *resetAll, *copy, *save;
     void change(const QString &key, const QJsonValue &value);
     void reset(const QString &group);

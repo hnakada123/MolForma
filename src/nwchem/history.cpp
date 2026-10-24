@@ -119,6 +119,17 @@ HistoryEntry readHistoryEntry(const QString &directory) {
             e.method += " / " + nwchemFunctionalLabel(calculation);
         e.basis = nwchemBasisLabel(calculation);
         e.task = historyChoice("task", calculation["task"].toString());
+        // Composition tells jobs with the same calculation name apart (older records: from the project).
+        e.formula = e.manifest["formula"].toString();
+        if (e.formula.isEmpty())
+            e.formula =
+                Document::fromProject(parseJson(bytes(e.directory, "project.kgui.json", projectLimit)))
+                    .formula();
+    } catch (const std::exception &error) {
+        e.warnings << QString::fromUtf8(error.what());
+    }
+    try {
+        e.memo = historyMemo(e.directory);
     } catch (const std::exception &error) {
         e.warnings << QString::fromUtf8(error.what());
     }
@@ -145,6 +156,25 @@ HistoryEntry readHistoryEntry(const QString &directory) {
         }
     }
     return e;
+}
+QString historyMemo(const QString &directory) {
+    if (!QFileInfo::exists(QDir(directory).filePath("memo.txt")))
+        return {};
+    return QString::fromUtf8(bytes(directory, "memo.txt", 4096)).trimmed();
+}
+void setHistoryMemo(const QString &directory, const QString &text) {
+    if (text.size() > 1000)
+        fail("メモは1000文字以内で入力してください。");
+    const auto m = manifest(directory); // Only MolForma job folders.
+    Q_UNUSED(m);
+    const auto path = QDir(directory).filePath("memo.txt");
+    if (QFileInfo(path).isSymLink())
+        fail("メモのファイルがシンボリックリンクです。");
+    if (text.trimmed().isEmpty()) {
+        QFile::remove(path);
+        return;
+    }
+    writeFile(path, text.trimmed().toUtf8() + '\n');
 }
 QString historyText(const QString &directory, const QString &name, bool tail) {
     if (!QStringList{"input.nw", "output.out", "stderr.err", "run.json"}.contains(name))
@@ -213,7 +243,7 @@ void trashHistoryEntry(const QString &directory, const QString &root, const QStr
 }
 QString historyCsv(const QVector<HistoryEntry> &entries) {
     QString text = "作成日時UTC,計算名,手法,基底,目的,記録状態,経過秒,最終検出エネルギーHartree,"
-                   "エネルギー手法,フォルダー\r\n";
+                   "エネルギー手法,フォルダー,組成,メモ\r\n";
     for (const auto &e : entries) {
         QStringList values{e.created.toUTC().toString(Qt::ISODateWithMs),
                            e.name,
@@ -224,7 +254,9 @@ QString historyCsv(const QVector<HistoryEntry> &entries) {
                            e.seconds < 0 ? "" : QString::number(e.seconds),
                            e.energy ? QString::number(*e.energy, 'g', 16) : "",
                            e.energyMethod,
-                           e.directory};
+                           e.directory,
+                           e.formula,
+                           e.memo};
         for (int i = 0; i < values.size(); ++i) {
             auto &v = values[i];
             // Text columns must remain text when a spreadsheet opens the exported CSV.

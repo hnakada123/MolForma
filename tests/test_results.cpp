@@ -580,6 +580,35 @@ class ResultsTest : public QObject {
         QCOMPARE(atoms->item(1, 1)->text(), QString("H"));
         QVERIFY(view->monitorList().isEmpty()); // Measurements belong to the previous result.
     }
+    void animationFilesGrouped() {
+        // NWChem "freq animate": one XYZ per mode and step, shown as one entry per mode.
+        QTemporaryDir job;
+        writeFile(job.filePath("output.out"), ("NWChem\n" + geometry()).toUtf8());
+        for (int mode = 1; mode <= 2; ++mode)
+            for (int step = 1; step <= 3; ++step)
+                writeFile(job.filePath(QString("w_vib.freq.m-%1.s-%2.xyz")
+                                           .arg(mode, 3, 10, QChar('0'))
+                                           .arg(step, 3, 10, QChar('0'))),
+                          QString("1\nstep %1\nH 0 0 %2\n").arg(step).arg(step).toUtf8());
+        MainWindow w;
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        QSignalSpy done(panel, &ResultsPanel::loaded);
+        panel->openDirectory(job.path());
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        auto *chooser = widget<QComboBox>(w, "resultsFiles");
+        QStringList entries;
+        for (int i = 0; i < chooser->count(); ++i)
+            if (!chooser->itemText(i).isEmpty())
+                entries << chooser->itemText(i);
+        QCOMPARE(entries.size(), 3); // output.out and two modes, not six files.
+        const int mode = chooser->findText("振動アニメーション w_vib.freq: モード 2（3枚）");
+        QVERIFY2(mode >= 0, qPrintable(entries.join(" | ")));
+        chooser->setCurrentIndex(mode);
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 2, 10000);
+        QCOMPARE(panel->result().frames.size(), 3);
+        QCOMPARE(panel->result().frames[2].molecule.atoms[0].position.z(), 3.0);
+        QCOMPARE(chooser->currentText(), QString("振動アニメーション w_vib.freq: モード 2（3枚）"));
+    }
     void cameraSlidersPreserveGeometry() {
         MainWindow w;
         auto editor = Document::fromXyz("2\neditor\nH 0 0 0\nH 0 0 .74\n");

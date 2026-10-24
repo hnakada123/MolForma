@@ -3,6 +3,7 @@
 #include "ui/advanced_panel.h"
 #include "nwchem/nwchem_output.h"
 #include "ui/calculation_panel.h"
+#include "ui/diagnostics_list.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
 #include <QtWidgets>
@@ -71,7 +72,7 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
     layout->addWidget(message);
     auto *split = new QSplitter;
     layout->addWidget(split, 1);
-    auto *scroll = new QScrollArea;
+    scroll = new QScrollArea;
     scroll->setWidgetResizable(true);
     auto *form = new QWidget;
     scroll->setWidget(form);
@@ -167,12 +168,33 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
     auto *right = new QWidget;
     auto *output = new QVBoxLayout(right);
     output->setContentsMargins(4, 0, 0, 0);
-    diagnostics = new QPlainTextEdit;
+    diagnostics = new DiagnosticsList;
     diagnostics->setObjectName("advancedValidation");
-    diagnostics->setReadOnly(true);
-    output->addWidget(diagnostics);
+    output->addWidget(diagnostics, 1);
+    // A message naming an option (「…」) shows its row; others belong to "3 計算条件".
+    connect(diagnostics, &DiagnosticsList::messageClicked, this, [this](const QString &text) {
+        for (const auto &o : nwchemAdvancedOptions())
+            if (text.contains("「" + o.label + "」") && rows.contains(o.key)) {
+                search->clear();
+                category->setCurrentIndex(0);
+                filter->setCurrentIndex(0);
+                scroll->ensureWidgetVisible(rows[o.key].container, 20, 60);
+                rows[o.key].editor->setFocus(Qt::OtherFocusReason);
+                return;
+            }
+        const auto key = window->calculation->fieldFor(text);
+        if (!key.isEmpty() && key != "advanced") {
+            window->workspaceTabs->setCurrentWidget(window->calculation);
+            window->calculation->showField(key);
+        }
+    });
     auto *actions = new QHBoxLayout;
-    actions->addWidget(new QLabel("NWChem入力（詳細設定を反映）"));
+    auto *showInput = new QToolButton;
+    showInput->setObjectName("advancedShowInput");
+    showInput->setText("入力全文（詳細設定を反映）");
+    showInput->setCheckable(true);
+    showInput->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    actions->addWidget(showInput);
     actions->addStretch();
     copy = new QPushButton("コピー");
     save = new QPushButton("保存…");
@@ -186,7 +208,15 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
     preview->setReadOnly(true);
     preview->setLineWrapMode(QPlainTextEdit::NoWrap);
     preview->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    output->addWidget(preview, 1);
+    output->addWidget(preview, 3);
+    showInput->setChecked(window->settings.value("advanced/showInput", false).toBool());
+    preview->setVisible(showInput->isChecked());
+    showInput->setArrowType(showInput->isChecked() ? Qt::DownArrow : Qt::RightArrow);
+    connect(showInput, &QToolButton::toggled, this, [this, showInput](bool on) {
+        preview->setVisible(on);
+        showInput->setArrowType(on ? Qt::DownArrow : Qt::RightArrow);
+        window->settings.setValue("advanced/showInput", on);
+    });
     split->addWidget(right);
     split->setStretchFactor(0, 1);
     split->setStretchFactor(1, 1);
@@ -301,15 +331,9 @@ void AdvancedPanel::refresh() {
         "HF/KSの軌道・密度を、計算後に出力します。保存先は「軌道・ファイル」の永続ディレクトリに従います。\n"
         "この出力設定は計算プリセットの切替後も保持します。\n" +
         (outputs.isEmpty() ? QString("CUBE・MOLDENの出力はオフです。") : "出力予定:\n" + outputs.join('\n')));
-    QStringList messages;
-    if (report.errors.isEmpty())
-        messages << "✓ 入力を生成できます。";
-    for (const auto &error : report.errors)
-        messages << "エラー: " + error;
-    for (const auto &warning : report.warnings)
-        messages << "確認: " + warning;
-    diagnostics->setPlainText(messages.join('\n'));
-    diagnostics->setFixedHeight(std::clamp(30 + int(messages.size()) * 24, 65, 170));
+    diagnostics->setMessages(
+        report.errors, report.warnings,
+        "✓ 入力を生成できます。全文は「6 入力プレビュー」または下の「入力全文」で確認できます。");
     preview->setPlainText(report.errors.isEmpty() ? nwchemInput(d)
                                                   : "入力を生成できません。上のエラーを修正してください。");
     copy->setEnabled(editable && report.errors.isEmpty());

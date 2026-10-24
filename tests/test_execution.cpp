@@ -321,6 +321,10 @@ class ExecutionTest : public QObject {
         // The end is announced, and the job folder loads into the result viewer (tab unchanged).
         QVERIFY(w.findChild<QCheckBox *>("executionOpenResults")->isChecked());
         QTRY_VERIFY(w.statusBar()->currentMessage().contains("計算が終了しました"));
+        auto *runStatus = w.findChild<QToolButton *>("runStatusButton");
+        QVERIFY(runStatus->isVisibleTo(&w) && runStatus->text().contains("最後の計算: 終了"));
+        runStatus->click(); // Leads back to "5 実行設定".
+        QCOMPARE(tabs->currentIndex(), 4);
         // (This test executable is not a result worker, so only the request is checked.)
         QTRY_COMPARE(w.findChild<QComboBox *>("resultsFiles")->currentText(), QString("output.out"));
         QCOMPARE(tabs->currentIndex(), 4);
@@ -409,6 +413,10 @@ class ExecutionTest : public QObject {
             !run->active() || (QFileInfo::exists(output) && readFile(output).contains("NWChem DFT Module")),
             30000);
         QVERIFY(run->active());
+        QTimer::singleShot(0, &w, [] { // The stop button asks first.
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()))
+                box->button(QMessageBox::Yes)->click();
+        });
         button(w, "executionStop")->click();
         QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 10000);
         QCOMPARE(run->state(), "cancelled");

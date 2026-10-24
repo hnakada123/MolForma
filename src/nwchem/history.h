@@ -9,7 +9,7 @@
 
 namespace mf {
 struct HistoryEntry {
-    QString directory, name, method, basis, task, status;
+    QString directory, name, method, basis, task, status, formula, memo;
     QDateTime created;
     QJsonObject manifest;
     QStringList warnings;
@@ -28,6 +28,9 @@ QString historyIntegrity(const HistoryEntry &entry);
 Document historyDocument(const QString &directory);
 void trashHistoryEntry(const QString &directory, const QString &root, const QString &activeDirectory);
 QString historyCsv(const QVector<HistoryEntry> &entries);
+// The user's note on a job: memo.txt in the job folder, outside the files the bundle hashes.
+QString historyMemo(const QString &directory);
+void setHistoryMemo(const QString &directory, const QString &text);
 
 // Incremental, bounded directory scan. Each event reads at most one bundle.
 class HistoryScan : public QObject {

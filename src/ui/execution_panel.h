@@ -1,11 +1,13 @@
 #pragma once
 #include "nwchem/nwchem_execution.h"
 #include <QMap>
+#include <QStringDecoder>
 #include <QWidget>
 class QCheckBox;
 class QComboBox;
 class QFormLayout;
 class QSystemTrayIcon;
+class QToolButton;
 class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
@@ -53,7 +55,13 @@ class ExecutionPanel : public QWidget {
     QCheckBox *openResults; // Load the job folder into the result viewer when a run finishes.
     QSystemTrayIcon *tray = nullptr;
     ExecutionPlan saved;
-    QString displayedLog, previousRunState;
+    QString previousRunState;
+    // The log view appends what the file gained since the last look, so a selection stays.
+    QString logPath;
+    qint64 logOffset = -1;
+    QStringDecoder logDecoder{QStringDecoder::Utf8};
+    QToolButton *runStatus; // Permanent status-bar entry for the current or last run.
+    void appendLog();
     QString baseDirectory() const;
     void change(const QString &key, const QJsonValue &value);
     void editEnvironment();

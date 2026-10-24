@@ -7,6 +7,7 @@
 #include "ui/template_delegate.h"
 #include <QApplication>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QComboBox>
 #include <QDir>
 #include <QDoubleSpinBox>
@@ -29,6 +30,7 @@
 #include <QTemporaryDir>
 #include <QTextBrowser>
 #include <QTimer>
+#include <QWheelEvent>
 #include <QtTest>
 using namespace mf;
 class InspectableTemplateDelegate : public TemplateDelegate {
@@ -194,6 +196,101 @@ class EditorTest : public QObject {
         view->setDocument(line);
         view->setMonitors({line.ids()});
         QVERIFY(!view->grab().isNull());
+    }
+    void selectionDeletionAndCandidateBanner() {
+        MainWindow w;
+        w.resize(1300, 900);
+        w.show();
+        Document d;
+        placeTemplate(d, findTemplate("skeleton:ethane"), Vec::Zero());
+        w.loadDocument(d);
+        QTest::qWait(40);
+        const auto ids = w.document().ids();
+        Ids carbons;
+        for (const auto &a : w.document().atoms)
+            if (a.element == "C")
+                carbons << a.id;
+        auto *view = w.canvas();
+        // A click selects only that atom; Shift+click adds in order.
+        QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier,
+                          view->atomScreenPosition(carbons[0]).toPoint());
+        QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier,
+                          view->atomScreenPosition(carbons[1]).toPoint());
+        QCOMPARE(view->selection(), Ids{carbons[1]});
+        QTest::mouseClick(view, Qt::LeftButton, Qt::ShiftModifier,
+                          view->atomScreenPosition(carbons[0]).toPoint());
+        QCOMPARE(view->selection(), (Ids{carbons[1], carbons[0]}));
+        // Deleting a carbon takes its own hydrogens and caps the other carbon: ethane → methane.
+        w.setSelection({carbons[0]});
+        w.findChild<QAction *>("deleteAction")->trigger();
+        QVERIFY(w.hasCandidate());
+        QCOMPARE(w.displayDocument().formula(), QString("CH4"));
+        auto *text = w.findChild<QLabel *>("candidateBannerText");
+        QVERIFY(text->text().contains("追加 1・削除 4"));
+        QVERIFY(w.findChild<QWidget *>("candidateBanner")->isVisible());
+        QVERIFY(!w.findChild<QWidget *>("candidateBar")->isVisible());
+        auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
+        tabs->setCurrentIndex(1);
+        QVERIFY(w.findChild<QWidget *>("candidateBar")->isVisible());
+        tabs->setCurrentIndex(0);
+        w.findChild<QAction *>("escapeAction")->trigger();
+        QVERIFY(!w.hasCandidate());
+        // Without capping, only the carbon and its hydrogens go.
+        w.findChild<QCheckBox *>("deleteTerminate")->setChecked(false);
+        w.setSelection({carbons[0]});
+        w.findChild<QAction *>("deleteAction")->trigger();
+        QCOMPARE(w.displayDocument().formula(), QString("CH3"));
+        w.findChild<QAction *>("confirmAction")->trigger();
+        QVERIFY(!w.hasCandidate());
+        QCOMPARE(w.document().formula(), QString("CH3"));
+        QVERIFY(w.findChild<QAction *>("undoAction")->text().contains("選択を削除"));
+        w.history()->undo();
+        w.findChild<QCheckBox *>("deleteTerminate")->setChecked(true);
+        // Select all, copy as XYZ, paste as a fragment beside the molecule.
+        w.findChild<QAction *>("selectAllAction")->trigger();
+        QCOMPARE(view->selection().size(), ids.size());
+        w.findChild<QAction *>("copyAction")->trigger();
+        QVERIFY(QApplication::clipboard()->text().startsWith("8\n"));
+        w.findChild<QAction *>("pasteAction")->trigger();
+        QCOMPARE(w.displayDocument().atoms.size(), 16);
+        w.cancelCandidate();
+        // Labels and tab shortcuts.
+        auto *labels = w.findChild<QComboBox *>("labelMode");
+        labels->setCurrentIndex(labels->findData("heavy"));
+        QCOMPARE(view->labels(), QString("heavy"));
+        w.findChild<QAction *>("showTab3Action")->trigger();
+        QCOMPARE(tabs->currentIndex(), 2);
+        QString listed;
+        QTimer::singleShot(0, &w, [&] {
+            if (auto *dialog = w.findChild<QDialog *>("shortcutsDialog")) {
+                auto *table = dialog->findChild<QTableWidget *>("shortcutsTable");
+                for (int r = 0; r < table->rowCount(); ++r)
+                    listed += table->item(r, 1)->text() + "\n";
+                dialog->reject();
+            }
+        });
+        w.findChild<QAction *>("shortcutsAction")->trigger();
+        QVERIFY(listed.contains("選択を削除") && listed.contains("変更を確定") &&
+                listed.contains("すべて選択"));
+    }
+    void trackballZoomAndSliders() {
+        MainWindow w;
+        w.resize(1300, 900);
+        w.show();
+        QTest::qWait(40);
+        auto *view = w.canvas();
+        view->setAngles(30, 20, -10);
+        const auto angles = view->angles();
+        QVERIFY((angles - Vec(30, 20, -10)).norm() < 1e-9);
+        view->viewFrom(0);
+        QCOMPARE(w.findChild<QSlider *>("editorYaw")->value(), -90);
+        // Zooming keeps the atom under the cursor in place.
+        const auto id = w.document().atoms.first().id;
+        const auto before = view->atomScreenPosition(id);
+        QWheelEvent wheel(before, view->mapToGlobal(before), {}, QPoint(0, 240), Qt::NoButton, Qt::NoModifier,
+                          Qt::NoScrollPhase, false);
+        QApplication::sendEvent(view, &wheel);
+        QVERIFY(QLineF(view->atomScreenPosition(id), before).length() < 1e-6);
     }
     void candidateUndoRedo() {
         MainWindow w;

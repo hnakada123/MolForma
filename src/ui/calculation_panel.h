@@ -9,14 +9,21 @@ class QPushButton;
 class QFormLayout;
 class QTableWidget;
 class QVBoxLayout;
+class QLineEdit;
+class QScrollArea;
+class QToolButton;
 namespace mf {
 class MainWindow;
+class DiagnosticsList;
 class CalculationPanel : public QWidget {
     Q_OBJECT
   public:
     explicit CalculationPanel(MainWindow *window);
     void refresh();
     void exportInput(bool toFile);
+    // Shows and focuses the field of a setting key (also for "4 詳細設定" diagnostics).
+    void showField(const QString &key);
+    QString fieldFor(const QString &message) const;
     // Stop focus-out callbacks before the owner's document and undo stack are destroyed.
     void stopEditing() {
         busy = true;
@@ -29,9 +36,16 @@ class CalculationPanel : public QWidget {
     QMap<QString, QWidget *> fields;
     QComboBox *presets;
     QLabel *summary, *presetSummary, *message;
-    QPlainTextEdit *validation, *preview;
-    QTableWidget *elementBases; // Per-element library basis for the elements of the molecule.
-    QTableWidget *constraints;  // Internal-coordinate constraints (ZCOORD) of optimizations.
+    QPlainTextEdit *preview;
+    DiagnosticsList *validation;
+    QLabel *changesFromDefaults;
+    QToolButton *showInput;
+    QLineEdit *search;
+    QScrollArea *scroll;
+    QMap<QString, QString> labels; // Setting key → label shown in the form (for search and changes).
+    QStringList fieldOrder;        // Keys in the order of the form.
+    QTableWidget *elementBases;    // Per-element library basis for the elements of the molecule.
+    QTableWidget *constraints;     // Internal-coordinate constraints (ZCOORD) of optimizations.
     QLabel *scanCoordinate, *monomers;
     QPlainTextEdit *extraInput, *extraTasks;
     QString appliedExtra[2]; // Stored additional input last shown, so typing is not overwritten.
@@ -51,5 +65,9 @@ class CalculationPanel : public QWidget {
     void refreshConstraints(const QJsonObject &settings);
     void addConstraint();
     void setScanCoordinate();
+    QMap<QString, QString> fixes(const QStringList &errors) const;
+    void applyFix(const QString &message);
+    QString valueText(const QString &key, const QJsonValue &value) const;
+    void searchSettings(const QString &text);
 };
 } // namespace mf

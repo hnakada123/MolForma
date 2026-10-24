@@ -234,6 +234,14 @@ class HistoryTest : public QObject {
         for (int row = 0; row < table->rowCount(); ++row)
             deltas << table->item(row, 7)->text();
         QVERIFY2(deltas.contains("-0.01000000"), qPrintable(deltas.join(", ")));
+        // Composition beside the name, and an editable memo kept in the job folder.
+        QCOMPARE(table->item(0, 8)->text(), QString("H2O"));
+        for (int row = 0; row < table->rowCount(); ++row)
+            if (table->item(row, 0)->data(Qt::UserRole).toString() == first.directory)
+                table->item(row, 9)->setText("基準構造");
+        QCOMPARE(readFile(first.directory + "/memo.txt").trimmed(), QByteArray("基準構造"));
+        QCOMPARE(readHistoryEntry(first.directory).memo, QString("基準構造"));
+        QVERIFY(historyCsv({readHistoryEntry(first.directory)}).contains("\"H2O\",\"基準構造\""));
         QVERIFY(widget<QPlainTextEdit>(w, "historyInput")->toPlainText().contains("task scf energy"));
         QVERIFY(widget<QPlainTextEdit>(w, "historySummary")->toPlainText().contains("SHA-256一致"));
         table->sortItems(6, Qt::AscendingOrder);

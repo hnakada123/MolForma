@@ -5,6 +5,7 @@
 #include "nwchem/nwchem_advanced.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
+#include "ui/theme.h"
 #include <QtWidgets>
 
 namespace mf {
@@ -24,15 +25,16 @@ class InputHighlighter : public QSyntaxHighlighter {
             const auto match = matches.next();
             const auto token = match.captured();
             QTextCharFormat format;
+            const auto palette = qApp->palette();
             if (token.startsWith('#'))
-                format.setForeground(QColor("#718096"));
+                format.setForeground(accentColor(palette, "#718096", "#a0aec0"));
             else if (token.startsWith('"'))
-                format.setForeground(QColor("#16836a"));
+                format.setForeground(accentColor(palette, "#16836a", "#5fd3b4"));
             else if (token.front().isLetter()) {
-                format.setForeground(QColor("#487fc4"));
+                format.setForeground(accentColor(palette, "#487fc4", "#7fb0ff"));
                 format.setFontWeight(QFont::Bold);
             } else
-                format.setForeground(QColor("#ad6bba"));
+                format.setForeground(accentColor(palette, "#ad6bba", "#d9a3e6"));
             setFormat(match.capturedStart(), match.capturedLength(), format);
         }
     }
@@ -329,7 +331,7 @@ void InputPreviewPanel::refresh() {
     const int index = window->workspaceTabs->indexOf(this);
     if (index >= 0) {
         window->workspaceTabs->tabBar()->setTabTextColor(
-            index, !d.atoms.isEmpty() && !errors.isEmpty() ? QColor("#c62828") : QColor());
+            index, !d.atoms.isEmpty() && !errors.isEmpty() ? errorColor(palette()) : QColor());
         window->workspaceTabs->setTabToolTip(index, status->text());
     }
 }

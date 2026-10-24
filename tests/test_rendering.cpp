@@ -1,5 +1,6 @@
 #include "ui/main_window.h"
 #include "ui/molecule_view.h"
+#include "ui/theme.h"
 #include <QApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -56,6 +57,15 @@ class RenderingTest : public QObject {
     Q_OBJECT
     QTemporaryDir settingsHome;
   private slots:
+    void paletteColors() {
+        // Fixed colors are adjusted to the palette, so dark themes stay readable.
+        QPalette light, dark;
+        light.setColor(QPalette::Window, QColor("#f2f2f2"));
+        dark.setColor(QPalette::Window, QColor("#202020"));
+        QVERIFY(!darkPalette(light) && darkPalette(dark));
+        QVERIFY(errorColor(dark).lightness() > errorColor(light).lightness());
+        QVERIFY(accentColor(dark, "#487fc4", "#7fb0ff") != accentColor(light, "#487fc4", "#7fb0ff"));
+    }
     void initTestCase() {
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsHome.path());

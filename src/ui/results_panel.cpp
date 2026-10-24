@@ -168,11 +168,26 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         connect(b, &QPushButton::clicked, this, [this, axis] { view->viewFrom(axis); });
     }
     camera->addStretch();
+    auto *labelMode = new QComboBox;
+    labelMode->setObjectName("resultsLabelMode");
+    for (const auto &[label, mode] : {std::pair{"ラベル: すべて", "all"},
+                                      {"ラベル: 水素以外", "heavy"},
+                                      {"ラベル: 選択した原子", "selection"},
+                                      {"ラベル: なし", "none"}})
+        labelMode->addItem(label, mode);
+    camera->addWidget(labelMode);
     view = new MoleculeView;
     view->setObjectName("resultsView");
     view->setAcceptDrops(false);
     view->setAngles(-25, 25, 0);
     view->setEmptyMessage("NWChem出力・XYZ・CUBE・MOLDENを開いて\n構造・軌道の等値面・振動を確認できます。");
+    labelMode->setCurrentIndex(
+        std::max(0, labelMode->findData(window->settings.value("results/labels", "all").toString())));
+    view->setLabelMode(labelMode->currentData().toString());
+    connect(labelMode, &QComboBox::currentIndexChanged, this, [this, labelMode] {
+        view->setLabelMode(labelMode->currentData().toString());
+        window->settings.setValue("results/labels", labelMode->currentData().toString());
+    });
     visual->addWidget(view, 1);
     connect(fit, &QPushButton::clicked, view, &MoleculeView::fit);
     auto *angles = new QHBoxLayout;
@@ -198,6 +213,15 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
                 [this, a = sliders[0], b = sliders[1], c = sliders[2]] {
                     view->setAngles(a->value(), b->value(), c->value());
                 });
+    // Mouse rotation and +X/+Y/+Z update the sliders, so they continue from the current view.
+    connect(view, &MoleculeView::orientationChanged, this,
+            [this, a = sliders[0], b = sliders[1], c = sliders[2]] {
+                const auto angles = view->angles();
+                const QSignalBlocker ba(a), bb(b), bc(c);
+                a->setValue(qRound(angles.x()));
+                b->setValue(qRound(angles.y()));
+                c->setValue(qRound(angles.z()));
+            });
     auto *navigation = new QHBoxLayout;
     visual->addLayout(navigation);
     navigation->addWidget(new QLabel("軌道"));
@@ -583,7 +607,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     });
     connect(files, &QComboBox::currentIndexChanged, this, [this](int index) {
         if (index >= 0)
-            openFile(QDir(folder).filePath(files->itemText(index)));
+            window->safe([&] { openEntry(files->itemData(index).toString()); });
     });
     connect(reload, &QPushButton::clicked, this, [this] {
         startLoad(data.source, data.isovalue, data.dataset, data.selectedOrbital, data.normalizationRequest,
@@ -727,16 +751,88 @@ void ResultsPanel::openDirectory(const QString &path) {
         return;
     }
     folder = dir.absolutePath();
-    const QSignalBlocker guard(files);
-    files->clear();
-    files->addItems(resultFiles(folder));
-    if (files->count() == 0) {
+    fillFiles("output.out");
+    if (files->currentIndex() < 0) {
         error("対応する結果ファイルがありません。");
         return;
     }
-    int index = files->findText("output.out");
-    files->setCurrentIndex(index >= 0 ? index : 0);
-    openFile(dir.filePath(files->currentText()));
+    window->safe([&] { openEntry(files->currentData().toString()); });
+}
+void ResultsPanel::fillFiles(const QString &selected) {
+    const QSignalBlocker guard(files);
+    files->clear();
+    animationFrames.clear();
+    static const QRegularExpression step(R"(^(.*)\.m-(\d+)\.s-(\d+)\.xyz$)");
+    const auto kind = [](const QString &name) {
+        const auto suffix = QFileInfo(name).suffix().toLower();
+        return suffix == "out" || suffix == "log"    ? 0
+               : suffix == "xyz"                     ? 1
+               : suffix == "cube" || suffix == "cub" ? 2
+                                                     : 3;
+    };
+    QVector<QStringList> groups(4);
+    QMap<QPair<QString, int>, QStringList> modes;
+    for (const auto &name : resultFiles(folder)) {
+        if (const auto m = step.match(name); m.hasMatch())
+            modes[{m.captured(1), m.captured(2).toInt()}] << name;
+        else
+            groups[kind(name)] << name;
+    }
+    // Logs, structures, CUBE, MOLDEN, then the animations, separated by kind.
+    for (const auto &group : groups) {
+        if (group.isEmpty())
+            continue;
+        if (files->count())
+            files->insertSeparator(files->count());
+        for (const auto &name : group)
+            files->addItem(name, name);
+    }
+    if (!modes.isEmpty() && files->count())
+        files->insertSeparator(files->count());
+    for (auto it = modes.begin(); it != modes.end(); ++it) {
+        auto list = it.value();
+        std::sort(list.begin(), list.end(), [](const QString &a, const QString &b) {
+            return step.match(a).captured(3).toInt() < step.match(b).captured(3).toInt();
+        });
+        const auto key = QString("animation:%1:%2").arg(it.key().first).arg(it.key().second);
+        animationFrames[key] = list;
+        files->addItem(QString("振動アニメーション %1: モード %2（%3枚）")
+                           .arg(QFileInfo(it.key().first).fileName())
+                           .arg(it.key().second)
+                           .arg(list.size()),
+                       key);
+    }
+    int index = files->findData(selected);
+    if (index < 0 && !selected.isEmpty() && !selected.startsWith("animation:")) {
+        files->addItem(selected, selected);
+        index = files->count() - 1;
+    }
+    for (int i = 0; index < 0 && i < files->count(); ++i)
+        if (!files->itemData(i).toString().isEmpty())
+            index = i;
+    files->setCurrentIndex(index);
+}
+void ResultsPanel::openEntry(const QString &entry) {
+    if (!entry.startsWith("animation:")) {
+        openFile(QDir(folder).filePath(entry));
+        return;
+    }
+    // Join the steps of one mode into a multi-frame XYZ in a private temporary folder.
+    const auto list = animationFrames.value(entry);
+    if (list.isEmpty() || !animationDir.isValid())
+        fail("振動アニメーションのファイルが見つかりません。");
+    QByteArray joined;
+    for (const auto &name : list) {
+        joined += readFile(QDir(folder).filePath(name));
+        if (!joined.endsWith('\n'))
+            joined += '\n';
+        if (joined.size() > 64 * 1024 * 1024)
+            fail("振動アニメーションのファイルが大きすぎます。");
+    }
+    const auto path = animationDir.filePath(QString("animation-%1.xyz").arg(animationSources.size() + 1));
+    writeFile(path, joined);
+    animationSources[path] = entry;
+    openFile(path);
 }
 void ResultsPanel::renderOrbital(int orbital) {
     if (data.format != "MOLDEN" || orbital < 0 || orbital >= data.orbitals.size())
@@ -920,23 +1016,19 @@ void ResultsPanel::display(bool orbitalOnly) {
     source->setText(data.source);
     status->setPlainText(data.status);
     if (!orbitalOnly) {
-        const QSignalBlocker guard(files);
-        QString selectedFile;
-        for (int i = 0; i < files->count(); ++i)
-            if (QFileInfo(QDir(folder).filePath(files->itemText(i))).absoluteFilePath() ==
-                QFileInfo(data.source).absoluteFilePath()) {
-                selectedFile = files->itemText(i);
-                break;
-            }
+        QString selectedFile = animationSources.value(data.source);
+        for (int i = 0; selectedFile.isEmpty() && i < files->count(); ++i) {
+            const auto entry = files->itemData(i).toString();
+            if (!entry.isEmpty() && !entry.startsWith("animation:") &&
+                QFileInfo(QDir(folder).filePath(entry)).absoluteFilePath() ==
+                    QFileInfo(data.source).absoluteFilePath())
+                selectedFile = entry;
+        }
         if (selectedFile.isEmpty()) {
             folder = QFileInfo(data.source).absolutePath();
             selectedFile = QFileInfo(data.source).fileName();
         }
-        files->clear();
-        files->addItems(resultFiles(folder));
-        if (files->findText(selectedFile) < 0)
-            files->addItem(selectedFile);
-        files->setCurrentText(selectedFile);
+        fillFiles(selectedFile);
     }
     QString info = QString("形式: %1\n構造: %2 / エネルギー: %3 / 軌道: %4 / 振動: %5\n")
                        .arg(data.format)

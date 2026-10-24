@@ -302,6 +302,7 @@ ExecutionPlan executionPlan(const Document &d, const QString &base, const QStrin
                   {"reference_directory", report.referenceDirectory},
                   {"project_directory", QFileInfo(base).absoluteFilePath()},
                   {"calculation", nwchemSettings(d)},
+                  {"formula", d.formula()},
                   {"input", "input.nw"},
                   {"stdout", "output.out"},
                   {"stderr", "stderr.err"},
