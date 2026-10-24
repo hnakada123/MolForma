@@ -98,10 +98,29 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     choice(basic, "計算目的", "task");
     choice(basic, "電子状態の手法", "method");
     choice(basic, "DFT汎関数", "functional");
+    auto *customXc = new QLineEdit;
+    customXc->setObjectName("nwchem_xc_custom");
+    customXc->setPlaceholderText("例: xpbe96 0.75 cpbe96 1.0 hfexch 0.25");
+    customXc->setToolTip("DFTブロックの xc 行です。汎関数で「任意のxc指定」を選んだときに使います。");
+    fields["xc_custom"] = customXc;
+    basic->addRow("任意のxc", customXc);
+    connect(customXc, &QLineEdit::editingFinished, this,
+            [this, customXc] { change("xc_custom", customXc->text().simplified()); });
     choice(basic, "DFT分散補正", "dispersion");
     choice(basic, "基底関数", "basis");
     choice(basic, "d・f関数の形式", "basis_functions");
-    auto *basisHelp = new QLabel("基底の対応元素を検査します。def2系のRb以降にはdef2-ECPを自動指定します。");
+    elementBases = new QTableWidget(0, 2);
+    elementBases->setObjectName("nwchem_basis_overrides");
+    elementBases->setHorizontalHeaderLabels({"元素", "基底"});
+    elementBases->verticalHeader()->hide();
+    elementBases->horizontalHeader()->setStretchLastSection(true);
+    elementBases->setSelectionMode(QAbstractItemView::NoSelection);
+    elementBases->setMaximumHeight(140);
+    elementBases->setToolTip(
+        "元素ごとに別の基底を指定します（例: 金属だけdef2-TZVP）。「共通」は上の基底関数です。");
+    basic->addRow("元素別の基底", elementBases);
+    auto *basisHelp = new QLabel("基底の対応元素を検査します。def2系のRb以降にはdef2-ECP、LANL2DZのNa以降には"
+                                 "LANL2DZ ECPを自動指定します。");
     basisHelp->setWordWrap(true);
     basic->addRow(basisHelp);
 
@@ -129,6 +148,16 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
                                 "固定原子・ゴースト・外部点電荷を含む振動数解析は未対応です。");
     freqHelp->setWordWrap(true);
     opt->addRow(freqHelp);
+
+    auto *excited = group("励起状態（TDDFT）", forms);
+    flag(excited, "TDDFTで励起エネルギー・振動子強度を計算", "tddft");
+    integer(excited, "励起状態の数（nroots）", "tddft_roots", 1, 100);
+    flag(excited, "三重項も計算（閉殻）", "tddft_triplets");
+    flag(excited, "Tamm–Dancoff近似（TDA / cis）", "tddft_tda");
+    auto *excitedHelp =
+        new QLabel("DFTの一点エネルギーで使えます。結果は「結果ビューア」の「励起状態」に表示します。");
+    excitedHelp->setWordWrap(true);
+    excited->addRow(excitedHelp);
 
     auto *environment = group("周囲の環境", forms);
     choice(environment, "溶媒モデル", "solvent");
@@ -230,6 +259,45 @@ void CalculationPanel::flag(QFormLayout *form, const QString &label, const QStri
     form->addRow(check);
     connect(check, &QCheckBox::toggled, this, [this, key](bool b) { change(key, b); });
 }
+void CalculationPanel::refreshElementBases(const QJsonObject &s) {
+    QStringList symbols;
+    for (const auto &a : window->displayDocument().atoms)
+        if (!symbols.contains(a.element))
+            symbols << a.element;
+    std::sort(symbols.begin(), symbols.end(),
+              [](const auto &a, const auto &b) { return element(a).number < element(b).number; });
+    const auto overrides = s["basis_overrides"].toObject();
+    const QSignalBlocker blocker(elementBases);
+    elementBases->setRowCount(symbols.size());
+    for (int row = 0; row < symbols.size(); ++row) {
+        const auto symbol = symbols[row];
+        auto *item = new QTableWidgetItem(symbol);
+        item->setFlags(Qt::ItemIsEnabled);
+        elementBases->setItem(row, 0, item);
+        auto *combo = qobject_cast<QComboBox *>(elementBases->cellWidget(row, 1));
+        if (!combo || combo->property("element") != symbol) {
+            combo = new QComboBox;
+            combo->setObjectName("nwchem_basis_" + symbol);
+            combo->setProperty("element", symbol);
+            combo->addItem({}, QString());
+            for (const auto &c : nwchemChoices("basis"))
+                combo->addItem(c.label, c.value);
+            elementBases->setCellWidget(row, 1, combo);
+            connect(combo, &QComboBox::currentIndexChanged, this, [this, combo, symbol] {
+                auto next = nwchemSettings(window->document())["basis_overrides"].toObject();
+                if (combo->currentData().toString().isEmpty())
+                    next.remove(symbol);
+                else
+                    next[symbol] = combo->currentData().toString();
+                change("basis_overrides", next);
+            });
+        }
+        const QSignalBlocker comboBlocker(combo);
+        combo->setItemText(0, "共通（" + s["basis"].toString() + "）");
+        const int index = combo->findData(overrides[symbol].toString());
+        combo->setCurrentIndex(std::max(0, index));
+    }
+}
 void CalculationPanel::change(const QString &key, const QJsonValue &value) {
     if (busy || window->hasCandidate() || window->worker)
         return;
@@ -327,9 +395,15 @@ void CalculationPanel::refresh() {
                 line->setText(value.toString());
         }
     }
+    refreshElementBases(s);
     const QString method = s["method"].toString(), task = s["task"].toString();
     for (const auto &key : {"functional", "dispersion", "grid"})
         fields[key]->setEnabled(method == "dft");
+    fields["xc_custom"]->setEnabled(method == "dft" && s["functional"] == "custom");
+    // Stay enabled while checked, so an invalid combination can always be switched off.
+    fields["tddft"]->setEnabled((method == "dft" && task == "energy") || s["tddft"].toBool());
+    for (const auto &key : {"tddft_roots", "tddft_triplets", "tddft_tda"})
+        fields[key]->setEnabled(method == "dft" && s["tddft"].toBool());
     fields["freeze_core"]->setEnabled(method == "mp2" || method.startsWith("ccsd"));
     fields["cc_maxiter"]->setEnabled(method.startsWith("ccsd"));
     for (const auto &key : {"opt_maxiter", "opt_convergence"})
@@ -346,18 +420,18 @@ void CalculationPanel::refresh() {
                                       : QString());
     message->setVisible(!message->text().isEmpty());
     const auto check = validateNwchem(d);
-    summary->setText(
-        QString("%1  ·  %2 / %3\n電子数 %4（α %5 / β %6） · 全電荷 %7 · 多重度 %8 · %9%10")
-            .arg(d.formula(), method == "dft" ? s["functional"].toString().toUpper() : method.toUpper(),
-                 s["basis"].toString())
-            .arg(check.electrons)
-            .arg(check.alpha)
-            .arg(check.beta)
-            .arg(d.job()["charge"].toInt())
-            .arg(d.job()["multiplicity"].toInt())
-            .arg(method == "dft" && check.reference != "rohf" ? (check.reference == "rhf" ? "RKS" : "UKS")
-                                                              : check.reference.toUpper(),
-                 check.ecpElectrons ? "（ECP適用後）" : ""));
+    summary->setText(QString("%1  ·  %2 / %3\n電子数 %4（α %5 / β %6） · 全電荷 %7 · 多重度 %8 · %9%10")
+                         .arg(d.formula(), method == "dft" ? nwchemFunctionalLabel(s) : method.toUpper(),
+                              nwchemBasisLabel(s))
+                         .arg(check.electrons)
+                         .arg(check.alpha)
+                         .arg(check.beta)
+                         .arg(d.job()["charge"].toInt())
+                         .arg(d.job()["multiplicity"].toInt())
+                         .arg(method == "dft" && check.reference != "rohf"
+                                  ? (check.reference == "rhf" ? "RKS" : "UKS")
+                                  : check.reference.toUpper(),
+                              check.ecpElectrons ? "（ECP適用後）" : ""));
     QStringList diagnostics;
     if (check.errors.isEmpty())
         diagnostics << "✓ 入力を生成できます。";

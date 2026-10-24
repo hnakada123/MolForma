@@ -25,6 +25,17 @@ struct ResultMode {
     double frequency = 0, intensity = std::numeric_limits<double>::quiet_NaN();
     QVector<Vec> displacement;
 };
+// One TDDFT excited state. spin is "singlet" / "triplet", or empty for unrestricted states.
+struct ResultExcitation {
+    int root = 0;
+    QString spin, symmetry;
+    double ev = 0, oscillator = 0, s2 = std::numeric_limits<double>::quiet_NaN();
+};
+// One DRIVER optimization step ("@" lines): energy / Hartree, gradients / Hartree·Bohr⁻¹, steps / Bohr.
+struct ResultStep {
+    int step = 0;
+    double energy = 0, deltaE = 0, gmax = 0, grms = 0, xrms = 0, xmax = 0, seconds = 0;
+};
 struct ResultData {
     QString source, format, status, log;
     QStringList warnings;
@@ -32,6 +43,11 @@ struct ResultData {
     QVector<ResultEnergy> energies;
     QVector<ResultOrbital> orbitals;
     QVector<ResultMode> modes;
+    QVector<ResultExcitation> excitations;
+    QVector<ResultStep> steps; // Steps of the last optimization in the log.
+    // Log summaries: "thermochemistry" (one object per temperature), "dipole" {x, y, z, debye} in
+    // a.u./Debye, "thresholds" {gmax, grms, xmax, xrms} of the DRIVER, "optimization" state.
+    QJsonObject properties;
     Document vibrationGeometry;
     QVector<SurfaceTriangle> surface;
     QVector<int> datasets;

@@ -2,6 +2,8 @@
 #include "mcp/headless.h"
 #include "mcp/server.h"
 #include "mcp/stdio_transport.h"
+#include "mcp/tools.h"
+#include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
 #include "ui/history_panel.h"
@@ -107,7 +109,9 @@ QJsonObject readReply(QProcess &process) {
     return QJsonDocument::fromJson(process.readLine()).object();
 }
 void startProcess(QProcess &process, const QString &mode) {
+    static QTemporaryDir config; // Never read the user's saved MolForma preferences.
     auto env = QProcessEnvironment::systemEnvironment();
+    env.insert("XDG_CONFIG_HOME", config.path());
     env.remove("DISPLAY");
     env.remove("WAYLAND_DISPLAY");
     env.insert("QT_QPA_PLATFORM", mode == "--mcp" ? "nonexistent-platform-plugin" : "offscreen");
@@ -546,6 +550,14 @@ class McpTest : public QObject {
         const auto kept = data(processCall(process, "get_execution"))["settings"].toObject();
         QCOMPARE(kept["job_root"].toString(), root);
         QCOMPARE(kept["environment"].toArray().size(), 1);
+        // A SMILES fragment is added beside the molecule instead of replacing it.
+        QCOMPARE(processCommand(process, "chemistry", {{"action", "fragment"}, {"smiles", "O"}})["state"]
+                     .toString(),
+                 "done");
+        QTRY_VERIFY(data(processCall(process, "get_app_state"))["candidate"].toBool());
+        QVERIFY(!failed(processCall(process, "history", {{"action", "confirm"}}, true)));
+        QCOMPARE(data(processCall(process, "get_document", {{"include", QJsonArray{}}}))["atomCount"].toInt(),
+                 6);
         process.closeWriteChannel();
         QVERIFY(process.waitForFinished(10000));
         QCOMPARE(process.exitCode(), 0);
@@ -676,6 +688,55 @@ class McpTest : public QObject {
              {"preview", false}})));
         QCOMPARE(committed(server).envelope["future_field"].toString(), QString("preserve me"));
     }
+    void resultSections() {
+        // get_results pages TDDFT states and optimization steps and reports log summaries.
+        ResultData r;
+        r.format = "NWChem";
+        r.excitations = {{1, "singlet", "a", 8.5, 0.02}, {2, "", "a", 2.0, 0.001, 0.75}};
+        r.steps = {{0, -76.0, 0, .067, .024}, {1, -76.01, -.01, .008, .003}};
+        r.properties["dipole"] = QJsonObject{{"debye", 1.7}};
+        const auto excited = resultsJson(r, {{"section", "excitations"}}, {});
+        QCOMPARE(excited["items"].toArray().size(), 2);
+        QCOMPARE(excited["items"].toArray()[1].toObject()["s2"].toDouble(), 0.75);
+        QVERIFY(std::abs(excited["items"].toArray()[0].toObject()["nm"].toDouble() - 1239.84198 / 8.5) <
+                1e-9);
+        QCOMPARE(
+            resultsJson(r, {{"section", "steps"}}, {})["items"].toArray()[1].toObject()["gmax"].toDouble(),
+            .008);
+        const auto summary = resultsJson(r, {}, {});
+        QCOMPARE(summary["counts"].toObject()["excitations"].toInt(), 2);
+        QCOMPARE(summary["properties"].toObject()["dipole"].toObject()["debye"].toDouble(), 1.7);
+    }
+    void appendXyz() {
+        McpServer server;
+        const QString xyz = "3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n";
+        QVERIFY(!failed(
+            change(server, "import_document", {{"format", "xyz"}, {"text", xyz}, {"preview", false}})));
+        QVERIFY(!failed(change(server, "import_document",
+                               {{"format", "xyz"}, {"text", xyz}, {"append", true}, {"preview", false}})));
+        QCOMPARE(committed(server).atoms.size(), 6);
+        QVERIFY(
+            failed(change(server, "import_document",
+                          {{"format", "project"}, {"text", "{}"}, {"append", true}, {"preview", false}})));
+    }
+    void openStructureKeepsSettings() {
+        // Like the coordinate table, opening a structure file replaces only the structure.
+        QTemporaryDir dir;
+        McpServer server;
+        QVERIFY(!failed(change(
+            server, "place_template",
+            {{"templateId", "skeleton:water"}, {"position", QJsonArray{0, 0, 0}}, {"preview", false}})));
+        QVERIFY(!failed(change(server, "set_nwchem",
+                               {{"settings", QJsonObject{{"basis", "6-31g*"}}}, {"preview", false}})));
+        QVERIFY(!failed(change(server, "set_execution",
+                               {{"settings", QJsonObject{{"mpi_ranks", 5}}}, {"preview", false}})));
+        const auto xyz = dir.filePath("h2.xyz");
+        writeFile(xyz, "2\nH2\nH 0 0 0\nH 0 0 .74\n");
+        QVERIFY(!failed(change(server, "open_file", {{"path", xyz}, {"preview", false}})));
+        QCOMPARE(committed(server).formula(), QString("H2"));
+        QCOMPARE(nwchemSettings(committed(server))["basis"].toString(), QString("6-31g*"));
+        QCOMPARE(executionSettings(committed(server))["mpi_ranks"].toInt(), 5);
+    }
     void filesResourcesAndNwchem() {
         McpServer server;
         QVERIFY(!failed(change(
@@ -691,7 +752,7 @@ class McpTest : public QObject {
         // The geometry_optimization prompt relies on get_nwchem listing the allowed values.
         const auto choices = data(call(server, "get_nwchem", scoped(server)))["choices"].toObject();
         QVERIFY(
-            choices["basis"].toArray().contains(QJsonObject{{"value", "def2-svp"}, {"label", "def2-svp"}}));
+            choices["basis"].toArray().contains(QJsonObject{{"value", "def2-svp"}, {"label", "def2-SVP"}}));
         QCOMPARE(choices["basis_functions"].toArray().size(), 3);
         QVERIFY(!choices.contains("memory_mb"));
         auto before = server.snapshot();
@@ -1152,6 +1213,8 @@ class McpTest : public QObject {
         QVERIFY(
             failed(change(s, "ui_set_value", {{"target", "execution_executable"}, {"value", "/bin/sh"}})));
         QVERIFY(failed(change(s, "ui_activate", {{"target", "executionAddEnvironment"}})));
+        // Preferences set the defaults of new documents, including the executable: user only.
+        QVERIFY(failed(change(s, "ui_activate", {{"target", "preferencesAction"}})));
         const auto listed = data(call(
             s, "get_ui", scoped(s, {{"query", "execution_executable"}, {"includeHidden", true}})))["items"]
                                 .toArray();
@@ -1550,6 +1613,29 @@ class McpTest : public QObject {
         QVERIFY(text(refused).contains("--mcp-allow-execution-settings"));
         strict.closeWriteChannel();
         QVERIFY(strict.waitForFinished(10000));
+        // The executable and launcher the user saved in Preferences are trusted and preset.
+        {
+            QSettings saved(files.filePath("settings/MolForma/MolForma.conf"), QSettings::IniFormat);
+            saved.setValue("execution/defaults",
+                           QJsonDocument(QJsonObject{{"executable", fake},
+                                                     {"mode", "direct"},
+                                                     {"job_root", files.filePath("preferred-jobs")}})
+                               .toJson(QJsonDocument::Compact));
+        }
+        QProcess preferred;
+        QVERIFY(launch(preferred, {}));
+        QCOMPARE(
+            data(processCall(preferred, "get_execution"))["settings"].toObject()["executable"].toString(),
+            fake);
+        QVERIFY(!failed(processCall(
+            preferred, "import_document",
+            {{"format", "xyz"}, {"text", "2\nH2\nH 0 0 0\nH 0 0 .74\n"}, {"preview", false}}, true)));
+        QVERIFY(!failed(processCall(preferred, "calculation", {{"action", "start"}}, true)));
+        QTRY_COMPARE(
+            data(processCall(preferred, "get_app_state"))["calculation"].toObject()["state"].toString(),
+            QString("finished"));
+        preferred.closeWriteChannel();
+        QVERIFY(preferred.waitForFinished(10000));
     }
     void subprocess_data() {
         QTest::addColumn<QString>("mode");

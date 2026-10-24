@@ -198,6 +198,46 @@ class CoreTest : public QObject {
             return b.kind == "single" && benzene.atom(b.a).element == "C" && benzene.atom(b.b).element == "C";
         }));
     }
+    void fragmentsAndSkeletonParts() {
+        // A second molecule lands 3 Å beyond the first along +X; the first does not move.
+        Document d;
+        placeTemplate(d, findTemplate("skeleton:water"), Vec::Zero());
+        d.atoms[0].fixed = true;
+        const auto first = d.atoms[0].position;
+        Document other;
+        placeTemplate(other, findTemplate("skeleton:water"), Vec(10, 10, 10));
+        const auto added = insertFragment(d, other);
+        QCOMPARE(added.size(), 3);
+        QCOMPARE(d.atoms.size(), 6);
+        QCOMPARE(d.bonds.size(), 4);
+        QCOMPARE(d.atoms[0].position, first);
+        double right = -1e9, left = 1e9;
+        for (int i = 0; i < 3; ++i) {
+            right = std::max(right, d.atoms[i].position.x());
+            left = std::min(left, d.atoms[i + 3].position.x());
+        }
+        QVERIFY(std::abs(left - right - 3) < 1e-12);
+        QVERIFY(d.validate().isEmpty());
+        QVERIFY_EXCEPTION_THROWN(insertFragment(d, other), std::runtime_error); // Same IDs again.
+        // A total charge that matched the formal charges follows the added ion.
+        auto chloride = Document::fromXyz("1\nchloride\nCl 0 0 0\n");
+        chloride.atoms[0].charge = -1;
+        insertFragment(d, chloride);
+        QCOMPARE(d.job()["charge"].toInt(), -1);
+        // Skeleton parts are whole molecules without connection points, placed by clicking.
+        Document water;
+        placeTemplate(water, findTemplate("skeleton:water"), Vec::Zero());
+        const auto part = makePart(water, water.ids(), "my water", "skeleton");
+        QVERIFY(part["connections"].toArray().isEmpty());
+        QCOMPARE(part["category"].toString(), QString("skeleton"));
+        validateTemplate(part);
+        Document placed;
+        placeTemplate(placed, part, Vec(1, 2, 3));
+        QCOMPARE(placed.formula(), QString("H2O"));
+        QVERIFY_EXCEPTION_THROWN(makePart(water, {water.atoms[0].id, water.atoms[1].id}, "piece", "skeleton"),
+                                 std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(makePart(water, water.ids(), "bad", "fragment"), std::runtime_error);
+    }
     void symmetryNumber() {
         // Rotational symmetry numbers for thermochemistry hints (NWChem runs with noautosym).
         for (const auto &[id, sigma] : {std::pair{"skeleton:water", 2},
@@ -322,6 +362,23 @@ class CoreTest : public QObject {
         d.atom(ids[3]).fixed = false;
         d.setBond(ids[0], ids[3], "single");
         QVERIFY_EXCEPTION_THROWN(d.bondSide(ids[1], ids[2]), std::runtime_error);
+        // Intermolecular distance, angle and dihedral move the molecule of the later atoms.
+        Document dimer;
+        placeTemplate(dimer, findTemplate("skeleton:water"), Vec::Zero());
+        placeTemplate(dimer, findTemplate("skeleton:water"), Vec(0, 0, 4));
+        const auto o1 = dimer.atoms[0].id, h1 = dimer.atoms[1].id, o2 = dimer.atoms[3].id,
+                   h2 = dimer.atoms[4].id;
+        const auto first = dimer.atoms[0].position;
+        setDimension(dimer, {o1, o2}, 2.9);
+        QVERIFY(std::abs(measure(dimer, {o1, o2}) - 2.9) < 1e-10);
+        setDimension(dimer, {h1, o1, o2}, 100);
+        QVERIFY(std::abs(measure(dimer, {h1, o1, o2}) - 100) < 1e-8);
+        setDimension(dimer, {h1, o1, o2, h2}, 45);
+        QVERIFY(std::abs(measure(dimer, {h1, o1, o2, h2}) - 45) < 1e-8);
+        QVERIFY(std::abs(measure(dimer, {o2, h2}) - measure(dimer, {o1, h1})) < 1e-8);
+        QVERIFY((dimer.atoms[0].position - first).norm() < 1e-12);
+        // Within one molecule, non-bonded atoms have no side to move.
+        QVERIFY_EXCEPTION_THROWN(setDimension(dimer, {h1, dimer.atoms[2].id}, 2), std::runtime_error);
     }
     void wholePartReplacement() {
         Document d;
@@ -508,6 +565,10 @@ class CoreTest : public QObject {
         for (const auto &[smiles, formula] :
              {std::pair{"c1ccccc1Br", "C6H5Br"}, {"CI", "CH3I"}, {"C[Se]C", "C2H6Se"}})
             QCOMPARE(fromSmiles(smiles).formula(), QString(formula));
+        // UFF (no MMFF94 types for B, Se, ...): Open Babel 3.2 copies of UFF used to abort.
+        for (int i = 0; i < 5; ++i)
+            QCOMPARE(fromSmiles("CB(C)C").data["metadata"].toObject()["molforma_force_field"].toString(),
+                     QString("UFF"));
         auto metal = fromSmiles("CCO");
         metal.atoms[0].element = "Fe";
         QVERIFY_EXCEPTION_THROWN(refine(metal), std::runtime_error);

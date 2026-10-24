@@ -190,6 +190,68 @@ class ResultsTest : public QObject {
             readResult(save("unknown.molden", "[Molden Format]\n[Atoms] Angs\nUue 1 119 0 0 0\n")),
             std::runtime_error);
     }
+    void logSummaries() {
+        // Excerpts in the layout NWChem 7.3.1 prints (TDDFT, DRIVER, vib, multipole and MO analysis).
+        const QString log =
+            "NWChem\n" + geometry() +
+            " maximum gradient threshold         (gmax) =   0.000450\n"
+            " rms gradient threshold             (grms) =   0.000300\n"
+            "@ Step       Energy      Delta E   Gmax     Grms     Xrms     Xmax   Walltime\n"
+            "@ ---- ---------------- -------- -------- -------- -------- -------- --------\n"
+            "@    0     -76.00723755  0.0D+00  0.06730  0.02421  0.00000  0.00000      0.3\n"
+            "@    1     -76.01098000 -3.7D-03  0.00835  0.00348  0.02135  0.04987      0.7\n"
+            "      Optimization converged\n"
+            "@    1     -76.01098000 -3.7D-03  0.00835  0.00348  0.02135  0.04987      0.7\n"
+            "                       DFT Final Molecular Orbital Analysis\n"
+            " Vector    5  Occ=2.000000D+00  E=-3.907179D-01\n"
+            " Vector    6  Occ=0.000000D+00  E= 6.054023D-01\n"
+            "       Multipole analysis of the density wrt the origin\n"
+            "     L   x y z        total         open         nuclear\n"
+            "     0   0 0 0     -0.000000      0.000000     10.000000\n\n"
+            "     1   1 0 0      0.000000      0.000000      0.000000\n"
+            "     1   0 1 0     -0.000000      0.000000      0.000000\n"
+            "     1   0 0 1     -0.677559      0.000000     -0.113384\n"
+            "  Root   1 singlet a              0.313760064 a.u.                8.5378 eV \n"
+            "     Dipole Oscillator Strength                    0.0198731899\n"
+            "  Root   1 triplet a              0.286149906 a.u.                7.7865 eV \n"
+            "  Root   2         a              0.076143009 a.u.                2.0720 eV \n"
+            "  <S2> =   0.7528\n"
+            "     Dipole Oscillator Strength                    0.0010067966\n"
+            " Temperature                      =   298.15K\n"
+            " Zero-Point correction to Energy  =   15.291 kcal/mol  (  0.024367 au)\n"
+            " Thermal correction to Energy     =   17.068 kcal/mol  (  0.027199 au)\n"
+            " Thermal correction to Enthalpy   =   17.660 kcal/mol  (  0.028143 au)\n"
+            " Total Entropy                    =   46.638 cal/mol-K\n"
+            "   - Rotational                   =   12.045 cal/mol-K (symmetry #  =        1)\n"
+            " Cv (constant volume heat capacity) =    5.965 cal/mol-K\n";
+        auto r = readResult(save("summaries.out", log));
+        QCOMPARE(r.steps.size(), 2);
+        QCOMPARE(r.steps[1].gmax, 0.00835);
+        QCOMPARE(r.properties["optimization"].toString(), QString("converged"));
+        QCOMPARE(r.properties["thresholds"].toObject()["gmax"].toDouble(), 0.00045);
+        QCOMPARE(r.orbitals.size(), 2);
+        QCOMPARE(r.orbitals[0].occupation, 2.0);
+        QVERIFY(std::abs(r.properties["dipole"].toObject()["debye"].toDouble() - 0.677559 * 2.541746473) <
+                1e-9);
+        QCOMPARE(r.excitations.size(), 3);
+        QCOMPARE(r.excitations[0].spin, QString("singlet"));
+        QCOMPARE(r.excitations[0].oscillator, 0.0198731899);
+        QCOMPARE(r.excitations[1].oscillator, 0.0);
+        QVERIFY(r.excitations[2].spin.isEmpty());
+        QCOMPARE(r.excitations[2].s2, 0.7528);
+        const auto thermo = r.properties["thermochemistry"].toArray()[0].toObject();
+        QCOMPARE(thermo["temperature"].toDouble(), 298.15);
+        QCOMPARE(thermo["entropy_cal"].toDouble(), 46.638);
+        QCOMPARE(thermo["symmetry_number"].toDouble(), 1.0);
+        // The worker transfer keeps the new sections.
+        const auto path = files.filePath("summaries.bin");
+        saveResultData(path, r);
+        const auto loaded = loadResultData(path);
+        QCOMPARE(loaded.excitations.size(), 3);
+        QCOMPARE(loaded.excitations[2].s2, 0.7528);
+        QCOMPARE(loaded.steps.size(), 2);
+        QCOMPARE(loaded.properties, r.properties);
+    }
     void transferAndBounds() {
         auto r = readResult(save("transfer.cube", cubeText()), .25);
         auto path = files.filePath("result.bin");
@@ -325,6 +387,44 @@ class ResultsTest : public QObject {
         QVERIFY(!panel->loading());
         QCOMPARE(w.document().project(), before);
         QCOMPARE(w.history()->count(), history);
+    }
+    void applyResultStructure() {
+        // Core rule: same atoms in the same order; fixed atoms must not have moved.
+        auto editor = Document::fromXyz("3\nwater\nO 0 0 0\nH .9 0 .6\nH -.9 0 .6\n");
+        const auto optimized = Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");
+        auto copy = editor;
+        const auto [rmsd, largest] = applyResultGeometry(copy, optimized);
+        QVERIFY((copy.atoms[1].position - Vec(.758, 0, .504)).norm() < 1e-12);
+        QCOMPARE(copy.ids(), editor.ids());
+        QCOMPARE(copy.bonds.size(), editor.bonds.size());
+        QVERIFY(std::abs(largest - (Vec(.9, 0, .6) - Vec(.758, 0, .504)).norm()) < 1e-12);
+        QVERIFY(rmsd > 0 && rmsd < largest);
+        auto pinned = editor;
+        pinned.atoms[1].fixed = true;
+        QVERIFY_EXCEPTION_THROWN(applyResultGeometry(pinned, optimized), std::runtime_error);
+        pinned.atoms[1].fixed = false;
+        pinned.atoms[0].fixed = true; // O did not move in the result.
+        applyResultGeometry(pinned, optimized);
+        auto other = Document::fromXyz("3\nwrong order\nH .758 0 .504\nO 0 0 0\nH -.758 0 .504\n");
+        QVERIFY_EXCEPTION_THROWN(applyResultGeometry(copy, other), std::runtime_error);
+        // GUI: the displayed frame becomes a candidate of the editor document.
+        MainWindow w;
+        w.loadDocument(editor);
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentWidget(panel);
+        w.show();
+        QSignalSpy done(panel, &ResultsPanel::loaded);
+        panel->openFile(save("optimized.xyz", optimized.xyz()));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        widget<QPushButton>(w, "resultsApplyStructure")->click();
+        QVERIFY(w.hasCandidate());
+        QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 0);
+        QVERIFY((w.displayDocument().atoms[2].position - Vec(-.758, 0, .504)).norm() < 1e-9);
+        QVERIFY((w.document().atoms[2].position - Vec(-.9, 0, .6)).norm() < 1e-12);
+        w.confirmCandidate();
+        QVERIFY((w.document().atoms[2].position - Vec(-.758, 0, .504)).norm() < 1e-9);
+        w.history()->undo();
+        QVERIFY((w.document().atoms[2].position - Vec(-.9, 0, .6)).norm() < 1e-12);
     }
     void cameraSlidersPreserveGeometry() {
         MainWindow w;

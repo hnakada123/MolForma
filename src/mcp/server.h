@@ -47,6 +47,9 @@ class McpServer : public QObject {
     QJsonObject summary() const;
     Document document() const;
     std::optional<Document> candidate() const;
+    // Without editor hooks: start the server's own document from `initial` (e.g. with the user's
+    // saved execution defaults). Clears the candidate and the undo history.
+    void resetDocument(const Document &initial);
 
   private:
     McpEditor editor;

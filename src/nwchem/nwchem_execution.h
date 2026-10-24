@@ -9,6 +9,13 @@ namespace mf {
 // Every execution path goes through this, and the MCP access policy checks the same result.
 QString absolutePath(QString path, const QString &base);
 QJsonObject executionDefaults();
+// Defaults the user saved in Preferences (QSettings "execution/defaults") for new documents.
+// Only machine-wide keys are kept; per-project ones such as reference_directory are not.
+QStringList executionPreferenceKeys();
+QJsonObject executionPreferences();
+void saveExecutionPreferences(const QJsonObject &settings);
+// Writes the saved preferences into a new document (only values that differ from the defaults).
+void applyExecutionPreferences(Document &document);
 QJsonObject executionSettings(const Document &document);
 void setExecutionSetting(Document &document, const QString &key, const QJsonValue &value);
 struct ExecutionValidation {

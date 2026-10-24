@@ -828,6 +828,54 @@ void addReference(Document &d, const Ids &ids, const QString &kind, double value
     d.data["job"] = job;
     d.data["references"] = refs;
 }
+Ids insertFragment(Document &d, const Document &fragment) {
+    if (fragment.atoms.isEmpty())
+        fail("追加する断片に原子がありません。");
+    auto errors = fragment.validate();
+    if (!errors.isEmpty())
+        fail(errors.join('\n'));
+    const bool chargeFollows = d.job()["charge"].toInt() == d.formalCharge();
+    Vec offset = Vec::Zero();
+    if (!d.atoms.isEmpty()) {
+        double right = -INFINITY, left = INFINITY;
+        Vec center = Vec::Zero(), own = Vec::Zero();
+        for (const auto &a : d.atoms) {
+            right = std::max(right, a.position.x());
+            center += a.position;
+        }
+        for (const auto &a : fragment.atoms) {
+            left = std::min(left, a.position.x());
+            own += a.position;
+        }
+        center /= d.atoms.size();
+        own /= fragment.atoms.size();
+        offset = Vec(right + 3 - left, center.y() - own.y(), center.z() - own.z());
+    }
+    Ids added;
+    for (auto a : fragment.atoms) {
+        if (d.contains(a.id))
+            fail("断片の原子IDが重複しています。");
+        a.position += offset;
+        d.atoms << a;
+        added << a.id;
+    }
+    d.bonds += fragment.bonds;
+    for (auto key : {"parts", "residues", "centers"}) {
+        auto list = d.data[key].toArray();
+        for (const auto &v : fragment.data[key].toArray())
+            list.append(v);
+        d.data[key] = list;
+    }
+    auto chains = d.data["chains"].toObject();
+    const auto more = fragment.data["chains"].toObject();
+    for (auto it = more.begin(); it != more.end(); ++it)
+        chains[it.key()] = it.value();
+    d.data["chains"] = chains;
+    if (chargeFollows)
+        d.setJobValue("charge", d.formalCharge());
+    d.invalidateAssignments();
+    return added;
+}
 QString structureReport(const Document &d) {
     QStringList lines = d.validate();
     int electrons = -d.job()["charge"].toInt();

@@ -159,6 +159,8 @@ class MainWindow : public QMainWindow {
     bool confirmDiscard();
     void exportFile();
     void importSmiles();
+    void addFragmentFromSmiles();
+    void addFragmentFromFile();
     void runWorker(const QString &mode, const QString &smiles = {}, const Ids &moving = {});
     void cancelWorker();
     void contextMenu(const QPoint &p, const QString &id);
@@ -167,6 +169,7 @@ class MainWindow : public QMainWindow {
     void loadPart();
     void selectNumbers();
     void showReport();
+    void preferences();
     void pdbPreparation();
     void addAmino(const QString &rid, bool n);
 };

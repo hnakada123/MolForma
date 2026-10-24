@@ -135,7 +135,7 @@ class CalculationTest : public QObject {
         d.setJobValue("charge", 1);
         QCOMPARE(validateNwchem(d).ecpElectrons, 28);
         QCOMPARE(validateNwchem(d).electrons, 8);
-        QVERIFY(nwchemInput(d).contains("ecp\n  Rb library def2-ecp\nend"));
+        QVERIFY(nwchemInput(d).contains("ecp\n  Rb library \"def2-ecp\"\nend"));
         set(d, "method", "mp2");
         set(d, "freeze_core", true);
         QVERIFY(validateNwchem(d).errors.isEmpty());
@@ -261,6 +261,131 @@ class CalculationTest : public QObject {
         d.setJobValue("charge", 0.5);
         QVERIFY(errorContains(d, "整数"));
         QVERIFY_EXCEPTION_THROWN(nwchemInput(Document()), std::runtime_error);
+    }
+    void tddftInput() {
+        auto d = water();
+        set(d, "method", "dft");
+        set(d, "tddft", true);
+        set(d, "tddft_roots", 5);
+        auto text = nwchemInput(d);
+        QVERIFY(text.contains("\ntddft\n  nroots 5\n  notriplet\nend\n"));
+        QVERIFY(text.endsWith("task tddft energy\n"));
+        QVERIFY(!text.contains("task dft energy"));
+        set(d, "tddft_triplets", true);
+        set(d, "tddft_tda", true);
+        QVERIFY(nwchemInput(d).contains("\ntddft\n  nroots 5\n  cis\nend\n"));
+        // Open shells: unrestricted excited states, no singlet/triplet keywords.
+        auto cation = d;
+        cation.setJobValue("charge", 1);
+        cation.setJobValue("multiplicity", 2);
+        QVERIFY(nwchemInput(cation).contains("  odft\n"));
+        QVERIFY(nwchemInput(cation).contains("\ntddft\n  nroots 5\n  cis\nend\n"));
+        QVERIFY(validateNwchem(cation).warnings.join('\n').contains("一重項・三重項を分けずに"));
+        // Supported only for single-point DFT without meta-GGA kernels (NWChem 7.3.1).
+        set(d, "functional", "m06-2x");
+        QVERIFY(errorContains(d, "メタGGA"));
+        set(d, "functional", "cam-b3lyp");
+        QVERIFY(validateNwchem(d).errors.isEmpty());
+        set(d, "task", "optimize");
+        QVERIFY(errorContains(d, "一点エネルギー"));
+        set(d, "task", "energy");
+        set(d, "method", "hf");
+        QVERIFY(errorContains(d, "TDDFTはDFT"));
+        set(d, "method", "dft");
+        set(d, "tddft_roots", 0);
+        QVERIFY(errorContains(d, "tddft_roots"));
+    }
+    void basisLibraryAndElementBases() {
+        // LANL2DZ: all-electron for light elements, ECP from sodium on ("nelec" of NWChem's library).
+        auto hi = Document::fromXyz("2\nhydrogen iodide\nH 0 0 0\nI 0 0 1.61\n");
+        set(hi, "basis", "lanl2dz ecp");
+        auto check = validateNwchem(hi);
+        QVERIFY2(check.errors.isEmpty(), qPrintable(check.errors.join('\n')));
+        QCOMPARE(check.ecpElectrons, 46);
+        QCOMPARE(check.electrons, 8);
+        QVERIFY(check.warnings.join('\n').contains("ECP（lanl2dz ecp）"));
+        QVERIFY(nwchemInput(hi).contains(
+            "  * library \"lanl2dz ecp\"\nend\n\necp\n  I library \"lanl2dz ecp\"\nend"));
+        // Per-element bases: each element on its own line, ECP only where that basis needs one.
+        set(hi, "basis", "6-31g*");
+        QVERIFY(errorContains(hi, "対応元素に含まれません: I"));
+        set(hi, "basis_overrides", QJsonObject{{"I", "def2-tzvp"}});
+        check = validateNwchem(hi);
+        QVERIFY2(check.errors.isEmpty(), qPrintable(check.errors.join('\n')));
+        QCOMPARE(check.ecpElectrons, 28);
+        auto text = nwchemInput(hi);
+        QVERIFY(text.contains("basis cartesian\n  H library \"6-31g*\"\n  I library \"def2-tzvp\"\nend"));
+        QVERIFY(text.contains("ecp\n  I library \"def2-ecp\"\nend"));
+        QVERIFY(!text.contains("* library"));
+        QVERIFY(check.warnings.join('\n').contains("d関数の慣例"));
+        QCOMPARE(nwchemBasisLabel(nwchemSettings(hi)), QString("6-31g*、I: def2-tzvp"));
+        set(hi, "basis_overrides", QJsonObject{{"I", "6-31+g*"}});
+        QVERIFY(errorContains(hi, "I（6-31+g*）"));
+        for (const auto &bad : {QJsonObject{{"Xx", "def2-svp"}}, QJsonObject{{"I", "custom"}}}) {
+            set(hi, "basis_overrides", bad);
+            QVERIFY(errorContains(hi, "元素別の基底"));
+        }
+        // An override for an element that is not in the molecule changes nothing.
+        auto water = this->water();
+        set(water, "basis_overrides", QJsonObject{{"Fe", "def2-tzvp"}});
+        QVERIFY(nwchemInput(water).contains("  * library \"sto-3g\"\n"));
+        // The table in "3 計算条件" edits the same setting and is undoable.
+        MainWindow w;
+        w.loadDocument(this->water());
+        w.show();
+        auto *oxygen = w.findChild<QComboBox *>("nwchem_basis_O");
+        QVERIFY(oxygen);
+        oxygen->setCurrentIndex(oxygen->findData("cc-pvdz"));
+        QCOMPARE(nwchemSettings(w.document())["basis_overrides"].toObject(), QJsonObject({{"O", "cc-pvdz"}}));
+        w.history()->undo();
+        QVERIFY(nwchemSettings(w.document())["basis_overrides"].toObject().isEmpty());
+        QCOMPARE(w.findChild<QComboBox *>("nwchem_basis_O")->currentIndex(), 0);
+    }
+    void functionalsAndCustomXc() {
+        auto d = water();
+        set(d, "method", "dft");
+        const QMap<QString, QString> xc{{"tpss", "xtpss03 ctpss03"},
+                                        {"m06-2x", "m06-2x"},
+                                        {"r2scan", "r2scan"},
+                                        {"wb97x-d3", "wb97x-d3"},
+                                        {"cam-b3lyp", "xcamb88 1.00 lyp 0.81 vwn_5 0.19 hfexch 1.00"}};
+        for (auto it = xc.begin(); it != xc.end(); ++it) {
+            set(d, "functional", it.key());
+            QVERIFY2(nwchemInput(d).contains("\n  xc " + it.value() + '\n'), qPrintable(it.key()));
+        }
+        set(d, "functional", "cam-b3lyp");
+        QVERIFY(nwchemInput(d).contains("  cam 0.33 cam_alpha 0.19 cam_beta 0.46\n"));
+        // Only dispersion corrections NWChem has Grimme's parameters for.
+        set(d, "functional", "m06-2x");
+        set(d, "dispersion", "d3bj");
+        QVERIFY(errorContains(d, "M06-2X のD3(BJ)"));
+        set(d, "dispersion", "d3");
+        QVERIFY(nwchemInput(d).contains("  disp vdw 3\n"));
+        set(d, "functional", "scan");
+        QVERIFY(errorContains(d, "D3(BJ)または補正なし"));
+        set(d, "functional", "wb97x-d3");
+        QVERIFY(errorContains(d, "D3を含む"));
+        set(d, "dispersion", "none");
+        QVERIFY(validateNwchem(d).errors.isEmpty());
+        // Meta-GGA and range-separated functionals have no analytic Hessian in NWChem.
+        set(d, "task", "frequencies");
+        QVERIFY(nwchemInput(d).contains("task dft frequencies numerical\n"));
+        set(d, "functional", "b3pw91");
+        QVERIFY(nwchemInput(d).contains("task dft frequencies\n"));
+        set(d, "task", "energy");
+        // A custom XC line stays one line of names and numbers.
+        set(d, "functional", "custom");
+        QVERIFY(errorContains(d, "任意のxc"));
+        set(d, "xc_custom", "  xpbe96 0.75   cpbe96 1.0 hfexch 0.25 ");
+        QVERIFY(nwchemInput(d).contains("\n  xc xpbe96 0.75 cpbe96 1.0 hfexch 0.25\n  mult 1\n"));
+        QCOMPARE(nwchemFunctionalLabel(nwchemSettings(d)), QString("xc xpbe96 0.75 cpbe96 1.0 hfexch 0.25"));
+        for (const auto *bad : {"b3lyp\nend\ntask shell", "b3lyp; task", "b3lyp \"x\"", "b3lyp # x"}) {
+            set(d, "xc_custom", bad);
+            QVERIFY2(errorContains(d, "任意のxc"), bad);
+        }
+        set(d, "xc_custom", "b3lyp");
+        set(d, "dispersion", "d3");
+        QVERIFY(errorContains(d, "任意のxcでは分散補正"));
     }
     void basisConventionsCosmoAndSymmetry() {
         // Pople's 6-31G family uses Cartesian d shells by default; the other bases spherical harmonics.
@@ -495,7 +620,12 @@ class CalculationTest : public QObject {
             auto d = h2;
             set(d, "method", "dft");
             set(d, "functional", functional.value);
-            set(d, "dispersion", "d3bj");
+            set(d, "xc_custom", "xpbe96 0.75 cpbe96 1.0 hfexch 0.25");
+            for (const auto *dispersion : {"d3bj", "d3", "none"}) { // The first one NWChem supports.
+                set(d, "dispersion", dispersion);
+                if (validateNwchem(d).errors.isEmpty())
+                    break;
+            }
             emitInput(functional.value, d);
         }
         for (const auto &method : {"mp2", "ccsd", "ccsd(t)"}) {

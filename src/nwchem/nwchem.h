@@ -24,5 +24,9 @@ QJsonObject nwchemPresetSettings(const QJsonObject &settings);
 void applyNwchemPreset(Document &document, const QJsonObject &settings);
 NwchemValidation validateNwchem(const Document &document);
 bool nwchemNumericalFrequencies(const Document &document);
+// Display names: the common basis with per-element bases, and the DFT functional ("xc ..." for a
+// custom XC line).
+QString nwchemBasisLabel(const QJsonObject &settings);
+QString nwchemFunctionalLabel(const QJsonObject &settings);
 QString nwchemInput(const Document &document);
 } // namespace mf

@@ -12,8 +12,8 @@ QString fileStamp(const QFileInfo &info) {
     return QString::number(info.size()) + ':' + QString::number(info.lastModified().toMSecsSinceEpoch());
 }
 } // namespace
-McpHeadless::McpHeadless(McpPolicy p, QObject *parent)
-    : QObject(parent), policy(std::move(p)), trusted(protectedExecution(Document())) {
+McpHeadless::McpHeadless(McpPolicy p, QJsonObject trustedExecution, QObject *parent)
+    : QObject(parent), policy(std::move(p)), trusted(std::move(trustedExecution)) {
     connect(&run, &NwchemRun::changed, this, [this] {
         if (!run.active() && !runWork.isEmpty() && !finished.contains(runWork))
             finish(runWork, "calculation", "start", "calculation");
@@ -95,10 +95,11 @@ QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
         if (run.active())
             fail("A calculation is already running.");
         if (!policy.allowExecutionSettings && protectedExecution(d) != trusted)
-            fail("The NWChem executable, MPI launcher or environment overrides differ from the defaults this "
-                 "headless server trusts (nwchem and mpirun from PATH, no overrides). MCP clients cannot "
-                 "choose "
-                 "them; restart the server with --mcp-allow-execution-settings to permit it.");
+            fail(
+                "The NWChem executable, MPI launcher or environment overrides differ from the defaults this "
+                "headless server trusts (MolForma's saved Preferences, otherwise nwchem and mpirun from PATH "
+                "with no overrides). MCP clients cannot choose them; restart the server with "
+                "--mcp-allow-execution-settings to permit it.");
         runWork = "calculation-" + QString::number(++nextWork);
         run.start(d, base);
         return {{"tool", name},

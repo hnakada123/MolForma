@@ -79,12 +79,13 @@ QJsonObject mcpTool(const QString &name, const QString &title, const QString &de
 QJsonObject resultsTool() {
     return mcpTool(
         "get_results", "Read results",
-        "Read the loaded result summary or paginated frames/energies/orbitals/modes/log. mode_displacements "
-        "returns one mode with its reference geometry. Frequencies retain negative values for imaginary "
-        "modes.",
+        "Read the loaded result summary (with thermochemistry, dipole and optimization state from NWChem "
+        "logs) or paginated frames/energies/orbitals/modes/excitations (TDDFT)/steps (optimization)/log. "
+        "mode_displacements returns one mode with its reference geometry. Frequencies retain negative "
+        "values for imaginary modes.",
         {{"section", QJsonObject{{"type", "string"},
                                  {"enum", QJsonArray{"summary", "frames", "energies", "orbitals", "modes",
-                                                     "mode_displacements", "log"}}}},
+                                                     "excitations", "steps", "mode_displacements", "log"}}}},
          {"offset", integer(0, 10000000)},
          {"limit", integer(1, 65536)},
          {"index", integer(0, 1000000)}},
@@ -109,10 +110,10 @@ QJsonObject resultsJson(const ResultData &r, const QJsonObject &args, QJsonObjec
     out["orbitalBasis"] = r.orbitalBasis;
     out["orbitalError"] = r.orbitalError;
     out["warnings"] = QJsonArray::fromStringList(r.warnings);
-    out["counts"] = QJsonObject{{"frames", r.frames.size()},
-                                {"energies", r.energies.size()},
-                                {"orbitals", r.orbitals.size()},
-                                {"modes", r.modes.size()}};
+    out["counts"] = QJsonObject{{"frames", r.frames.size()},           {"energies", r.energies.size()},
+                                {"orbitals", r.orbitals.size()},       {"modes", r.modes.size()},
+                                {"excitations", r.excitations.size()}, {"steps", r.steps.size()}};
+    out["properties"] = r.properties;
     const auto section = args["section"].toString("summary");
     int offset = args["offset"].toInt(), limit = std::min(args["limit"].toInt(100), 1000);
     QJsonArray rows;
@@ -127,11 +128,13 @@ QJsonObject resultsJson(const ResultData &r, const QJsonObject &args, QJsonObjec
         out["text"] = r.log.mid(offset, args["limit"].toInt(4096));
         out["total"] = r.log.size();
     } else {
-        int count = section == "frames"     ? r.frames.size()
-                    : section == "energies" ? r.energies.size()
-                    : section == "orbitals" ? r.orbitals.size()
-                    : section == "modes"    ? r.modes.size()
-                                            : 0;
+        int count = section == "frames"        ? r.frames.size()
+                    : section == "energies"    ? r.energies.size()
+                    : section == "orbitals"    ? r.orbitals.size()
+                    : section == "modes"       ? r.modes.size()
+                    : section == "excitations" ? r.excitations.size()
+                    : section == "steps"       ? r.steps.size()
+                                               : 0;
         for (int i = offset; i < std::min(count, offset + limit); ++i) {
             QJsonObject row{{"index", i}};
             if (section == "frames") {
@@ -156,6 +159,26 @@ QJsonObject resultsJson(const ResultData &r, const QJsonObject &args, QJsonObjec
                 row["imaginary"] = m.frequency < 0;
                 row["intensity"] = std::isfinite(m.intensity) ? QJsonValue(m.intensity) : QJsonValue();
                 row["hasDisplacements"] = !m.displacement.isEmpty();
+            }
+            if (section == "excitations") {
+                const auto &x = r.excitations[i];
+                row["root"] = x.root;
+                row["spin"] = x.spin;
+                row["symmetry"] = x.symmetry;
+                row["ev"] = x.ev;
+                row["nm"] = 1239.84198 / x.ev;
+                row["oscillator"] = x.oscillator;
+                row["s2"] = std::isfinite(x.s2) ? QJsonValue(x.s2) : QJsonValue();
+            }
+            if (section == "steps") {
+                const auto &t = r.steps[i];
+                row["step"] = t.step;
+                row["energy"] = t.energy;
+                row["deltaE"] = t.deltaE;
+                row["gmax"] = t.gmax;
+                row["grms"] = t.grms;
+                row["xrms"] = t.xrms;
+                row["xmax"] = t.xmax;
             }
             if (!appendPage(rows, row, bytes))
                 break;

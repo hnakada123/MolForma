@@ -3,7 +3,6 @@
 #include "editing/stereochemistry.h"
 #include <QFileInfo>
 #include <QRegularExpression>
-#include <memory>
 #include <openbabel/atom.h>
 #include <openbabel/bond.h>
 #include <openbabel/builder.h>
@@ -356,19 +355,21 @@ Document refine(const Document &d, bool regenerate, const Ids &moving) {
     for (int i = 0; i < d.atoms.size(); ++i)
         if (d.atoms[i].fixed || (!moving.isEmpty() && !moving.contains(d.atoms[i].id)))
             constraints.AddAtomConstraint(i + 1);
-    std::unique_ptr<OBForceField> ff;
+    // Use the registered force fields directly, as Open Babel's obminimize does: in Open Babel 3.2 a
+    // UFF copy made by MakeNewInstance() frees its buffers twice and aborts. Refinement runs once per
+    // worker process (and sequentially in tests), so the shared instances are not used concurrently.
+    OBForceField *ff = nullptr;
     QString used;
     for (auto name : {"MMFF94", "UFF"}) {
-        auto *prototype = OBForceField::FindForceField(name);
-        if (!prototype)
+        auto *candidate = OBForceField::FindForceField(name);
+        if (!candidate)
             continue;
-        ff.reset(prototype->MakeNewInstance());
-        ff->SetLogLevel(OBFF_LOGLVL_NONE);
-        if (ff->Setup(mol, constraints)) {
+        candidate->SetLogLevel(OBFF_LOGLVL_NONE);
+        if (candidate->Setup(mol, constraints)) {
+            ff = candidate;
             used = name;
             break;
         }
-        ff.reset();
     }
     if (!ff)
         fail("この構造に使える力場パラメータがありません。結合次数・形式電荷を確認してください。");

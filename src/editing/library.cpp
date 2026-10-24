@@ -91,7 +91,10 @@ PlacedPart placeTemplate(Document &d, const QJsonObject &t, const Vec &position)
         p += position - center;
     return instantiate(d, t, pp);
 }
-QJsonObject makePart(const Document &d, const Ids &ids, const QString &name, bool ligand) {
+QJsonObject makePart(const Document &d, const Ids &ids, const QString &name, const QString &category) {
+    const bool ligand = category == "ligand", skeleton = category == "skeleton";
+    if (!ligand && !skeleton && category != "substituent")
+        fail("部品の種類が不正です。");
     if (ids.isEmpty() || name.trimmed().isEmpty())
         fail("原子を接続点から順に選び、部品名を入力してください。");
     QSet<QString> selected(ids.begin(), ids.end());
@@ -99,10 +102,12 @@ QJsonObject makePart(const Document &d, const Ids &ids, const QString &name, boo
     for (const auto &b : d.bonds)
         if (selected.contains(b.a) != selected.contains(b.b)) {
             ++boundary;
+            if (skeleton)
+                fail("骨格は他の原子と結合していない分子全体を選択してください（選択単位「連結分子」）。");
             if ((selected.contains(b.a) ? b.a : b.b) != ids.first())
                 fail("最初に接続点の原子を選択してください。");
         }
-    if (boundary > 1 || (!ligand && boundary != 1))
+    if (!skeleton && (boundary > 1 || (!ligand && boundary != 1)))
         fail("置換基の外部結合は1本、配位子は0または1本にしてください。");
     Document sub;
     for (const auto &id : ids)
@@ -114,21 +119,17 @@ QJsonObject makePart(const Document &d, const Ids &ids, const QString &name, boo
             bonds.append(QJsonObject{
                 {"a", ids.indexOf(b.a)}, {"b", ids.indexOf(b.b)}, {"kind", b.kind}, {"stereo", b.stereo}});
         }
-    if (sub.component(ids.first()).size() != ids.size())
+    if (!skeleton && sub.component(ids.first()).size() != ids.size())
         fail("部品の原子は互いに結合している必要があります。");
     for (const auto &id : ids) {
         auto a = d.atom(id).toJson();
         a.remove("id");
         atoms.append(a);
     }
-    return {{"id", "my:" + name},
-            {"name_ja", name},
-            {"name_en", name},
-            {"aliases", QJsonArray{name}},
-            {"category", ligand ? "ligand" : "substituent"},
-            {"atoms", atoms},
-            {"bonds", bonds},
-            {"connections", QJsonArray{0}},
+    return {{"id", "my:" + name},     {"name_ja", name},
+            {"name_en", name},        {"aliases", QJsonArray{name}},
+            {"category", category},   {"atoms", atoms},
+            {"bonds", bonds},         {"connections", skeleton ? QJsonArray() : QJsonArray{0}},
             {"leaving", QJsonValue()}};
 }
 } // namespace mf

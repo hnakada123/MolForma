@@ -75,6 +75,18 @@ double measure(const Document &d, const Ids &ids) {
     }
     fail("2〜4原子を順番に選択してください。");
 }
+// Atoms that move when a measurement changes at `moving`: the far side of the bond, or for
+// atoms that are not bonded, the whole molecule containing `moving` (e.g. the second monomer
+// of a dimer), so hydrogen-bond and intermolecular distances can be set.
+static Ids movingSide(const Document &d, const QString &fixed, const QString &moving) {
+    if (d.bond(fixed, moving))
+        return d.bondSide(fixed, moving);
+    auto side = d.component(moving);
+    if (side.contains(fixed))
+        fail("同じ分子内で結合していない原子間の寸法は変更できません。結合した原子か、別々の分子の原子を選択"
+             "してください。");
+    return side;
+}
 void setDimension(Document &d, const Ids &ids, double value) {
     if (!std::isfinite(value))
         fail("寸法は有限値を指定してください。");
@@ -82,18 +94,21 @@ void setDimension(Document &d, const Ids &ids, double value) {
     if (ids.size() == 2) {
         if (value <= 0)
             fail("距離は正の値にしてください。");
-        transform(d, d.bondSide(ids[0], ids[1]), Mat::Identity(),
+        transform(d, movingSide(d, ids[0], ids[1]), Mat::Identity(),
                   unit(d.atom(ids[1]).position - d.atom(ids[0]).position) * (value - current));
     } else if (ids.size() == 3) {
         if (value <= 0 || value >= 180)
             fail("角度は0°より大きく180°未満にしてください。");
         Vec o = d.atom(ids[1]).position;
-        transform(d, d.bondSide(ids[1], ids[2]),
+        transform(d, movingSide(d, ids[1], ids[2]),
                   rotation((d.atom(ids[2]).position - o).cross(d.atom(ids[0]).position - o), current - value),
                   Vec::Zero(), o);
     } else {
+        const auto side = movingSide(d, ids[1], ids[2]);
+        if (!side.contains(ids[3]))
+            fail("4番目の原子が3番目の原子と同じ分子にないため、二面角を変更できません。");
         Vec a = d.atom(ids[1]).position, b = d.atom(ids[2]).position;
-        transform(d, d.bondSide(ids[1], ids[2]), rotation(b - a, value - current), Vec::Zero(), b);
+        transform(d, side, rotation(b - a, value - current), Vec::Zero(), b);
     }
 }
 void orient(Document &d, const Ids &ids) {

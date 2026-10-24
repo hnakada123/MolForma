@@ -301,9 +301,10 @@ QJsonArray McpGui::tools() const {
         "Select editor atoms by stable IDs, without changing geometry. Empty ids clears selection.",
         {{"ids", array(type("string"))}}, {"ids"}, true);
     add("chemistry",
-        "Start cancellable SMILES/refine/regenerate work, or cancel it. moving limits refinement to "
+        "Start cancellable SMILES/refine/regenerate work, or cancel it. smiles replaces the structure; "
+        "fragment adds the SMILES molecule 3 Å beside the current one. moving limits refinement to "
         "specified stable atom IDs. Inspect candidate after completion; confirm with history.",
-        {{"action", choice({"smiles", "refine", "regenerate", "cancel"})},
+        {{"action", choice({"smiles", "fragment", "refine", "regenerate", "cancel"})},
          {"smiles", type("string")},
          {"moving", array(type("string"))}},
         {"action"}, true);
@@ -315,10 +316,12 @@ QJsonArray McpGui::tools() const {
     result.append(resultsTool());
     add("results_action",
         "Open/cancel/reload results; select frame/mode/orbital; play/stop vibration or trajectory; export "
-        "current geometry. indices are zero-based. Changes affect only the viewer. See get_results for load "
-        "errors and status.",
-        {{"action", choice({"open_file", "open_directory", "reload", "cancel", "select_frame", "select_mode",
-                            "select_orbital", "play_mode", "play_frames", "stop", "save_xyz"})},
+        "current geometry. indices are zero-based. These change only the viewer, except apply_structure: it "
+        "proposes the displayed geometry (same atoms in the same order, fixed atoms unmoved) as a candidate "
+        "for the document; confirm it with history. See get_results for load errors and status.",
+        {{"action",
+          choice({"open_file", "open_directory", "reload", "cancel", "select_frame", "select_mode",
+                  "select_orbital", "play_mode", "play_frames", "stop", "save_xyz", "apply_structure"})},
          {"path", type("string")},
          {"index", integer(0, 1000000)},
          {"amplitude", QJsonObject{{"type", "number"}, {"minimum", .01}, {"maximum", 2}}},
@@ -1087,7 +1090,7 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
             const auto moving = idsFromJson(args["moving"]);
             for (const auto &id : moving)
                 window.doc.atom(id);
-            if (action == "smiles" && args["smiles"].toString().trimmed().isEmpty())
+            if ((action == "smiles" || action == "fragment") && args["smiles"].toString().trimmed().isEmpty())
                 fail("Specify SMILES.");
             window.runWorker(action, args["smiles"].toString(), moving);
         }
@@ -1153,6 +1156,8 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
                     fail("At least two frames are required.");
                 p->stopAnimation();
                 p->playFrames->click();
+            } else if (action == "apply_structure") {
+                p->applyStructure();
             } else if (action == "save_xyz") {
                 const int n = index(p->frame->value() - 1, p->data.frames.size());
                 const auto &doc = p->modeDisplayed && p->modes->currentRow() >= 0

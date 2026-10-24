@@ -53,8 +53,12 @@ int main(int argc, char **argv) {
         }
         try {
             const auto policy = mcpPolicy(parser);
-            mf::McpHeadless runtime(policy);
+            // The executable, launcher and environment saved in Preferences are the user's choice.
+            mf::Document initial;
+            mf::applyExecutionPreferences(initial);
+            mf::McpHeadless runtime(policy, mf::protectedExecution(initial));
             mf::McpServer server(runtime.editor(), policy);
+            server.resetDocument(initial);
             runtime.attach(server);
             mf::McpStdioTransport transport(&server);
             QObject::connect(&transport, &mf::McpStdioTransport::finished, &app, &QCoreApplication::exit);
@@ -76,9 +80,10 @@ int main(int argc, char **argv) {
         try {
             auto request = mf::parseJson(mf::readFile(input));
             auto mode = request["mode"].toString();
-            auto d = mode == "smiles" ? mf::fromSmiles(request["smiles"].toString())
-                                      : mf::refine(mf::Document::fromJson(request["document"].toObject()),
-                                                   mode == "regenerate", mf::idsFromJson(request["moving"]));
+            auto d = mode == "smiles" || mode == "fragment"
+                         ? mf::fromSmiles(request["smiles"].toString())
+                         : mf::refine(mf::Document::fromJson(request["document"].toObject()),
+                                      mode == "regenerate", mf::idsFromJson(request["moving"]));
             mf::writeFile(output, QJsonDocument(QJsonObject{{"document", d.toJson()}}).toJson());
             return 0;
         } catch (const std::exception &e) {

@@ -122,7 +122,24 @@ void nwchem(ResultData &r, const QStringList &lines) {
         "Received an Error in Communication",
         QRegularExpression::CaseInsensitiveOption);
     static const QRegularExpression code(R"(\s+-?\d+\s*$)");
-    QString abort;
+    static const QRegularExpression root(
+        R"(^\s*Root\s+(\d+)\s+(?:(singlet|triplet)\s+)?(\S+)\s+(-?[\d.]+)\s+a\.u\.\s+(-?[\d.]+)\s+eV)");
+    static const QRegularExpression step(R"(^@\s+(\d+)((?:\s+\S+){7})\s*$)");
+    static const QRegularExpression threshold(
+        R"(^\s*(?:maximum|rms) (?:gradient|cartesian step) threshold\s+\((gmax|grms|xmax|xrms)\)\s*=\s*(\S+))");
+    static const QRegularExpression orbitalHeader(R"(Final (Alpha |Beta )?Molecular Orbital Analysis)");
+    static const QRegularExpression vector(
+        R"(^\s*Vector\s+(\d+)\s+Occ=\s*(\S+)\s+E=\s*(\S+)(?:\s+Symmetry=\s*(\S+))?)");
+    // Lenient numbers for the summaries: one odd line must not reject the whole log.
+    const auto value = [](QString text) {
+        bool ok;
+        const double n = text.replace('D', 'E', Qt::CaseInsensitive).toDouble(&ok);
+        return ok && std::isfinite(n) ? n : std::numeric_limits<double>::quiet_NaN();
+    };
+    QString abort, orbitalSpin;
+    QVector<ResultOrbital> logOrbitals;
+    QJsonArray thermochemistry;
+    QJsonObject thresholds;
     for (int i = 0; i < lines.size(); ++i) {
         const auto &line = lines[i];
         recognized |= line.contains("NWChem");
@@ -144,6 +161,79 @@ void nwchem(ResultData &r, const QStringList &lines) {
                 r.warnings << QString("行 %1: %2").arg(i + 1).arg(line.trimmed().left(250));
         }
         ended |= line.contains("Total times  cpu:");
+        if (auto m = root.match(line); m.hasMatch() && r.excitations.size() < 2000) {
+            ResultExcitation x{m.captured(1).toInt(), m.captured(2), m.captured(3), value(m.captured(5))};
+            if (x.root == 1 && std::any_of(r.excitations.begin(), r.excitations.end(),
+                                           [&](const auto &e) { return e.root == 1 && e.spin == x.spin; }))
+                r.excitations.clear(); // A later TDDFT task replaces the earlier one.
+            for (int j = i + 1; j < lines.size() && j < i + 40 && !root.match(lines[j]).hasMatch(); ++j) {
+                if (lines[j].contains("<S2> ="))
+                    x.s2 = value(words(lines[j]).value(2));
+                if (lines[j].contains("Dipole Oscillator Strength"))
+                    x.oscillator = value(words(lines[j]).last());
+            }
+            if (std::isfinite(x.ev))
+                r.excitations << x;
+        }
+        if (auto m = step.match(line); m.hasMatch()) {
+            const auto columns = words(m.captured(2));
+            ResultStep s{m.captured(1).toInt(), value(columns[0]), value(columns[1]), value(columns[2]),
+                         value(columns[3]),     value(columns[4]), value(columns[5]), value(columns[6])};
+            // The converged step is printed twice; a new step 0 starts another optimization.
+            if (s.step == 0 || (!r.steps.isEmpty() && s.step <= r.steps.last().step))
+                while (!r.steps.isEmpty() && r.steps.last().step >= s.step)
+                    r.steps.removeLast();
+            if (std::isfinite(s.energy) && r.steps.size() < 20000)
+                r.steps << s;
+        }
+        if (auto m = threshold.match(line); m.hasMatch())
+            thresholds[m.captured(1)] = value(m.captured(2));
+        if (line.contains("Optimization converged"))
+            r.properties["optimization"] = "converged";
+        if (auto m = orbitalHeader.match(line); m.hasMatch()) {
+            orbitalSpin = m.captured(1).trimmed() == "Beta" ? "Beta" : "Alpha";
+            if (orbitalSpin == "Alpha")
+                logOrbitals.clear(); // Keep the last analysis (after optimization steps etc.).
+        }
+        if (auto m = vector.match(line); m.hasMatch() && !orbitalSpin.isEmpty() && logOrbitals.size() < 20000)
+            logOrbitals << ResultOrbital{m.captured(4), orbitalSpin, value(m.captured(3)),
+                                         value(m.captured(2))};
+        if (line.contains("Multipole analysis of the density")) {
+            QJsonObject dipole;
+            for (int j = i + 1; j < lines.size() && j < i + 12; ++j) {
+                const auto row = words(lines[j]);
+                if (row.size() >= 5 && row[0] == "1" &&
+                    QStringList{"100", "010", "001"}.contains(row.mid(1, 3).join(""))) {
+                    const auto axis = row[1] == "1" ? "x" : row[2] == "1" ? "y" : "z";
+                    dipole[axis] = value(row[4]);
+                }
+            }
+            if (dipole.size() == 3) {
+                const double au =
+                    std::hypot(dipole["x"].toDouble(), dipole["y"].toDouble(), dipole["z"].toDouble());
+                dipole["debye"] = au * 2.541746473;
+                r.properties["dipole"] = dipole;
+            }
+        }
+        if (line.trimmed().startsWith("Temperature") && line.contains('=') && line.trimmed().endsWith('K')) {
+            QJsonObject t{{"temperature", value(line.section('=', 1).trimmed().chopped(1))}};
+            for (int j = i + 1; j < lines.size() && j < i + 16; ++j) {
+                const auto text = lines[j];
+                const auto field = [&](const char *label, const char *key) {
+                    if (text.contains(label))
+                        t[key] = value(words(text.section('=', 1)).value(0));
+                };
+                field("Zero-Point correction to Energy", "zpe_kcal");     // kcal/mol
+                field("Thermal correction to Energy", "energy_kcal");     // kcal/mol
+                field("Thermal correction to Enthalpy", "enthalpy_kcal"); // kcal/mol
+                field("Total Entropy", "entropy_cal");                    // cal/(mol K)
+                field("Cv (constant volume heat capacity)", "cv_cal");    // cal/(mol K)
+                if (text.contains("symmetry #"))
+                    t["symmetry_number"] = value(text.section('=', -1).remove(')').trimmed());
+            }
+            if (t.contains("enthalpy_kcal") && t.contains("entropy_cal") && thermochemistry.size() < 20)
+                thermochemistry << t;
+        }
         if (line.contains("Optimization converged"))
             r.warnings << "最適化の収束メッセージを検出しました。";
         auto match = energy.match(line);
@@ -227,6 +317,14 @@ void nwchem(ResultData &r, const QStringList &lines) {
     }
     if (!recognized)
         fail("NWChemの出力ログを認識できません。");
+    if (r.orbitals.isEmpty())
+        r.orbitals = logOrbitals; // Energies only: shapes need MOLDEN (or a CUBE) for the basis.
+    if (!thermochemistry.isEmpty())
+        r.properties["thermochemistry"] = thermochemistry;
+    if (!thresholds.isEmpty())
+        r.properties["thresholds"] = thresholds;
+    if (!r.steps.isEmpty() && !r.properties.contains("optimization"))
+        r.properties["optimization"] = "not_converged";
     if (!abort.isEmpty())
         r.status = "NWChemエラー: " + abort;
     else if (fatal)
@@ -621,7 +719,7 @@ void saveResultData(const QString &path, const ResultData &r) {
     QByteArray bytes;
     QDataStream s(&bytes, QIODevice::WriteOnly);
     s.setVersion(QDataStream::Qt_6_4);
-    s << QString("MolFormaResult2") << r.source << r.format << r.status << r.log << r.warnings;
+    s << QString("MolFormaResult3") << r.source << r.format << r.status << r.log << r.warnings;
     s << r.orbitalBasis << qint32(r.selectedOrbital) << qint32(r.orbitalFrame) << qint32(r.orbitalDivisions)
       << r.orbitalError << r.orbitalNormalization << r.normalizationRequest;
     auto doc = [&](const Document &d) { s << QJsonDocument(d.toJson()).toJson(QJsonDocument::Compact); };
@@ -654,6 +752,13 @@ void saveResultData(const QString &path, const ResultData &r) {
     s << r.datasets << qint32(r.dataset) << r.isovalue << r.minimum << r.maximum;
     for (int n : r.grid)
         s << qint32(n);
+    s << qint32(r.excitations.size());
+    for (const auto &x : r.excitations)
+        s << qint32(x.root) << x.spin << x.symmetry << x.ev << x.oscillator << x.s2;
+    s << qint32(r.steps.size());
+    for (const auto &t : r.steps)
+        s << qint32(t.step) << t.energy << t.deltaE << t.gmax << t.grms << t.xrms << t.xmax << t.seconds;
+    s << QJsonDocument(r.properties).toJson(QJsonDocument::Compact);
     if (s.status() != QDataStream::Ok)
         fail("結果の転送データを保存できません。");
     writeFile(path, bytes);
@@ -664,7 +769,7 @@ ResultData loadResultData(const QString &path) {
     s.setVersion(QDataStream::Qt_6_4);
     QString magic;
     s >> magic;
-    if (magic != "MolFormaResult2")
+    if (magic != "MolFormaResult3")
         fail("結果の転送形式が不正です。");
     ResultData r;
     s >> r.source >> r.format >> r.status >> r.log >> r.warnings;
@@ -733,6 +838,23 @@ ResultData loadResultData(const QString &path) {
         s >> value;
         n = value;
     }
+    for (int n = count(2000); n--;) {
+        ResultExcitation x;
+        qint32 root;
+        s >> root >> x.spin >> x.symmetry >> x.ev >> x.oscillator >> x.s2;
+        x.root = root;
+        r.excitations << x;
+    }
+    for (int n = count(20000); n--;) {
+        ResultStep t;
+        qint32 step;
+        s >> step >> t.energy >> t.deltaE >> t.gmax >> t.grms >> t.xrms >> t.xmax >> t.seconds;
+        t.step = step;
+        r.steps << t;
+    }
+    QByteArray properties;
+    s >> properties;
+    r.properties = QJsonDocument::fromJson(properties).object();
     if (s.status() != QDataStream::Ok || !s.atEnd())
         fail("結果の転送データが不完全です。");
     return r;

@@ -7,6 +7,7 @@ class QLabel;
 class QPlainTextEdit;
 class QPushButton;
 class QFormLayout;
+class QTableWidget;
 class QVBoxLayout;
 namespace mf {
 class MainWindow;
@@ -29,6 +30,7 @@ class CalculationPanel : public QWidget {
     QComboBox *presets;
     QLabel *summary, *presetSummary, *message;
     QPlainTextEdit *validation, *preview;
+    QTableWidget *elementBases; // Per-element library basis for the elements of the molecule.
     QPushButton *copy, *save, *undo, *redo, *removePreset;
     QJsonArray userPresets;
     QFormLayout *group(const QString &title, QVBoxLayout *layout);
@@ -39,5 +41,6 @@ class CalculationPanel : public QWidget {
     void reloadPresets();
     void describePreset();
     void storePreset();
+    void refreshElementBases(const QJsonObject &settings);
 };
 } // namespace mf

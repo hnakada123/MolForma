@@ -1,5 +1,6 @@
 #include "ui/molecule_view.h"
 #include "model/geometry.h"
+#include <QSettings>
 #ifdef MOLFORMA_HAS_VTK
 #include "ui/vtk_molecule_renderer.h"
 #include <QOffscreenSurface>
@@ -53,8 +54,9 @@ MoleculeView::MoleculeView(QWidget *parent) : QWidget(parent) {
     connect(&renderTimer, &QTimer::timeout, this, &MoleculeView::renderScene);
 #ifdef MOLFORMA_HAS_VTK
     const auto platform = QApplication::platformName();
-    if (qEnvironmentVariable("MOLFORMA_RENDERER").toLower() != "painter" && platform != "offscreen" &&
-        platform != "minimal") {
+    if (qEnvironmentVariable("MOLFORMA_RENDERER").toLower() != "painter" &&
+        QSettings("MolForma", "MolForma").value("view/renderer").toString() != "painter" &&
+        platform != "offscreen" && platform != "minimal") {
         // Probe before adding an OpenGL widget to the top-level window's composition path.
         QOpenGLContext context;
         context.setFormat(QVTKOpenGLNativeWidget::defaultFormat());

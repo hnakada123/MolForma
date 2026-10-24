@@ -9,6 +9,7 @@
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QThread>
@@ -68,6 +69,34 @@ QJsonObject executionDefaults() {
             {"omp_stacksize", ""},        {"job_root", QDir::home().filePath("MolForma/jobs")},
             {"reference_directory", ""},  {"timeout_seconds", 0},
             {"environment", QJsonArray{}}};
+}
+QStringList executionPreferenceKeys() {
+    return {"executable",   "mode",          "launcher", "mpi_ranks",       "omp_threads",
+            "blas_threads", "omp_stacksize", "job_root", "timeout_seconds", "environment"};
+}
+QJsonObject executionPreferences() {
+    const auto stored =
+        QJsonDocument::fromJson(QSettings("MolForma", "MolForma").value("execution/defaults").toByteArray())
+            .object();
+    const auto defaults = executionDefaults();
+    QJsonObject result;
+    for (const auto &key : executionPreferenceKeys())
+        result[key] = stored[key].type() == defaults[key].type() ? stored[key] : defaults[key];
+    return result;
+}
+void saveExecutionPreferences(const QJsonObject &settings) {
+    QJsonObject stored;
+    for (const auto &key : executionPreferenceKeys())
+        if (settings.contains(key))
+            stored[key] = settings[key];
+    QSettings("MolForma", "MolForma")
+        .setValue("execution/defaults", QJsonDocument(stored).toJson(QJsonDocument::Compact));
+}
+void applyExecutionPreferences(Document &d) {
+    const auto defaults = executionDefaults(), preferences = executionPreferences();
+    for (auto it = preferences.begin(); it != preferences.end(); ++it)
+        if (it.value() != defaults[it.key()])
+            setExecutionSetting(d, it.key(), it.value());
 }
 QJsonObject executionSettings(const Document &d) {
     auto result = executionDefaults();

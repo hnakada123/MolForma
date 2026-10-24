@@ -133,7 +133,7 @@ NWChem実行ファイル（`executable`）、MPIランチャー（`launcher`）�
 - GUIモードでは、「5 実行設定」タブの実行ファイル・ランチャーの欄と参照ボタン、環境変数の表と追加・削除ボタンをMCPから操作できません。`get_ui` の `blocked` に理由を示します。
 - プロジェクトの読込や履歴の再利用でも値は変わるため、計算の開始時にも確認します。MolFormaは、MCP以外の操作（利用者のGUI操作や、起動時に指定したファイル）で最後に設定された値を「信頼済み」として記録します。MCPから開始する計算は、信頼済みの値と一致する場合だけ実行します。MCPが作成した候補を利用者が「変更を確定」した場合や、MCPによる編集を利用者がUndo/Redoした場合も、その値は信頼済みになりません。
 - 一致しない設定で利用者が「実行」を押すと、設定内容を示す確認ダイアログを表示します。このダイアログはMCPから取得・操作できず、Elicitationにもなりません。「はい」を選ぶと、その値が信頼済みになります。
-- 画面なしの `--mcp` では、既定値（`PATH` 上の `nwchem` と `mpirun`、追加の環境変数なし）だけを信頼します。
+- 画面なしの `--mcp` では、利用者がGUIの「編集 → 環境設定」で保存した値（未設定なら `PATH` 上の `nwchem` と `mpirun`、追加の環境変数なし）だけを信頼し、その値で文書を開始します。環境設定のダイアログとメニューはMCPから操作できません。
 - MCPから実行ファイルなどを指定させる場合は、起動引数に `--mcp-allow-execution-settings` を加えます。
 - `--mcp-allow-execution-settings` を指定した場合は、`set_execution` と `calculation` に、Claude Codeが呼び出しのたびに利用者に確認する印を付けます（[Claude Codeでの登録](#claude-codeでの登録)）。
 
@@ -166,7 +166,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 
 `revision` は確定文書と候補の内容から生成します。GUIでの編集や候補確定により内容が変わると、古い版を指定した変更は失敗します。失敗時は再取得して差分を確認してください。文書IDはプロセスごとに異なり、切断後は無効になります。複数の呼び出し元が同じプロセスを共有する場合も、各操作にIDを渡す必要があります。
 
-固定原子の移動、不正な参照、重複座標、不正な引数などは文書を変えずに失敗します。部分編集はプロジェクトの未知のenvelopeフィールドも保持します。`open_file` と `import_document(format: "project")` は指定したプロジェクト全体を読み込み、元のプロジェクトはUndoで復元できます。
+固定原子の移動、不正な参照、重複座標、不正な引数などは文書を変えずに失敗します。部分編集はプロジェクトの未知のenvelopeフィールドも保持します。`open_file`（プロジェクト）と `import_document(format: "project")` は指定したプロジェクト全体を読み込み、元のプロジェクトはUndoで復元できます。`open_file` でXYZ/MOL/SDF/PDBを開いた場合は、「2 座標」での読込と同じく構造だけを置き換え、計算条件・実行設定を保持します。
 
 ## 公開ツール
 
@@ -178,7 +178,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `set_positions` / `translate` | 安定IDによる座標変更・平行移動 |
 | `set_bond` / `delete_atoms` | 結合の変更・除去、原子削除と参照更新 |
 | `measure` | 2/3/4原子の距離・角度・二面角 |
-| `import_document` | XYZ文字列またはKAGAMI v2 JSON文字列の取込 |
+| `import_document` | XYZ文字列またはKAGAMI v2 JSON文字列の取込。XYZは `append: true` で今の分子の横に追加 |
 | `open_file` | ローカルXYZ/MOL/SDF/PDB/KAGAMIファイルの取込 |
 | `export_document` | 確定文書のXYZ、KAGAMI v2 JSON、検証済みNWChem入力文字列 |
 | `save_file` | 確定文書をKAGAMI v2として保存。既存ファイルは `overwrite: true` か、利用者の上書き承認が必要 |
@@ -193,7 +193,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | --- | --- |
 | `get_app_state` | 候補の有無、計算・結果読込の状態 |
 | `calculation` | NWChem実行・停止、入力一式の保存 |
-| `get_results` | 読込済み結果の要約、構造列・エネルギー・軌道・振動数・変位・ログ |
+| `get_results` | 読込済み結果の要約（熱化学・双極子・最適化状態を含む `properties`）、構造列・エネルギー・軌道・振動数・励起状態・最適化ステップ・変位・ログ |
 | `results_action` | 結果ファイル・計算フォルダーの読込、再読込、読込の取消 |
 
 画面なしモードの計算と読込はバックグラウンドで進み、`calculation` / `results_action` はすぐに戻ります。完了はタスクか `get_app_state` で確認します。計算はMolFormaの終了（標準入力を閉じる）とともに停止します。結果の表示・再生・画像取得はGUIモードだけです。
@@ -212,9 +212,9 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `ui_file_dialog` | ファイル選択・保存ダイアログのパスとフィルター指定、確定・取消 |
 | `capture_screenshot` | MolFormaのウィンドウまたは指定部品のPNG取得・保存 |
 | `set_selection` | 安定IDによる原子選択。空配列で解除 |
-| `chemistry` | SMILES生成、全体・局所整形、3D再生成、中止。結果は候補として確認 |
+| `chemistry` | SMILES生成（置換）、SMILESからの断片の追加（`fragment`）、全体・局所整形、3D再生成、中止。結果は候補として確認 |
 | `calculation` | 入力一式の保存、NWChem実行・停止 |
-| `get_results` / `results_action` | 結果読込・取消、構造列・エネルギー・軌道・振動数・変位・ログ取得、選択・再生・停止、XYZ保存 |
+| `get_results` / `results_action` | 結果読込・取消、構造列・エネルギー・軌道・振動数・励起状態・最適化ステップ・変位・ログ取得、選択・再生・停止、XYZ保存、表示中の構造を文書の候補にする `apply_structure` |
 | `history_action` | 履歴の走査・取消、ジョブ選択・再利用・結果表示、ごみ箱への移動、絞り込まれた一覧のCSV保存 |
 
 引数の型と必須項目は `tools/list` のJSON Schemaを参照してください。全ツールは `content` のJSONテキストと `structuredContent` の両方を返します。画面取得は追加でMCPの `image` コンテンツを返します。引数や編集内容のエラーは `isError: true`、不正なJSON-RPCや未知のツールはプロトコルエラーを返します。

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Independent result browsing workflow inspired by KAGAMI results_tab.py; native NWChem readers.
 #include "ui/results_panel.h"
+#include "editing/coordinates.h"
 #include "results/molden_orbitals.h"
 #include "ui/main_window.h"
+#include "ui/result_charts.h"
 #include <QtWidgets>
 #include <algorithm>
 #include <cmath>
@@ -27,6 +29,10 @@ void row(QTableWidget *t, int index, const QStringList &values) {
 QString real(double value) {
     return std::isfinite(value) ? QString::number(value, 'g', 12) : "—";
 }
+QString fixed(double value, int decimals) {
+    return std::isfinite(value) ? QString::number(value, 'f', decimals) : "—";
+}
+constexpr double HartreeToKcal = 627.509474, HartreeToEv = 27.211386245988, EvNanometer = 1239.84198;
 QString sourceStamp(const QFileInfo &file) {
     if (!file.exists() || !file.isFile())
         return {};
@@ -59,6 +65,11 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     for (auto *b : {open, directory, reload, cancel})
         actions->addWidget(b);
     actions->addStretch();
+    applyGeometry = new QPushButton("編集中の分子へ適用");
+    applyGeometry->setObjectName("resultsApplyStructure");
+    applyGeometry->setToolTip("表示中の構造の座標を「1 分子」の分子へ候補として適用します。原子の数と順番が同"
+                              "じ計算結果に使えます。結合・設定は変わりません。");
+    actions->addWidget(applyGeometry);
     saveXyz = new QPushButton("構造を保存…");
     saveXyz->setObjectName("resultsSaveXyz");
     savePng = new QPushButton("画像を保存…");
@@ -250,7 +261,10 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     const auto frontier = [this](bool virtualOrbital) {
         const int row = orbitals->currentRow();
         const auto spin = row >= 0 && row < data.orbitals.size() ? data.orbitals[row].spin : QString("Alpha");
-        renderOrbital(frontierOrbital(data.orbitals, spin, virtualOrbital));
+        const int target = frontierOrbital(data.orbitals, spin, virtualOrbital);
+        if (data.format != "MOLDEN" && target >= 0)
+            orbitals->selectRow(target); // Log orbitals have energies only.
+        renderOrbital(target);
     };
     connect(homo, &QPushButton::clicked, this, [frontier] { frontier(false); });
     connect(lumo, &QPushButton::clicked, this, [frontier] { frontier(true); });
@@ -275,6 +289,54 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     modeHint->setWordWrap(true);
     vl->addWidget(modeHint);
     tabs->addTab(vibrations, "振動");
+    auto *optimizationPage = new QWidget;
+    auto *opl = new QVBoxLayout(optimizationPage);
+    steps = table({"ステップ", "エネルギー / Eh", "ΔE / Eh", "Gmax", "Grms", "Xrms", "Xmax", "経過 / s"},
+                  "resultsSteps");
+    opl->addWidget(steps, 1);
+    energyChart = new ChartView;
+    energyChart->setObjectName("resultsEnergyChart");
+    opl->addWidget(energyChart, 1);
+    gradientChart = new ChartView;
+    gradientChart->setObjectName("resultsGradientChart");
+    opl->addWidget(gradientChart, 1);
+    auto *stepHint =
+        new QLabel("NWChem DRIVERの「@」行です。勾配はHartree/Bohr、変位はBohr。破線は収束閾値です。");
+    stepHint->setWordWrap(true);
+    opl->addWidget(stepHint);
+    tabs->addTab(optimizationPage, "最適化");
+    auto *excitedPage = new QWidget;
+    auto *el = new QVBoxLayout(excitedPage);
+    excitations = table({"状態", "スピン", "対称", "励起エネルギー / eV", "波長 / nm", "振動子強度", "<S²>"},
+                        "resultsExcitations");
+    el->addWidget(excitations, 1);
+    auto *spectrumRow = new QHBoxLayout;
+    el->addLayout(spectrumRow);
+    spectrumAxis = new QComboBox;
+    spectrumAxis->setObjectName("resultsSpectrumAxis");
+    spectrumAxis->addItem("横軸: 波長 / nm", "nm");
+    spectrumAxis->addItem("横軸: 励起エネルギー / eV", "ev");
+    spectrumRow->addWidget(spectrumAxis);
+    broadening = new QDoubleSpinBox;
+    broadening->setObjectName("resultsBroadening");
+    broadening->setRange(.05, 2);
+    broadening->setSingleStep(.05);
+    broadening->setValue(.3);
+    broadening->setPrefix("半値全幅 ");
+    broadening->setSuffix(" eV");
+    spectrumRow->addWidget(broadening);
+    spectrumRow->addStretch();
+    spectrum = new ChartView;
+    spectrum->setObjectName("resultsSpectrum");
+    el->addWidget(spectrum, 1);
+    auto *spectrumHint =
+        new QLabel("各状態の振動子強度（棒）に、エネルギー軸で指定した半値全幅のガウス関数を掛けて重ね"
+                   "た表示用の曲線です。三重項など振動子強度0の状態は棒に現れません。");
+    spectrumHint->setWordWrap(true);
+    el->addWidget(spectrumHint);
+    tabs->addTab(excitedPage, "励起状態");
+    connect(spectrumAxis, &QComboBox::currentIndexChanged, this, &ResultsPanel::showSpectrum);
+    connect(broadening, &QDoubleSpinBox::valueChanged, this, &ResultsPanel::showSpectrum);
     auto *surfaces = new QWidget;
     auto *sf = new QFormLayout(surfaces);
     isovalue = new QLineEdit("0.03");
@@ -392,6 +454,8 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         }
         startLoad(data.source, n, dataset->currentIndex());
     });
+    connect(applyGeometry, &QPushButton::clicked, this,
+            [this] { window->safe([this] { applyStructure(); }); });
     connect(saveXyz, &QPushButton::clicked, this, [this] {
         window->safe([&] {
             const auto p =
@@ -616,6 +680,7 @@ void ResultsPanel::updateActions() {
     cancel->setEnabled(loading());
     reload->setEnabled(ready);
     saveXyz->setEnabled(ready && !data.frames.isEmpty());
+    applyGeometry->setEnabled(ready && !data.frames.isEmpty());
     savePng->setEnabled(ready && !data.frames.isEmpty());
     frame->setEnabled(ready && !data.frames.isEmpty());
     playFrames->setEnabled(ready && data.frames.size() > 1);
@@ -684,6 +749,54 @@ void ResultsPanel::display(bool orbitalOnly) {
                     .arg(data.grid[2])
                     .arg(real(data.minimum), real(data.maximum), real(data.isovalue))
                     .arg(data.surface.size());
+    if (!data.steps.isEmpty())
+        info += QString("最適化: %1（%2ステップ、最終 %3 Eh）\n")
+                    .arg(data.properties["optimization"] == "converged" ? "収束" : "収束メッセージなし")
+                    .arg(data.steps.last().step)
+                    .arg(real(data.steps.last().energy));
+    for (const auto &value : data.properties["thermochemistry"].toArray()) {
+        const auto t = value.toObject();
+        const double temperature = t["temperature"].toDouble(), h = t["enthalpy_kcal"].toDouble(),
+                     g = h - temperature * t["entropy_cal"].toDouble() / 1000;
+        info +=
+            QString("熱化学（%1 K、対称数 %2）: ZPE %3 kcal/mol、内部エネルギー補正 %4 kcal/mol、"
+                    "エンタルピー補正 %5 kcal/mol、エントロピー %6 cal/(mol·K)、"
+                    "Gibbs補正 G = H − TS %7 kcal/mol（%8 Eh、算出値）\n")
+                .arg(fixed(temperature, 2), real(t["symmetry_number"].toDouble()),
+                     fixed(t["zpe_kcal"].toDouble(), 3), fixed(t["energy_kcal"].toDouble(), 3), fixed(h, 3),
+                     fixed(t["entropy_cal"].toDouble(), 3), fixed(g, 3), fixed(g / HartreeToKcal, 6));
+    }
+    if (!data.properties["thermochemistry"].toArray().isEmpty())
+        info += "補正は電子エネルギーに加えて使います。対称数はNWChemの値です（MolFormaの入力では1）。\n";
+    if (data.properties.contains("dipole")) {
+        const auto d = data.properties["dipole"].toObject();
+        info += QString("双極子モーメント: %1 D（x %2 / y %3 / z %4 a.u.）\n")
+                    .arg(fixed(d["debye"].toDouble(), 4), real(d["x"].toDouble()), real(d["y"].toDouble()),
+                         real(d["z"].toDouble()));
+    }
+    for (const auto &spin : {QString("Alpha"), QString("Beta")}) {
+        const int homo = frontierOrbital(data.orbitals, spin),
+                  lumo = frontierOrbital(data.orbitals, spin, true);
+        if (homo >= 0 && lumo >= 0)
+            info +=
+                QString("HOMO–LUMOギャップ（%1）: %2 eV\n")
+                    .arg(spin,
+                         fixed((data.orbitals[lumo].energy - data.orbitals[homo].energy) * HartreeToEv, 3));
+    }
+    if (!data.modes.isEmpty()) {
+        const auto imaginary = std::count_if(data.modes.begin(), data.modes.end(),
+                                             [](const auto &m) { return m.frequency < -10; });
+        info += QString("虚振動: %1個（−10 cm⁻¹未満）\n").arg(imaginary);
+    }
+    if (!data.excitations.isEmpty()) {
+        const auto strongest =
+            std::max_element(data.excitations.begin(), data.excitations.end(),
+                             [](const auto &a, const auto &b) { return a.oscillator < b.oscillator; });
+        info += QString("励起状態: %1件（最大の振動子強度 %2、%3 eV / %4 nm）\n")
+                    .arg(data.excitations.size())
+                    .arg(fixed(strongest->oscillator, 4), fixed(strongest->ev, 3),
+                         fixed(EvNanometer / strongest->ev, 1));
+    }
     info += "\n" + data.warnings.join("\n\n");
     summary->setText(info);
     if (!orbitalOnly) {
@@ -725,16 +838,18 @@ void ResultsPanel::display(bool orbitalOnly) {
         orbitalGrid->setValue(data.orbitalDivisions);
         orbitalNorm->setCurrentIndex(orbitalNorm->findData(data.normalizationRequest));
     }
-    orbitalStatus->setText(data.format != "MOLDEN"        ? "MOLDENファイルを開くと分子軌道を表示します。"
-                           : !data.orbitalError.isEmpty() ? data.orbitalError
-                           : data.selectedOrbital >= 0
-                               ? QString("表示中: %1 %2番 / 等値 ±%3 / 正規化: "
-                                         "%4\n一覧の行を選ぶと表示を切り替えます。赤: 正 / 青: 負。")
-                                     .arg(data.orbitals[data.selectedOrbital].spin,
-                                          orbitals->item(data.selectedOrbital, 0)->text(),
-                                          real(data.isovalue),
-                                          data.orbitalNormalization == "nwchem" ? "NWChem" : "標準MOLDEN")
-                               : "このファイルには表示可能な分子軌道がありません。");
+    orbitalStatus->setText(
+        data.format == "NWChem" && !data.orbitals.isEmpty()
+            ? "ログに出力された軌道エネルギーです。形状の表示にはMOLDENファイルを開いてください。"
+        : data.format != "MOLDEN"      ? "MOLDENファイルを開くと分子軌道を表示します。"
+        : !data.orbitalError.isEmpty() ? data.orbitalError
+        : data.selectedOrbital >= 0
+            ? QString("表示中: %1 %2番 / 等値 ±%3 / 正規化: "
+                      "%4\n一覧の行を選ぶと表示を切り替えます。赤: 正 / 青: 負。")
+                  .arg(data.orbitals[data.selectedOrbital].spin,
+                       orbitals->item(data.selectedOrbital, 0)->text(), real(data.isovalue),
+                       data.orbitalNormalization == "nwchem" ? "NWChem" : "標準MOLDEN")
+            : "このファイルには表示可能な分子軌道がありません。");
     if (!orbitalOnly) {
         const QSignalBlocker guard(modes);
         modes->setRowCount(data.modes.size());
@@ -744,6 +859,45 @@ void ResultsPanel::display(bool orbitalOnly) {
         }
         modes->clearSelection();
         modes->setCurrentCell(-1, -1);
+        steps->setRowCount(data.steps.size());
+        QVector<QPointF> relative, gmax, grms;
+        for (int i = 0; i < data.steps.size(); ++i) {
+            const auto &t = data.steps[i];
+            row(steps, i,
+                {QString::number(t.step), fixed(t.energy, 8), real(t.deltaE), real(t.gmax), real(t.grms),
+                 real(t.xrms), real(t.xmax), real(t.seconds)});
+            relative << QPointF(t.step, (t.energy - data.steps.last().energy) * HartreeToKcal);
+            gmax << QPointF(t.step, t.gmax);
+            grms << QPointF(t.step, t.grms);
+        }
+        if (data.steps.isEmpty()) {
+            energyChart->clear();
+            gradientChart->clear();
+        } else {
+            energyChart->setChart("エネルギー（最終ステップ基準）", "ステップ", "ΔE / kcal mol⁻¹",
+                                  {{"エネルギー", relative, QColor("#2f6db5")}});
+            const auto thresholds = data.properties["thresholds"].toObject();
+            QVector<QPair<QString, double>> levels;
+            if (thresholds.contains("gmax"))
+                levels.append({"gmax閾値", thresholds["gmax"].toDouble()});
+            if (thresholds.contains("grms"))
+                levels.append({"grms閾値", thresholds["grms"].toDouble()});
+            gradientChart->setChart("勾配", "ステップ", "Hartree / Bohr",
+                                    {{"Gmax", gmax, QColor("#c0392b")}, {"Grms", grms, QColor("#27845a")}},
+                                    true, levels);
+        }
+        excitations->setRowCount(data.excitations.size());
+        for (int i = 0; i < data.excitations.size(); ++i) {
+            const auto &x = data.excitations[i];
+            row(excitations, i,
+                {QString::number(x.root),
+                 x.spin.isEmpty()      ? "非制限"
+                 : x.spin == "singlet" ? "一重項"
+                                       : "三重項",
+                 x.symmetry, fixed(x.ev, 4), fixed(EvNanometer / x.ev, 1), fixed(x.oscillator, 5),
+                 std::isfinite(x.s2) ? fixed(x.s2, 4) : "—"});
+        }
+        showSpectrum();
     }
     {
         const QSignalBlocker guard(frame);
@@ -758,6 +912,34 @@ void ResultsPanel::display(bool orbitalOnly) {
     isovalue->setText(real(data.isovalue));
     showFrame();
     updateActions();
+}
+void ResultsPanel::showSpectrum() {
+    const bool nm = spectrumAxis->currentData() == "nm";
+    const double fwhm = broadening->value(), sigma = fwhm / (2 * std::sqrt(2 * std::log(2.)));
+    QVector<QPointF> sticks, curve;
+    double lo = INFINITY, hi = -INFINITY;
+    for (const auto &x : data.excitations)
+        if (x.ev > 0) {
+            lo = std::min(lo, x.ev);
+            hi = std::max(hi, x.ev);
+            if (x.oscillator > 0)
+                sticks << QPointF(nm ? EvNanometer / x.ev : x.ev, x.oscillator);
+        }
+    if (!(hi > 0) || sticks.isEmpty()) {
+        spectrum->clear();
+        return;
+    }
+    lo = std::max(.5, lo - 3 * fwhm);
+    hi += 3 * fwhm;
+    for (int k = 0; k <= 400; ++k) {
+        const double e = lo + (hi - lo) * k / 400;
+        double y = 0;
+        for (const auto &x : data.excitations)
+            y += x.oscillator * std::exp(-.5 * std::pow((e - x.ev) / sigma, 2));
+        curve << QPointF(nm ? EvNanometer / e : e, y);
+    }
+    spectrum->setChart("吸収スペクトル（表示用）", nm ? "波長 / nm" : "励起エネルギー / eV", "振動子強度",
+                       {{"広がり", curve, QColor("#2f6db5")}, {"各状態", sticks, QColor("#c0392b"), true}});
 }
 void ResultsPanel::showFrame() {
     modeDisplayed = false;
@@ -776,14 +958,30 @@ void ResultsPanel::showMode() {
     view->setSurface({});
     view->setDocument(resultModeGeometry(data, n, phase, amplitude->value()));
 }
-void ResultsPanel::saveGeometry(const QString &path) const {
+const Document &ResultsPanel::displayedGeometry() const {
     if (loading())
-        fail("読込完了後に構造を保存してください。");
+        fail("読込完了後に操作してください。");
     const int i = frame->value() - 1;
     if (i < 0 || i >= data.frames.size())
         fail("表示する構造がありません。");
-    const int mode = modes->currentRow();
-    const auto &d = modeDisplayed && mode >= 0 ? data.vibrationGeometry : data.frames[i].molecule;
-    writeFile(path, d.xyz().toUtf8());
+    // During a vibration the reference structure, not a displaced snapshot.
+    return modeDisplayed && modes->currentRow() >= 0 ? data.vibrationGeometry : data.frames[i].molecule;
+}
+void ResultsPanel::saveGeometry(const QString &path) const {
+    writeFile(path, displayedGeometry().xyz().toUtf8());
+}
+void ResultsPanel::applyStructure() {
+    const auto result = displayedGeometry();
+    std::pair<double, double> moved;
+    window->edit("計算結果の構造を適用", [&](Document &d) { moved = applyResultGeometry(d, result); }, true);
+    if (!window->hasCandidate())
+        fail("編集中の分子と結果の座標は同じです。");
+    window->workspaceTabs->setCurrentIndex(0);
+    window->statusBar()->showMessage(
+        QString("結果の構造を候補にしました（RMSD %1 Å、最大変位 %2 Å）。「変更を確定」"
+                "で適用します。")
+            .arg(moved.first, 0, 'f', 4)
+            .arg(moved.second, 0, 'f', 4),
+        15000);
 }
 } // namespace mf

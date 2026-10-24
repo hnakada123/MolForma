@@ -11,6 +11,8 @@ struct PlacedPart {
 PlacedPart instantiate(Document &d, const QJsonObject &t, const QVector<Vec> &positions = {},
                        const QSet<int> &omit = {});
 PlacedPart placeTemplate(Document &d, const QJsonObject &t, const Vec &position);
-QJsonObject makePart(const Document &d, const Ids &ids, const QString &name, bool ligand);
+// category: "substituent" (one external bond at the first atom), "ligand" (none or one) or
+// "skeleton" (a stand-alone molecule without connection points, placed by clicking).
+QJsonObject makePart(const Document &d, const Ids &ids, const QString &name, const QString &category);
 void validateTemplate(const QJsonObject &t);
 } // namespace mf

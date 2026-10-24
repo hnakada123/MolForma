@@ -10,6 +10,10 @@ void replaceElement(Document &d, const Ids &ids, const QString &symbol, bool hyd
 PlacedPart attachPart(Document &d, const QString &anchor, const QJsonObject &t, double twist = 0);
 PlacedPart replacePart(Document &d, Ids ids, const QJsonObject &t, double twist = 0);
 Ids duplicate(Document &d, const Ids &ids, const Vec &offset);
+// Adds another molecule (SMILES, structure file) beside the current one, 3 Å beyond it along +X.
+// Atoms, bonds, residues, parts and coordination centers are merged; point charges and settings of
+// the fragment are not. A total charge equal to the formal charges follows the new sum.
+Ids insertFragment(Document &d, const Document &fragment);
 void mirror(Document &d, const Ids &ids, int axis);
 void invertCenter(Document &d, const QString &id);
 void switchEZ(Document &d, const Ids &ids);

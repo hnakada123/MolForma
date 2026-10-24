@@ -278,18 +278,18 @@ void InputPreviewPanel::refresh() {
             task = choice.label;
             break;
         }
-    summary->setText(QString("%1 · %2 原子\n%3 / %4\n%5\n全電荷 %6 · 多重度 %7\n電子数 %8（α %9 / β "
-                             "%10）\nメモリ %11 MB / MPIプロセス")
-                         .arg(d.formula())
-                         .arg(d.atoms.size())
-                         .arg(method == "dft" ? s["functional"].toString().toUpper() : method.toUpper(),
-                              s["basis"].toString(), task)
-                         .arg(d.job()["charge"].toInt())
-                         .arg(d.job()["multiplicity"].toInt())
-                         .arg(report.electrons)
-                         .arg(report.alpha)
-                         .arg(report.beta)
-                         .arg(s["memory_mb"].toInt()));
+    summary->setText(
+        QString("%1 · %2 原子\n%3 / %4\n%5\n全電荷 %6 · 多重度 %7\n電子数 %8（α %9 / β "
+                "%10）\nメモリ %11 MB / MPIプロセス")
+            .arg(d.formula())
+            .arg(d.atoms.size())
+            .arg(method == "dft" ? nwchemFunctionalLabel(s) : method.toUpper(), nwchemBasisLabel(s), task)
+            .arg(d.job()["charge"].toInt())
+            .arg(d.job()["multiplicity"].toInt())
+            .arg(report.electrons)
+            .arg(report.alpha)
+            .arg(report.beta)
+            .arg(s["memory_mb"].toInt()));
     const bool pending = window->hasCandidate() || window->worker;
     hint->setText(window->hasCandidate()
                       ? "未確定の分子候補を表示しています。確定または取消後にコピー・保存できます。"

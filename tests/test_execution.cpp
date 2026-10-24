@@ -69,6 +69,45 @@ class ExecutionTest : public QObject {
         QCOMPARE(restored.envelope["execution"], before["execution"]);
         QCOMPARE(restored.envelope["result_reference"], before["result_reference"]);
     }
+    void savedPreferences() {
+        // Preferences fill new documents and structure files; projects keep their own settings.
+        const QJsonObject chosen{
+            {"executable", helper},
+            {"mode", "direct"},
+            {"mpi_ranks", 6},
+            {"job_root", files.filePath("preferred-jobs")},
+            {"reference_directory", "/not/a/preference"},
+            {"environment",
+             QJsonArray{QJsonObject{{"enabled", true}, {"name", "MOLFORMA_X"}, {"value", "1"}}}}};
+        saveExecutionPreferences(chosen);
+        QCOMPARE(executionPreferences()["mpi_ranks"].toInt(), 6);
+        QCOMPARE(executionPreferences()["launcher"].toString(), QString("mpirun"));
+        QVERIFY(!executionPreferences().contains("reference_directory"));
+        Document fresh;
+        applyExecutionPreferences(fresh);
+        QCOMPARE(executionSettings(fresh)["executable"].toString(), helper);
+        QVERIFY(!fresh.data["nwchem_execution"].toObject().contains("launcher")); // Defaults stay implicit.
+        const auto xyz = files.filePath("preferred.xyz"), project = files.filePath("own.kgui.json");
+        writeFile(xyz, "3\nwater\nO 0 0 0\nH .76 0 .5\nH -.76 0 .5\n");
+        auto own = water();
+        setExecutionSetting(own, "mpi_ranks", 3);
+        own.save(project);
+        {
+            MainWindow w;
+            QCOMPARE(executionSettings(w.document())["mpi_ranks"].toInt(), 6);
+            w.loadPath(xyz);
+            QCOMPARE(executionSettings(w.document())["executable"].toString(), helper);
+            w.loadPath(project);
+            QCOMPARE(executionSettings(w.document())["mpi_ranks"].toInt(), 3);
+        }
+        saveExecutionPreferences({});
+        QCOMPARE(executionPreferences(), [] {
+            QJsonObject defaults;
+            for (const auto &key : executionPreferenceKeys())
+                defaults[key] = executionDefaults()[key];
+            return defaults;
+        }());
+    }
     void validationAndEnvironment() {
         auto d = configured();
         QVERIFY(validateExecution(d, files.path()).errors.isEmpty());

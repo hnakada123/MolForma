@@ -51,6 +51,7 @@ add_library(molforma_ui STATIC
     src/ui/mcp_gui.cpp
     src/ui/molecule_view.cpp
     src/ui/periodic_table.cpp
+    src/ui/result_charts.cpp
     src/ui/results_panel.cpp
     src/ui/template_delegate.cpp)
 # McpGui shares tool definitions, result views and the access policy with the headless server.

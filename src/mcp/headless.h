@@ -12,7 +12,10 @@ namespace mf {
 // and cancellable --result-worker process as the GUI. Work stops when the process exits.
 class McpHeadless : public QObject {
   public:
-    explicit McpHeadless(McpPolicy policy, QObject *parent = nullptr);
+    // trustedExecution: the executable, launcher and environment MCP runs may use (by default the
+    // built-in defaults; main() passes the user's saved Preferences).
+    explicit McpHeadless(McpPolicy policy, QJsonObject trustedExecution = protectedExecution(Document()),
+                         QObject *parent = nullptr);
     ~McpHeadless() override;
     McpEditor editor();
     // The server owns the document; attach it before the first request.
@@ -23,7 +26,7 @@ class McpHeadless : public QObject {
     const McpServer *server = nullptr;
     NwchemRun run;
     ExecutionPlan saved;
-    // Without a GUI only the defaults are trusted: MCP cannot pick another program.
+    // Without a GUI only the user's saved defaults are trusted: MCP cannot pick another program.
     QJsonObject trusted;
     ResultData data;
     QProcess *loader = nullptr;

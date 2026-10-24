@@ -15,6 +15,7 @@ class QPlainTextEdit;
 class QTableWidget;
 class QTabWidget;
 namespace mf {
+class ChartView;
 class MainWindow;
 class MoleculeView;
 class ResultsPanel : public QWidget {
@@ -32,6 +33,8 @@ class ResultsPanel : public QWidget {
         return data;
     }
     void saveGeometry(const QString &path) const;
+    // Proposes the displayed result geometry as a candidate for the editor's molecule.
+    void applyStructure();
   signals:
     void loaded();
     void loadFailed(QString message);
@@ -66,8 +69,11 @@ class ResultsPanel : public QWidget {
     std::array<QPushButton *, 6> orbitalNavigation;
     QTabWidget *details;
     QPlainTextEdit *status, *log;
-    QTableWidget *energy, *orbitals, *modes;
-    QPushButton *cancel, *reload, *playFrames, *playMode, *saveXyz, *savePng, *applyIso;
+    QTableWidget *energy, *orbitals, *modes, *steps, *excitations;
+    ChartView *energyChart, *gradientChart, *spectrum;
+    QComboBox *spectrumAxis;
+    QDoubleSpinBox *broadening;
+    QPushButton *cancel, *reload, *playFrames, *playMode, *saveXyz, *savePng, *applyIso, *applyGeometry;
     QPushButton *homo, *lumo;
     void startLoad(const QString &path, double iso, int channel, int orbital = -1,
                    const QString &normalization = "auto", int divisions = 40, bool reuseOrbital = false);
@@ -76,6 +82,8 @@ class ResultsPanel : public QWidget {
     void display(bool orbitalOnly = false);
     void showFrame();
     void showMode();
+    void showSpectrum();
+    const Document &displayedGeometry() const;
     void stopAnimation();
     void updateActions();
     void error(const QString &message);

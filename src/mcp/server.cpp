@@ -374,6 +374,12 @@ McpServer::McpServer(McpEditor hooks, McpPolicy rules, QObject *parent)
     if (bool(editor.taskState) != bool(editor.taskWork))
         fail("Incomplete MCP task hooks");
 }
+void McpServer::resetDocument(const Document &initial) {
+    memory = initial;
+    pending.reset();
+    undo = {memory};
+    undoIndex = 0;
+}
 QString McpServer::documentId() const {
     return id;
 }
@@ -654,8 +660,10 @@ QJsonArray McpServer::toolList() const {
         {{"ids", idsSchema()}}, {"ids"});
     add("import_document",
         "Replace structure from XYZ text (preserving project metadata) or a complete "
-        "KAGAMI v2 project JSON string. This is undoable.",
-        {{"format", choice({"xyz", "project"})}, {"text", type("string")}}, {"format", "text"}, true, true);
+        "KAGAMI v2 project JSON string. With format xyz and append true, the XYZ molecule is added 3 Å "
+        "beside the current one instead (e.g. to build a dimer). This is undoable.",
+        {{"format", choice({"xyz", "project"})}, {"text", type("string")}, {"append", type("boolean")}},
+        {"format", "text"}, true, true);
     add("open_file",
         "Load a local XYZ/MOL/SDF/PDB/KAGAMI file as an undoable edit. PDB uses model 1 "
         "and automatic alternate-location selection. Maximum file size: 8 MiB.",
@@ -912,7 +920,11 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                 else
                     transform(next, ids, Mat::Identity(), vectorFromJson(args["offset"]));
             } else if (name == "import_document") {
-                if (args["format"] == "xyz")
+                if (args["append"].toBool() && args["format"] != "xyz")
+                    fail("append is available for XYZ text only.");
+                if (args["append"].toBool())
+                    insertFragment(next, xyzStructure(args["text"].toString()));
+                else if (args["format"] == "xyz")
                     replaceCoordinateStructure(next, xyzStructure(args["text"].toString()));
                 else
                     next = Document::fromProject(parseJson(args["text"].toString().toUtf8()));
@@ -922,7 +934,12 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                 QFileInfo info(path);
                 if (!info.isFile() || info.size() > 8 * 1024 * 1024)
                     fail("Expected a regular structure file no larger than 8 MiB.");
-                next = importStructure(path);
+                // A project replaces everything; a structure file only the structure, as in the GUI's
+                // coordinate table, so calculation and execution settings stay.
+                if (info.suffix().compare("json", Qt::CaseInsensitive) == 0)
+                    next = importStructure(path);
+                else
+                    replaceCoordinateStructure(next, importStructure(path));
             } else if (name == "set_advanced") {
                 const auto settings = args["settings"].toObject();
                 for (auto it = settings.begin(); it != settings.end(); ++it) {

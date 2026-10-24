@@ -116,8 +116,8 @@ HistoryEntry readHistoryEntry(const QString &directory) {
             e.name = name;
         e.method = historyChoice("method", calculation["method"].toString());
         if (calculation["method"] == "dft")
-            e.method += " / " + calculation["functional"].toString().toUpper();
-        e.basis = calculation["basis"].toString();
+            e.method += " / " + nwchemFunctionalLabel(calculation);
+        e.basis = nwchemBasisLabel(calculation);
         e.task = historyChoice("task", calculation["task"].toString());
     } catch (const std::exception &error) {
         e.warnings << QString::fromUtf8(error.what());

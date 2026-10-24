@@ -5,6 +5,8 @@
 #include "editing/operations.h"
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
+#include "nwchem/nwchem.h"
+#include "nwchem/nwchem_execution.h"
 #include "ui/advanced_panel.h"
 #include "ui/calculation_panel.h"
 #include "ui/coordinates_panel.h"
@@ -67,6 +69,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), settings("MolForm
     connect(&undo, &QUndoStack::cleanChanged, this, [this] { refresh(); });
     if (settings.value("startupWater", true).toBool())
         placeTemplate(doc, findTemplate("skeleton:water"), Vec::Zero());
+    applyExecutionPreferences(doc);
     mcp.trustedExecution = protectedExecution(doc);
     refresh();
     QTimer::singleShot(0, view, &MoleculeView::fit);
@@ -588,11 +591,13 @@ void MainWindow::buildMenus() {
         connect(a, &QAction::triggered, this, [this, fn] { safe(fn); });
         return a;
     };
-    action(file, "新規", QKeySequence::New, [this] { newDocument(); });
-    action(file, "開く…", QKeySequence::Open, [this] { open(); });
-    action(file, "SMILESから作成…", {}, [this] { importSmiles(); });
+    const QList<QAction *> toolbarActions{action(file, "新規", QKeySequence::New, [this] { newDocument(); }),
+                                          action(file, "開く…", QKeySequence::Open, [this] { open(); }),
+                                          action(file, "SMILESから作成…", {}, [this] { importSmiles(); })};
+    action(file, "SMILESから断片を追加…", {}, [this] { addFragmentFromSmiles(); });
+    action(file, "ファイルから断片を追加…", {}, [this] { addFragmentFromFile(); });
     file->addSeparator();
-    action(file, "プロジェクトを保存", QKeySequence::Save, [this] { save(); });
+    auto *saveAction = action(file, "プロジェクトを保存", QKeySequence::Save, [this] { save(); });
     action(file, "名前を付けて保存…", QKeySequence::SaveAs, [this] { save(true); });
     action(file, "構造を書き出す…", {}, [this] { exportFile(); });
     action(file, "XYZをコピー", {}, [this] {
@@ -628,6 +633,12 @@ void MainWindow::buildMenus() {
     action(editMenu, "座標表（2 座標）", {}, [this] { workspaceTabs->setCurrentWidget(coordinates); });
     action(editMenu, "座標と原子属性の一覧…", {}, [this] { coordinateDialog(); });
     action(editMenu, "構造を確認…", {}, [this] { showReport(); });
+    editMenu->addSeparator();
+    // Preferences hold the executable, launcher and environment: only the user may change them.
+    auto *preferencesAction =
+        action(editMenu, "環境設定…", QKeySequence::Preferences, [this] { preferences(); });
+    preferencesAction->setObjectName("preferencesAction");
+    preferencesAction->setProperty("mcpProtected", true);
     auto *viewMenu = menuBar()->addMenu("表示");
     auto *water = viewMenu->addAction("起動時に水分子を読み込む");
     water->setCheckable(true);
@@ -673,9 +684,8 @@ void MainWindow::buildMenus() {
     });
     auto *bar = addToolBar("ファイル");
     bar->setMovable(false);
-    for (auto *a : file->actions().mid(0, 5))
-        if (!a->isSeparator())
-            bar->addAction(a);
+    bar->addActions(toolbarActions);
+    bar->addAction(saveAction);
 }
 void MainWindow::refreshPalette() {
     QString cat = value(category), needle = search->text().trimmed();
@@ -1093,7 +1103,10 @@ bool MainWindow::confirmDiscard() {
 void MainWindow::newDocument() {
     if (!confirmDiscard())
         return;
-    edit("新規分子", [](Document &d) { d = Document(); });
+    edit("新規分子", [](Document &d) {
+        d = Document();
+        applyExecutionPreferences(d);
+    });
     path.clear();
     view->fit();
     refresh();
@@ -1129,6 +1142,8 @@ void MainWindow::loadPath(const QString &p) {
         next = importStructure(p, model.toInt(), alt);
     } else
         next = importStructure(p);
+    if (!p.endsWith(".json", Qt::CaseInsensitive))
+        applyExecutionPreferences(next); // Structure files carry no execution settings.
     loadDocument(next);
     path = p.endsWith(".json", Qt::CaseInsensitive) ? p : "";
     settings.setValue("directory", QFileInfo(p).absolutePath());
@@ -1163,6 +1178,23 @@ void MainWindow::exportFile() {
                                              "XYZ (*.xyz);;SDF (*.sdf);;MOL (*.mol);;PDB (*.pdb)");
     if (!p.isEmpty())
         exportStructure(doc, p);
+}
+void MainWindow::addFragmentFromSmiles() {
+    bool ok;
+    const auto smiles =
+        QInputDialog::getText(this, "SMILESから断片を追加",
+                              "追加する分子のSMILES（今の分子の+X側に置きます）", QLineEdit::Normal, "", &ok);
+    if (ok && !smiles.trimmed().isEmpty())
+        runWorker("fragment", smiles);
+}
+void MainWindow::addFragmentFromFile() {
+    const auto p = QFileDialog::getOpenFileName(this, "断片を追加", settings.value("directory").toString(),
+                                                "構造 (*.xyz *.mol *.sdf *.pdb *.ent)");
+    if (p.isEmpty())
+        return;
+    const auto fragment = importStructure(p); // PDB: model 1 and automatic alternate locations.
+    edit("ファイルから断片を追加", [&](Document &d) { insertFragment(d, fragment); }, true);
+    view->fit();
 }
 void MainWindow::importSmiles() {
     bool ok;
@@ -1209,12 +1241,16 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
                     if (mode == "smiles") {
                         replaceCoordinateStructure(next, result);
                         next.setJobValue("charge", next.formalCharge());
-                    } else {
+                    } else if (mode == "fragment")
+                        insertFragment(next, result);
+                    else {
                         next = result;
                         next.envelope = doc.envelope;
                     }
                     candidate = next;
-                    candidateName = mode == "smiles" ? "SMILESから分子を作成" : "構造を整形";
+                    candidateName = mode == "smiles"     ? "SMILESから分子を作成"
+                                    : mode == "fragment" ? "SMILESから断片を追加"
+                                                         : "構造を整形";
                     candidateRemote = workerRemote;
                 } catch (const std::exception &e) {
                     error = QString::fromUtf8(e.what());
@@ -1380,6 +1416,136 @@ void MainWindow::showReport() {
     connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     dialog.exec();
 }
+void MainWindow::preferences() {
+    QDialog dialog(this);
+    dialog.setObjectName("preferencesDialog");
+    dialog.setProperty("mcpProtected", true); // Same protection as the executable fields in "5 実行設定".
+    dialog.setWindowTitle("環境設定");
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *intro = new QLabel("新規作成、およびプロジェクト以外の構造ファイル（XYZ・SDF・PDB等）を開いたときの"
+                             "実行設定です。開いているプロジェクトの設定は「5 実行設定」で変更します。");
+    intro->setWordWrap(true);
+    layout->addWidget(intro);
+    auto *form = new QFormLayout;
+    layout->addLayout(form);
+    const auto saved = executionPreferences();
+    auto path = [&](const QString &label, const QString &key, bool directory) {
+        auto *line = new QLineEdit(saved[key].toString());
+        line->setObjectName("preferences_" + key);
+        auto *browse = new QPushButton("参照…");
+        connect(browse, &QPushButton::clicked, &dialog, [&dialog, line, directory] {
+            const auto chosen =
+                directory ? QFileDialog::getExistingDirectory(&dialog, "ジョブ保存先", line->text())
+                          : QFileDialog::getOpenFileName(&dialog, "NWChem実行ファイル", line->text());
+            if (!chosen.isEmpty())
+                line->setText(chosen);
+        });
+        auto *row = new QHBoxLayout;
+        row->addWidget(line, 1);
+        row->addWidget(browse);
+        form->addRow(label, row);
+        return line;
+    };
+    auto spin = [&](const QString &label, const QString &key, int minimum, int maximum) {
+        auto *box = new QSpinBox;
+        box->setObjectName("preferences_" + key);
+        box->setRange(minimum, maximum);
+        box->setValue(saved[key].toInt());
+        form->addRow(label, box);
+        return box;
+    };
+    auto *executable = path("NWChem実行ファイル", "executable", false);
+    auto *mode = new QComboBox;
+    mode->addItem("MPI", "mpi");
+    mode->addItem("直接実行", "direct");
+    mode->setCurrentIndex(std::max(0, mode->findData(saved["mode"].toString())));
+    form->addRow("起動方式", mode);
+    auto *launcher = new QLineEdit(saved["launcher"].toString());
+    form->addRow("MPIランチャー", launcher);
+    auto *ranks = spin("MPI起動数", "mpi_ranks", 1, 4096);
+    auto *omp = spin("OpenMPスレッド / プロセス", "omp_threads", 1, 1024);
+    auto *blas = spin("BLASスレッド / プロセス", "blas_threads", 1, 1024);
+    auto *stack = new QLineEdit(saved["omp_stacksize"].toString());
+    stack->setPlaceholderText("空欄で継承（例: 64M）");
+    form->addRow("OpenMPスタック", stack);
+    auto *root = path("ジョブ保存先", "job_root", true);
+    auto *timeout = spin("制限時間 / 秒（0: なし）", "timeout_seconds", 0, 604800);
+    auto *environment = new QPlainTextEdit;
+    environment->setPlaceholderText(
+        "1行に1つ: NAME=VALUE（例: NWCHEM_BASIS_LIBRARY=/opt/nwchem/libraries/）");
+    QStringList lines;
+    for (const auto &value : saved["environment"].toArray()) {
+        const auto row = value.toObject();
+        if (row["enabled"].toBool())
+            lines << row["name"].toString() + '=' + row["value"].toString();
+    }
+    environment->setPlainText(lines.join('\n'));
+    environment->setMaximumHeight(90);
+    form->addRow("追加の環境変数", environment);
+    auto *renderer = new QComboBox;
+    renderer->addItem("自動（VTKを優先）", "auto");
+    renderer->addItem("QPainter（CPU）", "painter");
+    renderer->setCurrentIndex(settings.value("view/renderer").toString() == "painter" ? 1 : 0);
+    form->addRow("3D描画（再起動後に反映）", renderer);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    auto *current = buttons->addButton("現在の実行設定を読み込む", QDialogButtonBox::ResetRole);
+    layout->addWidget(buttons);
+    connect(current, &QPushButton::clicked, &dialog, [&] {
+        const auto s = executionSettings(doc);
+        executable->setText(s["executable"].toString());
+        mode->setCurrentIndex(std::max(0, mode->findData(s["mode"].toString())));
+        launcher->setText(s["launcher"].toString());
+        ranks->setValue(s["mpi_ranks"].toInt());
+        omp->setValue(s["omp_threads"].toInt());
+        blas->setValue(s["blas_threads"].toInt());
+        stack->setText(s["omp_stacksize"].toString());
+        root->setText(s["job_root"].toString());
+        timeout->setValue(s["timeout_seconds"].toInt());
+        QStringList rows;
+        for (const auto &value : s["environment"].toArray())
+            if (value.toObject()["enabled"].toBool())
+                rows << value.toObject()["name"].toString() + '=' + value.toObject()["value"].toString();
+        environment->setPlainText(rows.join('\n'));
+    });
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
+        safe([&] {
+            QJsonArray rows;
+            for (const auto &line : environment->toPlainText().split('\n', Qt::SkipEmptyParts)) {
+                const auto at = line.indexOf('=');
+                if (at <= 0)
+                    fail("環境変数は NAME=VALUE の形式で1行に1つ入力してください: " + line);
+                rows.append(QJsonObject{
+                    {"enabled", true}, {"name", line.left(at).trimmed()}, {"value", line.mid(at + 1)}});
+            }
+            const QJsonObject chosen{{"executable", executable->text().trimmed()},
+                                     {"mode", mode->currentData().toString()},
+                                     {"launcher", launcher->text().trimmed()},
+                                     {"mpi_ranks", ranks->value()},
+                                     {"omp_threads", omp->value()},
+                                     {"blas_threads", blas->value()},
+                                     {"omp_stacksize", stack->text().trimmed()},
+                                     {"job_root", root->text().trimmed()},
+                                     {"timeout_seconds", timeout->value()},
+                                     {"environment", rows}};
+            // Check the values with the same rules as "5 実行設定", ignoring the molecule itself.
+            Document probe;
+            for (auto it = chosen.begin(); it != chosen.end(); ++it)
+                setExecutionSetting(probe, it.key(), it.value());
+            const auto molecule = validateNwchem(probe).errors;
+            QStringList errors;
+            for (const auto &error : validateExecution(probe, QDir::homePath(), false).errors)
+                if (!molecule.contains(error))
+                    errors << error;
+            if (!errors.isEmpty())
+                fail(errors.join('\n'));
+            saveExecutionPreferences(chosen);
+            settings.setValue("view/renderer", renderer->currentData().toString());
+            dialog.accept();
+        });
+    });
+    dialog.exec();
+}
 void MainWindow::coordinateDialog() {
     if (!resolveCandidate())
         return;
@@ -1461,10 +1627,15 @@ void MainWindow::savePart() {
     QString name = QInputDialog::getText(this, "マイ部品", "部品名", QLineEdit::Normal, "", &ok);
     if (!ok)
         return;
-    QString kind = QInputDialog::getItem(this, "部品の種類", "種類", {"置換基", "配位子"}, 0, false, &ok);
+    const QStringList kinds{"置換基（接続点1つ）", "配位子", "骨格（接続点なし・空白に配置）"};
+    QString kind = QInputDialog::getItem(
+        this, "部品の種類", "種類（置換基・配位子は接続点の原子を最初に選択）", kinds, 0, false, &ok);
     if (!ok)
         return;
-    auto t = makePart(doc, ids, name, kind == "配位子");
+    auto t = makePart(doc, ids, name,
+                      kind == kinds[1]   ? "ligand"
+                      : kind == kinds[2] ? "skeleton"
+                                         : "substituent");
     QString p = QFileDialog::getSaveFileName(this, "部品を保存", name + ".kpart.json", "部品 (*.kpart.json)");
     if (p.isEmpty())
         return;

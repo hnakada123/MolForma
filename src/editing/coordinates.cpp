@@ -144,6 +144,36 @@ void replaceCoordinateStructure(Document &document, const Document &structure) {
         document.data[key] = structure.data[key];
     document.invalidateAssignments();
 }
+std::pair<double, double> applyResultGeometry(Document &document, const Document &result) {
+    if (result.atoms.size() != document.atoms.size())
+        fail(QString("結果の原子数（%1）が編集中の分子（%2）と異なります。")
+                 .arg(result.atoms.size())
+                 .arg(document.atoms.size()));
+    double squares = 0, largest = 0;
+    for (int i = 0; i < document.atoms.size(); ++i) {
+        const auto &from = document.atoms[i], &to = result.atoms[i];
+        if (from.element != to.element || from.ghost != to.ghost)
+            fail(
+                QString("原子%1の元素（%2%3 / 結果 %4%5）が一致しません。原子の順番が同じ計算結果を選んでくだ"
+                        "さい。")
+                    .arg(i + 1)
+                    .arg(from.ghost ? "@" : "", from.element, to.ghost ? "@" : "", to.element));
+        const double moved = (to.position - from.position).norm();
+        if (!std::isfinite(moved))
+            fail("結果の座標が有限ではありません。");
+        // NWChem prints coordinates with eight decimals; anything larger means a different frame.
+        if (from.fixed && moved > 1e-3)
+            fail(QString("固定原子%1の位置が結果と %2 Å 異なります。同じ座標系の計算結果か確認してください。")
+                     .arg(i + 1)
+                     .arg(moved, 0, 'f', 4));
+        squares += moved * moved;
+        largest = std::max(largest, moved);
+    }
+    for (int i = 0; i < document.atoms.size(); ++i)
+        if (!document.atoms[i].fixed)
+            document.atoms[i].position = result.atoms[i].position;
+    return {document.atoms.isEmpty() ? 0 : std::sqrt(squares / document.atoms.size()), largest};
+}
 QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragmentComments) {
     auto errors = document.validate();
     if (!errors.isEmpty())

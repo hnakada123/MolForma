@@ -13,6 +13,10 @@ void setCoordinateCell(Document &document, const QString &id, CoordinateColumn c
 Atom coordinateAtom(const QString &symbol, const QStringList &xyz, const QString &mass, CoordinateUnit unit,
                     bool ghost = false, bool fixed = false);
 void replaceCoordinateStructure(Document &document, const Document &structure);
+// Moves the atoms to a calculation result with the same atoms in the same order (element and
+// ghost flag). Fixed atoms must already sit at the result position (NWChem keeps them); IDs,
+// bonds, residues and settings stay. Returns the RMSD and the largest displacement in Å.
+std::pair<double, double> applyResultGeometry(Document &document, const Document &result);
 // NWChem input fragment, not a complete calculation (basis/method/task are configured separately).
 QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragmentComments = true);
 } // namespace mf
