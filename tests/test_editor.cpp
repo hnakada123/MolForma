@@ -5,10 +5,12 @@
 #include "ui/main_window.h"
 #include "ui/periodic_table.h"
 #include "ui/template_delegate.h"
+#include "ui/translations.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
 #include <QComboBox>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QDoubleSpinBox>
 #include <QDropEvent>
@@ -20,16 +22,19 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSlider>
 #include <QSpinBox>
 #include <QStandardItemModel>
 #include <QStandardPaths>
+#include <QStatusBar>
 #include <QStyleOptionViewItem>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTextBrowser>
 #include <QTimer>
+#include <QToolButton>
 #include <QWheelEvent>
 #include <QtTest>
 using namespace mf;
@@ -243,7 +248,7 @@ class EditorTest : public QObject {
         w.findChild<QAction *>("confirmAction")->trigger();
         QVERIFY(!w.hasCandidate());
         QCOMPARE(w.document().formula(), QString("CH3"));
-        QVERIFY(w.findChild<QAction *>("undoAction")->text().contains("選択を削除"));
+        QVERIFY(w.findChild<QAction *>("undoAction")->text().contains("選択原子を削除"));
         w.history()->undo();
         w.findChild<QCheckBox *>("deleteTerminate")->setChecked(true);
         // Select all, copy as XYZ, paste as a fragment beside the molecule.
@@ -270,7 +275,7 @@ class EditorTest : public QObject {
             }
         });
         w.findChild<QAction *>("shortcutsAction")->trigger();
-        QVERIFY(listed.contains("選択を削除") && listed.contains("変更を確定") &&
+        QVERIFY(listed.contains("選択原子を削除") && listed.contains("変更を確定") &&
                 listed.contains("すべて選択"));
     }
     void hiddenTabsRefreshWhenOpened() {
@@ -390,14 +395,16 @@ class EditorTest : public QObject {
         w.loadDocument(Document());
         w.show();
         QTest::qWait(40);
-        auto *tool = w.findChild<QComboBox *>("toolSelector"),
-             *element = w.findChild<QComboBox *>("elementSelector");
+        auto *element = w.findChild<QComboBox *>("elementSelector");
         element->setCurrentIndex(element->findData("C"));
-        tool->setCurrentIndex(tool->findData("atom"));
+        w.findChild<QToolButton *>("tool_atom")->click();
+        // The hint under the view says what a click does with this tool and element.
+        QVERIFY(w.findChild<QLabel *>("toolHint")->text().startsWith("原子追加（C）"));
         QTest::mouseClick(w.canvas(), Qt::LeftButton, Qt::NoModifier, w.canvas()->rect().center());
         QCOMPARE(w.document().formula(), QString("CH4"));
         auto id = w.document().atoms.first().id;
-        tool->setCurrentIndex(0);
+        w.findChild<QToolButton *>("tool_select")->click();
+        QVERIFY(w.findChild<QLabel *>("toolHint")->text().startsWith("クリック: 選択"));
         QTest::mouseClick(w.canvas(), Qt::LeftButton, Qt::NoModifier,
                           w.canvas()->atomScreenPosition(id).toPoint());
         QVERIFY(w.canvas()->selection().contains(id));
@@ -511,7 +518,10 @@ class EditorTest : public QObject {
             QVERIFY(button);
             QCOMPARE(grid->itemAtPosition(row, column)->widget(), button);
             QVERIFY(button->isEnabled());
-            QVERIFY(button->width() >= 44);
+            QVERIFY(button->width() >= 34);
+            // Every group is visible without scrolling sideways, also on a small screen.
+            auto *viewport = dialog.findChild<QScrollArea *>("periodicTableScroll")->viewport();
+            QVERIFY(button->mapTo(viewport, QPoint(button->width(), 0)).x() <= viewport->width());
         };
         check("H", 1, 1);
         check("He", 1, 18);
@@ -586,11 +596,15 @@ class EditorTest : public QObject {
         QCOMPARE(centers, 25);
         search->setText("存在しない配位中心");
         QCOMPARE(palette->count(), 0);
+        // "すべて" also offers the element itself for the atom tool, before the center.
+        const int first = categoryId == "all" ? 1 : 0;
         for (const auto &query : {"亜鉛", "zinc", "zN", "30"}) {
             search->setText(QString::fromUtf8(query));
-            QCOMPARE(palette->count(), 1);
-            QCOMPARE(palette->item(0)->data(Qt::UserRole).toString(), QString("center:Zn"));
-            QCOMPARE(palette->item(0)->text(), QString("亜鉛"));
+            QCOMPARE(palette->count(), first + 1);
+            if (first)
+                QCOMPARE(palette->item(0)->data(Qt::UserRole).toString(), QString("atom:Zn"));
+            QCOMPARE(palette->item(first)->data(Qt::UserRole).toString(), QString("center:Zn"));
+            QCOMPARE(palette->item(first)->text(), QString("亜鉛"));
         }
         palette->clearSelection();
         const auto image = palette->viewport()->grab().toImage();
@@ -601,10 +615,10 @@ class EditorTest : public QObject {
                     ++colorPixels;
         QVERIFY2(colorPixels > 100, "The coordination center element icon is missing");
 
-        const auto rowRect = palette->visualItemRect(palette->item(0));
+        const auto rowRect = palette->visualItemRect(palette->item(first));
         QTest::mouseClick(palette->viewport(), Qt::LeftButton, Qt::NoModifier,
                           QPoint(rowRect.left() + 30, rowRect.center().y()));
-        QCOMPARE(w.findChild<QComboBox *>("toolSelector")->currentData().toString(), QString("center"));
+        QVERIFY(w.findChild<QToolButton *>("tool_center")->isChecked());
         QCOMPARE(w.findChild<QComboBox *>("elementSelector")->currentData().toString(), QString("Zn"));
         QCOMPARE(w.findChild<QTabWidget *>("propertyTabs")->currentIndex(), 1);
         QVERIFY(w.document().atoms.isEmpty());
@@ -650,14 +664,14 @@ class EditorTest : public QObject {
         auto *open = w.findChild<QPushButton *>("openPeriodicTable");
         category->setCurrentIndex(category->findData("atom"));
         QVERIFY(open->isVisible());
-        QCOMPARE(palette->count(), 1);
+        QCOMPARE(palette->count(), 10); // The chosen element (C) and the other common ones.
         QTimer::singleShot(0, &w, [&] {
             auto *dialog = w.findChild<PeriodicTableDialog *>("periodicTableDialog");
             if (dialog)
                 dialog->findChild<QAbstractButton *>("periodicElement_U")->click();
         });
         open->click();
-        QCOMPARE(palette->count(), 1);
+        QCOMPARE(palette->count(), 11);
         QCOMPARE(palette->item(0)->data(Qt::UserRole).toString(), QString("atom:U"));
         QCOMPARE(palette->item(0)->text(), QString("ウラン"));
         QVERIFY(palette->visualItemRect(palette->item(0)).height() >= 48);
@@ -815,15 +829,14 @@ class EditorTest : public QObject {
         w.loadDocument(d);
         auto *charge = w.findChild<QSpinBox *>("moleculeTotalCharge");
         auto *mult = w.findChild<QSpinBox *>("moleculeMultiplicity");
-        auto *apply = w.findChild<QPushButton *>("applyMoleculeCharge");
         auto *summary = w.findChild<QLabel *>("moleculeChargeSummary");
-        QVERIFY(charge && mult && apply && summary);
+        QVERIFY(charge && mult && summary);
+        // Like "3 計算条件", each value applies at once as its own undoable edit.
         charge->setValue(1);
-        apply->click();
+        QCOMPARE(w.document().job()["charge"].toInt(), 1);
         QVERIFY(summary->text().contains("整合しません"));
         QVERIFY(!w.findChild<QPushButton *>("calculationCopy")->isEnabled());
         mult->setValue(2);
-        apply->click();
         QVERIFY(summary->text().contains("電子数 9"));
         QVERIFY(summary->text().contains("α 5 / β 4"));
         QVERIFY(nwchemInput(w.document()).contains("charge 1\n"));
@@ -841,11 +854,11 @@ class EditorTest : public QObject {
         QCOMPARE(charge->value(), 0);
         QCOMPARE(mult->value(), 1);
         w.edit("candidate", [](Document &next) { next.setJobValue("charge", 2); }, true);
-        QVERIFY(!apply->isEnabled());
+        QVERIFY(!charge->isEnabled());
         QCOMPARE(charge->value(), 2);
         QVERIFY(summary->text().contains("未確定候補"));
         w.cancelCandidate();
-        QVERIFY(apply->isEnabled());
+        QVERIFY(charge->isEnabled());
         QCOMPARE(charge->value(), 0);
 
         // ECP electrons and ghost centers use the same validation as the input generator.
@@ -943,6 +956,113 @@ class EditorTest : public QObject {
                                  std::runtime_error);
         QCOMPARE(w.document().atoms.size(), 3);
         QCOMPARE(w.history()->count(), 0);
+    }
+    void newDocumentIsClean() {
+        MainWindow w;
+        w.show();
+        int questions = 0;
+        QTimer watcher;
+        QObject::connect(&watcher, &QTimer::timeout, &w, [&] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                ++questions;
+                box->button(QMessageBox::Discard)->click();
+            }
+        });
+        watcher.start(20);
+        w.edit("原子を追加",
+               [](Document &d) { placeTemplate(d, findTemplate("skeleton:methane"), Vec::Zero()); });
+        w.findChild<QAction *>("newAction")->trigger();
+        QCOMPARE(questions, 1); // The unsaved methane.
+        QVERIFY(w.document().atoms.isEmpty());
+        QVERIFY(w.history()->isClean());
+        QVERIFY(!w.windowTitle().contains('*'));
+        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 0);
+        // A new, untouched project has nothing to save.
+        w.findChild<QAction *>("newAction")->trigger();
+        QCOMPARE(questions, 1);
+    }
+    void selectionFieldsFollowSelection() {
+        MainWindow w;
+        Document d;
+        placeTemplate(d, findTemplate("skeleton:ethane"), Vec::Zero());
+        w.loadDocument(d);
+        auto *x = w.findChild<QDoubleSpinBox *>("dimensionValue");
+        auto *apply = w.findChild<QPushButton *>("applyDimension");
+        auto *remove = w.findChild<QPushButton *>("deleteSelection");
+        const auto ids = w.document().ids();
+        w.setSelection({ids[0], ids[1]});
+        QVERIFY(apply->isEnabled() && remove->isEnabled());
+        QVERIFY(x->value() > 1);
+        // Without a selection nothing shows values of an earlier atom, and selection actions wait.
+        w.setSelection({});
+        QCOMPARE(x->value(), x->minimum());
+        QCOMPARE(x->text(), QString("—"));
+        QVERIFY(!apply->isEnabled() && !remove->isEnabled());
+        QVERIFY(apply->toolTip().contains("2〜4原子"));
+        w.setSelection({ids[0]});
+        QVERIFY(!apply->isEnabled() && remove->isEnabled());
+        // Delete without a selection only says what to select.
+        w.setSelection({});
+        QTest::keyClick(w.canvas(), Qt::Key_Delete);
+        QVERIFY(!w.hasCandidate());
+        QVERIFY(!QApplication::activeModalWidget());
+    }
+    void commonElementsAndPaletteSearch() {
+        MainWindow w;
+        w.loadDocument(Document());
+        w.show();
+        auto *search = w.findChild<QLineEdit *>("paletteSearch");
+        auto *palette = w.findChild<QListWidget *>("templatePalette");
+        // One click arms the atom tool with a common element.
+        w.findChild<QToolButton *>("quickElement_N")->click();
+        QVERIFY(w.findChild<QToolButton *>("tool_atom")->isChecked());
+        QCOMPARE(w.findChild<QComboBox *>("elementSelector")->currentData().toString(), QString("N"));
+        QTest::mouseClick(w.canvas(), Qt::LeftButton, Qt::NoModifier, w.canvas()->rect().center());
+        QCOMPARE(w.document().formula(), QString("H3N"));
+        // A symbol or Japanese name finds the element first.
+        for (const auto &query : {"O", "酸素", "8"}) {
+            search->setText(QString::fromUtf8(query));
+            QVERIFY(palette->count() >= 1);
+            QCOMPARE(palette->item(0)->data(Qt::UserRole).toString(), QString("atom:O"));
+        }
+        search->setText("N");
+        QCOMPARE(palette->item(0)->data(Qt::UserRole).toString(), QString("atom:N"));
+        // A search that is no part's name can be built as SMILES.
+        search->setText("CCO");
+        QCOMPARE(palette->count(), 1);
+        QCOMPARE(palette->item(0)->data(Qt::UserRole).toString(), QString("smiles:CCO"));
+        search->setText("存在しない部品");
+        QCOMPARE(palette->count(), 0);
+    }
+    void undoNamesTheChangedTab() {
+        MainWindow w;
+        Document d;
+        placeTemplate(d, findTemplate("skeleton:water"), Vec::Zero());
+        w.loadDocument(d);
+        w.edit("NWChem計算条件を変更", [](Document &next) {
+            auto s = next.data["nwchem"].toObject();
+            s["basis"] = "6-31g*";
+            next.data["nwchem"] = s;
+        });
+        auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
+        tabs->setCurrentIndex(0);
+        w.history()->undo();
+        QCOMPARE(nwchemSettings(w.document())["basis"].toString(), QString("sto-3g"));
+        QVERIFY(w.statusBar()->currentMessage().startsWith("元に戻しました: NWChem計算条件を変更"));
+        QVERIFY(w.statusBar()->currentMessage().contains("「3 計算条件」"));
+        tabs->setCurrentIndex(2);
+        w.history()->redo();
+        QCOMPARE(w.statusBar()->currentMessage(), QString("やり直しました: NWChem計算条件を変更"));
+    }
+    void qtDialogTextsInJapanese() {
+        // Qt's standard buttons follow the Japanese interface, with or without Qt's translation.
+        installTranslations(*QCoreApplication::instance());
+        QDialogButtonBox box(QDialogButtonBox::Save | QDialogButtonBox::Discard | QDialogButtonBox::Cancel |
+                             QDialogButtonBox::Close);
+        QCOMPARE(box.button(QDialogButtonBox::Cancel)->text(), QString("キャンセル"));
+        QCOMPARE(box.button(QDialogButtonBox::Close)->text(), QString("閉じる"));
+        QCOMPARE(box.button(QDialogButtonBox::Save)->text(), QString("保存"));
+        QCOMPARE(box.button(QDialogButtonBox::Discard)->text(), QString("変更を破棄"));
     }
 };
 QTEST_MAIN(EditorTest)

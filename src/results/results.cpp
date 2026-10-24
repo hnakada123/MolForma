@@ -387,7 +387,7 @@ void nwchem(ResultData &r, const QStringList &lines) {
         }
         if (auto m = vector.match(line); m.hasMatch() && !orbitalSpin.isEmpty() && logOrbitals.size() < 20000)
             logOrbitals << ResultOrbital{m.captured(4), orbitalSpin, value(m.captured(3)),
-                                         value(m.captured(2))};
+                                         value(m.captured(2)), m.captured(1).toInt()};
         if (line.contains("Multipole analysis of the density")) {
             QJsonObject dipole;
             for (int j = i + 1; j < lines.size() && j < i + 12; ++j) {
@@ -544,7 +544,7 @@ void nwchem(ResultData &r, const QStringList &lines) {
     else if (fatal)
         r.status = "エラー・未収束メッセージあり（ログを確認）";
     else if (ended)
-        r.status = "正常終了マーカーあり（収束・全taskの成否はログを確認）";
+        r.status = "正常終了マーカーあり（各taskの結果は「概要」とログで確認）";
     if (const auto energy = summary.energy(); !energy.isEmpty())
         r.properties["final_energy"] = energy;
     r.warnings.removeDuplicates();
@@ -605,6 +605,7 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
     QSet<int> seenCoefficients;
     qint64 totalCoefficients = 0;
     QSet<QString> fields;
+    QHash<QString, int> perSpin;
     auto finishOrbital = [&] {
         if (fields.isEmpty())
             return;
@@ -615,6 +616,7 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
             fail("MOLDENの軌道占有数・スピンが不正です。");
         if (r.orbitals.size() >= 20000)
             fail("MOLDENの軌道は2万件まで読み込めます。");
+        orbital.number = ++perSpin[orbital.spin];
         r.orbitals << orbital;
         totalCoefficients += mo.size();
         if (totalCoefficients > 4000000)
@@ -1007,7 +1009,7 @@ void saveResultData(const QString &path, const ResultData &r) {
     QByteArray bytes;
     QDataStream s(&bytes, QIODevice::WriteOnly);
     s.setVersion(QDataStream::Qt_6_4);
-    s << QString("MolFormaResult4") << r.source << r.format << r.status << r.log << r.warnings;
+    s << QString("MolFormaResult5") << r.source << r.format << r.status << r.log << r.warnings;
     s << r.orbitalBasis << qint32(r.selectedOrbital) << qint32(r.orbitalFrame) << qint32(r.orbitalDivisions)
       << r.orbitalError << r.orbitalNormalization << r.normalizationRequest;
     auto doc = [&](const Document &d) { s << QJsonDocument(d.toJson()).toJson(QJsonDocument::Compact); };
@@ -1022,7 +1024,7 @@ void saveResultData(const QString &path, const ResultData &r) {
         s << e.method << e.hartree << qint32(e.line);
     s << qint32(r.orbitals.size());
     for (const auto &o : r.orbitals)
-        s << o.symmetry << o.spin << o.energy << o.occupation;
+        s << o.symmetry << o.spin << o.energy << o.occupation << qint32(o.number);
     doc(r.vibrationGeometry);
     s << qint32(r.modes.size());
     for (const auto &m : r.modes) {
@@ -1059,7 +1061,7 @@ ResultData loadResultData(const QString &path) {
     s.setVersion(QDataStream::Qt_6_4);
     QString magic;
     s >> magic;
-    if (magic != "MolFormaResult4")
+    if (magic != "MolFormaResult5")
         fail("結果の転送形式が不正です。");
     ResultData r;
     s >> r.source >> r.format >> r.status >> r.log >> r.warnings;
@@ -1101,7 +1103,9 @@ ResultData loadResultData(const QString &path) {
     }
     for (int n = count(20000); n--;) {
         ResultOrbital o;
-        s >> o.symmetry >> o.spin >> o.energy >> o.occupation;
+        qint32 number;
+        s >> o.symmetry >> o.spin >> o.energy >> o.occupation >> number;
+        o.number = number;
         r.orbitals << o;
     }
     r.vibrationGeometry = doc();

@@ -2,6 +2,7 @@
 #include <QJsonArray>
 #include <QMap>
 #include <QWidget>
+class QCheckBox;
 class QComboBox;
 class QLabel;
 class QPlainTextEdit;
@@ -47,6 +48,7 @@ class CalculationPanel : public QWidget {
     QTableWidget *elementBases;    // Per-element library basis for the elements of the molecule.
     QTableWidget *constraints;     // Internal-coordinate constraints (ZCOORD) of optimizations.
     QLabel *scanCoordinate, *monomers;
+    QCheckBox *moldenOutput; // The MOLDEN file of "4 詳細設定", for the orbital shapes in the viewer.
     QPlainTextEdit *extraInput, *extraTasks;
     QString appliedExtra[2]; // Stored additional input last shown, so typing is not overwritten.
     QPushButton *copy, *save, *undo, *redo, *removePreset;

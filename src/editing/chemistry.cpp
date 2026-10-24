@@ -426,6 +426,9 @@ Document refine(const Document &d, bool regenerate, const Ids &moving) {
     for (const auto &a : d.atoms)
         if (a.ghost)
             fail("金属・ゴースト原子を含む分子は力場整形の対象外です。");
+    for (const auto &b : d.bonds)
+        if (b.kind == "dative")
+            fail("配位結合を含む分子（金属錯体など）は力場整形の対象外です。");
     auto mol = toOB(d);
     // Heavy main-group elements (Br, I, Se, Te, ...) are left to the force-field setup below.
     for (unsigned int i = 1; i <= mol.NumAtoms(); ++i)

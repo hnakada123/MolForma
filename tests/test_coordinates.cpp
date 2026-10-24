@@ -67,6 +67,11 @@ class CoordinatesTest : public QObject {
         QCOMPARE(w.history()->count(), 0);
         QVERIFY(std::abs(t->item(0, 1)->text().toDouble() - d.atoms[0].position.x() / BohrToAngstrom) <
                 1e-13);
+        // Shown with six decimals; the cell (and its editor) keeps the full value.
+        auto *delegate = qobject_cast<QStyledItemDelegate *>(t->itemDelegateForColumn(1));
+        QVERIFY(delegate);
+        QCOMPARE(delegate->displayText(t->item(0, 1)->text(), QLocale()),
+                 QString::number(d.atoms[0].position.x() / BohrToAngstrom, 'f', 6));
         t->item(0, 1)->setText("2");
         QCOMPARE(w.document().atoms[0].position.x(), 2 * BohrToAngstrom);
         QCOMPARE(w.document().atoms[0].position.y(), d.atoms[0].position.y());

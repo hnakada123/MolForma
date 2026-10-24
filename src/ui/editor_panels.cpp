@@ -64,6 +64,16 @@ QComboBox *MainWindow::choices(QFormLayout *f, const QString &label, const QStri
     f->addRow(label, box);
     return box;
 }
+void MainWindow::section(QFormLayout *f, const QString &title) {
+    // A bold heading groups the rows below it; the first heading of a page needs no space above.
+    auto *heading = new QLabel(title);
+    auto font = heading->font();
+    font.setBold(true);
+    heading->setFont(font);
+    if (f->rowCount())
+        heading->setContentsMargins(0, 8, 0, 0);
+    f->addRow(heading);
+}
 void MainWindow::buildEditPanel() {
     auto *outer = panel("編集");
     auto *color = choices(outer, "色分け", {"元素", "残基"}, {"element", "residue"});
@@ -83,54 +93,79 @@ void MainWindow::buildEditPanel() {
     QStringList symbols;
     for (const auto &e : elements())
         symbols << e.symbol;
-    elementBox = choices(f, "元素", symbols);
+    section(f, "元素");
+    elementBox = choices(f, "追加・変更する元素", symbols);
     elementBox->setCurrentIndex(elementBox->findData("C"));
     elementBox->setObjectName("elementSelector");
-    button(f, "元素を変更", [this] {
-        auto ids = requireSelection();
-        QString s = value(elementBox);
-        bool h = autoH->isChecked();
-        edit("元素を変更", [=](Document &d) { replaceElement(d, ids, s, h); });
-    });
-    for (int i = 0; i < 3; ++i)
+    elementBox->setToolTip("「原子追加」ツールで置く元素、「元素を変更」で選択原子に設定する元素です。"
+                           "パレットで原子を選ぶと連動します。");
+    enableWithSelection(button(f, "選択原子をこの元素に変更",
+                               [this] {
+                                   auto ids = requireSelection();
+                                   QString s = value(elementBox);
+                                   bool h = autoH->isChecked();
+                                   edit("元素を変更", [=](Document &d) { replaceElement(d, ids, s, h); });
+                               }),
+                        1);
+    section(f, "座標（1原子）");
+    for (int i = 0; i < 3; ++i) {
         positionFields[i] = number(f, QString("XYZ")[i] + QString(" / Å"));
-    button(f, "1原子の座標を適用", [this] {
-        auto id = requireSelection(1).first();
-        Vec p = fields(positionFields);
-        edit("座標を変更",
-             [=](Document &d) { transform(d, {id}, Mat::Identity(), p - d.atom(id).position); });
-    });
-    button(f, "選択原子を原点へ", [this] {
-        auto ids = requireSelection(1);
-        edit("原点へ移動", [=](Document &d) { orient(d, ids); });
-        view->fit();
-    });
+        positionFields[i]->setSpecialValueText("—");
+        enableWithSelection(positionFields[i], 1, 1);
+    }
+    enableWithSelection(button(f, "座標を適用",
+                               [this] {
+                                   auto id = requireSelection(1).first();
+                                   Vec p = fields(positionFields);
+                                   edit("座標を変更", [=](Document &d) {
+                                       transform(d, {id}, Mat::Identity(), p - d.atom(id).position);
+                                   });
+                               }),
+                        1, 1);
+    enableWithSelection(button(f, "選択原子を原点へ",
+                               [this] {
+                                   auto ids = requireSelection(1);
+                                   edit("原点へ移動", [=](Document &d) { orient(d, ids); });
+                                   view->fit();
+                               }),
+                        1, 1);
+    section(f, "平行移動（選択原子）");
     for (int i = 0; i < 3; ++i)
         translateFields[i] = number(f, QString("Δ") + QString("XYZ")[i] + " / Å");
-    button(f, "選択を平行移動", [this] {
-        auto ids = requireSelection();
-        Vec v = fields(translateFields);
-        edit("平行移動", [=](Document &d) { transform(d, ids, Mat::Identity(), v); });
-    });
+    enableWithSelection(button(f, "選択を平行移動",
+                               [this] {
+                                   auto ids = requireSelection();
+                                   Vec v = fields(translateFields);
+                                   edit("平行移動",
+                                        [=](Document &d) { transform(d, ids, Mat::Identity(), v); });
+                               }),
+                        1);
+    section(f, "配置・結合");
     auto *depth = number(f, "配置平面の奥行き / Å");
+    depth->setToolTip("空白をクリックして原子・部品を置く平面の、画面奥行き方向の位置です（0: 画面中心）。");
     connect(depth, &QDoubleSpinBox::valueChanged, this, [this](double v) { view->setDepth(v); });
     bondKind = choices(f, "結合種類",
                        {"単結合", "二重結合", "三重結合", "芳香族", "配位（供与→中心）", "結合を削除"},
                        {"single", "double", "triple", "aromatic", "dative", "none"});
-    button(f, "選択した2原子を結合", [this] {
-        auto ids = requireSelection(2);
-        auto kind = value(bondKind);
-        bool h = autoH->isChecked();
-        edit("結合を変更", [=](Document &d) {
-            d.setBond(ids[0], ids[1], kind);
-            if (h)
-                completeHydrogens(d, ids);
-        });
-    });
-    button(f, "結合の片側を選択", [this] {
+    enableWithSelection(button(f, "選択した2原子を結合",
+                               [this] {
+                                   auto ids = requireSelection(2);
+                                   auto kind = value(bondKind);
+                                   bool h = autoH->isChecked();
+                                   edit("結合を変更", [=](Document &d) {
+                                       d.setBond(ids[0], ids[1], kind);
+                                       if (h)
+                                           completeHydrogens(d, ids);
+                                   });
+                               }),
+                        2, 2);
+    auto *side = button(f, "結合の片側を選択", [this] {
         auto ids = requireSelection(2);
         setSelection(doc.bondSide(ids[0], ids[1]));
     });
+    side->setToolTip("2原子の結合で分子を切り分け、後に選んだ原子の側をすべて選択します。");
+    enableWithSelection(side, 2, 2);
+    section(f, "削除");
     deleteTerminate = new QCheckBox("削除後に水素で終端化");
     deleteTerminate->setObjectName("deleteTerminate");
     deleteTerminate->setChecked(true);
@@ -138,8 +173,10 @@ void MainWindow::buildEditPanel() {
         "すべての削除（Delete・ツールバー・削除ツール・右クリック）に適用します。削除した原子"
         "だけに付いていた水素も一緒に削除します。");
     f->addRow(deleteTerminate);
-    button(f, "選択を削除（候補）", [this] { deleteAtoms(requireSelection()); }, "deletePreview");
-    f = sub("寸法・立体");
+    enableWithSelection(
+        button(f, "選択原子を削除（候補）", [this] { deleteAtoms(requireSelection()); }, "deletePreview"), 1);
+    f = sub("変形・立体");
+    section(f, "回転");
     // Rotation axis and mirror plane pass through the selected atoms' center, or the origin.
     auto *pivot = choices(f, "回転・鏡映の中心", {"選択の中心", "原点"}, {"selection", "origin"});
     pivot->setObjectName("transformPivot");
@@ -150,33 +187,46 @@ void MainWindow::buildEditPanel() {
     axis->setObjectName("rotationAxis");
     twist = number(f, "回転角 / °", 0, -360, 360);
     twist->setObjectName("rotationAngle");
-    button(
-        f, "選択を回転",
-        [this, axis, around] {
-            auto ids = requireSelection();
-            int ax = value(axis).toInt();
-            double a = twist->value();
-            edit("選択を回転", [=](Document &d) {
-                transform(d, ids, rotation(Vec::Unit(ax), a), Vec::Zero(), around(d, ids));
-            });
-        },
-        "rotateSelection");
-    button(f, "不斉中心を反転", [this] {
-        auto id = requireSelection(1).first();
-        edit("不斉中心を反転", [=](Document &d) { invertCenter(d, id); });
-    });
-    button(f, "E/Zを切替", [this] {
-        auto ids = requireSelection(2);
-        edit("E/Zを切替", [=](Document &d) { switchEZ(d, ids); });
-    });
-    button(f, "立体を記録（R/S・E/Z）", [this] {
-        edit("立体配置を記録", [](Document &d) { recordStereo(d); });
-    })->setEnabled(hasStereochemistryBackend());
-    button(f, "向きをそろえる（原点・+X・XY）", [this] {
+    enableWithSelection(button(
+                            f, "選択を回転",
+                            [this, axis, around] {
+                                auto ids = requireSelection();
+                                int ax = value(axis).toInt();
+                                double a = twist->value();
+                                edit("選択を回転", [=](Document &d) {
+                                    transform(d, ids, rotation(Vec::Unit(ax), a), Vec::Zero(),
+                                              around(d, ids));
+                                });
+                            },
+                            "rotateSelection"),
+                        1);
+    section(f, "立体");
+    enableWithSelection(button(f, "不斉中心を反転",
+                               [this] {
+                                   auto id = requireSelection(1).first();
+                                   edit("不斉中心を反転", [=](Document &d) { invertCenter(d, id); });
+                               }),
+                        1, 1);
+    enableWithSelection(button(f, "E/Zを切替",
+                               [this] {
+                                   auto ids = requireSelection(2);
+                                   edit("E/Zを切替", [=](Document &d) { switchEZ(d, ids); });
+                               }),
+                        2, 2);
+    auto *stereo = button(f, "立体を記録（R/S・E/Z）",
+                          [this] { edit("立体配置を記録", [](Document &d) { recordStereo(d); }); });
+    stereo->setEnabled(hasStereochemistryBackend());
+    if (!hasStereochemistryBackend())
+        stereo->setToolTip("RDKitを含むビルドで使えます。");
+    section(f, "向き・位置");
+    auto *orientation = button(f, "向きをそろえる（原点・+X・XY）", [this] {
         auto ids = requireSelection();
         edit("向きをそろえる", [=](Document &d) { orient(d, ids); });
         view->fit();
     });
+    orientation->setToolTip(
+        "選択順に、1番目を原点、2番目を+X軸上、3番目をXY平面上へ動かします（分子全体）。");
+    enableWithSelection(orientation, 1, 3);
     button(f, "重心を原点へ", [this] {
         auto ids = selected;
         edit("重心を原点へ", [=](Document &d) { centerMass(d, ids, false); });
@@ -187,12 +237,13 @@ void MainWindow::buildEditPanel() {
         edit("主慣性軸へ整列", [=](Document &d) { centerMass(d, ids, true); });
         view->fit();
     });
+    section(f, "鏡映・複製");
     auto *plane = choices(f, "鏡映面", {"YZ", "XZ", "XY"}, {"0", "1", "2"});
     plane->setObjectName("mirrorPlane");
     auto *copy = new QCheckBox("鏡像の写しを作る");
     copy->setObjectName("mirrorCopy");
     f->addRow(copy);
-    button(
+    auto *mirrorButton = button(
         f, "指定平面で鏡映",
         [this, plane, copy, around] {
             auto ids = requireSelection();
@@ -208,9 +259,10 @@ void MainWindow::buildEditPanel() {
             view->fit();
         },
         "mirrorSelection");
+    enableWithSelection(mirrorButton, 1);
     for (int i = 0; i < 3; ++i)
         duplicateFields[i] = number(f, QString("複製 ") + QString("XYZ")[i] + " / Å", i == 0 ? 3 : 0);
-    button(
+    auto *duplicateButton = button(
         f, "指定間隔で複製",
         [this] {
             auto ids = requireSelection();
@@ -219,7 +271,9 @@ void MainWindow::buildEditPanel() {
             view->fit();
         },
         "duplicateSelection");
-    f = sub("詳細");
+    enableWithSelection(duplicateButton, 1);
+    f = sub("属性・その他");
+    section(f, "原子の属性");
     formal = new QSpinBox;
     formal->setRange(-99, 20);
     formal->setSpecialValueText("変更なし");
@@ -233,7 +287,9 @@ void MainWindow::buildEditPanel() {
     mass = new QLineEdit;
     mass->setPlaceholderText("整数: 質量数 / 小数: amu");
     f->addRow("同位体 / 質量", mass);
-    button(f, "属性を適用", [this] {
+    for (QWidget *field : std::initializer_list<QWidget *>{formal, radical, mass})
+        enableWithSelection(field, 1);
+    auto *attributes = button(f, "属性を適用", [this] {
         auto ids = requireSelection();
         int q = formal->value(), r = radical->value();
         QString m = mass->text().trimmed();
@@ -263,7 +319,9 @@ void MainWindow::buildEditPanel() {
             d.invalidateAssignments();
         });
     });
-    button(f, "選択をゴースト化 / 解除", [this] {
+    enableWithSelection(attributes, 1);
+    section(f, "ゴースト・固定");
+    auto *ghost = button(f, "選択をゴースト化 / 解除", [this] {
         auto ids = requireSelection();
         edit("ゴーストを切替", [=](Document &d) {
             bool v = !d.atom(ids.first()).ghost;
@@ -271,8 +329,10 @@ void MainWindow::buildEditPanel() {
                 d.atom(id).ghost = v;
         });
     });
-    for (bool fixed : {true, false})
-        button(
+    ghost->setToolTip("基底関数だけを置く原子（NWChemのbq）にします。BSSE補正などで使います。");
+    enableWithSelection(ghost, 1);
+    for (bool fixed : {true, false}) {
+        auto *b = button(
             f, fixed ? "選択原子を固定" : "選択原子の固定を解除",
             [this, fixed] {
                 auto ids = requireSelection();
@@ -281,8 +341,11 @@ void MainWindow::buildEditPanel() {
                         d.atom(id).fixed = fixed;
                 });
             },
-            fixed ? "fixSelectedAtoms" : "unfixSelectedAtoms")
-            ->setToolTip("編集時の移動・削除を防ぎ、NWChemの構造最適化でも座標を固定します。");
+            fixed ? "fixSelectedAtoms" : "unfixSelectedAtoms");
+        b->setToolTip("編集時の移動・削除を防ぎ、NWChemの構造最適化でも座標を固定します。");
+        enableWithSelection(b, 1);
+    }
+    section(f, "並べ替え");
     auto *order =
         choices(f, "原子の並べ替え", {"元素順", "残基順", "選択を先頭"}, {"element", "residue", "selected"});
     button(f, "原子を並べ替え", [this, order] {
@@ -303,7 +366,8 @@ void MainWindow::buildEditPanel() {
             });
         });
     });
-    button(f, "マイ部品に保存…", [this] { savePart(); });
+    section(f, "マイ部品");
+    enableWithSelection(button(f, "選択原子をマイ部品に保存…", [this] { savePart(); }), 1);
     button(f, "マイ部品を読込…", [this] { loadPart(); });
     button(f, "選択中のマイ部品を一覧から外す", [this] {
         auto t = currentTemplate();
@@ -315,8 +379,15 @@ void MainWindow::buildEditPanel() {
         settings.setValue("parts", customParts);
         refreshPalette();
     });
-    button(f, "局所整形（選択原子だけ移動）", [this] { runWorker("refine", {}, requireSelection()); });
-    button(f, "3Dを再生成", [this] { runWorker("regenerate"); });
+    section(f, "整形");
+    auto *local =
+        button(f, "局所整形（選択原子だけ移動）", [this] { runWorker("refine", {}, requireSelection()); });
+    local->setToolTip("力場で選択原子だけを動かして整えます。結果は候補として表示します。");
+    enableWithSelection(local, 1);
+    button(f, "3Dを再生成", [this] {
+        runWorker("regenerate");
+    })->setToolTip("結合から3D座標を作り直し、力場で整えます。結果は候補として表示します。");
+    section(f, "その他");
     button(
         f, "NWChem構造最適化を設定",
         [this] {
@@ -328,7 +399,7 @@ void MainWindow::buildEditPanel() {
         },
         "setNwchemOptimization")
         ->setToolTip("計算目的を構造最適化にします。手法・基底は「3 計算条件」で設定します。");
-    button(f, "旧形式の保留設定を確認…", [this] {
+    button(f, "読込時に保留した設定を確認…", [this] {
         QDialog dialog(this);
         dialog.setWindowTitle("原子参照と保留設定");
         dialog.resize(680, 500);
@@ -387,34 +458,19 @@ QList<int> MainWindow::sites() const {
 }
 void MainWindow::buildCoordinationPanel() {
     auto *f = panel("配位");
+    auto *intro = new QLabel("配位中心（金属）またはその配位子を3D画面で選んでから操作します。"
+                             "空いているサイトは紫の番号で表示します。");
+    intro->setWordWrap(true);
+    f->addRow(intro);
+    section(f, "配位形状");
     geometryBox = choices(f, "配位形状", geometryLabels(), geometryNames());
     geometryBox->setCurrentIndex(6);
     distance = number(f, "中心–供与原子 / Å", 2.1, .1, 20);
     oxidation = new QSpinBox;
     oxidation->setRange(-8, 12);
     oxidation->setValue(2);
+    oxidation->setToolTip("構造準備の補助情報です。計算の全電荷・多重度は「電荷」で設定します。");
     f->addRow("酸化数（補助）", oxidation);
-    siteInput = new QLineEdit("1");
-    f->addRow("サイト番号", siteInput);
-    button(f, "選択サイトへ配置プレビュー", [this] {
-        QString c = selectedCenter();
-        auto idx = sites();
-        auto t = currentTemplate();
-        double angle = twist->value();
-        edit("配位子を配置", [=](Document &d) { placeLigand(d, c, idx, t, angle); }, true);
-    });
-    button(f, "配位子パレットを開く", [this] { category->setCurrentIndex(category->findData("ligand")); });
-    button(f, "配位子を交換", [this] {
-        QString p = selectedPart();
-        auto idx = sites();
-        auto t = currentTemplate();
-        edit("配位子を交換", [=](Document &d) { moveLigand(d, p, idx, t); }, true);
-    });
-    button(f, "配位子を指定サイトへ移動", [this] {
-        QString p = selectedPart();
-        auto idx = sites();
-        edit("配位子を移動", [=](Document &d) { moveLigand(d, p, idx); }, true);
-    });
     button(f, "配位形状・距離を適用", [this] {
         auto id = selectedCenter(), g = value(geometryBox);
         double dist = distance->value();
@@ -430,13 +486,39 @@ void MainWindow::buildCoordinationPanel() {
             updateCenter(d, c);
         });
     });
+    section(f, "配位子の配置");
+    siteInput = new QLineEdit("1");
+    siteInput->setPlaceholderText("例: 1 または 1,2");
+    siteInput->setToolTip("3D画面の紫の番号です。サイトをクリックしても入力されます。"
+                          "二座配位子は2サイトをカンマで区切ります。");
+    f->addRow("サイト番号", siteInput);
+    button(f, "配位子パレットを開く", [this] { category->setCurrentIndex(category->findData("ligand")); });
+    button(f, "選択サイトへ配置プレビュー", [this] {
+        QString c = selectedCenter();
+        auto idx = sites();
+        auto t = currentTemplate();
+        double angle = twist->value();
+        edit("配位子を配置", [=](Document &d) { placeLigand(d, c, idx, t, angle); }, true);
+    });
+    button(f, "配位子を交換", [this] {
+        QString p = selectedPart();
+        auto idx = sites();
+        auto t = currentTemplate();
+        edit("配位子を交換", [=](Document &d) { moveLigand(d, p, idx, t); }, true);
+    })->setToolTip("選択した配位子を、パレットで選んだ配位子に置き換えます。");
+    button(f, "配位子を指定サイトへ移動", [this] {
+        QString p = selectedPart();
+        auto idx = sites();
+        edit("配位子を移動", [=](Document &d) { moveLigand(d, p, idx); }, true);
+    });
     button(f, "2サイトの配位子を交換", [this] {
         auto id = selectedCenter();
         auto indices = sites();
         if (indices.size() != 2)
             fail("2サイトを指定してください。");
         edit("配位子のサイトを交換", [=](Document &d) { swapLigands(d, id, indices[0], indices[1]); }, true);
-    });
+    })->setToolTip("「サイト番号」に2つの番号（例: 1,3）を入れて、そのサイトの配位子を入れ替えます。");
+    section(f, "サイトの方向");
     auto *dx = number(f, "サイト方向 X"), *dy = number(f, "サイト方向 Y"), *dz = number(f, "サイト方向 Z", 1);
     button(f, "個別サイトXYZ方向を適用", [this, dx, dy, dz] {
         auto id = selectedCenter();
@@ -471,6 +553,7 @@ void MainWindow::addAmino(const QString &rid, bool n) {
 }
 void MainWindow::buildResiduePanel() {
     auto *f = panel("残基");
+    section(f, "PDB・残基の認識");
     button(f, "PDBを読み込む…", [this] { open(); });
     button(f, "PDBの診断・修復…", [this] { pdbPreparation(); }, "preparePdb");
     button(f, "構造・電荷を検査", [this] { showReport(); });
@@ -481,6 +564,7 @@ void MainWindow::buildResiduePanel() {
         auto rid = selectedResidue();
         edit("欠損側鎖・水素を補完", [=](Document &d) { repairResidue(d, rid); }, true);
     });
+    section(f, "配列から構築");
     sequenceInput = new QLineEdit;
     sequenceInput->setObjectName("sequenceInput");
     sequenceInput->setPlaceholderText("AGS / ALA-GLY-SER");
@@ -521,6 +605,7 @@ void MainWindow::buildResiduePanel() {
             view->fit();
         },
         "buildSequence");
+    section(f, "残基の編集（パレットのアミノ酸を使用）");
     button(f, "選択C末端へ残基を追加", [this] { addAmino(selectedResidue(), false); });
     button(f, "選択N末端へ残基を追加", [this] { addAmino(selectedResidue(), true); });
     button(f, "選択残基を置換", [this] {
@@ -564,6 +649,7 @@ void MainWindow::buildResiduePanel() {
             fail("C末端側、N末端側の順に2残基を選択してください。");
         edit("鎖を再連結", [=](Document &d) { reconnectResidues(d, residues[0], residues[1]); }, true);
     });
+    section(f, "主鎖・側鎖の二面角");
     auto *torsion = choices(f, "二面角", {"phi", "psi", "omega", "chi1", "chi2", "chi3", "chi4", "chi5"});
     auto *angle = number(f, "角度 / °", 180, -360, 360);
     button(f, "二面角を適用", [this, torsion, angle] {
@@ -571,6 +657,7 @@ void MainWindow::buildResiduePanel() {
         double a = angle->value();
         edit("残基二面角を変更", [=](Document &d) { setResidueTorsion(d, rid, kind, a); });
     });
+    section(f, "残基の一覧");
     residueList = new QListWidget;
     residueList->setMaximumHeight(200);
     residueList->setObjectName("residueList");
@@ -621,28 +708,31 @@ void MainWindow::buildResiduePanel() {
 void MainWindow::buildChargePanel() {
     auto *f = panel("電荷");
     chargeEditor = f->parentWidget();
-    auto *info = new QLabel("分子の全電荷・スピン多重度は「3 計算条件」と共通です。"
+    section(f, "分子の全電荷・スピン");
+    auto *info = new QLabel("「3 計算条件」と共通で、変更するとすぐに反映します。"
                             "外部点電荷は分子の全電荷に含めません。");
     info->setWordWrap(true);
     f->addRow(info);
     totalCharge = new QSpinBox;
     totalCharge->setObjectName("moleculeTotalCharge");
     totalCharge->setRange(-1000, 1000);
+    totalCharge->setKeyboardTracking(false);
     multiplicity = new QSpinBox;
     multiplicity->setObjectName("moleculeMultiplicity");
     multiplicity->setRange(1, 1000);
+    multiplicity->setKeyboardTracking(false);
     f->addRow("計算の全電荷", totalCharge);
     f->addRow("スピン多重度 (2S+1)", multiplicity);
-    button(
-        f, "全電荷・多重度を適用",
-        [this] {
-            int q = totalCharge->value(), m = multiplicity->value();
-            edit("電荷・多重度を変更", [=](Document &d) {
-                d.setJobValue("charge", q);
-                d.setJobValue("multiplicity", m);
+    // Like the same fields of "3 計算条件": each change is one undoable edit.
+    for (auto [box, key] : {std::pair{totalCharge, "charge"}, {multiplicity, "multiplicity"}})
+        connect(box, &QSpinBox::valueChanged, this, [this, key](int n) {
+            safe([&] {
+                if (doc.job()[key].toInt(QString(key) == "multiplicity" ? 1 : 0) != n)
+                    edit(QString(key) == "charge" ? "全電荷を変更" : "スピン多重度を変更",
+                         [=](Document &d) { d.setJobValue(key, n); });
             });
-        },
-        "applyMoleculeCharge");
+            refreshChargePanel(); // A rejected value shows the document's again.
+        });
     button(
         f, "形式電荷の合計を適用",
         [this] { edit("全電荷を合わせる", [](Document &d) { d.setJobValue("charge", d.formalCharge()); }); },
@@ -653,6 +743,7 @@ void MainWindow::buildChargePanel() {
     chargeSummary->setWordWrap(true);
     f->addRow(chargeSummary);
     button(f, "NWChem入力を確認", [this] { workspaceTabs->setCurrentIndex(5); }, "moleculeInputPreview");
+    section(f, "外部点電荷");
     includePointCharges = new QCheckBox("外部点電荷をNWChem入力に含める");
     includePointCharges->setObjectName("moleculeIncludePointCharges");
     includePointCharges->setToolTip("点電荷の静電場を含めます。QM/MMの力場・結合相互作用は設定しません。");
@@ -741,10 +832,13 @@ void MainWindow::buildChargePanel() {
             });
         },
         "deletePointCharge");
-    button(f, "選択した水をTIP3P点電荷へ", [this] {
-        auto ids = requireSelection();
-        edit("水を点電荷へ変換", [=](Document &d) { waterToCharges(d, ids); }, true);
-    });
+    enableWithSelection(
+        button(f, "選択した水をTIP3P点電荷へ",
+               [this] {
+                   auto ids = requireSelection();
+                   edit("水を点電荷へ変換", [=](Document &d) { waterToCharges(d, ids); }, true);
+               }),
+        1);
     button(f, "点電荷をファイルへ保存…", [this] {
         if (!resolveCandidate())
             return;
@@ -766,7 +860,8 @@ void MainWindow::buildChargePanel() {
 }
 void MainWindow::refreshChargePanel() {
     const auto &d = displayDocument();
-    const QSignalBlocker blocker(includePointCharges);
+    const QSignalBlocker blocker(includePointCharges), chargeBlocker(totalCharge),
+        multiplicityBlocker(multiplicity);
     includePointCharges->setChecked(nwchemSettings(d)["include_point_charges"].toBool());
     totalCharge->setValue(d.job()["charge"].toInt());
     multiplicity->setValue(d.job()["multiplicity"].toInt(1));

@@ -23,6 +23,9 @@ struct ResultEnergy {
 struct ResultOrbital {
     QString symmetry, spin;
     double energy = 0, occupation = 0;
+    // The molecular orbital's number within its spin, counted from 1 as NWChem and MOLDEN do (a log
+    // prints only some orbitals, from "Vector N").
+    int number = 0;
 };
 struct ResultMode {
     double frequency = 0, intensity = std::numeric_limits<double>::quiet_NaN();

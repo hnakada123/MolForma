@@ -6,6 +6,7 @@
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
 #include "nwchem/nwchem.h"
+#include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_import.h"
 #include "ui/advanced_panel.h"
@@ -17,6 +18,7 @@
 #include "ui/periodic_table.h"
 #include "ui/results_panel.h"
 #include "ui/template_delegate.h"
+#include <Eigen/Eigenvalues>
 #include <QDrag>
 #include <QJsonDocument>
 #include <QMimeData>
@@ -29,16 +31,21 @@ namespace mf {
 class DocumentCommand : public QUndoCommand {
     MainWindow *window;
     Document before, after;
-    bool remote; // Made or confirmed over MCP: undo/redo never make its execution settings trusted.
+    bool remote;         // Made or confirmed over MCP: undo/redo never make its execution settings trusted.
+    bool pushed = false; // QUndoStack::push() runs redo() once to apply the edit itself.
 
   public:
     DocumentCommand(MainWindow *w, const QString &name, const Document &next, bool remote)
         : QUndoCommand(name), window(w), before(w->doc), after(next), remote(remote) {}
     void undo() override {
         window->setState(before, !remote);
+        window->announceHistory("元に戻しました", text(), after, before);
     }
     void redo() override {
         window->setState(after, !remote);
+        if (pushed)
+            window->announceHistory("やり直しました", text(), before, after);
+        pushed = true;
     }
 };
 class PaletteList : public QListWidget {
@@ -105,7 +112,7 @@ void MainWindow::safe(const std::function<void()> &operation) {
     } catch (const std::exception &e) {
         QString message = QString::fromUtf8(e.what());
         statusBar()->showMessage(message, 15000);
-        QMessageBox::warning(this, "操作を確認", message);
+        QMessageBox::warning(this, "操作できません", message);
     }
 }
 void MainWindow::trackExecution(const Document &before, const Document &after) {
@@ -136,6 +143,33 @@ void MainWindow::loadDocument(const Document &d) {
     undo.setClean();
     refresh();
     view->fit();
+}
+void MainWindow::announceHistory(const QString &verb, const QString &name, const Document &from,
+                                 const Document &to) {
+    // One Undo/Redo covers the molecule and the settings of every tab: say which tab changed,
+    // so undoing in "1 分子" does not silently revert a setting the user cannot see.
+    const auto structure = [](const Document &d) {
+        auto o = d.toJson();
+        for (const auto *key : {"nwchem", "nwchem_execution", "job"})
+            o.remove(key);
+        return o;
+    };
+    QWidget *page = nullptr;
+    if (structure(from) != structure(to))
+        page = moleculePage;
+    else if (nwchemAdvanced(from) != nwchemAdvanced(to))
+        page = advanced;
+    else if (from.data["nwchem_execution"] != to.data["nwchem_execution"])
+        page = execution;
+    else
+        page = calculation; // Calculation conditions, charge and multiplicity.
+    const bool elsewhere = workspaceTabs && workspaceTabs->currentWidget() != page;
+    statusBar()->showMessage(
+        QString("%1: %2%3")
+            .arg(verb, name,
+                 elsewhere ? "（「" + workspaceTabs->tabText(workspaceTabs->indexOf(page)) + "」の内容）"
+                           : QString()),
+        elsewhere ? 10000 : 5000);
 }
 bool MainWindow::commit(const QString &name, const Document &next, bool remote) {
     auto errors = next.validate();
@@ -222,15 +256,6 @@ void MainWindow::buildUi() {
     layout->setContentsMargins(10, 6, 10, 8);
     auto *tools = new QHBoxLayout;
     layout->addLayout(tools);
-    tool = new QComboBox;
-    tool->setObjectName("toolSelector");
-    QStringList codes{"select", "atom", "place",   "substituent", "center", "ligand",
-                      "bond",   "move", "replace", "delete",      "charge"},
-        labels{"選択", "原子追加", "部品配置", "置換基追加", "配位中心", "配位子追加",
-               "結合", "移動",     "置換",     "削除",       "点電荷"};
-    for (int i = 0; i < codes.size(); ++i)
-        tool->addItem(labels[i], codes[i]);
-    tools->addWidget(tool);
     auto add = [&](QString text, auto fn) {
         auto *b = new QPushButton(text);
         tools->addWidget(b);
@@ -258,18 +283,30 @@ void MainWindow::buildUi() {
                                                     {"分子", "component"},
                                                     {"全体", "all"}})
         unitBox->addItem(pair.first, pair.second);
+    unitBox->setToolTip(
+        "原子をクリックしたときにまとめて選ぶ範囲です（原子・部品・残基・つながった分子・全体）。");
     tools->addWidget(new QLabel("選択単位"));
     tools->addWidget(unitBox);
-    add("選択解除", [this] { setSelection({}); });
-    add("選択を削除", [this] { deleteAtoms(requireSelection()); })->setObjectName("deleteSelection");
+    auto *clearSelection = add("選択解除", [this] { setSelection({}); });
+    clearSelection->setObjectName("clearSelection");
+    enableWithSelection(clearSelection, 1);
+    auto *deleteSelection = add("選択原子を削除", [this] { deleteAtoms(requireSelection()); });
+    deleteSelection->setObjectName("deleteSelection");
+    deleteSelection->setToolTip("選択した原子を削除する候補を作ります（Delete）。確定するまで元に戻せます。");
+    enableWithSelection(deleteSelection, 1);
     tools->addStretch();
-    add("視点リセット", [this] { view->viewFrom(2); });
+    add("視点リセット", [this] {
+        view->viewFrom(2);
+    })->setToolTip("正面（+Z方向）から見て、分子全体を表示します。");
     auto *options = new QHBoxLayout;
     layout->addLayout(options);
     showH = new QCheckBox("水素表示");
+    showH->setToolTip("水素原子の表示を切り替えます（H）。隠しても計算・保存には含みます。");
     showH->setChecked(true);
     options->addWidget(showH);
-    auto *indices = new QCheckBox("原子番号");
+    auto *indices = new QCheckBox("番号を表示");
+    indices->setObjectName("showIndices");
+    indices->setToolTip("ラベルに原子の通し番号（座標表・NWChem入力の順番）を付けます。");
     indices->setChecked(true);
     options->addWidget(indices);
     labelModeBox = new QComboBox;
@@ -280,24 +317,32 @@ void MainWindow::buildUi() {
                                       {"ラベル: なし", "none"}})
         labelModeBox->addItem(label, mode);
     labelModeBox->setToolTip(
-        "元素記号・番号を表示する原子です。重なるラベルは手前の原子・選択した原子を優先して省きます。");
+        "元素記号・番号を表示する原子です。ラベルはほかのラベル・原子に重ならない向きに置き、置けないものは"
+        "選択した原子・配位中心・水素以外・手前の原子を優先して省きます。");
     options->addWidget(labelModeBox);
     autoH = new QCheckBox("水素自動補完");
+    autoH->setToolTip("原子の追加・結合の変更・元素の変更のあとに、空いた原子価へ水素を付けます。");
     autoH->setChecked(true);
     options->addWidget(autoH);
     keepSelection = new QCheckBox("編集後に選択維持");
+    keepSelection->setToolTip("オフでは、編集を確定するたびに選択を解除します。");
     keepSelection->setChecked(settings.value("keepSelection", true).toBool());
     options->addWidget(keepSelection);
-    keepTool = new QCheckBox("配置後もツールを保持");
+    keepTool = new QCheckBox("部品の配置後もツールを保持");
+    keepTool->setToolTip("オフでは、骨格・置換基・アミノ酸を1つ置くと「選択」ツールに戻ります。"
+                         "原子追加などのツールは切り替えるまで続きます。");
     keepTool->setChecked(settings.value("keepTool", false).toBool());
     options->addWidget(keepTool);
     auto *h = new QPushButton("水素を補完");
+    h->setToolTip("選択原子（未選択なら分子全体）の空いた原子価に水素を付けます。");
     options->addWidget(h);
     connect(h, &QPushButton::clicked, this, [this] {
         safe([this] { edit("水素を補完", [this](Document &d) { completeHydrogens(d, selected); }); });
     });
     auto *refineButton = new QPushButton("全体整形");
     refineButton->setObjectName("refineButton");
+    refineButton->setToolTip("力場（MMFF94、使えない場合UFF）で分子全体の構造を整え、候補として表示します。"
+                             "金属錯体・ゴースト原子を含む分子には使えません。");
     options->addWidget(refineButton);
     connect(refineButton, &QPushButton::clicked, this, [this] { safe([this] { runWorker("refine"); }); });
     cancelWorkerButton = new QPushButton("整形を中止");
@@ -335,14 +380,23 @@ void MainWindow::buildUi() {
     ll->addWidget(periodicTableButton);
     connect(periodicTableButton, &QPushButton::clicked, this, [this] {
         PeriodicTableDialog dialog(paletteElement, search->text(), this);
-        if (dialog.exec() != QDialog::Accepted)
-            return;
-        paletteElement = dialog.selectedElement();
-        search->clear();
-        refreshPalette();
-        palette->setCurrentRow(0);
-        paletteChosen();
+        if (dialog.exec() == QDialog::Accepted)
+            safe([&] { chooseElement(dialog.selectedElement()); });
     });
+    // The common elements of organic molecules, one click each (the atom tool then places them).
+    auto *quick = new QHBoxLayout;
+    quick->setSpacing(2);
+    for (const auto *symbol : {"H", "C", "N", "O", "F", "P", "S", "Cl", "Br", "I"}) {
+        auto *b = new QToolButton;
+        b->setObjectName(QString("quickElement_") + symbol);
+        b->setText(symbol);
+        b->setToolTip(QString("%1（%2）を「原子追加」で置きます").arg(symbol, element(symbol).nameJa));
+        b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        b->setMinimumWidth(16);
+        quick->addWidget(b);
+        connect(b, &QToolButton::clicked, this, [this, symbol] { safe([&] { chooseElement(symbol); }); });
+    }
+    ll->addLayout(quick);
     growth = new QCheckBox("アミノ酸の連続追加");
     ll->addWidget(growth);
     palette = new PaletteList;
@@ -374,8 +428,47 @@ void MainWindow::buildUi() {
         });
     });
     ml->addWidget(sequenceLabel);
+    // Candidate controls of "1 分子": above the 3D view, so they never cover atoms.
+    banner = new QFrame;
+    static_cast<QFrame *>(banner)->setFrameShape(QFrame::StyledPanel);
+    banner->setObjectName("candidateBanner");
+    ml->addWidget(banner);
+    auto *canvasRow = new QHBoxLayout;
+    canvasRow->setSpacing(6);
+    ml->addLayout(canvasRow, 1);
+    // Editing tools: one always-visible column of buttons beside the 3D view.
+    auto *strip = new QVBoxLayout;
+    strip->setSpacing(2);
+    canvasRow->addLayout(strip);
+    toolGroup = new QButtonGroup(this);
+    for (const auto &[code, label, tip] :
+         {std::tuple{"select", "選択",
+                     "原子を選択します。Shift／Ctrl＋クリックで追加、Shiftドラッグで範囲選択。"},
+          {"atom", "原子追加", "パレットの元素の原子を、空白・原子・結合のクリックで追加します。"},
+          {"place", "部品配置", "パレットの骨格・アミノ酸を空白に置くか、原子へ接続します。"},
+          {"substituent", "置換基", "パレットの置換基で、クリックした水素を置き換えます。"},
+          {"center", "配位中心", "パレットの金属を、配位サイトつきの配位中心として置きます。"},
+          {"ligand", "配位子", "パレットの配位子を、配位中心の空きサイト（紫の番号）へ置きます。"},
+          {"bond", "結合", "2原子を順にクリックして、「編集」タブの結合種類にします。"},
+          {"move", "移動", "原子をドラッグして動かします（選択中の原子は一緒に動きます）。"},
+          {"replace", "置換", "クリックした原子を、パレットの元素・部品に置き換えます。"},
+          {"delete", "削除", "クリックした原子を削除する候補を作ります。"},
+          {"charge", "点電荷", "空白をクリックして外部点電荷を置きます（値は「電荷」タブ）。"}}) {
+        auto *b = new QToolButton;
+        b->setObjectName(QString("tool_") + code);
+        b->setText(label);
+        b->setToolTip(tip);
+        b->setCheckable(true);
+        b->setProperty("tool", code);
+        b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        b->setMinimumWidth(76);
+        toolGroup->addButton(b);
+        strip->addWidget(b);
+    }
+    strip->addStretch();
+    toolGroup->buttons().first()->setChecked(true);
     view = new MoleculeView;
-    ml->addWidget(view, 1);
+    canvasRow->addWidget(view, 1);
     auto *angles = new QHBoxLayout;
     angles->setSpacing(16);
     ml->addLayout(angles);
@@ -412,6 +505,7 @@ void MainWindow::buildUi() {
     angles->addLayout(axes);
     for (int i = 0; i < 3; ++i) {
         auto *b = new QPushButton(QString("+") + QString("XYZ")[i]);
+        b->setToolTip(QString("%1軸の正の側から見て、分子全体を表示します。").arg(QString("XYZ")[i]));
         b->setMaximumWidth(40);
         axes->addWidget(b, 0, Qt::AlignBottom);
         connect(b, &QPushButton::clicked, this, [this, i] { view->viewFrom(i); });
@@ -430,7 +524,12 @@ void MainWindow::buildUi() {
     dimensions->addWidget(dimension);
     auto *applyDimension = new QPushButton("寸法を適用");
     applyDimension->setObjectName("applyDimension");
+    applyDimension->setToolTip(
+        "選択順の2〜4原子の距離・角度・二面角を指定値にします。後に選んだ原子の側が動きます。");
     dimensions->addWidget(applyDimension);
+    dimension->setSpecialValueText("—");
+    enableWithSelection(dimension, 2, 4);
+    enableWithSelection(applyDimension, 2, 4);
     dimensions->addStretch();
     ml->addLayout(dimensions);
     connect(applyDimension, &QPushButton::clicked, this, [this] {
@@ -440,9 +539,8 @@ void MainWindow::buildUi() {
             edit("寸法を適用", [=](Document &d) { setDimension(d, ids, v); });
         });
     });
-    auto *mouseHint =
-        new QLabel("左ドラッグ: 回転（画面基準） · 右ドラッグ: 平行移動 · ホイール: カーソル位置で拡縮 · "
-                   "クリック: 選択 · Shift／Ctrl＋クリック: 追加・解除 · Shiftドラッグ: 範囲選択");
+    mouseHint = new QLabel;
+    mouseHint->setObjectName("toolHint");
     mouseHint->setWordWrap(true);
     mouseHint->setForegroundRole(QPalette::PlaceholderText);
     auto hintFont = mouseHint->font();
@@ -511,21 +609,26 @@ void MainWindow::buildUi() {
     static_cast<QFrame *>(candidateBar)->setFrameShape(QFrame::StyledPanel);
     candidateControls(candidateBar, candidateLabel, "candidateBarConfirm", "candidateBarCancel");
     outer->addWidget(candidateBar);
-    auto *bannerFrame = new QFrame(view);
-    bannerFrame->setFrameShape(QFrame::StyledPanel);
-    banner = bannerFrame;
-    banner->setObjectName("candidateBanner");
     candidateControls(banner, bannerLabel, "confirmCandidate", "cancelCandidate");
     bannerLabel->setObjectName("candidateBannerText");
     banner->hide();
-    view->installEventFilter(this);
     connect(workspaceTabs, &QTabWidget::currentChanged, this, [this] {
         candidateBar->setVisible(candidate.has_value() && workspaceTabs->currentWidget() != moleculePage);
     });
     summary = new QLabel;
     summary->setObjectName("documentSummary");
     outer->addWidget(summary);
-    connect(tool, &QComboBox::currentIndexChanged, this, [this] { view->setTool(value(tool)); });
+    connect(toolGroup, &QButtonGroup::buttonToggled, this, [this](QAbstractButton *, bool on) {
+        if (!on)
+            return;
+        view->setTool(currentTool());
+        // "選択" does not place the palette part: it is no longer shown as chosen.
+        if (currentTool() == "select")
+            palette->clearSelection();
+        refreshToolHint();
+    });
+    connect(elementBox, &QComboBox::currentIndexChanged, this, &MainWindow::refreshToolHint);
+    connect(palette, &QListWidget::currentItemChanged, this, &MainWindow::refreshToolHint);
     connect(unitBox, &QComboBox::currentIndexChanged, this,
             [this] { safe([this] { setSelection(expandedSelection(selected)); }); });
     connect(showH, &QCheckBox::toggled, view, &MoleculeView::setShowHydrogens);
@@ -540,11 +643,19 @@ void MainWindow::buildUi() {
     connect(search, &QLineEdit::textChanged, this, &MainWindow::refreshPalette);
     connect(category, &QComboBox::currentIndexChanged, this, &MainWindow::refreshPalette);
     connect(palette, &QListWidget::itemClicked, this, [this] { safe([this] { paletteChosen(); }); });
+    // Enter in the search box takes the first match, like a click on it.
+    connect(search, &QLineEdit::returnPressed, this, [this] {
+        if (palette->count())
+            safe([this] {
+                palette->setCurrentRow(0);
+                paletteChosen();
+            });
+    });
     connect(view, &MoleculeView::atomClicked, this,
             [this](auto id, auto mods) { safe([this, id, mods] { atomClicked(id, mods); }); });
     connect(view, &MoleculeView::blankClicked, this, [this](Vec p) {
         safe([this, p] {
-            if (value(tool) == "select")
+            if (currentTool() == "select")
                 setSelection({});
             else
                 place({}, p);
@@ -552,7 +663,7 @@ void MainWindow::buildUi() {
     });
     connect(view, &MoleculeView::bondClicked, this, [this](auto a, auto b) {
         safe([this, a, b] {
-            if (value(tool) == "atom") {
+            if (currentTool() == "atom") {
                 edit("結合間に原子を挿入", [=, this](Document &d) {
                     Vec p = (d.atom(a).position + d.atom(b).position) * .5;
                     d.setBond(a, b, "none");
@@ -572,7 +683,7 @@ void MainWindow::buildUi() {
     connect(view, &MoleculeView::siteClicked, this, [this](auto c, int site) {
         safe([this, c, site] {
             setSelection({c});
-            if (value(tool) == "ligand") {
+            if (currentTool() == "ligand") {
                 auto t = currentTemplate();
                 auto indices = sites();
                 if (t["connections"].toArray().size() == 2 && !indices.contains(site) &&
@@ -619,10 +730,13 @@ void MainWindow::buildUi() {
                 growthResidue.clear();
             } else if (key == Qt::Key_H)
                 showH->toggle();
-            else if (key == Qt::Key_Delete)
-                deleteAtoms(requireSelection());
-            else if (key >= Qt::Key_1 && key <= Qt::Key_3) {
-                auto ids = requireSelection(2);
+            else if (key == Qt::Key_Delete) {
+                if (hasSelection())
+                    deleteAtoms(selected);
+            } else if (key >= Qt::Key_1 && key <= Qt::Key_3) {
+                if (!hasSelection(2))
+                    return;
+                auto ids = selected;
                 QString kind = QStringList{"single", "double", "triple"}[key - Qt::Key_1];
                 edit("結合次数を変更", [=, this](Document &d) {
                     d.setBond(ids[0], ids[1], kind);
@@ -635,11 +749,25 @@ void MainWindow::buildUi() {
     connect(view, &MoleculeView::templateDropped, this,
             [this](QString key, QString atom, Vec p, QString c, int site, QString rid, bool n) {
                 safe([=, this] {
-                    for (int i = 0; i < palette->count(); ++i)
-                        if (palette->item(i)->data(Qt::UserRole) == key) {
-                            palette->setCurrentRow(i);
-                            break;
-                        }
+                    const auto select = [&] {
+                        for (int i = 0; i < palette->count(); ++i)
+                            if (palette->item(i)->data(Qt::UserRole) == key) {
+                                palette->setCurrentRow(i);
+                                return true;
+                            }
+                        return false;
+                    };
+                    // A part the filtered palette does not list (an MCP drop): show the whole palette;
+                    // an unknown part is an error, never the part chosen before.
+                    if (!select()) {
+                        if (key.startsWith("atom:"))
+                            paletteElement = element(key.mid(5)).symbol;
+                        search->clear();
+                        category->setCurrentIndex(0);
+                        refreshPalette();
+                        if (!select())
+                            fail("部品が見つかりません: " + key);
+                    }
                     paletteChosen();
                     if (!rid.isEmpty())
                         addAmino(rid, n);
@@ -653,6 +781,7 @@ void MainWindow::buildUi() {
                 });
             });
     refreshPalette();
+    refreshToolHint();
 }
 void MainWindow::buildMenus() {
     auto *file = menuBar()->addMenu("ファイル");
@@ -666,6 +795,8 @@ void MainWindow::buildMenus() {
     const QList<QAction *> toolbarActions{action(file, "新規", QKeySequence::New, [this] { newDocument(); }),
                                           action(file, "開く…", QKeySequence::Open, [this] { open(); }),
                                           action(file, "SMILESから作成…", {}, [this] { importSmiles(); })};
+    for (int i = 0; i < toolbarActions.size(); ++i)
+        toolbarActions[i]->setObjectName(QStringList{"newAction", "openAction", "smilesAction"}[i]);
     recentMenu = file->addMenu("最近使ったファイル");
     recentMenu->setObjectName("recentMenu");
     refreshRecent();
@@ -679,10 +810,11 @@ void MainWindow::buildMenus() {
         if (resolveCandidate())
             QApplication::clipboard()->setText(doc.xyz());
     });
-    action(file, "XYZを貼付…", {}, [this] {
+    action(file, "XYZを貼り付け…", {}, [this] {
         bool ok;
-        QString text = QInputDialog::getMultiLineText(this, "XYZを貼付", "原子数、コメント、元素と座標（Å）",
-                                                      QApplication::clipboard()->text(), &ok);
+        QString text =
+            QInputDialog::getMultiLineText(this, "XYZを貼り付け", "原子数、コメント、元素と座標（Å）",
+                                           QApplication::clipboard()->text(), &ok);
         if (ok) {
             auto next = xyzStructure(text);
             // Like the coordinate table, keep calculation/execution settings and the envelope.
@@ -714,7 +846,8 @@ void MainWindow::buildMenus() {
         confirmCandidate();
     });
     confirmAction->setObjectName("confirmAction");
-    confirmAction->setShortcuts({QKeySequence("Ctrl+Return"), QKeySequence("Ctrl+Enter")});
+    // Listed as Ctrl+Enter like the candidate buttons; the main Return key works the same.
+    confirmAction->setShortcuts({QKeySequence("Ctrl+Enter"), QKeySequence("Ctrl+Return")});
     action(editMenu, "候補を取消・選択を解除", QKeySequence(Qt::Key_Escape), [this] {
         if (candidate)
             cancelCandidate();
@@ -733,7 +866,11 @@ void MainWindow::buildMenus() {
         return a;
     };
     local(
-        editMenu, "選択を削除", QKeySequence::Delete, [this] { deleteAtoms(requireSelection()); },
+        editMenu, "選択原子を削除", QKeySequence::Delete,
+        [this] {
+            if (hasSelection())
+                deleteAtoms(selected);
+        },
         "deleteAction");
     local(editMenu, "すべて選択", QKeySequence::SelectAll, [this] { selectAll(); }, "selectAllAction");
     local(editMenu, "選択をXYZでコピー", QKeySequence::Copy, [this] { copySelection(); }, "copyAction");
@@ -744,7 +881,9 @@ void MainWindow::buildMenus() {
         local(
             orders, QStringList{"単結合", "二重結合", "三重結合"}[n - 1], QKeySequence(Qt::Key_0 + n),
             [this, n] {
-                auto ids = requireSelection(2);
+                if (!hasSelection(2))
+                    return;
+                auto ids = selected;
                 const QString kind = QStringList{"single", "double", "triple"}[n - 1];
                 edit("結合次数を変更", [=, this](Document &d) {
                     d.setBond(ids[0], ids[1], kind);
@@ -755,14 +894,21 @@ void MainWindow::buildMenus() {
             QString("bondOrder%1Action").arg(n));
     editMenu->addSeparator();
     action(editMenu, "番号で原子を選択…", {}, [this] { selectNumbers(); });
-    action(editMenu, "座標表（2 座標）", {}, [this] { workspaceTabs->setCurrentWidget(coordinates); });
     action(editMenu, "座標と原子属性の一覧…", {}, [this] { coordinateDialog(); });
-    action(editMenu, "構造を確認…", {}, [this] { showReport(); });
-    action(editMenu, "点群・対称化…", {}, [this] { symmetryDialog(); })->setObjectName("symmetryAction");
-    action(editMenu, "Z-matrix（内部座標）…", {}, [this] {
+    editMenu->addSeparator();
+    // Preferences hold the executable, launcher and environment: only the user may change them.
+    auto *preferencesAction =
+        action(editMenu, "環境設定…", QKeySequence::Preferences, [this] { preferences(); });
+    preferencesAction->setObjectName("preferencesAction");
+    preferencesAction->setProperty("mcpProtected", true);
+    // Checks and transformations of the whole structure.
+    auto *toolsMenu = menuBar()->addMenu("ツール");
+    action(toolsMenu, "構造を確認…", {}, [this] { showReport(); })->setObjectName("reportAction");
+    action(toolsMenu, "点群・対称化…", {}, [this] { symmetryDialog(); })->setObjectName("symmetryAction");
+    action(toolsMenu, "Z-matrix（内部座標）…", {}, [this] {
         zMatrixDialog();
     })->setObjectName("zMatrixAction");
-    action(editMenu, "配座探索…", {}, [this] {
+    action(toolsMenu, "配座探索…", {}, [this] {
         bool ok;
         const int count =
             QInputDialog::getInt(this, "配座探索",
@@ -772,20 +918,31 @@ void MainWindow::buildMenus() {
         if (ok)
             runWorker("conformers", {}, {}, count);
     })->setObjectName("conformerAction");
-    action(editMenu, "構造を比較・重ね合わせ…", {}, [this] {
+    action(toolsMenu, "構造を比較・重ね合わせ…", {}, [this] {
         compareDialog();
     })->setObjectName("compareAction");
-    editMenu->addSeparator();
-    // Preferences hold the executable, launcher and environment: only the user may change them.
-    auto *preferencesAction =
-        action(editMenu, "環境設定…", QKeySequence::Preferences, [this] { preferences(); });
-    preferencesAction->setObjectName("preferencesAction");
-    preferencesAction->setProperty("mcpProtected", true);
+    // NWChem runs from any tab, not only from the button in "5 実行設定".
+    auto *calculationMenu = menuBar()->addMenu("計算");
+    auto *runAction = action(calculationMenu, "計算を実行", QKeySequence(Qt::Key_F5),
+                             [this] { execution->startFromMenu(); });
+    runAction->setObjectName("runCalculationAction");
+    runAction->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+    action(calculationMenu, "計算を停止…", {}, [this] {
+        execution->confirmStop();
+    })->setObjectName("stopCalculationAction");
+    action(calculationMenu, "入力一式を保存", {}, [this] {
+        workspaceTabs->setCurrentWidget(execution);
+        execution->saveBundle();
+    })->setObjectName("saveBundleAction");
+    calculationMenu->addSeparator();
+    action(calculationMenu, "結果ファイルを開く…", {}, [this] {
+        workspaceTabs->setCurrentWidget(results);
+        if (auto *open = results->findChild<QPushButton *>("resultsOpen"))
+            open->click();
+    });
+    action(calculationMenu, "計算の履歴", {},
+           [this] { workspaceTabs->setCurrentWidget(calculationHistory); });
     auto *viewMenu = menuBar()->addMenu("表示");
-    auto *water = viewMenu->addAction("起動時に水分子を読み込む");
-    water->setCheckable(true);
-    water->setChecked(settings.value("startupWater", true).toBool());
-    connect(water, &QAction::toggled, this, [this](bool on) { settings.setValue("startupWater", on); });
     auto *styles = viewMenu->addMenu("表示スタイル");
     auto *styleGroup = new QActionGroup(this);
     const auto chosenStyle = settings.value("view/style", "ball_and_stick").toString();
@@ -877,6 +1034,10 @@ void MainWindow::buildMenus() {
     bar->setMovable(false);
     bar->addActions(toolbarActions);
     bar->addAction(saveAction);
+    bar->addSeparator();
+    bar->addAction(runAction);
+    if (auto *button = qobject_cast<QToolButton *>(bar->widgetForAction(runAction)))
+        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
 }
 void MainWindow::refreshPalette() {
     QString cat = value(category), needle = search->text().trimmed();
@@ -891,7 +1052,8 @@ void MainWindow::refreshPalette() {
     palette->clear();
     auto add = [&](const QString &label, const QString &id, const QString &searchText,
                    const QJsonObject &t = QJsonObject()) {
-        if (!(id.startsWith("atom:") && cat == "atom") && !needle.isEmpty() &&
+        // Atoms are chosen below by symbol, name or number; the other parts by their text.
+        if (!id.startsWith("atom:") && !id.startsWith("smiles:") && !needle.isEmpty() &&
             !searchText.contains(needle, Qt::CaseInsensitive))
             return;
         auto *item = new QListWidgetItem(label, palette);
@@ -913,9 +1075,33 @@ void MainWindow::refreshPalette() {
             palette->setCurrentItem(item);
     };
     if (cat == "all" || cat == "atom") {
-        const auto &e = element(paletteElement);
-        add(e.nameJa, "atom:" + e.symbol,
-            QString("%1  %2  %3\n原子番号 %4").arg(e.symbol, e.nameJa, e.nameEn).arg(e.number));
+        // Without a search: the chosen element ("原子" also lists the common ones). With one: the
+        // element with that symbol or number first, then those whose name contains it.
+        QStringList symbols;
+        if (needle.isEmpty()) {
+            symbols << paletteElement;
+            if (cat == "atom")
+                for (const auto *common : {"H", "C", "N", "O", "F", "P", "S", "Cl", "Br", "I"})
+                    if (!symbols.contains(common))
+                        symbols << common;
+        } else {
+            bool numeric = false;
+            const int number = needle.toInt(&numeric);
+            for (const auto &e : elements())
+                if (numeric ? e.number == number : e.symbol.compare(needle, Qt::CaseInsensitive) == 0)
+                    symbols << e.symbol;
+            for (const auto &e : elements())
+                if (!numeric && !symbols.contains(e.symbol) &&
+                    (e.nameJa.contains(needle) ||
+                     (needle.size() > 2 && e.nameEn.contains(needle, Qt::CaseInsensitive))))
+                    symbols << e.symbol;
+            symbols = symbols.mid(0, cat == "atom" ? 40 : 6);
+        }
+        for (const auto &symbol : std::as_const(symbols)) {
+            const auto &e = element(symbol);
+            add(e.nameJa, "atom:" + e.symbol,
+                QString("%1  %2  %3\n原子番号 %4").arg(e.symbol, e.nameJa, e.nameEn).arg(e.number));
+        }
     }
     if (cat == "all" || cat == "center")
         for (auto s :
@@ -958,8 +1144,22 @@ void MainWindow::refreshPalette() {
         }
         add(label, t["id"].toString(), text, t);
     }
+    // A search that names no part may be a SMILES: offer to build it (a fragment beside the molecule).
+    static const QRegularExpression smilesText(R"(^[A-Za-z0-9@+\-\[\]()=#$/\\%.:*]+$)");
+    if (cat == "all" && !palette->count() && smilesText.match(needle).hasMatch())
+        add(QString("SMILES「%1」から3Dで作成").arg(needle), "smiles:" + needle,
+            "SMILESとして読み込み、今の分子の横に置く候補を作ります。");
     if (!palette->currentItem() && palette->count())
         palette->setCurrentRow(0);
+}
+void MainWindow::chooseElement(const QString &symbol) {
+    paletteElement = element(symbol).symbol;
+    search->clear();
+    refreshPalette();
+    for (int i = 0; i < palette->count(); ++i)
+        if (palette->item(i)->data(Qt::UserRole) == "atom:" + paletteElement)
+            palette->setCurrentRow(i);
+    paletteChosen();
 }
 QJsonObject MainWindow::currentTemplate() const {
     if (!palette->currentItem())
@@ -974,9 +1174,16 @@ void MainWindow::paletteChosen() {
     if (!palette->currentItem())
         return;
     QString id = palette->currentItem()->data(Qt::UserRole).toString();
+    if (id.startsWith("smiles:")) {
+        const auto smiles = id.mid(7);
+        search->clear();
+        runWorker(doc.atoms.isEmpty() ? "smiles" : "fragment", smiles);
+        return;
+    }
     QString mode;
     if (id.startsWith("atom:")) {
         mode = "atom";
+        paletteElement = id.mid(5);
         elementBox->setCurrentIndex(elementBox->findData(id.mid(5)));
     } else if (id.startsWith("center:")) {
         mode = "center";
@@ -992,8 +1199,32 @@ void MainWindow::paletteChosen() {
                 addAmino(growthResidue, growthN);
         }
     }
-    tool->setCurrentIndex(tool->findData(mode));
+    setTool(mode);
     view->setAminoHandles(id.startsWith("amino:"));
+}
+bool MainWindow::hasSelection(int count) {
+    if (!selected.isEmpty() && (!count || selected.size() == count))
+        return true;
+    statusBar()->showMessage(
+        count ? QString("%1原子を選択してください。").arg(count) : QString("原子を選択してください。"), 5000);
+    return false;
+}
+void MainWindow::enableWithSelection(QWidget *widget, int minimum, int maximum) {
+    selectionControls.append({widget, minimum, maximum, widget->toolTip()});
+}
+void MainWindow::refreshSelectionControls() {
+    const int count = selected.size();
+    for (const auto &c : std::as_const(selectionControls)) {
+        const bool ready = count >= c.minimum && (!c.maximum || count <= c.maximum);
+        c.widget->setEnabled(ready);
+        const QString need =
+            c.minimum == c.maximum
+                ? (c.minimum == 1 ? QString("原子を1つ選択すると使えます。")
+                                  : QString("%1原子を順に選択すると使えます。").arg(c.minimum))
+            : c.maximum ? QString("%1〜%2原子を順に選択すると使えます。").arg(c.minimum).arg(c.maximum)
+                        : QString("原子を選択すると使えます。");
+        c.widget->setToolTip(ready ? c.tooltip : c.tooltip.isEmpty() ? need : c.tooltip + "\n" + need);
+    }
 }
 Ids MainWindow::requireSelection(int count) const {
     if (selected.isEmpty() || (count && selected.size() != count))
@@ -1043,7 +1274,7 @@ void MainWindow::setSelection(const Ids &ids) {
     refreshSelection();
 }
 void MainWindow::atomClicked(const QString &id, Qt::KeyboardModifiers mods) {
-    QString mode = value(tool);
+    QString mode = currentTool();
     if (mode == "select" || mode == "move") {
         auto group = expandedSelection({id});
         // A click selects; Shift/Ctrl+click adds or removes, keeping the order for measurements.
@@ -1080,7 +1311,7 @@ void MainWindow::atomClicked(const QString &id, Qt::KeyboardModifiers mods) {
     }
 }
 void MainWindow::place(const QString &id, const Vec &position) {
-    QString mode = value(tool);
+    QString mode = currentTool();
     auto symbol = value(elementBox), kind = value(bondKind);
     bool hydrogen = autoH->isChecked();
     if (mode == "atom")
@@ -1160,7 +1391,7 @@ void MainWindow::place(const QString &id, const Vec &position) {
             edit("部品を配置",
                  [=](Document &d) { placeTemplate(d, t, d.atoms.isEmpty() ? Vec::Zero() : position); });
         if (!keepTool->isChecked())
-            tool->setCurrentIndex(0);
+            setTool("select");
     } else
         return;
     if (doc.atoms.size() < 10)
@@ -1205,7 +1436,6 @@ void MainWindow::refresh() {
     bannerLabel->setText(change);
     candidateBar->setVisible(candidate.has_value() && workspaceTabs->currentWidget() != moleculePage);
     banner->setVisible(candidate.has_value());
-    positionBanner();
     // Undo/Redo show the operation they act on.
     undoButton->setToolTip(candidate        ? QString("候補を取消")
                            : undo.canUndo() ? "元に戻す: " + undo.undoText()
@@ -1218,8 +1448,8 @@ void MainWindow::refresh() {
                                              : QString("元に戻す"));
         redoAction->setText(undo.canRedo() ? "やり直す: " + undo.redoText() : QString("やり直す"));
     }
-    summary->setText(QString("%1  |  %2 原子  %3 結合  |  電荷 %4 / 多重度 %5  |  %6点電荷%7")
-                         .arg(d.formula())
+    summary->setText(QString("%1  |  %2 原子・%3 結合  |  電荷 %4 / 多重度 %5  |  点電荷 %6%7")
+                         .arg(d.atoms.isEmpty() ? QString("原子なし") : d.formula())
                          .arg(d.atoms.size())
                          .arg(d.bonds.size())
                          .arg(d.job()["charge"].toInt())
@@ -1324,6 +1554,9 @@ void MainWindow::refreshSelection() {
         selected.isEmpty()
             ? "原子をクリックで選択、Shift／Ctrl＋クリックで順に追加して距離・角度・二面角を測定"
             : text);
+    // Fields that show the selection are blank ("—") without one, never left from an earlier atom.
+    if (selected.size() < 2 || selected.size() > 4)
+        dimension->setValue(dimension->minimum());
     if (selected.size() == 1 && d.contains(selected.first())) {
         const auto &a = d.atom(selected.first());
         for (int i = 0; i < 3; ++i)
@@ -1333,12 +1566,17 @@ void MainWindow::refreshSelection() {
         mass->setText(a.isotope    ? QString::number(a.isotope)
                       : a.mass > 0 ? QString::number(a.mass, 'g', 12)
                                    : "");
-    } else if (selected.size() > 1) {
+        mass->setPlaceholderText("整数: 質量数 / 小数: amu");
+    } else {
+        for (auto *field : positionFields)
+            field->setValue(field->minimum());
         formal->setValue(-99);
         radical->setValue(-1);
         mass->clear();
-        mass->setPlaceholderText("混在（空欄は変更なし）");
+        mass->setPlaceholderText(selected.isEmpty() ? QString("原子を選択してください")
+                                                    : QString("混在（空欄は変更なし）"));
     }
+    refreshSelectionControls();
     if (selected.size() == 2)
         if (auto b = d.bond(selected[0], selected[1]))
             bondKind->setCurrentIndex(bondKind->findData(b->kind));
@@ -1383,13 +1621,14 @@ bool MainWindow::confirmDiscard() {
 void MainWindow::newDocument() {
     if (!confirmDiscard())
         return;
-    edit("新規分子", [](Document &d) {
-        d = Document();
-        applyExecutionPreferences(d);
-    });
+    // A new, empty project like a freshly opened file: nothing to save until it is edited.
+    Document next;
+    applyExecutionPreferences(next);
     path.clear();
-    view->fit();
-    refresh();
+    loadDocument(next);
+    removeAutosave();
+    workspaceTabs->setCurrentWidget(moleculePage);
+    statusBar()->showMessage("新しい分子を作成しました。", 4000);
 }
 void MainWindow::open() {
     QString p = QFileDialog::getOpenFileName(
@@ -1441,6 +1680,22 @@ void MainWindow::loadPath(const QString &p) {
     settings.setValue("directory", QFileInfo(p).absolutePath());
     addRecent(p);
     refresh();
+    // A three-dimensional structure is seen at an angle like in the result viewer, so atoms behind
+    // each other along an axis stay visible; flat molecules keep the front view for editing.
+    if (doc.atoms.size() >= 4) {
+        Vec mean = Vec::Zero();
+        for (const auto &a : doc.atoms)
+            mean += a.position;
+        mean /= doc.atoms.size();
+        Mat spread = Mat::Zero();
+        for (const auto &a : doc.atoms)
+            spread += (a.position - mean) * (a.position - mean).transpose();
+        if (Eigen::SelfAdjointEigenSolver<Mat>(spread / doc.atoms.size()).eigenvalues()(0) > 0.1) {
+            view->setAngles(-25, 25, 0);
+            view->fit();
+            emit view->orientationChanged(); // The rotation sliders follow.
+        }
+    }
 }
 bool MainWindow::save(bool as) {
     execution->commitPendingEdits();
@@ -1499,12 +1754,22 @@ void MainWindow::exportFile() {
     if (!p.isEmpty())
         exportStructure(doc, p);
 }
-void MainWindow::addFragmentFromSmiles() {
-    bool ok;
-    const auto smiles =
-        QInputDialog::getText(this, "SMILESから断片を追加",
-                              "追加する分子のSMILES（今の分子の+X側に置きます）", QLineEdit::Normal, "", &ok);
-    if (ok && !smiles.trimmed().isEmpty())
+QString MainWindow::askSmiles(const QString &title, const QString &label, const QString &initial) {
+    QInputDialog dialog(this);
+    dialog.setObjectName("smilesDialog");
+    dialog.setWindowTitle(title);
+    dialog.setLabelText(label);
+    dialog.setTextValue(initial);
+    dialog.setOkButtonText("3Dで作成");
+    dialog.resize(560, dialog.sizeHint().height());
+    return dialog.exec() == QDialog::Accepted ? dialog.textValue().trimmed() : QString();
+}
+void MainWindow::addFragmentFromSmiles(const QString &initial) {
+    const auto smiles = askSmiles("SMILESから断片を追加",
+                                  "追加する分子のSMILES（例: CCO＝エタノール、c1ccccc1＝ベンゼン）\n"
+                                  "今の分子の+X側に置いた候補を作ります。確認してから確定してください。",
+                                  initial);
+    if (!smiles.isEmpty())
         runWorker("fragment", smiles);
 }
 void MainWindow::addFragmentFromFile() {
@@ -1519,10 +1784,12 @@ void MainWindow::addFragmentFromFile() {
     edit("ファイルから断片を追加", [&](Document &d) { insertFragment(d, fragment); }, true);
     view->fit();
 }
-void MainWindow::importSmiles() {
-    bool ok;
-    QString smiles = QInputDialog::getText(this, "SMILESから作成", "SMILES", QLineEdit::Normal, "", &ok);
-    if (ok && !smiles.trimmed().isEmpty())
+void MainWindow::importSmiles(const QString &initial) {
+    const auto smiles = askSmiles("SMILESから作成",
+                                  "SMILES（例: CCO＝エタノール、c1ccccc1＝ベンゼン、[NH4+]＝アンモニウム）\n"
+                                  "今の分子を置き換える候補を作ります。確認してから確定してください。",
+                                  initial);
+    if (!smiles.isEmpty())
         runWorker("smiles", smiles);
 }
 void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids &moving, int count) {
@@ -1551,7 +1818,7 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
     cancelWorkerButton->show();
     statusBar()->showMessage("構造を生成・整形しています…");
     connect(running, &QProcess::finished, this,
-            [this, running, output, mode](int code, QProcess::ExitStatus status) {
+            [this, running, output, mode, smiles](int code, QProcess::ExitStatus status) {
                 if (worker != running)
                     return;
                 QString error;
@@ -1588,14 +1855,24 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
                         }
                         applyResultGeometry(
                             next, Document::fromJson(list[chosen].toObject()["document"].toObject()));
-                        candidate = next;
-                        candidateName = "配座を適用";
-                        candidateRemote = workerRemote;
-                        statusBar()->showMessage(
-                            QString("配座 %1/%2 を候補にしました。「変更を確定」で適用します。")
-                                .arg(chosen + 1)
-                                .arg(list.size()),
-                            10000);
+                        double moved = 0;
+                        for (int i = 0; i < next.atoms.size() && i < doc.atoms.size(); ++i)
+                            moved = std::max(moved, (next.atoms[i].position - doc.atoms[i].position).norm());
+                        if (moved < 1e-3) {
+                            // Nothing to confirm: say so instead of an empty candidate.
+                            statusBar()->showMessage("配座探索: 別の配座は見つからず、現在の構造のままです"
+                                                     "（回転できる結合がない分子など）。",
+                                                     10000);
+                        } else {
+                            candidate = next;
+                            candidateName = "配座を適用";
+                            candidateRemote = workerRemote;
+                            statusBar()->showMessage(
+                                QString("配座 %1/%2 を候補にしました。「変更を確定」で適用します。")
+                                    .arg(chosen + 1)
+                                    .arg(list.size()),
+                                10000);
+                        }
                     } else {
                         auto result = Document::fromJson(response["document"].toObject());
                         // The worker exchanges the document without the project envelope.
@@ -1618,13 +1895,33 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
                     error = QString::fromUtf8(e.what());
                 }
                 worker = nullptr;
+                const bool remote = workerRemote;
                 running->deleteLater();
                 cancelWorkerButton->hide();
                 workdir.reset();
                 refresh();
                 view->fit();
-                if (!error.isEmpty())
-                    QMessageBox::warning(this, "整形結果", error);
+                if (error.isEmpty()) {
+                    if (mode != "conformers")
+                        statusBar()->showMessage(
+                            QString("「%1」の候補を作成しました。確認して「変更を確定」してください。")
+                                .arg(candidateName),
+                            10000);
+                    return;
+                }
+                statusBar()->clearMessage();
+                const bool fromSmiles = mode == "smiles" || mode == "fragment";
+                QMessageBox box(QMessageBox::Warning,
+                                fromSmiles             ? QString("SMILESから作成できません")
+                                : mode == "conformers" ? QString("配座探索できません")
+                                                       : QString("構造を整形できません"),
+                                error, QMessageBox::Close, this);
+                // A person may correct the SMILES they typed; MCP clients send a new request.
+                auto *retry =
+                    fromSmiles && !remote ? box.addButton("SMILESを修正…", QMessageBox::AcceptRole) : nullptr;
+                box.exec();
+                if (retry && box.clickedButton() == retry)
+                    safe([&] { mode == "smiles" ? importSmiles(smiles) : addFragmentFromSmiles(smiles); });
             });
     connect(running, &QProcess::errorOccurred, this, [this, running](QProcess::ProcessError error) {
         if (worker != running || error != QProcess::FailedToStart)
@@ -1636,6 +1933,7 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
         cancelWorkerButton->hide();
         refreshChargePanel();
         refreshPanels();
+        statusBar()->clearMessage();
         QMessageBox::warning(this, "処理を起動できません", message);
     });
     running->start();
@@ -1832,7 +2130,7 @@ void MainWindow::offerRecovery() {
 void MainWindow::deleteAtoms(const Ids &chosen) {
     const bool terminate = deleteTerminate && deleteTerminate->isChecked();
     edit(
-        "選択を削除",
+        "選択原子を削除",
         [=](Document &d) {
             Ids ids = chosen;
             // Hydrogens bonded only to deleted atoms go with them.
@@ -1883,19 +2181,41 @@ void MainWindow::pasteFragment() {
     edit("XYZを断片として貼り付け", [&](Document &d) { insertFragment(d, fragment); }, true);
     view->fit();
 }
-void MainWindow::positionBanner() {
-    if (!banner || !view)
-        return;
-    const int width = std::min(view->width() - 24, 760);
-    banner->setFixedWidth(std::max(200, width));
-    banner->adjustSize();
-    banner->move((view->width() - banner->width()) / 2, 44);
-    banner->raise();
+QString MainWindow::currentTool() const {
+    return toolGroup->checkedButton() ? toolGroup->checkedButton()->property("tool").toString()
+                                      : QString("select");
 }
-bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
-    if (watched == view && event->type() == QEvent::Resize)
-        positionBanner();
-    return QMainWindow::eventFilter(watched, event);
+void MainWindow::setTool(const QString &code) {
+    for (auto *b : toolGroup->buttons())
+        if (b->property("tool") == code)
+            b->setChecked(true);
+}
+void MainWindow::refreshToolHint() {
+    if (!mouseHint || !palette)
+        return;
+    // What a click does with the current tool, naming the element or part it places.
+    const auto mode = currentTool();
+    const auto part = palette->currentItem() ? palette->currentItem()->text() : QString("パレットで選択");
+    const auto symbol = value(elementBox);
+    const QMap<QString, QString> hints{
+        {"select",
+         "クリック: 選択 · Shift／Ctrl＋クリック: 追加・解除（順番を保持） · Shiftドラッグ: 範囲選択"},
+        {"atom", QString("原子追加（%1）: 空白をクリックで配置 · 原子をクリックで結合した%1を追加 · "
+                         "結合をクリックで間に挿入")
+                     .arg(symbol)},
+        {"place", QString("部品配置（%1）: 空白をクリックで配置 · 原子・水素をクリックで接続").arg(part)},
+        {"substituent", QString("置換基（%1）: 置き換える水素をクリック（ドロップも可）").arg(part)},
+        {"center", QString("配位中心（%1）: 空白をクリックで配置 · 配位形状は「配位」タブ").arg(symbol)},
+        {"ligand", QString("配位子（%1）: 配位中心の紫の番号（空きサイト）をクリック").arg(part)},
+        {"bond", "結合: 2原子を順にクリック · 結合の種類は「編集」タブ"},
+        {"move", "移動: 原子をドラッグ（選択中の原子は一緒に動く） · Altドラッグ: 回転"},
+        {"replace",
+         QString("置換（%1）: 置き換える原子をクリック").arg(palette->currentItem() ? part : symbol)},
+        {"delete", "削除: 原子をクリックすると削除の候補を作ります"},
+        {"charge", "点電荷: 空白をクリックで配置 · 電荷の値は「電荷」タブ"}};
+    mouseHint->setText(
+        hints.value(mode) +
+        "\n左ドラッグ: 回転 · 右ドラッグ: 平行移動 · ホイール: カーソル位置で拡縮 · Esc: 候補・選択を解除");
 }
 void MainWindow::showShortcuts() {
     QDialog dialog(this);
@@ -1957,21 +2277,21 @@ void MainWindow::showManual() {
     dialog.setWindowTitle("MolForma 操作ガイド・マニュアル");
     dialog.resize(900, 720);
     auto *layout = new QVBoxLayout(&dialog);
-    auto *tips = new QLabel("左のパレットを選び、3D画面へクリックまたはドロップして配置します。原子をクリック"
-                            "で選択、Shift／Ctrl＋"
-                            "クリックで順に追加し、2〜4原子で距離・角度・二面角を測定できます。配位子・ペプチ"
-                            "ド配列・削除・整形は3D画面"
-                            "上の「変更を確定」（Ctrl+Enter）で適用し、Escで候補を取消、Ctrl+"
-                            "Zで確定済みの変更を戻します。キー操作の一覧"
-                            "は「ヘルプ → キーボードショートカット一覧」にあります。");
+    auto *tips =
+        new QLabel("左のパレットで部品・原子を選び、3D画面をクリックするかドロップして配置します。"
+                   "3D画面の左の列でツールを切り替え、画面下にクリックしたときの動作を表示します。"
+                   "原子をクリックで選択、Shift／Ctrl＋クリックで順に追加し、2〜4原子で距離・角度・二面角を"
+                   "測定できます。配位子・削除・整形などは「変更を確定」（Ctrl+Enter）で適用し、Escで"
+                   "候補を取消、Ctrl+Zで確定済みの変更を戻します。計算は「計算 → 計算を実行」（F5）で"
+                   "始めます。キー操作の一覧は「ヘルプ → キーボードショートカット一覧」にあります。");
     tips->setWordWrap(true);
     layout->addWidget(tips);
     auto *bar = new QHBoxLayout;
     layout->addLayout(bar);
     auto *pages = new QComboBox;
     pages->setObjectName("manualPage");
-    pages->addItem("機能と操作（features.md）", ":/docs/features.md");
-    pages->addItem("MCPサーバー（mcp.md）", ":/docs/mcp.md");
+    pages->addItem("機能と操作（はじめに・各タブの説明）", ":/docs/features.md");
+    pages->addItem("MCPサーバー（AIクライアントからの操作）", ":/docs/mcp.md");
     bar->addWidget(pages);
     auto *find = new QLineEdit;
     find->setObjectName("manualSearch");
@@ -2026,18 +2346,18 @@ void MainWindow::contextMenu(const QPoint &p, const QString &id) {
     if (!id.isEmpty() && !selected.contains(id))
         setSelection(expandedSelection({id}));
     QMenu menu(this);
-    auto add = [&](const QString &text, auto fn) {
-        auto *a = menu.addAction(text);
+    const auto add = [&](QMenu *to, const QString &text, auto fn) {
+        auto *a = to->addAction(text);
         connect(a, &QAction::triggered, this, [this, fn] { safe(fn); });
     };
     if (!selected.isEmpty()) {
-        add("選択を削除（候補）", [this] { deleteAtoms(requireSelection()); });
-        add("元素を変更", [this] {
+        add(&menu, "選択原子を削除（候補）", [this] { deleteAtoms(requireSelection()); });
+        add(&menu, QString("元素を %1 に変更").arg(value(elementBox)), [this] {
             auto ids = requireSelection();
             auto symbol = value(elementBox);
             edit("元素を変更", [=](Document &d) { replaceElement(d, ids, symbol, false); });
         });
-        add("固定 / 解除", [this] {
+        add(&menu, "固定 / 解除", [this] {
             auto ids = requireSelection();
             edit("固定を切替", [=](Document &d) {
                 bool fixed = !d.atom(ids.first()).fixed;
@@ -2046,19 +2366,27 @@ void MainWindow::contextMenu(const QPoint &p, const QString &id) {
             });
         });
         if (selected.size() <= 3)
-            add("この順で向きをそろえる", [this] {
+            add(&menu, "選択順に向きをそろえる（原点・+X・XY面）", [this] {
                 auto ids = requireSelection();
                 edit("向きをそろえる", [=](Document &d) { orient(d, ids); });
                 view->fit();
             });
-        if (selected.size() == 2)
-            for (auto kind : QStringList{"single", "double", "triple", "aromatic", "dative", "none"})
-                add(kind, [this, kind] {
+        if (selected.size() == 2) {
+            auto *bonds = menu.addMenu("2原子の結合");
+            for (const auto &[label, kind] : {std::pair{"単結合", "single"},
+                                              {"二重結合", "double"},
+                                              {"三重結合", "triple"},
+                                              {"芳香族", "aromatic"},
+                                              {"配位（供与→中心）", "dative"},
+                                              {"結合を削除", "none"}})
+                add(bonds, label, [this, kind = QString(kind)] {
                     auto ids = requireSelection(2);
                     edit("結合を変更", [=](Document &d) { d.setBond(ids[0], ids[1], kind); });
                 });
+        }
+        menu.addSeparator();
     }
-    add("視点をリセット", [this] { view->viewFrom(2); });
+    add(&menu, "視点をリセット", [this] { view->viewFrom(2); });
     menu.exec(p);
 }
 void MainWindow::selectNumbers() {
@@ -2353,6 +2681,10 @@ void MainWindow::preferences() {
     environment->setPlainText(lines.join('\n'));
     environment->setMaximumHeight(90);
     form->addRow("追加の環境変数", environment);
+    auto *water = new QCheckBox("起動時に水分子を読み込む");
+    water->setObjectName("preferences_startupWater");
+    water->setChecked(settings.value("startupWater", true).toBool());
+    form->addRow("新しいウィンドウ", water);
     auto *renderer = new QComboBox;
     renderer->addItem("自動（VTKを優先）", "auto");
     renderer->addItem("QPainter（CPU）", "painter");
@@ -2411,6 +2743,7 @@ void MainWindow::preferences() {
             if (!errors.isEmpty())
                 fail(errors.join('\n'));
             saveExecutionPreferences(chosen);
+            settings.setValue("startupWater", water->isChecked());
             settings.setValue("view/renderer", renderer->currentData().toString());
             dialog.accept();
         });

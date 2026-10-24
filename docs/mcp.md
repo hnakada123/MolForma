@@ -195,7 +195,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | --- | --- |
 | `get_app_state` | 候補の有無、計算・結果読込の状態 |
 | `calculation` | NWChem実行・停止、入力一式の保存 |
-| `get_results` | 読込済み結果の要約（計算のエネルギー `final_energy`（最後のtask・振動数の参照構造・BSSE補正後）・熱化学・双極子・最適化状態・スキャンとIRCの各点・BSSE・溶媒和・原子ごとのMulliken/ESP/RESP電荷・NMR遮蔽・分極率を含む `properties`）、構造列・エネルギー・軌道・振動数（並進・回転は `rigid`）・励起状態・最適化ステップ・変位・ログ |
+| `get_results` | 読込済み結果の要約（計算のエネルギー `final_energy`（最後のtask・振動数の参照構造・BSSE補正後）・熱化学・双極子・最適化状態・スキャンとIRCの各点・BSSE・溶媒和・原子ごとのMulliken/ESP/RESP電荷・NMR遮蔽・分極率を含む `properties`）、構造列・エネルギー・軌道（`number` はスピンごとの軌道番号で、ログに一部の軌道しかなくてもMOLDENと同じ番号）・振動数（並進・回転は `rigid`）・励起状態・最適化ステップ・変位・ログ |
 | `results_action` | 結果ファイル・計算フォルダーの読込、再読込、読込の取消 |
 
 画面なしモードの計算と読込はバックグラウンドで進み、`calculation` / `results_action` はすぐに戻ります。完了はタスクか `get_app_state` で確認します。計算はMolFormaの終了（標準入力を閉じる）とともに停止します。結果の表示・再生・画像取得はGUIモードだけです。
@@ -208,13 +208,13 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `get_ui` / `get_ui_item` | ウィジェット・メニュー・ショートカット・ダイアログの一覧、入力値、選択肢、表・ツリー・ログの取得 |
 | `get_ui_command` | GUI操作の進行状態と失敗理由の取得 |
 | `ui_activate` | ボタン、メニュー項目、ショートカットの実行 |
-| `ui_set_value` | テキスト・数値・チェック・スライダーの変更。`commit: false` は入力確定を省略 |
+| `ui_set_value` | テキスト・数値・チェック・スライダーの変更。テキストは入力した場合と同じく変更済みとして確定するため、変更時だけ反映する欄（ジョブ保存先など）にも効きます。`commit: false` は入力確定を省略 |
 | `ui_select` / `ui_edit_cell` | タブ・選択肢・表・ツリーの選択、編集可能セルの変更 |
-| `ui_input` | MolForma内のクリック・ドラッグ・ホイール・キー・部品ドロップ |
+| `ui_input` | MolForma内のクリック・ドラッグ・ホイール・キー・部品ドロップ（`templateId` は `list_templates` のID、`atom:元素記号`、`center:元素記号`。不明なIDは何も置かず、ほかの拒否された編集と同じ警告ダイアログを開きます） |
 | `ui_file_dialog` | ファイル選択・保存ダイアログのパスとフィルター指定、確定・取消 |
 | `capture_screenshot` | MolFormaのウィンドウまたは指定部品のPNG取得・保存 |
 | `set_selection` | 安定IDによる原子選択。空配列で解除 |
-| `chemistry` | SMILES生成（置換）、SMILESからの断片の追加（`fragment`）、全体・局所整形、3D再生成、配座探索（`conformers`、最安定の配座を候補にする）、中止。結果は候補として確認 |
+| `chemistry` | SMILES生成（置換）、SMILESからの断片の追加（`fragment`）、全体・局所整形、3D再生成、配座探索（`conformers`、最安定の配座を候補にする。今の構造と同じなら候補を作らない）、中止。結果は候補として確認 |
 | `calculation` | 入力一式の保存、NWChem実行・停止 |
 | `get_results` / `results_action` | 結果読込・取消、構造列・エネルギー・軌道・振動数・励起状態・最適化ステップ・変位・ログ取得、選択・再生・停止、XYZ保存、表示中の構造を文書の候補にする `apply_structure` |
 | `history_action` | 履歴の走査・取消、ジョブ選択・再利用・結果表示、記録の修復（`repair`: このPCで実行中と記録されたままプロセスが終了したジョブを「中断」に直す）、ごみ箱への移動、絞り込まれた一覧のCSV保存 |

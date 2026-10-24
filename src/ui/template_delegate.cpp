@@ -169,8 +169,7 @@ void TemplateDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 QSize TemplateDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const {
     if (!index.data(ElementRole).toString().isEmpty())
         return {220, std::max(48, 2 * option.fontMetrics.height() + 8)};
-    if (!index.data(TemplateRole).toJsonObject()["atoms"].toArray().isEmpty())
-        return {220, std::max(48, option.fontMetrics.height() + 8)};
-    return QStyledItemDelegate::sizeHint(option, index);
+    // Parts and the other rows (such as "SMILES … から3Dで作成") share the thumbnail height.
+    return {220, std::max(48, option.fontMetrics.height() + 8)};
 }
 } // namespace mf

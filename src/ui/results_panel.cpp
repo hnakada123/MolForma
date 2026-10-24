@@ -163,6 +163,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     camera->addWidget(fit);
     for (int axis = 0; axis < 3; ++axis) {
         auto *b = new QPushButton(QString("+%1").arg("XYZ"[axis]));
+        b->setToolTip(QString("%1軸の正の側から見ます。").arg("XYZ"[axis]));
         camera->addWidget(b);
         connect(b, &QPushButton::clicked, this, [this, axis] { view->viewFrom(axis); });
     }
@@ -225,7 +226,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     visual->addLayout(navigation);
     navigation->addWidget(new QLabel("軌道"));
     const QStringList navigationNames{"First", "Back10", "Previous", "Next", "Forward10", "Last"};
-    const QStringList navigationLabels{"先頭", "10", "1", "1", "10", "末尾"};
+    const QStringList navigationLabels{"先頭", "−10", "−1", "+1", "+10", "末尾"};
     const QStringList navigationTips{"最初の軌道へ", "10軌道戻る", "1軌道戻る",
                                      "1軌道進む",    "10軌道進む", "最後の軌道へ"};
     const QStyle::StandardPixmap navigationIcons[]{QStyle::SP_MediaSkipBackward, QStyle::SP_MediaSeekBackward,
@@ -376,6 +377,15 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     orbitalStatus->setTextFormat(Qt::PlainText);
     orbitalStatus->setWordWrap(true);
     ol->addWidget(orbitalStatus);
+    openMolden = new QPushButton("同じジョブのMOLDENで軌道の形を表示");
+    openMolden->setObjectName("resultsOpenMolden");
+    openMolden->hide();
+    ol->addWidget(openMolden, 0, Qt::AlignLeft);
+    connect(openMolden, &QPushButton::clicked, this, [this] {
+        const int index = files->findData(openMolden->property("file"));
+        if (index >= 0)
+            files->setCurrentIndex(index); // Loads it like a choice in the file list.
+    });
     orbitals = table({"番号", "軌道", "対称性", "スピン", "エネルギー / Eh", "占有数"}, "resultsOrbitals");
     orbitals->verticalHeader()->hide();
     ol->addWidget(orbitals, 1);
@@ -414,6 +424,14 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     auto *vl = new QVBoxLayout(vibrations);
     modes = table({"振動数 / cm⁻¹", "IR強度 / km mol⁻¹", "種類"}, "resultsModes");
     vl->addWidget(modes, 1);
+    showRigid = new QCheckBox("並進・回転のモードも表示");
+    showRigid->setObjectName("resultsShowRigid");
+    showRigid->setToolTip("振動数がほぼ0の並進・回転（3N−6個以外）は既定で一覧から省きます。");
+    vl->addWidget(showRigid);
+    connect(showRigid, &QCheckBox::toggled, this, [this](bool on) {
+        for (int i = 0; i < modes->rowCount(); ++i)
+            modes->setRowHidden(i, !on && rigidMotion.value(i));
+    });
     auto *modeRow = new QHBoxLayout;
     vl->addLayout(modeRow);
     playMode = new QPushButton("選択モードを再生");
@@ -593,6 +611,11 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     split->setStretchFactor(0, 3);
     split->setStretchFactor(1, 2);
     split->setSizes({780, 540});
+    summary->setText(
+        "結果ファイル（NWChem出力・MOLDEN・CUBE・XYZ）またはジョブフォルダーを開くと、"
+        "ここに概要を表示し、データのあるタブ（エネルギー・軌道・振動など）が現れます。\n\n"
+        "「5 実行設定」で計算すると、終了後に自動で読み込みます。過去の計算は「履歴」から開けます。");
+    updateTabs();
     connect(open, &QPushButton::clicked, this, [this] {
         const auto p = QFileDialog::getOpenFileName(
             this, "結果ファイルを開く", folder,
@@ -1014,7 +1037,8 @@ void ResultsPanel::updateActions() {
 }
 void ResultsPanel::display(bool orbitalOnly) {
     source->setText(data.source);
-    status->setPlainText(data.status);
+    const auto brief = briefSummary();
+    status->setPlainText(brief.isEmpty() ? data.status : data.status + "\n" + brief);
     if (!orbitalOnly) {
         QString selectedFile = animationSources.value(data.source);
         for (int i = 0; selectedFile.isEmpty() && i < files->count(); ++i) {
@@ -1138,8 +1162,11 @@ void ResultsPanel::display(bool orbitalOnly) {
                 const QString frontier = i == homos[o.spin]   ? "HOMO"
                                          : i == lumos[o.spin] ? "LUMO"
                                                               : QString();
+                // The orbital's own number, so a log listing only some orbitals matches the MOLDEN file.
+                const int number = o.number > 0 ? o.number : indices[o.spin] + 1;
+                indices[o.spin] = number;
                 row(orbitals, i,
-                    {QString::number(++indices[o.spin]), frontier, o.symmetry, o.spin, real(o.energy),
+                    {QString::number(number), frontier, o.symmetry, o.spin, real(o.energy),
                      real(o.occupation)});
             }
         }
@@ -1154,9 +1181,25 @@ void ResultsPanel::display(bool orbitalOnly) {
         orbitalGrid->setValue(data.orbitalDivisions);
         orbitalNorm->setCurrentIndex(orbitalNorm->findData(data.normalizationRequest));
     }
+    // A log has energies only; the shapes come from a MOLDEN file, if the job wrote one.
+    QString molden;
+    if (data.format == "NWChem")
+        for (const auto &name : resultFiles(QFileInfo(data.source).absolutePath()))
+            if (QStringList{"molden", "mld", "molde"}.contains(QFileInfo(name).suffix().toLower()) &&
+                files->findData(name) >= 0) {
+                molden = name;
+                break;
+            }
+    openMolden->setProperty("file", molden);
+    openMolden->setVisible(!molden.isEmpty());
     orbitalStatus->setText(
         data.format == "NWChem" && !data.orbitals.isEmpty()
-            ? "ログに出力された軌道エネルギーです。形状の表示にはMOLDENファイルを開いてください。"
+            ? (molden.isEmpty()
+                   ? QString("ログに出力された軌道エネルギーです（番号はNWChemの軌道番号）。軌道の形を"
+                             "表示するには、「3 計算条件」で「計算後に分子軌道をMOLDENファイルに出力」"
+                             "をオンにして計算してください。")
+                   : QString("ログに出力された軌道エネルギーです（番号はNWChemの軌道番号）。"
+                             "軌道の形は下のボタンで同じジョブのMOLDENを開いて表示します。"))
         : data.format != "MOLDEN"      ? "MOLDENファイルを開くと分子軌道を表示します。"
         : !data.orbitalError.isEmpty() ? data.orbitalError
         : data.selectedOrbital >= 0
@@ -1172,11 +1215,14 @@ void ResultsPanel::display(bool orbitalOnly) {
         rigidMotion = resultRigidModes(data);
         for (int i = 0; i < data.modes.size(); ++i) {
             const auto &m = data.modes[i];
+            const bool rigid = rigidMotion.value(i);
+            // Translations and rotations are no vibrations: hidden by default, without an IR intensity.
             row(modes, i,
-                {real(m.frequency), real(m.intensity),
-                 rigidMotion.value(i) ? "並進・回転"
-                 : m.frequency < 0    ? "虚振動"
-                                      : "振動"});
+                {real(m.frequency), rigid ? QString("—") : real(m.intensity),
+                 rigid             ? "並進・回転"
+                 : m.frequency < 0 ? "虚振動"
+                                   : "振動"});
+            modes->setRowHidden(i, rigid && !showRigid->isChecked());
         }
         modes->clearSelection();
         modes->setCurrentCell(-1, -1);
@@ -1235,7 +1281,47 @@ void ResultsPanel::display(bool orbitalOnly) {
     dataset->setCurrentIndex(data.dataset);
     isovalue->setText(real(data.isovalue));
     showFrame();
+    updateTabs();
     updateActions();
+}
+void ResultsPanel::updateTabs() {
+    const auto p = data.properties;
+    const bool loaded = !data.source.isEmpty();
+    const bool properties = p.contains("mulliken") || p.contains("esp") || p.contains("resp") ||
+                            p.contains("shielding") || p.contains("polarizability") || p.contains("bsse") ||
+                            p.contains("solvation");
+    const bool visible[]{true,
+                         loaded && !data.energies.isEmpty(),
+                         loaded && (!data.orbitals.isEmpty() || data.format == "MOLDEN"),
+                         loaded && !data.modes.isEmpty(),
+                         loaded && !data.steps.isEmpty(),
+                         loaded && !data.excitations.isEmpty(),
+                         loaded && (p.contains("scan") || p.contains("irc")),
+                         loaded && properties,
+                         loaded && (data.format == "CUBE" || data.format == "MOLDEN"),
+                         loaded && !data.log.isEmpty()};
+    for (int i = 0; i < details->count() && i < int(std::size(visible)); ++i)
+        details->setTabVisible(i, visible[i]);
+}
+QString ResultsPanel::briefSummary() const {
+    QStringList parts;
+    if (data.properties.contains("optimization"))
+        parts << (data.properties.value("optimization") == "converged"
+                      ? QString("最適化: 収束")
+                      : QString("最適化: 収束メッセージなし"));
+    if (const auto final = data.properties["final_energy"].toObject(); !final.isEmpty())
+        parts
+            << QString("E = %1 Eh（%2）").arg(real(final["hartree"].toDouble()), final["method"].toString());
+    if (!data.modes.isEmpty()) {
+        const auto rigid = resultRigidModes(data);
+        int imaginary = 0;
+        for (int i = 0; i < data.modes.size(); ++i)
+            imaginary += !rigid.value(i) && data.modes[i].frequency < -10;
+        parts << QString("虚振動 %1個").arg(imaginary);
+    }
+    if (!data.excitations.isEmpty())
+        parts << QString("励起状態 %1件").arg(data.excitations.size());
+    return parts.join(" · ");
 }
 void ResultsPanel::showSpectrum() {
     const bool nm = spectrumAxis->currentData() == "nm";

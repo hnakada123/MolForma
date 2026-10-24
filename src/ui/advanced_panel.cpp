@@ -15,26 +15,27 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
     auto *layout = new QVBoxLayout(this);
     auto *toolbar = new QHBoxLayout;
     layout->addLayout(toolbar);
-    context = new QLabel;
-    context->setObjectName("advancedContext");
-    context->setTextFormat(Qt::PlainText);
-    context->setWordWrap(true);
-    toolbar->addWidget(context, 1);
-    auto *execution = new QPushButton("5 実行設定へ");
-    execution->setObjectName("advancedExecution");
-    toolbar->addWidget(execution);
-    connect(execution, &QPushButton::clicked, this,
-            [this] { window->workspaceTabs->setCurrentWidget(window->execution); });
-    auto *basic = new QPushButton("3 計算条件へ");
-    basic->setObjectName("advancedBasic");
     undo = new QPushButton("元に戻す");
     redo = new QPushButton("やり直す");
     resetAll = new QPushButton("詳細設定を既定へ");
     undo->setObjectName("advancedUndo");
     redo->setObjectName("advancedRedo");
     resetAll->setObjectName("advancedResetAll");
-    for (auto *b : {basic, undo, redo, resetAll})
+    for (auto *b : {undo, redo, resetAll})
         toolbar->addWidget(b);
+    context = new QLabel;
+    context->setObjectName("advancedContext");
+    context->setTextFormat(Qt::PlainText);
+    context->setWordWrap(true);
+    toolbar->addWidget(context, 1);
+    auto *basic = new QPushButton("3 計算条件へ");
+    basic->setObjectName("advancedBasic");
+    toolbar->addWidget(basic);
+    auto *execution = new QPushButton("5 実行設定へ");
+    execution->setObjectName("advancedExecution");
+    toolbar->addWidget(execution);
+    connect(execution, &QPushButton::clicked, this,
+            [this] { window->workspaceTabs->setCurrentWidget(window->execution); });
     connect(basic, &QPushButton::clicked, this,
             [this] { window->workspaceTabs->setCurrentWidget(window->calculation); });
     connect(undo, &QPushButton::clicked, this, [this] { window->history()->undo(); });
@@ -84,9 +85,11 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     auto *header = table->header();
     header->setStretchLastSection(false);
-    header->setSectionResizeMode(State, QHeaderView::Stretch);
+    // Item names (and group headings) get the room; the state column is as wide as its texts.
+    header->setSectionResizeMode(Name, QHeaderView::Stretch);
+    header->setSectionResizeMode(State, QHeaderView::ResizeToContents);
     header->setSectionResizeMode(Reset, QHeaderView::Fixed);
-    for (const auto &[column, width] : {std::pair{Name, 220}, {Value, 190}, {Keyword, 120}, {Reset, 72}})
+    for (const auto &[column, width] : {std::pair{Value, 190}, {Keyword, 140}, {Reset, 72}})
         table->setColumnWidth(column, width);
     leftLayout->addWidget(table, 1);
     empty = new QLabel("一致する詳細設定はありません。");
@@ -362,11 +365,17 @@ void AdvancedPanel::refresh() {
         it.value()->setText(State, changedGroups.contains(it.key())
                                        ? QString("変更 %1項目").arg(changedGroups[it.key()])
                                        : QString());
-    context->setText(QString("%1 / %2 / %3  ·  詳細指定 %4項目（適用 %5 / 保留 %6）")
-                         .arg(s["method"].toString().toUpper(), s["basis"].toString(), s["task"].toString())
-                         .arg(changedCount)
-                         .arg(activeCount)
-                         .arg(pendingCount));
+    QString task = s["task"].toString();
+    for (const auto &c : nwchemChoices("task"))
+        if (c.value == task)
+            task = c.label;
+    context->setText(
+        QString("%1 / %2 / %3  ·  詳細指定 %4項目（適用 %5 / 保留 %6）")
+            .arg(s["method"] == "dft" ? nwchemFunctionalLabel(s) : s["method"].toString().toUpper(),
+                 nwchemBasisLabel(s), task)
+            .arg(changedCount)
+            .arg(activeCount)
+            .arg(pendingCount));
     for (auto it = groupResets.begin(); it != groupResets.end(); ++it)
         it.value()->setEnabled(editable && changedGroups.contains(it.key()));
     resetAll->setEnabled(editable && changedCount);
@@ -385,7 +394,7 @@ void AdvancedPanel::refresh() {
         (outputs.isEmpty() ? QString("CUBE・MOLDENの出力はオフです。") : "出力予定:\n" + outputs.join('\n')));
     diagnostics->setMessages(
         report.errors, report.warnings,
-        "✓ 入力を生成できます。全文は「6 入力プレビュー」または下の「入力全文」で確認できます。");
+        "入力を生成できます。全文は「6 入力プレビュー」または下の「入力全文」で確認できます。");
     preview->setPlainText(report.errors.isEmpty() ? nwchemInput(d)
                                                   : "入力を生成できません。上のエラーを修正してください。");
     copy->setEnabled(editable && report.errors.isEmpty());

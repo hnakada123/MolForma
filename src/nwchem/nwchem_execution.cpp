@@ -351,8 +351,9 @@ ExecutionPlan saveExecutionBundle(const Document &d, const QString &base, bool f
     const auto root = executionRoot(executionSettings(d), base);
     if (!QDir().mkpath(root))
         fail("ジョブ保存先を作成できません: " + root);
+    // The folder name shows the local time the user sees in the history; the records stay in UTC.
     QTemporaryDir directory(QDir(root).filePath(nwchemSettings(d)["start"].toString() + '-' +
-                                                QDateTime::currentDateTimeUtc().toString("yyyyMMdd-HHmmss") +
+                                                QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") +
                                                 "-XXXXXX"));
     if (!directory.isValid())
         fail("ジョブフォルダーを作成できません: " + directory.errorString());

@@ -28,6 +28,10 @@ class ExecutionPanel : public QWidget {
         return run.active();
     }
     void startCalculation();
+    // "計算 → 計算を実行": starts when "5 実行設定" allows it, otherwise shows that tab and why.
+    void startFromMenu();
+    // Asks before stopping the running NWChem (the stop button and "計算 → 停止").
+    void confirmStop();
     void saveBundle();
     const NwchemRun &currentRun() const {
         return run;
@@ -61,6 +65,9 @@ class ExecutionPanel : public QWidget {
     qint64 logOffset = -1;
     QStringDecoder logDecoder{QStringDecoder::Utf8};
     QToolButton *runStatus; // Permanent status-bar entry for the current or last run.
+    // The finished run whose log is loading into the result viewer, and that log's outcome.
+    QString summaryDirectory, resultSummary;
+    void showResultSummary();
     void appendLog();
     QString baseDirectory() const;
     void change(const QString &key, const QJsonValue &value);

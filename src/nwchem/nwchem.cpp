@@ -507,10 +507,17 @@ void applyNwchemPreset(Document &d, const QJsonObject &settings) {
     applyNwchemAdvancedPreset(d, preset["advanced"].toObject());
 }
 QString nwchemBasisLabel(const QJsonObject &settings) {
-    QString label = settings["basis"].toString();
+    // The usual spelling of the choices (def2-SVP, cc-pVDZ), without their notes; others as stored.
+    const auto name = [](const QString &value) {
+        for (const auto &c : nwchemChoices("basis"))
+            if (c.value == value)
+                return c.label.section("（", 0, 0);
+        return value;
+    };
+    QString label = name(settings["basis"].toString());
     const auto overrides = settings["basis_overrides"].toObject();
     for (auto it = overrides.begin(); it != overrides.end(); ++it)
-        label += "、" + it.key() + ": " + it.value().toString();
+        label += "、" + it.key() + ": " + name(it.value().toString());
     return label;
 }
 QString nwchemFunctionalLabel(const QJsonObject &settings) {

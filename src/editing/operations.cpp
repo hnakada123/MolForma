@@ -908,6 +908,9 @@ QString structureReport(const Document &d) {
                          .arg(used)
                          .arg(expected);
     }
+    // Besides the summary line, every line is a finding.
+    if (lines.size() == 1)
+        lines << "問題は見つかりませんでした。";
     return lines.join('\n');
 }
 } // namespace mf

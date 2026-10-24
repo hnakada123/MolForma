@@ -22,6 +22,7 @@
 #include <QWheelEvent>
 #include <algorithm>
 #include <functional>
+#include <optional>
 #include <utility>
 namespace mf {
 namespace {
@@ -75,8 +76,10 @@ MoleculeView::MoleculeView(QWidget *parent) : QWidget(parent) {
                 overlay = layer;
             }
         }
-        if (!renderer)
+        if (!renderer) {
             qWarning("MolForma: OpenGL 3.2 is unavailable; using QPainter rendering.");
+            fallback = true;
+        }
     }
 #endif
     rendererStatus = new QLabel(this);
@@ -91,7 +94,13 @@ QString MoleculeView::rendererName() const {
     return renderer ? "vtk" : "painter";
 }
 void MoleculeView::updateRendererStatus() {
-    rendererStatus->setText(renderer ? "描画: VTK（OpenGL）" : "描画: QPainter（CPU）");
+    // Only a fallback is worth a note on the picture; the renderer in use is in "MolFormaについて".
+    rendererStatus->setText(renderer ? "描画: VTK（OpenGL）"
+                                     : "描画: QPainter（CPU）· OpenGLを使えないため簡易表示");
+    rendererStatus->setToolTip(
+        "OpenGL 3.2を使えないため、CPUで描画しています。表示は同じ内容で、大きな等値面は"
+        "間引いて描きます。");
+    rendererStatus->setVisible(fallback && !renderer);
     rendererStatus->adjustSize();
     rendererStatus->raise();
 }
@@ -202,6 +211,7 @@ void MoleculeView::renderScene() {
         overlay->update();
     } else {
         qWarning("MolForma: OpenGL widget initialization failed; using QPainter rendering.");
+        fallback = true;
         delete overlay;
         overlay = nullptr;
         delete renderer;
@@ -225,6 +235,11 @@ void MoleculeView::resizeEvent(QResizeEvent *event) {
 }
 void MoleculeView::showEvent(QShowEvent *event) {
     QWidget::showEvent(event);
+    if (fitPending) // After the layout has given the newly shown tab its size.
+        QTimer::singleShot(0, this, [this] {
+            if (fitPending && isVisible())
+                fit();
+        });
     scheduleRender();
 }
 void MoleculeView::setDocument(const Document &d) {
@@ -314,6 +329,8 @@ void MoleculeView::fit() {
         radius = std::max(radius, (p - center).norm() + .6);
     scale = std::clamp(std::min(width(), height()) / (2.5 * radius), 4., 100.);
     pan = {};
+    // A hidden view (another tab) has no final size yet: fit again when it is shown.
+    fitPending = !isVisible();
     scheduleRender();
 }
 void MoleculeView::viewFrom(int axis) {
@@ -452,12 +469,17 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
     }
     std::sort(items.begin(), items.end(), [](auto a, auto b) { return a.z < b.z; });
     struct Label {
-        QPointF at;
+        QPointF center;
+        double radius;
         QString text;
         double z;
-        bool selected, hydrogen;
+        bool selected, hydrogen, metal;
+        int atom;
     };
     QVector<Label> labels;
+    QSet<QString> centers; // Coordination centers: their labels come before their ligands'.
+    for (const auto &v : doc.data["centers"].toArray())
+        centers.insert(v.toObject()["atom"].toString());
     for (auto item : items) {
         if (item.kind == 2) {
             const auto &t = surface.at(item.index);
@@ -546,31 +568,87 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             const bool chosen = selectedIds.contains(a.id);
             if (labelMode != "none" && (labelMode == "all" || chosen || (labelMode == "heavy" && !hydrogen)))
                 // Placed after all atoms, so labels stay readable in front of the drawing.
-                labels << Label{pos + QPointF(radius + 3, -radius - 1), label, item.z, chosen, hydrogen};
+                labels << Label{pos,       radius, label, item.z, chosen, hydrogen, centers.contains(a.id),
+                                item.index};
             if (a.fixed) {
                 p.setPen(QColor("#c47b12"));
                 p.drawText(pos + QPointF(-radius, radius + 14), "■");
             }
         }
     }
-    // Labels: selected atoms first, then heavy atoms, front to back; skip any that would overlap.
+    // Labels: selected atoms first, then coordination centers and other heavy atoms, front to back.
+    // Each tries the four corners beside its atom and takes the first that covers neither another
+    // label nor another atom; one that only covers atoms is the fallback, and one that would
+    // cover a label is left out.
     std::stable_sort(labels.begin(), labels.end(), [](const Label &a, const Label &b) {
         if (a.selected != b.selected)
             return a.selected;
+        if (a.metal != b.metal)
+            return a.metal;
         if (a.hydrogen != b.hydrogen)
             return !a.hydrogen;
         return a.z > b.z;
     });
+    constexpr double cell = 40; // Atoms by screen cell, so the overlap test stays local.
+    QHash<QPoint, QVector<int>> grid;
+    QVector<std::pair<QPointF, double>> disks(doc.atoms.size(), {QPointF(), 0.});
+    if (!labels.isEmpty())
+        for (const auto &item : std::as_const(items))
+            if (item.kind == 1) {
+                const auto &a = doc.atoms[item.index];
+                const double radius = a.element == "H" && !showHydrogens ? 4 : atomRadius(a);
+                disks[item.index] = {project(a.position), radius};
+                grid[QPoint(int(std::floor(disks[item.index].first.x() / cell)),
+                            int(std::floor(disks[item.index].first.y() / cell)))]
+                    << item.index;
+            }
+    const auto coversAtom = [&](const QRectF &box, int own) {
+        const double reach = 20; // The largest atom radius drawn.
+        for (int x = int(std::floor((box.left() - reach) / cell));
+             x <= int(std::floor((box.right() + reach) / cell)); ++x)
+            for (int y = int(std::floor((box.top() - reach) / cell));
+                 y <= int(std::floor((box.bottom() + reach) / cell)); ++y)
+                for (int i : grid.value(QPoint(x, y))) {
+                    if (i == own)
+                        continue;
+                    const auto &[center, radius] = disks[i];
+                    const QPointF nearest(std::clamp(center.x(), box.left(), box.right()),
+                                          std::clamp(center.y(), box.top(), box.bottom()));
+                    if (QLineF(nearest, center).length() < radius)
+                        return true;
+                }
+        return false;
+    };
     QVector<QRectF> placed;
     const auto metrics = p.fontMetrics();
+    p.setPen(QColor("#20364b"));
     for (const auto &label : labels) {
-        const QRectF box =
-            QRectF(metrics.boundingRect(label.text)).translated(label.at).adjusted(-1, -1, 1, 1);
-        if (std::any_of(placed.begin(), placed.end(), [&](const QRectF &r) { return r.intersects(box); }))
+        const QRectF text = metrics.boundingRect(label.text);
+        const double r = label.radius;
+        const QPointF corners[]{{r + 3, -r - 1},
+                                {r + 3, r + metrics.ascent()},
+                                {-r - 3 - text.width(), -r - 1},
+                                {-r - 3 - text.width(), r + metrics.ascent()}};
+        std::optional<QPointF> chosen, fallback;
+        for (const auto &corner : corners) {
+            const QPointF at = label.center + corner;
+            // Two pixels apart, so neighbouring labels never read as one ("H17N14").
+            const QRectF box = text.translated(at).adjusted(-2, -1, 2, 1);
+            if (std::any_of(placed.begin(), placed.end(), [&](const QRectF &q) { return q.intersects(box); }))
+                continue;
+            if (!coversAtom(box, label.atom)) {
+                chosen = at;
+                break;
+            }
+            if (!fallback)
+                fallback = at;
+        }
+        if (!chosen)
+            chosen = fallback;
+        if (!chosen)
             continue;
-        placed << box;
-        p.setPen(QColor("#20364b"));
-        p.drawText(label.at, label.text);
+        placed << text.translated(*chosen).adjusted(-2, -1, 2, 1);
+        p.drawText(*chosen, label.text);
     }
     // Candidate changes: removed atoms at their old place (red), added (green) and moved (orange).
     for (const auto &[position, symbol] : removedAtoms) {

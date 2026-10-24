@@ -240,6 +240,7 @@ class McpTest : public QObject {
         Document water;
         placeTemplate(water, findTemplate("skeleton:water"), Vec::Zero());
         w.loadDocument(water);
+        w.setSelection({w.document().atoms[0].id, w.document().atoms[1].id}); // Enables the dimension.
         w.show();
         McpGui gui(w);
         McpServer s(gui.editor());
@@ -296,6 +297,41 @@ class McpTest : public QObject {
             data(change(s, "ui_set_value", {{"target", "testCommitSpin"}, {"value", 8}, {"commit", false}}));
         QTRY_COMPARE(get()["state"].toString(), "done");
         QCOMPARE(edits.count(), 1);
+        // Text is set as if typed, so fields that apply only modified text (job folder) see it.
+        QLineEdit line(&w);
+        line.setObjectName("testModifiedLine");
+        bool modified = false;
+        QObject::connect(&line, &QLineEdit::editingFinished, &line, [&] { modified = line.isModified(); });
+        command = data(change(s, "ui_set_value", {{"target", "testModifiedLine"}, {"value", "jobs"}}));
+        QTRY_COMPARE(get()["state"].toString(), "done");
+        QVERIFY(modified);
+        // A dropped part must exist; it never falls back to the part chosen in the palette.
+        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(0);
+        const int atoms = w.document().atoms.size();
+        QString warning; // The GUI reports the unknown part like any rejected edit.
+        QTimer closer;
+        QObject::connect(&closer, &QTimer::timeout, &w, [&] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                warning = box->text();
+                box->close();
+            }
+        });
+        closer.start(20);
+        command =
+            data(change(s, "ui_input",
+                        {{"target", "moleculeView"}, {"action", "drop_template"}, {"templateId", "water"}}));
+        QTRY_VERIFY(warning.contains("部品が見つかりません"));
+        QTRY_COMPARE(get()["state"].toString(), "done");
+        closer.stop();
+        QCOMPARE(w.document().atoms.size(), atoms);
+        command = data(change(s, "ui_input",
+                              {{"target", "moleculeView"},
+                               {"action", "drop_template"},
+                               {"templateId", "skeleton:methane"},
+                               {"x", 20},
+                               {"y", 20}}));
+        QTRY_VERIFY2(get()["state"] == "done", qPrintable(QString::fromUtf8(QJsonDocument(get()).toJson())));
+        QCOMPARE(w.document().atoms.size(), atoms + 5);
     }
     void paginatedUiDoesNotOverflowTransport() {
         MainWindow w;

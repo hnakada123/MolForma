@@ -21,8 +21,10 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     redo = new QPushButton("やり直す");
     undo->setObjectName("calculationUndo");
     redo->setObjectName("calculationRedo");
+    // Like the other setting tabs: Undo/Redo on the left, the other tabs in their order on the right.
     toolbar->addWidget(undo);
     toolbar->addWidget(redo);
+    toolbar->addStretch();
     auto *details = new QPushButton("4 詳細設定へ");
     details->setObjectName("calculationAdvanced");
     toolbar->addWidget(details);
@@ -33,13 +35,11 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
             [this] { window->workspaceTabs->setCurrentWidget(window->execution); });
     connect(details, &QPushButton::clicked, this,
             [this] { window->workspaceTabs->setCurrentWidget(window->advanced); });
-    toolbar->addStretch();
     auto *inputPreview = new QPushButton("6 入力プレビューへ");
     inputPreview->setObjectName("calculationPreview");
     toolbar->addWidget(inputPreview);
     connect(inputPreview, &QPushButton::clicked, this,
             [this] { window->workspaceTabs->setCurrentWidget(window->inputPreview); });
-    toolbar->addWidget(new QLabel("NWChem · 分子のGaussian基底計算"));
     connect(undo, &QPushButton::clicked, this, [this] { window->history()->undo(); });
     connect(redo, &QPushButton::clicked, this, [this] { window->history()->redo(); });
     message = new QLabel;
@@ -259,6 +259,27 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     propertyHelp->setWordWrap(true);
     properties->addRow(propertyHelp);
 
+    auto *orbitalFiles = group("軌道ファイル", forms);
+    moldenOutput = new QCheckBox("計算後に分子軌道をMOLDENファイルに出力");
+    moldenOutput->setObjectName("calculationMoldenOutput");
+    moldenOutput->setToolTip("「結果ビューア」の「軌道」で分子軌道の形を表示できます。"
+                             "「4 詳細設定」の「MOLDENファイルを出力」と同じ設定です。");
+    orbitalFiles->addRow(moldenOutput);
+    connect(moldenOutput, &QCheckBox::toggled, this, [this](bool on) {
+        if (busy || window->hasCandidate() || window->worker)
+            return;
+        window->safe([&] {
+            window->edit("MOLDEN出力を変更", [&](Document &d) {
+                setNwchemAdvanced(d, "molden_output", on ? QJsonValue(true) : QJsonValue::Undefined);
+            });
+        });
+    });
+    auto *orbitalHelp =
+        new QLabel("電子密度・軌道の格子データ（CUBE）は「4 詳細設定」の「可視化ファイル出力」で"
+                   "設定します。");
+    orbitalHelp->setWordWrap(true);
+    orbitalFiles->addRow(orbitalHelp);
+
     auto *excited = group("励起状態（TDDFT）", forms);
     flag(excited, "TDDFTで励起エネルギー・振動子強度を計算", "tddft");
     integer(excited, "励起状態の数（nroots）", "tddft_roots", 1, 100);
@@ -388,9 +409,10 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
         window->settings.setValue("calculation/showInput", on);
     });
     split->addWidget(right);
-    split->setStretchFactor(0, 1);
-    split->setStretchFactor(1, 1);
-    split->setSizes({500, 650});
+    // The form needs the room; the checks and changes beside it are short.
+    split->setStretchFactor(0, 3);
+    split->setStretchFactor(1, 2);
+    split->setSizes({720, 480});
     connect(copy, &QPushButton::clicked, this, [this] { exportInput(false); });
     connect(save, &QPushButton::clicked, this, [this] { exportInput(true); });
     // Labels for search and the list of changes: form rows, plus the fields with their own rows.
@@ -833,6 +855,10 @@ void CalculationPanel::refresh() {
     }
     refreshElementBases(s);
     refreshConstraints(s);
+    {
+        const QSignalBlocker blocker(moldenOutput);
+        moldenOutput->setChecked(nwchemAdvanced(d).value("molden_output").toBool());
+    }
     for (int i = 0; i < 2; ++i) {
         const auto key = i ? "extra_tasks" : "extra_input";
         auto *edit = i ? extraTasks : extraInput;
@@ -893,7 +919,7 @@ void CalculationPanel::refresh() {
                               check.ecpElectrons ? "（ECP適用後）" : ""));
     validation->setMessages(
         check.errors, check.warnings,
-        "✓ 入力を生成できます。全文は「6 入力プレビュー」または下の「入力全文」で確認できます。",
+        "入力を生成できます。全文は「6 入力プレビュー」または下の「入力全文」で確認できます。",
         fixes(check.errors));
     QStringList changed;
     const auto defaults = nwchemDefaults();

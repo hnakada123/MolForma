@@ -120,7 +120,8 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     table->setAlternatingRowColors(true);
     table->setSortingEnabled(true);
     table->sortItems(0, Qt::DescendingOrder);
-    const QList<int> widths{175, 160, 240, 145, 205, 180, 85, 140, 110, 200};
+    // Fits the window's default width; the memo takes what is left.
+    const QList<int> widths{150, 130, 190, 120, 150, 180, 64, 170, 90, 80};
     for (int i = 0; i < widths.size(); ++i)
         table->setColumnWidth(i, widths[i]);
     table->horizontalHeader()->setStretchLastSection(true);
@@ -432,13 +433,17 @@ void HistoryPanel::showDetails() {
         updateActions();
         return;
     }
+    // Recorded in UTC; shown in local time like the table.
+    const auto local = [&](const char *key) {
+        const auto time = QDateTime::fromString(e->manifest[key].toString(), Qt::ISODateWithMs);
+        return time.isValid() ? time.toLocalTime().toString("yyyy-MM-dd HH:mm:ss") : QString("—");
+    };
     QStringList lines{e->name,
                       e->directory,
                       "状態: " + historyStatus(e->status, e->directory == activeDirectory(), e->orphaned),
                       "手法 / 基底: " + e->method + " / " + e->basis,
                       "目的: " + e->task,
-                      "開始: " + e->manifest["started_at"].toString() +
-                          "　終了: " + e->manifest["finished_at"].toString(),
+                      "開始: " + local("started_at") + "　終了: " + local("finished_at") + "（ローカル時刻）",
                       "終了コード: " + (e->manifest.contains("exit_code")
                                             ? QString::number(e->manifest["exit_code"].toInt())
                                             : "未記録"),

@@ -22,9 +22,11 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     redo = new QPushButton("やり直す");
     undo->setObjectName("executionUndo");
     redo->setObjectName("executionRedo");
-    for (auto *button : {basic, advanced, undo, redo})
+    for (auto *button : {undo, redo})
         toolbar->addWidget(button);
     toolbar->addStretch();
+    for (auto *button : {basic, advanced})
+        toolbar->addWidget(button);
     auto *preview = new QPushButton("6 入力プレビューへ");
     preview->setObjectName("executionPreview");
     toolbar->addWidget(preview);
@@ -45,7 +47,6 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     });
     connect(preview, &QPushButton::clicked, this,
             [this] { window->workspaceTabs->setCurrentWidget(window->inputPreview); });
-    toolbar->addWidget(new QLabel("NWChem · ローカル実行"));
     connect(basic, &QPushButton::clicked, this,
             [this] { window->workspaceTabs->setCurrentWidget(window->calculation); });
     connect(advanced, &QPushButton::clicked, this,
@@ -212,12 +213,15 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     output->addLayout(actions);
     connect(prepare, &QPushButton::clicked, this, [this] { window->safe([this] { saveBundle(); }); });
     connect(start, &QPushButton::clicked, this, [this] { window->safe([this] { startCalculation(); }); });
-    connect(stop, &QPushButton::clicked, this, [this] {
-        if (QMessageBox::question(this, "計算の停止",
-                                  "実行中のNWChemを停止しますか？途中までのログと出力は保存先に残ります。",
-                                  QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
-            run.stop();
-    });
+    connect(stop, &QPushButton::clicked, this, &ExecutionPanel::confirmStop);
+    // The main action of the tab stands out from saving the input or stopping.
+    start->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+    auto startFont = start->font();
+    startFont.setBold(true);
+    start->setFont(startFont);
+    start->setToolTip("入力一式を新しいジョブフォルダーに保存し、NWChemを起動します（F5）。");
+    prepare->setToolTip(
+        "NWChemを起動せず、入力・プロジェクトをジョブフォルダーに保存します（別のPCでの実行用など）。");
     runStatus = new QToolButton;
     runStatus->setObjectName("runStatusButton");
     runStatus->setAutoRaise(true);
@@ -401,6 +405,28 @@ void ExecutionPanel::startCalculation() {
     }
     run.start(window->document(), baseDirectory());
 }
+void ExecutionPanel::confirmStop() {
+    if (!run.active()) {
+        window->statusBar()->showMessage("実行中の計算はありません。", 5000);
+        return;
+    }
+    if (QMessageBox::question(this, "計算の停止",
+                              "実行中のNWChemを停止しますか？途中までのログと出力は保存先に残ります。",
+                              QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
+        run.stop();
+}
+void ExecutionPanel::startFromMenu() {
+    window->refreshPanel(this, true); // The tab may be stale while another one is shown.
+    if (!start->isEnabled()) {
+        window->workspaceTabs->setCurrentWidget(this);
+        window->statusBar()->showMessage(
+            run.active() ? QString("計算を実行中です。")
+                         : QString("計算を開始できません。「5 実行設定」の確認欄を見てください。"),
+            10000);
+        return;
+    }
+    startCalculation();
+}
 void ExecutionPanel::refresh() {
     if (busy)
         return;
@@ -503,16 +529,19 @@ void ExecutionPanel::updateRun() {
     else if (!run.plan().directory.isEmpty() && saved.directory.isEmpty())
         saved = run.plan();
     const bool showingRun = saved.directory == run.plan().directory && !saved.directory.isEmpty();
-    const QMap<QString, QString> names{
-        {"starting", "起動中"},
-        {"running", "実行中"},
-        {"stopping", "停止処理中"},
-        {"cancelled", "停止しました"},
-        {"timed_out", "制限時間で停止しました"},
-        {"failed", "実行に失敗しました"},
-        {"finished", "終了しました（終了コード0）。計算結果はログを確認してください。"}};
+    const QMap<QString, QString> names{{"starting", "起動中"},
+                                       {"running", "実行中"},
+                                       {"stopping", "停止処理中"},
+                                       {"cancelled", "停止しました"},
+                                       {"timed_out", "制限時間で停止しました"},
+                                       {"failed", "実行に失敗しました"},
+                                       {"finished", "終了しました（終了コード0）"}};
+    const QString outcome = run.state() != "finished" ? QString()
+                            : !resultSummary.isEmpty()
+                                ? "\n結果: " + resultSummary + "（「結果ビューア」に読み込みました）"
+                                : QString("\n結果は「結果ビューアへ」で確認できます。");
     state->setText(showingRun ? names.value(run.state()) + QString("　経過 %1 秒").arg(run.elapsedSeconds()) +
-                                    (run.message().isEmpty() ? "" : "\n" + run.message())
+                                    outcome + (run.message().isEmpty() ? "" : "\n" + run.message())
                    : saved.directory.isEmpty() ? "未実行"
                                                : "入力一式を保存しました。");
     location->setText(saved.directory);
@@ -614,9 +643,26 @@ void ExecutionPanel::runEnded() {
         tray->showMessage("MolForma", message, QSystemTrayIcon::Information, 10000);
         QTimer::singleShot(15000, tray, &QSystemTrayIcon::hide);
     }
+    resultSummary.clear();
     if (openResults->isChecked() && run.state() == "finished" && !resultFiles(directory).isEmpty() &&
-        !window->results->loading())
+        !window->results->loading()) {
+        summaryDirectory = directory;
+        connect(window->results, &ResultsPanel::loaded, this, &ExecutionPanel::showResultSummary,
+                Qt::UniqueConnection);
         window->results->openDirectory(directory);
+    }
+}
+void ExecutionPanel::showResultSummary() {
+    // Only the log of the run that just ended, not files the user opens later.
+    const auto source = window->results->result().source;
+    if (summaryDirectory.isEmpty() ||
+        QFileInfo(source).absolutePath() != QFileInfo(summaryDirectory).absoluteFilePath())
+        return;
+    summaryDirectory.clear();
+    resultSummary = window->results->briefSummary();
+    updateRun();
+    if (!resultSummary.isEmpty())
+        window->statusBar()->showMessage("計算が終了しました: " + resultSummary, 60000);
 }
 void ExecutionPanel::stopEditing() {
     busy = true;

@@ -36,6 +36,9 @@ class ResultsPanel : public QWidget {
     void saveGeometry(const QString &path) const;
     // Proposes the displayed result geometry as a candidate for the editor's molecule.
     void applyStructure();
+    // One line with the outcome of the loaded log: optimization state, final energy, imaginary
+    // frequencies and excited states (empty when the file has none of them).
+    QString briefSummary() const;
   signals:
     void loaded();
     void loadFailed(QString message);
@@ -75,7 +78,10 @@ class ResultsPanel : public QWidget {
     QComboBox *spectrumAxis, *energyUnit;
     QDoubleSpinBox *broadening, *irWidth;
     QLabel *propertySummary, *energyNote;
-    QCheckBox *arrows;
+    QCheckBox *arrows, *showRigid;
+    QPushButton *openMolden; // A log's orbitals: open the MOLDEN file of the same job.
+    // Shows the detail tabs that have data in the loaded file (概要 always).
+    void updateTabs();
     QPushButton *energyReference, *saveModeImages, *saveModeTrajectory, *compareGeometry;
     int referenceEnergy = -1;  // Row of data.energies that ΔE refers to (-1: the last energy).
     QVector<bool> rigidMotion; // Translations and rotations among data.modes.

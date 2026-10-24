@@ -890,6 +890,7 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
                     fail("Text rejected by the control's validator.");
             }
             l->setText(value.toString());
+            l->setModified(true); // As typed: fields that apply only changed text see the edit.
             if (args["commit"].toBool(true))
                 QMetaObject::invokeMethod(l, "editingFinished", Qt::DirectConnection);
         } else if (auto *e = qobject_cast<QPlainTextEdit *>(object)) {

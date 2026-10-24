@@ -56,7 +56,7 @@ class HistoryTest : public QObject {
         QVERIFY(entry.valid);
         QCOMPARE(entry.status, "prepared");
         QCOMPARE(entry.method, "Hartree–Fock");
-        QCOMPARE(entry.basis, "sto-3g");
+        QCOMPARE(entry.basis, "STO-3G");
         QVERIFY(historyIntegrity(entry).contains("入力・プロジェクトのSHA-256一致"));
         const auto before = readFile(p.directory + "/project.kgui.json");
         auto next = historyDocument(p.directory);
@@ -73,7 +73,7 @@ class HistoryTest : public QObject {
         entry = readHistoryEntry(p.directory);
         QVERIFY(entry.valid);
         QCOMPARE(entry.seconds, 9);
-        QCOMPARE(entry.basis, "sto-3g");
+        QCOMPARE(entry.basis, "STO-3G");
         QVERIFY(historyIntegrity(entry).contains("旧記録"));
         const auto moved = tmp.filePath("moved job");
         QVERIFY(QDir().rename(p.directory, moved));
@@ -494,6 +494,22 @@ class HistoryTest : public QObject {
         QTRY_VERIFY(!panel->scanning());
         QTest::qWait(100);
         QVERIFY(w.grab().save(artifacts + "/history.png"));
+    }
+    void rootFollowsExecutionSettings() {
+        // Until the user picks a folder in "履歴", it shows the job folder of "5 実行設定".
+        QTemporaryDir first, second;
+        MainWindow w;
+        w.loadDocument(water(first.path()));
+        showHistory(w);
+        auto *panel = widget<HistoryPanel>(w, "historyTab");
+        QTRY_VERIFY(!panel->scanning());
+        QCOMPARE(widget<QLineEdit>(w, "historyRoot")->text(), first.path());
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(4);
+        w.edit("NWChem実行設定を変更",
+               [&](Document &d) { setExecutionSetting(d, "job_root", second.path()); });
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(7);
+        QTRY_VERIFY(!panel->scanning());
+        QCOMPARE(widget<QLineEdit>(w, "historyRoot")->text(), second.path());
     }
     void restartAndLogFollow() {
         QTemporaryDir tmp;

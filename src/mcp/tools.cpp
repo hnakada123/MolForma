@@ -150,6 +150,7 @@ QJsonObject resultsJson(const ResultData &r, const QJsonObject &args, QJsonObjec
             }
             if (section == "orbitals") {
                 const auto &o = r.orbitals[i];
+                row["number"] = o.number;
                 row["energy"] = o.energy;
                 row["occupation"] = o.occupation;
                 row["spin"] = o.spin;

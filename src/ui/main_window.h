@@ -22,6 +22,7 @@ class QPushButton;
 class QTableWidget;
 class QMenu;
 class QTimer;
+class QButtonGroup;
 namespace mf {
 class CoordinatesPanel;
 class CalculationPanel;
@@ -70,7 +71,6 @@ class MainWindow : public QMainWindow {
 
   protected:
     void closeEvent(QCloseEvent *) override;
-    bool eventFilter(QObject *watched, QEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *) override;
     void dropEvent(QDropEvent *) override;
 
@@ -117,12 +117,13 @@ class MainWindow : public QMainWindow {
     ResultsPanel *results = nullptr;
     HistoryPanel *calculationHistory = nullptr;
     QTabWidget *workspaceTabs = nullptr;
-    QComboBox *tool = nullptr, *unitBox = nullptr, *category = nullptr, *elementBox = nullptr,
-              *bondKind = nullptr;
+    QButtonGroup *toolGroup = nullptr; // The editing tools beside the 3D view of "1 分子".
+    QComboBox *unitBox = nullptr, *category = nullptr, *elementBox = nullptr, *bondKind = nullptr;
     QLineEdit *search = nullptr;
     QListWidget *palette = nullptr, *residueList = nullptr, *pointList = nullptr;
     QTabWidget *properties = nullptr, *editPages = nullptr;
-    QLabel *summary = nullptr, *measurement = nullptr, *candidateLabel = nullptr, *sequenceLabel = nullptr;
+    QLabel *summary = nullptr, *measurement = nullptr, *candidateLabel = nullptr, *sequenceLabel = nullptr,
+           *mouseHint = nullptr;
     QWidget *candidateBar = nullptr, *chargeEditor = nullptr;
     QLabel *chargeSummary = nullptr;
     QCheckBox *includePointCharges = nullptr;
@@ -164,7 +165,20 @@ class MainWindow : public QMainWindow {
     void refreshPalette();
     void refreshSelection();
     void refreshChargePanel();
+    // Controls that act on the selection: enabled for minimum..maximum selected atoms (0: no
+    // upper limit), with a tooltip that says what to select while disabled.
+    struct SelectionControl {
+        QWidget *widget;
+        int minimum, maximum;
+        QString tooltip;
+    };
+    QVector<SelectionControl> selectionControls;
+    void enableWithSelection(QWidget *widget, int minimum, int maximum = 0);
+    void refreshSelectionControls();
+    // Delete, the bond-order keys and similar: a missing selection is a hint, not an error dialog.
+    bool hasSelection(int count = 0);
     QFormLayout *panel(const QString &title);
+    void section(QFormLayout *form, const QString &title);
     QPushButton *button(QFormLayout *form, const QString &text, const std::function<void()> &slot,
                         const QString &objectName = {});
     QDoubleSpinBox *number(QFormLayout *form, const QString &label, double value = 0, double minimum = -10000,
@@ -178,10 +192,14 @@ class MainWindow : public QMainWindow {
     QList<int> sites() const;
     QJsonObject currentTemplate() const;
     void paletteChosen();
+    // Chooses an element for the atom tool, as from the periodic table or the common-element buttons.
+    void chooseElement(const QString &symbol);
     void place(const QString &atom, const Vec &position);
     void atomClicked(const QString &id, Qt::KeyboardModifiers modifiers);
     Ids expandedSelection(const Ids &ids) const;
     void setState(const Document &d, bool trusted = true);
+    // Status bar note after Undo/Redo, naming the tab whose content changed.
+    void announceHistory(const QString &verb, const QString &name, const Document &from, const Document &to);
     // Paths reached by an MCP-driven GUI action obey --mcp-allow-dir like the semantic tools.
     void checkMcpPath(const QString &path) const;
     void trackExecution(const Document &before, const Document &after);
@@ -194,8 +212,9 @@ class MainWindow : public QMainWindow {
     void exportFile();
     // Asks which structure of a multi-frame XYZ file to read (0-based; 0 for single frames).
     int chooseXyzFrame(const QString &path);
-    void importSmiles();
-    void addFragmentFromSmiles();
+    QString askSmiles(const QString &title, const QString &label, const QString &initial);
+    void importSmiles(const QString &initial = {});
+    void addFragmentFromSmiles(const QString &initial = {});
     void addFragmentFromFile();
     // mode: smiles, fragment, refine, regenerate or conformers (count: conformers to keep).
     void runWorker(const QString &mode, const QString &smiles = {}, const Ids &moving = {}, int count = 10);
@@ -214,7 +233,10 @@ class MainWindow : public QMainWindow {
     void selectAll();
     void copySelection();
     void pasteFragment();
-    void positionBanner();
+    // The editing tool ("select", "atom", "place", …) and the hint under the 3D view for it.
+    QString currentTool() const;
+    void setTool(const QString &code);
+    void refreshToolHint();
     void addRecent(const QString &path);
     void refreshRecent();
     void removeAutosave();

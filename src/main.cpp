@@ -4,6 +4,7 @@
 #include "mcp/stdio_transport.h"
 #include "ui/main_window.h"
 #include "ui/mcp_gui.h"
+#include "ui/translations.h"
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QIcon>
@@ -15,9 +16,10 @@
 #include <cstdio>
 namespace {
 void addMcpOptions(QCommandLineParser &parser) {
-    parser.addOption({"mcp-allow-dir", "Limit MCP file access to this directory (repeatable)", "directory"});
+    parser.addOption(
+        {"mcp-allow-dir", "MCPのファイル操作をこのディレクトリに限定する（複数指定可）", "directory"});
     parser.addOption({"mcp-allow-execution-settings",
-                      "Let MCP clients change the NWChem executable, launcher and environment overrides"});
+                      "MCPクライアントにNWChem実行ファイル・ランチャー・環境変数の変更を許可する"});
 }
 // MCP restrictions come only from the command line that the user configured in the client.
 mf::McpPolicy mcpPolicy(const QCommandLineParser &parser) {
@@ -42,11 +44,12 @@ int main(int argc, char **argv) {
         QCoreApplication app(argc, argv);
         QCoreApplication::setApplicationName("MolForma");
         QCoreApplication::setApplicationVersion(MOLFORMA_VERSION);
+        mf::installTranslations(app);
         QCommandLineParser parser;
         parser.addHelpOption();
         parser.addVersionOption();
-        parser.addOption({"mcp", "Run the headless MCP stdio server"});
-        parser.addOption({"mcp-gui", "Run MCP with the editor window"});
+        parser.addOption({"mcp", "画面なしのMCPサーバーを標準入出力で起動する"});
+        parser.addOption({"mcp-gui", "編集画面つきでMCPサーバーを起動する"});
         addMcpOptions(parser);
         parser.process(app);
         if (guiMcp || !parser.positionalArguments().isEmpty()) {
@@ -123,18 +126,20 @@ int main(int argc, char **argv) {
     QApplication app(argc, argv);
     QCoreApplication::setApplicationName("MolForma");
     QCoreApplication::setApplicationVersion(MOLFORMA_VERSION);
+    mf::installTranslations(app);
     QApplication::setStyle("Fusion");
     Q_INIT_RESOURCE(manual);
     QApplication::setWindowIcon(QIcon(":/icons/molforma.png"));
     QGuiApplication::setDesktopFileName("molforma"); // Matches packaging/molforma.desktop.
     QCommandLineParser parser;
-    parser.setApplicationDescription("Qt6/C++ molecular editor and NWChem input, run and result front end");
+    parser.setApplicationDescription("分子の作成・編集と、NWChemの入力作成・実行・結果表示（Qt6 / C++）");
     parser.addHelpOption();
     parser.addVersionOption();
-    parser.addPositionalArgument("file", "XYZ/MOL/SDF/PDB or MolForma project (.kgui.json)");
-    parser.addOption({"screenshot", "Save a screenshot and exit", "path"});
-    parser.addOption({"mcp", "Run the headless MCP stdio server"});
-    parser.addOption({"mcp-gui", "Run the MCP stdio server with the editor window"});
+    parser.addPositionalArgument("file",
+                                 "開くファイル（XYZ・MOL・SDF・PDB・MolFormaプロジェクト .kgui.json など）");
+    parser.addOption({"screenshot", "画面をPNGで保存して終了する", "path"});
+    parser.addOption({"mcp", "画面なしのMCPサーバーを標準入出力で起動する"});
+    parser.addOption({"mcp-gui", "編集画面つきでMCPサーバーを起動する"});
     addMcpOptions(parser);
     parser.process(app);
     try {

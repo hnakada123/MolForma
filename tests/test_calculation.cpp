@@ -766,7 +766,7 @@ class CalculationTest : public QObject {
         QVERIFY(text.contains("ecp\n  I library \"def2-ecp\"\nend"));
         QVERIFY(!text.contains("* library"));
         QVERIFY(check.warnings.join('\n').contains("d関数の慣例"));
-        QCOMPARE(nwchemBasisLabel(nwchemSettings(hi)), QString("6-31g*、I: def2-tzvp"));
+        QCOMPARE(nwchemBasisLabel(nwchemSettings(hi)), QString("6-31G*、I: def2-TZVP")); // Usual spellings.
         set(hi, "basis_overrides", QJsonObject{{"I", "6-31+g*"}});
         QVERIFY(errorContains(hi, "I（6-31+g*）"));
         for (const auto &bad : {QJsonObject{{"Xx", "def2-svp"}}, QJsonObject{{"I", "custom"}}}) {

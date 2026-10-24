@@ -442,6 +442,12 @@ class CoreTest : public QObject {
             QVERIFY2(!structureReport(d).contains("結合次数合計"),
                      qPrintable(v.toObject()["id"].toString() + "\n" + structureReport(d)));
         }
+        // A clean structure says so; a finding replaces that line.
+        Document water;
+        instantiate(water, findTemplate("skeleton:water"));
+        QVERIFY(structureReport(water).endsWith("問題は見つかりませんでした。"));
+        water.setJobValue("multiplicity", 2);
+        QVERIFY(!structureReport(water).contains("問題は見つかりませんでした"));
         // Without its N–H, pyrrole gets the hydrogen back on nitrogen rather than an sp3 carbon.
         for (const auto &[id, element] : {std::pair{"skeleton:pyrrole", "N"}, {"skeleton:imidazole", "N"}}) {
             Document d;

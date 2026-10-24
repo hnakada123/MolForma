@@ -57,6 +57,7 @@ add_library(molforma_ui STATIC
     src/ui/result_charts.cpp
     src/ui/results_panel.cpp
     src/ui/template_delegate.cpp
+    src/ui/translations.cpp
     docs/manual.qrc)
 # McpGui shares tool definitions, result views and the access policy with the headless server.
 target_link_libraries(molforma_ui PUBLIC molforma_core molforma_mcp)

@@ -182,6 +182,8 @@ class MoleculeView : public QWidget {
     VtkMoleculeRenderer *renderer = nullptr;
     QWidget *overlay = nullptr;
     QLabel *rendererStatus = nullptr;
+    bool fallback = false;   // VTK could not be used here (OpenGL), so QPainter draws instead.
+    bool fitPending = false; // fit() ran while hidden; repeat it once the view has its size.
     QTimer renderTimer;
     bool moleculeDirty = true, surfaceDirty = true;
     QVector<QColor> atomColors;

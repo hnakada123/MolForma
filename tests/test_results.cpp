@@ -123,6 +123,8 @@ class ResultsTest : public QObject {
         QCOMPARE(r.orbitals.size(), 2);
         QCOMPARE(r.orbitals[0].energy, -.5);
         QCOMPARE(r.orbitals[1].spin, "Beta");
+        QCOMPARE(r.orbitals[0].number, 1);
+        QCOMPARE(r.orbitals[1].number, 1); // Counted within each spin.
         QCOMPARE(r.modes.size(), 2);
         QCOMPARE(r.modes[1].intensity, 20.0);
         QVERIFY(std::abs(r.frames[0].molecule.atoms[1].position.z() - 1.4 * BohrToAngstrom) < 1e-12);
@@ -234,6 +236,9 @@ class ResultsTest : public QObject {
         QCOMPARE(r.properties["thresholds"].toObject()["gmax"].toDouble(), 0.00045);
         QCOMPARE(r.orbitals.size(), 2);
         QCOMPARE(r.orbitals[0].occupation, 2.0);
+        // A log lists only some orbitals: keep NWChem's numbers (as in the MOLDEN file).
+        QCOMPARE(r.orbitals[0].number, 5);
+        QCOMPARE(r.orbitals[1].number, 6);
         QVERIFY(std::abs(r.properties["dipole"].toObject()["debye"].toDouble() - 0.677559 * 2.541746473) <
                 1e-9);
         QCOMPARE(r.excitations.size(), 3);
@@ -338,6 +343,73 @@ class ResultsTest : public QObject {
         QCOMPARE(w.history()->count(), history);
         // Destruction cancels an in-flight reader and stops animation.
         panel->openFile(a);
+    }
+    void hiddenViewerFitsWhenShown() {
+        // A result that loads while another tab is shown (a finished run) fills the view once opened.
+        MainWindow w;
+        w.show();
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        QSignalSpy done(panel, &ResultsPanel::loaded);
+        panel->openFile(save("hidden-fit.xyz", "2\n\nH 0 0 0\nH 0 0 1\n"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentWidget(panel);
+        auto *view = widget<MoleculeView>(w, "resultsView");
+        const auto ids = view->documentRef().ids();
+        QTRY_VERIFY(QLineF(view->atomScreenPosition(ids[0]), view->atomScreenPosition(ids[1])).length() > 25);
+    }
+    void outcomeTabsAndJobMolden() {
+        MainWindow w;
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        auto *details = widget<QTabWidget>(w, "resultsDetails");
+        // Before anything is loaded only the summary, which says what to open.
+        QVERIFY(details->isTabVisible(0));
+        for (int i = 1; i < details->count(); ++i)
+            QVERIFY(!details->isTabVisible(i));
+        QTemporaryDir job;
+        const QString log = "NWChem\n" + geometry() +
+                            "@ Step       Energy      Delta E   Gmax     Grms     Xrms     Xmax   Walltime\n"
+                            "@ ---- ---------------- -------- -------- -------- -------- -------- --------\n"
+                            "@    0     -76.00723755  0.0D+00  0.06730  0.02421  0.00000  0.00000      0.3\n"
+                            "      Optimization converged\n"
+                            "         Total SCF energy =    -76.00723755\n"
+                            "                       ROHF Final Molecular Orbital Analysis\n"
+                            " Vector    5  Occ=2.000000D+00  E=-3.907179D-01\n"
+                            " Vector    6  Occ=0.000000D+00  E= 6.054023D-01\n";
+        writeFile(job.filePath("output.out"), log.toUtf8());
+        // H2 with all 3N modes: five translations/rotations near 0 cm⁻¹ and the stretch.
+        QString moldenFile =
+            "[Molden Format]\n[Atoms] AU\nH 1 1 0 0 0\nH 2 1 0 0 1.4\n[GTO]\n1 0\ns 1 1.0\n1.0 1.0\n"
+            "[MO]\nSym= A1\nEne= -0.5D+00\nSpin= Alpha\nOccup= 2.0\n1 0.5\n2 0.5\n"
+            "[FREQ]\n0.1\n0.2\n0.3\n12\n15\n4400\n[FR-COORD]\nH 0 0 0\nH 0 0 1.4\n[FR-NORM-COORD]\n";
+        for (int mode = 1; mode <= 6; ++mode)
+            moldenFile += QString("vibration %1\n0 0 .5\n0 0 -.5\n").arg(mode);
+        moldenFile += "[INT]\n9\n9\n9\n9\n9\n20\n";
+        writeFile(job.filePath("job.molden"), moldenFile.toUtf8());
+        QSignalSpy done(panel, &ResultsPanel::loaded);
+        panel->openDirectory(job.path());
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        // Only the tabs with data, and the outcome in one line.
+        QVERIFY(details->isTabVisible(1) && details->isTabVisible(2) && details->isTabVisible(4));
+        QVERIFY(!details->isTabVisible(3) && !details->isTabVisible(5) && !details->isTabVisible(8));
+        QVERIFY(panel->briefSummary().contains("最適化: 収束"));
+        QVERIFY(widget<QPlainTextEdit>(w, "resultsStatus")->toPlainText().contains("最適化: 収束"));
+        QCOMPARE(widget<QTableWidget>(w, "resultsOrbitals")->item(0, 0)->text(), QString("5"));
+        // The log has orbital energies; the shapes are one click away in the job's MOLDEN file.
+        auto *molden = widget<QPushButton>(w, "resultsOpenMolden");
+        QVERIFY(!molden->isHidden());
+        molden->click();
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 2, 10000);
+        QVERIFY(panel->result().source.endsWith("job.molden"));
+        QVERIFY(molden->isHidden());
+        QVERIFY(details->isTabVisible(3));
+        // Translations and rotations are listed only on request, without an IR intensity.
+        auto *modes = widget<QTableWidget>(w, "resultsModes");
+        for (int i = 0; i < 5; ++i)
+            QVERIFY(modes->isRowHidden(i));
+        QVERIFY(!modes->isRowHidden(5));
+        QCOMPARE(modes->item(0, 1)->text(), QString("—"));
+        widget<QCheckBox>(w, "resultsShowRigid")->setChecked(true);
+        QVERIFY(!modes->isRowHidden(0));
     }
     void fileSelectionLoadsAndCancels() {
         QTemporaryDir job;

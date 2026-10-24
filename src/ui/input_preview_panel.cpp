@@ -106,6 +106,8 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     toolbar->addWidget(mode);
     auto *reload = new QPushButton("再検証");
     reload->setObjectName("inputPreviewRefresh");
+    reload->setToolTip("表示は編集に追従します。参照ファイル・保存先など、MolFormaの外で変わったものを"
+                       "確認し直すときに使います。");
     toolbar->addWidget(reload);
     toolbar->addStretch();
     copy = new QPushButton("全文をコピー");

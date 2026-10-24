@@ -13,7 +13,7 @@ class ElementButton : public QAbstractButton {
         setCheckable(true);
         setFocusPolicy(Qt::StrongFocus);
         setCursor(Qt::PointingHandCursor);
-        setMinimumSize(44, 54);
+        setMinimumSize(34, 46); // 18 groups fit beside each other in a 760-pixel dialog.
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         const auto description =
             QString("%1 · %2 / %3\n原子番号 %4").arg(e.symbol, e.nameJa, e.nameEn).arg(e.number);
@@ -134,6 +134,7 @@ PeriodicTableDialog::PeriodicTableDialog(const QString &current, const QString &
         });
     }
     scroll->setWidget(table);
+    scroll->setObjectName("periodicTableScroll");
     layout->addWidget(scroll, 1);
     details = new QLabel(this);
     details->setObjectName("periodicElementDetails");
@@ -165,6 +166,10 @@ PeriodicTableDialog::PeriodicTableDialog(const QString &current, const QString &
     search->setText(query);
     filter();
     search->setFocus();
+    // All 18 groups stay visible: only the periods may need scrolling on small screens.
+    const auto margins = layout->contentsMargins();
+    setMinimumWidth(table->minimumSizeHint().width() + margins.left() + margins.right() +
+                    style()->pixelMetric(QStyle::PM_ScrollBarExtent) + 4);
     resize(QSize(990, 730).boundedTo(screen()->availableGeometry().size() - QSize(40, 60)));
 }
 
@@ -181,6 +186,7 @@ void PeriodicTableDialog::filter() {
         return e.symbol.compare(query, Qt::CaseInsensitive) == 0;
     });
     int count = 0;
+    QString last;
     for (auto *button : buttons) {
         const auto symbol = button->text();
         const auto &e = element(symbol);
@@ -192,8 +198,12 @@ void PeriodicTableDialog::filter() {
                  : (e.symbol + ' ' + e.nameJa + ' ' + e.nameEn).contains(query, Qt::CaseInsensitive));
         button->setEnabled(match);
         count += match;
+        if (match)
+            last = symbol;
     }
     matches->setText(query.isEmpty() ? "118 元素 · H〜Og" : QString("%1 / 118 元素が一致").arg(count));
+    // The details follow the search when it names one element (Enter chooses it).
+    describe(count == 1 ? last : selected);
 }
 
 bool PeriodicTableDialog::eventFilter(QObject *watched, QEvent *event) {
