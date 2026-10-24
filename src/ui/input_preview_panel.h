@@ -13,6 +13,8 @@ class InputPreviewPanel : public QWidget {
   public:
     explicit InputPreviewPanel(MainWindow *owner);
     void refresh();
+    // Only the tab's error color and tool tip, while the tab is hidden and not refreshed.
+    void refreshBadge();
     void exportInput(bool toFile);
     // Save the currently selected input type, after committing any active settings editor.
     void saveInput(const QString &path);
@@ -29,5 +31,6 @@ class InputPreviewPanel : public QWidget {
     QString prepareExport();
     void findText(bool backwards);
     void navigate(int tab);
+    void setBadge(bool failed, const QString &tip);
 };
 } // namespace mf

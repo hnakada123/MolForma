@@ -92,17 +92,25 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     connect(table, &QTableWidget::itemSelectionChanged, this, [this] {
         if (busy)
             return;
+        QList<bool> marked(table->rowCount(), false);
+        for (const auto &range : table->selectionModel()->selection())
+            for (int row = range.top(); row <= range.bottom(); ++row)
+                marked[row] = true;
         Ids ids;
         for (int row = 0; row < table->rowCount(); ++row)
-            if (table->item(row, 0)->isSelected())
+            if (marked[row])
                 ids << table->item(row, 0)->data(Qt::UserRole).toString();
         // Retain click order from the molecule view when adding table rows.
+        const QSet<QString> rows(ids.begin(), ids.end());
         Ids ordered;
+        QSet<QString> kept;
         for (const auto &id : window->selected)
-            if (ids.contains(id))
+            if (rows.contains(id) && !kept.contains(id)) {
                 ordered << id;
+                kept.insert(id);
+            }
         for (const auto &id : ids)
-            if (!ordered.contains(id))
+            if (!kept.contains(id))
                 ordered << id;
         window->setSelection(ordered);
     });
@@ -192,7 +200,6 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     rl->addWidget(note);
     splitter->addWidget(right);
     splitter->setSizes({800, 440});
-    connect(window->history(), &QUndoStack::indexChanged, this, [this] { refresh(); });
 }
 QPushButton *CoordinatesPanel::button(QHBoxLayout *layout, const QString &text, const QString &name,
                                       const std::function<void()> &action, bool editing) {
@@ -292,11 +299,19 @@ void CoordinatesPanel::refresh() {
 }
 void CoordinatesPanel::refreshSelection() {
     const QSignalBlocker blocker(table);
-    table->clearSelection();
-    for (int row = 0; row < table->rowCount(); ++row)
-        if (window->selected.contains(table->item(row, 0)->data(Qt::UserRole).toString()))
-            for (int col = 0; col < table->columnCount(); ++col)
-                table->item(row, col)->setSelected(true);
+    // One selection of row ranges: selecting item by item is quadratic in the selected rows.
+    const QSet<QString> chosen(window->selected.begin(), window->selected.end());
+    const int last = table->columnCount() - 1;
+    QItemSelection rows;
+    for (int row = 0; row < table->rowCount(); ++row) {
+        if (!chosen.contains(table->item(row, 0)->data(Qt::UserRole).toString()))
+            continue;
+        if (!rows.isEmpty() && rows.last().bottom() == row - 1)
+            rows.last() = QItemSelectionRange(rows.last().topLeft(), table->model()->index(row, last));
+        else
+            rows.select(table->model()->index(row, 0), table->model()->index(row, last));
+    }
+    table->selectionModel()->select(rows, QItemSelectionModel::ClearAndSelect);
     view->setSelection(window->selected);
     selectionLabel->setText(window->measurement->text());
 }

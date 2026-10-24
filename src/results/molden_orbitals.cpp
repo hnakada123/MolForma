@@ -296,7 +296,8 @@ QVector<double> moldenOrbitalGrid(const MoldenWavefunction &w, int orbital, cons
     }
     for (const auto &s : w.shells)
         primitives += s.primitives.size();
-    if (points * primitives > 250000000)
+    // The separable evaluation takes about 1 ns per point and primitive: 1–2 s at this bound.
+    if (points * primitives > 1000000000)
         fail("軌道表示の計算量が大きすぎます。格子の分割数を小さくしてください。");
     const auto polynomials = orbitalPolynomials(w, orbital);
     QVector<double> values(points, 0.);

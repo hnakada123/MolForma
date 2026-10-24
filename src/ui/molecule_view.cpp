@@ -121,6 +121,7 @@ void MoleculeView::setStyle(const QString &style) {
 void MoleculeView::setHidden(const QSet<QString> &ids) {
     hidden = ids;
     selected.removeIf([&](const auto &id) { return hidden.contains(id); });
+    selectedIds = QSet<QString>(selected.begin(), selected.end());
     moleculeDirty = true;
     scheduleRender();
 }
@@ -231,17 +232,18 @@ void MoleculeView::setDocument(const Document &d) {
     atomIndices.clear();
     for (int i = 0; i < doc.atoms.size(); ++i)
         atomIndices.insert(doc.atoms[i].id, i);
-    selected.removeIf([&](auto id) { return !doc.contains(id); });
-    hidden.removeIf([&](const auto &id) { return !doc.contains(id); });
-    monitors.removeIf([&](const Ids &ids) {
-        return std::any_of(ids.begin(), ids.end(), [&](const auto &id) { return !doc.contains(id); });
-    });
+    const auto absent = [&](const QString &id) { return !atomIndices.contains(id); };
+    selected.removeIf(absent);
+    selectedIds = QSet<QString>(selected.begin(), selected.end());
+    hidden.removeIf(absent);
+    monitors.removeIf([&](const Ids &ids) { return std::any_of(ids.begin(), ids.end(), absent); });
     findHydrogenBonds();
     refreshColors();
     scheduleRender();
 }
 void MoleculeView::setSelection(const Ids &ids) {
     selected = ids;
+    selectedIds = QSet<QString>(ids.begin(), ids.end());
     scheduleRender();
 }
 void MoleculeView::setSurface(const QVector<SurfaceTriangle> &triangles) {
@@ -426,6 +428,10 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
         int index;
     };
     QVector<Item> items;
+    QSet<QString> bonded; // Wireframe draws atoms only where no bond line shows them.
+    if (displayStyle == "wireframe")
+        for (const auto &b : doc.bonds)
+            bonded << b.a << b.b;
     Mat r = camera();
     for (int i = 0; i < doc.atoms.size(); ++i)
         if (shown(doc.atoms[i]))
@@ -437,7 +443,9 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             items << Item{(r * ((doc.atoms[ai].position + doc.atoms[bi].position) * .5 - center)).z(), false,
                           i};
     }
-    for (int i = 0; !overlayOnly && i < surface.size(); ++i) {
+    // The painter draws at most about 150 000 triangles; larger surfaces are thinned evenly.
+    const int stride = int(std::max<qsizetype>(1, (surface.size() + 149999) / 150000));
+    for (int i = 0; !overlayOnly && i < surface.size(); i += stride) {
         const auto &t = surface.at(i);
         if ((t.positive && positiveSurface) || (!t.positive && negativeSurface))
             items << Item{(r * ((t.a + t.b + t.c) / 3 - center)).z(), 2, i};
@@ -453,7 +461,8 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
     for (auto item : items) {
         if (item.kind == 2) {
             const auto &t = surface.at(item.index);
-            const Vec normal = r * (t.b - t.a).cross(t.c - t.a).normalized();
+            const Vec smooth = t.na + t.nb + t.nc;
+            const Vec normal = r * (smooth.isZero() ? (t.b - t.a).cross(t.c - t.a) : smooth).normalized();
             QColor color(t.positive ? "#ce5268" : "#397cce");
             color = color.lighter(80 + qRound(30 * std::abs(normal.z())));
             color.setAlpha(surfaceOpacity);
@@ -505,19 +514,19 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             bool hydrogen = a.element == "H";
             if (hydrogen && !showHydrogens) {
                 p.setPen(QPen(QColor("#4c9a6c"), 1.5));
-                p.setBrush(selected.contains(a.id) ? QColor("#f6d57b") : QColor("#cfe9db"));
+                p.setBrush(selectedIds.contains(a.id) ? QColor("#f6d57b") : QColor("#cfe9db"));
                 p.drawEllipse(pos, 4, 4);
                 continue;
             }
             const double radius = atomRadius(a);
             QColor color = atomColors[item.index];
-            if (selected.contains(a.id)) {
+            if (selectedIds.contains(a.id)) {
                 p.setPen(QPen(QColor("#de9c25"), 3));
                 p.setBrush(QColor(250, 199, 85, 80));
                 p.drawEllipse(pos, radius + 5, radius + 5);
             }
             if ((!overlayOnly || a.ghost) &&
-                (displayStyle != "wireframe" || a.ghost || doc.neighbors(a.id).isEmpty())) {
+                (displayStyle != "wireframe" || a.ghost || !bonded.contains(a.id))) {
                 QRadialGradient sphere(pos - QPointF(radius * .35, radius * .4), radius * 1.5);
                 sphere.setColorAt(0, color.lighter(160));
                 sphere.setColorAt(.6, color);
@@ -534,7 +543,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
                 label += QString::number(item.index + 1);
             if (a.charge)
                 label += QString("(%1%2)").arg(a.charge > 0 ? "+" : "").arg(a.charge);
-            const bool chosen = selected.contains(a.id);
+            const bool chosen = selectedIds.contains(a.id);
             if (labelMode != "none" && (labelMode == "all" || chosen || (labelMode == "heavy" && !hydrogen)))
                 // Placed after all atoms, so labels stay readable in front of the drawing.
                 labels << Label{pos + QPointF(radius + 3, -radius - 1), label, item.z, chosen, hydrogen};

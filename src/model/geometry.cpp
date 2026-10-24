@@ -56,6 +56,24 @@ void transform(Document &d, const Ids &ids, const Mat &r, const Vec &shift, cons
         a.position = origin + r * (a.position - origin) + shift;
     }
 }
+UniformGrid uniformGrid(const Vec &low, const Vec &high, int divisions) {
+    const Vec extent = (high - low).cwiseMax(Vec::Constant(1e-6));
+    UniformGrid grid;
+    grid.spacing = extent.maxCoeff() / std::max(1, divisions);
+    for (int axis = 0; axis < 3; ++axis) {
+        grid.divisions[axis] = std::max(1, int(std::ceil(extent[axis] / grid.spacing - 1e-9)));
+        grid.origin[axis] = (low[axis] + high[axis] - grid.divisions[axis] * grid.spacing) / 2;
+    }
+    return grid;
+}
+Vec centroid(const Document &d, const Ids &ids) {
+    if (ids.isEmpty())
+        fail("原子を選択してください。");
+    Vec sum = Vec::Zero();
+    for (const auto &id : ids)
+        sum += d.atom(id).position;
+    return sum / ids.size();
+}
 double measure(const Document &d, const Ids &ids) {
     QVector<Vec> p;
     for (const auto &id : ids)

@@ -65,6 +65,8 @@ class MainWindow : public QMainWindow {
     void autosave();
     // Recently opened or saved files (QSettings "recentFiles"), newest first.
     QStringList recentFiles() const;
+    // Brings tabs that were hidden during edits up to date (McpGui calls it before using the GUI).
+    void refreshStalePanels();
 
   protected:
     void closeEvent(QCloseEvent *) override;
@@ -152,6 +154,13 @@ class MainWindow : public QMainWindow {
     void buildResiduePanel();
     void buildChargePanel();
     void refresh();
+    void refreshTitle();
+    // The tabs "2 座標" to "6 入力プレビュー"; while the window is shown, only the open one refreshes
+    // on each change and the others are marked stale until opened.
+    QList<QWidget *> workspacePanels() const;
+    QSet<QWidget *> stalePanels;
+    void refreshPanels();
+    void refreshPanel(QWidget *panel, bool always = false);
     void refreshPalette();
     void refreshSelection();
     void refreshChargePanel();
@@ -176,7 +185,7 @@ class MainWindow : public QMainWindow {
     // Paths reached by an MCP-driven GUI action obey --mcp-allow-dir like the semantic tools.
     void checkMcpPath(const QString &path) const;
     void trackExecution(const Document &before, const Document &after);
-    void commit(const QString &name, const Document &next, bool remote = false);
+    bool commit(const QString &name, const Document &next, bool remote = false);
     void newDocument();
     void open();
     bool save(bool as = false);

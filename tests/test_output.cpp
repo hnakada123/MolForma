@@ -60,10 +60,16 @@ class OutputTest : public QObject {
         QVERIFY(input.contains("spin total\n  gaussian\n  output molforma_density.cube\nend\ntask dplot"));
         QVERIFY(input.indexOf("task scf energy") < input.indexOf("task scf property"));
         QVERIFY(input.indexOf("task scf property") < input.indexOf("task dplot"));
+        // 40 intervals along the longest side (X: 7.516 Å), the same spacing on Y and Z.
         auto grid = nwchemCubeGrid(d);
-        QCOMPARE(grid.points(), 41LL * 41 * 41);
+        QCOMPARE(grid.divisions, (std::array<int, 3>{40, 32, 35}));
+        QCOMPARE(grid.points(), 41LL * 33 * 36);
         QCOMPARE(grid.minimum[0], -3.758);
-        QCOMPARE(grid.maximum[2], 3.504);
+        for (int axis = 0; axis < 3; ++axis)
+            QVERIFY(std::abs((grid.maximum[axis] - grid.minimum[axis]) / grid.divisions[axis] - 7.516 / 40) <
+                    1e-12);
+        QVERIFY(grid.minimum[2] < -3 && grid.maximum[2] > 3.504);
+        QVERIFY(std::abs(grid.minimum[2] + grid.maximum[2] - .504) < 1e-12); // Centered on the atoms.
         base(d, "geometry_units", "bohr");
         QVERIFY(nwchemInput(d).contains("limitxyz units angstrom"));
         QCOMPARE(nwchemCubeGrid(d).minimum, grid.minimum);
@@ -135,7 +141,7 @@ class OutputTest : public QObject {
         setNwchemAdvanced(d, "cube_divisions", 1000);
         QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
         setNwchemAdvanced(d, "cube_divisions", 20);
-        QCOMPARE(nwchemCubeGrid(d).points(), 31LL * 21 * 21);
+        QCOMPARE(nwchemCubeGrid(d).points(), 31LL * 17 * 19); // Y and Z keep the automatic spacing.
         for (const auto &name :
              {"../bad.cube", "input.nw", "bad name.cube", "bad;task.cube", "bad\n.cube", "/abs.cube"}) {
             setNwchemAdvanced(d, "cube_filename", name);

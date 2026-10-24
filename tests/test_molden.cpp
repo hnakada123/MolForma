@@ -162,6 +162,37 @@ class MoldenTest : public QObject {
             QVERIFY_EXCEPTION_THROWN(moldenOrbitalGrid(w, 0, origin, step, {102, 2, 3}), std::runtime_error);
         }
     }
+    void isosurfaceNormals() {
+        // exp(-r²) around the origin (Bohr): a sphere whose normals point straight outward.
+        QString text = "gaussian\nlobe\n    1 -2.0 -2.0 -2.0\n";
+        for (int axis = 0; axis < 3; ++axis)
+            text += QString("   21 %1 %2 %3\n")
+                        .arg(axis == 0 ? .2 : 0.)
+                        .arg(axis == 1 ? .2 : 0.)
+                        .arg(axis == 2 ? .2 : 0.);
+        text += "    1 0.0 0.0 0.0 0.0\n";
+        for (int x = 0; x < 21; ++x)
+            for (int y = 0; y < 21; ++y)
+                for (int z = 0; z < 21; ++z) {
+                    const Vec p = Vec(x, y, z) * .2 - Vec::Constant(2);
+                    text += QString::number(std::exp(-p.squaredNorm()), 'e', 8) + (z % 6 == 5 ? "\n" : " ");
+                }
+        const auto r = readResult(save("lobe.cube", text + "\n"));
+        QVERIFY(!r.surface.isEmpty());
+        for (const auto &t : r.surface) {
+            QVERIFY(t.positive);
+            for (const auto &[point, normal] : {std::pair{t.a, t.na}, {t.b, t.nb}, {t.c, t.nc}}) {
+                QVERIFY(std::abs(normal.norm() - 1) < 1e-9);
+                QVERIFY(normal.dot(point.normalized()) > .98);
+            }
+        }
+        // The worker hands the normals over with the triangles.
+        const auto bin = files.filePath("lobe.bin");
+        saveResultData(bin, r);
+        const auto loaded = loadResultData(bin);
+        QCOMPARE(loaded.surface.size(), r.surface.size());
+        QVERIFY((loaded.surface.first().nb - r.surface.first().nb).norm() < 1e-6);
+    }
     void metadataSelectionAndTransfer() {
         const auto path = save("orbitals.molden", sample());
         const auto r = readResult(path);

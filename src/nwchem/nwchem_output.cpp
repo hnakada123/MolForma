@@ -1,4 +1,5 @@
 #include "nwchem/nwchem_output.h"
+#include "model/geometry.h"
 #include "nwchem/nwchem_advanced.h"
 #include <QDir>
 #include <QLocale>
@@ -39,7 +40,15 @@ NwchemCubeGrid nwchemCubeGrid(const Document &d) {
     NwchemCubeGrid grid;
     const auto a = nwchemAdvanced(d);
     const double pad = a["cube_padding"].toDouble(3);
-    const int n = a["cube_divisions"].toInt(40);
+    // Axes without their own range share one spacing: cube_divisions along the longest side.
+    Vec lo = Vec::Zero(), hi = Vec::Zero();
+    if (!d.atoms.isEmpty())
+        lo = hi = d.atoms.first().position;
+    for (const auto &atom : d.atoms) {
+        lo = lo.cwiseMin(atom.position);
+        hi = hi.cwiseMax(atom.position);
+    }
+    const auto uniform = uniformGrid(lo.array() - pad, hi.array() + pad, a["cube_divisions"].toInt(40));
     for (int axis = 0; axis < 3; ++axis) {
         const auto key = QString("cube_") + "xyz"[axis];
         if (a.contains(key)) {
@@ -48,16 +57,9 @@ NwchemCubeGrid nwchemCubeGrid(const Document &d) {
             grid.maximum[axis] = values.at(1).toDouble();
             grid.divisions[axis] = values.at(2).toInt();
         } else {
-            double lo = 0, hi = 0;
-            if (!d.atoms.isEmpty())
-                lo = hi = d.atoms.first().position[axis];
-            for (const auto &atom : d.atoms) {
-                lo = std::min(lo, atom.position[axis]);
-                hi = std::max(hi, atom.position[axis]);
-            }
-            grid.minimum[axis] = lo - pad;
-            grid.maximum[axis] = hi + pad;
-            grid.divisions[axis] = n;
+            grid.minimum[axis] = uniform.origin[axis];
+            grid.maximum[axis] = uniform.origin[axis] + uniform.divisions[axis] * uniform.spacing;
+            grid.divisions[axis] = uniform.divisions[axis];
         }
     }
     return grid;

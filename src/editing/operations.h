@@ -14,7 +14,8 @@ Ids duplicate(Document &d, const Ids &ids, const Vec &offset);
 // Atoms, bonds, residues, parts and coordination centers are merged; point charges and settings of
 // the fragment are not. A total charge equal to the formal charges follows the new sum.
 Ids insertFragment(Document &d, const Document &fragment);
-void mirror(Document &d, const Ids &ids, int axis);
+// Reflects whole molecules through the plane normal to `axis` that passes through `origin`.
+void mirror(Document &d, const Ids &ids, int axis, const Vec &origin = Vec::Zero());
 void invertCenter(Document &d, const QString &id);
 void switchEZ(Document &d, const Ids &ids);
 void proposeFragments(Document &d, const QString &target, const QString &mode);

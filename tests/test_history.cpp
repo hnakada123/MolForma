@@ -159,6 +159,107 @@ class HistoryTest : public QObject {
         QCOMPARE(historyStatus("running", true), "実行中");
         QVERIFY(!historyStatus("finished").contains("成功"));
     }
+    void logSummaryOfTasks() {
+        QTemporaryDir tmp;
+        const auto log = tmp.filePath("output.out");
+        // The last task's last energy; correlated methods print theirs after the SCF.
+        writeFile(log, " NWChem Input Module\n Total SCF energy = -75.0\n NWChem Input Module\n"
+                       " Total SCF energy = -75.5\n Total MP2 energy = -75.7\n NWChem Input Module\n");
+        auto s = nwchemLogSummary(log);
+        QCOMPARE(s["energy"].toDouble(), -75.7);
+        QCOMPARE(s["energy_method"].toString(), "MP2");
+        QCOMPARE(s["energy_source"].toString(), "final");
+        QVERIFY(!s["normal_termination"].toBool());
+        // Counterpoise: the corrected energy, not the last monomer's.
+        writeFile(log, " NWChem Input Module\n Total SCF energy = -149.9277\n Total SCF energy = -74.9644\n"
+                       "  Supermolecular energy =    -149.9277\n       Corrected energy =    -149.9276\n"
+                       " Total times  cpu: 1.0s\n");
+        s = nwchemLogSummary(log);
+        QCOMPARE(s["energy"].toDouble(), -149.9276);
+        QCOMPARE(s["energy_source"].toString(), "bsse_corrected");
+        QVERIFY(s["normal_termination"].toBool());
+        writeFile(log, "no energies\n");
+        QVERIFY(!nwchemLogSummary(log).contains("energy"));
+    }
+    void runSummaryAndProcessRecord() {
+        QTemporaryDir tmp;
+        auto d = water(tmp.filePath("jobs"));
+        setExecutionSetting(d, "environment",
+                            QJsonArray{QJsonObject{
+                                {"enabled", true}, {"name", "MOLFORMA_FAKE_MODE"}, {"value", "frequency"}}});
+        MainWindow w;
+        w.loadDocument(d);
+        auto *execution = widget<ExecutionPanel>(w, "executionTab");
+        execution->startCalculation();
+        const auto directory = execution->currentRun().plan().directory;
+        QTRY_VERIFY(!execution->running());
+        const auto m = parseJson(readFile(directory + "/run.json"));
+        QCOMPARE(m["host"].toString(), QSysInfo::machineHostName());
+        QVERIFY(m["pid"].toInteger() > 0);
+        QVERIFY(!executionProcessGone(QJsonObject{})); // Nothing recorded: not known to have ended.
+        // The frequency task's reference energy, not the displaced structure's at the end of the log.
+        QCOMPARE(m["summary"].toObject()["energy_source"].toString(), "frequency_reference");
+        const auto e = readHistoryEntry(directory);
+        QCOMPARE(*e.energy, -76.1);
+        QCOMPARE(e.energyMethod, "DFT");
+    }
+    void orphanedRecordsAndRepair() {
+#ifdef Q_OS_LINUX
+        QTemporaryDir tmp;
+        auto d = water(tmp.filePath("jobs"));
+        auto p = saveExecutionBundle(d, tmp.path());
+        writeFile(p.directory + "/output.out", " NWChem Input Module\n Total SCF energy = -74.9\n");
+        // Recorded as running by another MolForma whose process (here: this test) is alive.
+        const auto self = executionProcessIdentity(QCoreApplication::applicationPid());
+        for (auto it = self.begin(); it != self.end(); ++it)
+            p.manifest[it.key()] = it.value();
+        manifest(p, "running");
+        auto e = readHistoryEntry(p.directory);
+        QVERIFY(!e.orphaned);
+        QVERIFY(historyStatus(e.status, false, e.orphaned).contains("稼働未確認"));
+        QVERIFY_THROWS_EXCEPTION(std::exception, repairHistoryEntry(p.directory));
+        // Another computer: unknown. The same PID started at another time: a different process.
+        p.manifest["host"] = "elsewhere.invalid";
+        p.manifest["pid_start"] = "1";
+        manifest(p, "running");
+        QVERIFY(!readHistoryEntry(p.directory).orphaned);
+        p.manifest["host"] = self["host"];
+        manifest(p, "running");
+        QVERIFY(readHistoryEntry(p.directory).orphaned);
+        // A process that has ended.
+        QProcess done;
+        done.setWorkingDirectory(tmp.path());
+        done.start(QCoreApplication::applicationDirPath() + "/fake_nwchem", {});
+        QVERIFY(done.waitForStarted(10000));
+        p.manifest["pid"] = done.processId();
+        p.manifest.remove("pid_start");
+        QVERIFY(done.waitForFinished(10000));
+        manifest(p, "starting");
+        e = readHistoryEntry(p.directory);
+        QVERIFY(e.orphaned);
+        QVERIFY(historyStatus(e.status, false, e.orphaned).contains("中断"));
+        QVERIFY(!e.energy || *e.energy == -74.9);
+        // Repair from the history tab: the record says "interrupted", with the log's energy.
+        MainWindow w;
+        w.loadDocument(d);
+        showHistory(w);
+        auto *panel = widget<HistoryPanel>(w, "historyTab");
+        panel->selectDirectory(p.directory);
+        QTRY_VERIFY(!panel->scanning());
+        QVERIFY(widget<QPushButton>(w, "historyTrash")->isEnabled());
+        QVERIFY(widget<QPushButton>(w, "historyRepair")->isEnabled());
+        widget<QPushButton>(w, "historyRepair")->click();
+        QTRY_VERIFY(!panel->scanning());
+        e = readHistoryEntry(p.directory);
+        QCOMPARE(e.status, "interrupted");
+        QVERIFY(!e.orphaned);
+        QCOMPARE(*e.energy, -74.9);
+        QCOMPARE(parseJson(readFile(p.directory + "/run.json"))["summary"].toObject()["energy"].toDouble(),
+                 -74.9);
+        QVERIFY(!widget<QPushButton>(w, "historyRepair")->isEnabled());
+        QVERIFY(historyStatus("interrupted").contains("中断"));
+#endif
+    }
     void scanningCancellationAndInvalidRows() {
         QTemporaryDir tmp;
         const auto p = saveExecutionBundle(water(tmp.path()), tmp.path());

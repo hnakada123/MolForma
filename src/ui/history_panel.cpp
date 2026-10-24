@@ -55,10 +55,11 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     filter = new QComboBox;
     filter->setObjectName("historyFilter");
     filter->addItem("すべての状態", "");
-    for (const auto &s :
-         {"prepared", "running", "unconfirmed", "finished", "failed", "cancelled", "timed_out", "invalid"})
+    for (const auto &s : {"prepared", "running", "unconfirmed", "orphaned", "finished", "failed", "cancelled",
+                          "timed_out", "interrupted", "invalid"})
         filter->addItem(QString(s) == "running"       ? "このウィンドウで実行中"
                         : QString(s) == "unconfirmed" ? "稼働未確認"
+                        : QString(s) == "orphaned"    ? "中断・プロセスなし"
                                                       : historyStatus(s),
                         s);
     filters->addWidget(filter);
@@ -95,6 +96,9 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     connect(energyUnit, &QComboBox::currentIndexChanged, this, [this] { populate(false); });
     actions->addStretch();
     stop = button("選択した計算を停止", "historyStop");
+    repair = button("記録を修復", "historyRepair");
+    repair->setToolTip("このPCで実行中と記録されたまま、計算のプロセスが終了しているジョブの記録を"
+                       "「中断」に直し、ログからエネルギーを求めます。");
     trash = button("ごみ箱へ", "historyTrash");
     layout->addLayout(actions);
     status = new QLabel;
@@ -107,7 +111,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     table = new QTableWidget(0, 10);
     table->setObjectName("historyTable");
     table->setHorizontalHeaderLabels({"作成日時（ローカル）", "計算名", "手法 / 基底", "目的", "実行状態",
-                                      "最終検出E / Hartree", "経過 / 秒", "ΔE", "組成", "メモ"});
+                                      "計算のE / Hartree", "経過 / 秒", "ΔE", "組成", "メモ"});
     // Only the memo column is editable (double click or F2); the composition sits beside the name.
     table->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
     table->horizontalHeader()->moveSection(8, 2);
@@ -237,6 +241,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
         if (selectedDirectory() == activeDirectory())
             window->execution->stopCalculation();
     });
+    connect(repair, &QPushButton::clicked, this, [this] { window->safe([this] { repairSelected(); }); });
     connect(trash, &QPushButton::clicked, this, [this] { window->safe([this] { trashSelected(); }); });
     timer.setInterval(1000);
     connect(&timer, &QTimer::timeout, this, [this] {
@@ -355,9 +360,10 @@ void HistoryPanel::populate(bool reloadDetails) {
         for (const auto &e : entries) {
             const bool owned = e.directory == active;
             const bool uncertain =
-                !owned && QStringList{"starting", "running", "stopping"}.contains(e.status);
+                !owned && !e.orphaned && QStringList{"starting", "running", "stopping"}.contains(e.status);
             if (!state.isEmpty() && !(state == "running"       ? owned
                                       : state == "unconfirmed" ? uncertain
+                                      : state == "orphaned"    ? e.orphaned && !owned
                                                                : state == e.status))
                 continue;
             if (!(e.name + " " + e.method + " " + e.basis + " " + e.task + " " + e.directory)
@@ -373,7 +379,7 @@ void HistoryPanel::populate(bool reloadDetails) {
                 e.name,
                 e.method + " / " + e.basis,
                 e.task,
-                historyStatus(e.status, owned),
+                historyStatus(e.status, owned, e.orphaned),
                 e.energy ? QString::number(*e.energy, 'f', 10) + " (" + e.energyMethod + ")" : "—",
                 e.seconds < 0 ? "—" : QString::number(e.seconds),
                 delta ? QString::number(*delta, 'f', unit == "hartree" ? 8 : 3) +
@@ -405,7 +411,7 @@ void HistoryPanel::populate(bool reloadDetails) {
                 table->selectRow(row);
     }
     status->setText(
-        QString("%1 / %2 件　·　終了コード0は収束の保証ではありません。Eはログ末尾の最後の全エネルギーです。")
+        QString("%1 / %2 件　·　終了コード0は収束の保証ではありません。Eは最後のtaskの全エネルギーです。")
             .arg(table->rowCount())
             .arg(entries.size()));
     if (reloadDetails || selectedDirectory() != selected)
@@ -429,7 +435,7 @@ void HistoryPanel::showDetails() {
     }
     QStringList lines{e->name,
                       e->directory,
-                      "状態: " + historyStatus(e->status, e->directory == activeDirectory()),
+                      "状態: " + historyStatus(e->status, e->directory == activeDirectory(), e->orphaned),
                       "手法 / 基底: " + e->method + " / " + e->basis,
                       "目的: " + e->task,
                       "開始: " + e->manifest["started_at"].toString() +
@@ -441,8 +447,9 @@ void HistoryPanel::showDetails() {
     lines << e->warnings;
     if (!e->manifest["error"].toString().isEmpty())
         lines << "実行エラー: " + e->manifest["error"].toString();
-    lines << "\nエネルギーは末尾128 KiB内の最後のSCF/DFT/MP2/CCSD/CCSD(T)値です。収束値とは限りません。"
-             "異なる手法・基底・組成の値をそのまま比較しないでください。"
+    lines << "\nエネルギーは計算の終了時にログ全体から求めた、最後のtaskのSCF/DFT/MP2/CCSD/CCSD(T)値です"
+             "（振動数のtaskは参照構造の値、BSSEは補正後の値）。実行中・以前の記録はログ末尾128 KiB内の"
+             "最後の値です。収束値とは限りません。異なる手法・基底・組成の値をそのまま比較しないでください。"
              "\n再利用は保存した分子と条件を編集画面へ取り込みます。計算の開始は「5 実行設定」で行います。";
     text(summary, lines.join('\n'));
     for (auto pair : {qMakePair(input, "input.nw"), qMakePair(record, "run.json")}) {
@@ -475,8 +482,9 @@ void HistoryPanel::updateActions() {
     reuse->setEnabled(exists && e->valid && !window->hasCandidate() && !window->worker);
     stop->setEnabled(exists && e->directory == activeDirectory() &&
                      window->execution->currentRun().state() != "stopping");
-    trash->setEnabled(exists && e->valid && e->directory != activeDirectory() &&
-                      !QStringList{"starting", "running", "stopping"}.contains(e->status));
+    const bool pending = QStringList{"starting", "running", "stopping"}.contains(e ? e->status : QString());
+    repair->setEnabled(exists && e->valid && e->orphaned && e->directory != activeDirectory());
+    trash->setEnabled(exists && e->valid && e->directory != activeDirectory() && (!pending || e->orphaned));
     csv->setEnabled(table->rowCount() > 0);
     setReference->setEnabled(e && e->energy.has_value());
 }
@@ -542,6 +550,16 @@ void HistoryPanel::trashSelected() {
             QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
         return;
     trashHistoryEntry(directory, root, activeDirectory());
+    refresh();
+}
+void HistoryPanel::repairSelected() {
+    const auto directory = selectedDirectory();
+    if (directory.isEmpty())
+        return;
+    window->checkMcpPath(directory);
+    if (directory == activeDirectory())
+        fail("このウィンドウで実行中の計算です。");
+    repairHistoryEntry(directory);
     refresh();
 }
 void HistoryPanel::exportCsv(const QString &path) const {

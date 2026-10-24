@@ -140,14 +140,27 @@ void MainWindow::buildEditPanel() {
     f->addRow(deleteTerminate);
     button(f, "選択を削除（候補）", [this] { deleteAtoms(requireSelection()); }, "deletePreview");
     f = sub("寸法・立体");
+    // Rotation axis and mirror plane pass through the selected atoms' center, or the origin.
+    auto *pivot = choices(f, "回転・鏡映の中心", {"選択の中心", "原点"}, {"selection", "origin"});
+    pivot->setObjectName("transformPivot");
+    const auto around = [pivot](const Document &d, const Ids &ids) {
+        return value(pivot) == "origin" ? Vec(Vec::Zero()) : centroid(d, ids);
+    };
     auto *axis = choices(f, "回転軸", {"Z", "X", "Y"}, {"2", "0", "1"});
+    axis->setObjectName("rotationAxis");
     twist = number(f, "回転角 / °", 0, -360, 360);
-    button(f, "選択を回転", [this, axis] {
-        auto ids = requireSelection();
-        int ax = value(axis).toInt();
-        double a = twist->value();
-        edit("選択を回転", [=](Document &d) { transform(d, ids, rotation(Vec::Unit(ax), a)); });
-    });
+    twist->setObjectName("rotationAngle");
+    button(
+        f, "選択を回転",
+        [this, axis, around] {
+            auto ids = requireSelection();
+            int ax = value(axis).toInt();
+            double a = twist->value();
+            edit("選択を回転", [=](Document &d) {
+                transform(d, ids, rotation(Vec::Unit(ax), a), Vec::Zero(), around(d, ids));
+            });
+        },
+        "rotateSelection");
     button(f, "不斉中心を反転", [this] {
         auto id = requireSelection(1).first();
         edit("不斉中心を反転", [=](Document &d) { invertCenter(d, id); });
@@ -175,21 +188,26 @@ void MainWindow::buildEditPanel() {
         view->fit();
     });
     auto *plane = choices(f, "鏡映面", {"YZ", "XZ", "XY"}, {"0", "1", "2"});
+    plane->setObjectName("mirrorPlane");
     auto *copy = new QCheckBox("鏡像の写しを作る");
+    copy->setObjectName("mirrorCopy");
     f->addRow(copy);
-    button(f, "指定平面で鏡映", [this, plane, copy] {
-        auto ids = requireSelection();
-        int ax = value(plane).toInt();
-        bool makeCopy = copy->isChecked();
-        edit("鏡映", [=](Document &d) {
-            if (makeCopy) {
-                auto added = duplicate(d, ids, Vec(6, 0, 0));
-                mirror(d, added, ax);
-            } else
-                mirror(d, ids, ax);
-        });
-        view->fit();
-    });
+    button(
+        f, "指定平面で鏡映",
+        [this, plane, copy, around] {
+            auto ids = requireSelection();
+            int ax = value(plane).toInt();
+            bool makeCopy = copy->isChecked();
+            edit("鏡映", [=](Document &d) {
+                if (makeCopy) {
+                    auto added = duplicate(d, ids, Vec(6, 0, 0));
+                    mirror(d, added, ax, around(d, added));
+                } else
+                    mirror(d, ids, ax, around(d, ids));
+            });
+            view->fit();
+        },
+        "mirrorSelection");
     for (int i = 0; i < 3; ++i)
         duplicateFields[i] = number(f, QString("複製 ") + QString("XYZ")[i] + " / Å", i == 0 ? 3 : 0);
     button(

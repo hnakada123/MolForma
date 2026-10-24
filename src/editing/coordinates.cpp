@@ -67,7 +67,7 @@ QString coordinateText(const Atom &atom, CoordinateColumn column, CoordinateUnit
             return QString::number(atom.isotope);
         if (atom.mass <= 0)
             return {};
-        QString text = QString::number(atom.mass, 'g', 17);
+        QString text = QString::number(atom.mass, 'g', QLocale::FloatingPointShortest);
         if (!text.contains('.') && !text.contains('e'))
             text += ".0";
         return text;
@@ -182,14 +182,15 @@ QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragm
         fail(errors.join('\n'));
     if (document.atoms.isEmpty())
         fail("原子を追加するとNWChem座標を表示します。");
-    auto number = [](double value) { return QString::number(value, 'g', 17); };
+    // The shortest text that reads back as the same double: 0.758, not 0.75800000000000001.
+    auto number = [](double value) { return QString::number(value, 'g', QLocale::FloatingPointShortest); };
     QString text = fragmentComments
                        ? "# MolForma: geometry fragment; add basis, charge, method and task separately.\n"
                        : QString();
     text += QString("geometry %1units %2 nocenter noautosym%3")
                 .arg(options.name.isEmpty() ? QString() : options.name + ' ',
                      unit == CoordinateUnit::Bohr ? "au" : "angstrom",
-                     options.zcoord.isEmpty() ? " noautoz" : "");
+                     options.zcoord.isEmpty() && !options.autoz ? " noautoz" : "");
     if (unit == CoordinateUnit::Angstrom)
         text += " angstrom_to_au " + number(1. / BohrToAngstrom);
     text += '\n';

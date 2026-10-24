@@ -328,11 +328,20 @@ void InputPreviewPanel::refresh() {
     }
     copy->setEnabled(!pending && !contents.isEmpty());
     save->setEnabled(copy->isEnabled());
+    setBadge(!d.atoms.isEmpty() && !errors.isEmpty(), status->text());
+}
+void InputPreviewPanel::refreshBadge() {
+    const auto &d = window->displayDocument();
+    const auto errors = validateNwchem(d).errors;
+    setBadge(!d.atoms.isEmpty() && !errors.isEmpty(),
+             errors.isEmpty() ? QString("✓ 入力を生成できます")
+                              : QString("入力を生成できません（エラー %1 件）").arg(errors.size()));
+}
+void InputPreviewPanel::setBadge(bool failed, const QString &tip) {
     const int index = window->workspaceTabs->indexOf(this);
     if (index >= 0) {
-        window->workspaceTabs->tabBar()->setTabTextColor(
-            index, !d.atoms.isEmpty() && !errors.isEmpty() ? errorColor(palette()) : QColor());
-        window->workspaceTabs->setTabToolTip(index, status->text());
+        window->workspaceTabs->tabBar()->setTabTextColor(index, failed ? errorColor(palette()) : QColor());
+        window->workspaceTabs->setTabToolTip(index, tip);
     }
 }
 QString InputPreviewPanel::prepareExport() {

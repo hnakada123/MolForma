@@ -1,5 +1,6 @@
 #include "results/results.h"
 #include "editing/coordinates.h"
+#include "model/geometry.h"
 #include "results/molden_orbitals.h"
 #include <Eigen/Geometry>
 #include <QDataStream>
@@ -15,7 +16,7 @@
 namespace mf {
 namespace {
 constexpr qint64 maxBytes = 128 * 1024 * 1024;
-constexpr int maxAtoms = 2000, maxFrames = 2000, maxPoints = 2000000, maxTriangles = 100000;
+constexpr int maxAtoms = 2000, maxFrames = 2000, maxPoints = 2000000, maxTriangles = 500000;
 QStringList words(const QString &line) {
     static const QRegularExpression whitespace("\\s+");
     return line.split(whitespace, Qt::SkipEmptyParts);
@@ -110,6 +111,58 @@ void xyz(ResultData &r, const QStringList &lines) {
         addFrame(r, d, title);
     }
 }
+} // namespace
+bool NwchemEnergySummary::relevant(QByteArrayView line) {
+    return line.contains("energy") || line.contains("NWChem Input Module") ||
+           line.contains("Frequency Analysis") || line.contains("Total times");
+}
+void NwchemEnergySummary::add(const QString &line) {
+    static const QRegularExpression total(
+        R"(^\s*Total\s+(SCF|DFT|MP2|CCSD(?:\(T\))?)\s+energy\s*[:=]?\s*([-+0-9.eEdD]+)\s*$)",
+        QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression corrected(R"(^\s*Corrected energy\s*=\s*([-+0-9.eEdD]+)\s*$)");
+    const auto read = [](QString text, double &value) {
+        bool ok;
+        value = text.replace('D', 'E', Qt::CaseInsensitive).toDouble(&ok);
+        return ok && std::isfinite(value);
+    };
+    auto &task = tasks.last();
+    double value;
+    if (line.contains("NWChem Input Module")) {
+        if (task.energy || task.frequency)
+            tasks.append(Task{});
+    } else if (line.contains("NWChem Nuclear Hessian and Frequency Analysis"))
+        task.frequency = true;
+    else if (line.contains("Total times  cpu:"))
+        ended = true;
+    else if (!line.contains("energy"))
+        return;
+    else if (const auto m = total.match(line); m.hasMatch() && read(m.captured(2), value)) {
+        if (!task.energy) {
+            task.first = value;
+            task.firstMethod = m.captured(1).toUpper();
+        }
+        task.last = value;
+        task.lastMethod = m.captured(1).toUpper();
+        task.energy = true;
+    } else if (const auto c = corrected.match(line); c.hasMatch() && read(c.captured(1), value)) {
+        task.corrected = value;
+        task.bsse = true;
+    }
+}
+QJsonObject NwchemEnergySummary::energy() const {
+    for (auto it = tasks.crbegin(); it != tasks.crend(); ++it) {
+        if (!it->energy)
+            continue;
+        if (it->bsse)
+            return {{"hartree", it->corrected}, {"method", it->lastMethod}, {"source", "bsse_corrected"}};
+        if (it->frequency)
+            return {{"hartree", it->first}, {"method", it->firstMethod}, {"source", "frequency_reference"}};
+        return {{"hartree", it->last}, {"method", it->lastMethod}, {"source", "final"}};
+    }
+    return {};
+}
+namespace {
 void nwchem(ResultData &r, const QStringList &lines) {
     r.status = "正常終了マーカーなし（実行中・中断・不完全なログの可能性）";
     bool fatal = false, ended = false, recognized = false;
@@ -153,8 +206,10 @@ void nwchem(ResultData &r, const QStringList &lines) {
     QJsonArray shielding;
     int shieldingAtom = 0;
     QString shieldingElement;
+    NwchemEnergySummary summary;
     for (int i = 0; i < lines.size(); ++i) {
         const auto &line = lines[i];
+        summary.add(line);
         recognized |= line.contains("NWChem");
         // errquit prints its message, framed by dashes, just above "current input line :".
         if (line.trimmed().startsWith("current input line") && abort.isEmpty()) {
@@ -490,6 +545,8 @@ void nwchem(ResultData &r, const QStringList &lines) {
         r.status = "エラー・未収束メッセージあり（ログを確認）";
     else if (ended)
         r.status = "正常終了マーカーあり（収束・全taskの成否はログを確認）";
+    if (const auto energy = summary.energy(); !energy.isEmpty())
+        r.properties["final_energy"] = energy;
     r.warnings.removeDuplicates();
 }
 void mesh(ResultData &r, const QVector<double> &values, const Vec &origin, const Mat &axes);
@@ -617,14 +674,15 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
                 lo = lo.cwiseMin(atom.position);
                 hi = hi.cwiseMax(atom.position);
             }
-            lo.array() -= 3.;
-            hi.array() += 3.;
-            const Vec step = (hi - lo) / r.orbitalDivisions;
-            r.grid.fill(r.orbitalDivisions + 1);
-            const auto values = moldenOrbitalGrid(wavefunction, selected, lo, step, r.grid);
+            // The same grid as MolForma's CUBE output: 3 Å around the atoms, equal spacing.
+            const auto box = uniformGrid(lo.array() - 3., hi.array() + 3., r.orbitalDivisions);
+            const Vec step = Vec::Constant(box.spacing);
+            for (int axis = 0; axis < 3; ++axis)
+                r.grid[axis] = box.divisions[axis] + 1;
+            const auto values = moldenOrbitalGrid(wavefunction, selected, box.origin, step, r.grid);
             r.minimum = *std::min_element(values.cbegin(), values.cend());
             r.maximum = *std::max_element(values.cbegin(), values.cend());
-            mesh(r, values, lo, step.asDiagonal());
+            mesh(r, values, box.origin, step.asDiagonal());
             r.selectedOrbital = selected;
             r.orbitalNormalization = wavefunction.normalization;
             if (r.surface.isEmpty())
@@ -696,34 +754,62 @@ void mesh(ResultData &r, const QVector<double> &values, const Vec &origin, const
                                    {0, 0, 1}, {1, 0, 1}, {1, 1, 1}, {0, 1, 1}};
     static const int tetra[6][4]{{0, 1, 2, 6}, {0, 2, 3, 6}, {0, 3, 7, 6},
                                  {0, 7, 4, 6}, {0, 4, 5, 6}, {0, 5, 1, 6}};
-    auto add = [&](const Vec &a, const Vec &b, const Vec &c, bool positive) {
-        if ((b - a).cross(c - a).squaredNorm() < 1e-24)
+    using Vertex = std::pair<Vec, Vec>; // Position and normal.
+    auto add = [&](const Vertex &a, const Vertex &b, const Vertex &c, bool positive) {
+        if ((b.first - a.first).cross(c.first - a.first).squaredNorm() < 1e-24)
             return;
         if (r.surface.size() >= maxTriangles)
-            fail("等値面が10万三角形を超えました。等値を大きくするか格子を小さくしてください。");
-        r.surface.append({a, b, c, positive});
+            fail("等値面が50万三角形を超えました。等値を大きくするか格子を小さくしてください。");
+        r.surface.append({a.first, b.first, c.first, positive, a.second, b.second, c.second});
+    };
+    const auto &g = r.grid;
+    const auto at = [&](const std::array<int, 3> &i) {
+        return values[(qint64(i[0]) * g[1] + i[1]) * g[2] + i[2]];
+    };
+    // Gradient by central differences (one-sided on the faces of the grid), in Å⁻¹.
+    const Mat toWorld = axes.inverse().transpose();
+    const auto gradient = [&](const std::array<int, 3> &i) {
+        Vec d;
+        for (int axis = 0; axis < 3; ++axis) {
+            auto lo = i, hi = i;
+            lo[axis] = std::max(0, i[axis] - 1);
+            hi[axis] = std::min(g[axis] - 1, i[axis] + 1);
+            d[axis] = (at(hi) - at(lo)) / std::max(1, hi[axis] - lo[axis]);
+        }
+        return Vec(toWorld * d);
     };
     for (int x = 0; x < r.grid[0] - 1; ++x)
         for (int y = 0; y < r.grid[1] - 1; ++y)
             for (int z = 0; z < r.grid[2] - 1; ++z) {
-                std::array<Vec, 8> p;
+                std::array<Vec, 8> p, n;
                 std::array<double, 8> v;
                 for (int i = 0; i < 8; ++i) {
                     const int a = x + corners[i][0], b = y + corners[i][1], c = z + corners[i][2];
                     p[i] = origin + axes * Vec(a, b, c);
                     v[i] = values[(a * r.grid[1] + b) * r.grid[2] + c];
                 }
+                bool gradients = false;
                 for (bool positive : {true, false}) {
                     const double level = positive ? r.isovalue : -r.isovalue;
                     const auto bounds = std::minmax_element(v.begin(), v.end());
                     if (level < *bounds.first || level > *bounds.second)
                         continue;
+                    if (!gradients) {
+                        for (int i = 0; i < 8; ++i)
+                            n[i] = gradient({x + corners[i][0], y + corners[i][1], z + corners[i][2]});
+                        gradients = true;
+                    }
                     for (const auto &t : tetra) {
                         QVector<int> high, low;
                         for (int i : t)
                             (v[i] >= level ? high : low).append(i);
-                        auto cut = [&](int a, int b) -> Vec {
-                            return p[a] + (p[b] - p[a]) * ((level - v[a]) / (v[b] - v[a]));
+                        // Values fall outward from a positive lobe and rise outward from a negative one.
+                        auto cut = [&](int a, int b) -> Vertex {
+                            const double f = (level - v[a]) / (v[b] - v[a]);
+                            Vec normal = (n[a] + (n[b] - n[a]) * f) * (positive ? -1 : 1);
+                            const double length = normal.norm();
+                            normal = length > 0 && std::isfinite(length) ? Vec(normal / length) : Vec::Zero();
+                            return {p[a] + (p[b] - p[a]) * f, normal};
                         };
                         if (high.size() == 1 || low.size() == 1) {
                             const auto &one = high.size() == 1 ? high : low;
@@ -731,8 +817,8 @@ void mesh(ResultData &r, const QVector<double> &values, const Vec &origin, const
                             add(cut(one[0], three[0]), cut(one[0], three[1]), cut(one[0], three[2]),
                                 positive);
                         } else if (high.size() == 2) {
-                            const Vec a = cut(high[0], low[0]), b = cut(high[0], low[1]),
-                                      c = cut(high[1], low[0]), d = cut(high[1], low[1]);
+                            const Vertex a = cut(high[0], low[0]), b = cut(high[0], low[1]),
+                                         c = cut(high[1], low[0]), d = cut(high[1], low[1]);
                             add(a, b, c, positive);
                             add(b, d, c, positive);
                         }
@@ -878,7 +964,7 @@ void saveResultData(const QString &path, const ResultData &r) {
     QByteArray bytes;
     QDataStream s(&bytes, QIODevice::WriteOnly);
     s.setVersion(QDataStream::Qt_6_4);
-    s << QString("MolFormaResult3") << r.source << r.format << r.status << r.log << r.warnings;
+    s << QString("MolFormaResult4") << r.source << r.format << r.status << r.log << r.warnings;
     s << r.orbitalBasis << qint32(r.selectedOrbital) << qint32(r.orbitalFrame) << qint32(r.orbitalDivisions)
       << r.orbitalError << r.orbitalNormalization << r.normalizationRequest;
     auto doc = [&](const Document &d) { s << QJsonDocument(d.toJson()).toJson(QJsonDocument::Compact); };
@@ -907,6 +993,8 @@ void saveResultData(const QString &path, const ResultData &r) {
         vec(t.b);
         vec(t.c);
         s << t.positive;
+        for (const auto &normal : {t.na, t.nb, t.nc})
+            s << float(normal.x()) << float(normal.y()) << float(normal.z());
     }
     s << r.datasets << qint32(r.dataset) << r.isovalue << r.minimum << r.maximum;
     for (int n : r.grid)
@@ -928,7 +1016,7 @@ ResultData loadResultData(const QString &path) {
     s.setVersion(QDataStream::Qt_6_4);
     QString magic;
     s >> magic;
-    if (magic != "MolFormaResult3")
+    if (magic != "MolFormaResult4")
         fail("結果の転送形式が不正です。");
     ResultData r;
     s >> r.source >> r.format >> r.status >> r.log >> r.warnings;
@@ -987,6 +1075,13 @@ ResultData loadResultData(const QString &path) {
         t.b = vec();
         t.c = vec();
         s >> t.positive;
+        for (auto *normal : {&t.na, &t.nb, &t.nc}) {
+            float x, y, z;
+            s >> x >> y >> z;
+            *normal = Vec(x, y, z);
+            if (!normal->allFinite())
+                normal->setZero();
+        }
         r.surface << t;
     }
     qint32 dataset;

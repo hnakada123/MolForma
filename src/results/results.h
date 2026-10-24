@@ -7,6 +7,9 @@ namespace mf {
 struct SurfaceTriangle {
     Vec a, b, c;
     bool positive = true;
+    // Unit normals at a, b and c from the gradient of the field, pointing out of the lobe, for
+    // smooth shading; zero when unknown (the face normal is used then).
+    Vec na = Vec::Zero(), nb = Vec::Zero(), nc = Vec::Zero();
 };
 struct ResultFrame {
     Document molecule;
@@ -57,6 +60,30 @@ struct ResultData {
     bool orbitalBasis = false;
     int selectedOrbital = -1, orbitalFrame = -1, orbitalDivisions = 40;
     QString orbitalError, orbitalNormalization, normalizationRequest = "auto";
+};
+// The energy of a calculation, fed an NWChem log line by line: that of the last task with one; for
+// a frequency task the reference structure's (numerical Hessians print the energies of displaced
+// structures after it), for BSSE the corrected energy. NWChem reads the input again ("NWChem
+// Input Module") before each task.
+class NwchemEnergySummary {
+  public:
+    // Lines add() may use; others can be skipped without decoding them.
+    static bool relevant(QByteArrayView line);
+    void add(const QString &line);
+    // {"hartree", "method", "source": final|frequency_reference|bsse_corrected}; empty without one.
+    QJsonObject energy() const;
+    bool normalTermination() const {
+        return ended;
+    }
+
+  private:
+    struct Task {
+        double first = 0, last = 0, corrected = 0;
+        QString firstMethod, lastMethod;
+        bool energy = false, frequency = false, bsse = false;
+    };
+    QVector<Task> tasks{Task{}};
+    bool ended = false;
 };
 // Parsing/meshing is bounded and runs in a cancellable native process in the UI.
 ResultData readResult(const QString &path, double isovalue = .03, int dataset = 0, int orbital = -1,

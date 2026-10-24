@@ -102,8 +102,7 @@ const QVector<AdvancedOption> &nwchemAdvancedOptions() {
         numeric("driver_grms", "driver", "勾配のRMS / Hartree・Bohr⁻¹", "grms",
                 "最適化の勾配RMSの収束条件です。", "3 計算条件に従う", 1e-9, 0.1),
         numeric("driver_xmax", "driver", "変位の最大成分 / Bohr", "xmax",
-                "Cartesian変位の最大成分に対する収束条件です（入力は常にnoautozのCartesian座標）。",
-                "3 計算条件に従う", 1e-9, 1),
+                "Cartesian変位の最大成分に対する収束条件です。", "3 計算条件に従う", 1e-9, 1),
         numeric("driver_xrms", "driver", "変位のRMS / Bohr", "xrms",
                 "Cartesian変位のRMSに対する収束条件です。", "3 計算条件に従う", 1e-9, 1),
         numeric("driver_trust", "driver", "最適化のステップ幅 / Bohr", "trust",
@@ -113,6 +112,9 @@ const QVector<AdvancedOption> &nwchemAdvancedOptions() {
                 "HF等: 1e-7 / DFT: 5e-6", 1e-12, 1e-3),
         flag("driver_xyz", "driver", "最適化の各構造をXYZに出力", "xyz",
              "「3 計算条件」の計算名をファイル名の接頭辞に使用します。"),
+        flag("driver_cartesian", "driver", "Cartesian座標で最適化（noautoz）", "noautoz",
+             "固定原子・ゴーストのない最適化は、NWChemの自動内部座標（autoz）で行います。弱く結合した"
+             "錯体などで収束しにくい場合に、Cartesian座標へ切り替えます。"),
         {"freq_temperatures",
          "frequency",
          "熱化学の温度 / K",
@@ -194,15 +196,16 @@ const QVector<AdvancedOption> &nwchemAdvancedOptions() {
             "cube_padding", "visualization", "入力構造からの余白 / Å", "limitxyz units angstrom",
             "空欄の軸範囲は入力構造の最小・最大座標にこの余白を加えます。最適化後の範囲を自動追跡しません。",
             "3", 0.1, 100),
-        numeric("cube_divisions", "visualization", "各軸の分割数", "limitxyz",
-                "格子点数は各軸で分割数+1です。X/Y/Zの個別指定を優先します。全体で200万格子点まで。", "40", 1,
-                1000, true),
+        numeric("cube_divisions", "visualization", "最長辺の分割数", "limitxyz",
+                "格子間隔は全軸で同じで、最も長い辺をこの数で分割します（各軸の格子点数は分割数+1）。"
+                "X/Y/Zの個別指定を優先します。全体で200万格子点まで。",
+                "40", 1, 1000, true),
         {"cube_x",
          "visualization",
          "X範囲・分割数",
          "limitxyz X",
          "最小値 最大値 分割数を空白区切りで指定。座標はÅ。例: -3 3 40。",
-         "入力構造＋余白 / 各軸の分割数",
+         "入力構造＋余白・共通の格子間隔",
          AdvancedKind::GridAxis,
          -100000,
          100000,
@@ -212,7 +215,7 @@ const QVector<AdvancedOption> &nwchemAdvancedOptions() {
          "Y範囲・分割数",
          "limitxyz Y",
          "最小値 最大値 分割数を空白区切りで指定。座標はÅ。例: -3 3 40。",
-         "入力構造＋余白 / 各軸の分割数",
+         "入力構造＋余白・共通の格子間隔",
          AdvancedKind::GridAxis,
          -100000,
          100000,
@@ -222,7 +225,7 @@ const QVector<AdvancedOption> &nwchemAdvancedOptions() {
          "Z範囲・分割数",
          "limitxyz Z",
          "最小値 最大値 分割数を空白区切りで指定。座標はÅ。例: -3 3 40。",
-         "入力構造＋余白 / 各軸の分割数",
+         "入力構造＋余白・共通の格子間隔",
          AdvancedKind::GridAxis,
          -100000,
          100000,
@@ -265,6 +268,8 @@ bool nwchemAdvancedApplies(const AdvancedOption &o, const Document &d) {
         return task.contains("frequencies") && nwchemNumericalFrequencies(d);
     if (o.key == "hessian_thresh")
         return task.contains("frequencies") && !nwchemNumericalFrequencies(d);
+    if (o.key == "driver_cartesian") // Constraints and relaxed scans need internal coordinates.
+        return nwchemDriverTask(s) && task != "scan" && s["constraints"].toArray().isEmpty();
     if (o.group == "scf")
         return method != "dft";
     if (o.group == "dft")
@@ -446,7 +451,7 @@ QString nwchemAdvancedLines(const Document &d, const QString &group) {
         // These replace existing directives, or need structured output below.
         if (QStringList{"scf_thresh", "dft_energy", "dft_density", "dft_gradient", "dft_grid_nodisk",
                         "corr_freeze", "cc_thresh", "vectors_guess", "vectors_input", "vectors_output",
-                        "freq_animate", "hessian_thresh", "driver_xyz"}
+                        "freq_animate", "hessian_thresh", "driver_xyz", "driver_cartesian"}
                 .contains(o.key))
             continue;
         if (o.kind == AdvancedKind::Flag) {

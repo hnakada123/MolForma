@@ -279,7 +279,6 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
         } else
             updateRun();
     });
-    connect(window->history(), &QUndoStack::indexChanged, this, &ExecutionPanel::refresh);
 }
 QString ExecutionPanel::baseDirectory() const {
     return window->path.isEmpty() ? QDir::currentPath() : QFileInfo(window->path).absolutePath();
@@ -345,6 +344,8 @@ void ExecutionPanel::editEnvironment() {
     change("environment", rows);
 }
 void ExecutionPanel::commitPendingEdits() {
+    // A stale tab first catches up, dropping typing that an eager refresh would have replaced.
+    window->refreshPanel(this);
     if (auto *focused = QApplication::focusWidget(); focused && isAncestorOf(focused))
         focused->clearFocus();
     editEnvironment();

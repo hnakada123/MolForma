@@ -226,7 +226,6 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
     connect(search, &QLineEdit::textChanged, this, &AdvancedPanel::filterRows);
     connect(filter, &QComboBox::currentIndexChanged, this, &AdvancedPanel::filterRows);
     connect(category, &QComboBox::currentIndexChanged, this, &AdvancedPanel::filterRows);
-    connect(window->history(), &QUndoStack::indexChanged, this, &AdvancedPanel::refresh);
 }
 void AdvancedPanel::change(const QString &key, const QJsonValue &value) {
     if (busy || window->hasCandidate() || window->worker ||

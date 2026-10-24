@@ -1040,6 +1040,13 @@ void ResultsPanel::display(bool orbitalOnly) {
         info += QString("最終表示構造: %1（%2原子）\n")
                     .arg(data.frames.last().molecule.formula())
                     .arg(data.frames.last().molecule.atoms.size());
+    if (const auto final = data.properties["final_energy"].toObject(); !final.isEmpty())
+        info += "計算のエネルギー: " + final["method"].toString() + " " + real(final["hartree"].toDouble()) +
+                " Eh（" +
+                (final["source"] == "frequency_reference" ? QString("振動数の参照構造")
+                 : final["source"] == "bsse_corrected"    ? QString("BSSE補正後")
+                                                          : QString("最後のtask")) +
+                "）\n";
     if (!data.energies.isEmpty())
         info += "最後の記録: " + data.energies.last().method + " " + real(data.energies.last().hartree) +
                 " Eh\nエネルギーは出力順です。最適化ステップとの1対1対応ではありません。\n";

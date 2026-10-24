@@ -46,7 +46,8 @@ class HistoryPanel : public QWidget {
     QTabWidget *details;
     QPlainTextEdit *summary, *input, *output, *errors, *record;
     QLabel *status;
-    QPushButton *cancel, *refreshButton, *reuse, *viewer, *folder, *stop, *trash, *csv, *setReference;
+    QPushButton *cancel, *refreshButton, *reuse, *viewer, *folder, *stop, *repair, *trash, *csv,
+        *setReference;
     const HistoryEntry *selectedEntry() const;
     QString activeDirectory() const;
     void populate(bool reloadDetails = true);
@@ -55,5 +56,6 @@ class HistoryPanel : public QWidget {
     void updateLogs();
     void openResult();
     void trashSelected();
+    void repairSelected();
 };
 } // namespace mf

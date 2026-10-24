@@ -40,6 +40,12 @@ ExecutionPlan executionPreviewPlan(const Document &document, const QString &proj
 QString executionCommand(const ExecutionPlan &plan);
 ExecutionPlan saveExecutionBundle(const Document &document, const QString &projectDirectory,
                                   bool forRun = false);
+// Where a run's process lives, recorded in run.json when it starts: host, boot ID and, on Linux,
+// the process start time, so a reused PID is not taken for the run.
+QJsonObject executionProcessIdentity(qint64 pid);
+// For a record left as starting/running/stopping: true when its process is known to have ended
+// (recorded on this host, and the PID is gone or reused, or the system restarted since).
+bool executionProcessGone(const QJsonObject &manifest);
 // One immutable calculation snapshot per run. Results never modify the editor document.
 class NwchemRun : public QObject {
     Q_OBJECT

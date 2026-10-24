@@ -195,7 +195,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | --- | --- |
 | `get_app_state` | 候補の有無、計算・結果読込の状態 |
 | `calculation` | NWChem実行・停止、入力一式の保存 |
-| `get_results` | 読込済み結果の要約（熱化学・双極子・最適化状態・スキャンとIRCの各点・BSSE・溶媒和・原子ごとのMulliken/ESP/RESP電荷・NMR遮蔽・分極率を含む `properties`）、構造列・エネルギー・軌道・振動数（並進・回転は `rigid`）・励起状態・最適化ステップ・変位・ログ |
+| `get_results` | 読込済み結果の要約（計算のエネルギー `final_energy`（最後のtask・振動数の参照構造・BSSE補正後）・熱化学・双極子・最適化状態・スキャンとIRCの各点・BSSE・溶媒和・原子ごとのMulliken/ESP/RESP電荷・NMR遮蔽・分極率を含む `properties`）、構造列・エネルギー・軌道・振動数（並進・回転は `rigid`）・励起状態・最適化ステップ・変位・ログ |
 | `results_action` | 結果ファイル・計算フォルダーの読込、再読込、読込の取消 |
 
 画面なしモードの計算と読込はバックグラウンドで進み、`calculation` / `results_action` はすぐに戻ります。完了はタスクか `get_app_state` で確認します。計算はMolFormaの終了（標準入力を閉じる）とともに停止します。結果の表示・再生・画像取得はGUIモードだけです。
@@ -217,7 +217,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `chemistry` | SMILES生成（置換）、SMILESからの断片の追加（`fragment`）、全体・局所整形、3D再生成、配座探索（`conformers`、最安定の配座を候補にする）、中止。結果は候補として確認 |
 | `calculation` | 入力一式の保存、NWChem実行・停止 |
 | `get_results` / `results_action` | 結果読込・取消、構造列・エネルギー・軌道・振動数・励起状態・最適化ステップ・変位・ログ取得、選択・再生・停止、XYZ保存、表示中の構造を文書の候補にする `apply_structure` |
-| `history_action` | 履歴の走査・取消、ジョブ選択・再利用・結果表示、ごみ箱への移動、絞り込まれた一覧のCSV保存 |
+| `history_action` | 履歴の走査・取消、ジョブ選択・再利用・結果表示、記録の修復（`repair`: このPCで実行中と記録されたままプロセスが終了したジョブを「中断」に直す）、ごみ箱への移動、絞り込まれた一覧のCSV保存 |
 
 引数の型と必須項目は `tools/list` のJSON Schemaを参照してください。全ツールは `content` のJSONテキストと `structuredContent` の両方を返します。画面取得は追加でMCPの `image` コンテンツを返します。引数や編集内容のエラーは `isError: true`、不正なJSON-RPCや未知のツールはプロトコルエラーを返します。
 

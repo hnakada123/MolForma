@@ -72,7 +72,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), settings("MolForm
     customParts = settings.value("parts").toJsonArray();
     buildUi();
     buildMenus();
-    connect(&undo, &QUndoStack::cleanChanged, this, [this] { refresh(); });
+    // Commands change the document in undo()/redo(); refresh once the stack index (and so the
+    // Undo/Redo texts) has moved. Saving only changes the title.
+    undo.setUndoLimit(100);
+    connect(&undo, &QUndoStack::indexChanged, this, [this] { refresh(); });
+    connect(&undo, &QUndoStack::cleanChanged, this, &MainWindow::refreshTitle);
     if (settings.value("startupWater", true).toBool())
         placeTemplate(doc, findTemplate("skeleton:water"), Vec::Zero());
     applyExecutionPreferences(doc);
@@ -93,6 +97,7 @@ MainWindow::~MainWindow() {
     execution->stopEditing();
     execution->shutdown();
     cancelWorker();
+    undo.disconnect(this); // ~QUndoStack signals while clearing, after later members are gone.
 }
 void MainWindow::safe(const std::function<void()> &operation) {
     try {
@@ -117,8 +122,9 @@ void MainWindow::setState(const Document &d, bool trusted) {
         trackExecution(doc, d);
     doc = d;
     candidate.reset();
-    selected.removeIf([&](auto id) { return !doc.contains(id); });
-    refresh();
+    const auto ids = doc.ids();
+    const QSet<QString> present(ids.begin(), ids.end());
+    selected.removeIf([&](const auto &id) { return !present.contains(id); });
 }
 void MainWindow::loadDocument(const Document &d) {
     cancelWorker();
@@ -131,16 +137,17 @@ void MainWindow::loadDocument(const Document &d) {
     refresh();
     view->fit();
 }
-void MainWindow::commit(const QString &name, const Document &next, bool remote) {
+bool MainWindow::commit(const QString &name, const Document &next, bool remote) {
     auto errors = next.validate();
     if (!errors.isEmpty())
         fail(errors.join('\n'));
     if (identity(doc) == identity(next))
-        return;
+        return false;
     undo.push(new DocumentCommand(this, name, next, remote || mcp.depth > 0));
     if (!keepSelection->isChecked())
         setSelection({});
     statusBar()->showMessage(name, 5000);
+    return true;
 }
 void MainWindow::edit(const QString &name, const std::function<void(Document &)> &operation, bool preview) {
     if (worker)
@@ -149,29 +156,31 @@ void MainWindow::edit(const QString &name, const std::function<void(Document &)>
         fail("先に変更候補を確定するか、取消してください。");
     Document next = doc;
     operation(next);
+    if (!preview) {
+        commit(name, next);
+        return;
+    }
     auto errors = next.validate();
     if (!errors.isEmpty())
         fail(errors.join('\n'));
     if (identity(next) == identity(doc))
         return;
-    if (preview) {
-        candidate = next;
-        candidateName = name;
-        candidateRemote = mcp.depth > 0;
-        refresh();
-        statusBar()->showMessage("候補を確認して確定してください。", 8000);
-    } else
-        commit(name, next);
+    candidate = next;
+    candidateName = name;
+    candidateRemote = mcp.depth > 0;
+    refresh();
+    statusBar()->showMessage("候補を確認して確定してください。", 8000);
 }
 void MainWindow::confirmCandidate() {
     if (!candidate)
         return;
-    Document next = *candidate;
-    QString name = candidateName;
-    candidate.reset();
-    // A person confirming an MCP candidate does not make the settings it carries trusted.
-    commit(name, next, candidateRemote);
-    refresh();
+    const Document next = *candidate;
+    // A person confirming an MCP candidate does not make the settings it carries trusted. The
+    // command clears the candidate; one that fails validation stays for the user to cancel.
+    if (!commit(candidateName, next, candidateRemote)) {
+        candidate.reset(); // Same as the document: nothing to record.
+        refresh();
+    }
 }
 void MainWindow::cancelCandidate() {
     candidate.reset();
@@ -468,10 +477,12 @@ void MainWindow::buildUi() {
     workspaceTabs->addTab(calculationHistory, "履歴");
     connect(execution, &ExecutionPanel::bundleChanged, calculationHistory, &HistoryPanel::notifyJob);
     connect(workspaceTabs, &QTabWidget::currentChanged, this, [this](int index) {
-        if (workspaceTabs->widget(index) == inputPreview) {
+        auto *page = workspaceTabs->widget(index);
+        if (page == inputPreview) {
             execution->commitPendingEdits();
-            inputPreview->refresh();
-        }
+            refreshPanel(inputPreview, true);
+        } else
+            refreshPanel(page);
     });
     // Candidate controls: a banner over the 3D view of "1 分子", and a bar below the tabs for the
     // other tabs. Colors come from the palette (tool-tip roles), so dark themes stay readable.
@@ -1024,8 +1035,10 @@ Ids MainWindow::expandedSelection(const Ids &ids) const {
     return out;
 }
 void MainWindow::setSelection(const Ids &ids) {
+    const auto present = displayDocument().ids();
+    const QSet<QString> atoms(present.begin(), present.end());
     selected = ids;
-    selected.removeIf([this](auto id) { return !displayDocument().contains(id); });
+    selected.removeIf([&](const auto &id) { return !atoms.contains(id); });
     view->setSelection(selected);
     refreshSelection();
 }
@@ -1213,9 +1226,7 @@ void MainWindow::refresh() {
                          .arg(d.job()["multiplicity"].toInt(1))
                          .arg(d.data["point_charges"].toArray().size())
                          .arg(candidate ? "  ·  変更候補" : ""));
-    setWindowTitle(QString("%1%2 — MolForma")
-                       .arg(path.isEmpty() ? "新規分子" : QFileInfo(path).fileName())
-                       .arg(undo.isClean() && !candidate ? "" : " *"));
+    refreshTitle();
     QStringList seq;
     residueList->clear();
     for (auto v : d.data["residues"].toArray()) {
@@ -1248,18 +1259,57 @@ void MainWindow::refresh() {
     refreshChargePanel();
     refreshing = false;
     refreshSelection();
-    coordinates->refresh();
-    calculation->refresh();
-    advanced->refresh();
-    execution->refresh();
-    inputPreview->refresh();
+    refreshPanels();
+}
+void MainWindow::refreshTitle() {
+    setWindowTitle(QString("%1%2 — MolForma")
+                       .arg(path.isEmpty() ? "新規分子" : QFileInfo(path).fileName())
+                       .arg(undo.isClean() && !candidate ? "" : " *"));
+}
+QList<QWidget *> MainWindow::workspacePanels() const {
+    return {coordinates, calculation, advanced, execution, inputPreview};
+}
+void MainWindow::refreshPanels() {
+    for (auto *panel : workspacePanels()) {
+        if (!panel)
+            continue;
+        // Hidden tabs of a shown window catch up when opened (or before MCP reads the GUI).
+        if (isVisible() && workspaceTabs->currentWidget() != panel) {
+            stalePanels.insert(panel);
+            if (panel == inputPreview)
+                inputPreview->refreshBadge();
+        } else
+            refreshPanel(panel, true);
+    }
+}
+void MainWindow::refreshPanel(QWidget *panel, bool always) {
+    if (!panel || (!always && !stalePanels.contains(panel)))
+        return;
+    stalePanels.remove(panel);
+    if (panel == coordinates)
+        coordinates->refresh();
+    else if (panel == calculation)
+        calculation->refresh();
+    else if (panel == advanced)
+        advanced->refresh();
+    else if (panel == execution)
+        execution->refresh();
+    else if (panel == inputPreview)
+        inputPreview->refresh();
+}
+void MainWindow::refreshStalePanels() {
+    for (auto *panel : workspacePanels())
+        refreshPanel(panel);
 }
 void MainWindow::refreshSelection() {
     const auto &d = displayDocument();
+    QHash<QString, int> index;
+    for (int i = 0; !selected.isEmpty() && i < d.atoms.size(); ++i)
+        index.insert(d.atoms[i].id, i);
     QStringList labels;
     for (const auto &id : selected)
-        if (d.contains(id))
-            labels << d.atom(id).element + QString::number(d.index(id) + 1);
+        if (const int i = index.value(id, -1); i >= 0)
+            labels << d.atoms[i].element + QString::number(i + 1);
     QString text = "選択順: " + labels.join(" → ");
     if (selected.size() >= 2 && selected.size() <= 4) {
         try {
@@ -1585,20 +1635,12 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
         workdir.reset();
         cancelWorkerButton->hide();
         refreshChargePanel();
-        coordinates->refresh();
-        calculation->refresh();
-        advanced->refresh();
-        execution->refresh();
-        inputPreview->refresh();
+        refreshPanels();
         QMessageBox::warning(this, "処理を起動できません", message);
     });
     running->start();
     refreshChargePanel();
-    coordinates->refresh();
-    calculation->refresh();
-    advanced->refresh();
-    execution->refresh();
-    inputPreview->refresh();
+    refreshPanels();
 }
 void MainWindow::cancelWorker() {
     if (!worker)
@@ -1614,16 +1656,8 @@ void MainWindow::cancelWorker() {
         cancelWorkerButton->hide();
     if (chargeEditor)
         refreshChargePanel();
-    if (coordinates)
-        coordinates->refresh();
-    if (calculation)
-        calculation->refresh();
-    if (advanced)
-        advanced->refresh();
-    if (execution)
-        execution->refresh();
-    if (inputPreview)
-        inputPreview->refresh();
+    if (workspaceTabs)
+        refreshPanels();
     statusBar()->showMessage("処理を中止しました。", 4000);
 }
 QStringList MainWindow::recentFiles() const {

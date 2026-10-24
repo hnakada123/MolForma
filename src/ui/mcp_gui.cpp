@@ -330,9 +330,11 @@ QJsonArray McpGui::tools() const {
          {"overwrite", boolean}},
         {"action"}, true);
     add("history_action",
-        "Scan/select/reuse/open/trash saved calculations, cancel a scan, or export history CSV. Reuse and "
-        "trash retain the normal GUI confirmation dialogs. Poll get_app_state and get_ui.",
-        {{"action", choice({"scan", "cancel", "select", "reuse", "open_results", "trash", "save_csv"})},
+        "Scan/select/reuse/open/repair/trash saved calculations, cancel a scan, or export history CSV. "
+        "Repair marks a record left running on this computer, whose process has ended, as interrupted. "
+        "Reuse and trash retain the normal GUI confirmation dialogs. Poll get_app_state and get_ui.",
+        {{"action",
+          choice({"scan", "cancel", "select", "reuse", "open_results", "repair", "trash", "save_csv"})},
          {"path", type("string")},
          {"overwrite", boolean}},
         {"action"}, true);
@@ -710,6 +712,7 @@ void McpGui::answer(const QString &key, const QString &choice) {
 }
 QJsonObject McpGui::call(const QString &name, const QJsonObject &args) {
     checkPaths(name, args);
+    window.refreshStalePanels(); // Hidden tabs must show the current document before they are read.
     if (name == "get_app_state")
         return state();
     if (name == "get_results")
@@ -823,6 +826,7 @@ QJsonObject McpGui::call(const QString &name, const QJsonObject &args) {
 }
 
 QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
+    window.refreshStalePanels();
     auto *modal = QApplication::activeModalWidget();
     QObject *object = args.contains("target") ? resolve(args["target"].toString()) : nullptr;
     auto *widget = qobject_cast<QWidget *>(object);
@@ -1202,6 +1206,8 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
                 p->reuseSelected();
             else if (action == "open_results")
                 p->openResult();
+            else if (action == "repair")
+                p->repairSelected();
             else if (action == "trash")
                 p->trashSelected();
         }

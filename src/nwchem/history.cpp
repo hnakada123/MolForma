@@ -1,18 +1,21 @@
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_execution.h"
+#include "results/results.h"
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <cmath>
 
 namespace mf {
 namespace {
 constexpr qint64 textLimit = 128 * 1024, projectLimit = 8 * 1024 * 1024;
-const QStringList states{"prepared", "starting", "running",   "stopping",
-                         "finished", "failed",   "cancelled", "timed_out"};
+const QStringList states{"prepared", "starting",  "running",   "stopping",   "finished",
+                         "failed",   "cancelled", "timed_out", "interrupted"};
 QString resolve(QString path, const QString &base) {
     if (path == "~")
         path = QDir::homePath();
@@ -78,13 +81,15 @@ QString historyChoice(const QString &key, const QString &value) {
             return c.label;
     return value;
 }
-QString historyStatus(const QString &s, bool owned) {
+QString historyStatus(const QString &s, bool owned, bool orphaned) {
     if (pending(s) && !owned)
-        return "稼働未確認（記録: " + s + "）";
+        return (orphaned ? "中断・プロセスなし（記録: " : "稼働未確認（記録: ") + s + "）";
     const QMap<QString, QString> names{
-        {"prepared", "入力保存済み"}, {"starting", "起動中"},          {"running", "実行中"},
-        {"stopping", "停止処理中"},   {"finished", "終了（コード0）"}, {"failed", "実行失敗"},
-        {"cancelled", "停止済み"},    {"timed_out", "時間制限"},       {"invalid", "記録を読めません"}};
+        {"prepared", "入力保存済み"},    {"starting", "起動中"},
+        {"running", "実行中"},           {"stopping", "停止処理中"},
+        {"finished", "終了（コード0）"}, {"failed", "実行失敗"},
+        {"cancelled", "停止済み"},       {"timed_out", "時間制限"},
+        {"invalid", "記録を読めません"}, {"interrupted", "中断（記録を修復）"}};
     return names.value(s, "不明");
 }
 HistoryEntry readHistoryEntry(const QString &directory) {
@@ -102,6 +107,7 @@ HistoryEntry readHistoryEntry(const QString &directory) {
         if (std::isfinite(seconds) && seconds >= 0 && seconds < 1e12)
             e.seconds = qint64(seconds);
         e.valid = true;
+        e.orphaned = pending(e.status) && executionProcessGone(e.manifest);
         auto calculation = e.manifest["calculation"].toObject();
         if (calculation.isEmpty()) {
             const auto project = parseJson(bytes(e.directory, "project.kgui.json", projectLimit));
@@ -133,7 +139,11 @@ HistoryEntry readHistoryEntry(const QString &directory) {
     } catch (const std::exception &error) {
         e.warnings << QString::fromUtf8(error.what());
     }
-    if (QFileInfo::exists(QDir(e.directory).filePath("output.out"))) {
+    if (const auto summary = e.manifest["summary"].toObject(); summary["energy"].isDouble()) {
+        e.energy = summary["energy"].toDouble();
+        e.energyMethod = summary["energy_method"].toString();
+    } else if (QFileInfo::exists(QDir(e.directory).filePath("output.out"))) {
+        // Older records and unfinished runs: the last energy in the end of the log.
         try {
             const auto text = historyText(e.directory, "output.out", true);
             static const QRegularExpression energy(
@@ -156,6 +166,51 @@ HistoryEntry readHistoryEntry(const QString &directory) {
         }
     }
     return e;
+}
+QJsonObject nwchemLogSummary(const QString &path) {
+    const QFileInfo info(path);
+    if (info.isSymLink() || !info.isFile())
+        fail("通常のファイルを指定してください: " + info.fileName());
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly))
+        fail(info.fileName() + ": " + f.errorString());
+    NwchemEnergySummary energy;
+    while (!f.atEnd()) {
+        const auto line = f.readLine(64 * 1024);
+        if (NwchemEnergySummary::relevant(line))
+            energy.add(QString::fromLatin1(line).trimmed());
+    }
+    if (f.error() != QFile::NoError)
+        fail(info.fileName() + ": " + f.errorString());
+    QJsonObject summary{{"normal_termination", energy.normalTermination()}};
+    if (const auto e = energy.energy(); !e.isEmpty()) {
+        summary["energy"] = e["hartree"];
+        summary["energy_method"] =
+            e["method"].toString() + (e["source"] == "bsse_corrected" ? "・BSSE補正" : "");
+        summary["energy_source"] = e["source"];
+    }
+    return summary;
+}
+void repairHistoryEntry(const QString &directory) {
+    auto m = manifest(directory);
+    if (!pending(m["status"].toString()) || !executionProcessGone(m))
+        fail("実行中の可能性がある記録は修復できません（このPCで記録され、プロセスが終了したものだけ）。");
+    m["status"] = "interrupted";
+    m["repaired_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    if (m["error"].toString().isEmpty())
+        m["error"] = "記録の更新前にMolFormaが終了し、計算のプロセスもありませんでした。";
+    try {
+        m["summary"] = nwchemLogSummary(QDir(directory).filePath("output.out"));
+    } catch (const std::exception &) {
+        m.remove("summary");
+    }
+    const auto path = QDir(directory).filePath("run.json");
+    if (QFileInfo(path).isSymLink())
+        fail("実行記録がシンボリックリンクです。");
+    QSaveFile file(path);
+    const auto bytes = QJsonDocument(m).toJson();
+    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
+        fail("実行記録を保存できません: " + file.errorString());
 }
 QString historyMemo(const QString &directory) {
     if (!QFileInfo::exists(QDir(directory).filePath("memo.txt")))
@@ -236,13 +291,13 @@ void trashHistoryEntry(const QString &directory, const QString &root, const QStr
         QFileInfo(info.absolutePath()).canonicalFilePath() != QFileInfo(root).canonicalFilePath())
         fail("このジョブフォルダーはごみ箱へ移動できません。");
     const auto m = manifest(directory);
-    if (pending(m["status"].toString()))
+    if (pending(m["status"].toString()) && !executionProcessGone(m))
         fail("稼働未確認・実行中のジョブは移動できません。");
     if (!QFile::moveToTrash(directory))
         fail("ごみ箱へ移動できません。保存先を確認してください。");
 }
 QString historyCsv(const QVector<HistoryEntry> &entries) {
-    QString text = "作成日時UTC,計算名,手法,基底,目的,記録状態,経過秒,最終検出エネルギーHartree,"
+    QString text = "作成日時UTC,計算名,手法,基底,目的,記録状態,経過秒,計算のエネルギーHartree,"
                    "エネルギー手法,フォルダー,組成,メモ\r\n";
     for (const auto &e : entries) {
         QStringList values{e.created.toUTC().toString(Qt::ISODateWithMs),

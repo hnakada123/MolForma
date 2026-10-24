@@ -32,6 +32,10 @@ QString nwchemFunctionalLabel(const QJsonObject &settings);
 QString nwchemFunctionalXc(const QString &value);
 // Tasks that run NWChem's DRIVER optimizer: minimizations, saddle searches and relaxed scans.
 bool nwchemDriverTask(const QJsonObject &settings);
+// Minimizations and saddle searches without fixed or ghost atoms run in NWChem's automatic internal
+// coordinates (AUTOZ), which usually take fewer steps; NWChem falls back to Cartesian coordinates
+// where it cannot build them (linear molecules). "driver_cartesian" in 4 詳細設定 keeps Cartesian.
+bool nwchemAutoz(const Document &document);
 // "距離 1–2" / "角度 1–2–3" / "二面角 1–2–3–4" with the current 1-based atom numbers.
 QString nwchemCoordinateLabel(const Document &document, const Ids &ids);
 // The bonded molecules that act as counterpoise (BSSE) monomers, in atom order.

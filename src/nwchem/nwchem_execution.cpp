@@ -1,4 +1,5 @@
 #include "nwchem/nwchem_execution.h"
+#include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_output.h"
@@ -11,10 +12,12 @@
 #include <QSaveFile>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QSysInfo>
 #include <QTemporaryDir>
 #include <QThread>
 #include <cmath>
 #ifdef Q_OS_UNIX
+#include <cerrno>
 #include <csignal>
 #include <unistd.h>
 #endif
@@ -57,6 +60,18 @@ void writeManifest(const ExecutionPlan &plan) {
     const auto bytes = QJsonDocument(plan.manifest).toJson();
     if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
         fail("実行記録を保存できません: " + file.errorString());
+}
+QString bootId() {
+    QFile f("/proc/sys/kernel/random/boot_id");
+    return f.open(QIODevice::ReadOnly) ? QString::fromLatin1(f.read(64)).trimmed() : QString();
+}
+// Start time of a process in clock ticks after boot (field 22 of /proc/<pid>/stat), or empty.
+QString processStart(qint64 pid) {
+    QFile f(QString("/proc/%1/stat").arg(pid));
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    const auto stat = QString::fromLatin1(f.read(4096));
+    return stat.mid(stat.lastIndexOf(')') + 2).split(' ').value(19);
 }
 QString executionRoot(const QJsonObject &s, const QString &base) {
     return absolutePath(s["job_root"].toString(), base);
@@ -369,6 +384,33 @@ ExecutionPlan saveExecutionBundle(const Document &d, const QString &base, bool f
     return plan;
 }
 
+QJsonObject executionProcessIdentity(qint64 pid) {
+    QJsonObject identity{{"host", QSysInfo::machineHostName()}, {"pid", pid}};
+    if (const auto boot = bootId(); !boot.isEmpty())
+        identity["boot_id"] = boot;
+    if (const auto start = processStart(pid); !start.isEmpty())
+        identity["pid_start"] = start;
+    return identity;
+}
+bool executionProcessGone(const QJsonObject &m) {
+#ifdef Q_OS_UNIX
+    if (m["host"].toString().isEmpty() || m["host"].toString() != QSysInfo::machineHostName())
+        return false;
+    const auto boot = bootId();
+    if (!boot.isEmpty() && !m["boot_id"].toString().isEmpty() && m["boot_id"].toString() != boot)
+        return true;
+    const qint64 pid = m["pid"].toInteger();
+    if (pid <= 0)
+        return false;
+    if (::kill(pid_t(pid), 0) == -1 && errno == ESRCH)
+        return true;
+    const auto start = processStart(pid);
+    return !start.isEmpty() && !m["pid_start"].toString().isEmpty() && start != m["pid_start"].toString();
+#else
+    Q_UNUSED(m);
+    return false;
+#endif
+}
 NwchemRun::NwchemRun(QObject *parent) : QObject(parent) {
 #ifdef Q_OS_UNIX
     process.setChildProcessModifier([] {
@@ -389,6 +431,9 @@ NwchemRun::NwchemRun(QObject *parent) : QObject(parent) {
     });
     connect(&process, &QProcess::started, this, [this] {
         groupId = process.processId();
+        const auto identity = executionProcessIdentity(groupId);
+        for (auto it = identity.begin(); it != identity.end(); ++it)
+            current.manifest[it.key()] = it.value();
         if (cancelling) {
             signalProcess(false);
             killTimer.start();
@@ -480,6 +525,11 @@ void NwchemRun::finish(int code, QProcess::ExitStatus exitStatus, const QString 
     current.manifest["exit_code"] = code;
     current.manifest["exit_status"] = exitStatus == QProcess::NormalExit ? "normal" : "crash";
     current.manifest["finished_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    try { // The whole log, once: the history list then needs no log reading.
+        current.manifest["summary"] = nwchemLogSummary(QDir(current.directory).filePath("output.out"));
+    } catch (const std::exception &) {
+        current.manifest.remove("summary");
+    }
     record();
     emit changed();
 }

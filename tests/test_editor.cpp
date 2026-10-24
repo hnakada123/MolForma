@@ -273,6 +273,79 @@ class EditorTest : public QObject {
         QVERIFY(listed.contains("選択を削除") && listed.contains("変更を確定") &&
                 listed.contains("すべて選択"));
     }
+    void hiddenTabsRefreshWhenOpened() {
+        MainWindow w;
+        QCOMPARE(w.history()->undoLimit(), 100);
+        w.loadDocument(Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n"));
+        w.show();
+        auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
+        auto *table = w.findChild<QTableWidget *>("coordinateTable");
+        auto *coordinates = tabs->widget(1);
+        QCOMPARE(table->item(0, 1)->text().toDouble(), 0.0);
+        // While "1 分子" is open the coordinate table waits; opening its tab brings it up to date.
+        w.edit("move", [](Document &d) { d.atoms[0].position.x() = 0.25; });
+        QCOMPARE(table->item(0, 1)->text().toDouble(), 0.0);
+        tabs->setCurrentWidget(coordinates);
+        QCOMPARE(table->item(0, 1)->text().toDouble(), 0.25);
+        // The open tab follows undo at once, once the Undo/Redo texts have moved too.
+        w.history()->undo();
+        QCOMPARE(table->item(0, 1)->text().toDouble(), 0.0);
+        QVERIFY(w.findChild<QPushButton *>("coordinateRedo")->isEnabled());
+        tabs->setCurrentIndex(0);
+        w.history()->redo();
+        QCOMPARE(table->item(0, 1)->text().toDouble(), 0.0);
+        w.refreshStalePanels(); // What McpGui does before it reads or drives the GUI.
+        QCOMPARE(table->item(0, 1)->text().toDouble(), 0.25);
+        // The input preview tab still shows when the input cannot be generated.
+        const int preview = 5;
+        QCOMPARE(tabs->tabText(preview), QString("6 入力プレビュー"));
+        w.edit("multiplicity", [](Document &d) { d.setJobValue("multiplicity", 2); });
+        QVERIFY(tabs->tabBar()->tabTextColor(preview).isValid());
+        QVERIFY(tabs->tabToolTip(preview).contains("エラー"));
+        w.history()->undo();
+        QVERIFY(!tabs->tabBar()->tabTextColor(preview).isValid());
+        // Selecting every atom selects every table row, keeping the click order.
+        tabs->setCurrentWidget(coordinates);
+        const auto ids = w.document().ids();
+        w.setSelection({ids[2], ids[0], ids[1]});
+        QCOMPARE(table->selectionModel()->selectedRows().size(), 3);
+        table->selectionModel()->select(table->model()->index(1, 0),
+                                        QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        QCOMPARE(w.canvas()->selection(), Ids{ids[1]});
+    }
+    void rotationAndMirrorAboutSelection() {
+        MainWindow w;
+        // A molecule away from the origin turns and reflects in place by default.
+        w.loadDocument(Document::fromXyz("3\nwater\nO 5 0 0\nH 5.758 0 0.504\nH 4.242 0 0.504\n"));
+        const auto ids = w.document().ids();
+        const Vec before = centroid(w.document(), ids);
+        w.setSelection(ids);
+        w.findChild<QDoubleSpinBox *>("rotationAngle")->setValue(90);
+        w.findChild<QPushButton *>("rotateSelection")->click();
+        QVERIFY((centroid(w.document(), ids) - before).norm() < 1e-9);
+        QVERIFY(std::abs(w.document().atom(ids[1]).position.y() - .758) < 1e-9);
+        auto *plane = w.findChild<QComboBox *>("mirrorPlane");
+        plane->setCurrentIndex(plane->findData("1")); // XZ: y → −y about the center
+        w.findChild<QPushButton *>("mirrorSelection")->click();
+        QVERIFY((centroid(w.document(), ids) - before).norm() < 1e-9);
+        QVERIFY(std::abs(w.document().atom(ids[1]).position.y() + .758) < 1e-9);
+        // The mirror-image copy stays 6 Å beside the original instead of jumping across the origin.
+        w.findChild<QCheckBox *>("mirrorCopy")->setChecked(true);
+        w.findChild<QPushButton *>("mirrorSelection")->click();
+        QCOMPARE(w.document().atoms.size(), 6);
+        Ids copy;
+        for (const auto &a : w.document().atoms)
+            if (!ids.contains(a.id))
+                copy << a.id;
+        QVERIFY((centroid(w.document(), copy) - before - Vec(6, 0, 0)).norm() < 1e-9);
+        // About the origin, as before.
+        w.history()->undo();
+        auto *pivot = w.findChild<QComboBox *>("transformPivot");
+        pivot->setCurrentIndex(pivot->findData("origin"));
+        w.findChild<QDoubleSpinBox *>("rotationAngle")->setValue(180);
+        w.findChild<QPushButton *>("rotateSelection")->click();
+        QVERIFY((centroid(w.document(), ids) - Vec(-before.x(), -before.y(), before.z())).norm() < 1e-9);
+    }
     void trackballZoomAndSliders() {
         MainWindow w;
         w.resize(1300, 900);

@@ -255,6 +255,29 @@ class ResultsTest : public QObject {
         QCOMPARE(loaded.steps.size(), 2);
         QCOMPARE(loaded.properties, r.properties);
     }
+    void calculationEnergyByTask() {
+        // Optimization, then numerical frequencies: the displaced structures' energies come last.
+        const QString log = "NWChem\n" + geometry() +
+                            "                                NWChem Input Module\n"
+                            "         Total DFT energy =    -76.42\n"
+                            "         Total DFT energy =    -76.43\n"
+                            "                                NWChem Input Module\n"
+                            "                   NWChem Nuclear Hessian and Frequency Analysis\n"
+                            "         Total DFT energy =    -76.43\n"
+                            "         Total DFT energy =    -76.4299\n"
+                            "                                NWChem Input Module\n";
+        auto r = readResult(save("frequencies.out", log));
+        QCOMPARE(r.energies.last().hartree, -76.4299);
+        auto energy = r.properties["final_energy"].toObject();
+        QCOMPARE(energy["hartree"].toDouble(), -76.43);
+        QCOMPARE(energy["method"].toString(), "DFT");
+        QCOMPARE(energy["source"].toString(), "frequency_reference");
+        // An energy task after it (e.g. a second level) is the calculation's energy again.
+        r = readResult(save("followup.out", log + "         Total CCSD(T) energy:    -76.30\n"));
+        energy = r.properties["final_energy"].toObject();
+        QCOMPARE(energy["hartree"].toDouble(), -76.30);
+        QCOMPARE(energy["source"].toString(), "final");
+    }
     void transferAndBounds() {
         auto r = readResult(save("transfer.cube", cubeText()), .25);
         auto path = files.filePath("result.bin");

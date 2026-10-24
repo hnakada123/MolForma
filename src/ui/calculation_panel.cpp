@@ -394,7 +394,6 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     split->setSizes({500, 650});
     connect(copy, &QPushButton::clicked, this, [this] { exportInput(false); });
     connect(save, &QPushButton::clicked, this, [this] { exportInput(true); });
-    connect(window->history(), &QUndoStack::indexChanged, this, [this] { refresh(); });
     // Labels for search and the list of changes: form rows, plus the fields with their own rows.
     for (const auto &[key, text] : {std::pair{"xc_custom", "任意のxc"},
                                     {"dielectric", "比誘電率"},

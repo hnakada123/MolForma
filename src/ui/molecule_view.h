@@ -150,6 +150,7 @@ class MoleculeView : public QWidget {
     };
     Document doc;
     Ids selected;
+    QSet<QString> selectedIds; // The same atoms, for lookups while drawing.
     QString tool = "select", colorMode = "element";
     Vec center = Vec::Zero();
     double scale = 65, depth = 0;

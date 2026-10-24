@@ -17,10 +17,18 @@ struct HistoryEntry {
     std::optional<double> energy;
     qint64 seconds = -1;
     bool valid = false;
+    bool orphaned = false; // Recorded as starting/running/stopping, but its process has ended.
 };
 QString historyRoot(const Document &document, const QString &baseDirectory);
 HistoryEntry readHistoryEntry(const QString &directory);
-QString historyStatus(const QString &status, bool owned = false);
+QString historyStatus(const QString &status, bool owned = false, bool orphaned = false);
+// Energy of a whole NWChem log, read once when a run ends (run.json "summary"): that of the last
+// task with one, the reference structure's for a frequency task, the corrected one for BSSE.
+// {"energy", "energy_method", "energy_source": final|frequency_reference|bsse_corrected,
+// "normal_termination"}; no "energy" if the log has none.
+QJsonObject nwchemLogSummary(const QString &path);
+// Marks an orphaned record (see HistoryEntry::orphaned) "interrupted", with its log summary.
+void repairHistoryEntry(const QString &directory);
 QString historyChoice(const QString &key, const QString &value);
 // Reads only fixed bundle filenames, rejects symlinks and bounds all reads.
 QString historyText(const QString &directory, const QString &name, bool tail = false);

@@ -1,6 +1,7 @@
 #pragma once
 #include "model/document.h"
 #include <Eigen/Geometry>
+#include <array>
 namespace mf {
 Vec unit(const Vec &v);
 Mat rotation(const Vec &axis, double degrees);
@@ -8,6 +9,16 @@ Mat alignVectors(const Vec &from, const Vec &to);
 std::pair<Mat, Vec> fitPoints(const QVector<Vec> &from, const QVector<Vec> &to);
 void transform(Document &d, const Ids &ids, const Mat &r = Mat::Identity(), const Vec &shift = Vec::Zero(),
                const Vec &origin = Vec::Zero());
+// A grid over [low, high] with the same spacing on every axis: `divisions` intervals along the
+// longest side; the other sides grow about their centers to whole intervals.
+struct UniformGrid {
+    Vec origin = Vec::Zero();
+    double spacing = 0;
+    std::array<int, 3> divisions{};
+};
+UniformGrid uniformGrid(const Vec &low, const Vec &high, int divisions);
+// Geometric center (unweighted mean position) of the atoms.
+Vec centroid(const Document &d, const Ids &ids);
 double measure(const Document &d, const Ids &ids);
 void setDimension(Document &d, const Ids &ids, double value);
 void orient(Document &d, const Ids &ids);

@@ -190,8 +190,13 @@ void VtkMoleculeRenderer::setSurface(const QVector<SurfaceTriangle> &triangles) 
         normal /= length;
         const int phase = triangle.positive ? 0 : 1;
         const vtkIdType first = points[phase]->GetNumberOfPoints();
-        for (const auto &point : {triangle.a, triangle.b, triangle.c}) {
+        // Normals of the field at the corners shade the surface smoothly across the triangles.
+        const std::array<std::pair<Vec, Vec>, 3> corners{
+            std::pair{triangle.a, triangle.na}, {triangle.b, triangle.nb}, {triangle.c, triangle.nc}};
+        for (const auto &[point, smooth] : corners) {
             points[phase]->InsertNextPoint(point.data());
+            const Vec n = smooth.isZero() ? normal : smooth;
+            normals[phase]->InsertNextTuple3(n.x(), n.y(), n.z());
             if (!s.hasSurface) {
                 s.surfaceLow = s.surfaceHigh = point;
                 s.hasSurface = true;
@@ -201,12 +206,11 @@ void VtkMoleculeRenderer::setSurface(const QVector<SurfaceTriangle> &triangles) 
         }
         const vtkIdType indices[] = {first, first + 1, first + 2};
         cells[phase]->InsertNextCell(3, indices);
-        normals[phase]->InsertNextTuple3(normal.x(), normal.y(), normal.z());
     }
     for (int i = 0; i < 2; ++i) {
         s.surfaces[i].data->SetPoints(points[i]);
         s.surfaces[i].data->SetPolys(cells[i]);
-        s.surfaces[i].data->GetCellData()->SetNormals(normals[i]);
+        s.surfaces[i].data->GetPointData()->SetNormals(normals[i]);
     }
     ++s.surfaceBuilds;
     s.updateBounds();

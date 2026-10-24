@@ -157,11 +157,7 @@ QJsonObject withBasisFunctions(QJsonObject settings) {
     settings.remove("spherical");
     return settings;
 }
-QString number(double n) {
-    return QString::number(n, 'g', 17);
-}
-// Values typed by the user (dielectric constant, constraint targets, IRC step): the shortest text
-// that reads back as the same double.
+// The shortest text that reads back as the same double (coordinates, charges, typed values).
 QString shortest(double n) {
     return QString::number(n, 'g', QLocale::FloatingPointShortest);
 }
@@ -330,6 +326,12 @@ QString nwchemFunctionalXc(const QString &value) {
     const auto *f = functional(value);
     return f ? QString(f->xc) : QString();
 }
+bool nwchemAutoz(const Document &d) {
+    const auto s = nwchemSettings(d);
+    return optimizationTask(s["task"].toString()) && s["constraints"].toArray().isEmpty() &&
+           !nwchemAdvanced(d)["driver_cartesian"].toBool() &&
+           std::none_of(d.atoms.begin(), d.atoms.end(), [](const Atom &a) { return a.fixed || a.ghost; });
+}
 bool nwchemDriverTask(const QJsonObject &settings) {
     const auto task = settings["task"].toString();
     return optimizationTask(task) || (task == "scan" && settings["scan_relaxed"].toBool());
@@ -443,7 +445,8 @@ QVector<NwchemChoice> nwchemChoices(const QString &key) {
                 {"spherical", "球面調和関数（5d・7f）"},
                 {"cartesian", "Cartesian（6d・10f）"}};
     if (key == "scf_convergence")
-        return {{"normal", "標準"}, {"tight", "厳密"}, {"verytight", "さらに厳密"}};
+        return {
+            {"default", "NWChem既定"}, {"normal", "標準"}, {"tight", "厳密"}, {"verytight", "さらに厳密"}};
     if (key == "opt_convergence")
         return {{"default", "標準"}, {"tight", "厳密"}, {"loose", "緩い"}};
     if (key == "grid")
@@ -882,6 +885,9 @@ NwchemValidation validateNwchem(const Document &d) {
     result.numericalFrequencies = nwchemNumericalFrequencies(d);
     if (frequencyTask(task) && result.numericalFrequencies)
         warnings << "振動数には数値Hessianを使用します。複数回の勾配計算を行います。";
+    if (frequencyTask(task) && s["scf_convergence"] == "default")
+        warnings << "SCF収束がNWChem既定のため、振動数（特に数値Hessian）の精度が不足することがあります。"
+                    "「厳密」を推奨します。";
     if (task == "frequencies")
         warnings << "現在の座標で振動数を計算します。極小構造の確認には先に最適化してください。";
     if (saddleTask(task))
@@ -1009,6 +1015,8 @@ QString methodBlocks(const Document &d, const QJsonObject &s, const NwchemValida
     auto str = [&](const char *key) { return s[key].toString(); };
     auto integer = [&](const char *key) { return QString::number(s[key].toInt()); };
     const auto method = str("method");
+    // "default" leaves NWChem's own thresholds, apart from those set in "4 詳細設定".
+    const bool own = str("scf_convergence") == "default";
     const QString threshold = str("scf_convergence") == "normal"  ? "1e-5"
                               : str("scf_convergence") == "tight" ? "1e-7"
                                                                   : "1e-9";
@@ -1022,11 +1030,16 @@ QString methodBlocks(const Document &d, const QJsonObject &s, const NwchemValida
         text += "  mult " + QString::number(d.job()["multiplicity"].toInt()) + '\n';
         if (check.reference == "uhf")
             text += "  odft\n";
-        text += "  iterations " + integer("scf_maxiter") + "\n  convergence energy " +
-                nwchemAdvancedNumber(d, "dft_energy", threshold) + " density " +
-                nwchemAdvancedNumber(d, "dft_density", threshold) + " gradient " +
-                nwchemAdvancedNumber(d, "dft_gradient", threshold) + "\n  grid " + str("grid") +
-                (advanced["dft_grid_nodisk"].toBool() ? " nodisk" : "") + '\n';
+        QString convergence;
+        for (const auto &[key, keyword] :
+             {std::pair{"dft_energy", "energy"}, std::pair{"dft_density", "density"},
+              std::pair{"dft_gradient", "gradient"}})
+            if (!own || advanced.contains(key))
+                convergence += QString(" ") + keyword + ' ' + nwchemAdvancedNumber(d, key, threshold);
+        text += "  iterations " + integer("scf_maxiter") + '\n';
+        if (!convergence.isEmpty())
+            text += "  convergence" + convergence + '\n';
+        text += "  grid " + str("grid") + (advanced["dft_grid_nodisk"].toBool() ? " nodisk" : "") + '\n';
         text += nwchemAdvancedLines(d, "dft") + nwchemAdvancedLines(d, "vectors");
         if (str("dispersion") != "none")
             text += str("dispersion") == "d3" ? "  disp vdw 3\n" : "  disp vdw 4\n";
@@ -1034,8 +1047,9 @@ QString methodBlocks(const Document &d, const QJsonObject &s, const NwchemValida
     } else {
         text += "\nscf\n  " + check.reference + "\n  nopen " +
                 QString::number(d.job()["multiplicity"].toInt() - 1) + "\n  maxiter " +
-                integer("scf_maxiter") + "\n  thresh " + nwchemAdvancedNumber(d, "scf_thresh", threshold) +
-                '\n';
+                integer("scf_maxiter") + '\n';
+        if (!own || advanced.contains("scf_thresh"))
+            text += "  thresh " + nwchemAdvancedNumber(d, "scf_thresh", threshold) + '\n';
         text += nwchemAdvancedLines(d, "scf") + nwchemAdvancedLines(d, "vectors") + "end\n";
         if (correlated(method)) {
             text += method == "mp2" ? "\nmp2\n" : "\nccsd\n";
@@ -1080,6 +1094,7 @@ QString nwchemInput(const Document &d) {
         NwchemGeometryOptions options;
         if (optimizationTask(task))
             options.zcoord = constraintLines(d, s, scale);
+        options.autoz = nwchemAutoz(d);
         text += nwchemGeometry(geometry, unit, false, options);
     }
     text += basisBlocks(d, s, s["bsse"].toBool());
@@ -1089,9 +1104,9 @@ QString nwchemInput(const Document &d) {
         for (const auto &value : d.data["point_charges"].toArray()) {
             const auto p = value.toObject();
             const auto xyz = vectorFromJson(p["position"]);
-            text +=
-                QString("  %1 %2 %3 %4\n")
-                    .arg(number(xyz.x()), number(xyz.y()), number(xyz.z()), number(p["charge"].toDouble()));
+            text += QString("  %1 %2 %3 %4\n")
+                        .arg(shortest(xyz.x()), shortest(xyz.y()), shortest(xyz.z()),
+                             shortest(p["charge"].toDouble()));
         }
         text += "end\n";
     }

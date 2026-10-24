@@ -487,7 +487,7 @@ Ids duplicate(Document &d, const Ids &ids, const Vec &offset) {
     d.invalidateAssignments();
     return added;
 }
-void mirror(Document &d, const Ids &ids, int axis) {
+void mirror(Document &d, const Ids &ids, int axis, const Vec &origin) {
     if (ids.isEmpty() || axis < 0 || axis > 2)
         fail("鏡映する分子を選択してください。");
     QSet<QString> selected(ids.begin(), ids.end());
@@ -497,7 +497,7 @@ void mirror(Document &d, const Ids &ids, int axis) {
                 fail("分子全体を選択して鏡映してください。");
     Mat r = Mat::Identity();
     r(axis, axis) = -1;
-    transform(d, ids, r);
+    transform(d, ids, r, Vec::Zero(), origin);
     for (const auto &id : ids) {
         auto &a = d.atom(id);
         if (a.stereo == "R")

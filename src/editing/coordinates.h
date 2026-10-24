@@ -28,6 +28,7 @@ QString zMatrixText(const Document &document);
 struct NwchemGeometryOptions {
     QString name;            // Named geometry (scan points); empty for NWChem's default "geometry".
     QStringList zcoord;      // ZCOORD internal coordinates; switches AUTOZ on so they can be constrained.
+    bool autoz = false;      // Leave AUTOZ on without ZCOORD (optimizations in internal coordinates).
     bool constraints = true; // CONSTRAINTS block with the fixed atoms.
 };
 // NWChem input fragment, not a complete calculation (basis/method/task are configured separately).

@@ -29,6 +29,12 @@ int main(int argc, char **argv) {
     std::fflush(stdout);
     std::fprintf(stderr, "fixture stderr\n");
     std::fflush(stderr);
+    if (mode == "frequency") {
+        // Optimization, then numerical frequencies: energies of displaced structures come last.
+        std::printf(" NWChem Input Module\n Total DFT energy = -76.1\n NWChem Input Module\n"
+                    " NWChem Nuclear Hessian and Frequency Analysis\n Total DFT energy = -76.1\n"
+                    " Total DFT energy = -76.09\n NWChem Input Module\n Total times  cpu: 1.0s\n");
+    }
     if (mode == "large") {
         const QByteArray output(200 * 1024, 'x');
         std::fwrite(output.constData(), 1, output.size(), stdout);

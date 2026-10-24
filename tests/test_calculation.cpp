@@ -66,6 +66,45 @@ class CalculationTest : public QObject {
         set(untitled, "title", "");
         QVERIFY(!nwchemInput(untitled).contains("\ntitle "));
     }
+    void internalCoordinatesConvergenceAndNumbers() {
+        // Optimizations without fixed or ghost atoms leave AUTOZ on; other tasks stay Cartesian.
+        auto d = water();
+        QVERIFY(nwchemInput(d).contains("nocenter noautosym noautoz "));
+        set(d, "task", "optimize_frequencies");
+        QVERIFY(nwchemAutoz(d));
+        QVERIFY(nwchemInput(d).contains("geometry units angstrom nocenter noautosym angstrom_to_au "));
+        set(d, "task", "optimize");
+        auto fixed = d;
+        fixed.atoms[0].fixed = true;
+        QVERIFY(!nwchemAutoz(fixed) && nwchemInput(fixed).contains(" noautoz "));
+        auto ghost = d;
+        ghost.atoms[2].ghost = true;
+        QVERIFY(!nwchemAutoz(ghost));
+        auto cartesian = d;
+        setNwchemAdvanced(cartesian, "driver_cartesian", true);
+        QVERIFY(!nwchemAutoz(cartesian) && nwchemInput(cartesian).contains(" noautoz "));
+        QVERIFY(!nwchemInput(cartesian).contains("  noautoz\n")); // Not a DRIVER directive.
+        set(d, "task", "irc");
+        QVERIFY(!nwchemAutoz(d));
+        // The shortest coordinates that read back as the same doubles.
+        QVERIFY(nwchemInput(water()).contains("\n  H 0.758 0 0.504\n  H -0.758 0 0.504\n"));
+        // "NWChem既定" leaves the SCF/DFT thresholds out, except those set in 4 詳細設定.
+        d = water();
+        set(d, "scf_convergence", "default");
+        auto text = nwchemInput(d);
+        QVERIFY(text.contains("  maxiter 100\nend\n") && !text.contains("thresh"));
+        set(d, "method", "dft");
+        set(d, "functional", "b3lyp");
+        text = nwchemInput(d);
+        QVERIFY(!text.contains("convergence") && text.contains("  iterations 100\n  grid "));
+        setNwchemAdvanced(d, "dft_energy", 1e-8);
+        QVERIFY(nwchemInput(d).contains("  convergence energy 1e-08\n"));
+        QVERIFY(!validateNwchem(d).warnings.join('\n').contains("NWChem既定"));
+        set(d, "task", "frequencies");
+        QVERIFY(validateNwchem(d).warnings.join('\n').contains("SCF収束がNWChem既定"));
+        set(d, "scf_convergence", "tight");
+        QVERIFY(nwchemInput(d).contains("  convergence energy 1e-08 density 1e-7 gradient 1e-7\n"));
+    }
     void dftFunctionalsAndTasks() {
         auto d = water();
         set(d, "method", "dft");
@@ -742,6 +781,7 @@ class CalculationTest : public QObject {
         MainWindow w;
         w.loadDocument(this->water());
         w.show();
+        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(2);
         auto *oxygen = w.findChild<QComboBox *>("nwchem_basis_O");
         QVERIFY(oxygen);
         oxygen->setCurrentIndex(oxygen->findData("cc-pvdz"));
