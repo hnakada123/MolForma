@@ -23,6 +23,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMessageBox>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPlainTextEdit>
@@ -34,6 +35,7 @@
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTableWidget>
+#include <QTextDocumentFragment>
 #include <QTextEdit>
 #include <QTreeView>
 #include <QValidator>
@@ -136,6 +138,38 @@ Qt::KeyboardModifiers modifiers(const QJsonObject &args) {
     }
     return result;
 }
+QString plainButtonText(const QAbstractButton *button) {
+    return QString(button->text()).remove('&');
+}
+QString toolTitle(const QString &name) {
+    static const QHash<QString, QString> titles{{"get_app_state", "Read application state"},
+                                                {"get_ui", "List GUI controls"},
+                                                {"get_ui_item", "Read GUI control"},
+                                                {"get_ui_command", "Poll GUI command"},
+                                                {"ui_activate", "Activate GUI control"},
+                                                {"ui_set_value", "Set GUI value"},
+                                                {"ui_select", "Select in GUI"},
+                                                {"ui_edit_cell", "Edit GUI cell"},
+                                                {"ui_input", "Send GUI input"},
+                                                {"ui_file_dialog", "Answer file dialog"},
+                                                {"capture_screenshot", "Capture screenshot"},
+                                                {"set_selection", "Select atoms"},
+                                                {"chemistry", "SMILES and refinement"},
+                                                {"calculation", "Run NWChem"},
+                                                {"get_results", "Read results"},
+                                                {"results_action", "Control result viewer"},
+                                                {"history_action", "Manage calculation history"}};
+    return titles.value(name);
+}
+QJsonObject commandSchema() {
+    return {{"type", "object"},
+            {"properties", QJsonObject{{"commandId", type("string")},
+                                       {"tool", type("string")},
+                                       {"action", type("string")},
+                                       {"state", choice({"queued", "running", "done", "failed"})},
+                                       {"error", type("string")}}},
+            {"required", QJsonArray{"commandId", "tool", "state"}}};
+}
 } // namespace
 
 McpGui::McpGui(MainWindow &w) : QObject(&w), window(w) {}
@@ -156,6 +190,9 @@ McpEditor McpGui::editor() {
     e.additionalTools = [this] { return tools(); };
     e.callAdditionalTool = [this](const QString &name, const QJsonObject &args) { return call(name, args); };
     e.baseDirectory = [this] { return window.execution->baseDirectory(); };
+    e.taskState = [this](const QString &commandId) { return task(commandId); };
+    e.pendingPrompt = [this] { return prompt(); };
+    e.answerPrompt = [this](const QString &key, const QString &choice) { answer(key, choice); };
     return e;
 }
 QJsonArray McpGui::tools() const {
@@ -168,8 +205,17 @@ QJsonArray McpGui::tools() const {
             properties["expectedRevision"] = type("string");
             required.append("expectedRevision");
         }
+        QJsonObject output;
+        if (mutation || name == "get_ui_command")
+            output = commandSchema();
+        if (name == "get_app_state")
+            output = QJsonObject{{"type", "object"},
+                                 {"required", QJsonArray{"selection", "candidate", "chemistryRunning",
+                                                         "calculation", "results", "history"}}};
         result.append(QJsonObject{{"name", name},
+                                  {"title", toolTitle(name)},
                                   {"description", description},
+                                  {"outputSchema", output},
                                   {"inputSchema", QJsonObject{{"type", "object"},
                                                               {"properties", properties},
                                                               {"required", required},
@@ -572,6 +618,8 @@ QJsonObject McpGui::enqueue(const QString &name, const QJsonObject &args) {
     const auto id = "command-" + QString::number(++nextCommand);
     const auto base = documentState();
     commands[id] = QJsonObject{{"commandId", id}, {"tool", name}, {"state", "queued"}};
+    if (args.contains("action"))
+        commands[id]["action"] = args["action"];
     commandOrder.append(id);
     // Never evict an in-flight command while a nested modal event loop is running.
     while (commandOrder.size() > 128) {
@@ -596,6 +644,76 @@ QJsonObject McpGui::enqueue(const QString &name, const QJsonObject &args) {
         }
     });
     return commands[id];
+}
+// A task follows its command and then the background work it starts, so a task for
+// "calculation start" completes when NWChem stops, not when the button returns.
+std::optional<QJsonObject> McpGui::task(const QString &commandId) const {
+    if (!commands.contains(commandId))
+        return std::nullopt;
+    const auto command = commands[commandId];
+    const auto state = command["state"].toString(), tool = command["tool"].toString(),
+               action = command["action"].toString();
+    if (state == "queued" || state == "running")
+        return QJsonObject{{"state", state}, {"message", tool + " is " + state + " in the GUI."}};
+    if (state == "failed")
+        return QJsonObject{{"state", "failed"}, {"error", command["error"]}};
+    const auto app = this->state();
+    QString section;
+    bool busy = false;
+    if (tool == "chemistry" && action != "cancel") {
+        section = "chemistryRunning";
+        busy = app["chemistryRunning"].toBool();
+    } else if (tool == "calculation" && action == "start") {
+        section = "calculation";
+        busy = app["calculation"].toObject()["active"].toBool();
+    } else if (tool == "results_action" &&
+               (action == "open_file" || action == "open_directory" || action == "reload")) {
+        section = "results";
+        busy = app["results"].toObject()["loading"].toBool();
+    } else if (tool == "history_action" && action == "scan") {
+        section = "history";
+        busy = app["history"].toObject()["scanning"].toBool();
+    }
+    if (busy)
+        return QJsonObject{{"state", "running"},
+                           {"message", tool + " " + action + " is running in the background."}};
+    auto result = command;
+    if (!section.isEmpty())
+        result["app"] = QJsonObject{{section, app[section]}, {"status", app["status"]}};
+    return QJsonObject{{"state", "done"}, {"result", result}};
+}
+QJsonObject McpGui::prompt() {
+    auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+    if (!box || !belongsTo(box, &window))
+        return {};
+    QJsonArray choices;
+    for (auto *button : box->buttons())
+        choices.append(plainButtonText(button));
+    QString message = box->windowTitle();
+    for (const auto &text : {box->text(), box->informativeText()})
+        if (!text.isEmpty())
+            message +=
+                (message.isEmpty() ? "" : "\n") +
+                (Qt::mightBeRichText(text) ? QTextDocumentFragment::fromHtml(text).toPlainText() : text);
+    // Handles are never reused, so each dialog gets a key that is unique for the task's lifetime.
+    return {{"key", "dialog-" + handle(box)}, {"message", message}, {"choices", choices}};
+}
+void McpGui::answer(const QString &key, const QString &choice) {
+    QPointer box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+    if (!box || prompt()["key"] != key)
+        return;
+    // Click after this RPC returns, so the dialog's nested event loop does not run inside it.
+    QTimer::singleShot(0, box, [box, choice] {
+        if (!box || !box->isVisible())
+            return;
+        for (auto *button : box->buttons())
+            if (!choice.isEmpty() && plainButtonText(button) == choice)
+                return button->click();
+        if (choice.isEmpty() && box->escapeButton())
+            return box->escapeButton()->click();
+        if (choice.isEmpty())
+            box->reject();
+    });
 }
 QJsonObject McpGui::call(const QString &name, const QJsonObject &args) {
     if (name == "get_app_state")

@@ -34,6 +34,23 @@ QByteArray message(const QString &method, QJsonObject params = {}, QJsonValue id
         request["id"] = id;
     return QJsonDocument(request).toJson(QJsonDocument::Compact);
 }
+// A modern request from a client declaring elicitation and/or the Tasks extension.
+QJsonObject clientCapabilities(bool elicitation, bool tasks) {
+    QJsonObject c;
+    if (elicitation)
+        c["elicitation"] = QJsonObject{{"form", QJsonObject{}}};
+    if (tasks)
+        c["extensions"] = QJsonObject{{McpTasksExtension, QJsonObject{}}};
+    return c;
+}
+QByteArray capable(const QString &method, QJsonObject params, const QJsonObject &capabilities,
+                   QJsonValue id = 1) {
+    auto meta = metadata();
+    meta["io.modelcontextprotocol/clientCapabilities"] = capabilities;
+    params["_meta"] = meta;
+    return QJsonDocument(QJsonObject{{"jsonrpc", "2.0"}, {"id", id}, {"method", method}, {"params", params}})
+        .toJson(QJsonDocument::Compact);
+}
 QJsonObject call(McpServer &server, const QString &name, QJsonObject args = {}) {
     return server.receive(message("tools/call", {{"name", name}, {"arguments", args}}));
 }
@@ -121,8 +138,8 @@ class McpTest : public QObject {
         QCOMPARE(list["id"].toString(), QString("list-1"));
         QVERIFY(list["result"].toObject()["tools"].toArray().size() >= 15);
         // CacheableResult hints are required on modern discovery, list and read results.
-        for (const auto &method :
-             {"server/discover", "tools/list", "resources/list", "resources/templates/list"}) {
+        for (const auto &method : {"server/discover", "tools/list", "resources/list",
+                                   "resources/templates/list", "prompts/list"}) {
             const auto cached = server.receive(message(method))["result"].toObject();
             QVERIFY2(cached["ttlMs"].isDouble() && cached["ttlMs"].toInt() >= 0, method);
             QCOMPARE(cached["cacheScope"].toString(), QString("private"));
@@ -132,7 +149,11 @@ class McpTest : public QObject {
         QCOMPARE(unsupported["error"].toObject()["code"].toInt(), -32022);
         QCOMPARE(unsupported["error"].toObject()["data"].toObject()["requested"].toString(),
                  QString("1900-01-01"));
-        QVERIFY(!server.receive(message("ping")).contains("error"));
+        // ping was removed from the stateless protocol; legacy clients keep it.
+        QCOMPARE(server.receive(message("ping"))["error"].toObject()["code"].toInt(), -32601);
+        const auto discovered = server.receive(message("server/discover"))["result"].toObject();
+        QVERIFY(discovered["capabilities"].toObject().contains("prompts"));
+        QVERIFY(!discovered["capabilities"].toObject().contains("extensions"));
         auto missing = metadata();
         missing.remove("io.modelcontextprotocol/clientCapabilities");
         QCOMPARE(server.receive(message("ping", {{"_meta", missing}}, 3, false))["error"]
@@ -142,7 +163,7 @@ class McpTest : public QObject {
         QCOMPARE(server.receive(message("tools/list", {}, 4, false))["error"].toObject()["code"].toInt(),
                  -32602);
         QCOMPARE(server.receive(message("unknown"))["error"].toObject()["code"].toInt(), -32601);
-        QCOMPARE(server.receive(message("prompts/list"))["error"].toObject()["code"].toInt(), -32601);
+        QCOMPARE(server.receive(message("completion/complete"))["error"].toObject()["code"].toInt(), -32601);
         // A second client may invoke a modern RPC without discovery.
         McpServer direct;
         QVERIFY(!direct.receive(message("tools/list")).contains("error"));
@@ -710,6 +731,314 @@ class McpTest : public QObject {
         QCOMPARE(window.document().envelope["future_field"].toString(), QString("new metadata"));
         QVERIFY(!failed(change(server, "history", {{"action", "undo"}})));
         QVERIFY(!window.document().envelope.contains("future_field"));
+    }
+    void toolMetadataAndPrompts() {
+        MainWindow w;
+        McpGui gui(w);
+        McpServer headless, guiServer(gui.editor());
+        for (auto *server : {&headless, &guiServer})
+            for (const auto &tool :
+                 server->receive(message("tools/list"))["result"].toObject()["tools"].toArray()) {
+                const auto t = tool.toObject();
+                QVERIFY2(!t["title"].toString().isEmpty(), qPrintable(t["name"].toString()));
+                QVERIFY(t["outputSchema"].isObject());
+            }
+        const auto names = [](McpServer &server) {
+            QStringList list;
+            for (const auto &p :
+                 server.receive(message("prompts/list"))["result"].toObject()["prompts"].toArray())
+                list << p.toObject()["name"].toString();
+            return list;
+        };
+        QCOMPARE(names(headless), QStringList({"review_candidate", "geometry_optimization"}));
+        QVERIFY(names(guiServer).contains("build_from_smiles") &&
+                names(guiServer).contains("frequency_analysis"));
+        const auto prompt = headless.receive(message(
+            "prompts/get",
+            {{"name", "geometry_optimization"},
+             {"arguments", QJsonObject{{"method", "dft"}, {"basis", "6-31g*"}, {"frequencies", "yes"}}}}));
+        const auto text = prompt["result"]
+                              .toObject()["messages"]
+                              .toArray()[0]
+                              .toObject()["content"]
+                              .toObject()["text"]
+                              .toString();
+        QVERIFY(text.contains("\"task\": \"optimize_frequencies\"") &&
+                text.contains("\"basis\": \"6-31g*\""));
+        QVERIFY(text.contains("export_document"));
+        const auto guiText =
+            guiServer
+                .receive(message("prompts/get", {{"name", "build_from_smiles"},
+                                                 {"arguments", QJsonObject{{"smiles", "C\"O"}}}}))["result"]
+                .toObject()["messages"]
+                .toArray()[0]
+                .toObject()["content"]
+                .toObject()["text"]
+                .toString();
+        QVERIFY(guiText.contains("\"C\\\"O\""));
+        for (const auto &bad :
+             {QJsonObject{{"name", "missing"}}, QJsonObject{{"name", "build_from_smiles"}},
+              QJsonObject{{"name", "geometry_optimization"}, {"arguments", QJsonObject{{"method", 1}}}}})
+            QCOMPARE(guiServer.receive(message("prompts/get", bad))["error"].toObject()["code"].toInt(),
+                     -32602);
+        // Legacy clients see the same prompts without cache hints.
+        McpServer legacy;
+        legacy.receive(message("initialize",
+                               {{"protocolVersion", McpLegacyVersion},
+                                {"capabilities", QJsonObject{}},
+                                {"clientInfo", QJsonObject{{"name", "test"}, {"version", "1"}}}},
+                               1, false));
+        legacy.receive(message("notifications/initialized", {}, QJsonValue::Undefined, false));
+        const auto legacyPrompts = legacy.receive(message("prompts/list", {}, 2, false))["result"].toObject();
+        QCOMPARE(legacyPrompts["prompts"].toArray().size(), 2);
+        QVERIFY(!legacyPrompts.contains("ttlMs"));
+    }
+    void saveFileElicitsOverwrite() {
+        McpServer server;
+        QVERIFY(!failed(change(
+            server, "place_template",
+            {{"templateId", "skeleton:water"}, {"position", QJsonArray{0, 0, 0}}, {"preview", false}})));
+        QTemporaryDir directory;
+        const auto path = directory.filePath("existing.kgui.json");
+        writeFile(path, "old");
+        const auto save = [&](const QJsonObject &caps, QJsonObject params = {}) {
+            params["name"] = "save_file";
+            params["arguments"] = scoped(server, {{"path", path}}, true);
+            return server.receive(capable("tools/call", params, caps));
+        };
+        // Without elicitation the explicit overwrite flag is still required.
+        QVERIFY(failed(save({})));
+        const auto asked = save(clientCapabilities(true, false))["result"].toObject();
+        QCOMPARE(asked["resultType"].toString(), QString("input_required"));
+        const auto request = asked["inputRequests"].toObject()["overwrite"].toObject();
+        QCOMPARE(request["method"].toString(), QString("elicitation/create"));
+        QCOMPARE(request["params"].toObject()["mode"].toString(), QString("form"));
+        const auto state = asked["requestState"].toString();
+        QVERIFY(!state.isEmpty());
+        QCOMPARE(readFile(path), QByteArray("old"));
+        const auto accept = QJsonObject{
+            {"overwrite", QJsonObject{{"action", "accept"}, {"content", QJsonObject{{"overwrite", true}}}}}};
+        // Tampered state and missing responses ask again instead of writing.
+        auto tampered = state;
+        tampered[0] = tampered[0] == 'A' ? 'B' : 'A';
+        QCOMPARE(save(clientCapabilities(true, false),
+                      {{"inputResponses", accept}, {"requestState", tampered}})["result"]
+                     .toObject()["resultType"]
+                     .toString(),
+                 QString("input_required"));
+        QCOMPARE(save(clientCapabilities(true, false), {{"requestState", state}})["result"]
+                     .toObject()["resultType"]
+                     .toString(),
+                 QString("input_required"));
+        const auto declined =
+            save(clientCapabilities(true, false),
+                 {{"inputResponses", QJsonObject{{"overwrite", QJsonObject{{"action", "decline"}}}}},
+                  {"requestState", state}});
+        QVERIFY(failed(declined));
+        QCOMPARE(readFile(path), QByteArray("old"));
+        const auto saved =
+            save(clientCapabilities(true, false), {{"inputResponses", accept}, {"requestState", state}});
+        QVERIFY2(!failed(saved), QJsonDocument(saved).toJson().constData());
+        QCOMPARE(saved["result"].toObject()["resultType"].toString(), QString("complete"));
+        QCOMPARE(Document::load(path).toJson(), committed(server).toJson());
+        // A state is bound to the document revision it was issued for.
+        QVERIFY(!failed(change(server, "translate",
+                               {{"ids", QJsonArray{committed(server).atoms[0].id}},
+                                {"offset", QJsonArray{1, 0, 0}},
+                                {"preview", false}})));
+        QCOMPARE(save(clientCapabilities(true, false),
+                      {{"inputResponses", accept}, {"requestState", state}})["result"]
+                     .toObject()["resultType"]
+                     .toString(),
+                 QString("input_required"));
+        QVERIFY(failed(server.receive(
+            capable("tools/call",
+                    {{"name", "save_file"},
+                     {"arguments", scoped(server, {{"path", path}, {"overwrite", false}}, true)}},
+                    clientCapabilities(true, false)))));
+        QCOMPARE(server
+                     .receive(capable("tools/call", {{"name", "list_documents"}, {"inputResponses", "x"}},
+                                      clientCapabilities(true, false)))["error"]
+                     .toObject()["code"]
+                     .toInt(),
+                 -32602);
+    }
+    void tasksAnswerGuiDialogs() {
+        MainWindow w;
+        w.show();
+        McpGui gui(w);
+        McpServer s(gui.editor());
+        QVERIFY(s.receive(message("server/discover"))["result"]
+                    .toObject()["capabilities"]
+                    .toObject()["extensions"]
+                    .toObject()
+                    .contains(McpTasksExtension));
+        QPushButton open("Open a modal", &w);
+        open.setObjectName("testTaskModal");
+        int answered = -1;
+        QString seenKey, plainMessage, taskId;
+        connect(&open, &QPushButton::clicked, &w, [&] {
+            QMessageBox dialog(QMessageBox::Question, "MCP task test", "Replace the selected structure?",
+                               QMessageBox::Yes | QMessageBox::No, &w);
+            QTimer::singleShot(20, &dialog, [&] {
+                // A client without elicitation is told how to answer through GUI tools instead.
+                const auto plain = s.receive(capable("tasks/get", {{"taskId", taskId}},
+                                                     clientCapabilities(false, true)))["result"]
+                                       .toObject();
+                QCOMPARE(plain["status"].toString(), QString("working"));
+                plainMessage = plain["statusMessage"].toString();
+                const auto polled = s.receive(capable("tasks/get", {{"taskId", taskId}},
+                                                      clientCapabilities(true, true)))["result"]
+                                        .toObject();
+                QCOMPARE(polled["status"].toString(), QString("input_required"));
+                const auto requests = polled["inputRequests"].toObject();
+                QCOMPARE(requests.size(), 1);
+                seenKey = requests.keys().first();
+                const auto params = requests[seenKey].toObject()["params"].toObject();
+                QVERIFY(params["message"].toString().contains("Replace the selected structure?"));
+                const auto choices = params["requestedSchema"]
+                                         .toObject()["properties"]
+                                         .toObject()["choice"]
+                                         .toObject()["enum"]
+                                         .toArray();
+                QVERIFY(choices.contains("No"));
+                const auto ack = s.receive(capable(
+                    "tasks/update",
+                    {{"taskId", taskId},
+                     {"inputResponses",
+                      QJsonObject{{"unknown", QJsonObject{{"action", "accept"}}},
+                                  {seenKey, QJsonObject{{"action", "accept"},
+                                                        {"content", QJsonObject{{"choice", "No"}}}}}}}},
+                    clientCapabilities(true, true)));
+                QCOMPARE(ack["result"].toObject()["resultType"].toString(), QString("complete"));
+            });
+            QTimer::singleShot(5000, &dialog, &QDialog::reject);
+            answered = dialog.exec();
+        });
+        const auto created = s.receive(capable(
+            "tools/call",
+            {{"name", "ui_activate"}, {"arguments", scoped(s, {{"target", "testTaskModal"}}, true)}},
+            clientCapabilities(true, true)))["result"]
+                                 .toObject();
+        QCOMPARE(created["resultType"].toString(), QString("task"));
+        QCOMPARE(created["status"].toString(), QString("working"));
+        QVERIFY(created["ttlMs"].isNull() && created["pollIntervalMs"].toInt() > 0);
+        taskId = created["taskId"].toString();
+        QTRY_COMPARE(answered, int(QMessageBox::No));
+        QVERIFY(plainMessage.contains("confirmation dialog"));
+        QJsonObject finished;
+        QTRY_COMPARE((finished = s.receive(capable("tasks/get", {{"taskId", taskId}},
+                                                   clientCapabilities(true, true)))["result"]
+                                     .toObject())["status"]
+                         .toString(),
+                     QString("completed"));
+        const auto result = finished["result"].toObject();
+        QVERIFY(!result["isError"].toBool());
+        QCOMPARE(result["structuredContent"].toObject()["state"].toString(), QString("done"));
+        QCOMPARE(finished["resultType"].toString(), QString("complete"));
+        QVERIFY(!finished["lastUpdatedAt"].toString().isEmpty());
+        // tasks/cancel acknowledges; clients without the extension or unknown IDs are rejected.
+        QCOMPARE(s.receive(capable("tasks/cancel", {{"taskId", taskId}},
+                                   clientCapabilities(false, true)))["result"]
+                     .toObject()["resultType"]
+                     .toString(),
+                 QString("complete"));
+        QCOMPARE(
+            s.receive(capable("tasks/get", {{"taskId", taskId}}, {}))["error"].toObject()["code"].toInt(),
+            -32021);
+        QCOMPARE(
+            s.receive(capable("tasks/get", {{"taskId", "nope"}}, clientCapabilities(false, true)))["error"]
+                .toObject()["code"]
+                .toInt(),
+            -32602);
+        // Without the extension the same tool keeps returning a pollable commandId.
+        const auto plain = data(change(s, "set_selection", {{"ids", QJsonArray{}}}));
+        QCOMPARE(plain["state"].toString(), QString("queued"));
+    }
+    void subprocessTaskTracksCalculation() {
+        QTemporaryDir files;
+        QProcess process;
+        auto env = QProcessEnvironment::systemEnvironment();
+        env.insert("QT_QPA_PLATFORM", "offscreen");
+        env.insert("MOLFORMA_RENDERER", "painter");
+        env.insert("XDG_CONFIG_HOME", files.filePath("settings"));
+        process.setProcessEnvironment(env);
+        process.start(QCoreApplication::applicationDirPath() + "/molforma", {"--mcp-gui"});
+        QVERIFY(process.waitForStarted());
+        QVERIFY(!failed(processCall(
+            process, "import_document",
+            {{"format", "xyz"}, {"text", "2\nH2\nH 0 0 0\nH 0 0 .74\n"}, {"preview", false}}, true)));
+        const auto configure = [&](const QString &mode) {
+            QVERIFY(!failed(processCall(
+                process, "set_execution",
+                {{"settings",
+                  QJsonObject{{"mode", "direct"},
+                              {"executable", QCoreApplication::applicationDirPath() + "/fake_nwchem"},
+                              {"job_root", files.filePath("jobs")},
+                              {"environment", QJsonArray{QJsonObject{{"enabled", !mode.isEmpty()},
+                                                                     {"name", "MOLFORMA_FAKE_MODE"},
+                                                                     {"value", mode}}}}}},
+                 {"preview", false}},
+                true)));
+        };
+        const auto caps = clientCapabilities(true, true);
+        const auto start = [&] {
+            process.write(message("tools/call", {{"name", "list_documents"}, {"arguments", QJsonObject{}}}) +
+                          '\n');
+            const auto doc = data(readReply(process))["documents"].toArray()[0].toObject();
+            process.write(capable("tools/call",
+                                  {{"name", "calculation"},
+                                   {"arguments", QJsonObject{{"documentId", doc["documentId"]},
+                                                             {"expectedRevision", doc["revision"]},
+                                                             {"action", "start"}}}},
+                                  caps) +
+                          '\n');
+            return readReply(process)["result"].toObject();
+        };
+        const auto poll = [&](const QString &taskId) {
+            process.write(capable("tasks/get", {{"taskId", taskId}}, caps) + '\n');
+            return readReply(process)["result"].toObject();
+        };
+        const auto finish = [&](const QString &taskId) {
+            QJsonObject task;
+            QElapsedTimer timer;
+            timer.start();
+            while ((task = poll(taskId))["status"] != "completed" && timer.elapsed() < 15000)
+                QTest::qWait(50);
+            return task;
+        };
+        // The task completes when NWChem stops, not when the start button returns.
+        configure({});
+        const auto created = start();
+        QCOMPARE(created["resultType"].toString(), QString("task"));
+        auto task = finish(created["taskId"].toString());
+        QCOMPARE(task["status"].toString(), QString("completed"));
+        auto calculation = task["result"]
+                               .toObject()["structuredContent"]
+                               .toObject()["app"]
+                               .toObject()["calculation"]
+                               .toObject();
+        QCOMPARE(calculation["state"].toString(), QString("finished"));
+        QVERIFY(!calculation["active"].toBool());
+        // A long run stays working until the GUI calculation is stopped.
+        configure("slow");
+        const auto slow = start()["taskId"].toString();
+        QElapsedTimer timer;
+        timer.start();
+        while (!(task = poll(slow))["statusMessage"].toString().contains("background") &&
+               timer.elapsed() < 10000)
+            QTest::qWait(50);
+        QCOMPARE(task["status"].toString(), QString("working"));
+        QCOMPARE(processCommand(process, "calculation", {{"action", "stop"}})["state"].toString(), "done");
+        task = finish(slow);
+        calculation = task["result"]
+                          .toObject()["structuredContent"]
+                          .toObject()["app"]
+                          .toObject()["calculation"]
+                          .toObject();
+        QCOMPARE(calculation["state"].toString(), QString("cancelled"));
+        process.closeWriteChannel();
+        QVERIFY(process.waitForFinished(10000));
     }
     void subprocess_data() {
         QTest::addColumn<QString>("mode");

@@ -27,6 +27,9 @@ class McpGui : public QObject {
     QJsonObject results(const QJsonObject &args) const;
     QByteArray documentState() const;
     QJsonObject enqueue(const QString &name, const QJsonObject &args);
+    std::optional<QJsonObject> task(const QString &commandId) const;
+    QJsonObject prompt();
+    void answer(const QString &key, const QString &choice);
     QJsonObject execute(const QString &name, const QJsonObject &args);
 };
 } // namespace mf
