@@ -1,5 +1,6 @@
 #include "nwchem/nwchem.h"
 #include "editing/coordinates.h"
+#include "model/geometry.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_output.h"
 #include <QRegularExpression>
@@ -50,6 +51,18 @@ bool basisCovers(const QString &basis, int z) {
         return z <= 57 || (z >= 72 && z <= 86);
     return false;
 }
+// Pople's 6-31G family is defined with Cartesian d shells (6d); the other library bases are
+// conventionally used with spherical harmonics (5d/7f), as in Gaussian's defaults.
+bool cartesianByConvention(const QString &basis) {
+    return basis == "6-31g" || basis == "6-31g*" || basis == "6-31g**";
+}
+// Earlier projects and presets stored a boolean "spherical"; read it as an explicit choice.
+QJsonObject withBasisFunctions(QJsonObject settings) {
+    if (!settings.contains("basis_functions") && settings["spherical"].isBool())
+        settings["basis_functions"] = settings["spherical"].toBool() ? "spherical" : "cartesian";
+    settings.remove("spherical");
+    return settings;
+}
 QString number(double n) {
     return QString::number(n, 'g', 17);
 }
@@ -69,7 +82,7 @@ QJsonObject nwchemDefaults() {
             {"reference", "auto"},
             {"functional", "b3lyp"},
             {"dispersion", "none"},
-            {"spherical", true},
+            {"basis_functions", "auto"},
             {"geometry_units", "angstrom"},
             {"scf_maxiter", 100},
             {"scf_convergence", "tight"},
@@ -85,7 +98,7 @@ QJsonObject nwchemDefaults() {
 }
 QJsonObject nwchemSettings(const Document &d) {
     auto settings = nwchemDefaults();
-    const auto stored = d.data["nwchem"].toObject();
+    const auto stored = withBasisFunctions(d.data["nwchem"].toObject());
     for (auto it = stored.begin(); it != stored.end(); ++it)
         settings[it.key()] = it.value();
     return settings;
@@ -116,6 +129,10 @@ QVector<NwchemChoice> nwchemChoices(const QString &key) {
             result << NwchemChoice{s, s};
         return result;
     }
+    if (key == "basis_functions")
+        return {{"auto", "自動（6-31G系はCartesian、他は球面）"},
+                {"spherical", "球面調和関数（5d・7f）"},
+                {"cartesian", "Cartesian（6d・10f）"}};
     if (key == "scf_convergence")
         return {{"normal", "標準"}, {"tight", "厳密"}, {"verytight", "さらに厳密"}};
     if (key == "opt_convergence")
@@ -144,7 +161,8 @@ QVector<NwchemPreset> nwchemPresets() {
             {"B3LYP-D3(BJ) / def2-SVP・最適化＋振動数", nwchemPresetSettings(dft)},
             {"MP2 / cc-pVDZ・エネルギー（内殻凍結）", nwchemPresetSettings(mp2)}};
 }
-QJsonObject nwchemPresetSettings(const QJsonObject &settings) {
+QJsonObject nwchemPresetSettings(const QJsonObject &stored) {
+    const auto settings = withBasisFunctions(stored);
     QJsonObject preset;
     const auto defaults = nwchemDefaults();
     for (auto it = defaults.begin(); it != defaults.end(); ++it)
@@ -221,7 +239,7 @@ NwchemValidation validateNwchem(const Document &d) {
     const auto method = str("method"), task = str("task"), basis = str("basis");
     const int mult = d.job()["multiplicity"].toInt(1);
     const int charge = d.job()["charge"].toInt();
-    int realAtoms = 0, fixed = 0, ghosts = 0;
+    int realAtoms = 0, fixed = 0, ghosts = 0, movable = 0;
     QSet<QString> unsupported;
     for (const auto &a : d.atoms) {
         int z;
@@ -236,6 +254,7 @@ NwchemValidation validateNwchem(const Document &d) {
         ghosts += a.ghost;
         if (!a.ghost) {
             ++realAtoms;
+            movable += !a.fixed;
             const int core = ecpCore(basis, z);
             result.ecpElectrons += core;
             result.electrons += z - core;
@@ -284,13 +303,17 @@ NwchemValidation validateNwchem(const Document &d) {
         errors << "COSMOはHFまたはDFTで使用してください。";
     if (str("solvent") == "cosmo" && ghosts)
         errors << "ゴーストを含むCOSMO入力は未対応です。";
+    if (str("solvent") == "cosmo" && method == "hf" && result.reference == "uhf")
+        errors << "NWChemのCOSMOはUHFに対応しません。参照を自動（ROHF）にするか、DFTを選択してください。";
     if (frequencyTask(task) && (ghosts || fixed))
         errors
             << "固定原子・ゴーストを含む振動数解析は未対応です。固定を解除し、実原子のみで設定してください。";
     if (frequencyTask(task) && realAtoms < 2)
         errors << "振動数解析には2個以上の実原子が必要です。";
-    if (optimizationTask(task) && fixed == d.atoms.size())
+    if (optimizationTask(task) && realAtoms && !movable)
         errors << "全原子が固定されています。最適化する原子の固定を解除してください。";
+    if (optimizationTask(task) && ghosts)
+        warnings << "ゴースト中心は核を持たないため、最適化中は固定します（constraints の fix atom）。";
     const bool points = !d.data["point_charges"].toArray().isEmpty();
     if (frequencyTask(task) && points && s["include_point_charges"].toBool())
         errors << "外部点電荷中の振動数解析は未対応です。";
@@ -301,6 +324,22 @@ NwchemValidation validateNwchem(const Document &d) {
         warnings << "現在の座標で振動数を計算します。極小構造の確認には先に最適化してください。";
     if (result.ecpElectrons)
         warnings << QString("def2-ECPを自動指定します（除去する内殻電子: %1）。").arg(result.ecpElectrons);
+    const auto functions = str("basis_functions");
+    if (functions != "auto" && basis != "sto-3g" &&
+        (functions == "cartesian") != cartesianByConvention(basis))
+        warnings << QString(
+                        "基底 %1 "
+                        "は通常%2で使用します。文献値と比べる場合はd・f関数の形式を「自動」にしてください。")
+                        .arg(basis, cartesianByConvention(basis) ? "Cartesian（6d）" : "球面調和関数（5d）");
+    if (frequencyTask(task))
+        if (const int sigma = rotationalSymmetryNumber(d); sigma > 1)
+            warnings << QString(
+                            "回転対称数σ=%1と推定されます。noautosymのためNWChemの熱化学はσ=1で計算されます。"
+                            "エントロピーを R ln σ = %2 cal/(mol·K) 小さく、自由エネルギーを RT ln σ = %3 "
+                            "kcal/mol（298.15 K）大きく補正してください。")
+                            .arg(sigma)
+                            .arg(1.987204 * std::log(sigma), 0, 'f', 3)
+                            .arg(0.0019872043 * 298.15 * std::log(sigma), 0, 'f', 3);
     if (charge != d.formalCharge())
         warnings << QString("全電荷 %1 は原子の形式電荷の合計 %2 と異なります。")
                         .arg(charge)
@@ -337,9 +376,15 @@ QString nwchemInput(const Document &d) {
     text += "memory total " + integer("memory_mb") + " mb\n";
     text += nwchemAdvancedLines(d, "files");
     text += "charge " + QString::number(d.job()["charge"].toInt()) + "\n\n";
+    Document geometry = d;
+    if (optimizationTask(task))
+        for (auto &a : geometry.atoms)
+            a.fixed |= a.ghost; // Ghost centers carry no nucleus; the driver would pull them around.
     text += nwchemGeometry(
-        d, str("geometry_units") == "bohr" ? CoordinateUnit::Bohr : CoordinateUnit::Angstrom, false);
-    text += s["spherical"].toBool() ? "\nbasis spherical\n" : "\nbasis cartesian\n";
+        geometry, str("geometry_units") == "bohr" ? CoordinateUnit::Bohr : CoordinateUnit::Angstrom, false);
+    const bool spherical = str("basis_functions") == "spherical" ||
+                           (str("basis_functions") == "auto" && !cartesianByConvention(basis));
+    text += spherical ? "\nbasis spherical\n" : "\nbasis cartesian\n";
     text += "  * library \"" + basis + "\"\n";
     QSet<QString> ghosts, ecps;
     for (const auto &a : d.atoms) {

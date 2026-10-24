@@ -79,6 +79,7 @@ class MainWindow : public QMainWindow {
         QJsonObject trustedExecution;
     } mcp;
     QString candidateName, path;
+    bool candidateRemote = false, workerRemote = false; // Candidate or worker started over MCP.
     Ids selected;
     QUndoStack undo;
     QSettings settings;
@@ -146,9 +147,11 @@ class MainWindow : public QMainWindow {
     void place(const QString &atom, const Vec &position);
     void atomClicked(const QString &id, Qt::KeyboardModifiers modifiers);
     Ids expandedSelection(const Ids &ids) const;
-    void setState(const Document &d);
+    void setState(const Document &d, bool trusted = true);
+    // Paths reached by an MCP-driven GUI action obey --mcp-allow-dir like the semantic tools.
+    void checkMcpPath(const QString &path) const;
     void trackExecution(const Document &before, const Document &after);
-    void commit(const QString &name, const Document &next);
+    void commit(const QString &name, const Document &next, bool remote = false);
     void newDocument();
     void open();
     bool save(bool as = false);

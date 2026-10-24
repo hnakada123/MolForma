@@ -4,6 +4,7 @@
 #include "mcp/stdio_transport.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
+#include "ui/history_panel.h"
 #include "ui/main_window.h"
 #include "ui/mcp_gui.h"
 #include <QApplication>
@@ -540,7 +541,11 @@ class McpTest : public QObject {
             processCommand(process, "chemistry", {{"action", "smiles"}, {"smiles", "O"}})["state"].toString(),
             "done");
         QTRY_VERIFY(data(processCall(process, "get_app_state"))["candidate"].toBool());
-        QVERIFY(!failed(processCall(process, "history", {{"action", "cancel"}}, true)));
+        QVERIFY(!failed(processCall(process, "history", {{"action", "confirm"}}, true)));
+        // SMILES replaces only the structure; execution settings and the charge stay consistent.
+        const auto kept = data(processCall(process, "get_execution"))["settings"].toObject();
+        QCOMPARE(kept["job_root"].toString(), root);
+        QCOMPARE(kept["environment"].toArray().size(), 1);
         process.closeWriteChannel();
         QVERIFY(process.waitForFinished(10000));
         QCOMPARE(process.exitCode(), 0);
@@ -1194,6 +1199,43 @@ class McpTest : public QObject {
         QTRY_COMPARE(data(call(s, "get_app_state", scoped(s)))["calculation"].toObject()["state"].toString(),
                      QString("finished"));
     }
+    void mcpEditsNeverBecomeTrusted() {
+        QTemporaryDir jobs;
+        MainWindow w;
+        w.show();
+        McpGui gui(w);
+        McpServer s(gui.editor());
+        QVERIFY(!failed(change(
+            s, "set_execution",
+            {{"settings", QJsonObject{{"mode", "direct"}, {"job_root", jobs.path()}}}, {"preview", false}})));
+        const auto refused = [&] {
+            const QJsonValue id = data(change(s, "calculation", {{"action", "start"}}))["commandId"];
+            QJsonObject command;
+            if (!QTest::qWaitFor([&] {
+                    command = data(call(s, "get_ui_command", scoped(s, {{"commandId", id}})));
+                    return command["state"] == "failed" || command["state"] == "done";
+                }))
+                return false;
+            return command["error"].toString().contains("MCPからはこの設定で実行できません");
+        };
+        auto project = w.document();
+        setExecutionSetting(project, "executable", QCoreApplication::applicationDirPath() + "/fake_nwchem");
+        // A person confirming an MCP candidate does not make the executable it carries trusted.
+        QVERIFY(!failed(change(s, "import_document",
+                               {{"format", "project"},
+                                {"text", QString::fromUtf8(QJsonDocument(project.project()).toJson())},
+                                {"preview", true}})));
+        QVERIFY(w.hasCandidate());
+        w.confirmCandidate();
+        QCOMPARE(executionSettings(w.document())["executable"],
+                 project.data["nwchem_execution"].toObject()["executable"]);
+        QVERIFY(refused());
+        // Nor does undoing and redoing that edit.
+        w.history()->undo();
+        w.history()->redo();
+        QVERIFY(refused());
+        QVERIFY(!data(call(s, "get_app_state", scoped(s)))["calculation"].toObject()["active"].toBool());
+    }
     void directoryRestriction() {
         QTemporaryDir allowed, outside;
         McpPolicy policy;
@@ -1211,6 +1253,9 @@ class McpTest : public QObject {
         QVERIFY(rejects(allowed.filePath("../escape.json")));
         QVERIFY(rejects(allowed.path() + "-sibling/file"));
         QVERIFY(rejects(outside.filePath("file.json")));
+        // "~" is expanded as execution expands it, even when the base directory is allowed.
+        QVERIFY(rejects("~/escape", allowed.path()));
+        QVERIFY(rejects("~", allowed.path()));
         QVERIFY(QFile::link(outside.path(), allowed.filePath("link")));
         QVERIFY(rejects(allowed.filePath("link/file.json")));
         QVERIFY(QFile::link(allowed.filePath("missing-target"), allowed.filePath("dangling")));
@@ -1229,6 +1274,9 @@ class McpTest : public QObject {
         QVERIFY(!failed(change(server, "open_file", {{"path", inside}, {"preview", false}})));
         QVERIFY(failed(
             change(server, "set_execution", {{"settings", QJsonObject{{"job_root", outside.path()}}}})));
+        QVERIFY(failed(
+            change(server, "set_execution",
+                   {{"settings", QJsonObject{{"job_root", "~/molforma-escape"}}}, {"preview", false}})));
         QVERIFY(!failed(
             change(server, "set_execution",
                    {{"settings", QJsonObject{{"job_root", allowed.filePath("jobs")}}}, {"preview", false}})));
@@ -1264,6 +1312,53 @@ class McpTest : public QObject {
             data(call(s, "get_ui_command", scoped(s, {{"commandId", accepted}})))["state"].toString(),
             QString("done"));
         QCOMPARE(dialog.result(), int(QDialog::Accepted));
+        // GUI actions that reach a path without a file dialog are checked too.
+        const auto refusedOverMcp = [&](const QString &target) {
+            // The outcome is shown in a modal message box; answer it from inside its event loop.
+            bool seen = false, refused = false;
+            QTimer poll;
+            poll.setInterval(10);
+            connect(&poll, &QTimer::timeout, &w, [&] {
+                if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                    seen = true;
+                    refused = box->text().contains("--mcp-allow-dir");
+                    box->done(QMessageBox::Ok);
+                }
+            });
+            poll.start();
+            if (failed(change(s, "ui_activate", {{"target", target}})))
+                return true;
+            return QTest::qWaitFor([&] { return seen; }) && refused;
+        };
+        // Ctrl+S writes to the opened project path.
+        const auto kept = outside.filePath("kept.kgui.json");
+        QVERIFY(QFile::copy(inside, kept));
+        w.loadPath(kept);
+        QFile keptFile(kept);
+        QVERIFY(keptFile.open(QIODevice::ReadOnly));
+        const auto keptBytes = keptFile.readAll();
+        keptFile.close();
+        QVERIFY(!failed(change(
+            s, "place_template",
+            {{"templateId", "skeleton:water"}, {"position", QJsonArray{5, 0, 0}}, {"preview", false}})));
+        for (auto *a : w.findChildren<QAction *>())
+            if (a->text() == "プロジェクトを保存")
+                a->setObjectName("testSaveProject");
+        QVERIFY(refusedOverMcp("testSaveProject"));
+        QVERIFY(keptFile.open(QIODevice::ReadOnly));
+        QCOMPARE(keptFile.readAll(), keptBytes);
+        keptFile.close();
+        // History buttons act on the selected job folder, which the person listed outside the limit.
+        auto job = w.document();
+        setExecutionSetting(job, "job_root", outside.filePath("jobs"));
+        const auto bundle = saveExecutionBundle(job, outside.path()).directory;
+        auto *history = w.findChild<HistoryPanel *>();
+        QVERIFY(history);
+        history->selectDirectory(bundle);
+        QTRY_COMPARE(history->selectedDirectory(), bundle);
+        for (const auto &target : {"historyTrash", "historyReuse", "historyFolder"})
+            QVERIFY2(refusedOverMcp(target), target);
+        QVERIFY(QFileInfo(bundle).isDir());
     }
     void tasksCancelQueuedGuiCommand() {
         MainWindow w;

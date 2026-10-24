@@ -9,22 +9,108 @@
 namespace mf {
 static int valence(const Atom &a, double used) {
     if (a.element == "H")
-        return 1;
+        return std::max(0, (a.charge ? 0 : 1) - a.radical); // H+ / H- (hydride) have no bond
     if (a.element == "C" || a.element == "Si")
         return 4 - std::abs(a.charge) - a.radical;
+    // Onium cations gain one bond; each negative charge removes one (oxide O2- has none).
     if (a.element == "N")
-        return (a.charge > 0 ? 4 : a.charge < 0 ? 2 : 3) - a.radical;
+        return std::max(0, (a.charge > 0 ? 4 : 3 + a.charge) - a.radical);
     if (a.element == "O")
-        return (a.charge > 0 ? 3 : a.charge < 0 ? 1 : 2) - a.radical;
+        return std::max(0, (a.charge > 0 ? 3 : 2 + a.charge) - a.radical);
     if (QStringList{"F", "Cl", "Br", "I"}.contains(a.element))
         return a.charge < 0 ? 0 : 1;
     if (a.element == "B")
         return a.charge < 0 ? 4 : 3;
     if (a.element == "P")
         return used > 3.1 ? 5 : 3;
+    if (a.element == "S" && a.charge)
+        return std::max(0, 2 + a.charge - a.radical); // thiolate S-, sulfide S2-, sulfonium S+
     if (a.element == "S")
         return used > 4.1 ? 6 : used > 2.1 ? 4 : 2;
     return -1;
+}
+// Aromatic bonds count as single bonds plus at most one Kekulé double bond per atom. Atoms
+// with a free valence are paired along aromatic bonds; when no perfect pairing exists, the
+// assignment leaves heteroatoms unpaired before carbon (pyrrole-type N takes an H instead).
+// Returns the ids of atoms that received a double bond.
+static QSet<QString> aromaticDoubleBonds(const Document &d) {
+    const int n = d.atoms.size();
+    QHash<QString, int> index;
+    for (int i = 0; i < n; ++i)
+        index[d.atoms[i].id] = i;
+    QVector<double> sigma(n);
+    QVector<QVector<int>> aromatic(n);
+    for (const auto &b : d.bonds) {
+        const int x = index.value(b.a, -1), y = index.value(b.b, -1);
+        if (x < 0 || y < 0)
+            continue;
+        const bool ring = b.kind == "aromatic";
+        sigma[x] += ring ? 1 : b.order();
+        sigma[y] += ring ? 1 : b.order();
+        if (ring) {
+            aromatic[x] << y;
+            aromatic[y] << x;
+        }
+    }
+    QVector<bool> wants(n), seen(n);
+    for (int i = 0; i < n; ++i)
+        if (!aromatic[i].isEmpty() && !d.atoms[i].ghost) {
+            const int v = valence(d.atoms[i], sigma[i]);
+            wants[i] = v >= 0 && v - sigma[i] > .9;
+        }
+    QSet<QString> paired;
+    QVector<int> partner(n, -1), best;
+    for (int start = 0; start < n; ++start) {
+        if (!wants[start] || seen[start])
+            continue;
+        // Breadth-first order keeps ring neighbors close, so the first descent usually pairs all.
+        QVector<int> order{start};
+        seen[start] = true;
+        for (int k = 0; k < order.size(); ++k)
+            for (int j : aromatic[order[k]])
+                if (wants[j] && !seen[j]) {
+                    seen[j] = true;
+                    order << j;
+                }
+        int penalty = 0, bestPenalty = std::numeric_limits<int>::max();
+        long steps = 0;
+        std::function<void(int)> search = [&](int k) {
+            if (penalty >= bestPenalty || ++steps > 200000)
+                return;
+            if (k == order.size()) {
+                bestPenalty = penalty;
+                best = partner;
+                return;
+            }
+            const int i = order[k];
+            if (partner[i] >= 0)
+                return search(k + 1);
+            for (int j : aromatic[i])
+                if (wants[j] && partner[j] < 0) {
+                    partner[i] = j;
+                    partner[j] = i;
+                    search(k + 1);
+                    partner[i] = partner[j] = -1;
+                }
+            const int cost = d.atoms[i].element == "C" ? 3 : 1;
+            penalty += cost;
+            search(k + 1);
+            penalty -= cost;
+        };
+        search(0);
+        for (int i : order)
+            if (best[i] >= 0)
+                paired.insert(d.atoms[i].id);
+    }
+    return paired;
+}
+// Bond-order sum for valence checks, with aromatic bonds in their Kekulé form.
+static double valenceUsed(const Document &d, const QString &id, const QSet<QString> &doubles) {
+    double used = doubles.contains(id) ? 1 : 0;
+    for (const auto &b : d.bonds)
+        if (b.a == id || b.b == id)
+            used += b.kind == "aromatic" ? 1 : b.order();
+    return used;
 }
 Vec freeDirection(const Document &d, const QString &id) {
     const Vec origin = d.atom(id).position;
@@ -56,16 +142,14 @@ Vec freeDirection(const Document &d, const QString &id) {
 }
 void completeHydrogens(Document &d, const Ids &selection) {
     Ids ids = selection.isEmpty() ? d.ids() : selection;
+    const auto doubles = aromaticDoubleBonds(d);
     for (const auto &id : ids) {
         if (!d.contains(id))
             continue;
         Atom a = d.atom(id);
         if (a.ghost || a.element == "H")
             continue;
-        double used = 0;
-        for (const auto &b : d.bonds)
-            if (b.a == id || b.b == id)
-                used += b.order();
+        const double used = valenceUsed(d, id, doubles);
         int expected = valence(a, used);
         if (expected < 0)
             continue;
@@ -767,11 +851,9 @@ QString structureReport(const Document &d) {
     for (auto a : d.data["assignments"].toObject())
         for (auto issue : a.toObject()["issues"].toArray())
             lines << issue.toString();
+    const auto doubles = aromaticDoubleBonds(d);
     for (const auto &a : d.atoms) {
-        double used = 0;
-        for (const auto &b : d.bonds)
-            if (b.a == a.id || b.b == a.id)
-                used += b.order();
+        const double used = valenceUsed(d, a.id, doubles);
         int expected = valence(a, used);
         if (!a.ghost && expected >= 0 && std::abs(used - expected) > .1)
             lines << QString("%1%2: 結合次数合計 %3（目安 %4）")

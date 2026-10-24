@@ -1,5 +1,6 @@
 #include "ui/main_window.h"
 #include "editing/chemistry.h"
+#include "editing/coordinates.h"
 #include "editing/coordination.h"
 #include "editing/operations.h"
 #include "editing/peptide.h"
@@ -20,15 +21,16 @@ namespace mf {
 class DocumentCommand : public QUndoCommand {
     MainWindow *window;
     Document before, after;
+    bool remote; // Made or confirmed over MCP: undo/redo never make its execution settings trusted.
 
   public:
-    DocumentCommand(MainWindow *w, const QString &name, const Document &next)
-        : QUndoCommand(name), window(w), before(w->doc), after(next) {}
+    DocumentCommand(MainWindow *w, const QString &name, const Document &next, bool remote)
+        : QUndoCommand(name), window(w), before(w->doc), after(next), remote(remote) {}
     void undo() override {
-        window->setState(before);
+        window->setState(before, !remote);
     }
     void redo() override {
-        window->setState(after);
+        window->setState(after, !remote);
     }
 };
 class PaletteList : public QListWidget {
@@ -93,8 +95,13 @@ void MainWindow::trackExecution(const Document &before, const Document &after) {
     if (mcp.depth == 0 && protectedExecution(before) != protectedExecution(after))
         mcp.trustedExecution = protectedExecution(after);
 }
-void MainWindow::setState(const Document &d) {
-    trackExecution(doc, d);
+void MainWindow::checkMcpPath(const QString &path) const {
+    if (mcp.policy && mcp.depth > 0)
+        mcp.policy->checkPath(path);
+}
+void MainWindow::setState(const Document &d, bool trusted) {
+    if (trusted)
+        trackExecution(doc, d);
     doc = d;
     candidate.reset();
     selected.removeIf([&](auto id) { return !doc.contains(id); });
@@ -111,13 +118,13 @@ void MainWindow::loadDocument(const Document &d) {
     refresh();
     view->fit();
 }
-void MainWindow::commit(const QString &name, const Document &next) {
+void MainWindow::commit(const QString &name, const Document &next, bool remote) {
     auto errors = next.validate();
     if (!errors.isEmpty())
         fail(errors.join('\n'));
     if (identity(doc) == identity(next))
         return;
-    undo.push(new DocumentCommand(this, name, next));
+    undo.push(new DocumentCommand(this, name, next, remote || mcp.depth > 0));
     if (!keepSelection->isChecked())
         setSelection({});
     statusBar()->showMessage(name, 5000);
@@ -137,6 +144,7 @@ void MainWindow::edit(const QString &name, const std::function<void(Document &)>
     if (preview) {
         candidate = next;
         candidateName = name;
+        candidateRemote = mcp.depth > 0;
         refresh();
         statusBar()->showMessage("候補を確認して確定してください。", 8000);
     } else
@@ -148,7 +156,8 @@ void MainWindow::confirmCandidate() {
     Document next = *candidate;
     QString name = candidateName;
     candidate.reset();
-    commit(name, next);
+    // A person confirming an MCP candidate does not make the settings it carries trusted.
+    commit(name, next, candidateRemote);
     refresh();
 }
 void MainWindow::cancelCandidate() {
@@ -594,8 +603,9 @@ void MainWindow::buildMenus() {
         QString text = QInputDialog::getMultiLineText(this, "XYZを貼付", "原子数、コメント、元素と座標（Å）",
                                                       QApplication::clipboard()->text(), &ok);
         if (ok) {
-            auto next = Document::fromXyz(text);
-            edit("XYZを読込", [next](Document &d) { d = next; }, true);
+            auto next = xyzStructure(text);
+            // Like the coordinate table, keep calculation/execution settings and the envelope.
+            edit("XYZを読込", [next](Document &d) { replaceCoordinateStructure(d, next); }, true);
             view->fit();
         }
     });
@@ -1121,6 +1131,7 @@ bool MainWindow::save(bool as) {
         return false;
     if (!p.endsWith(".json", Qt::CaseInsensitive))
         p += ".kgui.json";
+    checkMcpPath(p); // Ctrl+S reuses the project path without a file dialog.
     doc.save(p);
     path = p;
     undo.setClean();
@@ -1144,6 +1155,10 @@ void MainWindow::importSmiles() {
 void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids &moving) {
     if (worker || candidate)
         fail("処理中または変更候補があります。先に完了・取消してください。");
+    if (mode == "smiles") {
+        Document replaced = doc; // Fail before starting when fixed atoms block the replacement.
+        replaced.remove(replaced.ids());
+    }
     workdir = std::make_unique<QTemporaryDir>();
     if (!workdir->isValid())
         fail("一時ディレクトリを作成できません。");
@@ -1152,6 +1167,7 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
         {"mode", mode}, {"smiles", smiles}, {"moving", idsToJson(moving)}, {"document", doc.toJson()}};
     writeFile(input, QJsonDocument(request).toJson());
     workerBase = identity(doc);
+    workerRemote = mcp.depth > 0;
     worker = new QProcess(this);
     auto *running = worker;
     running->setProgram(QCoreApplication::applicationFilePath());
@@ -1169,13 +1185,19 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
                         fail(response["error"].toString("整形に失敗しました。"));
                     if (workerBase != identity(doc))
                         fail("分子が変更されたため整形結果を破棄しました。");
-                    auto next = Document::fromJson(response["document"].toObject());
+                    auto result = Document::fromJson(response["document"].toObject());
+                    // The worker exchanges the document without the project envelope.
+                    Document next = doc;
                     if (mode == "smiles") {
-                        next.data["job"] = doc.data["job"];
+                        replaceCoordinateStructure(next, result);
                         next.setJobValue("charge", next.formalCharge());
+                    } else {
+                        next = result;
+                        next.envelope = doc.envelope;
                     }
                     candidate = next;
                     candidateName = mode == "smiles" ? "SMILESから分子を作成" : "構造を整形";
+                    candidateRemote = workerRemote;
                 } catch (const std::exception &e) {
                     error = QString::fromUtf8(e.what());
                 }

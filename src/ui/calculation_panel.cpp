@@ -100,7 +100,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     choice(basic, "DFT汎関数", "functional");
     choice(basic, "DFT分散補正", "dispersion");
     choice(basic, "基底関数", "basis");
-    flag(basic, "球面調和関数（オフ: Cartesian）", "spherical");
+    choice(basic, "d・f関数の形式", "basis_functions");
     auto *basisHelp = new QLabel("基底の対応元素を検査します。def2系のRb以降にはdef2-ECPを自動指定します。");
     basisHelp->setWordWrap(true);
     basic->addRow(basisHelp);

@@ -117,11 +117,27 @@ void nwchem(ResultData &r, const QStringList &lines) {
         QRegularExpression::CaseInsensitiveOption);
     static const QRegularExpression error(
         "failed to converge|convergence failure|not converged|MPI_ABORT|An error occurred|"
-        "error termination|task.*failed|failed.*task|Calculation failed",
+        "error termination|task.*failed|failed.*task|Calculation failed|There is an error in|"
+        "This error has not yet been assigned|This type of error is most commonly associated|"
+        "Received an Error in Communication",
         QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression code(R"(\s+-?\d+\s*$)");
+    QString abort;
     for (int i = 0; i < lines.size(); ++i) {
         const auto &line = lines[i];
         recognized |= line.contains("NWChem");
+        // errquit prints its message, framed by dashes, just above "current input line :".
+        if (line.trimmed().startsWith("current input line") && abort.isEmpty()) {
+            for (int j = i - 1; j >= std::max(0, i - 4); --j) {
+                const auto text = lines[j].trimmed();
+                if (text.isEmpty() || text.startsWith("----"))
+                    continue;
+                abort = QString(text).remove(code).left(200);
+                fatal = true;
+                r.warnings << QString("行 %1: NWChemエラー: %2").arg(j + 1).arg(abort);
+                break;
+            }
+        }
         if (error.match(line).hasMatch()) {
             fatal = true;
             if (r.warnings.size() < 30)
@@ -211,7 +227,9 @@ void nwchem(ResultData &r, const QStringList &lines) {
     }
     if (!recognized)
         fail("NWChemの出力ログを認識できません。");
-    if (fatal)
+    if (!abort.isEmpty())
+        r.status = "NWChemエラー: " + abort;
+    else if (fatal)
         r.status = "エラー・未収束メッセージあり（ログを確認）";
     else if (ended)
         r.status = "正常終了マーカーあり（収束・全taskの成否はログを確認）";

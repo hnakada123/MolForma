@@ -10,8 +10,8 @@ namespace {
 QString resolvedPath(const QString &path, const QString &base) {
     if (path.trimmed().isEmpty())
         fail("Specify a path.");
-    QString current =
-        QDir::cleanPath(QDir(base.isEmpty() ? QDir::currentPath() : base).absoluteFilePath(path));
+    // Expand "~" exactly as execution does, so the checked path is the one that is used.
+    QString current = absolutePath(path, base.isEmpty() ? QDir::currentPath() : base);
     QStringList missing;
     for (;;) {
         const QFileInfo info(current);

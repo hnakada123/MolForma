@@ -348,7 +348,7 @@ void ExecutionPanel::startCalculation() {
                 fail("NWChem実行ファイル・MPIランチャー・追加の環境変数が、"
                      "MolForma上で最後に設定した値と異なります（MCP経由の変更や"
                      "プロジェクトの読込による）。MCPからはこの設定で実行できません。"
-                     "利用者が「5 実行」タブで設定を確認してください。");
+                     "利用者が「5 実行設定」タブで設定を確認してください。");
             // A person started the run: confirm in a dialog that MCP cannot see or press.
             QStringList environment;
             for (const auto &row : settings["environment"].toArray())

@@ -182,13 +182,16 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
             status->setText(status->text() + "\n" + scan.message);
     });
     connect(table, &QTableWidget::itemSelectionChanged, this, &HistoryPanel::showDetails);
-    connect(table, &QTableWidget::cellDoubleClicked, this, [this] { openResult(); });
-    connect(viewer, &QPushButton::clicked, this, &HistoryPanel::openResult);
+    connect(table, &QTableWidget::cellDoubleClicked, this,
+            [this] { window->safe([this] { openResult(); }); });
+    connect(viewer, &QPushButton::clicked, this, [this] { window->safe([this] { openResult(); }); });
     connect(reuse, &QPushButton::clicked, this, [this] { window->safe([this] { reuseSelected(); }); });
     connect(folder, &QPushButton::clicked, this, [this] {
         window->safe([this] {
-            if (!selectedDirectory().isEmpty() &&
-                !QDesktopServices::openUrl(QUrl::fromLocalFile(selectedDirectory())))
+            if (selectedDirectory().isEmpty())
+                return;
+            window->checkMcpPath(selectedDirectory());
+            if (!QDesktopServices::openUrl(QUrl::fromLocalFile(selectedDirectory())))
                 fail("保存先を開けません。");
         });
     });
@@ -263,6 +266,12 @@ void HistoryPanel::setRoot(const QString &path, bool remember) {
 void HistoryPanel::refresh() {
     if (root.isEmpty())
         return;
+    try { // Showing the tab over MCP must not scan outside --mcp-allow-dir.
+        window->checkMcpPath(root);
+    } catch (const std::exception &e) {
+        status->setText(QString::fromUtf8(e.what()));
+        return;
+    }
     if (pendingSelection.isEmpty())
         pendingSelection = selectedDirectory();
     cancel->setEnabled(true);
@@ -355,6 +364,12 @@ void HistoryPanel::populate(bool reloadDetails) {
 }
 void HistoryPanel::showDetails() {
     const auto *e = selectedEntry();
+    try {
+        if (e)
+            window->checkMcpPath(e->directory);
+    } catch (const std::exception &) {
+        e = nullptr; // An MCP selection does not read jobs outside --mcp-allow-dir.
+    }
     if (!e) {
         for (auto *p : {summary, input, output, errors, record})
             p->clear();
@@ -439,6 +454,7 @@ void HistoryPanel::reuseSelected() {
     const auto directory = selectedDirectory();
     if (directory.isEmpty())
         return;
+    window->checkMcpPath(directory);
     if (window->hasCandidate() || window->worker)
         fail("候補を確定・取消し、整形の終了後に再利用してください。");
     const auto next = historyDocument(directory);
@@ -455,7 +471,10 @@ void HistoryPanel::reuseSelected() {
 }
 void HistoryPanel::openResult() {
     const auto directory = selectedDirectory();
-    if (directory.isEmpty() || resultFiles(directory).isEmpty())
+    if (directory.isEmpty())
+        return;
+    window->checkMcpPath(directory);
+    if (resultFiles(directory).isEmpty())
         return;
     window->workspaceTabs->setCurrentWidget(window->results);
     window->results->openDirectory(directory);
@@ -464,6 +483,7 @@ void HistoryPanel::trashSelected() {
     const auto directory = selectedDirectory();
     if (directory.isEmpty())
         return;
+    window->checkMcpPath(directory);
     if (QMessageBox::question(
             this, "ジョブをごみ箱へ",
             "入力・プロジェクト・結果を含む次のフォルダーをごみ箱へ移動します。\n" + directory,

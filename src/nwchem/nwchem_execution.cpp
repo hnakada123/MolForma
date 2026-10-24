@@ -19,6 +19,13 @@
 #endif
 
 namespace mf {
+QString absolutePath(QString path, const QString &base) {
+    if (path == "~")
+        path = QDir::homePath();
+    else if (path.startsWith("~/"))
+        path = QDir::home().filePath(path.mid(2));
+    return QDir::cleanPath(QDir(base).absoluteFilePath(path));
+}
 namespace {
 const QStringList managedEnvironment{"OMP_NUM_THREADS",      "OMP_STACKSIZE",    "OMP_DYNAMIC",
                                      "OPENBLAS_NUM_THREADS", "GOTO_NUM_THREADS", "MKL_NUM_THREADS",
@@ -26,13 +33,6 @@ const QStringList managedEnvironment{"OMP_NUM_THREADS",      "OMP_STACKSIZE",   
 const QStringList bundleFiles{"input.nw", "project.kgui.json", "run.json", "output.out", "stderr.err"};
 bool controls(const QString &s) {
     return s.contains(QRegularExpression("[\\x00-\\x1f\\x7f]"));
-}
-QString absolutePath(QString path, const QString &base) {
-    if (path == "~")
-        path = QDir::homePath();
-    else if (path.startsWith("~/"))
-        path = QDir::home().filePath(path.mid(2));
-    return QDir::cleanPath(QDir(base).absoluteFilePath(path));
 }
 QString locateProgram(const QString &name, const QString &base, const QProcessEnvironment &environment) {
     if (QDir::isAbsolutePath(name) || name.contains('/') || name.startsWith("~"))

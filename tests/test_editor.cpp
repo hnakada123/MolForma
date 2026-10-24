@@ -396,6 +396,24 @@ class EditorTest : public QObject {
         QCOMPARE(w.document().atoms.size(), 31);
         w.history()->undo();
         QVERIFY(w.document().atoms.isEmpty());
+        // Replacing the molecule keeps calculation settings and project envelope fields.
+        Document water;
+        placeTemplate(water, findTemplate("skeleton:water"), Vec::Zero());
+        water.data["nwchem"] = QJsonObject{{"basis", "cc-pvdz"}};
+        water.envelope["result_reference"] = "kept";
+        w.loadDocument(water);
+        QCheckBox *replace = nullptr;
+        for (auto *box : w.findChildren<QCheckBox *>())
+            if (box->text() == "既存の分子を置き換える")
+                replace = box;
+        QVERIFY(replace);
+        replace->setChecked(true);
+        build->click();
+        QVERIFY(w.hasCandidate());
+        w.findChild<QPushButton *>("confirmCandidate")->click();
+        QCOMPARE(w.document().formula(), QString("C8H15N3O5"));
+        QCOMPARE(w.document().data["nwchem"].toObject()["basis"].toString(), QString("cc-pvdz"));
+        QCOMPARE(w.document().envelope["result_reference"].toString(), QString("kept"));
     }
     void nwchemMoleculeControls() {
         MainWindow w;

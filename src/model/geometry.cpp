@@ -5,6 +5,8 @@
 #include <Eigen/Eigenvalues>
 #include <Eigen/SVD>
 #include <cmath>
+#include <numbers>
+#include <numeric>
 namespace mf {
 static constexpr double rad = 3.14159265358979323846 / 180;
 Vec unit(const Vec &v) {
@@ -152,5 +154,90 @@ Vec internalPoint(const Vec &a, const Vec &b, const Vec &c, double length, doubl
     return c + length * (-std::cos(angle * rad) * bc +
                          std::sin(angle * rad) *
                              (std::cos(dihedral * rad) * tangent + std::sin(dihedral * rad) * normal));
+}
+int rotationalSymmetryNumber(const Document &d) {
+    QVector<int> z;
+    QVector<Vec> p;
+    Vec center = Vec::Zero();
+    double total = 0;
+    for (const auto &a : d.atoms) {
+        if (a.ghost)
+            continue;
+        if (a.isotope || a.mass > 0) // Isotopic substitution can lower the symmetry (HDO).
+            return 0;
+        const auto &e = element(a.element);
+        z << e.number;
+        p << a.position;
+        center += e.mass * a.position;
+        total += e.mass;
+    }
+    if (p.size() < 2 || p.size() > 60)
+        return 0;
+    for (auto &r : p)
+        r -= center / total;
+    constexpr double tolerance = .05;
+    // The atom permutation produced by a rotation, or empty if it is not a symmetry operation.
+    // Operations are compared by permutation, so nearly parallel candidate axes count once.
+    const auto permutation = [&](const Mat &m) {
+        QVector<int> image(p.size(), -1);
+        for (int i = 0; i < p.size(); ++i) {
+            const Vec q = m * p[i];
+            for (int j = 0; j < p.size() && image[i] < 0; ++j)
+                if (z[j] == z[i] && (p[j] - q).norm() < tolerance)
+                    image[i] = j;
+            if (image[i] < 0)
+                return QVector<int>();
+        }
+        return image;
+    };
+    // Linear molecules: sigma is 2 with a center of inversion (D∞h), otherwise 1 (C∞v).
+    Vec axis = p[0].norm() > p[1].norm() ? p[0] : p[1];
+    bool linear = axis.norm() > tolerance;
+    for (const auto &r : p)
+        linear = linear && r.cross(axis.normalized()).norm() < tolerance;
+    if (linear)
+        return permutation(-Mat::Identity()).isEmpty() ? 1 : 2;
+    // Every rotation axis passes through the center of mass and through an atom, the midpoint of
+    // two equivalent atoms, or is normal to the plane they span with the center.
+    QVector<Vec> axes;
+    const auto add = [&](const Vec &v) {
+        if (v.norm() < tolerance)
+            return;
+        const Vec u = v.normalized();
+        for (const auto &a : axes)
+            if (std::abs(a.dot(u)) > 1 - 1e-6)
+                return;
+        axes << u;
+    };
+    for (int i = 0; i < p.size(); ++i) {
+        add(p[i]);
+        for (int j = i + 1; j < p.size(); ++j)
+            if (z[i] == z[j] && std::abs(p[i].norm() - p[j].norm()) < tolerance) {
+                add(p[i] + p[j]);
+                add(p[i].cross(p[j]));
+            }
+    }
+    QVector<int> identity(p.size());
+    std::iota(identity.begin(), identity.end(), 0);
+    QVector<QVector<int>> group{identity};
+    for (const auto &u : axes)
+        for (int n = 2; n <= 8; ++n)
+            for (int k = 1; k < n; ++k)
+                if (auto image =
+                        permutation(Eigen::AngleAxisd(2 * std::numbers::pi * k / n, u).toRotationMatrix());
+                    !image.isEmpty() && !group.contains(image))
+                    group << image;
+                else if (k == 1 && image.isEmpty())
+                    break;
+    // Close the set under composition so tolerance cannot leave a partial group.
+    for (int a = 0; a < group.size() && group.size() <= 120; ++a)
+        for (int b = 0; b < group.size() && group.size() <= 120; ++b) {
+            QVector<int> product(p.size());
+            for (int i = 0; i < p.size(); ++i)
+                product[i] = group[a][group[b][i]];
+            if (!group.contains(product))
+                group << product;
+        }
+    return group.size() <= 120 ? group.size() : 0;
 }
 } // namespace mf

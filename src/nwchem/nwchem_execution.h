@@ -5,6 +5,9 @@
 #include <QTimer>
 
 namespace mf {
+// Expands "~" and "~/" to the home directory and resolves relative paths against base.
+// Every execution path goes through this, and the MCP access policy checks the same result.
+QString absolutePath(QString path, const QString &base);
 QJsonObject executionDefaults();
 QJsonObject executionSettings(const Document &document);
 void setExecutionSetting(Document &document, const QString &key, const QJsonValue &value);

@@ -409,7 +409,7 @@ void CoordinatesPanel::pasteXyz() {
         return;
     if (base != window->document().toJson())
         fail("入力中に分子が変更されました。貼付をやり直してください。");
-    previewStructure(Document::fromXyz(text));
+    previewStructure(xyzStructure(text));
 }
 void CoordinatesPanel::importFile() {
     const auto base = window->document().toJson();

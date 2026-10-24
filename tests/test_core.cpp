@@ -2,6 +2,7 @@
 #include "editing/coordination.h"
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
+#include "model/geometry.h"
 #include <QJsonDocument>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -168,6 +169,57 @@ class CoreTest : public QObject {
         QVERIFY_EXCEPTION_THROWN(Document::fromXyz("2\nshort\nC 0 0 0\n"), std::runtime_error);
         QVERIFY_EXCEPTION_THROWN(Document::fromXyz("1\nunknown\nXx 0 0 0\n"), std::runtime_error);
     }
+    void xyzBondOrders() {
+        // XYZ has no bond orders; perceived orders keep neutral organic templates saturated as drawn.
+        int checked = 0;
+        for (auto v : templates()) {
+            const auto t = v.toObject();
+            Document d;
+            instantiate(d, t);
+            const bool plain = std::all_of(d.atoms.begin(), d.atoms.end(), [](const Atom &a) {
+                return !a.charge && !a.radical && element(a.element).number <= 36 &&
+                       !QStringList{"Li", "Be", "Na", "Mg", "Al", "K", "Ca"}.contains(a.element) &&
+                       (element(a.element).number < 21 || element(a.element).number > 30);
+            });
+            if (!plain || d.atoms.size() < 2)
+                continue;
+            auto copy = xyzStructure(d.xyz());
+            completeHydrogens(copy);
+            QVERIFY2(copy.formula() == d.formula(), qPrintable(t["id"].toString() + " " + copy.formula()));
+            ++checked;
+        }
+        QVERIFY(checked > 40);
+        auto benzene = xyzStructure([] {
+            Document d;
+            instantiate(d, findTemplate("skeleton:benzene"));
+            return d.xyz();
+        }());
+        QVERIFY(std::none_of(benzene.bonds.begin(), benzene.bonds.end(), [&](const Bond &b) {
+            return b.kind == "single" && benzene.atom(b.a).element == "C" && benzene.atom(b.b).element == "C";
+        }));
+    }
+    void symmetryNumber() {
+        // Rotational symmetry numbers for thermochemistry hints (NWChem runs with noautosym).
+        for (const auto &[id, sigma] : {std::pair{"skeleton:water", 2},
+                                        {"skeleton:ammonia", 3},
+                                        {"skeleton:methane", 12},
+                                        {"skeleton:carbon_dioxide", 2},
+                                        {"skeleton:ethane", 6},
+                                        {"skeleton:benzene", 12},
+                                        {"skeleton:cyclohexane", 6},
+                                        {"skeleton:imidazole", 1},
+                                        {"ligand:carbonyl", 1},
+                                        {"ligand:en", 2}}) {
+            Document d;
+            instantiate(d, findTemplate(id));
+            QVERIFY2(rotationalSymmetryNumber(d) == sigma,
+                     qPrintable(QString("%1: %2").arg(id).arg(rotationalSymmetryNumber(d))));
+        }
+        Document hdo;
+        instantiate(hdo, findTemplate("skeleton:water"));
+        hdo.atoms[1].isotope = 2;
+        QCOMPARE(rotationalSymmetryNumber(hdo), 0);
+    }
     void hydrogenAndAttachment() {
         Document d;
         auto carbon = addAtom(d, "C", Vec::Zero());
@@ -180,6 +232,62 @@ class CoreTest : public QObject {
         auto saved = d;
         completeHydrogens(d);
         QCOMPARE(d.atoms.size(), saved.atoms.size());
+    }
+    void aromaticHydrogens() {
+        // Aromatic rings count by their Kekulé form, so completion keeps every template intact.
+        for (auto v : templates()) {
+            Document d;
+            instantiate(d, v.toObject());
+            const auto formula = d.formula();
+            try {
+                completeHydrogens(d);
+            } catch (const std::exception &e) {
+                QFAIL(qPrintable(v.toObject()["id"].toString() + ": " + e.what()));
+            }
+            QVERIFY2(d.formula() == formula, qPrintable(v.toObject()["id"].toString() + " " + d.formula()));
+            QVERIFY2(!structureReport(d).contains("結合次数合計"),
+                     qPrintable(v.toObject()["id"].toString() + "\n" + structureReport(d)));
+        }
+        // Without its N–H, pyrrole gets the hydrogen back on nitrogen rather than an sp3 carbon.
+        for (const auto &[id, element] : {std::pair{"skeleton:pyrrole", "N"}, {"skeleton:imidazole", "N"}}) {
+            Document d;
+            instantiate(d, findTemplate(id));
+            const auto formula = d.formula();
+            for (const auto &a : d.atoms)
+                if (a.element == element)
+                    for (const auto &n : d.neighbors(a.id))
+                        if (d.atom(n).element == "H")
+                            d.remove({n});
+            completeHydrogens(d);
+            QCOMPARE(d.formula(), formula);
+            int nh = 0;
+            for (const auto &a : d.atoms)
+                if (a.element == "N")
+                    for (const auto &n : d.neighbors(a.id))
+                        nh += d.atom(n).element == "H";
+            QCOMPARE(nh, 1);
+        }
+        // A thiophene carbon that lost its H gets it back; sulfur stays divalent.
+        Document thiophene;
+        instantiate(thiophene, findTemplate("skeleton:thiophene"));
+        for (const auto &a : thiophene.atoms)
+            if (a.element == "H") {
+                thiophene.remove({a.id});
+                break;
+            }
+        completeHydrogens(thiophene);
+        QCOMPARE(thiophene.formula(), QString("C4H4S"));
+        // Residue repair completes hydrogens too; aromatic side chains keep their protonation.
+        for (const auto &code : {"HIS", "TRP", "PHE", "TYR"}) {
+            Document d;
+            buildPeptide(d, {"GLY", code, "GLY"}, "charged", "charged");
+            const auto formula = d.formula();
+            completeHydrogens(d);
+            QCOMPARE(d.formula(), formula);
+            for (auto v : d.data["residues"].toArray())
+                repairResidue(d, v.toObject()["id"].toString());
+            QCOMPARE(d.formula(), formula);
+        }
     }
     void substituent() {
         Document d;
@@ -396,6 +504,13 @@ class CoreTest : public QObject {
         QVERIFY((out.atoms[0].position - first).norm() < 1e-12);
         QCOMPARE(out.ids(), d.ids());
         QVERIFY_EXCEPTION_THROWN(fromSmiles("not a smiles"), std::runtime_error);
+        // Heavy main-group elements are refined; only metals and ghosts are refused.
+        for (const auto &[smiles, formula] :
+             {std::pair{"c1ccccc1Br", "C6H5Br"}, {"CI", "CH3I"}, {"C[Se]C", "C2H6Se"}})
+            QCOMPARE(fromSmiles(smiles).formula(), QString(formula));
+        auto metal = fromSmiles("CCO");
+        metal.atoms[0].element = "Fe";
+        QVERIFY_EXCEPTION_THROWN(refine(metal), std::runtime_error);
         QTemporaryDir tmp;
         exportStructure(d, tmp.filePath("ethanol.sdf"));
         auto copy = importStructure(tmp.filePath("ethanol.sdf"));

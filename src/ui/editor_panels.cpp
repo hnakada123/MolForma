@@ -1,4 +1,5 @@
 #include "editing/chemistry.h"
+#include "editing/coordinates.h"
 #include "editing/coordination.h"
 #include "editing/operations.h"
 #include "editing/peptide.h"
@@ -497,8 +498,8 @@ void MainWindow::buildResiduePanel() {
             edit(
                 "配列から構築",
                 [=](Document &d) {
-                    if (clear)
-                        d = Document();
+                    if (clear) // Keep calculation/execution settings and the project envelope.
+                        replaceCoordinateStructure(d, Document());
                     auto old = d.ids();
                     double shift = 0;
                     for (const auto &a : d.atoms)
@@ -511,6 +512,8 @@ void MainWindow::buildResiduePanel() {
                                 added << id;
                         transform(d, added, Mat::Identity(), Vec(shift, 0, 0));
                     }
+                    if (clear)
+                        d.setJobValue("charge", d.formalCharge());
                 },
                 true);
             view->fit();

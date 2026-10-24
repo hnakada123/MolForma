@@ -228,13 +228,50 @@ QString preparePdb(const QString &text, int model, const QString &altloc) {
     }
     return out;
 }
+Document xyzStructure(const QString &text) {
+    Document d = Document::fromXyz(text);
+    // Bonds come from distances. Let Open Babel assign double/triple/aromatic orders from the
+    // geometry so hydrogen completion does not saturate rings. Metal and ghost bonds stay single.
+    if (d.atoms.isEmpty() || d.atoms.size() > 20000)
+        return d;
+    OBMol mol;
+    mol.BeginModify();
+    QHash<QString, int> indices;
+    for (const auto &a : d.atoms) {
+        if (a.ghost)
+            continue;
+        auto *o = mol.NewAtom();
+        o->SetAtomicNum(element(a.element).number);
+        o->SetVector(a.position.x(), a.position.y(), a.position.z());
+        indices[a.id] = o->GetIdx();
+    }
+    QVector<int> perceived;
+    for (int i = 0; i < d.bonds.size(); ++i) {
+        const int x = indices.value(d.bonds[i].a), y = indices.value(d.bonds[i].b);
+        if (!x || !y || mol.GetAtom(x)->IsMetal() || mol.GetAtom(y)->IsMetal())
+            continue;
+        mol.AddBond(x, y, 1);
+        perceived << i;
+    }
+    mol.EndModify();
+    mol.SetDimension(3);
+    mol.PerceiveBondOrders();
+    for (int k = 0; k < perceived.size(); ++k) {
+        auto *b = mol.GetBond(k);
+        d.bonds[perceived[k]].kind = b->IsAromatic()          ? "aromatic"
+                                     : b->GetBondOrder() == 3 ? "triple"
+                                     : b->GetBondOrder() == 2 ? "double"
+                                                              : "single";
+    }
+    return d;
+}
 Document importStructure(const QString &path, int model, const QString &altloc) {
     QString ext = QFileInfo(path).suffix().toLower();
     if (ext == "json")
         return Document::load(path);
     auto bytes = readFile(path);
     if (ext == "xyz")
-        return Document::fromXyz(QString::fromUtf8(bytes));
+        return xyzStructure(QString::fromUtf8(bytes));
     if (ext == "ent")
         ext = "pdb";
     if (ext == "sd")
@@ -299,10 +336,13 @@ Document refine(const Document &d, bool regenerate, const Ids &moving) {
     if (d.atoms.isEmpty())
         fail("分子が空です。");
     for (const auto &a : d.atoms)
-        if (a.ghost || element(a.element).number > 20 ||
-            QStringList{"Li", "Be", "Na", "Mg", "Al", "K", "Ca"}.contains(a.element))
+        if (a.ghost)
             fail("金属・ゴースト原子を含む分子は力場整形の対象外です。");
     auto mol = toOB(d);
+    // Heavy main-group elements (Br, I, Se, Te, ...) are left to the force-field setup below.
+    for (unsigned int i = 1; i <= mol.NumAtoms(); ++i)
+        if (mol.GetAtom(i)->IsMetal())
+            fail("金属・ゴースト原子を含む分子は力場整形の対象外です。");
     OpenBabel::StereoFrom3D(&mol);
     if (regenerate) {
         for (const auto &a : d.atoms)

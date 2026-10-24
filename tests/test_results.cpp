@@ -72,6 +72,19 @@ class ResultsTest : public QObject {
         QVERIFY(r.status.contains("正常終了マーカーあり"));
         r = readResult(save("failed.out", source + "An error occurred\nMPI_ABORT\n"));
         QVERIFY(r.status.contains("エラー"));
+        // NWChem 7.3 errquit block (here: an unknown basis name), without any generic error words.
+        const QString dashes(" " + QString(72, '-') + "\n");
+        r = readResult(save("errquit.out",
+                            "NWChem\n" + geometry() + dashes +
+                                " bas_tag_lib: failed opening basis file                   0\n" + dashes +
+                                dashes + "  current input line : \n" + "    11: task scf energy\n" + dashes +
+                                dashes + " There is an error in the specified basis set\n" + dashes));
+        QCOMPARE(r.status, QString("NWChemエラー: bas_tag_lib: failed opening basis file"));
+        r = readResult(save("optfail.out", "NWChem\n" + geometry() + dashes +
+                                               " scf optimize failed                                    0\n" +
+                                               dashes + dashes + "  current input line : \n" +
+                                               "    17: task scf optimize\n" + dashes));
+        QCOMPARE(r.status, QString("NWChemエラー: scf optimize failed"));
         r = readResult(save("partial.out", "NWChem\n" + geometry() + geometry().chopped(35)));
         QCOMPARE(r.frames.size(), 1);
         QVERIFY(r.status.contains("マーカーなし"));

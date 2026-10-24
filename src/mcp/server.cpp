@@ -902,7 +902,7 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                     transform(next, ids, Mat::Identity(), vectorFromJson(args["offset"]));
             } else if (name == "import_document") {
                 if (args["format"] == "xyz")
-                    replaceCoordinateStructure(next, Document::fromXyz(args["text"].toString()));
+                    replaceCoordinateStructure(next, xyzStructure(args["text"].toString()));
                 else
                     next = Document::fromProject(parseJson(args["text"].toString().toUtf8()));
             } else if (name == "open_file") {

@@ -192,7 +192,17 @@ class CalculationTest : public QObject {
         QCOMPARE(validateNwchem(d).electrons, 10);
         QVERIFY(text.contains("geometry units au"));
         QVERIFY(text.contains("  bqC library C \"sto-3g\"\n"));
-        QVERIFY(text.contains("  fix atom 4\n"));
+        // Ghost centers carry no nucleus; optimization keeps them fixed with the user's fixed atoms.
+        QVERIFY(text.contains("  fix atom 1 4\n"));
+        QVERIFY(validateNwchem(d).warnings.join('\n').contains("ゴースト中心は核を持たない"));
+        set(d, "task", "energy");
+        QVERIFY(nwchemInput(d).contains("constraints\n  clear\n  fix atom 4\nend"));
+        set(d, "task", "optimize");
+        for (auto &a : d.atoms)
+            a.fixed = !a.ghost;
+        QVERIFY(errorContains(d, "全原子が固定"));
+        for (auto &a : d.atoms)
+            a.fixed = a.element == "O";
         QVERIFY(text.contains("mass 2.014"));
         QVERIFY(!text.contains("Ghost basis required"));
         set(d, "task", "frequencies");
@@ -224,15 +234,23 @@ class CalculationTest : public QObject {
         QVERIFY(errorContains(d, "COSMOはHF"));
     }
     void invalidInputCannotBeExported() {
-        const QVector<QPair<QString, QJsonValue>> bad{
-            {"method", "tce"},        {"task", "energy\ntask shell unsafe"},
-            {"basis", "custom"},      {"reference", "none"},
-            {"start", "../job"},      {"start", "job\ntask"},
-            {"title", "a\"\nend"},    {"title", "a;task"},
-            {"title", "a#b"},         {"memory_mb", 0},
-            {"memory_mb", 64.5},      {"scf_maxiter", -1},
-            {"spherical", "true"},    {"dielectric", 0.2},
-            {"geometry_units", "nm"}, {"functional", QJsonValue::Null}};
+        const QVector<QPair<QString, QJsonValue>> bad{{"method", "tce"},
+                                                      {"task", "energy\ntask shell unsafe"},
+                                                      {"basis", "custom"},
+                                                      {"reference", "none"},
+                                                      {"start", "../job"},
+                                                      {"start", "job\ntask"},
+                                                      {"title", "a\"\nend"},
+                                                      {"title", "a;task"},
+                                                      {"title", "a#b"},
+                                                      {"memory_mb", 0},
+                                                      {"memory_mb", 64.5},
+                                                      {"scf_maxiter", -1},
+                                                      {"basis_functions", "5d"},
+                                                      {"basis_functions", true},
+                                                      {"dielectric", 0.2},
+                                                      {"geometry_units", "nm"},
+                                                      {"functional", QJsonValue::Null}};
         for (const auto &entry : bad) {
             auto d = water();
             set(d, entry.first, entry.second);
@@ -246,6 +264,51 @@ class CalculationTest : public QObject {
         d.setJobValue("charge", 0.5);
         QVERIFY(errorContains(d, "整数"));
         QVERIFY_EXCEPTION_THROWN(nwchemInput(Document()), std::runtime_error);
+    }
+    void basisConventionsCosmoAndSymmetry() {
+        // Pople's 6-31G family uses Cartesian d shells by default; the other bases spherical harmonics.
+        auto d = water();
+        QVERIFY(nwchemInput(d).contains("basis spherical\n  * library \"sto-3g\""));
+        set(d, "basis", "6-31g*");
+        QVERIFY(nwchemInput(d).contains("basis cartesian\n  * library \"6-31g*\""));
+        QVERIFY(!validateNwchem(d).warnings.join('\n').contains("通常"));
+        set(d, "basis", "cc-pvdz");
+        QVERIFY(nwchemInput(d).contains("basis spherical\n"));
+        set(d, "basis_functions", "cartesian");
+        QVERIFY(nwchemInput(d).contains("basis cartesian\n"));
+        QVERIFY(validateNwchem(d).warnings.join('\n').contains("通常球面調和関数"));
+        // Earlier projects and presets stored a boolean; it stays an explicit choice.
+        auto legacy = water();
+        set(legacy, "basis", "6-31g*");
+        set(legacy, "spherical", true);
+        QCOMPARE(nwchemSettings(legacy)["basis_functions"].toString(), QString("spherical"));
+        QVERIFY(nwchemInput(legacy).contains("basis spherical\n"));
+        QVERIFY(validateNwchem(legacy).warnings.join('\n').contains("通常Cartesian"));
+        QCOMPARE(nwchemPresetSettings(QJsonObject{{"spherical", false}})["basis_functions"].toString(),
+                 QString("cartesian"));
+        // NWChem's COSMO has no UHF energy; ROHF (the automatic HF choice) and UKS work.
+        auto open = water();
+        open.setJobValue("charge", 1);
+        open.setJobValue("multiplicity", 2);
+        set(open, "solvent", "cosmo");
+        QVERIFY(validateNwchem(open).errors.isEmpty());
+        set(open, "reference", "uhf");
+        QVERIFY(errorContains(open, "COSMOはUHF"));
+        set(open, "method", "dft");
+        QVERIFY(validateNwchem(open).errors.isEmpty());
+        // Thermochemistry uses σ = 1 under noautosym; symmetric molecules get the correction.
+        auto frequencies = water();
+        set(frequencies, "task", "frequencies");
+        auto hint = validateNwchem(frequencies).warnings.join('\n');
+        QVERIFY2(hint.contains("回転対称数σ=2と") && hint.contains("1.377"), qPrintable(hint));
+        frequencies.atoms[1].isotope = 2; // HDO is Cs
+        QVERIFY(!validateNwchem(frequencies).warnings.join('\n').contains("回転対称数"));
+        auto methane = Document::fromXyz("5\nmethane\nC 0 0 0\nH .629 .629 .629\nH -.629 -.629 .629\n"
+                                         "H -.629 .629 -.629\nH .629 -.629 -.629\n");
+        set(methane, "task", "optimize_frequencies");
+        QVERIFY(validateNwchem(methane).warnings.join('\n').contains("回転対称数σ=12と"));
+        set(methane, "task", "optimize");
+        QVERIFY(!validateNwchem(methane).warnings.join('\n').contains("回転対称数"));
     }
     void projectAndPresetPreservation() {
         auto d = water();
