@@ -762,7 +762,6 @@ class EditorTest : public QObject {
             QVERIFY(!b->text().contains("QM/MM"));
             QVERIFY(!b->text().contains("スキャン"));
             QVERIFY(!b->text().contains("拘束に追加"));
-            QVERIFY(!b->text().contains("KAGAMI最適化"));
         }
         auto *color = w.findChild<QComboBox *>("moleculeColorMode");
         QCOMPARE(color->count(), 2);

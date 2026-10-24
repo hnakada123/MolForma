@@ -180,10 +180,10 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `measure` | 2/3/4原子の距離・角度・二面角 |
 | `set_dimension` | 2/3/4原子の距離（Å）・角度・二面角（度）の設定。GUIと同じく後の原子の側（結合していない別々の分子では後の原子の分子全体）を動かす |
 | `set_atom_properties` | 安定IDの原子の元素（`hydrogens` で水素の調整）、形式電荷、不対電子、同位体（質量数、0で解除）または質量（amu）、固定、ゴースト、原子名の変更 |
-| `import_document` | XYZ文字列またはKAGAMI v2 JSON文字列の取込。XYZは `append: true` で今の分子の横に追加 |
-| `open_file` | ローカルXYZ/MOL/SDF/Mol2/CML/PDB/KAGAMIファイル、NWChem・Gaussian入力の取込。複数フレームのXYZは `frame` で選択 |
-| `export_document` | 確定文書のXYZ、KAGAMI v2 JSON、検証済みNWChem入力文字列 |
-| `save_file` | 確定文書をKAGAMI v2として保存。既存ファイルは `overwrite: true` か、利用者の上書き承認が必要 |
+| `import_document` | XYZ文字列またはMolFormaプロジェクト（`.kgui.json`、version 2）のJSON文字列の取込。XYZは `append: true` で今の分子の横に追加 |
+| `open_file` | ローカルXYZ/MOL/SDF/Mol2/CML/PDB/MolFormaプロジェクト、NWChem・Gaussian入力の取込。複数フレームのXYZは `frame` で選択 |
+| `export_document` | 確定文書のXYZ、MolFormaプロジェクトのJSON、検証済みNWChem入力文字列 |
+| `save_file` | 確定文書をMolFormaプロジェクト（`.kgui.json`）として保存。既存ファイルは `overwrite: true` か、利用者の上書き承認が必要 |
 | `get_nwchem` / `set_nwchem` | 計算条件・既定値・選択肢（`choices`）・検証結果の取得と条件変更。溶媒（SMD・溶媒名）、相対論、RI-J、物性、遷移状態探索・IRC・拘束（`constraints`、原子は安定ID）・スキャン（`scan_atoms` 等）、BSSE、後続の一点計算を含む。追加入力（`extra_input` / `extra_tasks`）は変更不可 |
 | `get_advanced` / `set_advanced` | 詳細・可視化出力設定の型、選択肢、適用条件、値を取得・変更。`null` で個別リセット |
 | `get_execution` / `set_execution` | 実行ファイル、MPI、スレッド数、作業場所、環境変数、時間制限の取得・変更 |

@@ -1,6 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-// Derived from KAGAMI tools/kagami_gui (Copyright 2026 Hiroshi Nakada).
-// MolForma: translated and adapted to native Qt6/C++ document and editing APIs.
 #include "model/document.h"
 #include <QFile>
 #include <QJsonDocument>
@@ -235,8 +233,8 @@ void Document::invalidateAssignments() {
     for (auto it = assignments.begin(); it != assignments.end(); ++it) {
         auto a = it.value().toObject();
         a["status"] = "candidate";
-        a["issues"] = QJsonArray{
-            "原子構成が変更されたため、旧KAGAMIの断片割当は無効です（NWChem入力には使いません）。"};
+        a["issues"] =
+            QJsonArray{"原子構成が変更されたため、旧形式の断片割当は無効です（NWChem入力には使いません）。"};
         it.value() = a;
     }
     data["assignments"] = assignments;
@@ -653,7 +651,7 @@ QJsonObject Document::project() const {
 Document Document::fromProject(const QJsonObject &o) {
     if (o["format"] != "kagami-gui-project" || o["version"].toInt() != 2 ||
         o["coordinate_units"] != "angstrom")
-        fail("KAGAMI GUI version 2 プロジェクトを指定してください。");
+        fail("MolFormaプロジェクト（.kgui.json、version 2）を指定してください。");
     Document d = fromJson(o["document"].toObject());
     d.envelope = o;
     return d;

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-// Independent result browsing workflow inspired by KAGAMI results_tab.py; native NWChem readers.
 #include "ui/results_panel.h"
 #include "editing/coordinates.h"
 #include "model/geometry.h"
@@ -363,7 +362,8 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     orbitalGrid->setObjectName("resultsOrbitalGrid");
     orbitalGrid->setRange(16, 100);
     orbitalGrid->setValue(40);
-    orbitalOptions->addRow("各軸の格子分割数", orbitalGrid);
+    orbitalGrid->setToolTip("最も長い辺の分割数です。格子間隔は全軸で同じです。");
+    orbitalOptions->addRow("格子分割数（最長辺）", orbitalGrid);
     orbitalNorm = new QComboBox;
     orbitalNorm->setObjectName("resultsOrbitalNorm");
     orbitalNorm->addItem("自動判定", "auto");

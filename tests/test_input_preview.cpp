@@ -42,7 +42,7 @@ class InputPreviewTest : public QObject {
     }
     void nativeTabReadOnlyCopyAndSave() {
         auto d = water();
-        d.envelope["execution"] = QJsonObject{{"kagami_exe", "preserved"}};
+        d.envelope["execution"] = QJsonObject{{"legacy_exe", "preserved"}};
         d.envelope["result_reference"] = QJsonObject{{"job_dir", "old-result"}};
         d.data["future_field"] = QJsonObject{{"value", 42}};
         MainWindow w;

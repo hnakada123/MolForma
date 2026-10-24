@@ -47,7 +47,7 @@ const Element &element(const QString &symbol);
 struct Document {
     QVector<Atom> atoms;
     QVector<Bond> bonds;
-    QJsonObject data;     // KAGAMI document metadata, stable-ID references, residues, parts and settings.
+    QJsonObject data;     // Project metadata, stable-ID references, residues, parts and settings.
     QJsonObject envelope; // Preserves execution/result fields on project round trips.
     Document();
     Atom &atom(const QString &id);

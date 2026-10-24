@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-// Adapted from KAGAMI coordinate tab and atom dialog (Copyright 2026 Hiroshi Nakada).
 #include "ui/coordinates_panel.h"
 #include "editing/chemistry.h"
 #include "model/geometry.h"
@@ -195,7 +194,7 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     exports->addStretch();
     auto *note =
         new QLabel("座標と固定原子の入力断片です。計算には電荷・基底・手法・taskの設定を追加してください。"
-                   "点電荷やKAGAMIの拘束・断片設定は含みません。");
+                   "点電荷や旧形式の拘束・断片設定は含みません。");
     note->setWordWrap(true);
     rl->addWidget(note);
     splitter->addWidget(right);

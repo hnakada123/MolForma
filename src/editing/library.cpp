@@ -1,6 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-// Derived from KAGAMI tools/kagami_gui (Copyright 2026 Hiroshi Nakada).
-// MolForma: translated and adapted to native Qt6/C++ document and editing APIs.
 #include "editing/library.h"
 namespace mf {
 const QJsonArray &templates() {

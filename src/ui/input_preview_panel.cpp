@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-// Native NWChem counterpart of the read-only preview workflow in KAGAMI app.py.
 #include "ui/input_preview_panel.h"
 #include "editing/coordinates.h"
 #include "nwchem/nwchem_advanced.h"

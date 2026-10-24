@@ -5,8 +5,8 @@
 MolForma is a native Qt6 Widgets / C++20 molecular editor. Sources are grouped
 by responsibility, with paired headers and implementations in the same directory:
 
-- `src/model/`: `document.*` owns the stable-ID document and KAGAMI v2
-  serialization; `geometry.*` owns double-precision geometry.
+- `src/model/`: `document.*` owns the stable-ID document and the `.kgui.json`
+  project serialization (format version 2); `geometry.*` owns double-precision geometry.
 - `src/editing/`: `library.*`, `operations.*`, `peptide.*` and `coordination.*`
   implement editing. `chemistry.*` uses the Open Babel C++ API.
   `stereochemistry.*` optionally uses native RDKit for CIP and residue recognition.
@@ -48,7 +48,7 @@ contains model, editing, nwchem and results; `molforma_ui` contains ui and links
 to core and mcp; `molforma_mcp` contains mcp and links to core.
 
 Tests are in `tests/`, documentation in `docs/`, and resource data in `assets/`.
-Preserve KAGAMI data and fixture attributions.
+Keep `LICENSE` (Apache-2.0) and `NOTICE` current.
 
 ## Build and test
 
@@ -83,5 +83,4 @@ in `docs/mcp.md`.
 
 Use short imperative commit subjects. PRs describe behavior, checks and
 screenshots for UI changes. Keep builds, logs, credentials and generated
-outputs out of version control. Do not add runtime dependence on the original
-KAGAMI checkout or Python GUI.
+outputs out of version control. Do not add runtime dependence on Python.

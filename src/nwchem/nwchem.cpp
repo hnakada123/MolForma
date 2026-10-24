@@ -929,7 +929,7 @@ NwchemValidation validateNwchem(const Document &d) {
         warnings << "保存された点電荷は入力に含めません。必要なら外部点電荷を有効にしてください。";
     if (!d.data["references"].toArray().isEmpty() || !d.data["invalid_settings"].toArray().isEmpty() ||
         !d.data["assignments"].toObject().isEmpty() || !d.job()["sections"].toObject().isEmpty())
-        warnings << "KAGAMI由来の詳細・拘束・断片設定は変換しません。NWChem計算条件と原子の固定フラグを使用し"
+        warnings << "旧形式の詳細・拘束・断片設定は変換しません。NWChem計算条件と原子の固定フラグを使用し"
                     "ます。";
     try {
         if (!d.atoms.isEmpty())

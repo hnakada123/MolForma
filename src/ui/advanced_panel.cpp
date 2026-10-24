@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-// Native NWChem settings; navigation/reset workflow inspired by KAGAMI advanced_tab.py.
 #include "ui/advanced_panel.h"
 #include "nwchem/nwchem_output.h"
 #include "ui/calculation_panel.h"

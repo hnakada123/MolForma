@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
     parser.setApplicationDescription("Qt6/C++ molecular editor and NWChem input, run and result front end");
     parser.addHelpOption();
     parser.addVersionOption();
-    parser.addPositionalArgument("file", "XYZ/MOL/SDF/PDB/KAGAMI project");
+    parser.addPositionalArgument("file", "XYZ/MOL/SDF/PDB or MolForma project (.kgui.json)");
     parser.addOption({"screenshot", "Save a screenshot and exit", "path"});
     parser.addOption({"mcp", "Run the headless MCP stdio server"});
     parser.addOption({"mcp-gui", "Run the MCP stdio server with the editor window"});

@@ -1,48 +1,11 @@
 MolForma
 
-This project contains data and code adapted from KAGAMI.
-KAGAMI: Copyright 2026 Hiroshi Nakada. Apache License, Version 2.0.
-Source: /home/nakada/GitHub/KAGAMI, inspected on 2026-10-22.
-Reference manual: docs/00_gui/molecule_tab.html.
+Licensed under the Apache License, Version 2.0 (see LICENSE).
 
-assets/library.json: unchanged tools/kagami_gui/fragments/library.json.
-assets/elements.json: unchanged tools/kagami_gui/elements.json.
-tests/fixtures/*.kgui.json: copies of examples/gui_builder projects.
+assets/library.json (molecule-builder fragments) and assets/elements.json (element
+data) are part of MolForma. Some fragment geometries were generated with RDKit
+(BSD-3-Clause).
 
-src/model/document.cpp, src/model/geometry.cpp, src/editing/library.cpp,
-src/editing/operations.cpp, src/editing/peptide.cpp and src/editing/coordination.cpp
-adapt the KAGAMI GUI document schema and builder algorithms from Python/NumPy
-to native Qt6/C++/Eigen. src/ui/template_delegate.cpp and the palette setup
-in src/ui/main_window.cpp adapt the thumbnails, labels and layout in
-tools/kagami_gui/builder.py. src/editing/coordinates.cpp and
-src/ui/coordinates_panel.cpp adapt coordinate editing and the atom dialog
-from builder_integration.py and coordinate_atom_dialog.py to C++/Qt6,
-with new NWChem geometry export.
-src/ui/calculation_panel.cpp adapts the settings/preset workflow of job_tab.py
-to native Qt6 and NWChem. src/nwchem/nwchem.cpp is new NWChem input generation and
-validation code; it does not translate KAGAMI-specific computational methods.
-src/ui/advanced_panel.cpp adapts search, filtering and reset workflows from
-tools/kagami_gui/advanced_tab.py to native Qt6. src/nwchem/nwchem_advanced.cpp defines
-new NWChem-specific settings rather than reusing KAGAMI's advanced keywords.
-src/ui/execution_panel.cpp adapts the path, resource and environment settings
-workflow of tools/kagami_gui/app.py. src/nwchem/nwchem_execution.cpp implements new
-native NWChem/MPI launch validation, job snapshots, logging and cancellation.
-src/ui/input_preview_panel.cpp adapts the read-only input preview and validation
-navigation workflow of tools/kagami_gui/app.py, inspected on 2026-10-23,
-to native Qt6 with NWChem input and execution-path previews.
-src/ui/results_panel.cpp adapts the independent result browsing workflow of
-tools/kagami_gui/results_tab.py (inspected on 2026-10-23). src/results/results.cpp is
-new native parsing of NWChem output, XYZ, CUBE and MOLDEN, with marching
-tetrahedra for isosurfaces. It does not depend on KAGAMI's readers or Python.
-src/ui/history_panel.cpp adapts the history filtering, log browsing, reuse and
-job-management workflow of tools/kagami_gui/app.py (inspected on 2026-10-23).
-src/nwchem/history.cpp implements new native scanning and validation of NWChem run
-bundles, with no dependency on KAGAMI's job records or Python.
-The remaining UI and process worker are new.
-The original license and notice are assets/KAGAMI-LICENSE and KAGAMI-NOTICE.
-The latter describes the full upstream repository; MolForma does not include
-KAGAMI's quantum-chemistry engine or its PySCF-derived code.
-
-Qt6, Eigen3, optional RDKit and Open Babel 3 are system dependencies, not vendored here;
-their own license terms apply. Open Babel is GPL-licensed. The Apache notice
-for imported KAGAMI files does not license all linked dependencies.
+Qt6, Eigen3, optional RDKit and VTK, and Open Babel 3 are system dependencies, not
+vendored here; their own license terms apply. Open Babel is GPL-licensed. The Apache
+license of MolForma does not license the linked dependencies.

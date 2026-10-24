@@ -868,7 +868,7 @@ void MainWindow::buildMenus() {
         QMessageBox::about(
             this, "MolForma",
             QString("MolForma %1\nNWChem向けの分子作成・計算入力・実行・結果表示（Qt6 / C++）\n"
-                    "KAGAMI GUIを基に移植\n部品・元素データ: KAGAMI (Apache-2.0)\n"
+                    "ライセンス: Apache License 2.0\n"
                     "化学ファイル・力場: Open Babel\n立体判定・残基認識（RDKit）: %2\n3D描画: %3")
                 .arg(MOLFORMA_VERSION, hasStereochemistryBackend() ? "有効" : "無効",
                      view->rendererName() == "vtk" ? "VTK（OpenGL）" : "QPainter（CPU）"));
@@ -1452,7 +1452,7 @@ bool MainWindow::save(bool as) {
     QString p = path;
     if (as || p.isEmpty())
         p = QFileDialog::getSaveFileName(this, "プロジェクトを保存", p.isEmpty() ? "molecule.kgui.json" : p,
-                                         "KAGAMI GUI project (*.kgui.json)");
+                                         "MolFormaプロジェクト (*.kgui.json)");
     if (p.isEmpty())
         return false;
     if (!p.endsWith(".json", Qt::CaseInsensitive))

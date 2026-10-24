@@ -1,6 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-// Coordinate editing adapted from KAGAMI tools/kagami_gui/builder_integration.py
-// and coordinate_atom_dialog.py (Copyright 2026 Hiroshi Nakada).
 #include "editing/coordinates.h"
 #include "model/geometry.h"
 #include <QRegularExpression>

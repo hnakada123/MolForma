@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-// History browsing/reuse workflow adapted from KAGAMI app.py for native NWChem bundles.
 #include "ui/history_panel.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"

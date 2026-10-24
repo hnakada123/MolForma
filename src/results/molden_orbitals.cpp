@@ -1,8 +1,11 @@
 #include "results/molden_orbitals.h"
 #include "editing/coordinates.h"
 #include <QRegularExpression>
+#include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <thread>
+#include <vector>
 
 namespace mf {
 namespace {
@@ -300,53 +303,72 @@ QVector<double> moldenOrbitalGrid(const MoldenWavefunction &w, int orbital, cons
     if (points * primitives > 1000000000)
         fail("軌道表示の計算量が大きすぎます。格子の分割数を小さくしてください。");
     const auto polynomials = orbitalPolynomials(w, orbital);
-    QVector<double> values(points, 0.);
-    auto *output = values.data();
+    // On an axis-aligned grid exp(-a*r^2) separates into three 1D tables per primitive, and the
+    // coordinate powers into three per shell; they are built once and shared by the threads.
+    struct Tables {
+        int shell;
+        std::array<std::array<std::array<double, 5>, 101>, 3> powers;
+        QVector<std::array<std::array<double, 101>, 3>> exponentials;
+    };
+    std::vector<Tables> tables;
     for (int shell = 0; shell < w.shells.size(); ++shell) {
         const auto &s = w.shells[shell];
-        const auto &polynomial = polynomials[shell];
-        if (polynomial.isEmpty())
+        if (polynomials[shell].isEmpty())
             continue;
-        // On an axis-aligned grid exp(-a*r^2) separates into three 1D tables.
-        // Reuse exponentials and coordinate powers without screening or reducing grid precision.
-        std::array<std::array<std::array<double, 5>, 101>, 3> powers;
+        auto &t = tables.emplace_back();
+        t.shell = shell;
         for (int axis = 0; axis < 3; ++axis)
             for (int i = 0; i < grid[axis]; ++i) {
                 const double r = (origin[axis] + step[axis] * i) / BohrToAngstrom - s.center[axis];
-                powers[axis][i][0] = 1;
-                powers[axis][i][1] = r;
+                t.powers[axis][i][0] = 1;
+                t.powers[axis][i][1] = r;
                 for (int n = 2; n <= s.angularMomentum; ++n)
-                    powers[axis][i][n] = powers[axis][i][n - 1] * r;
+                    t.powers[axis][i][n] = t.powers[axis][i][n - 1] * r;
             }
-        using AxisValues = std::array<std::array<double, 101>, 3>;
-        QVector<AxisValues> exponentials(s.primitives.size());
+        t.exponentials.resize(s.primitives.size());
         for (int p = 0; p < s.primitives.size(); ++p)
             for (int axis = 0; axis < 3; ++axis)
                 for (int i = 0; i < grid[axis]; ++i) {
-                    const double r = powers[axis][i][1];
-                    exponentials[p][axis][i] = std::exp(-s.primitives[p].exponent * r * r);
+                    const double r = t.powers[axis][i][1];
+                    t.exponentials[p][axis][i] = std::exp(-s.primitives[p].exponent * r * r);
                 }
-        const auto *exps = exponentials.constData();
-        for (int x = 0; x < grid[0]; ++x)
-            for (int y = 0; y < grid[1]; ++y) {
-                std::array<double, 101> radial{};
-                for (int p = 0; p < s.primitives.size(); ++p) {
-                    const double xy = s.primitives[p].coefficient * exps[p][0][x] * exps[p][1][y];
-                    for (int z = 0; z < grid[2]; ++z)
-                        radial[z] += xy * exps[p][2][z];
-                }
-                std::array<double, 5> angular{};
-                for (const auto &t : polynomial)
-                    angular[t.powers[2]] +=
-                        t.coefficient * powers[0][x][t.powers[0]] * powers[1][y][t.powers[1]];
-                const int offset = (x * grid[1] + y) * grid[2];
-                for (int z = 0; z < grid[2]; ++z) {
-                    double a = angular[s.angularMomentum];
-                    for (int n = s.angularMomentum - 1; n >= 0; --n)
-                        a = a * powers[2][z][1] + angular[n];
-                    output[offset + z] += radial[z] * a;
+    }
+    QVector<double> values(points, 0.);
+    auto *output = values.data();
+    // Planes of constant x, one range per thread. Every point adds the shells in the same order,
+    // so the values do not depend on the number of threads.
+    const auto planes = [&](int first, int last) {
+        for (int x = first; x < last; ++x)
+            for (const auto &t : tables) {
+                const auto &s = w.shells[t.shell];
+                const auto *exps = t.exponentials.constData();
+                for (int y = 0; y < grid[1]; ++y) {
+                    std::array<double, 101> radial{};
+                    for (int p = 0; p < s.primitives.size(); ++p) {
+                        const double xy = s.primitives[p].coefficient * exps[p][0][x] * exps[p][1][y];
+                        for (int z = 0; z < grid[2]; ++z)
+                            radial[z] += xy * exps[p][2][z];
+                    }
+                    std::array<double, 5> angular{};
+                    for (const auto &term : polynomials[t.shell])
+                        angular[term.powers[2]] += term.coefficient * t.powers[0][x][term.powers[0]] *
+                                                   t.powers[1][y][term.powers[1]];
+                    const int offset = (x * grid[1] + y) * grid[2];
+                    for (int z = 0; z < grid[2]; ++z) {
+                        double a = angular[s.angularMomentum];
+                        for (int n = s.angularMomentum - 1; n >= 0; --n)
+                            a = a * t.powers[2][z][1] + angular[n];
+                        output[offset + z] += radial[z] * a;
+                    }
                 }
             }
+    };
+    const int threads = int(std::clamp<unsigned>(std::thread::hardware_concurrency(), 1, grid[0]));
+    {
+        std::vector<std::jthread> workers;
+        for (int i = 1; i < threads; ++i)
+            workers.emplace_back(planes, grid[0] * i / threads, grid[0] * (i + 1) / threads);
+        planes(0, grid[0] / threads);
     }
     for (double value : values)
         if (!std::isfinite(value))

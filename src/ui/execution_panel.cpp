@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-// Native NWChem execution UI; path/resource/environment workflow adapted from KAGAMI app.py.
 #include "ui/execution_panel.h"
 #include "nwchem/nwchem.h"
 #include "ui/advanced_panel.h"

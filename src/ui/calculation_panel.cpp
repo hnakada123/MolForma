@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-// Native NWChem counterpart of KAGAMI's job_tab.py (Copyright 2026 Hiroshi Nakada).
 #include "ui/calculation_panel.h"
 #include "model/geometry.h"
 #include "nwchem/nwchem.h"

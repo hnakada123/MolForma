@@ -2,6 +2,7 @@
 #include "results/molden_orbitals.h"
 #include "ui/main_window.h"
 #include "ui/results_panel.h"
+#include <Eigen/Geometry>
 #include <QtTest>
 #include <QtWidgets>
 #include <numbers>
@@ -179,13 +180,21 @@ class MoldenTest : public QObject {
                 }
         const auto r = readResult(save("lobe.cube", text + "\n"));
         QVERIFY(!r.surface.isEmpty());
+        // A closed surface: triangles share exact vertices, every edge belongs to two of them, and
+        // the winding agrees with the outward normals.
+        QMap<std::pair<std::array<double, 3>, std::array<double, 3>>, int> edges;
+        const auto key = [](const Vec &v) { return std::array<double, 3>{v.x(), v.y(), v.z()}; };
         for (const auto &t : r.surface) {
             QVERIFY(t.positive);
             for (const auto &[point, normal] : {std::pair{t.a, t.na}, {t.b, t.nb}, {t.c, t.nc}}) {
                 QVERIFY(std::abs(normal.norm() - 1) < 1e-9);
                 QVERIFY(normal.dot(point.normalized()) > .98);
             }
+            QVERIFY((t.b - t.a).cross(t.c - t.a).dot(t.na + t.nb + t.nc) > 0);
+            for (const auto &[p, q] : {std::pair{t.a, t.b}, {t.b, t.c}, {t.c, t.a}})
+                ++edges[std::minmax(key(p), key(q))];
         }
+        QVERIFY(std::all_of(edges.cbegin(), edges.cend(), [](int n) { return n == 2; }));
         // The worker hands the normals over with the triangles.
         const auto bin = files.filePath("lobe.bin");
         saveResultData(bin, r);
@@ -541,8 +550,14 @@ class MoldenTest : public QObject {
                 disconnect(connection);
                 QCOMPARE(panel->result().selectedOrbital, orbital);
                 qInfo("Orbital %d, pass %d: %.3f ms to apply surface", orbital + 1, pass + 1, elapsed / 1e6);
-                if (!baseline.isEmpty()) {
-                    const auto old = loadResultData(baseline + QString("/before-%1.bin").arg(orbital));
+                // A missing baseline is recorded from this run; later runs must reproduce it.
+                const auto saved = baseline + QString("/before-%1.bin").arg(orbital);
+                if (!baseline.isEmpty() && !QFileInfo::exists(saved)) {
+                    QVERIFY(QDir().mkpath(baseline));
+                    saveResultData(saved, panel->result());
+                    qInfo("Recorded baseline %s", qPrintable(saved));
+                } else if (!baseline.isEmpty()) {
+                    const auto old = loadResultData(saved);
                     const auto &now = panel->result();
                     QCOMPARE(now.surface.size(), old.surface.size());
                     QVERIFY(std::abs(now.minimum - old.minimum) < 1e-12);

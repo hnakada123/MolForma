@@ -1,6 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-// Derived from KAGAMI tools/kagami_gui/builder.py TemplateDelegate
-// (Copyright 2026 Hiroshi Nakada). Adapted to Qt6/C++ with HiDPI-aware caching.
 #include "ui/template_delegate.h"
 #include "model/document.h"
 #include <QApplication>

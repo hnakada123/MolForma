@@ -686,22 +686,25 @@ QJsonArray McpServer::toolList() const {
         {"ids"}, true, true);
     add("import_document",
         "Replace structure from XYZ text (preserving project metadata) or a complete "
-        "KAGAMI v2 project JSON string. With format xyz and append true, the XYZ molecule is added 3 Å "
+        "MolForma project JSON string (.kgui.json, version 2). With format xyz and append true, the XYZ "
+        "molecule is added 3 Å "
         "beside the current one instead (e.g. to build a dimer). This is undoable.",
         {{"format", choice({"xyz", "project"})}, {"text", type("string")}, {"append", type("boolean")}},
         {"format", "text"}, true, true);
     add("open_file",
-        "Load a local XYZ/MOL/SDF/Mol2/CML/PDB/KAGAMI file, NWChem input (.nw) or Gaussian input (.gjf/.com) "
+        "Load a local XYZ/MOL/SDF/Mol2/CML/PDB/MolForma project file, NWChem input (.nw) or Gaussian input "
+        "(.gjf/.com) "
         "as an undoable edit. Structure files keep the calculation settings; NWChem and Gaussian inputs also "
         "set charge and multiplicity, and NWChem inputs the calculation settings they share with MolForma. "
         "Multi-frame XYZ files need frame (0-based). PDB uses model 1 and automatic alternate-location "
         "selection. Maximum file size: 8 MiB.",
         {{"path", type("string")}, {"frame", QJsonObject{{"type", "integer"}, {"minimum", 0}}}}, {"path"},
         true, true);
-    add("export_document", "Return the committed document as XYZ, KAGAMI v2 JSON, or validated NWChem input.",
+    add("export_document",
+        "Return the committed document as XYZ, MolForma project JSON, or validated NWChem input.",
         {{"format", choice({"xyz", "project", "nwchem"})}}, {"format"});
     add("save_file",
-        "Save the committed KAGAMI v2 project locally. Refuse existing paths unless "
+        "Save the committed MolForma project (.kgui.json) locally. Refuse existing paths unless "
         "overwrite is true; reject pending candidates. Does not mark GUI history clean.",
         {{"path", type("string")}, {"overwrite", type("boolean")}, {"expectedRevision", type("string")}},
         {"path", "expectedRevision"});

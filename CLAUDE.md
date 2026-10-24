@@ -2,8 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-MolForma is a native Qt6 Widgets / C++20 molecular editor and NWChem input/run/result front end, ported from
-the KAGAMI Python GUI. The UI text and user docs (`README.md`, `docs/`) are Japanese. `AGENTS.md` has the same
+MolForma is a native Qt6 Widgets / C++20 molecular editor and NWChem input/run/result front end.
+The UI text and user docs (`README.md`, `docs/`) are Japanese. `AGENTS.md` has the same
 repository guidelines in a per-file form.
 
 ## Build and test
@@ -41,7 +41,7 @@ QT_QPA_PLATFORM=offscreen ./build/test_editor someTestFunction   # one Qt Test s
 Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#include "model/document.h"`):
 
 - `molforma_core` — `src/model`, `src/editing`, `src/nwchem`, `src/results`, plus `assets/resources.qrc`
-  (KAGAMI template/element data embedded as Qt resources; no runtime file dependency). No UI code here.
+  (fragment template/element data embedded as Qt resources; no runtime file dependency). No UI code here.
 - `molforma_ui` — `src/ui`, links core and mcp (McpGui reuses the shared tool definitions and policy).
   `main_window.*` + `editor_panels.cpp` host the editor; numbered tabs
   "2 Coordinates" … "6 Input preview" are separate `*_panel.*` classes; result viewer and history are panels too.
@@ -56,7 +56,8 @@ Key cross-cutting designs:
 
 - **Document model**: `mf::Document` (`model/document.*`) holds atoms with stable IDs, bonds, residues,
   coordination centers, fragments, fixed atoms, isotopes, point charges and calculation/execution settings, and
-  serializes to the KAGAMI v2 `.kgui.json` project envelope. Atom references are stored by stable ID and only
+  serializes to the `.kgui.json` project envelope (format version 2, MolForma's own project format; keep its
+  format identifier unchanged for compatibility). Atom references are stored by stable ID and only
   translated to indices at export (NWChem input, XYZ). Coordinates are doubles in Å; camera/view never edits them.
 - **Edit → candidate → commit**: UI edits operate on a copy of the document and commit only after validation.
   Operations such as ligand placement, sequence building, deletion and refinement produce a *candidate* shown
@@ -90,7 +91,6 @@ Key cross-cutting designs:
 - Add deterministic regression tests, especially for file compatibility, connectivity, geometry, undo and
   candidates. Preserve project envelope fields in `.kgui.json`.
 - Document feature limitations in `docs/features.md` (Japanese); MCP tool changes belong in `docs/mcp.md`.
-- Preserve KAGAMI data and fixture attributions (`NOTICE`, `assets/KAGAMI-*`). Do not add runtime dependence on
-  the KAGAMI checkout, Python, or the original Python GUI.
+- Keep `LICENSE` (Apache-2.0) and `NOTICE` current. Do not add runtime dependence on Python.
 - Commits use short imperative subjects. PRs describe behavior and checks, with screenshots for UI changes.
   Keep build dirs, logs and generated outputs out of version control.

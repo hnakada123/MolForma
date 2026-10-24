@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <openbabel/elements.h>
+#include <unordered_map>
 #include <vtkActor.h>
 #include <vtkCamera.h>
 #include <vtkCellArray.h>
@@ -181,6 +182,14 @@ void VtkMoleculeRenderer::setSurface(const QVector<SurfaceTriangle> &triangles) 
         normals[i]->SetNumberOfComponents(3);
     }
     s.hasSurface = false;
+    // Triangles from the mesher share exact corner positions: give each position one point.
+    struct Hash {
+        size_t operator()(const std::array<double, 3> &p) const {
+            const std::hash<double> h;
+            return h(p[0]) ^ (h(p[1]) * 0x9e3779b97f4a7c15ULL) ^ (h(p[2]) * 0xc2b2ae3d27d4eb4fULL);
+        }
+    };
+    std::array<std::unordered_map<std::array<double, 3>, vtkIdType, Hash>, 2> shared;
     for (const auto &triangle : triangles) {
         Vec normal = (triangle.b - triangle.a).cross(triangle.c - triangle.a);
         const double length = normal.norm();
@@ -189,14 +198,24 @@ void VtkMoleculeRenderer::setSurface(const QVector<SurfaceTriangle> &triangles) 
             continue;
         normal /= length;
         const int phase = triangle.positive ? 0 : 1;
-        const vtkIdType first = points[phase]->GetNumberOfPoints();
-        // Normals of the field at the corners shade the surface smoothly across the triangles.
+        // Normals of the field at the corners shade the surface smoothly across the triangles; a
+        // corner without one takes this triangle's normal and a point of its own.
         const std::array<std::pair<Vec, Vec>, 3> corners{
             std::pair{triangle.a, triangle.na}, {triangle.b, triangle.nb}, {triangle.c, triangle.nc}};
-        for (const auto &[point, smooth] : corners) {
-            points[phase]->InsertNextPoint(point.data());
+        vtkIdType indices[3];
+        for (int i = 0; i < 3; ++i) {
+            const auto &[point, smooth] = corners[i];
+            const std::array<double, 3> key{point.x(), point.y(), point.z()};
+            if (!smooth.isZero())
+                if (const auto it = shared[phase].find(key); it != shared[phase].end()) {
+                    indices[i] = it->second;
+                    continue;
+                }
+            indices[i] = points[phase]->InsertNextPoint(point.data());
             const Vec n = smooth.isZero() ? normal : smooth;
             normals[phase]->InsertNextTuple3(n.x(), n.y(), n.z());
+            if (!smooth.isZero())
+                shared[phase].emplace(key, indices[i]);
             if (!s.hasSurface) {
                 s.surfaceLow = s.surfaceHigh = point;
                 s.hasSurface = true;
@@ -204,7 +223,6 @@ void VtkMoleculeRenderer::setSurface(const QVector<SurfaceTriangle> &triangles) 
             s.surfaceLow = s.surfaceLow.cwiseMin(point);
             s.surfaceHigh = s.surfaceHigh.cwiseMax(point);
         }
-        const vtkIdType indices[] = {first, first + 1, first + 2};
         cells[phase]->InsertNextCell(3, indices);
     }
     for (int i = 0; i < 2; ++i) {

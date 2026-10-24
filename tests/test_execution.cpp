@@ -55,7 +55,7 @@ class ExecutionTest : public QObject {
     }
     void defaultsAndCompatibility() {
         auto d = water();
-        d.envelope["execution"] = QJsonObject{{"kagami_exe", "keep"}, {"future", 12}};
+        d.envelope["execution"] = QJsonObject{{"legacy_exe", "keep"}, {"future", 12}};
         d.envelope["result_reference"] = QJsonObject{{"job_dir", "old-result"}};
         const auto before = d.project();
         QCOMPARE(executionSettings(d)["mpi_ranks"].toInt(), 2);

@@ -885,7 +885,7 @@ class CalculationTest : public QObject {
         auto d = water();
         d.envelope["result_reference"] = QJsonObject{{"path", "existing.out"}};
         d.setJobValue("method", "caspt2");
-        d.setJobValue("basis", "KAGAMI-specific");
+        d.setJobValue("basis", "legacy-specific");
         d.setJobValue("sections", QJsonObject{{"custom", QJsonObject{{"future", "keep"}}}});
         set(d, "future", QJsonObject{{"engine", 99}});
         set(d, "start", "saved_name");
@@ -906,7 +906,7 @@ class CalculationTest : public QObject {
         QCOMPARE(restored.data["nwchem"], d.data["nwchem"]);
         QCOMPARE(restored.envelope["result_reference"], d.envelope["result_reference"]);
         QCOMPARE(nwchemInput(restored), nwchemInput(d));
-        QVERIFY(validateNwchem(d).warnings.join('\n').contains("KAGAMI"));
+        QVERIFY(validateNwchem(d).warnings.join('\n').contains("旧形式"));
         QVERIFY(nwchemInput(d).contains("task dft optimize"));
         QVERIFY(!nwchemInput(d).contains("caspt2"));
     }
