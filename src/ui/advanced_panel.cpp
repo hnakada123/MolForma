@@ -6,6 +6,7 @@
 #include "ui/diagnostics_list.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
+#include "ui/theme.h"
 #include <QtWidgets>
 #include <algorithm>
 
@@ -72,45 +73,65 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
     layout->addWidget(message);
     auto *split = new QSplitter;
     layout->addWidget(split, 1);
-    scroll = new QScrollArea;
-    scroll->setWidgetResizable(true);
-    auto *form = new QWidget;
-    scroll->setWidget(form);
-    auto *forms = new QVBoxLayout(form);
+    auto *left = new QWidget;
+    auto *leftLayout = new QVBoxLayout(left);
+    leftLayout->setContentsMargins(0, 0, 4, 0);
+    table = new QTreeWidget;
+    table->setObjectName("advancedTable");
+    table->setColumnCount(5);
+    table->setHeaderLabels({"項目", "値", "状態", "NWChem", ""});
+    table->setAlternatingRowColors(true);
+    table->setSelectionMode(QAbstractItemView::SingleSelection);
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    auto *header = table->header();
+    header->setStretchLastSection(false);
+    header->setSectionResizeMode(State, QHeaderView::Stretch);
+    header->setSectionResizeMode(Reset, QHeaderView::Fixed);
+    for (const auto &[column, width] : {std::pair{Name, 220}, {Value, 190}, {Keyword, 120}, {Reset, 72}})
+        table->setColumnWidth(column, width);
+    leftLayout->addWidget(table, 1);
     empty = new QLabel("一致する詳細設定はありません。");
     empty->setObjectName("advancedEmpty");
-    forms->addWidget(empty);
+    leftLayout->addWidget(empty);
+    help = new QLabel;
+    help->setObjectName("advancedHelp");
+    help->setTextFormat(Qt::PlainText);
+    help->setWordWrap(true);
+    help->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    help->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    help->setMinimumHeight(help->fontMetrics().lineSpacing() * 4);
+    leftLayout->addWidget(help);
+    outputSummary = new QLabel;
+    outputSummary->setObjectName("advancedOutputSummary");
+    outputSummary->setTextFormat(Qt::PlainText);
+    outputSummary->setWordWrap(true);
+    outputSummary->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    leftLayout->addWidget(outputSummary);
     for (const auto &g : nwchemAdvancedGroups()) {
-        auto *box = new QGroupBox(g.label);
-        groups[g.value] = box;
-        forms->addWidget(box);
-        auto *entries = new QVBoxLayout(box);
-        if (g.value == "visualization") {
-            outputSummary = new QLabel;
-            outputSummary->setObjectName("advancedOutputSummary");
-            outputSummary->setTextFormat(Qt::PlainText);
-            outputSummary->setWordWrap(true);
-            outputSummary->setTextInteractionFlags(Qt::TextSelectableByMouse);
-            entries->addWidget(outputSummary);
-        }
-        auto *resetGroup = new QPushButton("このカテゴリを既定へ");
+        auto *group = new QTreeWidgetItem(table, {g.label});
+        group->setData(Name, Qt::UserRole + 1, g.value);
+        auto font = group->font(Name);
+        font.setBold(true);
+        group->setFont(Name, font);
+        groups[g.value] = group;
+        auto *resetGroup = new QPushButton("既定へ");
         resetGroup->setObjectName("advancedReset_" + g.value);
+        resetGroup->setToolTip("「" + g.label + "」の明示指定をすべて解除します。Undoで戻せます。");
         groupResets[g.value] = resetGroup;
-        entries->addWidget(resetGroup, 0, Qt::AlignRight);
+        table->setItemWidget(group, Reset, resetGroup);
+        group->setSizeHint(Reset, resetGroup->sizeHint());
         connect(resetGroup, &QPushButton::clicked, this, [this, group = g.value] { reset(group); });
         for (const auto &o : nwchemAdvancedOptions()) {
             if (o.group != g.value)
                 continue;
             Row row;
-            row.container = new QWidget;
-            row.container->setObjectName("advancedRow_" + o.key);
-            auto *vertical = new QVBoxLayout(row.container);
-            vertical->setContentsMargins(0, 4, 0, 6);
-            auto *line = new QHBoxLayout;
-            row.label = new QLabel(o.label);
-            row.label->setTextFormat(Qt::PlainText);
-            row.label->setWordWrap(true);
-            line->addWidget(row.label, 2);
+            row.item = new QTreeWidgetItem(group, {o.label});
+            row.item->setData(Name, Qt::UserRole, o.key);
+            row.item->setData(Name, Qt::UserRole + 1, o.group);
+            row.item->setText(Keyword, o.keyword);
+            const auto tip = o.help + "\nNWChem: " + o.keyword + "\n未指定: " + o.defaultText;
+            row.item->setToolTip(Name, tip);
+            row.item->setToolTip(Keyword, tip);
             if (o.kind == AdvancedKind::Flag) {
                 auto *check = new QCheckBox("有効");
                 row.editor = check;
@@ -140,31 +161,30 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
                 });
             }
             row.editor->setObjectName("advanced_" + o.key);
-            row.label->setBuddy(row.editor);
-            row.editor->setToolTip(o.help + "\nNWChem: " + o.keyword + "\n未指定: " + o.defaultText);
-            line->addWidget(row.editor, 2);
+            row.editor->setToolTip(tip);
+            table->setItemWidget(row.item, Value, row.editor);
+            row.item->setSizeHint(Value, row.editor->sizeHint());
             row.reset = new QPushButton("戻す");
             row.reset->setObjectName("advancedResetField_" + o.key);
             row.reset->setToolTip("この項目の明示指定を解除します。Undoで戻せます。");
-            line->addWidget(row.reset);
+            table->setItemWidget(row.item, Reset, row.reset);
             connect(row.reset, &QPushButton::clicked, this,
                     [this, key = o.key] { change(key, QJsonValue::Undefined); });
-            vertical->addLayout(line);
-            auto *help = new QLabel(o.keyword + "  ·  " + o.help + "\n未指定: " + o.defaultText);
-            help->setTextFormat(Qt::PlainText);
-            help->setWordWrap(true);
-            vertical->addWidget(help);
-            row.state = new QLabel;
-            row.state->setObjectName("advancedState_" + o.key);
-            row.state->setTextFormat(Qt::PlainText);
-            row.state->setWordWrap(true);
-            vertical->addWidget(row.state);
             rows[o.key] = row;
-            entries->addWidget(row.container);
         }
     }
-    forms->addStretch();
-    split->addWidget(scroll);
+    table->expandAll();
+    connect(table, &QTreeWidget::currentItemChanged, this, &AdvancedPanel::describe);
+    // Working in an editor selects its row, so the description follows the keyboard too.
+    connect(qApp, &QApplication::focusChanged, this, [this](QWidget *, QWidget *now) {
+        for (auto it = rows.cbegin(); now && it != rows.cend(); ++it)
+            if (it->editor == now || it->editor->isAncestorOf(now)) {
+                if (table->currentItem() != it->item)
+                    table->setCurrentItem(it->item);
+                return;
+            }
+    });
+    split->addWidget(left);
     auto *right = new QWidget;
     auto *output = new QVBoxLayout(right);
     output->setContentsMargins(4, 0, 0, 0);
@@ -175,11 +195,7 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
     connect(diagnostics, &DiagnosticsList::messageClicked, this, [this](const QString &text) {
         for (const auto &o : nwchemAdvancedOptions())
             if (text.contains("「" + o.label + "」") && rows.contains(o.key)) {
-                search->clear();
-                category->setCurrentIndex(0);
-                filter->setCurrentIndex(0);
-                scroll->ensureWidgetVisible(rows[o.key].container, 20, 60);
-                rows[o.key].editor->setFocus(Qt::OtherFocusReason);
+                showRow(o.key);
                 return;
             }
         const auto key = window->calculation->fieldFor(text);
@@ -220,7 +236,7 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
     split->addWidget(right);
     split->setStretchFactor(0, 1);
     split->setStretchFactor(1, 1);
-    split->setSizes({680, 640});
+    split->setSizes({880, 460});
     connect(copy, &QPushButton::clicked, this, [this] { window->calculation->exportInput(false); });
     connect(save, &QPushButton::clicked, this, [this] { window->calculation->exportInput(true); });
     connect(search, &QLineEdit::textChanged, this, &AdvancedPanel::filterRows);
@@ -241,6 +257,31 @@ void AdvancedPanel::reset(const QString &group) {
     window->safe(
         [&] { window->edit("NWChem詳細設定を既定へ", [&](Document &d) { resetNwchemAdvanced(d, group); }); });
 }
+void AdvancedPanel::showRow(const QString &key) {
+    const auto &row = rows[key];
+    search->clear();
+    category->setCurrentIndex(0);
+    filter->setCurrentIndex(0);
+    if (row.item->isHidden()) // An option kept for another kind of calculation.
+        filter->setCurrentIndex(filter->findData("all"));
+    table->setCurrentItem(row.item);
+    table->scrollToItem(row.item, QAbstractItemView::PositionAtCenter);
+    row.editor->setFocus(Qt::OtherFocusReason);
+}
+void AdvancedPanel::describe() {
+    const auto *item = table->currentItem();
+    const auto key = item ? item->data(Name, Qt::UserRole).toString() : QString();
+    const auto group = item ? item->data(Name, Qt::UserRole + 1).toString() : QString();
+    QString text = "行を選ぶと、その項目の説明を表示します。";
+    for (const auto &o : nwchemAdvancedOptions())
+        if (o.key == key) {
+            text = o.label + "（NWChem: " + o.keyword + "）\n" + o.help + "\n未指定: " + o.defaultText;
+            if (!item->text(State).isEmpty())
+                text += "\n状態: " + item->text(State);
+        }
+    help->setText(text);
+    outputSummary->setVisible(group == "visualization");
+}
 void AdvancedPanel::filterRows() {
     const auto &d = window->displayDocument();
     const auto a = nwchemAdvanced(d);
@@ -254,14 +295,14 @@ void AdvancedPanel::filterRows() {
             (mode != "applicable" || nwchemAdvancedApplies(o, d)) &&
             (mode != "changed" || a.contains(o.key)) &&
             (o.label + ' ' + o.keyword + ' ' + o.key + ' ' + o.help).contains(query, Qt::CaseInsensitive);
-        rows[o.key].container->setVisible(show);
+        rows[o.key].item->setHidden(!show);
         if (show) {
             visibleGroups.insert(o.group);
             ++visible;
         }
     }
     for (auto it = groups.begin(); it != groups.end(); ++it)
-        it.value()->setVisible(visibleGroups.contains(it.key()));
+        it.value()->setHidden(!visibleGroups.contains(it.key()));
     empty->setVisible(!visible);
     count->setText(QString("%1 / %2項目").arg(visible).arg(rows.size()));
 }
@@ -273,16 +314,17 @@ void AdvancedPanel::refresh() {
     const auto a = nwchemAdvanced(d), s = nwchemSettings(d);
     const bool editable = !window->hasCandidate() && !window->worker;
     int activeCount = 0, pendingCount = 0, changedCount = 0;
-    QSet<QString> changedGroups;
+    QMap<QString, int> changedGroups;
+    const auto text = palette().color(QPalette::Text), dim = palette().color(QPalette::PlaceholderText);
     for (const auto &o : nwchemAdvancedOptions()) {
         auto &row = rows[o.key];
         const auto v = a.value(o.key);
         const bool active = nwchemAdvancedApplies(o, d), changed = !v.isUndefined();
         const QSignalBlocker blocker(row.editor);
         if (auto *line = qobject_cast<QLineEdit *>(row.editor)) {
-            const auto text = changed ? nwchemAdvancedText(v) : QString();
-            if (line->text() != text)
-                line->setText(text);
+            const auto value = changed ? nwchemAdvancedText(v) : QString();
+            if (line->text() != value)
+                line->setText(value);
         } else if (auto *check = qobject_cast<QCheckBox *>(row.editor))
             check->setChecked(v.toBool());
         else if (auto *combo = qobject_cast<QComboBox *>(row.editor)) {
@@ -297,18 +339,30 @@ void AdvancedPanel::refresh() {
         }
         row.editor->setEnabled(editable && active);
         row.reset->setEnabled(editable && changed);
-        row.label->setText((changed ? "● " : "") + o.label);
+        // Changed options in bold with a mark; options the calculation does not use are dimmed.
+        row.item->setText(Name, (changed ? "● " : "") + o.label);
+        auto font = row.item->font(Name);
+        font.setBold(changed);
+        row.item->setFont(Name, font);
+        row.item->setForeground(Name, active ? text : dim);
+        row.item->setForeground(Keyword, active ? text : dim);
         const auto error = nwchemAdvancedError(o, v);
-        row.state->setText(changed ? (active ? (error.isEmpty() ? "入力へ反映" : "エラー: " + error)
+        const auto state = changed ? (active ? (error.isEmpty() ? "入力へ反映" : "エラー: " + error)
                                              : "保留: 現在の計算では使用しません。")
-                                   : QString());
-        row.state->setVisible(changed);
+                                   : QString();
+        row.item->setText(State, state);
+        row.item->setToolTip(State, state);
+        row.item->setForeground(State, !error.isEmpty() ? errorColor(palette()) : active ? text : dim);
         if (changed) {
             ++changedCount;
             active ? ++activeCount : ++pendingCount;
-            changedGroups.insert(o.group);
+            ++changedGroups[o.group];
         }
     }
+    for (auto it = groups.begin(); it != groups.end(); ++it)
+        it.value()->setText(State, changedGroups.contains(it.key())
+                                       ? QString("変更 %1項目").arg(changedGroups[it.key()])
+                                       : QString());
     context->setText(QString("%1 / %2 / %3  ·  詳細指定 %4項目（適用 %5 / 保留 %6）")
                          .arg(s["method"].toString().toUpper(), s["basis"].toString(), s["task"].toString())
                          .arg(changedCount)
@@ -338,5 +392,6 @@ void AdvancedPanel::refresh() {
     copy->setEnabled(editable && report.errors.isEmpty());
     save->setEnabled(editable && report.errors.isEmpty());
     filterRows();
+    describe();
 }
 } // namespace mf

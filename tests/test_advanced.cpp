@@ -35,6 +35,18 @@ class AdvancedTest : public QObject {
         line->setModified(true);
         QMetaObject::invokeMethod(line, "editingFinished");
     }
+    // The table row of an option (or nullptr), and whether filtering hides it.
+    static QTreeWidgetItem *row(MainWindow &w, const QString &key) {
+        auto *table = w.findChild<QTreeWidget *>("advancedTable");
+        for (auto *item : table->findItems("*", Qt::MatchWildcard | Qt::MatchRecursive))
+            if (item->data(0, Qt::UserRole).toString() == key)
+                return item;
+        return nullptr;
+    }
+    static bool hidden(MainWindow &w, const QString &key) {
+        auto *item = row(w, key);
+        return item->isHidden() || item->parent()->isHidden();
+    }
     static bool errors(const Document &d, const QString &text) {
         return validateNwchem(d).errors.join('\n').contains(text);
     }
@@ -289,15 +301,18 @@ class AdvancedTest : public QObject {
         input(w, "scf_thresh", "invalid");
         QVERIFY(!button(w, "advancedCopy")->isEnabled());
         QVERIFY(!button(w, "calculationSave")->isEnabled());
-        QVERIFY(w.findChild<QLabel *>("advancedState_scf_thresh")->text().contains("エラー"));
+        QVERIFY(row(w, "scf_thresh")->text(2).contains("エラー"));
+        QVERIFY(row(w, "scf_thresh")->text(0).startsWith("● "));
+        QCOMPARE(row(w, "scf_thresh")->parent()->text(2), "変更 1項目");
         button(w, "advancedResetField_scf_thresh")->click();
         QVERIFY(button(w, "advancedCopy")->isEnabled());
         auto *filter = w.findChild<QComboBox *>("advancedFilter");
         filter->setCurrentIndex(filter->findData("all"));
         auto *search = w.findChild<QLineEdit *>("advancedSearch");
         search->setText("damp");
-        QVERIFY(!w.findChild<QWidget *>("advancedRow_dft_damp")->isHidden());
-        QVERIFY(w.findChild<QWidget *>("advancedRow_scf_thresh")->isHidden());
+        QVERIFY(!hidden(w, "dft_damp"));
+        QVERIFY(hidden(w, "scf_thresh"));
+        QVERIFY(row(w, "dft_damp")->parent()->text(0).contains("DFT"));
         QVERIFY(!w.findChild<QLineEdit *>("advanced_dft_damp")->isEnabled());
         search->clear();
         input(w, "scf_thresh", "1e-8");
@@ -308,7 +323,17 @@ class AdvancedTest : public QObject {
         button(w, "advancedUndo")->click();
         QCOMPARE(w.document().toJson(), beforeReset);
         filter->setCurrentIndex(filter->findData("changed"));
-        QVERIFY(w.findChild<QWidget *>("advancedRow_dft_damp")->isHidden());
+        QVERIFY(hidden(w, "dft_damp"));
+        QVERIFY(!hidden(w, "scf_thresh"));
+        // A diagnostic naming an option selects its row (showing every option if it is pending)
+        // and the description below the table follows the selected row.
+        filter->setCurrentIndex(filter->findData("applicable"));
+        auto *diagnostics = w.findChild<QListWidget *>("advancedValidation");
+        QMetaObject::invokeMethod(diagnostics, "messageClicked", Q_ARG(QString, "「密度のダンピング / %」"),
+                                  Q_ARG(bool, true));
+        QCOMPARE(w.findChild<QTreeWidget *>("advancedTable")->currentItem(), row(w, "dft_damp"));
+        QCOMPARE(filter->currentData().toString(), "all");
+        QVERIFY(w.findChild<QLabel *>("advancedHelp")->text().contains("convergence damp"));
         w.edit("candidate", [](Document &next) { next.atoms[1].position.x() += 0.1; }, true);
         QVERIFY(!w.findChild<QLineEdit *>("advanced_scf_thresh")->isEnabled());
         QVERIFY(!button(w, "advancedResetAll")->isEnabled());
