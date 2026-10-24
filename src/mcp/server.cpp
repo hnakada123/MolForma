@@ -2,6 +2,7 @@
 #include "editing/chemistry.h"
 #include "editing/coordinates.h"
 #include "editing/operations.h"
+#include "mcp/tools.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
@@ -18,7 +19,7 @@ namespace {
 constexpr int MaxAtoms = 10000;
 constexpr int SummaryIds = 100;
 QJsonObject serverInfo() {
-    return {{"name", "molforma"}, {"title", "MolForma"}, {"version", "0.1.0"}};
+    return {{"name", "molforma"}, {"title", "MolForma"}, {"version", MOLFORMA_VERSION}};
 }
 QJsonArray versions() {
     return {McpProtocolVersion, McpLegacyVersion};
@@ -65,7 +66,9 @@ QString instructions() {
            "get_ui_command and inspect get_ui for modal dialogs; answer them with explicit calls. Clients "
            "declaring the Tasks extension receive a task instead, which also covers the started background "
            "work and surfaces confirmation dialogs as elicitations. "
-           "A completed GUI command is not proof that a background calculation converged.";
+           "A completed GUI command is not proof that a background calculation converged. Both modes run "
+           "NWChem with calculation and read results with results_action/get_results. Over MCP the NWChem "
+           "executable, launcher and environment overrides are chosen by the user, not by the client.";
 }
 QJsonObject error(const QJsonValue &id, int code, const QString &message, QJsonObject data = {},
                   bool legacyNullId = false) {
@@ -250,30 +253,34 @@ QJsonObject outputSchema(const QString &name) {
 QJsonObject argument(const QString &name, const QString &description, bool required = false) {
     return {{"name", name}, {"description", description}, {"required", required}};
 }
-// User-selected workflow templates (exposed by Claude Code as slash commands).
-QJsonArray promptList(bool gui) {
+// User-selected workflow templates (exposed by Claude Code as slash commands). They depend
+// only on the tools of this mode, never on the connection.
+QJsonArray promptList(const QSet<QString> &tools) {
+    const bool run = tools.contains("calculation");
     QJsonArray list{
         QJsonObject{{"name", "review_candidate"},
                     {"title", "Review the pending candidate"},
                     {"description", "Summarize the unconfirmed candidate and ask before confirming it."}},
         QJsonObject{{"name", "geometry_optimization"},
                     {"title", "Optimize geometry with NWChem"},
-                    {"description", gui ? "Configure, run and check an NWChem geometry optimization."
+                    {"description", run ? "Configure, run and check an NWChem geometry optimization."
                                         : "Configure an NWChem geometry optimization and export its input."},
                     {"arguments", QJsonArray{argument("method", "hf, dft, mp2, ccsd or ccsd(t)"),
                                              argument("basis", "Basis set, for example 6-31g*"),
                                              argument("frequencies", "yes to follow with frequencies")}}}};
-    if (gui) {
+    if (tools.contains("chemistry"))
         list.append(QJsonObject{{"name", "build_from_smiles"},
                                 {"title", "Build a structure from SMILES"},
                                 {"description", "Generate a 3D candidate from SMILES and review it."},
                                 {"arguments", QJsonArray{argument("smiles", "SMILES string", true)}}});
-        list.append(
-            QJsonObject{{"name", "frequency_analysis"},
-                        {"title", "Inspect vibrational modes"},
-                        {"description", "Open frequency results, report imaginary modes and animate one."},
-                        {"arguments", QJsonArray{argument("path", "NWChem output file or run directory")}}});
-    }
+    if (tools.contains("get_results"))
+        list.append(QJsonObject{
+            {"name", "frequency_analysis"},
+            {"title", "Inspect vibrational modes"},
+            {"description", tools.contains("capture_screenshot")
+                                ? "Open frequency results, report imaginary modes and animate one."
+                                : "Open frequency results and report imaginary modes."},
+            {"arguments", QJsonArray{argument("path", "NWChem output file or run directory")}}});
     return list;
 }
 QString quoted(const QString &value) {
@@ -281,14 +288,16 @@ QString quoted(const QString &value) {
         .mid(1)
         .chopped(1);
 }
-QString promptText(const QString &name, const QJsonObject &args, bool gui) {
+QString promptText(const QString &name, const QJsonObject &args, const QSet<QString> &tools) {
+    const bool gui = tools.contains("get_ui_command");
     const QString start =
         "Use the MolForma MCP tools. Call list_documents, then get_document with include [] "
         "for the documentId and revision; pass the latest revision as expectedRevision. ";
     const QString wait =
-        "If tools/call returns a task, poll it until it completes; otherwise poll get_ui_command "
-        "and get_app_state. If a confirmation dialog appears, show its text to the user and "
-        "answer only as they decide. ";
+        gui ? "If tools/call returns a task, poll it until it completes; otherwise poll get_ui_command "
+              "and get_app_state. If a confirmation dialog appears, show its text to the user and "
+              "answer only as they decide. "
+            : "If tools/call returns a task, poll it until it completes; otherwise poll get_app_state. ";
     if (name == "review_candidate")
         return start +
                "If hasCandidate is false, say so and stop. Otherwise read get_document with include "
@@ -310,10 +319,11 @@ QString promptText(const QString &name, const QJsonObject &args, bool gui) {
             text += ", \"basis\": " + quoted(basis);
         text += "}. Change charge or multiplicity only if the user asks. Call get_nwchem again and resolve "
                 "errors; report warnings. ";
-        if (!gui)
-            return text + "This headless server cannot run NWChem: return export_document with format nwchem "
-                          "and explain that running requires molforma --mcp-gui.";
-        return text + "Call get_execution and resolve its errors, then calculation with action start. " +
+        if (!tools.contains("calculation"))
+            return text + "This server cannot run NWChem: return export_document with format nwchem.";
+        return text +
+               "Call get_execution and resolve its errors; the user, not you, chooses the NWChem executable, "
+               "launcher and environment. Then call calculation with action start. " +
                wait +
                "When the calculation finishes, open get_app_state.calculation.directory with results_action "
                "open_directory and read get_results (summary, energies" +
@@ -329,16 +339,19 @@ QString promptText(const QString &name, const QJsonObject &args, bool gui) {
                "summarize the formula, atom count and any problems. Ask the user before calling history "
                "confirm; cancel if they decline.";
     const auto path = args["path"].toString();
-    return start +
-           (path.isEmpty() ? QString("Use the results already open in the viewer (get_results summary). ")
-                           : "Call results_action with action " +
-                                 quoted(QFileInfo(path).isDir() ? "open_directory" : "open_file") +
-                                 " and path " + quoted(path) + ". ") +
-           wait +
-           "Read get_results with section modes, list every mode with its frequency and mark imaginary modes "
-           "(frequency < 0). If there is an imaginary mode with displacements, play it with results_action "
-           "play_mode (amplitude 0.3), capture_screenshot the main window, then stop the animation. Explain "
-           "whether the structure looks like a minimum or a saddle point.";
+    QString text =
+        start +
+        (path.isEmpty() ? QString("Use the results that are already loaded (get_results summary). ")
+                        : "Call results_action with action " +
+                              quoted(QFileInfo(path).isDir() ? "open_directory" : "open_file") +
+                              " and path " + quoted(path) + ". ") +
+        wait +
+        "Read get_results with section modes, list every mode with its frequency and mark imaginary modes "
+        "(frequency < 0). ";
+    if (tools.contains("capture_screenshot"))
+        text += "If there is an imaginary mode with displacements, play it with results_action play_mode "
+                "(amplitude 0.3), capture_screenshot the main window, then stop the animation. ";
+    return text + "Explain whether the structure looks like a minimum or a saddle point.";
 }
 void validateDocument(const Document &d) {
     if (d.atoms.size() > MaxAtoms)
@@ -351,11 +364,14 @@ void validateDocument(const Document &d) {
 }
 } // namespace
 
-McpServer::McpServer(McpEditor hooks, QObject *parent) : QObject(parent), editor(std::move(hooks)) {
+McpServer::McpServer(McpEditor hooks, McpPolicy rules, QObject *parent)
+    : QObject(parent), editor(std::move(hooks)), policy(std::move(rules)) {
     if (editor.document && (!editor.candidate || !editor.edit || !editor.history))
         fail("Incomplete MCP editor hooks");
     if (bool(editor.additionalTools) != bool(editor.callAdditionalTool))
         fail("Incomplete MCP additional tool hooks");
+    if (bool(editor.taskState) != bool(editor.taskWork))
+        fail("Incomplete MCP task hooks");
 }
 QString McpServer::documentId() const {
     return id;
@@ -436,10 +452,10 @@ std::optional<QJsonObject> McpServer::openState() const {
     state.remove("expires");
     return state;
 }
-QJsonObject McpServer::createTask(const QString &tool, const QJsonObject &queued) {
+QJsonObject McpServer::createTask(const QString &tool, const QString &work) {
     const auto taskId = newId();
     const auto now = QDateTime::currentDateTimeUtc();
-    tasks[taskId] = {queued["commandId"].toString(), tool, "working", now, now};
+    tasks[taskId] = {work, tool, "working", now, now};
     taskOrder.append(taskId);
     while (taskOrder.size() > 128)
         tasks.remove(taskOrder.takeFirst());
@@ -450,7 +466,7 @@ QJsonObject McpServer::createTask(const QString &tool, const QJsonObject &queued
 }
 QJsonObject McpServer::taskResult(const QString &taskId) {
     auto &task = tasks[taskId];
-    const auto work = editor.taskState(task.commandId);
+    const auto work = editor.taskState(task.work);
     if (!work) {
         tasks.remove(taskId);
         taskOrder.removeAll(taskId);
@@ -460,7 +476,12 @@ QJsonObject McpServer::taskResult(const QString &taskId) {
     auto message = (*work)["message"].toString();
     QJsonObject out;
     QString status = "working";
-    if (state == "done") {
+    // Work that ends after a granted tasks/cancel is reported as cancelled.
+    if (state == "cancelled" || (task.cancelRequested && (state == "done" || state == "failed"))) {
+        status = "cancelled";
+        if (message.isEmpty())
+            message = "Cancelled by tasks/cancel.";
+    } else if (state == "done") {
         status = "completed";
         out["result"] = toolResult((*work)["result"].toObject());
     } else if (state == "failed") {
@@ -569,18 +590,26 @@ QJsonArray McpServer::toolList() const {
                 properties["preview"] = QJsonObject{{"type", "boolean"}, {"default", true}};
             }
         }
-        list.append(
-            QJsonObject{{"name", name},
-                        {"title", toolTitle(name)},
-                        {"description", description},
-                        {"outputSchema", outputSchema(name)},
-                        {"inputSchema", QJsonObject{{"type", "object"},
-                                                    {"properties", properties},
-                                                    {"required", required},
-                                                    {"additionalProperties", false}}},
-                        {"annotations", QJsonObject{{"readOnlyHint", !mutation && name != "save_file"},
-                                                    {"destructiveHint", mutation || name == "save_file"},
-                                                    {"openWorldHint", false}}}});
+        QJsonObject tool{{"name", name},
+                         {"title", toolTitle(name)},
+                         {"description", description},
+                         {"outputSchema", outputSchema(name)},
+                         {"inputSchema", QJsonObject{{"type", "object"},
+                                                     {"properties", properties},
+                                                     {"required", required},
+                                                     {"additionalProperties", false}}},
+                         {"annotations", QJsonObject{{"readOnlyHint", !mutation && name != "save_file"},
+                                                     {"destructiveHint", mutation || name == "save_file"},
+                                                     {"openWorldHint", false}}}};
+        // Claude Code hints: keep large documents inline, and confirm program choices with a person.
+        QJsonObject meta;
+        if (name == "get_document" || name == "export_document")
+            meta["anthropic/maxResultSizeChars"] = McpLargeResultChars;
+        if (name == "set_execution" && policy.allowExecutionSettings)
+            meta["anthropic/requiresUserInteraction"] = true;
+        if (!meta.isEmpty())
+            tool["_meta"] = meta;
+        list.append(tool);
     };
     add("list_documents", "List the workspace owned by this process. Its ID expires on process exit.", {}, {},
         false);
@@ -642,7 +671,12 @@ QJsonArray McpServer::toolList() const {
     add("set_advanced", "Merge typed advanced/output settings. A null value resets that option.",
         {{"settings", type("object")}}, {"settings"}, true, true);
     add("get_execution", "Read launch settings and local validation. Never starts a process.");
-    add("set_execution", "Merge launch settings (including explicit environment overrides). Does not run.",
+    add("set_execution",
+        policy.allowExecutionSettings
+            ? "Merge launch settings, including the executable, launcher and environment overrides. Does not "
+              "run."
+            : "Merge launch settings. The executable, launcher and environment overrides are set by the user "
+              "in MolForma and cannot be changed over MCP. Does not run.",
         {{"settings", type("object")}}, {"settings"}, true, true);
     add("set_nwchem",
         "Merge NWChem settings and optional charge/multiplicity. Unknown keys or invalid "
@@ -657,6 +691,35 @@ QJsonArray McpServer::toolList() const {
     return list;
 }
 
+QSet<QString> McpServer::toolNames() const {
+    QSet<QString> names;
+    for (const auto &tool : toolList())
+        names.insert(tool.toObject()["name"].toString());
+    return names;
+}
+QJsonArray McpServer::resourceList() const {
+    const auto uri = "molforma://documents/" + id;
+    QJsonArray list{
+        QJsonObject{{"uri", uri},
+                    {"name", "document"},
+                    {"title", "MolForma document"},
+                    {"description", "Committed project, candidate and revision (same as get_document)."},
+                    {"mimeType", "application/json"}},
+        QJsonObject{{"uri", uri + "/xyz"},
+                    {"name", "document-xyz"},
+                    {"title", "Structure (XYZ)"},
+                    {"description", "Committed structure as XYZ in angstrom."},
+                    {"mimeType", "chemical/x-xyz"}},
+        QJsonObject{{"uri", uri + "/nwchem"},
+                    {"name", "document-nwchem"},
+                    {"title", "NWChem input"},
+                    {"description", "Validated NWChem input generated from the committed document."},
+                    {"mimeType", "text/plain"}}};
+    if (editor.additionalResources)
+        for (const auto &resource : editor.additionalResources())
+            list.append(resource);
+    return list;
+}
 QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
     if (name == "list_documents")
         return {{"documents", QJsonArray{QJsonObject{{"documentId", id},
@@ -700,7 +763,8 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
         return {{"settings", executionSettings(d)},
                 {"defaults", executionDefaults()},
                 {"errors", QJsonArray::fromStringList(report.errors)},
-                {"warnings", QJsonArray::fromStringList(report.warnings)}};
+                {"warnings", QJsonArray::fromStringList(report.warnings)},
+                {"policy", policy.toJson()}};
     }
     if (name == "get_advanced") {
         QJsonArray options;
@@ -750,6 +814,7 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
         auto path = args["path"].toString();
         if (path.isEmpty())
             fail("path must not be empty.");
+        policy.checkPath(path);
         QFileInfo info(path);
         bool overwrite = args["overwrite"].toBool();
         if ((info.exists() || info.isSymLink()) && !overwrite) {
@@ -842,6 +907,7 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                     next = Document::fromProject(parseJson(args["text"].toString().toUtf8()));
             } else if (name == "open_file") {
                 auto path = args["path"].toString();
+                policy.checkPath(path);
                 QFileInfo info(path);
                 if (!info.isFile() || info.size() > 8 * 1024 * 1024)
                     fail("Expected a regular structure file no larger than 8 MiB.");
@@ -858,6 +924,9 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                                 const auto error = nwchemAdvancedError(o, it.value());
                                 if (!error.isEmpty())
                                     fail(error);
+                                if (o.kind == AdvancedKind::Path &&
+                                    QDir::isAbsolutePath(it.value().toString()))
+                                    policy.checkPath(it.value().toString());
                             }
                     setNwchemAdvanced(next, it.key(),
                                       it.value().isNull() ? QJsonValue(QJsonValue::Undefined) : it.value());
@@ -867,13 +936,22 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                     fail(report.errors.join('\n'));
             } else if (name == "set_execution") {
                 const auto settings = args["settings"].toObject();
+                const auto current = executionSettings(next);
+                const auto base = editor.baseDirectory ? editor.baseDirectory() : QDir::currentPath();
                 for (auto it = settings.begin(); it != settings.end(); ++it) {
                     if (!executionDefaults().contains(it.key()))
                         fail("Unknown execution setting: " + it.key());
+                    if (!policy.allowExecutionSettings && isProtectedExecutionKey(it.key()) &&
+                        it.value() != current[it.key()])
+                        fail(it.key() + " is chosen by the user in MolForma's execution panel and cannot be "
+                                        "changed over MCP. Start the server with "
+                                        "--mcp-allow-execution-settings to permit it.");
+                    if ((it.key() == "job_root" || it.key() == "reference_directory") &&
+                        !it.value().toString().isEmpty())
+                        policy.checkPath(it.value().toString(), base);
                     setExecutionSetting(next, it.key(), it.value());
                 }
-                const auto report = validateExecution(
-                    next, editor.baseDirectory ? editor.baseDirectory() : QDir::currentPath(), false);
+                const auto report = validateExecution(next, base, false);
                 if (!report.errors.isEmpty())
                     fail(report.errors.join('\n'));
             } else if (name == "set_nwchem") {
@@ -967,7 +1045,6 @@ QJsonObject McpServer::receive(const QByteArray &line) {
         return error(requestId, -32602, "inputResponses must be an object and requestState a string");
     incoming = {modern, meta["io.modelcontextprotocol/clientCapabilities"].toObject(),
                 params["inputResponses"].toObject(), params["requestState"].toString()};
-    const bool gui = bool(editor.additionalTools);
     const bool taskClient = modern && editor.taskState &&
                             incoming.capabilities["extensions"].toObject()[McpTasksExtension].isObject();
     try {
@@ -1015,15 +1092,23 @@ QJsonObject McpServer::receive(const QByteArray &line) {
                 }
                 return result(requestId, {}, true);
             }
-            if (method == "tasks/cancel")
+            if (method == "tasks/cancel") {
+                // Cooperative: only work that can still be stopped is marked; finished work keeps its result.
+                auto &task = tasks[taskId];
+                const auto work = editor.taskState(task.work);
+                if (work && ((*work)["state"] == "queued" || (*work)["state"] == "running") &&
+                    editor.cancelTask && editor.cancelTask(task.work))
+                    task.cancelRequested = true;
                 return result(requestId, {}, true);
+            }
         }
         if (method == "prompts/list")
-            return result(requestId, cacheable({{"prompts", promptList(gui)}}, modern), modern);
+            return result(requestId, cacheable({{"prompts", promptList(toolNames())}}, modern), modern);
         if (method == "prompts/get") {
             const auto name = params["name"].toString();
             QJsonObject prompt;
-            for (const auto &p : promptList(gui))
+            const auto tools = toolNames();
+            for (const auto &p : promptList(tools))
                 if (p.toObject()["name"] == name)
                     prompt = p.toObject();
             if (prompt.isEmpty())
@@ -1045,7 +1130,7 @@ QJsonObject McpServer::receive(const QByteArray &line) {
                  {"messages",
                   QJsonArray{QJsonObject{
                       {"role", "user"},
-                      {"content", QJsonObject{{"type", "text"}, {"text", promptText(name, args, gui)}}}}}}},
+                      {"content", QJsonObject{{"type", "text"}, {"text", promptText(name, args, tools)}}}}}}},
                 modern);
         }
         if (method == "tools/list" || method == "resources/list" || method == "resources/templates/list") {
@@ -1055,25 +1140,31 @@ QJsonObject McpServer::receive(const QByteArray &line) {
                 return result(requestId, cacheable({{"tools", toolList()}}, modern), modern);
             if (method == "resources/templates/list")
                 return result(requestId, cacheable({{"resourceTemplates", QJsonArray{}}}, modern), modern);
-            return result(
-                requestId,
-                cacheable({{"resources", QJsonArray{QJsonObject{{"uri", "molforma://documents/" + id},
-                                                                {"name", "MolForma document"},
-                                                                {"mimeType", "application/json"}}}}},
-                          modern),
-                modern);
+            return result(requestId, cacheable({{"resources", resourceList()}}, modern), modern);
         }
         if (method == "resources/read") {
-            if (params["uri"] != "molforma://documents/" + id)
-                return error(requestId, modern ? -32602 : -32002, "Unknown document resource");
-            return result(requestId,
-                          cacheable({{"contents",
-                                      QJsonArray{QJsonObject{
-                                          {"uri", params["uri"]},
-                                          {"mimeType", "application/json"},
-                                          {"text", QString::fromUtf8(QJsonDocument(snapshot()).toJson())}}}}},
-                                    modern),
-                          modern);
+            const auto uri = params["uri"].toString(), document = "molforma://documents/" + id;
+            std::optional<QJsonObject> content;
+            if (uri == document)
+                content = QJsonObject{{"uri", uri},
+                                      {"mimeType", "application/json"},
+                                      {"text", QString::fromUtf8(QJsonDocument(snapshot()).toJson())}};
+            else if (uri == document + "/xyz")
+                content = QJsonObject{
+                    {"uri", uri}, {"mimeType", "chemical/x-xyz"}, {"text", this->document().xyz()}};
+            else if (uri == document + "/nwchem") {
+                try {
+                    content = QJsonObject{
+                        {"uri", uri}, {"mimeType", "text/plain"}, {"text", nwchemInput(this->document())}};
+                } catch (const std::exception &e) {
+                    return error(requestId, -32603,
+                                 "NWChem input cannot be generated: " + QString::fromUtf8(e.what()));
+                }
+            } else if (editor.readResource)
+                content = editor.readResource(uri);
+            if (!content)
+                return error(requestId, modern ? -32602 : -32002, "Unknown resource: " + uri);
+            return result(requestId, cacheable({{"contents", QJsonArray{*content}}}, modern), modern);
         }
         if (method == "tools/call") {
             if (!params["name"].isString() ||
@@ -1111,8 +1202,9 @@ QJsonObject McpServer::receive(const QByteArray &line) {
                 structured.remove("_mcpImage");
                 validateValue(structured, output, "result");
             }
-            if (taskClient && value.contains("commandId") && value["state"] == "queued")
-                return result(requestId, createTask(name, value), true);
+            if (taskClient)
+                if (const auto work = editor.taskWork(name, value); !work.isEmpty())
+                    return result(requestId, createTask(name, work), true);
             return result(requestId, toolResult(value), modern);
         }
         return error(requestId, -32601, "Method not found: " + method);

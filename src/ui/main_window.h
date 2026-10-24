@@ -1,4 +1,5 @@
 #pragma once
+#include "mcp/policy.h"
 #include "ui/molecule_view.h"
 #include <QMainWindow>
 #include <QProcess>
@@ -70,6 +71,13 @@ class MainWindow : public QMainWindow {
     friend class McpGui;
     Document doc;
     std::optional<Document> candidate;
+    // MCP access, set by McpGui. A calculation started over MCP may only use the executable,
+    // launcher and environment that were last changed outside MCP (trustedExecution).
+    struct McpAccess {
+        const McpPolicy *policy = nullptr;
+        int depth = 0; // > 0 while an MCP request or GUI command is being applied
+        QJsonObject trustedExecution;
+    } mcp;
     QString candidateName, path;
     Ids selected;
     QUndoStack undo;
@@ -139,6 +147,7 @@ class MainWindow : public QMainWindow {
     void atomClicked(const QString &id, Qt::KeyboardModifiers modifiers);
     Ids expandedSelection(const Ids &ids) const;
     void setState(const Document &d);
+    void trackExecution(const Document &before, const Document &after);
     void commit(const QString &name, const Document &next);
     void newDocument();
     void open();

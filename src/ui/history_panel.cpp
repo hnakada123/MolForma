@@ -35,11 +35,15 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     paths->addWidget(new QLabel("ジョブ保存先"));
     rootField = new QLineEdit;
     rootField->setObjectName("historyRoot");
+    // With --mcp-allow-dir, MCP scans only checked paths through history_action.
+    rootField->setProperty("mcpPath", true);
     paths->addWidget(rootField, 1);
     auto *browse = new QPushButton("参照…");
+    browse->setProperty("mcpPath", true);
     paths->addWidget(browse);
     auto *current = new QPushButton("実行設定の保存先");
     current->setObjectName("historyExecutionRoot");
+    current->setProperty("mcpPath", true);
     paths->addWidget(current);
     layout->addLayout(paths);
     auto *filters = new QHBoxLayout;

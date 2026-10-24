@@ -64,6 +64,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), settings("MolForm
     connect(&undo, &QUndoStack::cleanChanged, this, [this] { refresh(); });
     if (settings.value("startupWater", true).toBool())
         placeTemplate(doc, findTemplate("skeleton:water"), Vec::Zero());
+    mcp.trustedExecution = protectedExecution(doc);
     refresh();
     QTimer::singleShot(0, view, &MoleculeView::fit);
     auto saved = settings.value("geometry").toByteArray();
@@ -87,7 +88,13 @@ void MainWindow::safe(const std::function<void()> &operation) {
         QMessageBox::warning(this, "操作を確認", message);
     }
 }
+void MainWindow::trackExecution(const Document &before, const Document &after) {
+    // Only a change made outside MCP that itself alters these settings makes them trusted.
+    if (mcp.depth == 0 && protectedExecution(before) != protectedExecution(after))
+        mcp.trustedExecution = protectedExecution(after);
+}
 void MainWindow::setState(const Document &d) {
+    trackExecution(doc, d);
     doc = d;
     candidate.reset();
     selected.removeIf([&](auto id) { return !doc.contains(id); });
@@ -97,6 +104,7 @@ void MainWindow::loadDocument(const Document &d) {
     cancelWorker();
     candidate.reset();
     selected.clear();
+    trackExecution(doc, d);
     doc = d;
     undo.clear();
     undo.setClean();

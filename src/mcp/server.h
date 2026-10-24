@@ -1,4 +1,5 @@
 #pragma once
+#include "mcp/policy.h"
 #include "model/document.h"
 #include <QDateTime>
 #include <QMap>
@@ -20,27 +21,36 @@ struct McpEditor {
     std::function<QJsonArray()> additionalTools;
     std::function<QJsonObject(const QString &, const QJsonObject &)> callAdditionalTool;
     std::function<QString()> baseDirectory;
-    // Optional asynchronous work behind a returned commandId (Tasks extension). taskState returns
-    // {state: queued|running|done|failed, message, result|error}, or nullopt for an expired command.
+    // Optional asynchronous work (Tasks extension). taskWork names the work a tool result started, or
+    // returns empty. taskState returns {state: queued|running|done|failed|cancelled, message,
+    // result|error}, or nullopt once expired. cancelTask returns whether cancellation was started.
+    std::function<QString(const QString &tool, const QJsonObject &result)> taskWork;
     std::function<std::optional<QJsonObject>(const QString &)> taskState;
+    std::function<bool(const QString &)> cancelTask;
     // Optional application-modal confirmation: {key, message, choices}, or empty when none is shown.
     std::function<QJsonObject()> pendingPrompt;
     std::function<void(const QString &key, const QString &choice)> answerPrompt;
+    // Optional resources beyond the document: listed entries and {uri, mimeType, text} contents.
+    std::function<QJsonArray()> additionalResources;
+    std::function<std::optional<QJsonObject>(const QString &uri)> readResource;
 };
 
 class McpServer : public QObject {
     Q_OBJECT
   public:
-    explicit McpServer(McpEditor editor = {}, QObject *parent = nullptr);
+    explicit McpServer(McpEditor editor = {}, McpPolicy policy = {}, QObject *parent = nullptr);
     // Empty means a notification: never send a response to it.
     QJsonObject receive(const QByteArray &line);
     QString documentId() const;
     QJsonObject snapshot() const;
     // Compact edit result: revision, formula and candidate atom differences without the project.
     QJsonObject summary() const;
+    Document document() const;
+    std::optional<Document> candidate() const;
 
   private:
     McpEditor editor;
+    McpPolicy policy;
     QString id = newId();
     Document memory;
     std::optional<Document> pending;
@@ -55,8 +65,9 @@ class McpServer : public QObject {
         QString requestState;
     } incoming;
     struct Task {
-        QString commandId, tool, state;
+        QString work, tool, state;
         QDateTime created, updated;
+        bool cancelRequested = false;
     };
     QMap<QString, Task> tasks;
     QStringList taskOrder;
@@ -64,15 +75,15 @@ class McpServer : public QObject {
     bool elicitation() const;
     QString sealState(const QJsonObject &state) const;
     std::optional<QJsonObject> openState() const;
-    QJsonObject createTask(const QString &tool, const QJsonObject &queued);
+    QJsonObject createTask(const QString &tool, const QString &work);
     QJsonObject taskResult(const QString &taskId);
-    Document document() const;
-    std::optional<Document> candidate() const;
     QString revision() const;
     void edit(const QString &name, const std::function<void(Document &)> &operation, bool preview);
     void history(const QString &action);
     void commit(const Document &next);
     QJsonArray toolList() const;
+    QSet<QString> toolNames() const;
+    QJsonArray resourceList() const;
     QJsonObject callTool(const QString &name, const QJsonObject &args);
 };
 } // namespace mf

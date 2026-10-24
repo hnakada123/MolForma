@@ -1,4 +1,5 @@
 #include "ui/mcp_gui.h"
+#include "mcp/tools.h"
 #include "ui/execution_panel.h"
 #include "ui/history_panel.h"
 #include "ui/main_window.h"
@@ -29,6 +30,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSaveFile>
+#include <QScopedValueRollback>
 #include <QScrollArea>
 #include <QShortcut>
 #include <QSpinBox>
@@ -45,18 +47,6 @@
 
 namespace mf {
 namespace {
-// Pages stay below LLM clients' inline tool-output limits; a larger entry is returned alone.
-constexpr qsizetype PageBytes = 40 * 1024, EntryBytes = 2 * 1024 * 1024;
-bool appendPage(QJsonArray &items, const QJsonObject &item, qsizetype &bytes) {
-    const auto size = QJsonDocument(item).toJson(QJsonDocument::Compact).size();
-    if (size > EntryBytes)
-        fail("A UI/result entry exceeds the 2 MiB entry limit.");
-    if (!items.isEmpty() && bytes + size > PageBytes)
-        return false;
-    bytes += size;
-    items.append(item);
-    return true;
-}
 QJsonObject type(const QString &name) {
     return {{"type", name}};
 }
@@ -162,17 +152,23 @@ QString toolTitle(const QString &name) {
     return titles.value(name);
 }
 QJsonObject commandSchema() {
-    return {{"type", "object"},
-            {"properties", QJsonObject{{"commandId", type("string")},
-                                       {"tool", type("string")},
-                                       {"action", type("string")},
-                                       {"state", choice({"queued", "running", "done", "failed"})},
-                                       {"error", type("string")}}},
-            {"required", QJsonArray{"commandId", "tool", "state"}}};
+    return {
+        {"type", "object"},
+        {"properties", QJsonObject{{"commandId", type("string")},
+                                   {"tool", type("string")},
+                                   {"action", type("string")},
+                                   {"state", choice({"queued", "running", "done", "failed", "cancelled"})},
+                                   {"error", type("string")}}},
+        {"required", QJsonArray{"commandId", "tool", "state"}}};
 }
 } // namespace
 
-McpGui::McpGui(MainWindow &w) : QObject(&w), window(w) {}
+McpGui::McpGui(MainWindow &w, McpPolicy rules) : QObject(&w), window(w), policy(std::move(rules)) {
+    window.mcp.policy = &policy;
+}
+McpGui::~McpGui() {
+    window.mcp.policy = nullptr;
+}
 McpEditor McpGui::editor() {
     McpEditor e;
     e.document = [this] { return window.document(); };
@@ -180,17 +176,27 @@ McpEditor McpGui::editor() {
     e.edit = [this](const QString &name, const auto &operation, bool preview) {
         if (QApplication::activeModalWidget())
             fail("Handle the active modal dialog before editing the document.");
+        QScopedValueRollback depth(window.mcp.depth, window.mcp.depth + 1);
         window.edit(name, operation, preview);
     };
     e.history = [this](const QString &action) {
         if (QApplication::activeModalWidget())
             fail("Handle the active modal dialog before changing editing history.");
+        QScopedValueRollback depth(window.mcp.depth, window.mcp.depth + 1);
         window.remoteHistory(action);
     };
     e.additionalTools = [this] { return tools(); };
     e.callAdditionalTool = [this](const QString &name, const QJsonObject &args) { return call(name, args); };
     e.baseDirectory = [this] { return window.execution->baseDirectory(); };
+    e.taskWork = [](const QString &, const QJsonObject &result) {
+        return result["state"] == "queued" ? result["commandId"].toString() : QString();
+    };
     e.taskState = [this](const QString &commandId) { return task(commandId); };
+    e.cancelTask = [this](const QString &commandId) { return cancel(commandId); };
+    e.additionalResources = [] { return runtimeResources(); };
+    e.readResource = [this](const QString &uri) {
+        return runtimeResource(uri, state(), window.results->data, window.execution->currentRun().plan());
+    };
     e.pendingPrompt = [this] { return prompt(); };
     e.answerPrompt = [this](const QString &key, const QString &choice) { answer(key, choice); };
     return e;
@@ -199,12 +205,6 @@ QJsonArray McpGui::tools() const {
     QJsonArray result;
     auto add = [&](const QString &name, const QString &description, QJsonObject properties = {},
                    QJsonArray required = {}, bool mutation = false, bool readOnly = true) {
-        properties["documentId"] = type("string");
-        required.append("documentId");
-        if (mutation) {
-            properties["expectedRevision"] = type("string");
-            required.append("expectedRevision");
-        }
         QJsonObject output;
         if (mutation || name == "get_ui_command")
             output = commandSchema();
@@ -212,17 +212,8 @@ QJsonArray McpGui::tools() const {
             output = QJsonObject{{"type", "object"},
                                  {"required", QJsonArray{"selection", "candidate", "chemistryRunning",
                                                          "calculation", "results", "history"}}};
-        result.append(QJsonObject{{"name", name},
-                                  {"title", toolTitle(name)},
-                                  {"description", description},
-                                  {"outputSchema", output},
-                                  {"inputSchema", QJsonObject{{"type", "object"},
-                                                              {"properties", properties},
-                                                              {"required", required},
-                                                              {"additionalProperties", false}}},
-                                  {"annotations", QJsonObject{{"readOnlyHint", readOnly && !mutation},
-                                                              {"destructiveHint", mutation || !readOnly},
-                                                              {"openWorldHint", true}}}});
+        result.append(
+            mcpTool(name, toolTitle(name), description, properties, required, mutation, readOnly, output));
     };
     const auto target = type("string"), boolean = type("boolean"), number = type("number");
     const auto value = QJsonObject{{"type", QJsonArray{"string", "number", "boolean"}}};
@@ -316,18 +307,12 @@ QJsonArray McpGui::tools() const {
          {"smiles", type("string")},
          {"moving", array(type("string"))}},
         {"action"}, true);
-    add("calculation",
+    result.append(calculationTool(
         "Start/stop NWChem or save an immutable input bundle using the GUI execution settings. No shell "
-        "command is accepted. Poll get_app_state; exit zero alone does not establish convergence.",
-        {{"action", choice({"start", "stop", "save_bundle"})}}, {"action"}, true);
-    add("get_results",
-        "Read viewer summary or paginated frames/energies/orbitals/modes/log. mode_displacements returns one "
-        "mode with its reference geometry. Frequencies retain negative values for imaginary modes.",
-        {{"section",
-          choice({"summary", "frames", "energies", "orbitals", "modes", "mode_displacements", "log"})},
-         {"offset", integer(0, 10000000)},
-         {"limit", integer(1, 65536)},
-         {"index", integer(0, 1000000)}});
+        "command is accepted; the executable, launcher and environment are those the user set in MolForma. "
+        "Poll get_app_state; exit zero alone does not establish convergence.",
+        commandSchema(), policy.allowExecutionSettings));
+    result.append(resultsTool());
     add("results_action",
         "Open/cancel/reload results; select frame/mode/orbital; play/stop vibration or trajectory; export "
         "current geometry. indices are zero-based. Changes affect only the viewer. See get_results for load "
@@ -414,6 +399,10 @@ QJsonObject McpGui::describe(QObject *o) {
                      {"class", o->metaObject()->className()},
                      {"parent", handle(o->parent())},
                      {"text", objectText(o).left(4096)}};
+    // A file dialog itself is answered with ui_file_dialog.
+    if (const auto reason = blocked(o, qobject_cast<QFileDialog *>(o) ? "ui_file_dialog" : "");
+        !reason.isEmpty())
+        item["blocked"] = reason;
     if (auto *w = qobject_cast<QWidget *>(o)) {
         item["visible"] = w->isVisible();
         item["enabled"] = w->isEnabled();
@@ -513,12 +502,7 @@ QJsonObject McpGui::state() const {
             {"tab", window.workspaceTabs->currentIndex()},
             {"chemistryRunning", window.worker != nullptr},
             {"status", window.statusBar()->currentMessage()},
-            {"calculation", QJsonObject{{"active", run.active()},
-                                        {"state", run.state()},
-                                        {"message", run.message()},
-                                        {"directory", run.plan().directory},
-                                        {"savedBundle", window.execution->saved.directory},
-                                        {"elapsedSeconds", double(run.elapsedSeconds())}}},
+            {"calculation", calculationJson(run, window.execution->saved.directory)},
             {"results", QJsonObject{{"loading", r->loading()},
                                     {"source", r->data.source},
                                     {"pendingPath", r->pendingPath},
@@ -537,73 +521,7 @@ QJsonObject McpGui::state() const {
                                     {"message", window.calculationHistory->status->text()}}}};
 }
 QJsonObject McpGui::results(const QJsonObject &args) const {
-    const auto *p = window.results;
-    const auto &r = p->data;
-    QJsonObject out = state()["results"].toObject();
-    out["format"] = r.format;
-    out["status"] = r.status;
-    out["selectedOrbital"] = r.selectedOrbital;
-    out["orbitalBasis"] = r.orbitalBasis;
-    out["orbitalError"] = r.orbitalError;
-    out["warnings"] = QJsonArray::fromStringList(r.warnings);
-    out["counts"] = QJsonObject{{"frames", r.frames.size()},
-                                {"energies", r.energies.size()},
-                                {"orbitals", r.orbitals.size()},
-                                {"modes", r.modes.size()}};
-    const auto section = args["section"].toString("summary");
-    int offset = args["offset"].toInt(), limit = std::min(args["limit"].toInt(100), 1000);
-    QJsonArray rows;
-    qsizetype bytes = 0;
-    if (section == "mode_displacements") {
-        int i = index(args["index"].toInt(-1), r.modes.size());
-        out["frequency"] = r.modes[i].frequency;
-        out["geometry"] = r.vibrationGeometry.xyz();
-        for (const auto &v : r.modes[i].displacement)
-            rows.append(vectorToJson(v));
-    } else if (section == "log") {
-        out["text"] = r.log.mid(offset, args["limit"].toInt(4096));
-        out["total"] = r.log.size();
-    } else {
-        int count = section == "frames"     ? r.frames.size()
-                    : section == "energies" ? r.energies.size()
-                    : section == "orbitals" ? r.orbitals.size()
-                    : section == "modes"    ? r.modes.size()
-                                            : 0;
-        for (int i = offset; i < std::min(count, offset + limit); ++i) {
-            QJsonObject row{{"index", i}};
-            if (section == "frames") {
-                row["label"] = r.frames[i].label;
-                row["xyz"] = r.frames[i].molecule.xyz();
-            }
-            if (section == "energies") {
-                row["method"] = r.energies[i].method;
-                row["hartree"] = r.energies[i].hartree;
-                row["line"] = r.energies[i].line;
-            }
-            if (section == "orbitals") {
-                const auto &o = r.orbitals[i];
-                row["energy"] = o.energy;
-                row["occupation"] = o.occupation;
-                row["spin"] = o.spin;
-                row["symmetry"] = o.symmetry;
-            }
-            if (section == "modes") {
-                const auto &m = r.modes[i];
-                row["frequency"] = m.frequency;
-                row["imaginary"] = m.frequency < 0;
-                row["intensity"] = std::isfinite(m.intensity) ? QJsonValue(m.intensity) : QJsonValue();
-                row["hasDisplacements"] = !m.displacement.isEmpty();
-            }
-            if (!appendPage(rows, row, bytes))
-                break;
-        }
-        out["total"] = count;
-        out["offset"] = offset;
-        out["nextOffset"] = offset + rows.size();
-    }
-    if (section != "summary" && section != "log")
-        out["items"] = rows;
-    return out;
+    return resultsJson(window.results->data, args, state()["results"].toObject());
 }
 
 QJsonObject McpGui::enqueue(const QString &name, const QJsonObject &args) {
@@ -613,8 +531,12 @@ QJsonObject McpGui::enqueue(const QString &name, const QJsonObject &args) {
     if (active >= 16)
         fail("Too many pending UI commands. Finish dialogs or poll existing commands.");
     QJsonObject captured = args;
-    if (args.contains("target"))
-        captured["target"] = handle(resolve(args["target"].toString()));
+    if (args.contains("target")) {
+        auto *object = resolve(args["target"].toString());
+        if (const auto reason = blocked(object, name); !reason.isEmpty())
+            fail(reason);
+        captured["target"] = handle(object);
+    }
     const auto id = "command-" + QString::number(++nextCommand);
     const auto base = documentState();
     commands[id] = QJsonObject{{"commandId", id}, {"tool", name}, {"state", "queued"}};
@@ -624,7 +546,8 @@ QJsonObject McpGui::enqueue(const QString &name, const QJsonObject &args) {
     // Never evict an in-flight command while a nested modal event loop is running.
     while (commandOrder.size() > 128) {
         auto it = std::find_if(commandOrder.begin(), commandOrder.end(), [&](const QString &key) {
-            return commands[key]["state"] == "done" || commands[key]["state"] == "failed";
+            const auto state = commands[key]["state"];
+            return state == "done" || state == "failed" || state == "cancelled";
         });
         if (it == commandOrder.end())
             break;
@@ -632,10 +555,14 @@ QJsonObject McpGui::enqueue(const QString &name, const QJsonObject &args) {
         commandOrder.erase(it);
     }
     QTimer::singleShot(0, this, [this, name, captured, id, base] {
+        // tasks/cancel may have withdrawn the command before it ran.
+        if (!commands.contains(id) || commands[id]["state"] != "queued")
+            return;
         commands[id]["state"] = "running";
         try {
             if (base != documentState())
                 fail("Document changed before the queued command ran; refresh and retry.");
+            QScopedValueRollback depth(window.mcp.depth, window.mcp.depth + 1);
             commands[id]["result"] = execute(name, captured);
             commands[id]["state"] = "done";
         } catch (const std::exception &e) {
@@ -655,6 +582,8 @@ std::optional<QJsonObject> McpGui::task(const QString &commandId) const {
                action = command["action"].toString();
     if (state == "queued" || state == "running")
         return QJsonObject{{"state", state}, {"message", tool + " is " + state + " in the GUI."}};
+    if (state == "cancelled")
+        return QJsonObject{{"state", "cancelled"}, {"message", tool + " was cancelled before it ran."}};
     if (state == "failed")
         return QJsonObject{{"state", "failed"}, {"error", command["error"]}};
     const auto app = this->state();
@@ -682,9 +611,67 @@ std::optional<QJsonObject> McpGui::task(const QString &commandId) const {
         result["app"] = QJsonObject{{section, app[section]}, {"status", app["status"]}};
     return QJsonObject{{"state", "done"}, {"result", result}};
 }
+bool McpGui::cancel(const QString &commandId) {
+    if (!commands.contains(commandId))
+        return false;
+    auto &command = commands[commandId];
+    const auto state = command["state"].toString(), tool = command["tool"].toString(),
+               action = command["action"].toString();
+    if (state == "queued") {
+        command["state"] = "cancelled";
+        return true;
+    }
+    // A GUI call that is still running, for example inside a dialog, cannot be interrupted.
+    if (state != "done")
+        return false;
+    QScopedValueRollback depth(window.mcp.depth, window.mcp.depth + 1);
+    if (tool == "chemistry" && action != "cancel" && window.worker) {
+        window.cancelWorker();
+        return true;
+    }
+    if (tool == "calculation" && action == "start" && window.execution->running()) {
+        window.execution->stopCalculation();
+        return true;
+    }
+    if (tool == "results_action" &&
+        (action == "open_file" || action == "open_directory" || action == "reload") &&
+        window.results->loading()) {
+        window.results->cancelLoad();
+        return true;
+    }
+    if (tool == "history_action" && action == "scan" && window.calculationHistory->scanning()) {
+        window.calculationHistory->scan.cancel();
+        return true;
+    }
+    return false;
+}
+QString McpGui::blocked(const QObject *object, const QString &tool) const {
+    for (auto *o = object; o; o = o->parent()) {
+        if (o->property("mcpProtected").toBool())
+            return "This dialog must be answered by the user in MolForma; MCP cannot operate it.";
+        if (!policy.allowExecutionSettings && o->property("mcpExecutionSetting").toBool())
+            return "The NWChem executable, launcher and environment are set by the user in MolForma and "
+                   "cannot be changed over MCP (start the server with --mcp-allow-execution-settings to "
+                   "permit it).";
+        if (policy.restricted()) {
+            if (o->property("mcpPath").toBool())
+                return "With --mcp-allow-dir, choose this location with history_action scan and a path.";
+            if (tool != "ui_file_dialog" && qobject_cast<const QFileDialog *>(o))
+                return "With --mcp-allow-dir, answer file dialogs with ui_file_dialog so the path is "
+                       "checked.";
+        }
+    }
+    return {};
+}
+void McpGui::checkPaths(const QString &name, const QJsonObject &args) const {
+    if (policy.restricted() && args.contains("path") &&
+        (name == "ui_file_dialog" || name == "capture_screenshot" || name == "results_action" ||
+         name == "history_action"))
+        policy.checkPath(args["path"].toString());
+}
 QJsonObject McpGui::prompt() {
     auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
-    if (!box || !belongsTo(box, &window))
+    if (!box || !belongsTo(box, &window) || !blocked(box, {}).isEmpty())
         return {};
     QJsonArray choices;
     for (auto *button : box->buttons())
@@ -703,9 +690,10 @@ void McpGui::answer(const QString &key, const QString &choice) {
     if (!box || prompt()["key"] != key)
         return;
     // Click after this RPC returns, so the dialog's nested event loop does not run inside it.
-    QTimer::singleShot(0, box, [box, choice] {
+    QTimer::singleShot(0, box, [this, box, choice] {
         if (!box || !box->isVisible())
             return;
+        QScopedValueRollback depth(window.mcp.depth, window.mcp.depth + 1);
         for (auto *button : box->buttons())
             if (!choice.isEmpty() && plainButtonText(button) == choice)
                 return button->click();
@@ -716,6 +704,7 @@ void McpGui::answer(const QString &key, const QString &choice) {
     });
 }
 QJsonObject McpGui::call(const QString &name, const QJsonObject &args) {
+    checkPaths(name, args);
     if (name == "get_app_state")
         return state();
     if (name == "get_results")
@@ -834,6 +823,8 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
     auto *widget = qobject_cast<QWidget *>(object);
     if (modal && (!object || !belongsTo(object, modal)))
         fail("A modal dialog is open. Handle it with get_ui/ui_* before changing the main window.");
+    if (const auto reason = object ? blocked(object, name) : QString(); !reason.isEmpty())
+        fail(reason);
     if (widget && !widget->isEnabled())
         fail("This control is disabled.");
     if (name == "ui_activate") {
@@ -998,6 +989,13 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
                 // Fill the native Qt filename field too, just as a typed absolute path.
                 if (auto *filename = d->findChild<QLineEdit *>("fileNameEdit"))
                     filename->setText(file.absoluteFilePath());
+            }
+            if (policy.restricted()) {
+                auto files = d->selectedFiles();
+                if (files.isEmpty())
+                    files << d->directory().absolutePath();
+                for (const auto &file : files)
+                    policy.checkPath(file);
             }
             QMetaObject::invokeMethod(d, "accept", Qt::DirectConnection);
         }
@@ -1192,6 +1190,7 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
         } else {
             if (p->selectedDirectory().isEmpty())
                 fail("Select a history entry first.");
+            policy.checkPath(p->selectedDirectory());
             if (action == "reuse")
                 p->reuseSelected();
             else if (action == "open_results")

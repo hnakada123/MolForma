@@ -1,4 +1,5 @@
 #include "editing/library.h"
+#include "mcp/headless.h"
 #include "mcp/server.h"
 #include "mcp/stdio_transport.h"
 #include "nwchem/nwchem_advanced.h"
@@ -8,7 +9,9 @@
 #include <QApplication>
 #include <QDoubleSpinBox>
 #include <QFile>
+#include <QFileDialog>
 #include <QJsonDocument>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
 #include <QProcess>
@@ -60,6 +63,28 @@ QJsonObject data(const QJsonObject &response) {
 bool failed(const QJsonObject &response) {
     return response.contains("error") || response["result"].toObject()["isError"].toBool();
 }
+QString text(const QJsonObject &response) {
+    return response["result"].toObject()["content"].toArray()[0].toObject()["text"].toString();
+}
+QJsonObject toolNamed(McpServer &server, const QString &name) {
+    for (const auto &tool : server.receive(message("tools/list"))["result"].toObject()["tools"].toArray())
+        if (tool.toObject()["name"] == name)
+            return tool.toObject();
+    return {};
+}
+QString resourceText(McpServer &server, const QString &uri) {
+    return server.receive(message("resources/read", {{"uri", uri}}))["result"]
+        .toObject()["contents"]
+        .toArray()[0]
+        .toObject()["text"]
+        .toString();
+}
+const char *SyntheticModes =
+    "[Molden Format]\n[Atoms] AU\nH 1 1 0 0 0\nH 2 1 0 0 1.4\n"
+    "[GTO]\n1 0\ns 1 1.0\n1.0 1.0\n"
+    "[MO]\nSym= A1\nEne= -0.5\nSpin= Alpha\nOccup= 2.0\n1 1.0\n"
+    "[FREQ]\n-100\n1500\n[FR-COORD]\nH 0 0 0\nH 0 0 1.4\n"
+    "[FR-NORM-COORD]\nvibration 1\n0 0 .5\n0 0 -.5\nvibration 2\n0 0 .1\n0 0 -.1\n[INT]\n10\n20\n";
 QJsonObject scoped(McpServer &server, QJsonObject args = {}, bool mutation = false) {
     args["documentId"] = server.documentId();
     if (mutation)
@@ -393,20 +418,15 @@ class McpTest : public QObject {
         QTemporaryDir files;
         QVERIFY(files.isValid());
         const auto modes = files.filePath("synthetic-modes.molden");
-        writeFile(
-            modes,
-            "[Molden Format]\n[Atoms] AU\nH 1 1 0 0 0\nH 2 1 0 0 1.4\n"
-            "[GTO]\n1 0\ns 1 1.0\n1.0 1.0\n"
-            "[MO]\nSym= A1\nEne= -0.5\nSpin= Alpha\nOccup= 2.0\n1 1.0\n"
-            "[FREQ]\n-100\n1500\n[FR-COORD]\nH 0 0 0\nH 0 0 1.4\n"
-            "[FR-NORM-COORD]\nvibration 1\n0 0 .5\n0 0 -.5\nvibration 2\n0 0 .1\n0 0 -.1\n[INT]\n10\n20\n");
+        writeFile(modes, SyntheticModes);
         QProcess process;
         auto env = QProcessEnvironment::systemEnvironment();
         env.insert("QT_QPA_PLATFORM", "offscreen");
         env.insert("MOLFORMA_RENDERER", "painter");
         env.insert("XDG_CONFIG_HOME", files.filePath("settings"));
         process.setProcessEnvironment(env);
-        process.start(QCoreApplication::applicationDirPath() + "/molforma", {"--mcp-gui"});
+        process.start(QCoreApplication::applicationDirPath() + "/molforma",
+                      {"--mcp-gui", "--mcp-allow-execution-settings"});
         QVERIFY(process.waitForStarted());
         QVERIFY(!failed(processCall(
             process, "import_document",
@@ -751,6 +771,38 @@ class McpTest : public QObject {
             return list;
         };
         QCOMPARE(names(headless), QStringList({"review_candidate", "geometry_optimization"}));
+        // The headless runtime adds calculation and result tools, so frequency analysis is offered.
+        McpHeadless runtime({});
+        McpServer headlessRuntime(runtime.editor());
+        runtime.attach(headlessRuntime);
+        QCOMPARE(names(headlessRuntime),
+                 QStringList({"review_candidate", "geometry_optimization", "frequency_analysis"}));
+        // Claude Code hints: large documents stay inline; running a program needs a person.
+        for (auto *server : {&headless, &guiServer, &headlessRuntime})
+            for (const auto *name : {"get_document", "export_document"})
+                QCOMPARE(toolNamed(*server, name)["_meta"].toObject()["anthropic/maxResultSizeChars"].toInt(),
+                         100000);
+        // Only when MCP may choose the program does each run need a person's approval.
+        McpPolicy permissive;
+        permissive.allowExecutionSettings = true;
+        McpGui permissiveGui(w, permissive);
+        McpServer permissiveServer(permissiveGui.editor(), permissive);
+        for (auto *server : {&guiServer, &headlessRuntime}) {
+            QCOMPARE(
+                toolNamed(*server, "get_results")["_meta"].toObject()["anthropic/maxResultSizeChars"].toInt(),
+                100000);
+            QVERIFY(!toolNamed(*server, "calculation")["_meta"].toObject().contains(
+                "anthropic/requiresUserInteraction"));
+        }
+        QVERIFY(toolNamed(permissiveServer, "calculation")["_meta"]
+                    .toObject()["anthropic/requiresUserInteraction"]
+                    .toBool());
+        QCOMPARE(headless.receive(message("server/discover"))["result"]
+                     .toObject()["_meta"]
+                     .toObject()["io.modelcontextprotocol/serverInfo"]
+                     .toObject()["version"]
+                     .toString(),
+                 QString(MOLFORMA_VERSION));
         QVERIFY(names(guiServer).contains("build_from_smiles") &&
                 names(guiServer).contains("frequency_analysis"));
         const auto prompt = headless.receive(message(
@@ -963,7 +1015,8 @@ class McpTest : public QObject {
         env.insert("MOLFORMA_RENDERER", "painter");
         env.insert("XDG_CONFIG_HOME", files.filePath("settings"));
         process.setProcessEnvironment(env);
-        process.start(QCoreApplication::applicationDirPath() + "/molforma", {"--mcp-gui"});
+        process.start(QCoreApplication::applicationDirPath() + "/molforma",
+                      {"--mcp-gui", "--mcp-allow-execution-settings"});
         QVERIFY(process.waitForStarted());
         QVERIFY(!failed(processCall(
             process, "import_document",
@@ -1029,16 +1082,373 @@ class McpTest : public QObject {
                timer.elapsed() < 10000)
             QTest::qWait(50);
         QCOMPARE(task["status"].toString(), QString("working"));
-        QCOMPARE(processCommand(process, "calculation", {{"action", "stop"}})["state"].toString(), "done");
-        task = finish(slow);
-        calculation = task["result"]
-                          .toObject()["structuredContent"]
-                          .toObject()["app"]
-                          .toObject()["calculation"]
-                          .toObject();
-        QCOMPARE(calculation["state"].toString(), QString("cancelled"));
+        // tasks/cancel stops the calculation the task started; the task then reports cancelled.
+        process.write(capable("tasks/cancel", {{"taskId", slow}}, caps) + '\n');
+        QCOMPARE(readReply(process)["result"].toObject()["resultType"].toString(), QString("complete"));
+        timer.restart();
+        while ((task = poll(slow))["status"] != "cancelled" && timer.elapsed() < 15000)
+            QTest::qWait(50);
+        QCOMPARE(task["status"].toString(), QString("cancelled"));
+        QCOMPARE(data(processCall(process, "get_app_state"))["calculation"].toObject()["state"].toString(),
+                 QString("cancelled"));
         process.closeWriteChannel();
         QVERIFY(process.waitForFinished(10000));
+    }
+    void executionSettingsAreProtected() {
+        McpServer server;
+        QVERIFY(!failed(change(
+            server, "place_template",
+            {{"templateId", "skeleton:water"}, {"position", QJsonArray{0, 0, 0}}, {"preview", false}})));
+        const auto rejected =
+            change(server, "set_execution",
+                   {{"settings", QJsonObject{{"executable", "/bin/sh"}}}, {"preview", false}});
+        QVERIFY(failed(rejected));
+        QVERIFY(text(rejected).contains("cannot be changed over MCP"));
+        QVERIFY(failed(change(
+            server, "set_execution",
+            {{"settings", QJsonObject{{"environment", QJsonArray{QJsonObject{{"enabled", true},
+                                                                             {"name", "LD_PRELOAD"},
+                                                                             {"value", "/tmp/x.so"}}}}}},
+             {"preview", false}})));
+        // Other launch settings, and protected values left unchanged, remain editable.
+        QVERIFY(!failed(change(
+            server, "set_execution",
+            {{"settings", QJsonObject{{"mpi_ranks", 4}, {"executable", "nwchem"}}}, {"preview", false}})));
+        QCOMPARE(executionSettings(committed(server))["mpi_ranks"].toInt(), 4);
+        const auto policy = data(call(server, "get_execution", scoped(server)))["policy"].toObject();
+        QVERIFY(!policy["allowExecutionSettings"].toBool() && policy["allowedDirectories"].isNull());
+        QVERIFY(!toolNamed(server, "set_execution")["_meta"].toObject().contains(
+            "anthropic/requiresUserInteraction"));
+        McpPolicy permissive;
+        permissive.allowExecutionSettings = true;
+        McpServer allowed({}, permissive);
+        QVERIFY(!failed(change(
+            allowed, "place_template",
+            {{"templateId", "skeleton:water"}, {"position", QJsonArray{0, 0, 0}}, {"preview", false}})));
+        QVERIFY(!failed(change(allowed, "set_execution",
+                               {{"settings", QJsonObject{{"executable", "/bin/sh"}}}, {"preview", false}})));
+        QVERIFY(toolNamed(allowed, "set_execution")["_meta"]
+                    .toObject()["anthropic/requiresUserInteraction"]
+                    .toBool());
+    }
+    void guiExecutionGuard() {
+        QTemporaryDir jobs;
+        MainWindow w;
+        w.show();
+        McpGui gui(w);
+        McpServer s(gui.editor());
+        // The program, launcher and environment controls cannot be operated over MCP.
+        QVERIFY(
+            failed(change(s, "ui_set_value", {{"target", "execution_executable"}, {"value", "/bin/sh"}})));
+        QVERIFY(failed(change(s, "ui_activate", {{"target", "executionAddEnvironment"}})));
+        const auto listed = data(call(
+            s, "get_ui", scoped(s, {{"query", "execution_executable"}, {"includeHidden", true}})))["items"]
+                                .toArray();
+        QVERIFY(!listed.isEmpty());
+        QVERIFY(listed[0].toObject()["blocked"].toString().contains("cannot be changed over MCP"));
+        QVERIFY(!failed(change(
+            s, "set_execution",
+            {{"settings", QJsonObject{{"mode", "direct"}, {"job_root", jobs.path()}}}, {"preview", false}})));
+        // A project loaded over MCP may name another program; MCP cannot run it.
+        auto project = w.document();
+        const auto fake = QCoreApplication::applicationDirPath() + "/fake_nwchem";
+        setExecutionSetting(project, "executable", fake);
+        QVERIFY(!failed(change(s, "import_document",
+                               {{"format", "project"},
+                                {"text", QString::fromUtf8(QJsonDocument(project.project()).toJson())},
+                                {"preview", false}})));
+        const QJsonValue refused = data(change(s, "calculation", {{"action", "start"}}))["commandId"];
+        QJsonObject command;
+        QTRY_COMPARE((command = data(call(s, "get_ui_command", scoped(s, {{"commandId", refused}}))))["state"]
+                         .toString(),
+                     QString("failed"));
+        QVERIFY(command["error"].toString().contains("MCPからはこの設定で実行できません"));
+        QVERIFY(!data(call(s, "get_app_state", scoped(s)))["calculation"].toObject()["active"].toBool());
+        // A person starting it confirms in a dialog that MCP can neither answer nor elicit.
+        auto *start = w.findChild<QPushButton *>("executionStart");
+        QVERIFY(start && start->isEnabled());
+        bool protectedDialog = false;
+        const auto answer = [&](QMessageBox::StandardButton button) {
+            QTimer::singleShot(50, &w, [&, button] {
+                auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+                QVERIFY(box);
+                protectedDialog = box->property("mcpProtected").toBool();
+                box->button(QMessageBox::Yes)->setObjectName("guardYes");
+                QVERIFY(failed(change(s, "ui_activate", {{"target", "guardYes"}})));
+                box->button(button)->click();
+            });
+        };
+        answer(QMessageBox::No);
+        start->click();
+        QVERIFY(protectedDialog);
+        QVERIFY(!data(call(s, "get_app_state", scoped(s)))["calculation"].toObject()["active"].toBool());
+        answer(QMessageBox::Yes);
+        start->click();
+        QTRY_COMPARE(data(call(s, "get_app_state", scoped(s)))["calculation"].toObject()["state"].toString(),
+                     QString("finished"));
+        // Once a person accepted these settings, MCP may start runs with them.
+        const QJsonValue accepted = data(change(s, "calculation", {{"action", "start"}}))["commandId"];
+        QTRY_COMPARE(
+            data(call(s, "get_ui_command", scoped(s, {{"commandId", accepted}})))["state"].toString(),
+            QString("done"));
+        QTRY_COMPARE(data(call(s, "get_app_state", scoped(s)))["calculation"].toObject()["state"].toString(),
+                     QString("finished"));
+    }
+    void directoryRestriction() {
+        QTemporaryDir allowed, outside;
+        McpPolicy policy;
+        policy.allowDirectory(allowed.path());
+        const auto rejects = [&](const QString &path, const QString &base = {}) {
+            try {
+                policy.checkPath(path, base);
+                return false;
+            } catch (const std::exception &) {
+                return true;
+            }
+        };
+        QVERIFY(!rejects(allowed.filePath("new/sub/file.json")));
+        QVERIFY(!rejects("relative.json", allowed.path()));
+        QVERIFY(rejects(allowed.filePath("../escape.json")));
+        QVERIFY(rejects(allowed.path() + "-sibling/file"));
+        QVERIFY(rejects(outside.filePath("file.json")));
+        QVERIFY(QFile::link(outside.path(), allowed.filePath("link")));
+        QVERIFY(rejects(allowed.filePath("link/file.json")));
+        QVERIFY(QFile::link(allowed.filePath("missing-target"), allowed.filePath("dangling")));
+        QVERIFY(rejects(allowed.filePath("dangling")));
+        McpServer server({}, policy);
+        QVERIFY(!failed(change(
+            server, "place_template",
+            {{"templateId", "skeleton:water"}, {"position", QJsonArray{0, 0, 0}}, {"preview", false}})));
+        const auto inside = allowed.filePath("water.kgui.json"), copy = outside.filePath("water.kgui.json");
+        QVERIFY(!failed(change(server, "save_file", {{"path", inside}})));
+        QVERIFY(failed(change(server, "save_file", {{"path", copy}})));
+        QVERIFY(failed(change(server, "save_file", {{"path", allowed.filePath("link/water.kgui.json")}})));
+        QVERIFY(!QFile::exists(copy));
+        QVERIFY(QFile::copy(inside, copy));
+        QVERIFY(failed(change(server, "open_file", {{"path", copy}, {"preview", false}})));
+        QVERIFY(!failed(change(server, "open_file", {{"path", inside}, {"preview", false}})));
+        QVERIFY(failed(
+            change(server, "set_execution", {{"settings", QJsonObject{{"job_root", outside.path()}}}})));
+        QVERIFY(!failed(
+            change(server, "set_execution",
+                   {{"settings", QJsonObject{{"job_root", allowed.filePath("jobs")}}}, {"preview", false}})));
+        QVERIFY(failed(
+            change(server, "set_advanced", {{"settings", QJsonObject{{"scratch_dir", outside.path()}}}})));
+        QCOMPARE(data(call(server, "get_execution", scoped(server)))["policy"]
+                     .toObject()["allowedDirectories"]
+                     .toArray(),
+                 QJsonArray{QFileInfo(allowed.path()).canonicalFilePath()});
+        // GUI paths are checked before a command is queued; file dialogs only via ui_file_dialog.
+        MainWindow w;
+        w.show();
+        McpGui gui(w, policy);
+        McpServer s(gui.editor(), policy);
+        QVERIFY(failed(change(s, "results_action", {{"action", "open_file"}, {"path", copy}})));
+        QVERIFY(failed(change(s, "history_action", {{"action", "scan"}, {"path", outside.path()}})));
+        QVERIFY(failed(call(s, "capture_screenshot", scoped(s, {{"path", outside.filePath("view.png")}}))));
+        QVERIFY(!QFile::exists(outside.filePath("view.png")));
+        QVERIFY(failed(change(s, "ui_set_value", {{"target", "historyRoot"}, {"value", outside.path()}})));
+        QFileDialog dialog(&w, "MCP test", allowed.path());
+        dialog.setOption(QFileDialog::DontUseNativeDialog);
+        dialog.setObjectName("testDialog");
+        dialog.show();
+        QVERIFY(failed(change(s, "ui_set_value", {{"target", "fileNameEdit"}, {"value", copy}})));
+        QVERIFY(failed(
+            change(s, "ui_file_dialog", {{"target", "testDialog"}, {"path", copy}, {"accept", true}})));
+        QVERIFY(dialog.isVisible());
+        const QJsonValue accepted = data(change(s, "ui_file_dialog",
+                                                {{"target", "testDialog"},
+                                                 {"path", allowed.filePath("chosen.txt")},
+                                                 {"accept", true}}))["commandId"];
+        QTRY_COMPARE(
+            data(call(s, "get_ui_command", scoped(s, {{"commandId", accepted}})))["state"].toString(),
+            QString("done"));
+        QCOMPARE(dialog.result(), int(QDialog::Accepted));
+    }
+    void tasksCancelQueuedGuiCommand() {
+        MainWindow w;
+        McpGui gui(w);
+        McpServer s(gui.editor());
+        QPushButton button("Count", &w);
+        button.setObjectName("cancelTarget");
+        int clicks = 0;
+        connect(&button, &QPushButton::clicked, &w, [&] { ++clicks; });
+        const auto caps = clientCapabilities(false, true);
+        const auto created = s.receive(capable(
+            "tools/call",
+            {{"name", "ui_activate"}, {"arguments", scoped(s, {{"target", "cancelTarget"}}, true)}},
+            caps))["result"]
+                                 .toObject();
+        QCOMPARE(created["resultType"].toString(), QString("task"));
+        // The command is withdrawn before the event loop runs it.
+        QCOMPARE(s.receive(capable("tasks/cancel", {{"taskId", created["taskId"]}}, caps))["result"]
+                     .toObject()["resultType"]
+                     .toString(),
+                 QString("complete"));
+        QTest::qWait(50);
+        QCOMPARE(clicks, 0);
+        QCOMPARE(s.receive(capable("tasks/get", {{"taskId", created["taskId"]}}, caps))["result"]
+                     .toObject()["status"]
+                     .toString(),
+                 QString("cancelled"));
+        // Cancelling finished work changes nothing.
+        const auto done = s.receive(capable(
+            "tools/call",
+            {{"name", "ui_activate"}, {"arguments", scoped(s, {{"target", "cancelTarget"}}, true)}},
+            caps))["result"]
+                              .toObject();
+        QTRY_COMPARE(clicks, 1);
+        s.receive(capable("tasks/cancel", {{"taskId", done["taskId"]}}, caps));
+        QCOMPARE(s.receive(capable("tasks/get", {{"taskId", done["taskId"]}}, caps))["result"]
+                     .toObject()["status"]
+                     .toString(),
+                 QString("completed"));
+    }
+    void resourcesForMentions() {
+        McpServer server;
+        const auto document = "molforma://documents/" + server.documentId();
+        QStringList uris;
+        for (const auto &r :
+             server.receive(message("resources/list"))["result"].toObject()["resources"].toArray())
+            uris << r.toObject()["uri"].toString();
+        QCOMPARE(uris, QStringList({document, document + "/xyz", document + "/nwchem"}));
+        // An empty document has no valid NWChem input.
+        QCOMPARE(server.receive(message("resources/read", {{"uri", document + "/nwchem"}}))["error"]
+                     .toObject()["code"]
+                     .toInt(),
+                 -32603);
+        QVERIFY(!failed(change(
+            server, "place_template",
+            {{"templateId", "skeleton:water"}, {"position", QJsonArray{0, 0, 0}}, {"preview", false}})));
+        QCOMPARE(
+            resourceText(server, document + "/xyz"),
+            data(call(server, "export_document", scoped(server, {{"format", "xyz"}})))["text"].toString());
+        QVERIFY(resourceText(server, document + "/nwchem").contains("geometry"));
+        QCOMPARE(server.receive(message("resources/read", {{"uri", "molforma://app/state"}}))["error"]
+                     .toObject()["code"]
+                     .toInt(),
+                 -32602);
+        // Both runtimes expose the calculation output and result views.
+        MainWindow w;
+        McpGui gui(w);
+        McpServer s(gui.editor());
+        McpHeadless runtime({});
+        McpServer headless(runtime.editor());
+        runtime.attach(headless);
+        for (auto *runtimeServer : {&s, &headless}) {
+            QStringList listed;
+            for (const auto &r : runtimeServer->receive(message("resources/list"))["result"]
+                                     .toObject()["resources"]
+                                     .toArray())
+                listed << r.toObject()["uri"].toString();
+            for (const auto *uri : {"molforma://app/state", "molforma://calculation/output",
+                                    "molforma://results/summary", "molforma://results/log"})
+                QVERIFY2(listed.contains(uri), uri);
+            QVERIFY(QJsonDocument::fromJson(resourceText(*runtimeServer, "molforma://app/state").toUtf8())
+                        .object()
+                        .contains("calculation"));
+            QVERIFY(resourceText(*runtimeServer, "molforma://calculation/output").contains("No calculation"));
+            QVERIFY(
+                QJsonDocument::fromJson(resourceText(*runtimeServer, "molforma://results/summary").toUtf8())
+                    .object()
+                    .contains("counts"));
+            QCOMPARE(resourceText(*runtimeServer, "molforma://results/log"), QString("No result is loaded."));
+        }
+    }
+    void headlessCalculationAndResults() {
+        QTemporaryDir files;
+        const auto modes = files.filePath("modes.molden");
+        writeFile(modes, SyntheticModes);
+        const auto launch = [&](QProcess &process, const QStringList &extra) {
+            auto env = QProcessEnvironment::systemEnvironment();
+            env.remove("DISPLAY");
+            env.remove("WAYLAND_DISPLAY");
+            env.insert("QT_QPA_PLATFORM", "nonexistent-platform-plugin");
+            env.insert("XDG_CONFIG_HOME", files.filePath("settings"));
+            process.setProcessEnvironment(env);
+            process.start(QCoreApplication::applicationDirPath() + "/molforma", QStringList{"--mcp"} + extra);
+            return process.waitForStarted();
+        };
+        const auto fake = QCoreApplication::applicationDirPath() + "/fake_nwchem";
+        const auto caps = clientCapabilities(false, true);
+        QProcess process;
+        QVERIFY(launch(process, {"--mcp-allow-execution-settings"}));
+        QVERIFY(!failed(processCall(
+            process, "import_document",
+            {{"format", "xyz"}, {"text", "2\nH2\nH 0 0 0\nH 0 0 .74\n"}, {"preview", false}}, true)));
+        QVERIFY(!failed(processCall(
+            process, "set_execution",
+            {{"settings",
+              QJsonObject{{"mode", "direct"}, {"executable", fake}, {"job_root", files.filePath("jobs")}}},
+             {"preview", false}},
+            true)));
+        const auto task = [&](const QString &tool, const QJsonObject &args) {
+            process.write(message("tools/call", {{"name", "list_documents"}, {"arguments", QJsonObject{}}}) +
+                          '\n');
+            const auto doc = data(readReply(process))["documents"].toArray()[0].toObject();
+            auto full = args;
+            full["documentId"] = doc["documentId"];
+            full["expectedRevision"] = doc["revision"];
+            process.write(capable("tools/call", {{"name", tool}, {"arguments", full}}, caps) + '\n');
+            const auto created = readReply(process)["result"].toObject();
+            QJsonObject state;
+            QElapsedTimer timer;
+            timer.start();
+            do {
+                QTest::qWait(50);
+                process.write(capable("tasks/get", {{"taskId", created["taskId"]}}, caps) + '\n');
+                state = readReply(process)["result"].toObject();
+            } while (state["status"] != "completed" && timer.elapsed() < 15000);
+            return QJsonObject{{"created", created}, {"final", state}};
+        };
+        auto run = task("calculation", {{"action", "start"}});
+        QCOMPARE(run["created"].toObject()["resultType"].toString(), QString("task"));
+        const auto calculation = run["final"]
+                                     .toObject()["result"]
+                                     .toObject()["structuredContent"]
+                                     .toObject()["app"]
+                                     .toObject()["calculation"]
+                                     .toObject();
+        QCOMPARE(calculation["state"].toString(), QString("finished"));
+        QVERIFY(QFileInfo::exists(calculation["directory"].toString() + "/input.nw"));
+        process.write(message("resources/read", {{"uri", "molforma://calculation/output"}}) + '\n');
+        QVERIFY(readReply(process)["result"]
+                    .toObject()["contents"]
+                    .toArray()[0]
+                    .toObject()["text"]
+                    .toString()
+                    .contains("fake NWChem finished"));
+        auto loaded = task("results_action", {{"action", "open_file"}, {"path", modes}});
+        QCOMPARE(loaded["final"].toObject()["status"].toString(), QString("completed"));
+        const auto parsed =
+            data(processCall(process, "get_results", {{"section", "modes"}}))["items"].toArray();
+        QCOMPARE(parsed.size(), 2);
+        QCOMPARE(parsed[0].toObject()["frequency"].toDouble(), -100.0);
+        QCOMPARE(data(processCall(process, "get_app_state"))["results"].toObject()["source"].toString(),
+                 QFileInfo(modes).absoluteFilePath());
+        process.closeWriteChannel();
+        QVERIFY(process.waitForFinished(10000));
+        // By default a headless server runs only nwchem/mpirun from PATH without overrides.
+        QProcess strict;
+        QVERIFY(launch(strict, {}));
+        QVERIFY(
+            failed(processCall(strict, "set_execution",
+                               {{"settings", QJsonObject{{"executable", fake}}}, {"preview", false}}, true)));
+        Document project;
+        placeTemplate(project, findTemplate("skeleton:water"), Vec::Zero());
+        setExecutionSetting(project, "executable", fake);
+        setExecutionSetting(project, "mode", "direct");
+        setExecutionSetting(project, "job_root", files.filePath("jobs"));
+        QVERIFY(!failed(processCall(strict, "import_document",
+                                    {{"format", "project"},
+                                     {"text", QString::fromUtf8(QJsonDocument(project.project()).toJson())},
+                                     {"preview", false}},
+                                    true)));
+        const auto refused = processCall(strict, "calculation", {{"action", "start"}}, true);
+        QVERIFY(failed(refused));
+        QVERIFY(text(refused).contains("--mcp-allow-execution-settings"));
+        strict.closeWriteChannel();
+        QVERIFY(strict.waitForFinished(10000));
     }
     void subprocess_data() {
         QTest::addColumn<QString>("mode");

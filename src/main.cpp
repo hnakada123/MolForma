@@ -1,4 +1,5 @@
 #include "editing/chemistry.h"
+#include "mcp/headless.h"
 #include "mcp/server.h"
 #include "mcp/stdio_transport.h"
 #include "ui/main_window.h"
@@ -10,6 +11,21 @@
 #include <QStatusBar>
 #include <QTimer>
 #include <cstdio>
+namespace {
+void addMcpOptions(QCommandLineParser &parser) {
+    parser.addOption({"mcp-allow-dir", "Limit MCP file access to this directory (repeatable)", "directory"});
+    parser.addOption({"mcp-allow-execution-settings",
+                      "Let MCP clients change the NWChem executable, launcher and environment overrides"});
+}
+// MCP restrictions come only from the command line that the user configured in the client.
+mf::McpPolicy mcpPolicy(const QCommandLineParser &parser) {
+    mf::McpPolicy policy;
+    policy.allowExecutionSettings = parser.isSet("mcp-allow-execution-settings");
+    for (const auto &directory : parser.values("mcp-allow-dir"))
+        policy.allowDirectory(directory);
+    return policy;
+}
+} // namespace
 int main(int argc, char **argv) {
     // Check before QApplication so headless MCP needs no display or platform plugin.
     bool headlessMcp = false, guiMcp = false;
@@ -23,19 +39,23 @@ int main(int argc, char **argv) {
     if (headlessMcp) {
         QCoreApplication app(argc, argv);
         QCoreApplication::setApplicationName("MolForma");
-        QCoreApplication::setApplicationVersion("0.1.0");
+        QCoreApplication::setApplicationVersion(MOLFORMA_VERSION);
         QCommandLineParser parser;
         parser.addHelpOption();
         parser.addVersionOption();
         parser.addOption({"mcp", "Run the headless MCP stdio server"});
         parser.addOption({"mcp-gui", "Run MCP with the editor window"});
+        addMcpOptions(parser);
         parser.process(app);
         if (guiMcp || !parser.positionalArguments().isEmpty()) {
             std::fprintf(stderr, "Use --mcp alone, or --mcp-gui [file] for the editor.\n");
             return 1;
         }
         try {
-            mf::McpServer server;
+            const auto policy = mcpPolicy(parser);
+            mf::McpHeadless runtime(policy);
+            mf::McpServer server(runtime.editor(), policy);
+            runtime.attach(server);
             mf::McpStdioTransport transport(&server);
             QObject::connect(&transport, &mf::McpStdioTransport::finished, &app, &QCoreApplication::exit);
             transport.start();
@@ -87,7 +107,7 @@ int main(int argc, char **argv) {
         QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QApplication app(argc, argv);
     QCoreApplication::setApplicationName("MolForma");
-    QCoreApplication::setApplicationVersion("0.1.0");
+    QCoreApplication::setApplicationVersion(MOLFORMA_VERSION);
     QApplication::setStyle("Fusion");
     QCommandLineParser parser;
     parser.setApplicationDescription("Qt6/C++ molecular builder extracted from KAGAMI GUI");
@@ -97,6 +117,7 @@ int main(int argc, char **argv) {
     parser.addOption({"screenshot", "Save a screenshot and exit", "path"});
     parser.addOption({"mcp", "Run the headless MCP stdio server"});
     parser.addOption({"mcp-gui", "Run the MCP stdio server with the editor window"});
+    addMcpOptions(parser);
     parser.process(app);
     try {
         mf::MainWindow window;
@@ -106,11 +127,15 @@ int main(int argc, char **argv) {
         std::unique_ptr<mf::McpServer> server;
         std::unique_ptr<mf::McpGui> gui;
         std::unique_ptr<mf::McpStdioTransport> transport;
+        if (!parser.isSet("mcp-gui") &&
+            (parser.isSet("mcp-allow-dir") || parser.isSet("mcp-allow-execution-settings")))
+            mf::fail("--mcp-allow-dir and --mcp-allow-execution-settings require --mcp or --mcp-gui.");
         if (parser.isSet("mcp-gui")) {
             if (parser.isSet("screenshot"))
                 mf::fail("--mcp-gui and --screenshot cannot be combined.");
-            gui = std::make_unique<mf::McpGui>(window);
-            server = std::make_unique<mf::McpServer>(gui->editor());
+            const auto policy = mcpPolicy(parser);
+            gui = std::make_unique<mf::McpGui>(window, policy);
+            server = std::make_unique<mf::McpServer>(gui->editor(), policy);
             transport = std::make_unique<mf::McpStdioTransport>(server.get());
             QObject::connect(transport.get(), &mf::McpStdioTransport::finished, &app,
                              &QCoreApplication::exit);

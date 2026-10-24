@@ -32,6 +32,7 @@ add_library(molforma_core STATIC
     src/results/results.cpp
     assets/resources.qrc)
 target_include_directories(molforma_core PUBLIC src)
+target_compile_definitions(molforma_core PUBLIC MOLFORMA_VERSION="${PROJECT_VERSION}")
 target_link_libraries(molforma_core PUBLIC Qt6::Widgets Eigen3::Eigen PkgConfig::OPENBABEL)
 if(TARGET RDKit::CIPLabeler)
     target_link_libraries(molforma_core PRIVATE RDKit::CIPLabeler RDKit::GraphMol RDKit::SubstructMatch)
@@ -52,7 +53,8 @@ add_library(molforma_ui STATIC
     src/ui/periodic_table.cpp
     src/ui/results_panel.cpp
     src/ui/template_delegate.cpp)
-target_link_libraries(molforma_ui PUBLIC molforma_core)
+# McpGui shares tool definitions, result views and the access policy with the headless server.
+target_link_libraries(molforma_ui PUBLIC molforma_core molforma_mcp)
 target_compile_options(molforma_ui PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 option(MOLFORMA_ENABLE_VTK "Use native VTK for accelerated molecular rendering when available" ON)
 if(MOLFORMA_ENABLE_VTK)
@@ -91,7 +93,12 @@ if(MOLFORMA_ENABLE_VTK)
 else()
     message(STATUS "MolForma rendering: QPainter (VTK disabled)")
 endif()
-add_library(molforma_mcp STATIC src/mcp/server.cpp src/mcp/stdio_transport.cpp)
+add_library(molforma_mcp STATIC
+    src/mcp/headless.cpp
+    src/mcp/policy.cpp
+    src/mcp/server.cpp
+    src/mcp/stdio_transport.cpp
+    src/mcp/tools.cpp)
 target_link_libraries(molforma_mcp PUBLIC molforma_core)
 target_compile_options(molforma_mcp PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 add_executable(molforma src/main.cpp)

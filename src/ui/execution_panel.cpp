@@ -137,6 +137,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     auto *envForm = group("追加の環境変数");
     environment = new QTableWidget(0, 3);
     environment->setObjectName("executionEnvironment");
+    environment->setProperty("mcpExecutionSetting", true);
     environment->setHorizontalHeaderLabels({"有効", "名前", "値"});
     environment->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     environment->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
@@ -153,6 +154,8 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     auto *remove = new QPushButton("選択行を削除");
     add->setObjectName("executionAddEnvironment");
     remove->setObjectName("executionRemoveEnvironment");
+    add->setProperty("mcpExecutionSetting", true);
+    remove->setProperty("mcpExecutionSetting", true);
     buttons->addWidget(add);
     buttons->addWidget(remove);
     envForm->addRow(buttons);
@@ -262,6 +265,11 @@ void ExecutionPanel::pathField(QFormLayout *layout, const QString &label, const 
     line->setObjectName("execution_" + key);
     fields[key] = line;
     auto *browse = new QPushButton("参照…");
+    // The program to run is chosen by a person; McpGui refuses to operate these controls.
+    if (isProtectedExecutionKey(key)) {
+        line->setProperty("mcpExecutionSetting", true);
+        browse->setProperty("mcpExecutionSetting", true);
+    }
     row->addWidget(line, 1);
     row->addWidget(browse);
     layout->addRow(label, row);
@@ -319,6 +327,8 @@ void ExecutionPanel::saveBundle() {
     if (window->hasCandidate() || window->worker || run.active())
         fail("候補・整形・実行中は入力一式を保存できません。");
     commitPendingEdits();
+    if (window->mcp.policy && window->mcp.depth > 0)
+        window->mcp.policy->checkRun(window->document(), baseDirectory());
     saved = saveExecutionBundle(window->document(), baseDirectory());
     updateRun();
     emit bundleChanged(saved.directory);
@@ -327,6 +337,38 @@ void ExecutionPanel::startCalculation() {
     if (window->hasCandidate() || window->worker || run.active())
         fail("候補・整形・実行中は新しい計算を開始できません。");
     commitPendingEdits();
+    auto &mcp = window->mcp;
+    if (mcp.policy) {
+        const bool remote = mcp.depth > 0;
+        if (remote)
+            mcp.policy->checkRun(window->document(), baseDirectory());
+        const auto settings = protectedExecution(window->document());
+        if (!mcp.policy->allowExecutionSettings && settings != mcp.trustedExecution) {
+            if (remote)
+                fail("NWChem実行ファイル・MPIランチャー・追加の環境変数が、"
+                     "MolForma上で最後に設定した値と異なります（MCP経由の変更や"
+                     "プロジェクトの読込による）。MCPからはこの設定で実行できません。"
+                     "利用者が「5 実行」タブで設定を確認してください。");
+            // A person started the run: confirm in a dialog that MCP cannot see or press.
+            QStringList environment;
+            for (const auto &row : settings["environment"].toArray())
+                if (row.toObject()["enabled"].toBool())
+                    environment << row.toObject()["name"].toString() + "=" +
+                                       row.toObject()["value"].toString();
+            QMessageBox box(QMessageBox::Warning, "実行設定の確認",
+                            "実行ファイル・ランチャー・環境変数が、MCP接続中に画面の外から変更されています。"
+                            "この設定で実行しますか？",
+                            QMessageBox::Yes | QMessageBox::No, window);
+            box.setInformativeText("実行ファイル: " + settings["executable"].toString() +
+                                   "\nランチャー: " + settings["launcher"].toString() + "\n環境変数: " +
+                                   (environment.isEmpty() ? QString("なし") : environment.join(", ")));
+            box.setDefaultButton(QMessageBox::No);
+            box.setProperty("mcpProtected", true);
+            if (box.exec() != QMessageBox::Yes)
+                return;
+            mcp.trustedExecution = settings;
+        }
+    }
     run.start(window->document(), baseDirectory());
 }
 void ExecutionPanel::refresh() {

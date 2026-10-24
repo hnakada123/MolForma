@@ -39,10 +39,12 @@ Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#inc
 
 - `molforma_core` — `src/model`, `src/editing`, `src/nwchem`, `src/results`, plus `assets/resources.qrc`
   (KAGAMI template/element data embedded as Qt resources; no runtime file dependency). No UI code here.
-- `molforma_ui` — `src/ui`, links core. `main_window.*` + `editor_panels.cpp` host the editor; numbered tabs
+- `molforma_ui` — `src/ui`, links core and mcp (McpGui reuses the shared tool definitions and policy).
+  `main_window.*` + `editor_panels.cpp` host the editor; numbered tabs
   "2 Coordinates" … "6 Input preview" are separate `*_panel.*` classes; result viewer and history are panels too.
 - `molforma_mcp` — `src/mcp`, links core only. A JSON-RPC MCP server over stdio (protocols 2026-07-28 and legacy
-  2025-11-25); see `docs/mcp.md`.
+  2025-11-25); see `docs/mcp.md`. `headless.*` adds NWChem runs and result loading to `--mcp`, `tools.*` holds
+  definitions/result views shared with `McpGui`, and `policy.*` holds the command-line access policy.
 - `molforma` executable (`src/main.cpp`) links all of them and has several modes selected by argv:
   normal GUI, `--screenshot`, `--mcp` (headless, `QCoreApplication`), `--mcp-gui` (MCP driving a real
   `MainWindow` via `src/ui/mcp_gui.*`), and the internal `--worker` / `--result-worker <in> <out>` modes.
@@ -58,6 +60,10 @@ Key cross-cutting designs:
   separately until the user confirms ("変更を確定"); Esc discards it, Ctrl+Z undoes committed edits. The MCP server
   mirrors this: `McpEditor` hooks (`mcp/server.h`) expose `document`/`candidate`/`edit`/`history`, and without hooks
   the server owns its own headless document and undo stack. Fixed atoms must never move.
+- **MCP access policy**: MCP must not choose the NWChem executable, launcher or environment overrides (only
+  `--mcp-allow-execution-settings` permits it). `MainWindow::mcp` records the values last changed outside MCP;
+  runs started over MCP must match them. `--mcp-allow-dir` confines MCP file paths. Widgets with the
+  `mcpExecutionSetting`, `mcpPath` or `mcpProtected` property are refused by `McpGui`.
 - **Out-of-process work**: long chemistry operations (Open Babel refinement, SMILES → 3D) and heavy result reading
   re-launch the same executable with `--worker` / `--result-worker` via `QProcess`, exchanging JSON through temp
   files, so they are cancellable. Results returning after the document changed must be rejected as stale.
