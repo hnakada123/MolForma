@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/execution_panel.h"
 #include "nwchem/nwchem.h"
-#include "ui/advanced_panel.h"
 #include "ui/calculation_panel.h"
 #include "ui/editor_chrome.h"
 #include "ui/history_panel.h"
@@ -213,7 +212,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     memory->setRange(64, 1048576);
     memory->setSuffix(" MB");
     memory->setKeyboardTracking(false);
-    memory->setToolTip("NWChemの memory 指定です（「3 計算条件」と「6 入力プレビュー」の要約にも表示）。"
+    memory->setToolTip("NWChemの memory 指定です（「2 計算条件」と「4 入力プレビュー」の要約にも表示）。"
                        "実際の使用量の上限ではありません。");
     memoryLayout->addWidget(memory);
     grid->addWidget(memoryCell, 1, 1);
@@ -639,7 +638,7 @@ void ExecutionPanel::startCalculation() {
                 fail("NWChem実行ファイル・MPIランチャー・追加の環境変数・NWChemの追加入力が、"
                      "MolForma上で最後に設定した値と異なります（MCP経由の変更や"
                      "プロジェクトの読込による）。MCPからはこの設定で実行できません。"
-                     "利用者が「3 計算条件」「5 実行設定」タブで設定を確認してください。");
+                     "利用者が「2 計算条件」「3 実行設定」タブで設定を確認してください。");
             // A person started the run: confirm in a dialog that MCP cannot see or press.
             QStringList environment;
             for (const auto &row : settings["environment"].toArray())
@@ -656,7 +655,7 @@ void ExecutionPanel::startCalculation() {
                                    "\nランチャー: " + settings["launcher"].toString() + "\n環境変数: " +
                                    (environment.isEmpty() ? QString("なし") : environment.join(", ")) +
                                    "\nNWChemの追加入力: " +
-                                   (extra ? QString("あり（「6 入力プレビュー」で確認）") : QString("なし")));
+                                   (extra ? QString("あり（「4 入力プレビュー」で確認）") : QString("なし")));
             box.setDefaultButton(QMessageBox::No);
             box.setProperty("mcpProtected", true);
             if (box.exec() != QMessageBox::Yes)
@@ -683,7 +682,7 @@ void ExecutionPanel::startFromMenu() {
         window->workspaceTabs->setCurrentWidget(this);
         window->statusBar()->showMessage(
             run.active() ? QString("計算を実行中です。")
-                         : QString("計算を開始できません。「5 実行設定」の「実行前の確認」を見てください。"),
+                         : QString("計算を開始できません。「3 実行設定」の「実行前の確認」を見てください。"),
             10000);
         return;
     }

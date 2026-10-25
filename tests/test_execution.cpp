@@ -288,9 +288,9 @@ class ExecutionTest : public QObject {
         auto d = configured("large");
         w.loadDocument(d);
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
-        QCOMPARE(tabs->count(), 8);
-        QCOMPARE(tabs->tabText(4), "5 実行設定");
-        tabs->setCurrentIndex(4);
+        QCOMPARE(tabs->count(), 6);
+        QCOMPARE(tabs->tabText(2), "3 実行設定");
+        tabs->setCurrentIndex(2);
         QCOMPARE(w.document().toJson(), d.toJson());
         QVERIFY(w.findChild<QPlainTextEdit *>("executionCommand")->isReadOnly());
         w.findChild<QSpinBox *>("execution_memory")->setValue(256);
@@ -337,10 +337,10 @@ class ExecutionTest : public QObject {
         runStatus->click();
         QVERIFY(panel->isVisibleTo(&w));
         QCOMPARE(tabs->currentIndex(), 0);
-        tabs->setCurrentIndex(4);
+        tabs->setCurrentIndex(2);
         // (This test executable is not a result worker, so only the request is checked.)
         QTRY_COMPARE(w.findChild<QComboBox *>("resultsFiles")->currentText(), QString("output.out"));
-        QCOMPARE(tabs->currentIndex(), 4);
+        QCOMPARE(tabs->currentIndex(), 2);
         auto *log = w.findChild<QPlainTextEdit *>("executionLog");
         QVERIFY(log->toPlainText().contains("log tail marker"));
         QVERIFY(log->toPlainText().size() < 132000);
@@ -405,7 +405,7 @@ class ExecutionTest : public QObject {
         d.data["nwchem"] = s;
         w.loadDocument(d);
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
-        tabs->setCurrentIndex(4);
+        tabs->setCurrentIndex(2);
         w.resize(1380, 900);
         w.show();
         auto *panel = w.findChild<QWidget *>("runPanel");
@@ -451,7 +451,7 @@ class ExecutionTest : public QObject {
         configured().save(path);
         MainWindow w;
         w.loadPath(path);
-        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(4);
+        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(2);
         w.show();
         w.activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&w));
@@ -494,7 +494,7 @@ class ExecutionTest : public QObject {
         d.data["nwchem"] = s;
         MainWindow w;
         w.loadDocument(d);
-        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(4);
+        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(2);
         w.resize(1380, 1000);
         w.show();
         auto *panel = w.findChild<ExecutionPanel *>("executionTab");

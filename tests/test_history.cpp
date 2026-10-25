@@ -33,7 +33,7 @@ class HistoryTest : public QObject {
         return p;
     }
     static void showHistory(MainWindow &w) {
-        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(7);
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(5);
         w.show();
     }
     // The job rows of the list, in their order (the headings of the days hold no job folder).
@@ -377,7 +377,7 @@ class HistoryTest : public QObject {
         auto *table = widget<QTreeWidget>(w, "historyTable");
         QTRY_VERIFY(!panel->scanning());
         QCOMPARE(rows(w).size(), 3);
-        QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->tabText(7), "履歴");
+        QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->tabText(5), "履歴");
         // Newest first under the heading of their day, which is not a job to select.
         QCOMPARE(table->topLevelItemCount(), 1);
         QVERIFY(table->topLevelItem(0)->text(0).startsWith("今日 · "));
@@ -471,7 +471,7 @@ class HistoryTest : public QObject {
         QVERIFY(!w.history()->isClean());
         QVERIFY(w.document().atoms[0].fixed);
         QCOMPARE(w.document().envelope["future"], before["future"]);
-        QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 2);
+        QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 1);
         QCOMPARE(readFile(first.directory + "/input.nw"), savedInput);
         QVERIFY(!widget<ExecutionPanel>(w, "executionTab")->running());
         // Ctrl+S must ask for a new path, never overwrite the saved snapshot.
@@ -514,7 +514,7 @@ class HistoryTest : public QObject {
         QTRY_VERIFY(widget<QPushButton>(w, "historyStop")->isEnabled());
         QVERIFY(!widget<QPushButton>(w, "historyTrash")->isEnabled());
         QVERIFY(!widget<QPushButton>(w, "historyReuse")->isVisibleTo(&w));
-        // The progress of the run of this window, as in "5 実行設定".
+        // The progress of the run of this window, as in "3 実行設定".
         QVERIFY(widget<QFrame>(w, "historyProgressBox")->isVisibleTo(&w));
         QVERIFY(!widget<QFrame>(w, "historyEnergyBox")->isVisibleTo(&w));
         QTRY_VERIFY(w.findChild<QLabel *>("historyStage0") &&
@@ -537,7 +537,7 @@ class HistoryTest : public QObject {
         const auto before = w.document().project();
         widget<QPushButton>(w, "historyResults")->click();
         auto *viewer = widget<ResultsPanel>(w, "resultsTab");
-        QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 6);
+        QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 4);
         QTRY_VERIFY(!viewer->loading());
         QCOMPARE(w.document().project(), before);
         // Directory navigation prefers output.out. Open the available XYZ via the same viewer.
@@ -608,7 +608,7 @@ class HistoryTest : public QObject {
         QVERIFY(w.grab().save(artifacts + "/history.png"));
     }
     void rootFollowsExecutionSettings() {
-        // Until the user picks a folder in "履歴", it shows the job folder of "5 実行設定".
+        // Until the user picks a folder in "履歴", it shows the job folder of "3 実行設定".
         QTemporaryDir first, second;
         MainWindow w;
         w.loadDocument(water(first.path()));
@@ -616,11 +616,11 @@ class HistoryTest : public QObject {
         auto *panel = widget<HistoryPanel>(w, "historyTab");
         QTRY_VERIFY(!panel->scanning());
         QCOMPARE(panel->rootDirectory(), first.path());
-        QVERIFY(widget<QToolButton>(w, "historyRootButton")->text().endsWith("（5 実行設定と同じ）"));
-        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(4);
+        QVERIFY(widget<QToolButton>(w, "historyRootButton")->text().endsWith("（3 実行設定と同じ）"));
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(2);
         w.edit("NWChem実行設定を変更",
                [&](Document &d) { setExecutionSetting(d, "job_root", second.path()); });
-        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(7);
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(5);
         QTRY_VERIFY(!panel->scanning());
         QCOMPARE(panel->rootDirectory(), second.path());
     }

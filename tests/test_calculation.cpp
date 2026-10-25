@@ -105,7 +105,7 @@ class CalculationTest : public QObject {
         QVERIFY(!nwchemAutoz(d));
         // The shortest coordinates that read back as the same doubles.
         QVERIFY(nwchemInput(water()).contains("\n  H 0.758 0 0.504\n  H -0.758 0 0.504\n"));
-        // "NWChem既定" leaves the SCF/DFT thresholds out, except those set in 4 詳細設定.
+        // "NWChem既定" leaves the SCF/DFT thresholds out, except those set in the details.
         d = water();
         set(d, "scf_convergence", "default");
         auto text = nwchemInput(d);
@@ -639,13 +639,15 @@ class CalculationTest : public QObject {
             if (list->item(i)->text().contains("多重度"))
                 emit list->itemDoubleClicked(list->item(i));
         QCOMPARE(w.document().job()["multiplicity"].toInt(), 2);
-        // Searching an advanced option opens "4 詳細設定".
+        // Searching a detailed option shows it in the details of its section.
         auto *search = w.findChild<QLineEdit *>("calculationSearch");
         search->setText("DIIS部分空間");
         QMetaObject::invokeMethod(search, "returnPressed");
         QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentWidget()->objectName(),
-                 QString("advancedTab"));
-        QCOMPARE(w.findChild<QLineEdit *>("advancedSearch")->text(), QString("DIIS部分空間"));
+                 QString("calculationTab"));
+        QVERIFY(w.findChild<QWidget *>("calculationDetailBody_convergence")->isVisibleTo(&w));
+        QVERIFY(w.findChild<QWidget *>("calculationDetailRow_scf_diisbas")->isVisibleTo(&w));
+        QCOMPARE(w.findChild<QLabel *>("calculationDetailTitle")->text(), QString("DIIS部分空間の大きさ"));
     }
     void sectionsChangesAndResets() {
         // Sections without a part in the calculation, and why.
@@ -689,7 +691,7 @@ class CalculationTest : public QObject {
         QVERIFY(entry("optimization")->data(Qt::UserRole + 12).toString().isEmpty());
         QCOMPARE(changes(w), (QStringList{"計算目的: 構造最適化", "電子状態の手法: DFT"}));
         // Only changed rows: the other cards and rows give way.
-        // As in "4 詳細設定": all rows, or only the changed ones.
+        // All rows, or only the changed ones (the details too).
         auto *only = w.findChild<QToolButton *>("calculationChangeFilter_changed");
         QCOMPARE(only->text(), QString("変更済み 2"));
         only->click();
@@ -712,17 +714,19 @@ class CalculationTest : public QObject {
         QVERIFY(w.findChild<QLabel *>("calculationNoChanges")->isVisibleTo(tab));
         w.history()->undo();
         QCOMPARE(nwchemSettings(w.document())["basis"].toString(), "6-31g*");
-        // Changes of "4 詳細設定" are counted, and lead there.
+        // The details changed are counted with the fields, and lead to their rows.
+        const int fieldsChanged = changes(w).size();
         w.edit("detail", [](Document &next) { setNwchemAdvanced(next, "scf_thresh", 1e-8); });
-        auto *advanced = button(w, "calculationAdvancedChanges");
-        QVERIFY(advanced->isVisibleTo(tab) && advanced->text().contains("1 項目"));
-        advanced->click();
-        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentWidget()->objectName(),
-                 QString("advancedTab"));
-        QCOMPARE(w.findChild<QComboBox *>("advancedFilter")->currentData().toString(), QString("changed"));
+        QCOMPARE(changes(w).size(), fieldsChanged + 1);
+        QCOMPARE(changes(w).last(), QString("波動関数の収束閾値: 1e-08"));
+        auto *list = w.findChild<QTreeWidget *>("calculationChanges");
+        emit list->itemClicked(list->topLevelItem(list->topLevelItemCount() - 1), 0);
+        QVERIFY(w.findChild<QWidget *>("calculationDetailRow_scf_thresh")->isVisibleTo(tab));
+        QCOMPARE(w.findChild<QLabel *>("calculationDetailCurrent")->text(), QString("1e-08"));
+        w.history()->undo();
         // "すべて既定へ" resets the conditions but keeps the name, title, unit and charge.
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
-        tabs->setCurrentIndex(2);
+        tabs->setCurrentIndex(1);
         w.edit("names", [](Document &next) {
             auto s = next.data["nwchem"].toObject();
             s["start"] = "kept";
@@ -747,15 +751,13 @@ class CalculationTest : public QObject {
         QCOMPARE(w.findChild<QLabel *>("calculationMemoryState")->text(), QString("1024 MB / MPIプロセス"));
         button(w, "calculationMemoryLink")->click();
         QCOMPARE(tabs->currentWidget()->objectName(), QString("executionTab"));
-        tabs->setCurrentIndex(2);
-        QVERIFY(!w.findChild<QCheckBox *>("calculationMoldenOutput"));
-        QVERIFY(w.findChild<QLabel *>("calculationMoldenState")->text().startsWith("MOLDEN オフ"));
+        tabs->setCurrentIndex(1);
+        // The MOLDEN and CUBE files are set in the details of their own section, open from the start.
+        auto *molden = w.findChild<QCheckBox *>("advanced_molden_output");
+        QVERIFY(molden->isVisibleTo(tab) && !molden->isChecked());
         w.edit("molden", [](Document &next) { setNwchemAdvanced(next, "molden_output", true); });
-        QVERIFY(w.findChild<QLabel *>("calculationMoldenState")->text().startsWith("MOLDEN オン"));
-        button(w, "calculationMoldenLink")->click();
-        QCOMPARE(tabs->currentWidget()->objectName(), QString("advancedTab"));
-        QCOMPARE(w.findChild<QComboBox *>("advancedCategory")->currentData().toString(),
-                 QString("visualization"));
+        QVERIFY(molden->isChecked());
+        QVERIFY(w.findChild<QLabel *>("calculationOutputFiles")->text().contains(".molden"));
     }
     void nwchemImportRoundTrip() {
         // MolForma's own inputs read back to the same structure and settings.
@@ -903,11 +905,11 @@ class CalculationTest : public QObject {
         auto water = this->water();
         set(water, "basis_overrides", QJsonObject{{"Fe", "def2-tzvp"}});
         QVERIFY(nwchemInput(water).contains("  * library \"sto-3g\"\n"));
-        // The table in "3 計算条件" edits the same setting and is undoable.
+        // The table in "2 計算条件" edits the same setting and is undoable.
         MainWindow w;
         w.loadDocument(this->water());
         w.show();
-        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(2);
+        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(1);
         auto *oxygen = w.findChild<QComboBox *>("nwchem_basis_O");
         QVERIFY(oxygen);
         oxygen->setCurrentIndex(oxygen->findData("cc-pvdz"));
@@ -1041,8 +1043,8 @@ class CalculationTest : public QObject {
         const auto d = water();
         w.loadDocument(d);
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
-        QCOMPARE(tabs->tabText(2), "3 計算条件");
-        tabs->setCurrentIndex(2);
+        QCOMPARE(tabs->tabText(1), "2 計算条件");
+        tabs->setCurrentIndex(1);
         QCOMPARE(w.document().toJson(), d.toJson());
         QCOMPARE(w.history()->count(), 0);
         auto *status = w.findChild<QLabel *>("calculationStatus");
@@ -1056,7 +1058,8 @@ class CalculationTest : public QObject {
         button(w, "editorRedo")->click();
         QCOMPARE(nwchemSettings(w.document())["method"].toString(), "dft");
         choose(w, "geometry_units", "bohr");
-        QVERIFY(w.findChild<QLabel *>("nwchemUnitState")->text().endsWith("Bohr")); // Shown in "2 座標".
+        QVERIFY(
+            w.findChild<QAction *>("copyNwchemGeometry")->text().endsWith("（Bohr）")); // The table's export.
         auto *charge = w.findChild<QSpinBox *>("nwchem_charge");
         auto *mult = w.findChild<QSpinBox *>("nwchem_multiplicity");
         charge->setValue(1);
@@ -1070,7 +1073,7 @@ class CalculationTest : public QObject {
         QVERIFY(QApplication::clipboard()->text().contains("  mult 2\n  odft\n"));
         const int count = w.history()->count();
         tabs->setCurrentIndex(0);
-        tabs->setCurrentIndex(2);
+        tabs->setCurrentIndex(1);
         QCOMPARE(w.history()->count(), count);
         auto modified = w.document();
         set(modified, "method", "future_method");
@@ -1117,7 +1120,7 @@ class CalculationTest : public QObject {
     void savedPresetAndTitleEditing() {
         MainWindow w;
         w.loadDocument(water());
-        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(2);
+        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(1);
         w.show();
         choose(w, "method", "dft");
         choose(w, "functional", "pbe");
@@ -1153,7 +1156,7 @@ class CalculationTest : public QObject {
         water().save(path);
         MainWindow w;
         w.loadPath(path);
-        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(2);
+        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(1);
         w.show();
         w.activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&w));
@@ -1176,7 +1179,7 @@ class CalculationTest : public QObject {
     void focusedFieldTeardown() {
         MainWindow w;
         w.loadDocument(water());
-        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(2);
+        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(1);
         w.show();
         w.activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&w));
@@ -1271,7 +1274,7 @@ class CalculationTest : public QObject {
         emitInput("preset_water", d);
         w.loadDocument(d);
         w.resize(1380, 920);
-        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(2);
+        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(1);
         w.show();
         QCoreApplication::processEvents();
         QVERIFY(w.grab().save(path + "/calculation.png"));

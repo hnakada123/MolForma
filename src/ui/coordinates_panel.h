@@ -5,11 +5,11 @@
 #include <QStyledItemDelegate>
 #include <QWidget>
 #include <functional>
+class QAction;
 class QComboBox;
 class QFrame;
 class QLabel;
 class QLineEdit;
-class QPlainTextEdit;
 class QPushButton;
 class QStackedWidget;
 class QTableWidget;
@@ -17,8 +17,6 @@ class QTableWidgetItem;
 class QToolButton;
 namespace mf {
 class MainWindow;
-class MoleculeView;
-class ViewControls;
 // Cells of the coordinate table. The atom cell holds the element and shows the atom as the 3D view
 // labels it ("C14"), with a lock when the atom is fixed. Coordinates read at a glance with six
 // decimals, right aligned; editing a cell shows and keeps the full value, so an unchanged cell
@@ -54,6 +52,7 @@ class CoordinatesPanel : public QWidget {
   protected:
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
+    void showEvent(QShowEvent *event) override;
 
   private:
     MainWindow *window;
@@ -61,24 +60,18 @@ class CoordinatesPanel : public QWidget {
     QStackedWidget *tablePages;
     QFrame *selectionBar;
     QComboBox *units;
-    QLabel *outputUnit; // The unit of the input, a setting of "3 計算条件".
     QLineEdit *filter;
-    QLabel *message, *selectionHint, *selectionTitle, *moreAtoms, *measurement, *compareNote, *count,
-        *previewLabel, *xyzNote, *exportNote;
+    QLabel *message, *selectionHint, *selectionTitle, *moreAtoms, *measurement, *compareNote, *count;
     QList<QLabel *> chips;
     QList<QWidget *> selectionItems, candidateItems; // Shown with a selection, or with a candidate.
-    QWidget *unitRow, *viewCandidate;
-    QPlainTextEdit *preview;
-    MoleculeView *view;
-    QPushButton *originButton, *fixButton, *ghostButton, *copyButton, *saveButton, *xyzCopy, *xyzSave,
-        *attributes;
-    ViewControls *viewControls;
-    QToolButton *showAll, *showChanged, *xyzFormat;
+    QPushButton *originButton, *fixButton, *ghostButton, *attributes, *exportButton;
+    QList<QAction *> exportActions; // Copy and save of the NWChem fragment, then of the XYZ.
+    QToolButton *showAll, *showChanged;
     QList<QWidget *> editControls;
+    QList<QAction *> editActions;
     // Icons of the atom cells by element ("@C" for a ghost), and of the change column ("#added").
     QHash<QString, QIcon> icons;
     bool busy = false;
-    QStringList displayedIds;
     QPushButton *button(QLayout *layout, const QString &text, const QString &name, const QString &icon,
                         const std::function<void()> &action, bool editing = false);
     CoordinateUnit tableUnit() const;

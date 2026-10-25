@@ -56,8 +56,8 @@ bool realNumber(const QString &text, double &number) {
 } // namespace
 const QVector<AdvancedOption> &nwchemAdvancedOptions() {
     static const QVector<AdvancedOption> options{
-        numeric("scf_thresh", "scf", "波動関数の収束閾値", "thresh",
-                "「3 計算条件」のSCF収束を上書きします。", "3 計算条件に従う", 1e-12, 1e-2),
+        numeric("scf_thresh", "scf", "波動関数の収束閾値", "thresh", "上の「SCF収束」を上書きします。",
+                "SCF収束に従う", 1e-12, 1e-2),
         numeric("scf_tol2e", "scf", "積分の打切り閾値", "tol2e",
                 "二電子積分のスクリーニング精度を指定します。", "NWChemがthreshから決定", 1e-16, 1e-4),
         flag("scf_direct", "scf", "積分を毎回再計算", "direct",
@@ -68,11 +68,11 @@ const QVector<AdvancedOption> &nwchemAdvancedOptions() {
         numeric("scf_diisbas", "scf", "DIIS部分空間の大きさ", "diisbas",
                 "上のSCF収束法でDIISを選んだ場合のみ使用します。", "5", 2, 50, true),
         numeric("dft_energy", "dft", "エネルギー収束閾値 / Hartree", "convergence energy",
-                "「3 計算条件」のDFTエネルギー収束を上書きします。", "3 計算条件に従う", 1e-12, 1e-2),
+                "上の「SCF収束」から決まるDFTのエネルギー収束を上書きします。", "SCF収束に従う", 1e-12, 1e-2),
         numeric("dft_density", "dft", "密度収束閾値", "convergence density",
-                "DFT密度の収束閾値を個別に指定します。", "3 計算条件に従う", 1e-12, 1e-2),
+                "DFT密度の収束閾値を個別に指定します。", "SCF収束に従う", 1e-12, 1e-2),
         numeric("dft_gradient", "dft", "軌道勾配の収束閾値", "convergence gradient",
-                "原子核の勾配ではなく、電子状態の軌道勾配です。", "3 計算条件に従う", 1e-12, 1e-2),
+                "原子核の勾配ではなく、電子状態の軌道勾配です。", "SCF収束に従う", 1e-12, 1e-2),
         numeric("dft_damp", "dft", "密度のダンピング / %", "convergence damp",
                 "前反復の密度を混ぜる割合です。例: 70は前反復を70%使用します。", "NWChem既定", 0, 99, true),
         numeric("dft_ncydp", "dft", "初期ダンピングの反復数", "convergence ncydp",
@@ -83,10 +83,11 @@ const QVector<AdvancedOption> &nwchemAdvancedOptions() {
                 "収束加速に保持するFock行列数です。増やすとメモリ使用量が増えます。", "10", 4, 50, true),
         flag("dft_direct", "dft", "DFT積分を毎回再計算", "direct", "DFTの積分キャッシュを使用しません。"),
         flag("dft_grid_nodisk", "dft", "グリッドをディスクに保存しない", "grid nodisk",
-             "グリッド精度は「3 計算条件」のfine/xfineを使用します。"),
+             "グリッド精度は上の「DFT積分グリッド」を使用します。"),
         numeric("corr_freeze", "correlation", "凍結する占有軌道数", "freeze",
-                "「3 計算条件」のfreeze atomicを上書きします。0は凍結なし。最低エネルギー側から数えます。",
-                "3 計算条件に従う", 0, 100000, true),
+                "上の「相関計算で内殻を凍結」（freeze atomic）を上書きします。0は凍結なし。最低エネルギー側"
+                "から数えます。",
+                "内殻凍結の設定に従う", 0, 100000, true),
         flag("mp2_tight", "correlation", "MP2の精度を厳密にする", "tight",
              "MP2の積分・SCF・CPHF精度を厳密にします。"),
         numeric("mp2_scratchdisk", "correlation", "MP2作業ディスク / MB・プロセス", "scratchdisk",
@@ -100,20 +101,20 @@ const QVector<AdvancedOption> &nwchemAdvancedOptions() {
         flag("cc_nodisk", "correlation", "CC積分をディスクに保存しない", "nodisk",
              "必要な積分を再計算します。SCFのdirect設定とは独立です。"),
         numeric("driver_gmax", "driver", "勾配の最大成分 / Hartree・Bohr⁻¹", "gmax",
-                "最適化の収束閾値を個別に上書きします。", "3 計算条件の最適化収束に従う", 1e-9, 0.1),
+                "上の「最適化収束」を個別に上書きします。", "最適化収束に従う", 1e-9, 0.1),
         numeric("driver_grms", "driver", "勾配のRMS / Hartree・Bohr⁻¹", "grms",
-                "最適化の勾配RMSの収束条件です。", "3 計算条件に従う", 1e-9, 0.1),
+                "最適化の勾配RMSの収束条件です。", "最適化収束に従う", 1e-9, 0.1),
         numeric("driver_xmax", "driver", "変位の最大成分 / Bohr", "xmax",
-                "Cartesian変位の最大成分に対する収束条件です。", "3 計算条件に従う", 1e-9, 1),
+                "Cartesian変位の最大成分に対する収束条件です。", "最適化収束に従う", 1e-9, 1),
         numeric("driver_xrms", "driver", "変位のRMS / Bohr", "xrms",
-                "Cartesian変位のRMSに対する収束条件です。", "3 計算条件に従う", 1e-9, 1),
+                "Cartesian変位のRMSに対する収束条件です。", "最適化収束に従う", 1e-9, 1),
         numeric("driver_trust", "driver", "最適化のステップ幅 / Bohr", "trust",
                 "DRIVERのtrust radius。座標の出力単位によらず原子単位です。", "0.3", 1e-4, 2),
         numeric("driver_eprec", "driver", "エネルギーの計算精度 / Hartree", "eprec",
                 "線形探索で想定するエネルギー精度です。収束条件そのものではありません。",
                 "HF等: 1e-7 / DFT: 5e-6", 1e-12, 1e-3),
         flag("driver_xyz", "driver", "最適化の各構造をXYZに出力", "xyz",
-             "「3 計算条件」の計算名をファイル名の接頭辞に使用します。"),
+             "「入力ファイル」の計算名をファイル名の接頭辞に使用します。"),
         flag("driver_cartesian", "driver", "Cartesian座標で最適化（noautoz）", "noautoz",
              "固定原子・ゴーストのない最適化は、NWChemの自動内部座標（autoz）で行います。弱く結合した"
              "錯体などで収束しにくい場合に、Cartesian座標へ切り替えます。"),
@@ -139,7 +140,7 @@ const QVector<AdvancedOption> &nwchemAdvancedOptions() {
         choice("cosmo_ificos", "cosmo", "空洞表面の初期多面体", "ificos",
                "正二十面体は正八面体より細かい表面になります。", {{"0", "正八面体"}, {"1", "正二十面体"}}),
         choice("cosmo_screen", "cosmo", "誘電遮蔽のスケーリング", "screen",
-               "idealでは「3 計算条件」の誘電率を使用しません。",
+               "idealでは「周囲の環境」の比誘電率を使用しません。",
                {{"st", "Stefanovich–Truong"}, {"ks", "Klamt–Schüürmann"}, {"ideal", "完全導体（ideal）"}}),
         numeric("cosmo_zeta", "cosmo", "表面電荷の幅", "zeta",
                 "York–Karplus COSMOのGaussian表面電荷幅を制御します。", "0.98", 0.01, 10),
@@ -340,10 +341,10 @@ QString nwchemAdvancedDefault(const AdvancedOption &o, const Document &d) {
     if (QStringList{"scf_thresh", "dft_energy", "dft_density", "dft_gradient"}.contains(o.key)) {
         const auto threshold = nwchemScfThreshold(s);
         return (threshold.isEmpty() ? QString("NWChem既定") : threshold) +
-               "（3 計算条件のSCF収束: " + label("scf_convergence", s["scf_convergence"].toString()) + "）";
+               "（SCF収束: " + label("scf_convergence", s["scf_convergence"].toString()) + "）";
     }
     if (o.key == "corr_freeze")
-        return s["freeze_core"].toBool() ? "atomic（3 計算条件の内殻凍結）" : "0（凍結なし）";
+        return s["freeze_core"].toBool() ? "atomic（内殻凍結）" : "0（凍結なし）";
     // NWChem's DRIVER criteria for the keyword MolForma writes (default, tight, loose).
     static const QHash<QString, std::array<const char *, 4>> criteria{
         {"default", {"0.00045", "0.0003", "0.0018", "0.0012"}},
@@ -354,7 +355,7 @@ QString nwchemAdvancedDefault(const AdvancedOption &o, const Document &d) {
         const auto convergence = s["opt_convergence"].toString();
         if (criteria.contains(convergence))
             return QString(criteria[convergence][index]) +
-                   "（3 計算条件の最適化収束: " + label("opt_convergence", convergence) + "）";
+                   "（最適化収束: " + label("opt_convergence", convergence) + "）";
     }
     const bool dft = s["method"] == "dft";
     if (o.key == "driver_eprec")

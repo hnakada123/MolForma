@@ -931,7 +931,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     surfaceHint->setWordWrap(true);
     sf->addRow(surfaceHint);
     tabs->addTab(surfaces, "CUBE / 等値面");
-    // The file as in "5 実行設定" and "履歴": its name and how much of it, copy, and the text.
+    // The file as in "3 実行設定" and "履歴": its name and how much of it, copy, and the text.
     auto *logPage = new QWidget;
     auto *logLayout = new QVBoxLayout(logPage);
     logLayout->setContentsMargins(8, 8, 8, 8);
@@ -1619,7 +1619,7 @@ void ResultsPanel::display(bool orbitalOnly) {
     orbitalSource->setText(
         data.format == "NWChem" && !data.orbitals.isEmpty()
             ? (molden.isEmpty()
-                   ? QString("ログの軌道エネルギーです。軌道の形を表示するには、「3 計算条件」で"
+                   ? QString("ログの軌道エネルギーです。軌道の形を表示するには、「2 計算条件」で"
                              "「計算後に分子軌道をMOLDENファイルに出力」をオンにして計算してください。")
                    : QString("ログの軌道エネルギーです。行をダブルクリックするか「形を表示」で、"
                              "同じジョブの %1 からその軌道の形を表示します。")
@@ -1799,7 +1799,7 @@ void ResultsPanel::showOverview() {
         label(
             "結果ファイル（NWChem出力・MOLDEN・CUBE・XYZ）またはジョブフォルダーを開くと、ここに結果の要点を"
             "表"
-            "示し、データのあるタブ（エネルギー・軌道・振動など）が現れます。\n\n「5 実行設定」で計算すると、"
+            "示し、データのあるタブ（エネルギー・軌道・振動など）が現れます。\n\n「3 実行設定」で計算すると、"
             "終了後に自動で読み込みます。過去の計算は「履歴」から開けます。",
             "");
         layout->addStretch();
@@ -2285,7 +2285,7 @@ void ResultsPanel::showProperties() {
     if (!shielding.isEmpty())
         text += "NMRは絶対遮蔽定数です。化学シフトは同じ条件で計算した基準物質（TMS等）の値との差です。\n";
     if (text.isEmpty())
-        text = "このログには物性の結果がありません。「3 計算条件」の「物性」・溶媒・BSSE補正で計算できます。";
+        text = "このログには物性の結果がありません。「2 計算条件」の「物性」・溶媒・BSSE補正で計算できます。";
     propertySummary->setText(text.trimmed());
 }
 void ResultsPanel::showIrSpectrum() {

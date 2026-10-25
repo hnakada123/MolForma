@@ -294,38 +294,45 @@ class EditorTest : public QObject {
         w.show();
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
         auto *table = w.findChild<QTableWidget *>("coordinateTable");
-        auto *coordinates = tabs->widget(1);
+        auto *layout = w.findChild<QComboBox *>("moleculeLayout");
+        QCOMPARE(layout->currentData().toString(), QString("view")); // The 3D view alone at first.
         QCOMPARE(table->item(0, 1)->text().toDouble(), 0.0);
-        // While "1 分子" is open the coordinate table waits; opening its tab brings it up to date.
+        // While the coordinate table is hidden it waits; showing it under the view brings it up to date.
         w.edit("move", [](Document &d) { d.atoms[0].position.x() = 0.25; });
         QCOMPARE(table->item(0, 1)->text().toDouble(), 0.0);
-        tabs->setCurrentWidget(coordinates);
+        w.findChild<QToolButton *>("moleculeLayout_both")->click();
+        QVERIFY(table->isVisible() && w.canvas()->isVisible());
         QCOMPARE(table->item(0, 1)->text().toDouble(), 0.25);
-        // The open tab follows undo at once, once the Undo/Redo texts have moved too.
+        // The table in view follows undo at once, once the Undo/Redo texts have moved too.
         w.history()->undo();
         QCOMPARE(table->item(0, 1)->text().toDouble(), 0.0);
         QVERIFY(w.findChild<QPushButton *>("editorRedo")->isEnabled());
-        tabs->setCurrentIndex(0);
+        tabs->setCurrentIndex(1);
         w.history()->redo();
         QCOMPARE(table->item(0, 1)->text().toDouble(), 0.0);
         w.refreshStalePanels(); // What McpGui does before it reads or drives the GUI.
         QCOMPARE(table->item(0, 1)->text().toDouble(), 0.25);
         // The input preview tab still shows when the input cannot be generated.
-        const int preview = 5;
-        QCOMPARE(tabs->tabText(preview), QString("6 入力プレビュー"));
+        const int preview = 3;
+        QCOMPARE(tabs->tabText(preview), QString("4 入力プレビュー"));
         w.edit("multiplicity", [](Document &d) { d.setJobValue("multiplicity", 2); });
         QVERIFY(tabs->tabBar()->tabTextColor(preview).isValid());
         QVERIFY(tabs->tabToolTip(preview).contains("エラー"));
         w.history()->undo();
         QVERIFY(!tabs->tabBar()->tabTextColor(preview).isValid());
-        // Selecting every atom selects every table row, keeping the click order.
-        tabs->setCurrentWidget(coordinates);
+        // Selecting every atom selects every table row, keeping the click order; the table alone
+        // hides the view, and the choice is kept for the next window.
+        tabs->setCurrentIndex(0);
+        w.findChild<QToolButton *>("moleculeLayout_table")->click();
+        QVERIFY(table->isVisible() && !w.canvas()->isVisible());
+        QCOMPARE(QSettings("MolForma", "MolForma").value("molecule/layout").toString(), QString("table"));
         const auto ids = w.document().ids();
         w.setSelection({ids[2], ids[0], ids[1]});
         QCOMPARE(table->selectionModel()->selectedRows().size(), 3);
         table->selectionModel()->select(table->model()->index(1, 0),
                                         QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
         QCOMPARE(w.canvas()->selection(), Ids{ids[1]});
+        w.findChild<QToolButton *>("moleculeLayout_view")->click(); // The other tests use the view.
     }
     void rotationAndMirrorAboutSelection() {
         MainWindow w;
@@ -429,7 +436,7 @@ class EditorTest : public QObject {
     void rotationControlsLayout_data() {
         QTest::addColumn<int>("tab");
         QTest::addColumn<int>("width");
-        for (int tab : {0, 6})
+        for (int tab : {0, 4})
             for (int width : {900, 1380, 2200})
                 QTest::newRow(qPrintable(QString("%1-%2").arg(tab == 0 ? "molecule" : "results").arg(width)))
                     << tab << width;
@@ -813,7 +820,7 @@ class EditorTest : public QObject {
         QCOMPARE(color->count(), 2);
         QVERIFY(w.findChild<QPushButton *>("preparePdb"));
 
-        // The task is set in "3 計算条件" only.
+        // The task is set in "2 計算条件" only.
         QVERIFY(!w.findChild<QPushButton *>("setNwchemOptimization"));
         w.findChild<QToolButton *>("nwchem_task_optimize")->click();
         QVERIFY(nwchemInput(w.document()).endsWith("task scf optimize\n"));
@@ -859,7 +866,7 @@ class EditorTest : public QObject {
         MainWindow w;
         auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");
         w.loadDocument(d);
-        // The charge and multiplicity are set in "3 計算条件" and shown on the charge page.
+        // The charge and multiplicity are set in "2 計算条件" and shown on the charge page.
         QVERIFY(!w.findChild<QSpinBox *>("moleculeTotalCharge"));
         auto *charge = w.findChild<QSpinBox *>("nwchem_charge");
         auto *mult = w.findChild<QSpinBox *>("nwchem_multiplicity");
@@ -884,9 +891,9 @@ class EditorTest : public QObject {
         QCOMPARE(state->text(), QString("1 · 多重度 1"));
         w.history()->undo();
         QCOMPARE(state->text(), QString("0 · 多重度 1"));
-        // The link leads to the fields of "3 計算条件".
+        // The link leads to the fields of "2 計算条件".
         w.findChild<QPushButton *>("moleculeChargeLink")->click();
-        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 2);
+        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 1);
         auto *page = w.findChild<QPushButton *>("applyMoleculeFormalCharge");
         w.edit("candidate", [](Document &next) { next.setJobValue("charge", 2); }, true);
         QVERIFY(!page->isEnabled());
@@ -908,7 +915,7 @@ class EditorTest : public QObject {
         QVERIFY(summary->text().contains("α 4 / β 4"));
         QVERIFY(validateNwchem(w.document()).errors.isEmpty());
         w.findChild<QPushButton *>("moleculeInputPreview")->click();
-        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 5);
+        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 3);
     }
     void moleculePointChargesAndCompatibility() {
         MainWindow w;
@@ -920,7 +927,7 @@ class EditorTest : public QObject {
         d.data["nwchem"] = QJsonObject{{"geometry_units", "bohr"}, {"future_setting", 42}};
         w.loadDocument(d);
         const auto original = w.document().project();
-        // Whether the input includes the charges is set in "3 計算条件", and shown here.
+        // Whether the input includes the charges is set in "2 計算条件", and shown here.
         QVERIFY(!w.findChild<QCheckBox *>("moleculeIncludePointCharges"));
         auto *enabled = w.findChild<QLabel *>("moleculePointChargeState");
         auto *calculation = w.findChild<QCheckBox *>("nwchem_include_point_charges");
@@ -948,7 +955,7 @@ class EditorTest : public QObject {
         w.history()->redo();
         QCOMPARE(enabled->text(), QString("NWChem入力に含める"));
         w.findChild<QPushButton *>("moleculePointChargeLink")->click();
-        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 2);
+        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 1);
 
         auto *list = w.findChild<QListWidget *>("pointChargeList");
         list->setCurrentRow(0);
@@ -1334,8 +1341,8 @@ class EditorTest : public QObject {
         QCOMPARE(nwchemSettings(w.document())["basis"].toString(), QString("sto-3g"));
         QVERIFY(w.findChild<QPushButton *>("editorRedo")->isEnabled());
         QVERIFY(w.statusBar()->currentMessage().startsWith("元に戻しました: NWChem計算条件を変更"));
-        QVERIFY(w.statusBar()->currentMessage().contains("「3 計算条件」"));
-        tabs->setCurrentIndex(2);
+        QVERIFY(w.statusBar()->currentMessage().contains("「2 計算条件」"));
+        tabs->setCurrentIndex(1);
         w.history()->redo();
         QCOMPARE(w.statusBar()->currentMessage(), QString("やり直しました: NWChem計算条件を変更"));
     }
@@ -1383,21 +1390,21 @@ class EditorTest : public QObject {
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
         QVERIFY(!tabs->tabBar()->isVisible());
         QCOMPARE(w.findChildren<QToolButton *>(QRegularExpression("^workflowStep_")).size(), tabs->count());
-        auto *step3 = w.findChild<QToolButton *>("workflowStep_3");
-        QCOMPARE(step3->text(), QString("計算条件"));
-        QCOMPARE(step3->accessibleName(), QString("3 計算条件"));
-        step3->click();
-        QCOMPARE(tabs->currentIndex(), 2);
+        auto *step2 = w.findChild<QToolButton *>("workflowStep_2");
+        QCOMPARE(step2->text(), QString("計算条件"));
+        QCOMPARE(step2->accessibleName(), QString("2 計算条件"));
+        step2->click();
+        QCOMPARE(tabs->currentIndex(), 1);
         tabs->setCurrentIndex(0);
         QVERIFY(w.findChild<QToolButton *>("workflowStep_1")->isChecked());
         // An input that cannot be generated marks its step as on the hidden tab.
-        auto *step6 = w.findChild<QToolButton *>("workflowStep_6");
-        QVERIFY(!step6->property("failed").toBool());
+        auto *step4 = w.findChild<QToolButton *>("workflowStep_4");
+        QVERIFY(!step4->property("failed").toBool());
         w.edit("multiplicity", [](Document &x) { x.setJobValue("multiplicity", 2); });
-        QVERIFY(step6->property("failed").toBool());
-        QVERIFY(step6->toolTip().contains("エラー"));
+        QVERIFY(step4->property("failed").toBool());
+        QVERIFY(step4->toolTip().contains("エラー"));
         w.history()->undo();
-        QVERIFY(!step6->property("failed").toBool());
+        QVERIFY(!step4->property("failed").toBool());
         auto *header = dynamic_cast<HeaderBar *>(w.findChild<QWidget *>("headerBar"));
         QVERIFY(header);
         QVERIFY(header->singleRow());
@@ -1430,9 +1437,9 @@ class EditorTest : public QObject {
         for (const auto *tool :
              {"tool_move", "tool_bond", "tool_delete", "tool_place", "tool_charge", "tool_select"}) {
             w.findChild<QToolButton *>(tool)->click();
-            QTest::qWait(10);
-            QCOMPARE(top->height(), height);
-            QCOMPARE(QRect(view->mapTo(&w, QPoint()), view->size()), viewArea);
+            // Once the layout has settled (slow builds, such as AddressSanitizer, take a while).
+            QTRY_COMPARE(top->height(), height);
+            QTRY_COMPARE(QRect(view->mapTo(&w, QPoint()), view->size()), viewArea);
         }
         QVERIFY(w.findChild<QWidget *>("chargeOption")->isVisibleTo(top) == false);
         // A candidate: the banner in the option bar's place and its changes listed in "編集".

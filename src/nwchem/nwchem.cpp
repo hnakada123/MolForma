@@ -1047,7 +1047,7 @@ QString methodBlocks(const Document &d, const QJsonObject &s, const NwchemValida
     auto str = [&](const char *key) { return s[key].toString(); };
     auto integer = [&](const char *key) { return QString::number(s[key].toInt()); };
     const auto method = str("method");
-    // "default" leaves NWChem's own thresholds, apart from those set in "4 詳細設定".
+    // "default" leaves NWChem's own thresholds, apart from those set in the details.
     const bool own = str("scf_convergence") == "default";
     const QString threshold = nwchemScfThreshold(s);
     QString text;
@@ -1347,31 +1347,31 @@ NwchemInputOutline nwchemInputOutline(const Document &d, const QString &input) {
             if (inserted[i] && !lines[i].trimmed().isEmpty())
                 marks->insert(i);
     }
-    // Where each keyword is set: a tab and a setting of "3 計算条件", or a group of "4 詳細設定".
-    static const QHash<QString, std::pair<int, const char *>> sources{{"start", {3, "start"}},
-                                                                      {"title", {3, "title"}},
+    // Where each keyword is set: a tab and a setting of it, or a group of the details of "2 計算条件".
+    static const QHash<QString, std::pair<int, const char *>> sources{{"start", {2, "start"}},
+                                                                      {"title", {2, "title"}},
                                                                       {"memory", {3, "memory_mb"}},
-                                                                      {"charge", {3, "charge"}},
-                                                                      {"geometry", {2, ""}},
-                                                                      {"constraints", {2, ""}},
-                                                                      {"basis", {3, "basis"}},
-                                                                      {"ecp", {3, "basis"}},
+                                                                      {"charge", {2, "charge"}},
+                                                                      {"geometry", {1, ""}},
+                                                                      {"constraints", {1, ""}},
+                                                                      {"basis", {2, "basis"}},
+                                                                      {"ecp", {2, "basis"}},
                                                                       {"bq", {1, ""}},
-                                                                      {"relativistic", {3, "relativistic"}},
-                                                                      {"scf", {3, "method"}},
-                                                                      {"dft", {3, "method"}},
-                                                                      {"mp2", {3, "method"}},
-                                                                      {"ccsd", {3, "method"}},
-                                                                      {"cosmo", {3, "solvent"}},
-                                                                      {"tddft", {3, "tddft"}},
-                                                                      {"driver", {3, "opt_maxiter"}},
-                                                                      {"mepgs", {3, "irc_points"}},
-                                                                      {"bsse", {3, "bsse"}},
-                                                                      {"property", {3, "prop_mulliken"}},
-                                                                      {"esp", {3, "prop_esp"}},
-                                                                      {"unset", {3, "followup"}},
-                                                                      {"set", {3, "task"}},
-                                                                      {"task", {3, "task"}}};
+                                                                      {"relativistic", {2, "relativistic"}},
+                                                                      {"scf", {2, "method"}},
+                                                                      {"dft", {2, "method"}},
+                                                                      {"mp2", {2, "method"}},
+                                                                      {"ccsd", {2, "method"}},
+                                                                      {"cosmo", {2, "solvent"}},
+                                                                      {"tddft", {2, "tddft"}},
+                                                                      {"driver", {2, "opt_maxiter"}},
+                                                                      {"mepgs", {2, "irc_points"}},
+                                                                      {"bsse", {2, "bsse"}},
+                                                                      {"property", {2, "prop_mulliken"}},
+                                                                      {"esp", {2, "prop_esp"}},
+                                                                      {"unset", {2, "followup"}},
+                                                                      {"set", {2, "task"}},
+                                                                      {"task", {2, "task"}}};
     static const QHash<QString, QString> groups{{"scf", "scf"},
                                                 {"dft", "dft"},
                                                 {"mp2", "correlation"},
@@ -1424,22 +1424,20 @@ NwchemInputOutline nwchemInputOutline(const Document &d, const QString &input) {
             advanced += outline.advanced.contains(j);
             extra += outline.extra.contains(j);
         }
-        const auto source = sources.value(block.keyword, {3, ""});
+        const auto source = sources.value(block.keyword, {2, ""});
         if (extra == block.lines) {
-            block.tabs = {3};
+            block.tabs = {2};
             block.setting = "extra_input";
         } else if (advanced == block.lines) {
-            block.tabs = {4};
+            block.tabs = {2};
             block.group = groups.value(block.keyword, "files");
         } else {
             block.tabs = {source.first};
             block.setting = source.second;
-            if (block.keyword == "bq")
-                block.tabs << 3;
-            if (advanced) {
-                block.tabs << 4;
+            if (block.keyword == "bq" || (advanced && source.first != 2))
+                block.tabs << 2; // Point charges are included there; the details are part of it.
+            if (advanced)
                 block.group = groups.value(block.keyword, "files");
-            }
         }
         outline.blocks << block;
         i = last;

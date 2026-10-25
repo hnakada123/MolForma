@@ -20,6 +20,10 @@ class CoordinatesTest : public QObject {
     static QAbstractButton *button(MainWindow &w, const char *name) {
         return w.findChild<QAbstractButton *>(name);
     }
+    // The commands of the table's menus ("構造", "書き出し").
+    static QAction *action(MainWindow &w, const char *name) {
+        return w.findChild<QAction *>(name);
+    }
   private slots:
     void initTestCase() {
         QVERIFY(settingsDir.isValid());
@@ -56,10 +60,13 @@ class CoordinatesTest : public QObject {
         w.loadDocument(d);
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
         QVERIFY(tabs);
-        QCOMPARE(tabs->count(), 8);
-        QCOMPARE(tabs->tabText(1), QString("2 座標"));
-        tabs->setCurrentIndex(1);
+        QCOMPARE(tabs->count(), 6);
+        for (int i = 0; i < tabs->count(); ++i)
+            QVERIFY(!tabs->tabText(i).contains("座標")); // The table is part of "1 分子".
+        w.showCoordinateTable();
+        QCOMPARE(tabs->currentIndex(), 0);
         auto *t = table(w);
+        QVERIFY(w.findChild<QWidget *>("moleculeSplit")->isAncestorOf(t));
         QCOMPARE(t->rowCount(), 3);
         auto *units = w.findChild<QComboBox *>("coordinateUnits");
         for (int i = 0; i < 20; ++i)
@@ -85,13 +92,13 @@ class CoordinatesTest : public QObject {
         QCOMPARE(w.document().toJson(), d.toJson());
         button(w, "editorRedo")->click();
         QCOMPARE(w.document().atoms[0].position.x(), 2 * BohrToAngstrom);
-        button(w, "coordinateCopyXyz")->click();
+        action(w, "coordinateCopyXyz")->trigger();
         auto copied = Document::fromXyz(QApplication::clipboard()->text());
         QVERIFY(std::abs(copied.atoms[0].position.x() - 2 * BohrToAngstrom) < 1e-9);
         // View operations never change physical geometry or add history.
         auto before = w.document().toJson();
-        button(w, "coordinateView0")->click();
-        button(w, "coordinateFit")->click();
+        button(w, "viewAxisX")->click();
+        button(w, "viewFit")->click();
         QCOMPARE(w.document().toJson(), before);
         QCOMPARE(w.history()->count(), 1);
     }
@@ -118,7 +125,7 @@ class CoordinatesTest : public QObject {
         w.setSelection({d.atoms[1].id});
         button(w, "coordinateOrigin")->click();
         QCOMPARE(w.document().toJson(), d.toJson());
-        button(w, "coordinateClear")->click();
+        action(w, "coordinateClear")->trigger();
         QVERIFY(!w.hasCandidate());
         t->item(0, 6)->setCheckState(Qt::Unchecked);
         QVERIFY(!w.document().atoms[0].fixed);
@@ -135,7 +142,7 @@ class CoordinatesTest : public QObject {
         MainWindow w;
         const auto d = water();
         w.loadDocument(d);
-        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(1);
+        w.showCoordinateTable();
         w.show();
         QTest::qWait(30);
         auto *t = table(w);
@@ -150,16 +157,19 @@ class CoordinatesTest : public QObject {
         // the document or destroying the editor's parent window.
         QTRY_COMPARE(w.document().atoms[1].position.x(), 1.125);
         QCOMPARE(w.history()->count(), 1);
-        auto *v = w.findChild<MoleculeView *>("coordinateView");
+        // The 3D view above the table selects its rows.
+        auto *v = w.canvas();
         w.setSelection({});
         v->fit();
         QTest::mouseClick(v, Qt::LeftButton, Qt::NoModifier, v->atomScreenPosition(d.atoms[2].id).toPoint());
         QCOMPARE(w.canvas()->selection(), Ids{d.atoms[2].id});
         QVERIFY(t->item(2, 0)->isSelected());
-        // Switching between tabs and views cannot commit rounded display values.
+        // Switching tabs and layouts cannot commit rounded display values.
         auto before = w.document().toJson();
-        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(0);
         w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(1);
+        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(0);
+        button(w, "moleculeLayout_table")->click();
+        button(w, "moleculeLayout_both")->click();
         QCOMPARE(w.document().toJson(), before);
     }
     void isotopesGhostAndOverlap() {
@@ -175,9 +185,9 @@ class CoordinatesTest : public QObject {
         t->item(1, 4)->setText("13");
         t->item(1, 5)->setCheckState(Qt::Checked);
         QVERIFY(w.document().atoms[1].ghost);
-        auto *preview = w.findChild<QPlainTextEdit *>("nwchemGeometryPreview");
-        QVERIFY(preview->toPlainText().contains("bqC"));
-        QVERIFY(preview->toPlainText().contains("mass 13.003"));
+        action(w, "copyNwchemGeometry")->trigger();
+        QVERIFY(QApplication::clipboard()->text().contains("bqC"));
+        QVERIFY(QApplication::clipboard()->text().contains("mass 13.003"));
         t->item(1, 5)->setCheckState(Qt::Unchecked);
         QVERIFY(!w.document().atoms[1].ghost);
         auto previous = w.document().toJson();
@@ -191,7 +201,7 @@ class CoordinatesTest : public QObject {
         MainWindow w;
         auto d = water();
         w.loadDocument(d);
-        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(1);
+        w.showCoordinateTable();
         w.show();
         QTest::qWait(30);
         auto *t = table(w);
@@ -201,14 +211,14 @@ class CoordinatesTest : public QObject {
         QVERIFY(t->item(2, 0)->isSelected());
         QVERIFY(t->item(0, 0)->isSelected());
         QVERIFY(!t->item(1, 0)->isSelected());
-        auto *view = w.findChild<MoleculeView *>("coordinateView");
-        QCOMPARE(view->selection(), w.canvas()->selection());
+        // Deleting is that of "1 分子" (the Delete key is its own): a candidate to confirm.
         w.setSelection({d.atoms[1].id});
         button(w, "coordinateRemove")->click();
         QVERIFY(w.hasCandidate());
         QCOMPARE(w.document().atoms.size(), 3);
         QCOMPARE(t->rowCount(), 2);
-        QVERIFY(!button(w, "copyNwchemGeometry")->isEnabled());
+        QVERIFY(!action(w, "copyNwchemGeometry")->isEnabled());
+        QVERIFY(!action(w, "coordinateImport")->isEnabled());
         QVERIFY(!button(w, "coordinateAdd")->isEnabled());
         QVERIFY(!(t->item(0, 0)->flags() & Qt::ItemIsEditable));
         button(w, "editorUndo")->click(); // Cancels the candidate.
@@ -262,12 +272,13 @@ class CoordinatesTest : public QObject {
         QCOMPARE(w.canvas()->selection(), Ids{w.document().atoms.last().id});
         w.history()->undo();
         QCOMPARE(w.document().atoms.size(), 3);
-        button(w, "coordinateClear")->click();
+        action(w, "coordinateClear")->trigger();
         QVERIFY(w.hasCandidate());
         QCOMPARE(table(w)->rowCount(), 0);
         w.confirmCandidate();
         QVERIFY(w.document().atoms.isEmpty());
-        QVERIFY(!button(w, "copyNwchemGeometry")->isEnabled());
+        QVERIFY(!action(w, "copyNwchemGeometry")->isEnabled());
+        QVERIFY(!button(w, "coordinateExport")->isEnabled());
         w.history()->undo();
         QCOMPARE(w.document().atoms.size(), 3);
     }
@@ -310,7 +321,7 @@ class CoordinatesTest : public QObject {
             {"number", 1},
             {"atoms", QJsonObject{{"O", d.atoms[0].id}, {"HA", d.atoms[1].id}, {"HB", d.atoms[2].id}}}}};
         w.loadDocument(d);
-        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(1);
+        w.showCoordinateTable();
         auto *t = table(w);
         // Cells keep their model columns; the residue is shown beside the atom.
         auto *header = t->horizontalHeader();
@@ -341,7 +352,8 @@ class CoordinatesTest : public QObject {
         QVERIFY(!(t->item(0, 1)->flags() & Qt::ItemIsEditable));
         button(w, "coordinateGhostSelection")->click();
         QVERIFY(w.document().atoms[0].ghost && w.document().atoms[1].ghost);
-        QVERIFY(w.findChild<QPlainTextEdit *>("nwchemGeometryPreview")->toPlainText().contains("bqO"));
+        action(w, "copyNwchemGeometry")->trigger();
+        QVERIFY(QApplication::clipboard()->text().contains("bqO"));
         button(w, "coordinateFixSelection")->click();
         QVERIFY(!w.document().atoms[0].fixed && !w.document().atoms[1].fixed);
         w.setSelection({d.atoms[1].id});
@@ -350,11 +362,11 @@ class CoordinatesTest : public QObject {
         button(w, "coordinateDeselect")->click();
         QVERIFY(w.canvas()->selection().isEmpty());
         QVERIFY(!w.findChild<QLabel *>("coordinateSelectionHint")->isHidden());
-        // The written-out format: NWChem or XYZ, each with its own copy and save.
-        button(w, "coordinateFormatXyz")->click();
-        QVERIFY(w.findChild<QPlainTextEdit *>("nwchemGeometryPreview")->toPlainText().startsWith("3\n"));
-        QVERIFY(!button(w, "coordinateCopyXyz")->isHidden() && button(w, "copyNwchemGeometry")->isHidden());
-        QVERIFY(w.findChild<QLabel *>("nwchemUnitState")->parentWidget()->isHidden());
+        // What is written out: the NWChem fragment or XYZ, each copied or saved from one menu.
+        auto *menu = qobject_cast<QPushButton *>(button(w, "coordinateExport"))->menu();
+        QCOMPARE(menu->actions().size(), 5); // Two of each, with a separator between.
+        action(w, "coordinateCopyXyz")->trigger();
+        QVERIFY(QApplication::clipboard()->text().startsWith("3\n"));
     }
     void attributeColumns() {
         // The atom attributes of the former "座標と原子属性の一覧" dialog are columns of the table.
@@ -364,7 +376,8 @@ class CoordinatesTest : public QObject {
         auto *t = table(w);
         QVERIFY(t->isColumnHidden(9) && t->isColumnHidden(10) && t->isColumnHidden(11));
         w.findChild<QAction *>("coordinateAttributesAction")->trigger();
-        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 1);
+        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 0);
+        QVERIFY(w.findChild<QComboBox *>("moleculeLayout")->currentData() != "view");
         QVERIFY(!t->isColumnHidden(9) && !t->isColumnHidden(10) && !t->isColumnHidden(11));
         QCOMPARE(t->horizontalHeaderItem(9)->text(), QString("形式電荷"));
         QCOMPARE(t->item(0, 9)->text(), QString("0"));
@@ -394,7 +407,7 @@ class CoordinatesTest : public QObject {
         MainWindow w;
         const auto d = water();
         w.loadDocument(d);
-        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(1);
+        w.showCoordinateTable();
         auto *panel = w.findChild<CoordinatesPanel *>();
         auto *t = table(w);
         // Read again with an atom appended: only that atom is new.
@@ -411,7 +424,7 @@ class CoordinatesTest : public QObject {
         button(w, "coordinateShowChanged")->click();
         QVERIFY(t->isRowHidden(0) && !t->isRowHidden(3));
         QVERIFY(w.findChild<QLabel *>("coordinateCount")->text().contains("候補 4 原子（今は 3）"));
-        QVERIFY(!w.findChild<QLabel *>("nwchemPreviewLabel")->isHidden());
+        QVERIFY(!action(w, "copyNwchemGeometry")->isEnabled()); // Written out once confirmed.
         w.cancelCandidate();
         QVERIFY(t->isColumnHidden(8) && !t->isRowHidden(0));
         // A structure file dropped on the tab becomes a replacement candidate (other files go on to
@@ -437,8 +450,7 @@ class CoordinatesTest : public QObject {
         QCOMPARE(pages->currentWidget(), empty);
         QVERIFY(button(w, "coordinateEmptyImport")->isEnabled());
         QVERIFY(w.findChild<QWidget *>("coordinateSelectionBar")->isHidden());
-        w.findChild<QLabel *>("coordinateEmptyNote")->linkActivated("molecule");
-        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 0);
+        QVERIFY(w.findChild<QLabel *>("coordinateEmptyNote")->text().contains("ドロップ"));
     }
     void importPreservesEnvelopeAndInvalidatesReferences() {
         MainWindow w;
@@ -492,32 +504,30 @@ class CoordinatesTest : public QObject {
         QVERIFY(nwchemGeometry(d, CoordinateUnit::Bohr).contains("fix atom 4"));
         MainWindow w;
         w.loadDocument(d);
-        // The unit of the input is a setting of "3 計算条件"; here it is shown with the way there.
+        // The unit of the input is a setting of "2 計算条件"; the export menu names it.
         auto *units = w.findChild<QComboBox *>("nwchem_geometry_units");
-        auto *unitState = w.findChild<QLabel *>("nwchemUnitState");
-        QVERIFY(unitState->text().endsWith("Å"));
+        auto *copy = action(w, "copyNwchemGeometry");
+        QCOMPARE(copy->text(), QString("NWChem座標ブロックをコピー（Å）"));
         units->setCurrentIndex(units->findData("bohr"));
         QCOMPARE(w.document().data["nwchem"].toObject()["geometry_units"], QJsonValue("bohr"));
-        QVERIFY(unitState->text().endsWith("Bohr"));
+        QCOMPARE(copy->text(), QString("NWChem座標ブロックをコピー（Bohr）"));
         QCOMPARE(w.document().atoms[0].position, d.atoms[0].position);
-        button(w, "copyNwchemGeometry")->click();
+        copy->trigger();
         const auto copied = QApplication::clipboard()->text();
         QCOMPARE(copied, nwchemGeometry(w.document(), CoordinateUnit::Bohr));
         QVERIFY(copied.contains("geometry units au"));
         w.history()->undo();
-        QVERIFY(unitState->text().endsWith("Å"));
-        button(w, "nwchemUnitLink")->click();
-        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 2);
+        QCOMPARE(copy->text(), QString("NWChem座標ブロックをコピー（Å）"));
         // Preserve a real input generated by the exporter for an optional engine smoke check.
         const QString artifacts = qEnvironmentVariable("MOLFORMA_COORDINATE_ARTIFACTS");
         if (!artifacts.isEmpty()) {
             QDir().mkpath(artifacts);
-            w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(1);
+            w.showCoordinateTable();
             w.resize(1380, 900);
             w.show();
             QTest::qWait(40);
-            button(w, "coordinateFit")->click();
-            w.findChild<MoleculeView *>("coordinateView")->setAngles(-20, 40, 0);
+            button(w, "viewFit")->click();
+            w.canvas()->setAngles(-20, 40, 0);
             QVERIFY(w.grab().save(artifacts + "/coordinates.png"));
             for (const auto &unit : {CoordinateUnit::Angstrom, CoordinateUnit::Bohr}) {
                 QString name = unit == CoordinateUnit::Bohr ? "bohr" : "angstrom";

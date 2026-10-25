@@ -519,7 +519,7 @@ class MoldenTest : public QObject {
         MainWindow w;
         w.resize(1440, 1000);
         w.show();
-        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(6);
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(4);
         auto *panel = widget<ResultsPanel>(w, "resultsTab");
         QSignalSpy done(panel, &ResultsPanel::loaded);
         panel->openFile(path);

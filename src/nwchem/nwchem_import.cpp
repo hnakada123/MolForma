@@ -311,10 +311,9 @@ NwchemImport importNwchemInput(const QString &text) {
                 if (row.mid(1).join(' ').toLower().contains("atomic"))
                     settings["freeze_core"] = true;
                 else if (number(row.last(), n) && n > 0)
-                    notes
-                        << QString(
-                               "凍結軌道数（freeze %1）は取り込みません。「4 詳細設定」で指定してください。")
-                               .arg(n);
+                    notes << QString("凍結軌道数（freeze %1）は取り込みません。「2 計算条件」の詳細設定"
+                                     "（凍結する占有軌道数）で指定してください。")
+                                 .arg(n);
             }
         } else if (keyword == "tddft") {
             settings["tddft"] = true;

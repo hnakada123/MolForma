@@ -6,10 +6,8 @@
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
 #include "nwchem/nwchem.h"
-#include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_import.h"
-#include "ui/advanced_panel.h"
 #include "ui/calculation_panel.h"
 #include "ui/coordinates_panel.h"
 #include "ui/editor_chrome.h"
@@ -106,7 +104,6 @@ MainWindow::~MainWindow() {
     autosaveLock.reset();
     results->cancelLoad();
     calculation->stopEditing();
-    advanced->stopEditing();
     execution->stopEditing();
     execution->shutdown();
     cancelWorker();
@@ -163,8 +160,6 @@ void MainWindow::announceHistory(const QString &verb, const QString &name, const
     QWidget *page = nullptr;
     if (structure(from) != structure(to))
         page = moleculePage;
-    else if (nwchemAdvanced(from) != nwchemAdvanced(to))
-        page = advanced;
     else if (from.data["nwchem_execution"] != to.data["nwchem_execution"])
         page = execution;
     else
@@ -579,14 +574,30 @@ void MainWindow::buildUi() {
     });
     measureCard->hide();
     viewArea->addOverlay(measureCard, Qt::AlignBottom | Qt::AlignLeft);
-    ml->addWidget(viewArea, 1);
-    // Under the view: what a click does with the tool, and the mouse controls of the view.
+    // The 3D view over the table of the coordinates, or either of them alone.
+    moleculeSplit = new QSplitter(Qt::Vertical);
+    moleculeSplit->setObjectName("moleculeSplit");
+    moleculeSplit->setChildrenCollapsible(false);
+    moleculeSplit->addWidget(viewArea);
+    coordinates = new CoordinatesPanel(this);
+    coordinates->setMinimumHeight(180);
+    moleculeSplit->addWidget(coordinates);
+    moleculeSplit->setStretchFactor(0, 1);
+    moleculeSplit->setSizes({460, 340});
+    moleculeSplit->restoreState(settings.value("molecule/split").toByteArray());
+    connect(moleculeSplit, &QSplitter::splitterMoved, this,
+            [this] { settings.setValue("molecule/split", moleculeSplit->saveState()); });
+    ml->addWidget(moleculeSplit, 1);
+    // Under them: what a click does with the tool and the mouse controls of the view, and the layout.
     auto *hintBar = new QWidget;
     hintBar->setObjectName("hintBar");
     hintBar->setAttribute(Qt::WA_StyledBackground);
-    auto *hints = new QVBoxLayout(hintBar);
-    hints->setContentsMargins(12, 4, 12, 5);
+    auto *hintRow = new QHBoxLayout(hintBar);
+    hintRow->setContentsMargins(12, 4, 8, 5);
+    hintRow->setSpacing(12);
+    auto *hints = new QVBoxLayout;
     hints->setSpacing(1);
+    hintRow->addLayout(hints, 1);
     // One line each (shortened when narrow, in full as a tooltip), so the view never moves.
     mouseHint = new ElidedLabel;
     mouseHint->setObjectName("toolHint");
@@ -598,8 +609,24 @@ void MainWindow::buildUi() {
     hintFont.setPointSizeF(hintFont.pointSizeF() * .9);
     controlsHint->setFont(hintFont);
     hints->addWidget(controlsHint);
+    moleculeLayout = new QComboBox;
+    moleculeLayout->setObjectName("moleculeLayout");
+    moleculeLayout->addItem("3D表示", "view");
+    moleculeLayout->addItem("3D表示と座標の表", "both");
+    moleculeLayout->addItem("座標の表", "table");
+    auto *layouts = new ChoiceButtons(moleculeLayout, ChoiceButtons::Segments, {"3D", "3D＋表", "表"});
+    layouts->setObjectName("moleculeLayouts");
+    layouts->setToolTip("3D表示と座標の表の並べ方です。表では座標・質量・ゴースト・固定を直接編集します。");
+    hintRow->addWidget(layouts, 0, Qt::AlignVCenter);
+    moleculeLayout->setCurrentIndex(
+        std::max(0, moleculeLayout->findData(settings.value("molecule/layout", "view").toString())));
+    connect(moleculeLayout, &QComboBox::currentIndexChanged, this, [this] {
+        settings.setValue("molecule/layout", moleculeLayout->currentData().toString());
+        applyMoleculeLayout();
+    });
     ml->addWidget(hintBar);
     splitter->addWidget(middle);
+    applyMoleculeLayout();
     // The properties: one page at a time, chosen with segments (their tab bar stays hidden).
     auto *propertyColumn = new QWidget;
     propertyColumn->setObjectName("propertyColumn");
@@ -661,16 +688,12 @@ void MainWindow::buildUi() {
     connect(chargeValue, &QDoubleSpinBox::valueChanged, toolChargeValue, &QDoubleSpinBox::setValue);
     splitter->setSizes({280, 760, 330});
     splitter->setStretchFactor(1, 1);
-    coordinates = new CoordinatesPanel(this);
-    workspaceTabs->addTab(coordinates, "2 座標");
     calculation = new CalculationPanel(this);
-    workspaceTabs->addTab(calculation, "3 計算条件");
-    advanced = new AdvancedPanel(this);
-    workspaceTabs->addTab(advanced, "4 詳細設定");
+    workspaceTabs->addTab(calculation, "2 計算条件");
     execution = new ExecutionPanel(this);
-    workspaceTabs->addTab(execution, "5 実行設定");
+    workspaceTabs->addTab(execution, "3 実行設定");
     inputPreview = new InputPreviewPanel(this);
-    workspaceTabs->addTab(inputPreview, "6 入力プレビュー");
+    workspaceTabs->addTab(inputPreview, "4 入力プレビュー");
     results = new ResultsPanel(this);
     workspaceTabs->addTab(results, "結果ビューア");
     calculationHistory = new HistoryPanel(this);
@@ -1219,7 +1242,7 @@ void MainWindow::buildMenus() {
     auto *attributes =
         action(editMenu, "座標と原子属性の一覧", {}, [this] { coordinates->showAttributes(); });
     attributes->setObjectName("coordinateAttributesAction");
-    attributes->setToolTip("「2 座標」に形式電荷・不対電子・原子名の列を表示します。");
+    attributes->setToolTip("「1 分子」の座標の表に形式電荷・不対電子・原子名の列を表示します。");
     editMenu->addSeparator();
     // Preferences hold the executable, launcher and environment: only the user may change them.
     auto *preferencesAction =
@@ -1246,7 +1269,7 @@ void MainWindow::buildMenus() {
     action(toolsMenu, "構造を比較・重ね合わせ…", {}, [this] {
         compareDialog();
     })->setObjectName("compareAction");
-    // NWChem runs from any tab, not only from the button in "5 実行設定".
+    // NWChem runs from any tab, not only from the button in "3 実行設定".
     auto *calculationMenu = menuBar()->addMenu("計算");
     auto *runAction = action(calculationMenu, "計算を実行", QKeySequence(Qt::Key_F5),
                              [this] { execution->startFromMenu(); });
@@ -2093,6 +2116,11 @@ void MainWindow::applyChromeStyle() {
         #hintBar { background: @base; border-top: 1px solid @line; }
         QLabel { color: @muted; }
         QLabel#toolHint { color: @text; }
+        QFrame[choice="segments"] { background: @segment; border: none; border-radius: 7px; }
+        QFrame[choice="segments"] QToolButton { border: none; border-radius: 5px; padding: 3px 10px; color: @muted;
+                                                background: transparent; }
+        QFrame[choice="segments"] QToolButton:hover { color: @text; }
+        QFrame[choice="segments"] QToolButton:checked { background: @base; color: @accentText; font-weight: bold; }
     )");
     // The pages of properties: the cards and buttons of the settings tabs.
     style(findChild<QWidget *>("propertyColumn"), settingsRules() + R"(
@@ -2115,8 +2143,6 @@ void MainWindow::applyChromeStyle() {
         coordinates->applyChromeStyle();
     if (calculation)
         calculation->applyChromeStyle();
-    if (advanced)
-        advanced->applyChromeStyle();
     if (execution)
         execution->applyChromeStyle();
     if (inputPreview)
@@ -2126,15 +2152,28 @@ void MainWindow::applyChromeStyle() {
     if (calculationHistory)
         calculationHistory->applyChromeStyle();
 }
+void MainWindow::applyMoleculeLayout() {
+    const auto layout = moleculeLayout->currentData().toString();
+    moleculeSplit->widget(0)->setVisible(layout != "table");
+    coordinates->setVisible(layout != "view");
+    // The hints are about the view.
+    for (auto *hint : {static_cast<QWidget *>(mouseHint), findChild<QWidget *>("controlsHint")})
+        hint->setVisible(layout != "table");
+}
+void MainWindow::showCoordinateTable() {
+    workspaceTabs->setCurrentWidget(moleculePage);
+    if (moleculeLayout->currentData() == "view")
+        moleculeLayout->setCurrentIndex(moleculeLayout->findData("both"));
+}
 QList<QWidget *> MainWindow::workspacePanels() const {
-    return {coordinates, calculation, advanced, execution, inputPreview};
+    return {coordinates, calculation, execution, inputPreview};
 }
 void MainWindow::refreshPanels() {
     for (auto *panel : workspacePanels()) {
         if (!panel)
             continue;
-        // Hidden tabs of a shown window catch up when opened (or before MCP reads the GUI).
-        if (isVisible() && workspaceTabs->currentWidget() != panel) {
+        // Hidden panels of a shown window catch up when shown (or before MCP reads the GUI).
+        if (isVisible() && !panel->isVisible()) {
             stalePanels.insert(panel);
             if (panel == inputPreview)
                 inputPreview->refreshBadge();
@@ -2150,8 +2189,6 @@ void MainWindow::refreshPanel(QWidget *panel, bool always) {
         coordinates->refresh();
     else if (panel == calculation)
         calculation->refresh();
-    else if (panel == advanced)
-        advanced->refresh();
     else if (panel == execution)
         execution->refresh();
     else if (panel == inputPreview)
@@ -2260,8 +2297,7 @@ bool MainWindow::resolveCandidate() {
 }
 bool MainWindow::confirmDiscard() {
     execution->commitPendingEdits();
-    if (auto *focused = QApplication::focusWidget();
-        focused && (calculation->isAncestorOf(focused) || advanced->isAncestorOf(focused)))
+    if (auto *focused = QApplication::focusWidget(); focused && calculation->isAncestorOf(focused))
         focused->clearFocus();
     if (!resolveCandidate())
         return false;
@@ -2372,8 +2408,7 @@ void MainWindow::loadPath(const QString &p) {
 }
 bool MainWindow::save(bool as) {
     execution->commitPendingEdits();
-    if (auto *focused = QApplication::focusWidget();
-        focused && (calculation->isAncestorOf(focused) || advanced->isAncestorOf(focused)))
+    if (auto *focused = QApplication::focusWidget(); focused && calculation->isAncestorOf(focused))
         focused->clearFocus(); // Include the active calculation field when saving via Ctrl+S.
     if (!resolveCandidate())
         return false;
@@ -3079,7 +3114,7 @@ void MainWindow::contextMenu(const QPoint &p, const QString &id) {
             auto symbol = value(elementBox);
             edit("元素を変更", [=](Document &d) { replaceElement(d, ids, symbol, false); });
         });
-        // As "2 座標": fixed only when every selected atom is, else all of them get fixed.
+        // As the coordinate table: fixed only when every selected atom is, else all of them get fixed.
         const bool allFixed = std::all_of(selected.begin(), selected.end(), [this](const QString &a) {
             return displayDocument().atom(a).fixed;
         });
@@ -3343,18 +3378,18 @@ void MainWindow::symmetryDialog() {
 void MainWindow::preferences() {
     QDialog dialog(this);
     dialog.setObjectName("preferencesDialog");
-    dialog.setProperty("mcpProtected", true); // Same protection as the executable fields in "5 実行設定".
+    dialog.setProperty("mcpProtected", true); // Same protection as the executable fields in "3 実行設定".
     dialog.setProperty("canvas", true);
     dialog.setWindowTitle("環境設定");
     dialog.resize(640, 700);
-    // The cards and controls of "5 実行設定", for the settings new documents start with.
+    // The cards and controls of "3 実行設定", for the settings new documents start with.
     dialog.setStyleSheet(
         chromeRules(settingsRules() + "QDialog { background: @window; }", QMainWindow::palette()));
     auto *layout = new QVBoxLayout(&dialog);
     layout->setContentsMargins(16, 14, 16, 14);
     layout->setSpacing(12);
     auto *intro = new QLabel("新規作成、およびプロジェクト以外の構造ファイル（XYZ・SDF・PDB等）を開いたときの"
-                             "実行設定です。開いているプロジェクトの設定は「5 実行設定」で変更します。");
+                             "実行設定です。開いているプロジェクトの設定は「3 実行設定」で変更します。");
     intro->setWordWrap(true);
     intro->setProperty("muted", true);
     layout->addWidget(intro);
@@ -3416,7 +3451,7 @@ void MainWindow::preferences() {
     stack->setPlaceholderText("空欄: 継承（例: 64M）");
     resources->addRow("OpenMPスタック", stack);
     auto *timeout = spin("制限時間（0: なし）", "timeout_seconds", 0, 604800, " 秒");
-    // The environment as the table of "5 実行設定": rows that are off are kept.
+    // The environment as the table of "3 実行設定": rows that are off are kept.
     auto *environmentCard = new SettingsCard("追加の環境変数");
     auto *environment = new QTableWidget(0, 3);
     environment->setObjectName("preferences_environment");
@@ -3517,7 +3552,7 @@ void MainWindow::preferences() {
                                      {"job_root", root->text().trimmed()},
                                      {"timeout_seconds", timeout->value()},
                                      {"environment", rows}};
-            // Check the values with the same rules as "5 実行設定", ignoring the molecule itself.
+            // Check the values with the same rules as "3 実行設定", ignoring the molecule itself.
             Document probe;
             for (auto it = chosen.begin(); it != chosen.end(); ++it)
                 setExecutionSetting(probe, it.key(), it.value());

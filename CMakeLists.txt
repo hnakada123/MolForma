@@ -42,7 +42,6 @@ if(TARGET RDKit::CIPLabeler)
 endif()
 target_compile_options(molforma_core PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 add_library(molforma_ui STATIC
-    src/ui/advanced_panel.cpp
     src/ui/calculation_panel.cpp
     src/ui/coordinates_panel.cpp
     src/ui/diagnostics_list.cpp

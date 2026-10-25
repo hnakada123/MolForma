@@ -143,7 +143,7 @@ class SettingsCard : public QFrame {
     QLabel *heading;
 };
 
-// The outcome of a tab's checks, the same card in "3 計算条件" … "6 入力プレビュー": an icon and a
+// The outcome of a tab's checks, the same card in "2 計算条件" … "4 入力プレビュー": an icon and a
 // headline in the color of the outcome over the details, and optionally "再検査".
 class StatusCard : public SettingsCard {
   public:
@@ -161,9 +161,9 @@ class StatusCard : public SettingsCard {
     State current = Waiting;
 };
 
-// A link to another place ("⑤ 実行設定で変更"), with an arrow after the text.
+// A link to another place ("③ 実行設定で変更"), with an arrow after the text.
 QPushButton *linkButton(const QString &text, const QString &objectName = {});
-// "3 計算条件" as the steps of the header write it, with the number in a circle ("③ 計算条件").
+// "2 計算条件" as the steps of the header write it, with the number in a circle ("② 計算条件").
 QString tabName(int index);
 // Read-only text of a log or file: fixed-width, not wrapped, in the frame of the logs.
 QPlainTextEdit *logView(const QString &objectName);
@@ -172,9 +172,9 @@ QToolButton *copyButton(const QString &objectName, const QString &toolTip);
 // Applies style rules that depend on a dynamic property ("state", "pill") again.
 void repolish(QWidget *widget);
 
-// The calculation in brief, the same card at the top of the right column of "3 計算条件" and
-// "6 入力プレビュー": method / basis, the task, then composition, electrons, charge and memory.
-// The memory is set in "5 実行設定": its row links there (openLink receives "tab:4").
+// The calculation in brief, the same card at the top of the right column of "2 計算条件" and
+// "4 入力プレビュー": method / basis, the task, then composition, electrons, charge and memory.
+// The memory is set in "3 実行設定": its row links there (openLink receives "memory").
 class CalculationSummary : public SettingsCard {
   public:
     // prefix: of the object names ("calculation" → calculationSummary, calculationSummaryTask, …).
@@ -185,8 +185,8 @@ class CalculationSummary : public SettingsCard {
   private:
     QLabel *title, *task, *formula, *electrons, *charge, *memory;
 };
-// "HF / STO-3G · 一点エネルギー" (and the solvent): the one line of the calculation in "4 詳細設定"
-// and "5 実行設定".
+// "HF / STO-3G · 一点エネルギー" (and the solvent): the one line of the calculation in the summaries
+// and "3 実行設定".
 QString calculationBrief(const Document &document);
 
 // The controls of a 3D view, the same over every view: +X/+Y/+Z (that axis toward the viewer, the

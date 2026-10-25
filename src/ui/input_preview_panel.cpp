@@ -2,7 +2,6 @@
 #include "ui/input_preview_panel.h"
 #include "editing/coordinates.h"
 #include "nwchem/nwchem_advanced.h"
-#include "ui/advanced_panel.h"
 #include "ui/calculation_panel.h"
 #include "ui/editor_chrome.h"
 #include "ui/execution_panel.h"
@@ -54,14 +53,15 @@ QLabel *caption(const QString &text) {
     label->setWordWrap(true);
     return label;
 }
-QString tabLink(int index, const QString &text) {
-    return QString("<a href=\"tab:%1\">%2</a>").arg(index).arg(text.toHtmlEscaped());
+// A diagnostic as a link to where it is set: "tab:<index>", or "field:<key>" of "2 計算条件".
+QString sourceLink(const QString &target, const QString &text) {
+    return QString("<a href=\"%1\">%2</a>").arg(target.toHtmlEscaped(), text.toHtmlEscaped());
 }
-const QStringList tabNames{"", "1 分子", "2 座標", "3 計算条件", "4 詳細設定", "5 実行設定"};
+const QStringList tabNames{"", "1 分子", "2 計算条件", "3 実行設定"};
 } // namespace
 
 // The input, read only, with line numbers in a gutter (so copied or saved input never contains
-// them) and the lines from "4 詳細設定" and the additional input marked at its edge.
+// them) and the lines from the details and the additional input marked at its edge.
 class InputEditor : public QPlainTextEdit {
     class Gutter : public QWidget {
         InputEditor *editor;
@@ -242,7 +242,7 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     outlineList->setFrameShape(QFrame::NoFrame);
     outlineList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     outlineLayout->addWidget(outlineList, 1);
-    outlineLayout->addWidget(caption("番号はその行を設定するタブです。押すとそのタブへ移ります。"));
+    outlineLayout->addWidget(caption("番号はその行を設定するタブ、「詳」は「2 計算条件」の詳細設定です。押すとそこへ移ります。"));
     connect(outlineList, &QListWidget::currentRowChanged, this, [this](int row) {
         if (row < 0 || row >= outline.blocks.size())
             return;
@@ -298,7 +298,7 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     searchStatus->setObjectName("inputPreviewSearchStatus");
     footerRow->addWidget(searchStatus, 1);
     // The legend of the marks: a short bar in the color of each.
-    for (const auto &[name, text] : {std::pair{"inputPreviewLegendAdvanced", "4 詳細設定から"},
+    for (const auto &[name, text] : {std::pair{"inputPreviewLegendAdvanced", "詳細設定から"},
                                      {"inputPreviewLegendExtra", "追加入力から"}}) {
         auto *swatch = new QLabel;
         swatch->setObjectName(name);
@@ -321,7 +321,7 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     railLayout->setSpacing(12);
     body->addWidget(rail);
     summaryCard = new CalculationSummary("inputPreview", "この入力", [this](const QString &link) {
-        if (link == "tab:4")
+        if (link == "memory")
             window->calculation->showField("memory_mb");
     });
     railLayout->addWidget(summaryCard);
@@ -362,10 +362,15 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
         window->settings.setValue("inputPreview/showPaths", on);
     });
     const auto openLink = [this](const QString &link) {
+        const QUrl url(link);
         bool ok = false;
-        const int tab = QUrl(link).path().toInt(&ok);
-        if (QUrl(link).scheme() == "tab" && ok)
+        const int tab = url.path().toInt(&ok);
+        if (url.scheme() == "tab" && ok)
             navigate(tab);
+        else if (url.scheme() == "field") {
+            window->workspaceTabs->setCurrentWidget(window->calculation);
+            window->calculation->showField(url.path());
+        }
     };
     connect(paths, &QLabel::linkActivated, this, openLink);
     connect(diagnostics, &QTextBrowser::anchorClicked, this,
@@ -399,10 +404,19 @@ void InputPreviewPanel::navigate(int tab) {
 }
 void InputPreviewPanel::openSource(int tab, const QString &setting, const QString &group) {
     navigate(tab - 1);
-    if (tab == 3 && !setting.isEmpty())
-        window->calculation->showField(setting);
-    else if (tab == 4 && !group.isEmpty())
-        window->advanced->showGroup(group);
+    if (!group.isEmpty())
+        window->calculation->showDetailGroup(group);
+    else if (!setting.isEmpty())
+        window->calculation->showField(setting); // Also the memory of "3 実行設定".
+}
+QList<InputPreviewPanel::Source> InputPreviewPanel::sources(const NwchemInputBlock &b) {
+    QList<Source> result;
+    for (const int tab : b.tabs)
+        if (tab != 2 || !b.setting.isEmpty() || b.group.isEmpty()) // Not when only the details set it.
+            result << Source{tab, tab == 1 ? QString() : b.setting, {}};
+    if (!b.group.isEmpty())
+        result << Source{2, {}, b.group};
+    return result;
 }
 void InputPreviewPanel::rebuildOutline() {
     const QSignalBlocker blocker(outlineList);
@@ -426,19 +440,24 @@ void InputPreviewPanel::rebuildOutline() {
         auto *title = new ElidedLabel(b.title);
         title->setProperty("blockTitle", true);
         layout->addWidget(title, 1);
-        for (const int tab : b.tabs) {
+        for (const auto &source : sources(b)) {
+            const bool details = !source.group.isEmpty();
             auto *badge = new QToolButton;
-            badge->setObjectName(QString("inputPreviewSource%1_%2").arg(b.line + 1).arg(tab));
-            badge->setText(QString::number(tab));
-            badge->setProperty("source", tab == 4                     ? "advanced"
-                                         : b.setting == "extra_input" ? "extra"
-                                                                      : "tab");
-            badge->setToolTip("「" + tabNames.value(tab) + "」で編集");
-            badge->setAccessibleName(tabNames.value(tab) + "で編集");
+            badge->setObjectName(QString("inputPreviewSource%1_%2%3")
+                                     .arg(b.line + 1)
+                                     .arg(source.tab)
+                                     .arg(details ? "_details" : ""));
+            badge->setText(details ? QString("詳") : QString::number(source.tab));
+            badge->setProperty("source", details                           ? "advanced"
+                                         : source.setting == "extra_input" ? "extra"
+                                                                           : "tab");
+            const auto where = tabNames.value(source.tab) + (details ? "」の詳細設定" : "」");
+            badge->setToolTip("「" + where + "で編集");
+            badge->setAccessibleName(QString(where).remove("」") + "で編集");
             badge->setFixedSize(22, 22);
             layout->addWidget(badge);
             connect(badge, &QToolButton::clicked, this,
-                    [this, tab, setting = b.setting, group = b.group] { openSource(tab, setting, group); });
+                    [this, source] { openSource(source.tab, source.setting, source.group); });
         }
         item->setSizeHint(QSize(0, row->sizeHint().height()));
         outlineList->setItemWidget(item, row);
@@ -469,23 +488,24 @@ void InputPreviewPanel::followCursor() {
         delete item->widget();
         delete item;
     }
-    for (const int tab : b.tabs) {
-        QString text = tabNames.value(tab);
-        if (tab == 3 && !b.setting.isEmpty() && b.setting != "extra_input") {
-            if (const auto section = window->calculation->sectionTitle(b.setting); !section.isEmpty())
-                text += " › " + section;
-        } else if (tab == 3 && b.setting == "extra_input")
-            text += " › 追加入力";
-        else if (tab == 4)
+    for (const auto &source : sources(b)) {
+        QString text = tabNames.value(source.tab);
+        if (!source.group.isEmpty()) {
             for (const auto &g : nwchemAdvancedGroups())
-                if (g.value == b.group)
-                    text += " › " + (g.value == "visualization" ? QString("CUBE / MOLDEN") : g.label);
+                if (g.value == source.group)
+                    text += " › 詳細設定（" +
+                            (g.value == "visualization" ? QString("CUBE / MOLDEN") : g.label) + "）";
+        } else if (source.setting == "extra_input")
+            text += " › 追加入力";
+        else if (source.tab == 2 && !source.setting.isEmpty())
+            if (const auto section = window->calculation->sectionTitle(source.setting); !section.isEmpty())
+                text += " › " + section;
         auto *link = new QPushButton(text);
         link->setProperty("link", true);
         link->setCursor(Qt::PointingHandCursor);
         sourceLinks->layout()->addWidget(link);
         connect(link, &QPushButton::clicked, this,
-                [this, tab, setting = b.setting, group = b.group] { openSource(tab, setting, group); });
+                [this, source] { openSource(source.tab, source.setting, source.group); });
     }
     sourceChip->setVisible(!b.tabs.isEmpty());
     sourceChip->adjustSize();
@@ -494,9 +514,6 @@ void InputPreviewPanel::refresh() {
     const auto &d = window->displayDocument();
     const auto s = nwchemSettings(d);
     const auto report = validateNwchem(d);
-    NwchemValidation advanced;
-    advanced.reference = report.reference;
-    validateNwchemAdvanced(d, advanced);
     auto geometryErrors = d.validate();
     try {
         if (!d.atoms.isEmpty())
@@ -508,17 +525,19 @@ void InputPreviewPanel::refresh() {
     modes->sync();
     QStringList errors = report.errors;
     QString html;
-    auto append = [&](const QString &label, const QString &message, int tab, const QColor &color) {
-        html +=
-            QString("<p><b style=\"color:%1\">%2</b> %3</p>").arg(color.name(), label, tabLink(tab, message));
+    // Each message links to the setting it names, else to its tab.
+    const auto target = [this](const QString &message) {
+        const auto key = window->calculation->fieldFor(message);
+        return key.isEmpty() ? QString("tab:1") : "field:" + key;
+    };
+    auto append = [&](const QString &label, const QString &message, const QString &link,
+                      const QColor &color) {
+        html += QString("<p><b style=\"color:%1\">%2</b> %3</p>")
+                    .arg(color.name(), label, sourceLink(link, message));
     };
     const ChromeColors c(palette());
     for (const auto &error : report.errors)
-        append("エラー:", error,
-               advanced.errors.contains(error)  ? 3
-               : geometryErrors.contains(error) ? 1
-                                                : 2,
-               c.bad);
+        append("エラー:", error, geometryErrors.contains(error) ? QString("tab:0") : target(error), c.bad);
     QString text;
     try {
         if (resolved) {
@@ -531,7 +550,7 @@ void InputPreviewPanel::refresh() {
         for (const auto &error : QString::fromUtf8(e.what()).split('\n'))
             if (!errors.contains(error)) {
                 errors << error;
-                append("エラー:", error, 4, c.bad);
+                append("エラー:", error, "tab:2", c.bad);
             }
     }
     for (const auto &warning : report.warnings) {
@@ -541,7 +560,7 @@ void InputPreviewPanel::refresh() {
             for (const auto &line : text.split('\n'))
                 if (line.contains("frequencies numerical"))
                     where = QString("（%1 行目）").arg(text.left(text.indexOf(line)).count('\n') + 1);
-        append("確認:", warning + where, advanced.warnings.contains(warning) ? 3 : 2, c.muted);
+        append("確認:", warning + where, target(warning), c.muted);
     }
     if (errors.isEmpty())
         html.prepend(QString("<p style=\"color:%1\">分子・計算条件・詳細設定の検証を通過しました。</p>")
@@ -560,7 +579,7 @@ void InputPreviewPanel::refresh() {
                   : QString("相対パスは変更せず出力します。外部で実行するときは、"
                             "NWChemの作業ディレクトリを基準に必要なファイル・保存先を用意してください。")) +
         "<br><br>実行ファイル・MPI・基底ライブラリ・参照ファイルの存在と書込み権限は " +
-        QString("<a href=\"tab:4\" style=\"color:%1\">「5 実行設定」</a>").arg(c.accentText.name()) +
+        QString("<a href=\"tab:2\" style=\"color:%1\">「3 実行設定」</a>").arg(c.accentText.name()) +
         " で確認してください。ここではNWChemを起動しません。");
     summaryCard->update(d);
     const bool pending = window->hasCandidate() || window->worker;

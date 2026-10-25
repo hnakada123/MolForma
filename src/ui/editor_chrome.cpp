@@ -474,8 +474,8 @@ QPushButton *linkButton(const QString &text, const QString &objectName) {
     return b;
 }
 QString tabName(int index) {
-    static const QStringList names{"① 分子",     "② 座標",           "③ 計算条件",   "④ 詳細設定",
-                                   "⑤ 実行設定", "⑥ 入力プレビュー", "結果ビューア", "履歴"};
+    static const QStringList names{"① 分子",           "② 計算条件",   "③ 実行設定",
+                                   "④ 入力プレビュー", "結果ビューア", "履歴"};
     return names.value(index);
 }
 QPlainTextEdit *logView(const QString &objectName) {
@@ -982,8 +982,8 @@ void CalculationSummary::update(const Document &d) {
                         .arg(d.job()["multiplicity"].toInt(1))
                         .arg(reference.isEmpty() ? QString() : "（" + reference + "）"));
     memory->setText(
-        QString("%1 MB / MPIプロセス · <a href=\"tab:4\" style=\"color:%2; text-decoration:none\">"
-                "⑤で変更</a>")
+        QString("%1 MB / MPIプロセス · <a href=\"memory\" style=\"color:%2; text-decoration:none\">"
+                "③で変更</a>")
             .arg(s["memory_mb"].toInt())
             .arg(ChromeColors(palette()).accentText.name()));
 }

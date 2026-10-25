@@ -112,15 +112,9 @@ void CoordinateDelegate::paint(QPainter *painter, const QStyleOptionViewItem &op
 CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     setObjectName("coordinatesTab");
     setAcceptDrops(true);
-    auto *outer = new QHBoxLayout(this);
-    outer->setContentsMargins(0, 0, 0, 0);
-    auto *splitter = new QSplitter;
-    splitter->setChildrenCollapsible(false);
-    outer->addWidget(splitter);
-
-    // The table side: commands, the selection (or the candidate), the table and a footer.
-    auto *left = new QWidget;
-    auto *ll = new QVBoxLayout(left);
+    // Commands, the selection (or the candidate), the table and a footer, under the 3D view of
+    // "1 分子" or in its place.
+    auto *ll = new QVBoxLayout(this);
     ll->setContentsMargins(0, 0, 0, 0);
     ll->setSpacing(0);
     auto *toolbar = new QFrame;
@@ -129,16 +123,34 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     auto *tools = new FlowLayout(toolbar, 8, 6);
     tools->setContentsMargins(12, 8, 12, 8);
     ll->addWidget(toolbar);
-    button(
-        tools, "構造を読込…", "coordinateImport", "import", [this] { importFile(); }, true)
-        ->setToolTip("XYZ・MOL・SDF・PDBを読み込み、今の構造を置き換える候補を作ります。");
-    button(
-        tools, "XYZを貼り付け…", "coordinatePaste", "paste", [this] { pasteXyz(); }, true)
-        ->setToolTip("クリップボードのXYZ（Å）で今の構造を置き換える候補を作ります。");
+    // Replacing the structure (a candidate to confirm), then adding one atom.
+    auto *structure = new QPushButton("構造");
+    structure->setObjectName("coordinateStructure");
+    structure->setIcon(lineIcon("import"));
+    structure->setToolTip("構造ファイル・XYZで今の構造を置き換える候補を作るか、全原子を削除します。");
+    auto *structureMenu = new QMenu(structure);
+    structureMenu->setObjectName("coordinateStructureMenu");
+    structureMenu->setToolTipsVisible(true);
+    const auto structureAction = [&](const QString &text, const QString &name, const QString &icon,
+                                     const QString &tip, const std::function<void()> &action) {
+        auto *a = structureMenu->addAction(lineIcon(icon), text);
+        a->setObjectName(name);
+        a->setToolTip(tip);
+        connect(a, &QAction::triggered, this, [this, action] { attempt(action); });
+        editActions << a;
+    };
+    structureAction("構造ファイルを読込…", "coordinateImport", "import",
+                    "XYZ・MOL・SDF・PDBを読み込み、今の構造を置き換える候補を作ります。",
+                    [this] { importFile(); });
+    structureAction("XYZを貼り付けて置き換え…", "coordinatePaste", "paste",
+                    "クリップボードのXYZ（Å）で今の構造を置き換える候補を作ります。", [this] { pasteXyz(); });
+    structureMenu->addSeparator();
+    structureAction("全原子を削除", "coordinateClear", "delete", "すべての原子を削除する候補を作ります。",
+                    [this] { window->edit("全原子を削除", [](Document &d) { d.remove(d.ids()); }, true); });
+    structure->setMenu(structureMenu);
+    tools->addWidget(structure);
+    editControls << structure;
     button(tools, "原子を追加…", "coordinateAdd", "plus", [this] { addAtom(); }, true);
-    button(
-        tools, "全原子を削除", "coordinateClear", "delete",
-        [this] { window->edit("全原子を削除", [](Document &d) { d.remove(d.ids()); }, true); }, true);
     tools->addWidget(gap());
     filter = new QLineEdit;
     filter->setObjectName("coordinateFilter");
@@ -146,7 +158,7 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     filter->setToolTip("番号つきの原子名（C14）、元素、残基（GLY 2）で表の行を絞り込みます。");
     filter->setClearButtonEnabled(true);
     filter->addAction(lineIcon("search"), QLineEdit::LeadingPosition);
-    filter->setFixedWidth(180);
+    filter->setFixedWidth(160);
     tools->addWidget(filter);
     connect(filter, &QLineEdit::textChanged, this, [this] { applyFilter(); });
     attributes = new QPushButton("属性の列");
@@ -165,12 +177,39 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     unitRowLayout->setContentsMargins(0, 0, 0, 0);
     unitRowLayout->addWidget(new QLabel("単位"));
     units = new QComboBox;
-    units->setToolTip("表に表示する座標の単位です（NWChem入力の単位は「3 計算条件」で設定します）。");
+    units->setToolTip("表に表示する座標の単位です（NWChem入力の単位は「2 計算条件」で設定します）。");
     units->setObjectName("coordinateUnits");
     units->addItems({"Å", "Bohr"});
     unitRowLayout->addWidget(units);
     tools->addWidget(unitBox);
     connect(units, &QComboBox::currentIndexChanged, this, [this] { refresh(); });
+    // The geometry as an NWChem fragment (in the unit of the input) or as XYZ (always Å).
+    exportButton = new QPushButton("書き出し");
+    exportButton->setObjectName("coordinateExport");
+    exportButton->setIcon(lineIcon("export"));
+    exportButton->setToolTip("座標と固定原子のNWChem入力断片か、XYZ（常にÅ）をコピー・保存します。");
+    auto *exportMenu = new QMenu(exportButton);
+    exportMenu->setObjectName("coordinateExportMenu");
+    exportMenu->setToolTipsVisible(true);
+    const auto exportAction = [&](const QString &text, const QString &name, bool xyz, bool save) {
+        auto *a = exportMenu->addAction(text);
+        a->setObjectName(name);
+        connect(a, &QAction::triggered, this, [this, xyz, save] { attempt([&] { exportText(xyz, save); }); });
+        exportActions << a;
+        return a;
+    };
+    exportAction("NWChem座標ブロックをコピー", "copyNwchemGeometry", false, false);
+    exportAction("NWChem座標ブロックを保存…", "saveNwchemGeometry", false, true);
+    exportMenu->addSeparator();
+    exportAction("XYZ（Å）をコピー", "coordinateCopyXyz", true, false)
+        ->setToolTip("ゴーストは@元素、質量は第5列で書き出します（MolFormaの拡張）。");
+    exportAction("XYZ（Å）を保存…", "coordinateSaveXyz", true, true);
+    for (auto *a : exportActions.mid(0, 2))
+        a->setToolTip("geometryブロックと固定原子のconstraintsです。電荷・基底・手法・taskと点電荷は"
+                      "含みません。入力全体は「入力プレビュー」で確かめます。");
+    exportButton->setMenu(exportMenu);
+    connect(exportMenu, &QMenu::aboutToShow, this, &CoordinatesPanel::refreshExport);
+    tools->addWidget(exportButton);
     message = new QLabel;
     message->setObjectName("coordinateMessage");
     message->setWordWrap(true);
@@ -210,10 +249,8 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     selectionItems << moreAtoms << measurement << gap();
     for (auto *item : std::as_const(selectionItems))
         bar->addWidget(item);
-    auto remove = [this] {
-        auto ids = window->requireSelection();
-        window->edit("座標表の選択原子を削除", [ids](Document &d) { d.remove(ids); }, true);
-    };
+    // As the Delete key of "1 分子" (and its "削除後に水素で終端化"): a candidate to confirm.
+    auto remove = [this] { window->deleteAtoms(window->requireSelection()); };
     originButton = button(
         bar, "原点へ移動", "coordinateOrigin", "origin",
         [this] {
@@ -226,7 +263,6 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
                             fail("固定原子を動かす操作です。固定を解除してください。");
                 transform(d, d.ids(), Mat::Identity(), shift);
             });
-            view->fit();
             window->canvas()->keepInView();
         },
         true);
@@ -303,8 +339,8 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
         "座標編集・削除を禁止し、NWChemのconstraints fix atomへ出力します。",
         "残基と、その中での原子名",
         "候補で今の構造から追加・移動する原子",
-        "水素補完などの構造準備に使う形式電荷です。計算の全電荷は「3 計算条件」で設定します。",
-        "原子のラジカル属性です。計算のスピン多重度は「3 計算条件」で設定します。",
+        "水素補完などの構造準備に使う形式電荷です。計算の全電荷は「2 計算条件」で設定します。",
+        "原子のラジカル属性です。計算のスピン多重度は「2 計算条件」で設定します。",
         "PDB・残基で使う原子名です（例: CA）。"};
     for (int column = 0; column < ColumnCount; ++column) {
         auto *item = new QTableWidgetItem(titles[column]);
@@ -355,12 +391,6 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
                 ordered << id;
         window->setSelection(ordered);
     });
-    auto *removeShortcut = new QShortcut(QKeySequence::Delete, table);
-    removeShortcut->setContext(Qt::WidgetShortcut);
-    connect(removeShortcut, &QShortcut::activated, this, [this, remove] {
-        if (editable())
-            attempt(remove);
-    });
     auto *empty = new QWidget;
     empty->setObjectName("coordinateEmpty");
     auto *emptyLayout = new QGridLayout(empty);
@@ -393,13 +423,11 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     button(emptyActions, "原子を追加…", "coordinateEmptyAdd", "plus", [this] { addAtom(); }, true);
     emptyActions->addStretch();
     cardLayout->addLayout(emptyActions);
-    auto *emptyNote = new QLabel;
+    auto *emptyNote = new QLabel("XYZ・MOL・SDF・PDB（.ent）のファイルは、ここへドロップしても読み込めます。"
+                                 "部品やアミノ酸配列から組み立てるときは左のパレットを使います。");
     emptyNote->setObjectName("coordinateEmptyNote");
     emptyNote->setWordWrap(true);
     emptyNote->setAlignment(Qt::AlignCenter);
-    emptyNote->setTextFormat(Qt::RichText);
-    connect(emptyNote, &QLabel::linkActivated, this,
-            [this] { window->workspaceTabs->setCurrentWidget(window->moleculePage); });
     cardLayout->addWidget(emptyNote);
     emptyLayout->addWidget(card, 0, 0, Qt::AlignCenter);
     tablePages->addWidget(empty);
@@ -417,163 +445,6 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     count->setObjectName("coordinateCount");
     footerRow->addWidget(count);
     ll->addWidget(footer);
-    splitter->addWidget(left);
-
-    // The 3D view above what the tab writes out.
-    auto *side = new QSplitter(Qt::Vertical);
-    side->setObjectName("coordinateSide");
-    side->setChildrenCollapsible(false);
-    side->setMinimumWidth(340);
-    view = new MoleculeView;
-    view->setObjectName("coordinateView");
-    view->setTool("select");
-    view->setEmptyMessage("原子がありません\n\n読み込んだ構造や追加した原子を\nここで3D表示します。");
-    auto *viewArea = new OverlayHost(view);
-    viewArea->setObjectName("coordinateViewArea");
-    viewArea->setMinimumHeight(200);
-    // The axes and "全体を表示" only: the table beside it is where this tab is used.
-    ViewControls::Names names;
-    for (int i = 0; i < 3; ++i)
-        names.axes[i] = QString("coordinateView%1").arg(i);
-    names.fit = "coordinateFit";
-    viewControls = new ViewControls(view, names, false, false);
-    viewControls->setObjectName("coordinateViewControls");
-    viewArea->addOverlay(viewControls, Qt::AlignTop | Qt::AlignRight);
-    auto *candidateChip = new QFrame;
-    candidateChip->setObjectName("coordinateViewCandidate");
-    candidateChip->setToolTip("緑の円は追加、赤の×は削除（元の位置）、橙の円は移動する原子です。");
-    auto *chipRow = new QHBoxLayout(candidateChip);
-    chipRow->setContentsMargins(8, 4, 10, 4);
-    chipRow->setSpacing(6);
-    auto *chipIcon = new QLabel;
-    chipIcon->setObjectName("coordinateCandidateIcon");
-    chipRow->addWidget(chipIcon);
-    chipRow->addWidget(new QLabel("候補を表示中"));
-    candidateChip->hide();
-    viewCandidate = candidateChip;
-    viewArea->addOverlay(candidateChip, Qt::AlignTop | Qt::AlignLeft);
-    // Under the view, as under the others: what a click does and the mouse controls.
-    auto *viewBox = new QWidget;
-    auto *viewLayout = new QVBoxLayout(viewBox);
-    viewLayout->setContentsMargins(0, 0, 0, 0);
-    viewLayout->setSpacing(0);
-    viewLayout->addWidget(viewArea, 1);
-    auto *hintBar = new QWidget;
-    hintBar->setObjectName("coordinateViewHintBar");
-    hintBar->setAttribute(Qt::WA_StyledBackground);
-    auto *hintLayout = new QHBoxLayout(hintBar);
-    hintLayout->setContentsMargins(12, 4, 12, 5);
-    auto *viewHint = new ElidedLabel("クリック: 選択 · Shift／Ctrl＋クリック: 追加 · " + viewControlsHint());
-    viewHint->setObjectName("coordinateViewHint");
-    viewHint->setToolTip(viewHint->text());
-    hintLayout->addWidget(viewHint);
-    viewLayout->addWidget(hintBar);
-    side->addWidget(viewBox);
-    connect(view, &MoleculeView::atomClicked, this, [this](const QString &id, Qt::KeyboardModifiers) {
-        auto ids = window->selected;
-        if (ids.contains(id))
-            ids.removeAll(id);
-        else
-            ids << id;
-        window->setSelection(ids);
-    });
-    connect(view, &MoleculeView::blankClicked, this, [this] { window->setSelection({}); });
-    connect(view, &MoleculeView::bondClicked, this,
-            [this](const QString &a, const QString &b) { window->setSelection({a, b}); });
-    connect(view, &MoleculeView::rectangleSelected, this, [this](const Ids &ids, bool append) {
-        auto next = append ? window->selected : Ids();
-        for (const auto &id : ids)
-            if (!next.contains(id))
-                next << id;
-        window->setSelection(next);
-    });
-
-    auto *exportFrame = new QFrame;
-    exportFrame->setObjectName("coordinateExport");
-    auto *el = new QVBoxLayout(exportFrame);
-    el->setContentsMargins(14, 12, 14, 14);
-    el->setSpacing(8);
-    auto *exportHead = new QHBoxLayout;
-    exportHead->setSpacing(8);
-    auto *exportTitle = new QLabel("書き出し");
-    exportTitle->setObjectName("coordinateExportTitle");
-    exportHead->addWidget(exportTitle);
-    auto *format = new QFrame;
-    format->setObjectName("coordinateFormat");
-    format->setProperty("choice", "segments");
-    auto *formatRow = new QHBoxLayout(format);
-    formatRow->setContentsMargins(2, 2, 2, 2);
-    formatRow->setSpacing(2);
-    auto *formatGroup = new QButtonGroup(this);
-    auto *nwchemFormat = new QToolButton;
-    nwchemFormat->setObjectName("coordinateFormatNwchem");
-    nwchemFormat->setText("NWChem");
-    nwchemFormat->setToolTip("NWChem入力の座標ブロック（geometry と固定原子の constraints）");
-    xyzFormat = new QToolButton;
-    xyzFormat->setObjectName("coordinateFormatXyz");
-    xyzFormat->setText("XYZ");
-    for (auto *b : {nwchemFormat, xyzFormat}) {
-        b->setCheckable(true);
-        formatRow->addWidget(b);
-        formatGroup->addButton(b);
-    }
-    nwchemFormat->setChecked(true);
-    connect(formatGroup, &QButtonGroup::buttonClicked, this, [this] { refreshExport(); });
-    exportHead->addWidget(format);
-    exportHead->addStretch();
-    copyButton =
-        button(exportHead, "コピー", "copyNwchemGeometry", "copy", [this] { exportText(false, false); });
-    saveButton =
-        button(exportHead, "書き出す…", "saveNwchemGeometry", "export", [this] { exportText(false, true); });
-    xyzCopy = button(exportHead, "コピー", "coordinateCopyXyz", "copy", [this] { exportText(true, false); });
-    xyzSave =
-        button(exportHead, "書き出す…", "coordinateSaveXyz", "export", [this] { exportText(true, true); });
-    el->addLayout(exportHead);
-    // The unit of the geometry in the input is a setting of "3 計算条件": shown, with the way there.
-    unitRow = new QWidget;
-    auto *unitLayout = new QHBoxLayout(unitRow);
-    unitLayout->setContentsMargins(0, 0, 0, 0);
-    unitLayout->setSpacing(12);
-    outputUnit = new QLabel;
-    outputUnit->setObjectName("nwchemUnitState");
-    unitLayout->addWidget(outputUnit);
-    auto *unitLink = linkButton("③ 計算条件で変更", "nwchemUnitLink");
-    unitLink->setToolTip("NWChem入力の座標の単位（「3 計算条件」の「入力ファイル」）を表示します。");
-    unitLayout->addWidget(unitLink);
-    unitLayout->addStretch();
-    connect(unitLink, &QPushButton::clicked, this, [this] {
-        window->workspaceTabs->setCurrentWidget(window->calculation);
-        window->calculation->showField("geometry_units");
-    });
-    el->addWidget(unitRow);
-    xyzNote = new QLabel("XYZは常にÅです。ゴーストは@元素、質量は第5列で書き出します（MolFormaの拡張）。");
-    xyzNote->setWordWrap(true);
-    el->addWidget(xyzNote);
-    previewLabel = new QLabel;
-    previewLabel->setObjectName("nwchemPreviewLabel");
-    previewLabel->setWordWrap(true);
-    el->addWidget(previewLabel);
-    preview = new QPlainTextEdit;
-    preview->setObjectName("nwchemGeometryPreview");
-    preview->setReadOnly(true);
-    preview->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    preview->setLineWrapMode(QPlainTextEdit::NoWrap);
-    preview->setMinimumHeight(120);
-    highlightInput(preview->document());
-    el->addWidget(preview, 1);
-    exportNote =
-        new QLabel("座標と固定原子の入力断片です。電荷・基底・手法・taskは「3 計算条件」〜「5 実行設定」で"
-                   "設定し、入力全体は「6 入力プレビュー」で確かめます。点電荷や旧形式の拘束・断片設定は"
-                   "含みません。");
-    exportNote->setProperty("caption", true);
-    exportNote->setWordWrap(true);
-    el->addWidget(exportNote);
-    side->addWidget(exportFrame);
-    side->setStretchFactor(0, 1);
-    side->setSizes({440, 380});
-    splitter->addWidget(side);
-    splitter->setStretchFactor(0, 1);
-    splitter->setSizes({900, 460});
 }
 QPushButton *CoordinatesPanel::button(QLayout *layout, const QString &text, const QString &name,
                                       const QString &icon, const std::function<void()> &action,
@@ -589,7 +460,7 @@ QPushButton *CoordinatesPanel::button(QLayout *layout, const QString &text, cons
     return b;
 }
 void CoordinatesPanel::showAttributes() {
-    window->workspaceTabs->setCurrentWidget(this);
+    window->showCoordinateTable();
     attributes->setChecked(true);
     table->scrollTo(table->model()->index(std::max(0, table->currentRow()), ChargeColumn));
 }
@@ -641,8 +512,6 @@ void CoordinatesPanel::refresh() {
     const bool candidate = window->hasCandidate();
     const auto changes = candidate ? atomChanges(window->document(), d) : AtomChanges{};
     const QSignalBlocker blocker(table);
-    const bool changedAtoms = displayedIds != d.ids();
-    displayedIds = d.ids();
     const auto unit = tableUnit();
     for (int column = XColumn; column <= ZColumn; ++column)
         table->horizontalHeaderItem(column)->setText(QString("%1 / %2")
@@ -715,45 +584,26 @@ void CoordinatesPanel::refresh() {
     filter->setEnabled(!d.atoms.isEmpty());
     for (auto *control : std::as_const(editControls))
         control->setEnabled(editable());
-    outputUnit->setText(QString("座標の単位  %1").arg(exportUnit() == CoordinateUnit::Bohr ? "Bohr" : "Å"));
-    QVector<std::pair<Vec, QString>> removedAtoms;
-    for (const auto &a : changes.removed)
-        removedAtoms.append({a.position, a.element});
-    view->setDocument(d);
-    view->setChanges(removedAtoms, changes.added, changes.moved);
-    viewCandidate->setVisible(candidate);
-    if (changedAtoms)
-        view->fit();
+    for (auto *action : std::as_const(editActions))
+        action->setEnabled(editable());
     refreshExport();
     applyFilter();
     refreshSelection();
 }
 void CoordinatesPanel::refreshExport() {
     const auto &d = window->displayDocument();
-    const bool xyz = xyzFormat->isChecked();
-    QString nwchem;
-    bool valid = false;
+    bool valid = !d.atoms.isEmpty();
     try {
-        nwchem = nwchemGeometry(d, exportUnit());
-        valid = true;
-    } catch (const std::exception &e) {
-        nwchem = QString::fromUtf8(e.what());
+        nwchemGeometry(d, exportUnit());
+    } catch (const std::exception &) {
+        valid = false;
     }
-    const QString text = !xyz ? nwchem : d.atoms.isEmpty() ? "原子を追加するとXYZを表示します。" : d.xyz();
-    if (preview->toPlainText() != text)
-        preview->setPlainText(text);
-    preview->setAccessibleName(xyz ? "XYZ（Å）のプレビュー" : "NWChem 座標・固定原子のプレビュー");
-    previewLabel->setVisible(window->hasCandidate());
-    previewLabel->setText(
-        QString("未確定候補の%1です。確定すると書き出せます。").arg(xyz ? "XYZ" : "NWChem座標"));
-    for (auto *w : std::initializer_list<QWidget *>{unitRow, exportNote, copyButton, saveButton})
-        w->setVisible(!xyz);
-    for (auto *w : std::initializer_list<QWidget *>{xyzNote, xyzCopy, xyzSave})
-        w->setVisible(xyz);
-    copyButton->setEnabled(valid && editable());
-    saveButton->setEnabled(valid && editable());
-    xyzCopy->setEnabled(!d.atoms.isEmpty() && editable());
-    xyzSave->setEnabled(!d.atoms.isEmpty() && editable());
+    const auto unit = exportUnit() == CoordinateUnit::Bohr ? "Bohr" : "Å";
+    exportActions[0]->setText(QString("NWChem座標ブロックをコピー（%1）").arg(unit));
+    exportActions[1]->setText(QString("NWChem座標ブロックを保存…（%1）").arg(unit));
+    for (int i = 0; i < exportActions.size(); ++i)
+        exportActions[i]->setEnabled((i < 2 ? valid : !d.atoms.isEmpty()) && editable());
+    exportButton->setEnabled(!d.atoms.isEmpty());
 }
 void CoordinatesPanel::applyFilter() {
     const auto needle = filter->text().trimmed();
@@ -801,7 +651,6 @@ void CoordinatesPanel::refreshSelection() {
             rows.select(table->model()->index(row, 0), table->model()->index(row, last));
     }
     table->selectionModel()->select(rows, QItemSelectionModel::ClearAndSelect);
-    view->setSelection(window->selected);
     refreshSelectionBar();
 }
 void CoordinatesPanel::refreshSelectionBar() {
@@ -1180,6 +1029,11 @@ void CoordinatesPanel::dropEvent(QDropEvent *event) {
     // Read after the drop finishes, so the PDB dialogs do not run inside the drag-and-drop loop.
     QTimer::singleShot(0, this, [this, path] { attempt([&] { importPath(path); }); });
 }
+void CoordinatesPanel::showEvent(QShowEvent *event) {
+    QWidget::showEvent(event);
+    // Shown with "1 分子" or by its layout: catch up with what changed while hidden.
+    window->refreshPanel(this);
+}
 void CoordinatesPanel::exportText(bool xyz, bool save) {
     if (!editable())
         fail("候補を確定・取消し、実行中の整形を終了してから出力してください。");
@@ -1204,12 +1058,10 @@ void CoordinatesPanel::applyChromeStyle() {
     const auto pal = static_cast<QWidget *>(window)->palette();
     const ChromeColors c(pal);
     setStyleSheet(chromeRules(settingsRules() + R"(
-        #coordinateSelectionBar, #coordinateFooter, #coordinateExport, #coordinateEmpty { background: @base; }
+        #coordinateSelectionBar, #coordinateFooter, #coordinateEmpty { background: @base; }
         #coordinateSelectionBar { border-bottom: 1px solid @line; }
         #coordinateFooter { border-top: 1px solid @line; }
-        #coordinateFooter QLabel, #coordinateExport QLabel, QLabel#coordinateSelectionHint,
-        #coordinateEmptyCard QLabel, QLabel#coordinateViewHint { color: @muted; }
-        #coordinateViewHintBar { background: @base; border-top: 1px solid @line; }
+        #coordinateFooter QLabel, QLabel#coordinateSelectionHint, #coordinateEmptyCard QLabel { color: @muted; }
         QLineEdit#coordinateFilter { border: 1px solid @line; border-radius: 6px; padding: 4px 4px;
                                      background: @base; color: @text; }
         QPushButton#coordinateAttributeColumns:checked { background: @tint; border-color: @accent;
@@ -1222,27 +1074,13 @@ void CoordinatesPanel::applyChromeStyle() {
         QToolButton#coordinateDeselect:hover { background: @hover; }
         #coordinateSelectionBar[candidate="true"] { background: @candidate; border-bottom: 1px solid @candidateLine; }
         #coordinateSelectionBar[candidate="true"] QLabel { color: @candidateText; }
-        #coordinateViewCandidate { background: @candidate; border: 1px solid @candidateLine; border-radius: 8px; }
-        #coordinateViewCandidate QLabel { color: @candidateText; font-weight: bold; }
-        #coordinateExport { border-top: 1px solid @line; }
-        QLabel#coordinateExportTitle { color: @text; font-weight: bold; }
-        QLabel#nwchemPreviewLabel { color: @candidateText; font-weight: bold; }
-        QLabel#nwchemUnitState { color: @text; }
         #coordinateEmptyCard { border: 1px dashed @line; border-radius: 12px; }
         QLabel#coordinateEmptyTitle { color: @text; font-weight: bold; font-size: 16px; }
     )",
                               pal));
-    viewControls->applyStyle(pal);
     for (auto *icon : findChildren<QLabel *>("coordinateCandidateIcon"))
         icon->setPixmap(lineIcon("layers", c.candidateText).pixmap(QSize(16, 16)));
     findChild<QLabel *>("coordinateEmptyPicture")->setPixmap(emptyPicture(c));
-    findChild<QLabel *>("coordinateEmptyNote")
-        ->setText(
-            QString(
-                "XYZ・MOL・SDF・PDB（.ent）のファイルは、ここへドロップしても読み込めます。"
-                "部品やアミノ酸配列から組み立てるときは <a href=\"molecule\" style=\"color:%1\">1 分子</a> "
-                "へ。")
-                .arg(c.accentText.name()));
     // Selected rows in MolForma's tint, whatever the desktop's selection color.
     auto tablePalette = table->palette();
     tablePalette.setColor(QPalette::Highlight, c.tint);

@@ -9,7 +9,7 @@ namespace mf {
 QString elapsedClock(qint64 seconds);
 
 // The tasks of a job with their state, and the four DRIVER criteria of a running optimization against
-// their thresholds, read from the job folder's input.nw and, as it grows, its output.out. "5 実行設定"
+// their thresholds, read from the job folder's input.nw and, as it grows, its output.out. "3 実行設定"
 // and "履歴" show a run with it. The rows are named <name>Stage<i>, the criteria <name>Criteria and
 // <name>Criterion<i>.
 class RunProgress : public QWidget {

@@ -1,5 +1,5 @@
 #include "nwchem/nwchem_output.h"
-#include "ui/advanced_panel.h"
+#include "ui/calculation_panel.h"
 #include "ui/execution_panel.h"
 #include "ui/input_preview_panel.h"
 #include "ui/main_window.h"
@@ -217,43 +217,47 @@ class OutputTest : public QObject {
         QTemporaryDir tmp;
         MainWindow w;
         w.loadDocument(water());
-        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(3);
+        auto *calculation = widget<CalculationPanel>(w, "calculationTab");
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentWidget(calculation);
         w.show();
-        auto *category = widget<QComboBox>(w, "advancedCategory");
-        category->setCurrentIndex(category->findData("visualization"));
+        // The files of a calculation are all that its section holds: open from the start.
         auto *cubeOutput = widget<QCheckBox>(w, "advanced_cube_output");
         auto *moldenOutput = widget<QCheckBox>(w, "advanced_molden_output");
-        QVERIFY(!cubeOutput->isHidden());
+        QVERIFY(cubeOutput->isVisibleTo(&w));
+        QVERIFY(!widget<QWidget>(w, "calculationDetailRow_cube_type")->isVisibleTo(&w)); // Used with CUBE.
+        auto *outputs = widget<QLabel>(w, "calculationOutputFiles");
+        QCOMPARE(outputs->text(), QString("CUBE・MOLDENの出力はオフです。"));
         cubeOutput->click();
         moldenOutput->click();
+        QVERIFY(widget<QWidget>(w, "calculationDetailRow_cube_type")->isVisibleTo(&w));
+        QVERIFY(outputs->text().startsWith("計算後に出力するファイル:"));
+        QVERIFY(outputs->text().contains(".molden"));
         auto *type = widget<QComboBox>(w, "advanced_cube_type");
         type->setCurrentIndex(type->findData("orbital"));
         auto *orb = widget<QComboBox>(w, "advanced_cube_orbital");
         orb->setCurrentIndex(orb->findData("index"));
-        QVERIFY(widget<QLabel>(w, "advancedStatus")->text().contains("エラー"));
+        QVERIFY(widget<QLabel>(w, "calculationStatus")->text().contains("エラー"));
         edit(w, "cube_index", "5");
         edit(w, "cube_x", "-3 3 24");
         QCOMPARE(nwchemAdvanced(w.document())["cube_x"].toArray(), QJsonArray({-3, 3, 24}));
-        QVERIFY(widget<QLabel>(w, "advancedStatus")->text().contains("問題はありません"));
+        QVERIFY(!widget<QLabel>(w, "calculationStatus")->text().contains("エラー"));
         const auto generated = nwchemInput(w.document());
-        // The CUBE options write into the dplot block, as the selected row shows.
-        widget<QTreeWidget>(w, "advancedTable")
-            ->setCurrentItem(widget<QTreeWidget>(w, "advancedTable")
-                                 ->findItems("X範囲・分割数", Qt::MatchExactly | Qt::MatchRecursive)[0]);
-        const auto snippet = widget<QPlainTextEdit>(w, "advancedSnippet")->toPlainText();
+        // The CUBE options write into the dplot block, as the chosen detail shows.
+        calculation->showDetail("cube_x");
+        const auto snippet = widget<QPlainTextEdit>(w, "calculationSnippet")->toPlainText();
         QVERIFY2(snippet.startsWith("dplot") && snippet.contains("-3 3 24"), qPrintable(snippet));
-        QVERIFY(widget<QLabel>(w, "advancedOutputSummary")->isVisibleTo(&w));
         auto *preview = widget<InputPreviewPanel>(w, "inputPreviewTab");
         preview->saveInput(tmp.filePath("output.nw"));
         QCOMPARE(QString::fromUtf8(readFile(tmp.filePath("output.nw"))), generated);
         const auto before = w.document().project();
-        widget<QPushButton>(w, "advancedReset_visualization")->click();
+        widget<QPushButton>(w, "calculationResetSection_orbitals")->click();
         QVERIFY(!nwchemInput(w.document()).contains("dplot"));
+        QCOMPARE(w.history()->undoText(), QString("「軌道・出力ファイル」を既定に戻す"));
         w.history()->undo();
         QCOMPARE(w.document().project(), before);
         w.edit("candidate", [](Document &d) { d.atoms[1].position.x() += .1; }, true);
         QVERIFY(!cubeOutput->isEnabled());
-        QVERIFY(!widget<QPushButton>(w, "advancedResetAll")->isEnabled());
+        QVERIFY(!widget<QPushButton>(w, "calculationResetAll")->isEnabled());
         w.cancelCandidate();
     }
     void realEngineArtifacts() {
@@ -319,9 +323,7 @@ class OutputTest : public QObject {
         both(dft);
         w.loadDocument(dft);
         w.resize(1440, 1000);
-        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(3);
-        auto *category = widget<QComboBox>(w, "advancedCategory");
-        category->setCurrentIndex(category->findData("visualization"));
+        widget<CalculationPanel>(w, "calculationTab")->showDetailGroup("visualization");
         w.show();
         QTest::qWait(100);
         QVERIFY(w.grab().save(root + "/output-settings.png"));

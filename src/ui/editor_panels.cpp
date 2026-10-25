@@ -367,8 +367,8 @@ void MainWindow::buildEditPanel() {
     radical->setRange(-1, 8);
     radical->setSpecialValueText("変更なし");
     f->addRow("不対電子", radical);
-    formal->setToolTip("水素補完などの構造準備に使用します。計算の全電荷は「3 計算条件」で設定します。");
-    radical->setToolTip("原子のラジカル属性です。計算のスピン多重度は「3 計算条件」で設定します。");
+    formal->setToolTip("水素補完などの構造準備に使用します。計算の全電荷は「2 計算条件」で設定します。");
+    radical->setToolTip("原子のラジカル属性です。計算のスピン多重度は「2 計算条件」で設定します。");
     mass = new QLineEdit;
     mass->setPlaceholderText("整数: 質量数 / 小数: amu");
     f->addRow("同位体 / 質量", mass);
@@ -406,7 +406,7 @@ void MainWindow::buildEditPanel() {
     });
     enableWithSelection(attributes, 1);
     section(f, "ゴースト・固定");
-    // The names of "2 座標" and the 3D view's menu, for the same edits.
+    // The names of the coordinate table and the 3D view's menu, for the same edits.
     for (bool ghost : {true, false}) {
         auto *b = button(
             f, ghost ? "ゴーストにする" : "ゴーストを解除",
@@ -550,7 +550,7 @@ void MainWindow::buildCoordinationPanel() {
     oxidation = new QSpinBox;
     oxidation->setRange(-8, 12);
     oxidation->setValue(2);
-    oxidation->setToolTip("構造準備の補助情報です。計算の全電荷・多重度は「3 計算条件」で設定します。");
+    oxidation->setToolTip("構造準備の補助情報です。計算の全電荷・多重度は「2 計算条件」で設定します。");
     f->addRow("酸化数（補助）", oxidation);
     button(f, "配位形状・距離を適用", [this] {
         auto id = selectedCenter(), g = value(geometryBox);
@@ -611,7 +611,7 @@ void MainWindow::buildCoordinationPanel() {
             true);
     });
     auto *info =
-        new QLabel("酸化数は構造準備の補助情報です。計算の全電荷・多重度は「3 計算条件」で設定します。");
+        new QLabel("酸化数は構造準備の補助情報です。計算の全電荷・多重度は「2 計算条件」で設定します。");
     info->setWordWrap(true);
     info->setProperty("caption", true);
     pageCards.value(f)->insertWidget(pageCards.value(f)->count() - 1, info);
@@ -791,12 +791,12 @@ void MainWindow::buildResiduePanel() {
 void MainWindow::buildChargePanel() {
     auto *f = panel("電荷");
     chargeEditor = f->parentWidget()->parentWidget();
-    // The total charge and multiplicity are settings of "3 計算条件": here they are shown with the
+    // The total charge and multiplicity are settings of "2 計算条件": here they are shown with the
     // formal charges of the atoms and the electrons they give, with the way there.
     section(f, "分子の電荷");
     chargeState = new QLabel;
     chargeState->setObjectName("moleculeChargeState");
-    auto *chargeLink = linkButton("③ 計算条件で変更", "moleculeChargeLink");
+    auto *chargeLink = linkButton("② 計算条件で変更", "moleculeChargeLink");
     connect(chargeLink, &QPushButton::clicked, this, [this] {
         workspaceTabs->setCurrentWidget(calculation);
         calculation->showField("charge");
@@ -822,15 +822,15 @@ void MainWindow::buildChargePanel() {
         f, "形式電荷の合計を全電荷に適用",
         [this] { edit("全電荷を合わせる", [](Document &d) { d.setJobValue("charge", d.formalCharge()); }); },
         "applyMoleculeFormalCharge")
-        ->setToolTip("原子の形式電荷の合計を、計算の全電荷（「3 計算条件」）にします。");
-    auto *preview = linkButton("⑥ 入力プレビューで確認", "moleculeInputPreview");
+        ->setToolTip("原子の形式電荷の合計を、計算の全電荷（「2 計算条件」）にします。");
+    auto *preview = linkButton("④ 入力プレビューで確認", "moleculeInputPreview");
     connect(preview, &QPushButton::clicked, this, [this] { workspaceTabs->setCurrentWidget(inputPreview); });
     f->addRow(preview);
     section(f, "外部点電荷");
     pointChargeState = new QLabel;
     pointChargeState->setObjectName("moleculePointChargeState");
-    auto *pointLink = linkButton("③ 計算条件で設定", "moleculePointChargeLink");
-    pointLink->setToolTip("点電荷をNWChem入力に含めるかは「3 計算条件」の「周囲の環境」で設定します。");
+    auto *pointLink = linkButton("② 計算条件で設定", "moleculePointChargeLink");
+    pointLink->setToolTip("点電荷をNWChem入力に含めるかは「2 計算条件」の「周囲の環境」で設定します。");
     connect(pointLink, &QPushButton::clicked, this, [this] {
         workspaceTabs->setCurrentWidget(calculation);
         calculation->showField("include_point_charges");

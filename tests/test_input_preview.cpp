@@ -29,7 +29,7 @@ class InputPreviewTest : public QObject {
         return widget<InputPreviewPanel>(w, "inputPreviewTab");
     }
     static void openPreview(MainWindow &w) {
-        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(5);
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(3);
     }
   private slots:
     void initTestCase() {
@@ -49,10 +49,10 @@ class InputPreviewTest : public QObject {
         w.loadDocument(d);
         const auto before = w.document().project();
         auto *tabs = widget<QTabWidget>(w, "workspaceTabs");
-        QCOMPARE(tabs->count(), 8);
-        QCOMPARE(tabs->tabText(5), "6 入力プレビュー");
-        widget<QPushButton>(w, "calculationShowPreview")->click(); // The link of "3 計算条件".
-        QCOMPARE(tabs->currentIndex(), 5);
+        QCOMPARE(tabs->count(), 6);
+        QCOMPARE(tabs->tabText(3), "4 入力プレビュー");
+        widget<QPushButton>(w, "calculationShowPreview")->click(); // The link of "2 計算条件".
+        QCOMPARE(tabs->currentIndex(), 3);
         QVERIFY(text(w)->isReadOnly());
         QCOMPARE(text(w)->toPlainText(), nwchemInput(d));
         widget<QPushButton>(w, "inputPreviewCopy")->click();
@@ -175,12 +175,17 @@ class InputPreviewTest : public QObject {
         QVERIFY(checks->toPlainText().contains("<future>&"));
         QVERIFY(widget<QPushButton>(w, "inputPreviewSave")->isEnabled());
         QVERIFY(!text(w)->toPlainText().contains("convergence energy"));
-        QVERIFY(QMetaObject::invokeMethod(checks, "anchorClicked", Q_ARG(QUrl, QUrl("tab:3"))));
-        QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 3);
+        // A check naming a detailed option leads to its row in "2 計算条件".
+        QVERIFY(checks->toHtml().contains("field:advanced:dft_energy"));
+        QVERIFY(QMetaObject::invokeMethod(checks, "anchorClicked",
+                                          Q_ARG(QUrl, QUrl("field:advanced:dft_energy"))));
+        QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 1);
+        QCOMPARE(widget<QLabel>(w, "calculationDetailTitle")->text(),
+                 QString("エネルギー収束閾値 / Hartree"));
         openPreview(w);
         QVERIFY(QMetaObject::invokeMethod(widget<QLabel>(w, "inputPreviewPaths"), "linkActivated",
-                                          Q_ARG(QString, "tab:4")));
-        QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 4);
+                                          Q_ARG(QString, "tab:2")));
+        QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 2);
         w.edit("apply DFT", [](Document &next) { set(next, "method", "dft"); });
         QVERIFY(text(w)->toPlainText().contains("convergence energy 1e-09"));
         QVERIFY(!checks->toPlainText().contains("保留"));
@@ -230,7 +235,7 @@ class InputPreviewTest : public QObject {
         const auto input = nwchemInput(d);
         const auto lines = input.split('\n');
         const auto outline = nwchemInputOutline(d, input);
-        // The lines that the settings of "4 詳細設定" and the additional input add or change.
+        // The lines that the details and the additional input add or change.
         QStringList advanced, extra;
         for (const int line : outline.advanced)
             advanced << lines[line].trimmed();
@@ -244,26 +249,27 @@ class InputPreviewTest : public QObject {
         for (const auto &b : outline.blocks)
             blocks.insert(b.keyword, b);
         QCOMPARE(blocks["geometry"].title, QString("geometry（3 原子）"));
-        QCOMPARE(blocks["geometry"].tabs, QList<int>{2});
+        QCOMPARE(blocks["geometry"].tabs, QList<int>{1});
         QCOMPARE(blocks["geometry"].lines, 5);
         QCOMPARE(blocks["basis"].title, QString("basis \"sto-3g\""));
-        QCOMPARE(blocks["dft"].tabs, (QList<int>{3, 4}));
+        QCOMPARE(blocks["dft"].tabs, QList<int>{2});
         QCOMPARE(blocks["dft"].setting, QString("method"));
         QCOMPARE(blocks["dft"].group, QString("dft"));
         QCOMPARE(lines[blocks["dft"].line + blocks["dft"].lines - 1], QString("end"));
         QCOMPARE(blocks["driver"].group, QString("driver"));
-        QCOMPARE(blocks["set"].tabs, QList<int>{3});
+        QCOMPARE(blocks["set"].tabs, QList<int>{2});
         QCOMPARE(blocks["set"].setting, QString("extra_input"));
-        QCOMPARE(blocks["task"].tabs, QList<int>{3});
+        QCOMPARE(blocks["task"].tabs, QList<int>{2});
         QCOMPARE(lines[blocks["task"].line], QString("task dft optimize"));
-        // A block that only "4 詳細設定" writes belongs to it alone.
+        // A block that only the details write belongs to them alone.
         setNwchemAdvanced(d, "molden_output", true);
         const auto molden = nwchemInput(d);
         const auto withMolden = nwchemInputOutline(d, molden);
         const auto property = std::find_if(withMolden.blocks.begin(), withMolden.blocks.end(),
                                            [](const auto &b) { return b.keyword == "property"; });
         QVERIFY(property != withMolden.blocks.end());
-        QCOMPARE(property->tabs, QList<int>{4});
+        QCOMPARE(property->tabs, QList<int>{2});
+        QCOMPARE(property->setting, QString());
         QCOMPARE(property->group, QString("visualization"));
         // Without such settings nothing is marked; an empty input has no outline.
         const auto plain = water();
@@ -293,20 +299,21 @@ class InputPreviewTest : public QObject {
         QStringList links;
         for (auto *link : widget<QFrame>(w, "inputPreviewSource")->findChildren<QPushButton *>())
             links << link->text();
-        QCOMPARE(links, (QStringList{"3 計算条件 › 基本設定", "4 詳細設定 › DFT"}));
-        // Its numbers in the outline lead there: "4 詳細設定" shows the category of the block.
-        auto *advanced = w.findChild<QToolButton *>(QString("inputPreviewSource%1_4").arg(line));
-        QVERIFY(advanced);
-        advanced->click();
-        QCOMPARE(tabs->currentIndex(), 3);
-        QCOMPARE(widget<QComboBox>(w, "advancedCategory")->currentData().toString(), QString("dft"));
+        QCOMPARE(links, (QStringList{"2 計算条件 › 基本設定", "2 計算条件 › 詳細設定（DFT）"}));
+        // Its badges in the outline lead there: "詳" opens the details of the block's group.
+        auto *details = w.findChild<QToolButton *>(QString("inputPreviewSource%1_2_details").arg(line));
+        QVERIFY(details);
+        QCOMPARE(details->text(), QString("詳"));
+        details->click();
+        QCOMPARE(tabs->currentIndex(), 1);
+        QVERIFY(widget<QLabel>(w, "calculationDetailGroup_dft")->isVisibleTo(&w));
         openPreview(w);
-        w.findChild<QToolButton *>(QString("inputPreviewSource%1_3").arg(line))->click();
-        QCOMPARE(tabs->currentIndex(), 2);
-        // The geometry is set in "2 座標".
+        w.findChild<QToolButton *>(QString("inputPreviewSource%1_2").arg(line))->click();
+        QCOMPARE(tabs->currentIndex(), 1);
+        // The geometry is set in "1 分子".
         openPreview(w);
-        QVERIFY(w.findChild<QToolButton *>("inputPreviewSource7_2"));
-        QVERIFY(!w.findChild<QToolButton *>("inputPreviewSource7_3"));
+        QVERIFY(w.findChild<QToolButton *>("inputPreviewSource7_1"));
+        QVERIFY(!w.findChild<QToolButton *>("inputPreviewSource7_2"));
         QCOMPARE(widget<QLabel>(w, "inputPreviewStats")->text(),
                  QString("%1 行 · UTF-8 · %2 バイト")
                      .arg(nwchemInput(d).count('\n'))
@@ -316,7 +323,7 @@ class InputPreviewTest : public QObject {
         MainWindow w;
         w.loadDocument(water());
         auto *tabs = widget<QTabWidget>(w, "workspaceTabs");
-        tabs->setCurrentIndex(2);
+        tabs->setCurrentIndex(1);
         w.show();
         w.activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&w));

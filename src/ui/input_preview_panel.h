@@ -19,8 +19,8 @@ class InputEditor;
 class StatusCard;
 // Colors the comments, keywords and numbers of generated NWChem input, or a fragment of it.
 void highlightInput(QTextDocument *document);
-// "6 入力プレビュー": the blocks of the input with the tabs that set them at the left, the input
-// with marks on the lines from "4 詳細設定" and the additional input, and at the right the input in
+// "4 入力プレビュー": the blocks of the input with the tabs that set them at the left, the input
+// with marks on the lines from the details and the additional input, and at the right the input in
 // brief, its checks and how its paths are written.
 class InputPreviewPanel : public QWidget {
     Q_OBJECT
@@ -56,9 +56,15 @@ class InputPreviewPanel : public QWidget {
     QString prepareExport();
     void findText(bool backwards);
     void navigate(int tab);
-    // The tab that sets part of the input: by its number (1 分子 … 5 実行設定), at a setting of
-    // "3 計算条件" or a group of "4 詳細設定".
+    // The tab that sets part of the input: by its number (1 分子 … 3 実行設定), at a setting or at a
+    // group of the details of "2 計算条件".
     void openSource(int tab, const QString &setting, const QString &group);
+    // Where a block is set, one entry per link: tab, setting and group (the details: tab 2).
+    struct Source {
+        int tab;
+        QString setting, group;
+    };
+    static QList<Source> sources(const NwchemInputBlock &block);
     void setBadge(bool failed, const QString &tip);
     void rebuildOutline();
     // The block at the cursor: marked in the outline and the text, with its tabs over the text.

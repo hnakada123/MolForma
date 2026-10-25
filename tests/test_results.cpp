@@ -309,9 +309,9 @@ class ResultsTest : public QObject {
         MainWindow w;
         auto *panel = widget<ResultsPanel>(w, "resultsTab");
         auto *tabs = widget<QTabWidget>(w, "workspaceTabs");
-        QCOMPARE(tabs->count(), 8);
-        QCOMPARE(tabs->tabText(6), "結果ビューア");
-        tabs->setCurrentIndex(6);
+        QCOMPARE(tabs->count(), 6);
+        QCOMPARE(tabs->tabText(4), "結果ビューア");
+        tabs->setCurrentIndex(4);
         const auto before = w.document().project();
         const int history = w.history()->count();
         QSignalSpy done(panel, &ResultsPanel::loaded), failed(panel, &ResultsPanel::loadFailed);
@@ -875,7 +875,7 @@ class ResultsTest : public QObject {
         QSignalSpy done(panel, &ResultsPanel::loaded), failed(panel, &ResultsPanel::loadFailed);
         QVERIFY(widget<QPushButton>(w, "executionResults")->isEnabled());
         widget<QPushButton>(w, "executionResults")->click();
-        QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 6);
+        QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 4);
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
         QCOMPARE(panel->result().source, output);
         panel->openFile(save("control.cube", cubeText(true)));
@@ -928,7 +928,7 @@ class ResultsTest : public QObject {
         w.resize(1380, 900);
         w.show();
         auto *panel = widget<ResultsPanel>(w, "resultsTab");
-        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(6);
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(4);
         QSignalSpy done(panel, &ResultsPanel::loaded);
         panel->openFile(QDir(root).filePath("homo.cube"));
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);

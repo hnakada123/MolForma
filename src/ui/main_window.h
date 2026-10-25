@@ -24,6 +24,7 @@ class QTableWidget;
 class QMenu;
 class QTimer;
 class QButtonGroup;
+class QSplitter;
 class QStackedWidget;
 class QToolButton;
 class QActionGroup;
@@ -35,7 +36,6 @@ class SettingsCard;
 class ViewControls;
 class CoordinatesPanel;
 class CalculationPanel;
-class AdvancedPanel;
 class ExecutionPanel;
 class InputPreviewPanel;
 class ResultsPanel;
@@ -77,6 +77,8 @@ class MainWindow : public QMainWindow {
     QStringList recentFiles() const;
     // Brings tabs that were hidden during edits up to date (McpGui calls it before using the GUI).
     void refreshStalePanels();
+    // Shows the table of the coordinates under the 3D view of "1 分子" (or in its place).
+    void showCoordinateTable();
 
   protected:
     void changeEvent(QEvent *) override;
@@ -88,7 +90,6 @@ class MainWindow : public QMainWindow {
     friend class DocumentCommand;
     friend class CoordinatesPanel;
     friend class CalculationPanel;
-    friend class AdvancedPanel;
     friend class ExecutionPanel;
     friend class InputPreviewPanel;
     friend class ResultsPanel;
@@ -121,7 +122,6 @@ class MainWindow : public QMainWindow {
     MoleculeView *view = nullptr;
     CoordinatesPanel *coordinates = nullptr;
     CalculationPanel *calculation = nullptr;
-    AdvancedPanel *advanced = nullptr;
     ExecutionPanel *execution = nullptr;
     InputPreviewPanel *inputPreview = nullptr;
     ResultsPanel *results = nullptr;
@@ -155,7 +155,7 @@ class MainWindow : public QMainWindow {
            *selectionTitle = nullptr, *selectionList = nullptr, *candidateTitle = nullptr,
            *candidateChanges = nullptr, *toolPart = nullptr;
     QWidget *candidateBar = nullptr, *chargeEditor = nullptr;
-    // The charge page: the calculation's charge and point-charge settings ("3 計算条件"), shown.
+    // The charge page: the calculation's charge and point-charge settings ("2 計算条件"), shown.
     QLabel *chargeSummary = nullptr, *chargeState = nullptr, *pointChargeState = nullptr,
            *inputState = nullptr;
     QCheckBox *deleteTerminate = nullptr;      // "削除後に水素で終端化" in the edit panel,
@@ -164,6 +164,8 @@ class MainWindow : public QMainWindow {
     QWidget *moleculePage = nullptr, *banner = nullptr;
     // Above the 3D view: the options of the current tool, or the candidate in their place.
     QStackedWidget *topRow = nullptr;
+    QSplitter *moleculeSplit = nullptr;         // The 3D view over the coordinate table.
+    QComboBox *moleculeLayout = nullptr;        // "view", "both" or "table", behind the segments under them.
     QHash<QString, QWidget *> toolOptionGroups; // Option bar groups by object name.
     QWidget *sequenceChip = nullptr, *measureCard = nullptr, *candidateCard = nullptr;
     QLabel *bannerLabel = nullptr;
@@ -191,7 +193,7 @@ class MainWindow : public QMainWindow {
     void buildMenus();
     // Style sheets of the header, rail, option bar and overlays from the current palette.
     void applyChromeStyle();
-    // The header's steps follow the tabs: the open one, and the error mark of "6 入力プレビュー".
+    // The header's steps follow the tabs: the open one, and the error mark of "4 入力プレビュー".
     void syncWorkflowSteps();
     QString selectionUnit() const;
     QString paletteCategory() const;
@@ -203,9 +205,11 @@ class MainWindow : public QMainWindow {
     void refresh();
     void refreshTitle();
     void refreshSummary();
-    // The tabs "2 座標" to "6 入力プレビュー"; while the window is shown, only the open one refreshes
-    // on each change and the others are marked stale until opened.
+    // The coordinate table of "1 分子" and the tabs "2 計算条件" to "4 入力プレビュー"; while the window
+    // is shown, only those in view refresh on each change and the others are marked stale until shown.
     QList<QWidget *> workspacePanels() const;
+    // The 3D view and the table of the coordinates in "1 分子", from the segments under them.
+    void applyMoleculeLayout();
     QSet<QWidget *> stalePanels;
     void refreshPanels();
     void refreshPanel(QWidget *panel, bool always = false);

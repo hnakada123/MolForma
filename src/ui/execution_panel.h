@@ -23,9 +23,9 @@ class ChoiceButtons;
 class RunProgress;
 class SettingsCard;
 class StatusCard;
-// "5 実行設定": the settings of a run at the left (programs and folders, resources, environment),
-// and at the right, top to bottom, the checks before a run, the command, the run itself, its
-// progress (tasks, DRIVER steps against their thresholds) and its log.
+// "3 実行設定": the settings of a run at the left (programs and folders, resources, environment),
+// and at the right the checks before a run and the command. The run itself, its progress (tasks,
+// DRIVER steps against their thresholds) and its log are in the run panel over the tabs.
 class ExecutionPanel : public QWidget {
     Q_OBJECT
   public:
@@ -38,7 +38,7 @@ class ExecutionPanel : public QWidget {
         return run.active();
     }
     void startCalculation();
-    // "計算を実行" (header, menu, F5): starts when "5 実行設定" allows it, otherwise shows that tab
+    // "計算を実行" (header, menu, F5): starts when "3 実行設定" allows it, otherwise shows that tab
     // and why.
     void startFromMenu();
     bool canStart() const {

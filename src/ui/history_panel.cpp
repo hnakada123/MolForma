@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/history_panel.h"
+#include "ui/calculation_panel.h"
 #include "ui/editor_chrome.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
@@ -351,7 +352,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     browseAction->setObjectName("historyBrowse");
     // With --mcp-allow-dir, MCP scans only checked paths through history_action.
     browseAction->setProperty("mcpPath", true);
-    executionRootAction = rootMenu->addAction("「5 実行設定」の保存先に戻す");
+    executionRootAction = rootMenu->addAction("「3 実行設定」の保存先に戻す");
     executionRootAction->setObjectName("historyExecutionRoot");
     executionRootAction->setProperty("mcpPath", true);
     rootMenu->addSeparator();
@@ -632,7 +633,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     energyLayout->addWidget(energyNote);
     d->addWidget(energyBox);
 
-    // A run of this window: its tasks, steps and criteria as in "5 実行設定".
+    // A run of this window: its tasks, steps and criteria as in "3 実行設定".
     progressBox = new QFrame;
     progressBox->setObjectName("historyProgressBox");
     auto *progressLayout = new QVBoxLayout(progressBox);
@@ -770,7 +771,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     emptyBrowse->setProperty("primary", true);
     emptyBrowse->setProperty("mcpPath", true);
     emptyButtons->addWidget(emptyBrowse);
-    emptyBack = new QPushButton("5 実行設定の保存先に戻す");
+    emptyBack = new QPushButton("3 実行設定の保存先に戻す");
     emptyBack->setObjectName("historyEmptyExecutionRoot");
     emptyBack->setProperty("mcpPath", true);
     emptyButtons->addWidget(emptyBack);
@@ -1268,7 +1269,7 @@ void HistoryPanel::updateToolbar() {
     const bool same = QDir::cleanPath(other) == QDir::cleanPath(root);
     const auto path = root.isEmpty() ? QString("未設定") : displayPath(root);
     rootButton->setText(fontMetrics().elidedText(path, Qt::ElideMiddle, 360) +
-                        (same ? "（5 実行設定と同じ）" : "（選んだ保存先）"));
+                        (same ? "（3 実行設定と同じ）" : "（選んだ保存先）"));
     rootButton->setToolTip(root);
     executionRootAction->setEnabled(!same || !followsExecution);
     // Jobs recorded as running by MolForma on this PC whose process has ended.
@@ -1291,7 +1292,7 @@ void HistoryPanel::showEmptyPage() {
     const bool readable = info.isDir() && info.isReadable();
     emptyTitle->setText(readable ? "この保存先にはジョブがありません"
                                  : "この保存先は見つからないか、読めません");
-    emptyText->setText(readable ? QString("「5 実行設定」で計算を実行するか、入力一式を保存すると、ここに一覧"
+    emptyText->setText(readable ? QString("「3 実行設定」で計算を実行するか、入力一式を保存すると、ここに一覧"
                                           "します。別の場所に保存したジョブは、保存先を切り替えて開けます。")
                                 : displayPath(root));
     const auto other = executionRoot();
@@ -1309,7 +1310,7 @@ void HistoryPanel::showEmptyPage() {
                             : QString("（%1 件）").arg(n);
     } catch (const std::exception &) {
     }
-    emptyExecution->setText("「5 実行設定」の保存先: " + displayPath(other) + count);
+    emptyExecution->setText("「3 実行設定」の保存先: " + displayPath(other) + count);
 }
 void HistoryPanel::setComparing(bool on) {
     {
@@ -1736,7 +1737,7 @@ void HistoryPanel::reuseSelected() {
     window->loadDocument(next);
     window->history()->resetClean();
     window->refresh();
-    window->workspaceTabs->setCurrentIndex(2);
+    window->workspaceTabs->setCurrentWidget(window->calculation);
     window->statusBar()->showMessage(
         "履歴から新しい未保存プロジェクトを作成しました。実行前に条件・参照ファイルを確認してください。",
         15000);
