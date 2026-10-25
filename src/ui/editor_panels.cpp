@@ -5,6 +5,9 @@
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
 #include "nwchem/nwchem.h"
+#include "ui/calculation_panel.h"
+#include "ui/editor_chrome.h"
+#include "ui/input_preview_panel.h"
 #include "ui/main_window.h"
 #include <QJsonDocument>
 #include <QtWidgets>
@@ -26,16 +29,35 @@ static QList<int> integers(const QString &s) {
 static Vec fields(QDoubleSpinBox *const *spins) {
     return {spins[0]->value(), spins[1]->value(), spins[2]->value()};
 }
-QFormLayout *MainWindow::panel(const QString &title) {
-    auto *page = new QWidget;
-    auto *form = new QFormLayout(page);
+// A form in a card or above the cards of a page: its rows, then buttons side by side.
+static QFormLayout *formLayout(QWidget *parent) {
+    auto *form = new QFormLayout(parent);
+    form->setContentsMargins(0, 0, 0, 0);
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     form->setRowWrapPolicy(QFormLayout::WrapLongRows);
+    form->setHorizontalSpacing(10);
+    form->setVerticalSpacing(8);
+    return form;
+}
+QFormLayout *MainWindow::panel(const QString &title) {
+    // The cards of section() under what comes before them, on the background of the settings tabs.
+    auto *page = new QWidget;
+    page->setProperty("canvas", true);
+    auto *cards = new QVBoxLayout(page);
+    cards->setContentsMargins(10, 10, 10, 12);
+    cards->setSpacing(10);
+    auto *top = new QWidget;
+    auto *form = formLayout(top);
+    cards->addWidget(top);
+    cards->addStretch();
     auto *scroll = new QScrollArea;
+    scroll->setProperty("canvas", true);
     scroll->setWidgetResizable(true);
     scroll->setWidget(page);
     scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     properties->addTab(scroll, title);
+    pageCards[form] = cards;
     return form;
 }
 QPushButton *MainWindow::button(QFormLayout *f, const QString &text, const std::function<void()> &slot,
@@ -43,7 +65,16 @@ QPushButton *MainWindow::button(QFormLayout *f, const QString &text, const std::
     auto *b = new QPushButton(text);
     if (!name.isEmpty())
         b->setObjectName(name);
-    f->addRow(b);
+    // Buttons follow each other in rows that wrap, not each across the whole card.
+    auto &row = buttonRows[f];
+    if (!row.second || row.first != f->rowCount() - 1) {
+        auto *buttons = new QWidget;
+        new FlowLayout(buttons, 6, 6);
+        buttons->layout()->setContentsMargins(0, 2, 0, 0);
+        f->addRow(buttons);
+        row = {f->rowCount() - 1, buttons};
+    }
+    row.second->layout()->addWidget(b);
     connect(b, &QPushButton::clicked, this, [this, slot] { safe(slot); });
     return b;
 }
@@ -64,15 +95,20 @@ QComboBox *MainWindow::choices(QFormLayout *f, const QString &label, const QStri
     f->addRow(label, box);
     return box;
 }
-void MainWindow::section(QFormLayout *f, const QString &title) {
-    // A bold heading groups the rows below it; the first heading of a page needs no space above.
-    auto *heading = new QLabel(title);
-    auto font = heading->font();
-    font.setBold(true);
-    heading->setFont(font);
-    if (f->rowCount())
-        heading->setContentsMargins(0, 8, 0, 0);
-    f->addRow(heading);
+SettingsCard *MainWindow::section(QFormLayout *&f, const QString &title, int open) {
+    // A card per section on the page of the form; the rows that follow go into it.
+    auto *cards = pageCards.value(f);
+    auto *card = new SettingsCard(title);
+    card->setObjectName("moleculeCard_" + title);
+    auto *body = new QWidget;
+    auto *form = formLayout(body);
+    card->body()->addWidget(body);
+    if (open >= 0)
+        card->setCollapsible(open);
+    cards->insertWidget(cards->count() - 1, card);
+    pageCards[form] = cards;
+    f = form;
+    return card;
 }
 void MainWindow::buildEditPanel() {
     auto *outer = panel("編集");
@@ -99,6 +135,7 @@ void MainWindow::buildEditPanel() {
     outer->addRow(candidateCard);
     auto *card = new QFrame;
     card->setObjectName("selectionCard");
+    card->setProperty("card", true);
     auto *cardLayout = new QVBoxLayout(card);
     cardLayout->setContentsMargins(10, 8, 10, 10);
     cardLayout->setSpacing(6);
@@ -135,16 +172,8 @@ void MainWindow::buildEditPanel() {
     color->setObjectName("moleculeColorMode");
     connect(color, &QComboBox::currentIndexChanged, this,
             [this, color] { view->setColorMode(value(color)); });
-    editPages = new QTabWidget;
-    outer->addRow(editPages);
-    auto sub = [&](QString name) {
-        auto *w = new QWidget;
-        auto *f = new QFormLayout(w);
-        f->setRowWrapPolicy(QFormLayout::WrapLongRows);
-        editPages->addTab(w, name);
-        return f;
-    };
-    auto *f = sub("原子・結合");
+    // The atoms and bonds under the selection; transformations and attributes on pages of their own.
+    auto *f = outer;
     QStringList symbols;
     for (const auto &e : elements())
         symbols << e.symbol;
@@ -231,7 +260,7 @@ void MainWindow::buildEditPanel() {
     f->addRow(deleteTerminate);
     enableWithSelection(
         button(f, "選択原子を削除（候補）", [this] { deleteAtoms(requireSelection()); }, "deletePreview"), 1);
-    f = sub("変形・立体");
+    f = panel("変形");
     section(f, "回転");
     // Rotation axis and mirror plane pass through the selected atoms' center, or the origin.
     auto *pivot = choices(f, "回転・鏡映の中心", {"選択の中心", "原点"}, {"selection", "origin"});
@@ -328,7 +357,7 @@ void MainWindow::buildEditPanel() {
         },
         "duplicateSelection");
     enableWithSelection(duplicateButton, 1);
-    f = sub("属性・その他");
+    f = panel("属性");
     section(f, "原子の属性");
     formal = new QSpinBox;
     formal->setRange(-99, 20);
@@ -338,8 +367,8 @@ void MainWindow::buildEditPanel() {
     radical->setRange(-1, 8);
     radical->setSpecialValueText("変更なし");
     f->addRow("不対電子", radical);
-    formal->setToolTip("水素補完などの構造準備に使用します。計算の全電荷は「電荷」で設定します。");
-    radical->setToolTip("原子のラジカル属性です。計算のスピン多重度は「電荷」で設定します。");
+    formal->setToolTip("水素補完などの構造準備に使用します。計算の全電荷は「3 計算条件」で設定します。");
+    radical->setToolTip("原子のラジカル属性です。計算のスピン多重度は「3 計算条件」で設定します。");
     mass = new QLineEdit;
     mass->setPlaceholderText("整数: 質量数 / 小数: amu");
     f->addRow("同位体 / 質量", mass);
@@ -377,22 +406,28 @@ void MainWindow::buildEditPanel() {
     });
     enableWithSelection(attributes, 1);
     section(f, "ゴースト・固定");
-    auto *ghost = button(f, "選択をゴースト化 / 解除", [this] {
-        auto ids = requireSelection();
-        edit("ゴーストを切替", [=](Document &d) {
-            bool v = !d.atom(ids.first()).ghost;
-            for (auto id : ids)
-                d.atom(id).ghost = v;
-        });
-    });
-    ghost->setToolTip("基底関数だけを置く原子（NWChemのbq）にします。BSSE補正などで使います。");
-    enableWithSelection(ghost, 1);
+    // The names of "2 座標" and the 3D view's menu, for the same edits.
+    for (bool ghost : {true, false}) {
+        auto *b = button(
+            f, ghost ? "ゴーストにする" : "ゴーストを解除",
+            [this, ghost] {
+                auto ids = requireSelection();
+                edit(ghost ? "選択原子をゴーストにする" : "選択原子のゴーストを解除", [=](Document &d) {
+                    for (auto id : ids)
+                        d.atom(id).ghost = ghost;
+                    d.invalidateAssignments();
+                });
+            },
+            ghost ? "ghostSelectedAtoms" : "unghostSelectedAtoms");
+        b->setToolTip("基底関数だけを置く原子（NWChemのbq）です。BSSE補正などで使います。");
+        enableWithSelection(b, 1);
+    }
     for (bool fixed : {true, false}) {
         auto *b = button(
-            f, fixed ? "選択原子を固定" : "選択原子の固定を解除",
+            f, fixed ? "選択原子を固定" : "固定を解除",
             [this, fixed] {
                 auto ids = requireSelection();
-                edit(fixed ? "原子を固定" : "原子の固定を解除", [=](Document &d) {
+                edit(fixed ? "選択原子を固定" : "選択原子の固定を解除", [=](Document &d) {
                     for (auto id : ids)
                         d.atom(id).fixed = fixed;
                 });
@@ -443,18 +478,7 @@ void MainWindow::buildEditPanel() {
     button(f, "3Dを再生成", [this] {
         runWorker("regenerate");
     })->setToolTip("結合から3D座標を作り直し、力場で整えます。結果は候補として表示します。");
-    section(f, "その他");
-    button(
-        f, "NWChem構造最適化を設定",
-        [this] {
-            edit("NWChem構造最適化を設定", [](Document &d) {
-                auto s = d.data["nwchem"].toObject();
-                s["task"] = "optimize";
-                d.data["nwchem"] = s;
-            });
-        },
-        "setNwchemOptimization")
-        ->setToolTip("計算目的を構造最適化にします。手法・基底は「3 計算条件」で設定します。");
+    section(f, "読込時の保留", 0);
     button(f, "読込時に保留した設定を確認…", [this] {
         QDialog dialog(this);
         dialog.setWindowTitle("原子参照と保留設定");
@@ -517,6 +541,7 @@ void MainWindow::buildCoordinationPanel() {
     auto *intro = new QLabel("配位中心（金属）またはその配位子を3D画面で選んでから操作します。"
                              "空いているサイトは紫の番号で表示します。");
     intro->setWordWrap(true);
+    intro->setProperty("caption", true);
     f->addRow(intro);
     section(f, "配位形状");
     geometryBox = choices(f, "配位形状", geometryLabels(), geometryNames());
@@ -525,7 +550,7 @@ void MainWindow::buildCoordinationPanel() {
     oxidation = new QSpinBox;
     oxidation->setRange(-8, 12);
     oxidation->setValue(2);
-    oxidation->setToolTip("構造準備の補助情報です。計算の全電荷・多重度は「電荷」で設定します。");
+    oxidation->setToolTip("構造準備の補助情報です。計算の全電荷・多重度は「3 計算条件」で設定します。");
     f->addRow("酸化数（補助）", oxidation);
     button(f, "配位形状・距離を適用", [this] {
         auto id = selectedCenter(), g = value(geometryBox);
@@ -549,13 +574,13 @@ void MainWindow::buildCoordinationPanel() {
                           "二座配位子は2サイトをカンマで区切ります。");
     f->addRow("サイト番号", siteInput);
     button(f, "配位子パレットを開く", [this] { setPaletteCategory("ligand"); });
-    button(f, "選択サイトへ配置プレビュー", [this] {
+    button(f, "選択サイトへ配置（候補）", [this] {
         QString c = selectedCenter();
         auto idx = sites();
         auto t = currentTemplate();
         double angle = twist->value();
         edit("配位子を配置", [=](Document &d) { placeLigand(d, c, idx, t, angle); }, true);
-    });
+    })->setProperty("primary", true);
     button(f, "配位子を交換", [this] {
         QString p = selectedPart();
         auto idx = sites();
@@ -574,7 +599,7 @@ void MainWindow::buildCoordinationPanel() {
             fail("2サイトを指定してください。");
         edit("配位子のサイトを交換", [=](Document &d) { swapLigands(d, id, indices[0], indices[1]); }, true);
     })->setToolTip("「サイト番号」に2つの番号（例: 1,3）を入れて、そのサイトの配位子を入れ替えます。");
-    section(f, "サイトの方向");
+    section(f, "サイトの方向", 0);
     auto *dx = number(f, "サイト方向 X"), *dy = number(f, "サイト方向 Y"), *dz = number(f, "サイト方向 Z", 1);
     button(f, "個別サイトXYZ方向を適用", [this, dx, dy, dz] {
         auto id = selectedCenter();
@@ -586,9 +611,10 @@ void MainWindow::buildCoordinationPanel() {
             true);
     });
     auto *info =
-        new QLabel("酸化数は構造準備の補助情報です。計算の全電荷・多重度は「電荷」で設定してください。");
+        new QLabel("酸化数は構造準備の補助情報です。計算の全電荷・多重度は「3 計算条件」で設定します。");
     info->setWordWrap(true);
-    f->addRow(info);
+    info->setProperty("caption", true);
+    pageCards.value(f)->insertWidget(pageCards.value(f)->count() - 1, info);
 }
 void MainWindow::addAmino(const QString &rid, bool n) {
     auto t = currentTemplate();
@@ -612,7 +638,7 @@ void MainWindow::buildResiduePanel() {
     section(f, "PDB・残基の認識");
     button(f, "PDBを読み込む…", [this] { open(); });
     button(f, "PDBの診断・修復…", [this] { pdbPreparation(); }, "preparePdb");
-    button(f, "構造・電荷を検査", [this] { showReport(); });
+    button(f, "構造を検査…", [this] { showReport(); });
     button(f, "結合グラフから残基を認識", [this] {
         edit("残基を認識", [](Document &d) { recognizeResidues(d); }, true);
     })->setEnabled(hasStereochemistryBackend());
@@ -660,7 +686,8 @@ void MainWindow::buildResiduePanel() {
                 true);
             view->keepInView();
         },
-        "buildSequence");
+        "buildSequence")
+        ->setProperty("primary", true);
     section(f, "残基の編集（パレットのアミノ酸を使用）");
     button(f, "選択C末端へ残基を追加", [this] { addAmino(selectedResidue(), false); });
     button(f, "選択N末端へ残基を追加", [this] { addAmino(selectedResidue(), true); });
@@ -741,7 +768,7 @@ void MainWindow::buildResiduePanel() {
         if (ok)
             edit("残基を登録", [=](Document &d) { registerResidue(d, ids, code.toUpper()); });
     });
-    button(f, "原子対応表をCSVで保存…", [this] {
+    button(f, "原子対応表をCSVで書き出す…", [this] {
         if (!resolveCandidate())
             return;
         QString p = QFileDialog::getSaveFileName(this, "対応表を保存", "atoms.csv", "CSV (*.csv)");
@@ -763,67 +790,88 @@ void MainWindow::buildResiduePanel() {
 }
 void MainWindow::buildChargePanel() {
     auto *f = panel("電荷");
-    chargeEditor = f->parentWidget();
-    section(f, "分子の全電荷・スピン");
-    auto *info = new QLabel("「3 計算条件」と共通で、変更するとすぐに反映します。"
-                            "外部点電荷は分子の全電荷に含めません。");
-    info->setWordWrap(true);
-    f->addRow(info);
-    totalCharge = new QSpinBox;
-    totalCharge->setObjectName("moleculeTotalCharge");
-    totalCharge->setRange(-1000, 1000);
-    totalCharge->setKeyboardTracking(false);
-    multiplicity = new QSpinBox;
-    multiplicity->setObjectName("moleculeMultiplicity");
-    multiplicity->setRange(1, 1000);
-    multiplicity->setKeyboardTracking(false);
-    f->addRow("計算の全電荷", totalCharge);
-    f->addRow("スピン多重度 (2S+1)", multiplicity);
-    // Like the same fields of "3 計算条件": each change is one undoable edit.
-    for (auto [box, key] : {std::pair{totalCharge, "charge"}, {multiplicity, "multiplicity"}})
-        connect(box, &QSpinBox::valueChanged, this, [this, key](int n) {
-            safe([&] {
-                if (doc.job()[key].toInt(QString(key) == "multiplicity" ? 1 : 0) != n)
-                    edit(QString(key) == "charge" ? "全電荷を変更" : "スピン多重度を変更",
-                         [=](Document &d) { d.setJobValue(key, n); });
-            });
-            refreshChargePanel(); // A rejected value shows the document's again.
-        });
-    button(
-        f, "形式電荷の合計を適用",
-        [this] { edit("全電荷を合わせる", [](Document &d) { d.setJobValue("charge", d.formalCharge()); }); },
-        "applyMoleculeFormalCharge");
+    chargeEditor = f->parentWidget()->parentWidget();
+    // The total charge and multiplicity are settings of "3 計算条件": here they are shown with the
+    // formal charges of the atoms and the electrons they give, with the way there.
+    section(f, "分子の電荷");
+    chargeState = new QLabel;
+    chargeState->setObjectName("moleculeChargeState");
+    auto *chargeLink = linkButton("③ 計算条件で変更", "moleculeChargeLink");
+    connect(chargeLink, &QPushButton::clicked, this, [this] {
+        workspaceTabs->setCurrentWidget(calculation);
+        calculation->showField("charge");
+    });
+    auto *chargeRow = new QWidget;
+    auto *chargeRowLayout = new QHBoxLayout(chargeRow);
+    chargeRowLayout->setContentsMargins(0, 0, 0, 0);
+    chargeRowLayout->setSpacing(10);
+    chargeRowLayout->addWidget(chargeState);
+    chargeRowLayout->addWidget(chargeLink);
+    chargeRowLayout->addStretch();
+    f->addRow("全電荷・多重度", chargeRow);
     chargeSummary = new QLabel;
     chargeSummary->setObjectName("moleculeChargeSummary");
     chargeSummary->setTextFormat(Qt::PlainText);
     chargeSummary->setWordWrap(true);
     f->addRow(chargeSummary);
-    button(f, "NWChem入力を確認", [this] { workspaceTabs->setCurrentIndex(5); }, "moleculeInputPreview");
+    inputState = new QLabel;
+    inputState->setObjectName("moleculeInputState");
+    inputState->setWordWrap(true);
+    f->addRow(inputState);
+    button(
+        f, "形式電荷の合計を全電荷に適用",
+        [this] { edit("全電荷を合わせる", [](Document &d) { d.setJobValue("charge", d.formalCharge()); }); },
+        "applyMoleculeFormalCharge")
+        ->setToolTip("原子の形式電荷の合計を、計算の全電荷（「3 計算条件」）にします。");
+    auto *preview = linkButton("⑥ 入力プレビューで確認", "moleculeInputPreview");
+    connect(preview, &QPushButton::clicked, this, [this] { workspaceTabs->setCurrentWidget(inputPreview); });
+    f->addRow(preview);
     section(f, "外部点電荷");
-    includePointCharges = new QCheckBox("外部点電荷をNWChem入力に含める");
-    includePointCharges->setObjectName("moleculeIncludePointCharges");
-    includePointCharges->setToolTip("点電荷の静電場を含めます。QM/MMの力場・結合相互作用は設定しません。");
-    f->addRow(includePointCharges);
-    connect(includePointCharges, &QCheckBox::toggled, this, [this](bool enabled) {
-        safe([&] {
-            edit("NWChem外部点電荷を変更", [=](Document &d) {
-                auto s = d.data["nwchem"].toObject();
-                s["include_point_charges"] = enabled;
-                d.data["nwchem"] = s;
-            });
-        });
-        refreshChargePanel();
+    pointChargeState = new QLabel;
+    pointChargeState->setObjectName("moleculePointChargeState");
+    auto *pointLink = linkButton("③ 計算条件で設定", "moleculePointChargeLink");
+    pointLink->setToolTip("点電荷をNWChem入力に含めるかは「3 計算条件」の「周囲の環境」で設定します。");
+    connect(pointLink, &QPushButton::clicked, this, [this] {
+        workspaceTabs->setCurrentWidget(calculation);
+        calculation->showField("include_point_charges");
     });
+    auto *pointRow = new QWidget;
+    auto *pointRowLayout = new QHBoxLayout(pointRow);
+    pointRowLayout->setContentsMargins(0, 0, 0, 0);
+    pointRowLayout->setSpacing(10);
+    pointRowLayout->addWidget(pointChargeState);
+    pointRowLayout->addWidget(pointLink);
+    pointRowLayout->addStretch();
+    f->addRow(pointRow);
     pointList = new QListWidget;
     pointList->setObjectName("pointChargeList");
-    pointList->setMaximumHeight(180);
+    pointList->setMaximumHeight(160);
     f->addRow(pointList);
-    for (int i = 0; i < 3; ++i) {
-        chargeFields[i] = number(f, QString("XYZ")[i] + QString(" / Å"));
-        chargeFields[i]->setObjectName(QString("pointCharge") + QString("XYZ")[i]);
+    // The position and charge two by two, under their names.
+    auto *fieldsBox = new QWidget;
+    auto *fieldGrid = new QGridLayout(fieldsBox);
+    fieldGrid->setContentsMargins(0, 0, 0, 0);
+    fieldGrid->setHorizontalSpacing(8);
+    fieldGrid->setVerticalSpacing(3);
+    const auto field = [](const QString &name) {
+        auto *n = new QDoubleSpinBox;
+        n->setObjectName(name);
+        n->setDecimals(5);
+        n->setRange(-10000, 10000);
+        n->setKeyboardTracking(false);
+        return n;
+    };
+    for (int i = 0; i < 4; ++i) {
+        auto *spin = i < 3 ? (chargeFields[i] = field(QString("pointCharge") + QString("XYZ")[i]))
+                           : (chargeValue = field("pointChargeValue"));
+        auto *label = new QLabel(i < 3 ? QString("XYZ")[i] + QString(" / Å") : QString("電荷 / e"));
+        label->setProperty("caption", true);
+        label->setBuddy(spin);
+        fieldGrid->addWidget(label, (i / 2) * 2, i % 2);
+        fieldGrid->addWidget(spin, (i / 2) * 2 + 1, i % 2);
     }
-    chargeValue = number(f, "電荷 / e", .5);
-    chargeValue->setObjectName("pointChargeValue");
+    chargeValue->setValue(.5);
+    f->addRow(fieldsBox);
     connect(pointList, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
         for (auto v : displayDocument().data["point_charges"].toArray()) {
             auto q = v.toObject();
@@ -850,7 +898,8 @@ void MainWindow::buildChargePanel() {
                 d.data["point_charges"] = charges;
             });
         },
-        "addPointCharge");
+        "addPointCharge")
+        ->setProperty("primary", true);
     button(
         f, "点電荷を更新",
         [this] {
@@ -895,10 +944,11 @@ void MainWindow::buildChargePanel() {
                    edit("水を点電荷へ変換", [=](Document &d) { waterToCharges(d, ids); }, true);
                }),
         1);
-    button(f, "点電荷をファイルへ保存…", [this] {
+    button(f, "点電荷をファイルに書き出す…", [this] {
         if (!resolveCandidate())
             return;
-        QString p = QFileDialog::getSaveFileName(this, "点電荷を保存", "charges.dat", "点電荷 (*.dat *.txt)");
+        QString p =
+            QFileDialog::getSaveFileName(this, "点電荷を書き出す", "charges.dat", "点電荷 (*.dat *.txt)");
         if (p.isEmpty())
             return;
         QString text = "# MolForma point charges; units=angstrom; x y z q\n";
@@ -916,11 +966,10 @@ void MainWindow::buildChargePanel() {
 }
 void MainWindow::refreshChargePanel() {
     const auto &d = displayDocument();
-    const QSignalBlocker blocker(includePointCharges), chargeBlocker(totalCharge),
-        multiplicityBlocker(multiplicity);
-    includePointCharges->setChecked(nwchemSettings(d)["include_point_charges"].toBool());
-    totalCharge->setValue(d.job()["charge"].toInt());
-    multiplicity->setValue(d.job()["multiplicity"].toInt(1));
+    chargeState->setText(
+        QString("%1 · 多重度 %2").arg(d.job()["charge"].toInt()).arg(d.job()["multiplicity"].toInt(1)));
+    pointChargeState->setText(nwchemSettings(d)["include_point_charges"].toBool() ? "NWChem入力に含める"
+                                                                                  : "NWChem入力に含めない");
     chargeEditor->setEnabled(!candidate && !worker);
     const auto check = validateNwchem(d);
     QStringList text{QString("形式電荷の合計 %1 · 電子数 %2%3")
@@ -928,7 +977,7 @@ void MainWindow::refreshChargePanel() {
                          .arg(check.electrons)
                          .arg(check.ecpElectrons ? "（ECP適用後）" : "")};
     if (check.errors.isEmpty())
-        text << QString("α %1 / β %2 · 入力を生成できます。").arg(check.alpha).arg(check.beta);
+        text << QString("α %1 / β %2").arg(check.alpha).arg(check.beta);
     for (const auto &error : check.errors)
         text << "エラー: " + error;
     for (const auto &warning : check.warnings)
@@ -938,6 +987,15 @@ void MainWindow::refreshChargePanel() {
     else if (worker)
         text.prepend("分子の整形中です。終了後に設定を変更できます。");
     chargeSummary->setText(text.join('\n'));
+    // The outcome of the checks as the cards of the settings tabs say it.
+    const bool ok = check.errors.isEmpty();
+    inputState->setText(ok ? QString("✓ 入力を生成できます")
+                           : QString("入力を生成できません（エラー %1 件）").arg(check.errors.size()));
+    if (inputState->property("good").toBool() != ok) {
+        inputState->setProperty("good", ok);
+        inputState->setProperty("bad", !ok);
+        repolish(inputState);
+    }
 }
 void MainWindow::pdbPreparation() {
     if (candidate)

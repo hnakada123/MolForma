@@ -297,10 +297,13 @@ class ExecutionTest : public QObject {
         QCOMPARE(nwchemSettings(w.document())["memory_mb"].toInt(), 256);
         w.history()->undo(); // Undo is the header's.
         QCOMPARE(w.document().toJson(), d.toJson());
+        // Runs start from the header (also F5); the checks of this tab say whether they can.
+        auto *checks = w.findChild<QLabel *>("executionCheckStatus");
         input(w, "omp_stacksize", "bad");
-        QVERIFY(!button(w, "executionStart")->isEnabled());
+        QVERIFY(checks->text().startsWith("実行できません"));
+        QVERIFY(!w.findChild<QLabel *>("executionStartHint")->isVisibleTo(&w));
         input(w, "omp_stacksize", "64M");
-        QVERIFY(button(w, "executionStart")->isEnabled());
+        QVERIFY(checks->text().startsWith("実行できます"));
         button(w, "executionAddEnvironment")->click();
         auto *table = w.findChild<QTableWidget *>("executionEnvironment");
         QCOMPARE(table->rowCount(), 2);
@@ -311,10 +314,11 @@ class ExecutionTest : public QObject {
             executionSettings(w.document())["environment"].toArray()[1].toObject()["value"].toString(),
             "a b");
         w.edit("candidate", [](Document &next) { next.atoms[1].position.x() += 0.2; }, true);
-        QVERIFY(!button(w, "executionStart")->isEnabled());
+        QVERIFY(checks->text().contains("完了待ち"));
         QVERIFY(!button(w, "executionPrepare")->isEnabled());
         w.cancelCandidate();
-        button(w, "executionStart")->click();
+        QVERIFY(!w.findChild<QPushButton *>("executionStart")); // Only the header's button runs.
+        w.findChild<QToolButton *>("runButton")->click();
         auto *run = w.findChild<NwchemRun *>("nwchemRun");
         QVERIFY(run);
         QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 5000);
@@ -332,8 +336,8 @@ class ExecutionTest : public QObject {
         auto *log = w.findChild<QPlainTextEdit *>("executionLog");
         QVERIFY(log->toPlainText().contains("log tail marker"));
         QVERIFY(log->toPlainText().size() < 132000);
-        QVERIFY(button(w, "executionStart")->isEnabled());
-        QVERIFY(!button(w, "executionStop")->isEnabled());
+        QVERIFY(checks->text().startsWith("実行できます"));
+        QVERIFY(!w.findChild<QToolButton *>("headerStop")->isVisibleTo(&w));
         button(w, "executionPrepare")->click();
         QVERIFY(w.findChild<QLabel *>("executionState")->text().contains("入力一式"));
     }
@@ -395,7 +399,7 @@ class ExecutionTest : public QObject {
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
         tabs->setCurrentIndex(4);
         QVERIFY(!w.findChild<QWidget *>("executionRunCard")->isVisibleTo(&w));
-        button(w, "executionStart")->click();
+        w.findChild<QToolButton *>("runButton")->click();
         auto *run = w.findChild<NwchemRun *>("nwchemRun");
         QVERIFY(run->active());
         // The header shows the run and offers to stop it instead of starting another.
@@ -502,7 +506,7 @@ class ExecutionTest : public QObject {
             if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()))
                 box->button(QMessageBox::Yes)->click();
         });
-        button(w, "executionStop")->click();
+        w.findChild<QToolButton *>("headerStop")->click();
         QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 10000);
         QCOMPARE(run->state(), "cancelled");
 #ifdef Q_OS_LINUX

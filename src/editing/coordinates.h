@@ -4,7 +4,9 @@
 namespace mf {
 inline constexpr double BohrToAngstrom = 0.529177210903;
 enum class CoordinateUnit { Angstrom, Bohr };
-enum class CoordinateColumn { Element, X, Y, Z, Mass, Ghost, Fixed };
+// Cells of the coordinate table; the atom attributes (formal charge, unpaired electrons, atom name)
+// come after the columns of the NWChem geometry.
+enum class CoordinateColumn { Element, X, Y, Z, Mass, Ghost, Fixed, Charge, Radical, Name };
 double coordinateScale(CoordinateUnit unit);
 QString coordinateText(const Atom &atom, CoordinateColumn column, CoordinateUnit unit);
 // Change only the requested cell; callers edit a document copy and validate before committing.

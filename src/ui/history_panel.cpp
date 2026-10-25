@@ -34,7 +34,7 @@ struct EnergyUnit {
 constexpr EnergyUnit energyUnits[]{{"kcal", "kcal/mol", 627.509474, 2},
                                    {"kj", "kJ/mol", 2625.499639, 2},
                                    {"ev", "eV", 27.211386245988, 4},
-                                   {"hartree", "Hartree", 1, 8}};
+                                   {"hartree", "Eh", 1, 8}};
 bool pending(const QString &s) {
     return s == "starting" || s == "running" || s == "stopping";
 }
@@ -171,10 +171,6 @@ QLabel *caption(const QString &text = {}) {
     label->setProperty("caption", true);
     label->setWordWrap(true);
     return label;
-}
-void repolish(QWidget *w) {
-    w->style()->unpolish(w);
-    w->style()->polish(w);
 }
 void setFlag(QWidget *w, const char *name, const QVariant &value) {
     if (w->property(name) == value)
@@ -370,7 +366,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     search->setPlaceholderText("計算名・手法・基底・組成・メモで検索");
     search->setClearButtonEnabled(true);
     search->addAction(lineIcon("search"), QLineEdit::LeadingPosition);
-    search->setFixedWidth(290);
+    search->setFixedWidth(280);
     tools->addWidget(search);
     filter = new QComboBox;
     filter->setObjectName("historyFilter");
@@ -411,11 +407,19 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     cancel->setEnabled(false);
     cancel->hide();
     tools->addWidget(cancel);
-    csv = new QPushButton("一覧をCSVで保存");
+    // What is seldom needed, so the toolbar stays one row.
+    auto *more = new QToolButton;
+    more->setObjectName("historyMore");
+    more->setText("…");
+    more->setToolTip("そのほかの操作");
+    more->setAccessibleName("そのほかの操作");
+    more->setPopupMode(QToolButton::InstantPopup);
+    auto *moreMenu = new QMenu(more);
+    csv = moreMenu->addAction(lineIcon("export"), "一覧をCSVで書き出す…");
     csv->setObjectName("historyCsv");
-    csv->setIcon(lineIcon("export"));
     csv->setToolTip("表示中の一覧を、絞り込みと並び順のままCSVに書き出します。");
-    tools->addWidget(csv);
+    more->setMenu(moreMenu);
+    tools->addWidget(more);
 
     // Jobs recorded as running whose process has ended.
     orphanBanner = new QFrame;
@@ -464,7 +468,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     table->setObjectName("historyTable");
     table->setColumnCount(ColumnCount);
     table->setHeaderLabels(
-        {"状態", "計算名 / 組成", "手法 / 基底", "目的", "作成", "所要", "計算のE / Hartree", "ΔE", "メモ"});
+        {"状態", "計算名 / 組成", "手法 / 基底", "目的", "作成", "所要", "計算のE / Eh", "ΔE", "メモ"});
     table->setRootIsDecorated(false);
     table->setIndentation(0);
     table->setItemsExpandable(false);
@@ -534,20 +538,11 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     follow->setChecked(true);
     follow->setToolTip("表示中は1秒ごとにログの末尾（128 KiB）を読み直し、最後の行を表示します。");
     filesCard->header()->addWidget(follow);
-    copyFile = new QToolButton;
-    copyFile->setObjectName("historyCopyFile");
-    copyFile->setIcon(lineIcon("copy"));
-    copyFile->setProperty("flat", true);
-    copyFile->setToolTip("表示中のファイルをコピー");
+    copyFile = copyButton("historyCopyFile", "表示中のファイルをコピー");
     filesCard->header()->addWidget(copyFile);
     fileStack = new QStackedWidget;
     const auto pane = [&](const QString &name) {
-        auto *p = new QPlainTextEdit;
-        p->setObjectName(name);
-        p->setReadOnly(true);
-        p->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-        p->setLineWrapMode(QPlainTextEdit::NoWrap);
-        p->setProperty("file", true);
+        auto *p = logView(name);
         fileStack->addWidget(p);
         return p;
     };
@@ -822,9 +817,9 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
         refreshButton->setEnabled(true);
         status->setText("読込を中止しました。前の一覧を表示しています。");
     });
-    connect(csv, &QPushButton::clicked, this, [this] {
+    connect(csv, &QAction::triggered, this, [this] {
         auto p =
-            QFileDialog::getSaveFileName(this, "表示中の一覧を保存", "nwchem-history.csv", "CSV (*.csv)");
+            QFileDialog::getSaveFileName(this, "表示中の一覧を書き出す", "nwchem-history.csv", "CSV (*.csv)");
         if (!p.isEmpty())
             window->safe([&] {
                 if (QFileInfo(p).suffix().isEmpty())
@@ -938,8 +933,18 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     const auto saved = window->settings.value("history/root").toString();
     followsExecution = saved.isEmpty();
     root = saved;
-    setFilesOpen(window->settings.value("history/files_open", true).toBool(), false);
+    // The files are opened when wanted: the list first.
+    setFilesOpen(window->settings.value("history/files_open", false).toBool(), false);
     updateActions();
+}
+void HistoryPanel::fitDetail() {
+    // A narrow window gives the list the room of an empty detail column.
+    if (auto *scroll = findChild<QWidget *>("historyDetailScroll"))
+        scroll->setVisible(width() >= 1250 || selectedEntry());
+}
+void HistoryPanel::resizeEvent(QResizeEvent *event) {
+    QWidget::resizeEvent(event);
+    fitDetail();
 }
 void HistoryPanel::showEvent(QShowEvent *event) {
     QWidget::showEvent(event);
@@ -1362,6 +1367,7 @@ void HistoryPanel::showDetails() {
     }
     detailEmpty->setVisible(!e);
     detail->setVisible(e != nullptr);
+    fitDetail();
     if (!e) {
         memoDirectory.clear();
         for (auto *p : {input, output, errors, record})
@@ -1442,7 +1448,7 @@ void HistoryPanel::showEnergy(const HistoryEntry &e, bool owned) {
     if (!comparing) {
         energyCaption->setText("計算のE（" + energySource(e) + "）");
         energyValue->setText(e.energy ? hartree(*e.energy, 10) : QString("—"));
-        energySuffix->setText(e.energy ? "Hartree · " + e.energyMethod : QString());
+        energySuffix->setText(e.energy ? "Eh · " + e.energyMethod : QString());
         energyNote->setText(e.energy ? e.manifest["summary"].toObject()["energy"].isDouble()
                                            ? "最後のtaskの値です。収束の保証ではありません。"
                                            : "ログ末尾128 KiB内の最後の値です。収束の保証ではありません。"
@@ -1518,7 +1524,7 @@ void HistoryPanel::showFacts(const HistoryEntry &e, bool owned) {
         add(key, name, label);
     };
     const auto energy = [](const HistoryEntry &x) {
-        return x.energy ? hartree(*x.energy, 10) + " Hartree（" + x.energyMethod + "）" : QString("—");
+        return x.energy ? hartree(*x.energy, 10) + " Eh（" + x.energyMethod + "）" : QString("—");
     };
     if (comparing) {
         const auto *base = entry(reference);
@@ -1791,6 +1797,10 @@ void HistoryPanel::applyChromeStyle() {
                                         color: @text; }
         QToolButton#historyRootButton:hover { background: @hover; }
         QToolButton#historyRootButton::menu-indicator { subcontrol-position: right center; right: 6px; }
+        QToolButton#historyMore { border: 1px solid @line; border-radius: 6px; padding: 4px 10px; background: @base;
+                                  color: @text; font-weight: bold; }
+        QToolButton#historyMore:hover { background: @hover; }
+        QToolButton#historyMore::menu-indicator { width: 0; }
         QPushButton#historyCompare:checked { background: @tint; border-color: @accent; color: @accentText;
                                              font-weight: bold; }
         QTreeWidget#historyTable { background: @base; border: none; border-top-left-radius: 9px;
@@ -1802,7 +1812,6 @@ void HistoryPanel::applyChromeStyle() {
                                                         border-bottom: 1px solid @line; padding: 6px 8px; }
         QFrame#historyListFooter { background: @window; border: none; border-top: 1px solid @line;
                                    border-bottom-left-radius: 9px; border-bottom-right-radius: 9px; }
-        QPlainTextEdit[file="true"] { background: @window; border: 1px solid @line; border-radius: 6px; }
         QLabel#historyDetailTitle { font-size: 18px; font-weight: bold; }
         QLabel#historyDetailState { border-radius: 10px; padding: 2px 9px; font-weight: bold; }
         QLabel#historyDetailState[pill="running"] { background: @tint; color: @accentText; }

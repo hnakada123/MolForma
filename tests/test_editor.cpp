@@ -648,7 +648,8 @@ class EditorTest : public QObject {
                           QPoint(rowRect.left() + 30, rowRect.center().y()));
         QVERIFY(w.findChild<QToolButton *>("tool_place")->isChecked());
         QCOMPARE(w.findChild<QComboBox *>("elementSelector")->currentData().toString(), QString("Zn"));
-        QCOMPARE(w.findChild<QTabWidget *>("propertyTabs")->currentIndex(), 1);
+        auto *properties = w.findChild<QTabWidget *>("propertyTabs");
+        QCOMPARE(properties->tabText(properties->currentIndex()), QString("配位"));
         QVERIFY(w.document().atoms.isEmpty());
         QCOMPARE(w.history()->count(), 0);
         QTest::mouseClick(w.canvas(), Qt::LeftButton, Qt::NoModifier, w.canvas()->rect().center());
@@ -756,7 +757,8 @@ class EditorTest : public QObject {
         w.loadDocument(Document());
         w.show();
         auto *tabs = w.findChild<QTabWidget *>("propertyTabs");
-        tabs->setCurrentIndex(2);
+        w.findChild<QToolButton *>("propertyPage_4")->click(); // The segments over the pages.
+        QCOMPARE(tabs->tabText(tabs->currentIndex()), QString("残基"));
         auto *input = w.findChild<QLineEdit *>("sequenceInput");
         input->setText("AGS");
         auto *build = w.findChild<QPushButton *>("buildSequence");
@@ -797,7 +799,10 @@ class EditorTest : public QObject {
         QStringList names;
         for (int i = 0; i < tabs->count(); ++i)
             names << tabs->tabText(i);
-        QCOMPARE(names, QStringList({"編集", "配位", "残基", "電荷"}));
+        // One level of pages, chosen with segments (no tabs in tabs).
+        QCOMPARE(names, QStringList({"編集", "変形", "属性", "配位", "残基", "電荷"}));
+        QVERIFY(!tabs->tabBar()->isVisibleTo(&w));
+        QCOMPARE(tabs->findChildren<QTabWidget *>().size(), 0);
         for (auto *b : tabs->findChildren<QPushButton *>()) {
             QVERIFY(!b->text().contains("FMO"));
             QVERIFY(!b->text().contains("QM/MM"));
@@ -808,9 +813,9 @@ class EditorTest : public QObject {
         QCOMPARE(color->count(), 2);
         QVERIFY(w.findChild<QPushButton *>("preparePdb"));
 
-        auto *optimize = w.findChild<QPushButton *>("setNwchemOptimization");
-        QVERIFY(optimize);
-        optimize->click();
+        // The task is set in "3 計算条件" only.
+        QVERIFY(!w.findChild<QPushButton *>("setNwchemOptimization"));
+        w.findChild<QToolButton *>("nwchem_task_optimize")->click();
         QVERIFY(nwchemInput(w.document()).endsWith("task scf optimize\n"));
         QCOMPARE(w.document().job(), d.job());
         QCOMPARE(w.findChild<QComboBox *>("nwchem_task")->currentData().toString(), "optimize");
@@ -854,39 +859,42 @@ class EditorTest : public QObject {
         MainWindow w;
         auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");
         w.loadDocument(d);
-        auto *charge = w.findChild<QSpinBox *>("moleculeTotalCharge");
-        auto *mult = w.findChild<QSpinBox *>("moleculeMultiplicity");
+        // The charge and multiplicity are set in "3 計算条件" and shown on the charge page.
+        QVERIFY(!w.findChild<QSpinBox *>("moleculeTotalCharge"));
+        auto *charge = w.findChild<QSpinBox *>("nwchem_charge");
+        auto *mult = w.findChild<QSpinBox *>("nwchem_multiplicity");
+        auto *state = w.findChild<QLabel *>("moleculeChargeState");
         auto *summary = w.findChild<QLabel *>("moleculeChargeSummary");
-        QVERIFY(charge && mult && summary);
-        // Like "3 計算条件", each value applies at once as its own undoable edit.
+        auto *input = w.findChild<QLabel *>("moleculeInputState");
+        QVERIFY(charge && mult && state && summary && input);
+        QCOMPARE(state->text(), QString("0 · 多重度 1"));
         charge->setValue(1);
         QCOMPARE(w.document().job()["charge"].toInt(), 1);
+        QCOMPARE(state->text(), QString("1 · 多重度 1"));
         QVERIFY(summary->text().contains("整合しません"));
+        QVERIFY(input->text().contains("生成できません"));
         QVERIFY(w.findChild<QLabel *>("calculationStatus")->text().contains("生成できません"));
         mult->setValue(2);
         QVERIFY(summary->text().contains("電子数 9"));
         QVERIFY(summary->text().contains("α 5 / β 4"));
+        QVERIFY(input->text().contains("入力を生成できます"));
         QVERIFY(nwchemInput(w.document()).contains("charge 1\n"));
         QVERIFY(nwchemInput(w.document()).contains("nopen 1\n"));
-        QCOMPARE(w.findChild<QSpinBox *>("nwchem_charge")->value(), 1);
-        QCOMPARE(w.findChild<QSpinBox *>("nwchem_multiplicity")->value(), 2);
         w.history()->undo();
-        QCOMPARE(mult->value(), 1);
+        QCOMPARE(state->text(), QString("1 · 多重度 1"));
         w.history()->undo();
-        QCOMPARE(charge->value(), 0);
-        w.history()->redo();
-        w.history()->redo();
-        w.findChild<QSpinBox *>("nwchem_charge")->setValue(0);
-        w.findChild<QSpinBox *>("nwchem_multiplicity")->setValue(1);
-        QCOMPARE(charge->value(), 0);
-        QCOMPARE(mult->value(), 1);
+        QCOMPARE(state->text(), QString("0 · 多重度 1"));
+        // The link leads to the fields of "3 計算条件".
+        w.findChild<QPushButton *>("moleculeChargeLink")->click();
+        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 2);
+        auto *page = w.findChild<QPushButton *>("applyMoleculeFormalCharge");
         w.edit("candidate", [](Document &next) { next.setJobValue("charge", 2); }, true);
-        QVERIFY(!charge->isEnabled());
-        QCOMPARE(charge->value(), 2);
+        QVERIFY(!page->isEnabled());
+        QCOMPARE(state->text(), QString("2 · 多重度 1"));
         QVERIFY(summary->text().contains("未確定候補"));
         w.cancelCandidate();
-        QVERIFY(charge->isEnabled());
-        QCOMPARE(charge->value(), 0);
+        QVERIFY(page->isEnabled());
+        QCOMPARE(state->text(), QString("0 · 多重度 1"));
 
         // ECP electrons and ghost centers use the same validation as the input generator.
         d = Document::fromXyz("2\nRb ghost\nRb 0 0 0\nH 0 0 3\n");
@@ -895,7 +903,7 @@ class EditorTest : public QObject {
         d.data["nwchem"] = QJsonObject{{"basis", "def2-svp"}};
         w.loadDocument(d);
         w.findChild<QPushButton *>("applyMoleculeFormalCharge")->click();
-        QCOMPARE(charge->value(), 1);
+        QCOMPARE(w.document().job()["charge"].toInt(), 1);
         QVERIFY(summary->text().contains("電子数 8（ECP適用後）"));
         QVERIFY(summary->text().contains("α 4 / β 4"));
         QVERIFY(validateNwchem(w.document()).errors.isEmpty());
@@ -912,19 +920,21 @@ class EditorTest : public QObject {
         d.data["nwchem"] = QJsonObject{{"geometry_units", "bohr"}, {"future_setting", 42}};
         w.loadDocument(d);
         const auto original = w.document().project();
-        auto *enabled = w.findChild<QCheckBox *>("moleculeIncludePointCharges");
+        // Whether the input includes the charges is set in "3 計算条件", and shown here.
+        QVERIFY(!w.findChild<QCheckBox *>("moleculeIncludePointCharges"));
+        auto *enabled = w.findChild<QLabel *>("moleculePointChargeState");
         auto *calculation = w.findChild<QCheckBox *>("nwchem_include_point_charges");
         auto *x = w.findChild<QDoubleSpinBox *>("pointChargeX");
         auto *q = w.findChild<QDoubleSpinBox *>("pointChargeValue");
         QVERIFY(enabled && calculation && x && q);
-        QVERIFY(!enabled->isChecked()); // The legacy QM/MM flag is not an NWChem switch.
+        QCOMPARE(enabled->text(), QString("NWChem入力に含めない")); // A legacy QM/MM flag is no switch.
         x->setValue(5);
         q->setValue(-.5);
         w.findChild<QPushButton *>("addPointCharge")->click();
         QCOMPARE(w.document().data["point_charges"].toArray().size(), 1);
         QVERIFY(!nwchemInput(w.document()).contains("\nbq units"));
-        enabled->click();
-        QVERIFY(calculation->isChecked());
+        calculation->click();
+        QCOMPARE(enabled->text(), QString("NWChem入力に含める"));
         QVERIFY(nwchemInput(w.document()).contains("\nbq units angstrom\n"));
         QVERIFY(nwchemInput(w.document()).contains("5 0 0 -0.5"));
         QCOMPARE(validateNwchem(w.document()).electrons, 10);
@@ -933,14 +943,12 @@ class EditorTest : public QObject {
         QCOMPARE(w.document().data["assignments"], d.data["assignments"]);
         QCOMPARE(w.document().data["nwchem"].toObject()["future_setting"].toInt(), 42);
         w.history()->undo();
-        QVERIFY(!enabled->isChecked());
+        QCOMPARE(enabled->text(), QString("NWChem入力に含めない"));
         QVERIFY(!calculation->isChecked());
         w.history()->redo();
-        QVERIFY(enabled->isChecked());
-        calculation->click();
-        QVERIFY(!enabled->isChecked());
-        w.history()->undo();
-        QVERIFY(enabled->isChecked());
+        QCOMPARE(enabled->text(), QString("NWChem入力に含める"));
+        w.findChild<QPushButton *>("moleculePointChargeLink")->click();
+        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 2);
 
         auto *list = w.findChild<QListWidget *>("pointChargeList");
         list->setCurrentRow(0);
@@ -956,9 +964,9 @@ class EditorTest : public QObject {
         w.history()->undo();
         QVERIFY(nwchemInput(w.document()).contains("6 0 0 0.25"));
         w.edit("candidate", [](Document &next) { next.data["point_charges"] = QJsonArray(); }, true);
-        QVERIFY(!enabled->isEnabled());
+        QVERIFY(!x->isEnabled());
         w.cancelCandidate();
-        QVERIFY(enabled->isEnabled());
+        QVERIFY(x->isEnabled());
 
         QTemporaryDir dir;
         const auto path = dir.filePath("legacy.kgui.json");

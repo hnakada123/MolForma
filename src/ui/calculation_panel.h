@@ -18,10 +18,12 @@ class QToolButton;
 class QTreeWidget;
 namespace mf {
 class MainWindow;
+class CalculationSummary;
 class ChoiceButtons;
 class DiagnosticsList;
 class NavList;
 class SettingsCard;
+class StatusCard;
 // "3 計算条件": the sections of the form in a list at the left, the form as cards in the middle, and
 // at the right the calculation in brief, the checks of the input and the settings changed from the
 // defaults (each with its own reset).
@@ -65,11 +67,14 @@ class CalculationPanel : public QWidget {
     QVector<Section> sections;
     QList<ChoiceButtons *> choices;
     NavList *nav;
-    QPushButton *presetButton, *storeButton, *changedOnly;
+    QPushButton *presetButton, *storeButton, *resetAll;
+    QComboBox *changeFilter; // All rows or the changed ones, behind its segments.
+    ChoiceButtons *changeFilters;
     QMenu *presetMenu;
-    QFrame *banner, *validationCard;
-    QLabel *message, *status, *summaryTitle, *summaryTask, *summaryFormula, *summaryElectrons, *summaryCharge,
-        *summaryMemory, *changeCount, *noChanges, *reference;
+    QFrame *banner;
+    CalculationSummary *summaryCard;
+    StatusCard *validationCard;
+    QLabel *message, *changeCount, *noChanges, *reference;
     DiagnosticsList *validation;
     QTreeWidget *changes;
     QPushButton *advancedChanges, *formalCharge;
@@ -80,7 +85,9 @@ class CalculationPanel : public QWidget {
     QTableWidget *elementBases;    // Per-element library basis for the elements of the molecule.
     QTableWidget *constraints;     // Internal-coordinate constraints (ZCOORD) of optimizations.
     QLabel *scanCoordinate, *monomers;
-    QCheckBox *moldenOutput; // The MOLDEN file of "4 詳細設定", for the orbital shapes in the viewer.
+    // Settings of other tabs, shown with a link there: the MOLDEN and CUBE files ("4 詳細設定")
+    // and the memory ("5 実行設定").
+    QLabel *moldenState, *memoryState;
     QPlainTextEdit *extraInput, *extraTasks;
     QString appliedExtra[2]; // Stored additional input last shown, so typing is not overwritten.
     QJsonArray userPresets;
@@ -110,7 +117,10 @@ class CalculationPanel : public QWidget {
     void setScanCoordinate();
     // Settings that differ from the defaults, in the order of the form.
     QStringList changedKeys(const QJsonObject &settings) const;
-    void reset(const QStringList &keys);
+    // name: of the edit in the undo history (else from the keys).
+    void reset(const QStringList &keys, const QString &name = {});
+    bool changedOnly() const;
+    QWidget *readOnlyRow(QLabel *value, QPushButton *link);
     void showSection(const QString &key);
     void followScroll();
     QMap<QString, QString> fixes(const QStringList &errors) const;

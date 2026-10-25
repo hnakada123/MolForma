@@ -8,13 +8,18 @@
 #include <QPalette>
 #include <QToolButton>
 #include <QVector>
+#include <functional>
 #include <utility>
 class QButtonGroup;
 class QComboBox;
 class QGridLayout;
 class QHBoxLayout;
+class QPlainTextEdit;
+class QPushButton;
 class QVBoxLayout;
 namespace mf {
+struct Document;
+class MoleculeView;
 // Colors of the editor chrome (header, tool rail, option bar, overlays): MolForma's own accent, and
 // the rest derived from the widget palette so that light and dark themes both stay readable.
 // accentText keeps 4.5:1 on tint.
@@ -28,9 +33,10 @@ struct ChromeColors {
 // "@window", "@text", "@muted", "@line", "@hover", "@segment", "@tint", "@onAccent", "@accentHover",
 // "@candidate…", "@good", "@goodTint", "@error" and "@badTint".
 QString chromeRules(QString rules, const QPalette &palette);
-// The rules shared by the settings tabs (3 計算条件 … 6 入力プレビュー), as tokens for chromeRules():
-// the toolbar and banner rows, cards, segmented controls and chips (ChoiceButtons), buttons (with
-// the properties primary, danger, link and flat), search fields and status texts.
+// The rules shared by every tab, as tokens for chromeRules(): the toolbar and banner rows, cards
+// (with their states), segmented controls and chips (ChoiceButtons), buttons (with the properties
+// primary, danger, link and flat), search fields, status texts, tabs with an underline (a QTabWidget
+// with the property tabs="underline"), plain tables (plain=true) and logs (log=true).
 QString settingsRules();
 // Stroked icons on a 24×24 grid ("select", "move", "undo", "lock", "copy", …), in the palette's text color,
 // the accent when checked and the disabled color when off, or always in `color` if given. "play", "pause",
@@ -127,12 +133,93 @@ class SettingsCard : public QFrame {
     QLabel *titleLabel() const {
         return heading;
     }
+    // An arrow before the title that shows and hides the contents (for what is seldom needed).
+    void setCollapsible(bool open);
 
   private:
     QHBoxLayout *head;
     QVBoxLayout *content;
+    QWidget *contents;
     QLabel *heading;
 };
+
+// The outcome of a tab's checks, the same card in "3 計算条件" … "6 入力プレビュー": an icon and a
+// headline in the color of the outcome over the details, and optionally "再検査".
+class StatusCard : public SettingsCard {
+  public:
+    enum State { Ok, Warning, Error, Waiting };
+    explicit StatusCard(QWidget *parent = nullptr);
+    void setState(State state, const QString &headline);
+    QLabel *headline() const {
+        return text;
+    }
+    // "再検査": for checks of what can change outside MolForma (files, programs).
+    QPushButton *addRecheck(const QString &objectName, const QString &toolTip);
+
+  private:
+    QLabel *icon, *text;
+    State current = Waiting;
+};
+
+// A link to another place ("⑤ 実行設定で変更"), with an arrow after the text.
+QPushButton *linkButton(const QString &text, const QString &objectName = {});
+// "3 計算条件" as the steps of the header write it, with the number in a circle ("③ 計算条件").
+QString tabName(int index);
+// Read-only text of a log or file: fixed-width, not wrapped, in the frame of the logs.
+QPlainTextEdit *logView(const QString &objectName);
+// A flat button with the copy icon.
+QToolButton *copyButton(const QString &objectName, const QString &toolTip);
+// Applies style rules that depend on a dynamic property ("state", "pill") again.
+void repolish(QWidget *widget);
+
+// The calculation in brief, the same card at the top of the right column of "3 計算条件" and
+// "6 入力プレビュー": method / basis, the task, then composition, electrons, charge and memory.
+// The memory is set in "5 実行設定": its row links there (openLink receives "tab:4").
+class CalculationSummary : public SettingsCard {
+  public:
+    // prefix: of the object names ("calculation" → calculationSummary, calculationSummaryTask, …).
+    CalculationSummary(const QString &prefix, const QString &caption,
+                       const std::function<void(const QString &)> &openLink, QWidget *parent = nullptr);
+    void update(const Document &document);
+
+  private:
+    QLabel *title, *task, *formula, *electrons, *charge, *memory;
+};
+// "HF / STO-3G · 一点エネルギー" (and the solvent): the one line of the calculation in "4 詳細設定"
+// and "5 実行設定".
+QString calculationBrief(const Document &document);
+
+// The controls of a 3D view, the same over every view: +X/+Y/+Z (that axis toward the viewer, the
+// whole molecule shown), "全体を表示" (the whole molecule without turning it), "回転" (sliders for
+// the angles, following the mouse) and a "表示" menu. Object names of the parts come from names.
+class ViewControls : public QFrame {
+  public:
+    struct Names {
+        QString axes[3], fit, rotate, menu, popup, sliders[3];
+    };
+    // rotate / menu false: without those buttons (the coordinate table's small view).
+    ViewControls(MoleculeView *view, const Names &names, bool rotate = true, bool menu = true,
+                 QWidget *parent = nullptr);
+    QToolButton *fitButton() const {
+        return fit;
+    }
+    QToolButton *menuButton() const {
+        return display;
+    }
+    // Buttons and sliders, for callers that enable them together.
+    QList<QWidget *> controls() const {
+        return parts;
+    }
+    void applyStyle(const QPalette &palette);
+
+  private:
+    MoleculeView *view;
+    QToolButton *fit, *rotation = nullptr, *display = nullptr;
+    QFrame *popup = nullptr;
+    QList<QWidget *> parts;
+};
+// The mouse controls of a 3D view, the hint under every view.
+QString viewControlsHint();
 
 // One line of text, shortened with "…" when narrower than the text (the full text in toolTip).
 class ElidedLabel : public QLabel {

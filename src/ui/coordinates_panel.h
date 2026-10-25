@@ -18,6 +18,7 @@ class QToolButton;
 namespace mf {
 class MainWindow;
 class MoleculeView;
+class ViewControls;
 // Cells of the coordinate table. The atom cell holds the element and shows the atom as the 3D view
 // labels it ("C14"), with a lock when the atom is fixed. Coordinates read at a glance with six
 // decimals, right aligned; editing a cell shows and keeps the full value, so an unchanged cell
@@ -43,6 +44,8 @@ class CoordinatesPanel : public QWidget {
     explicit CoordinatesPanel(MainWindow *window);
     void refresh();
     void refreshSelection();
+    // Shows the columns of the atom attributes (formal charge, unpaired electrons, atom name).
+    void showAttributes();
     void previewStructure(const Document &structure);
     // Reads a structure file into a replacement candidate, asking for the PDB MODEL and ALTLOC.
     void importPath(const QString &path);
@@ -57,7 +60,8 @@ class CoordinatesPanel : public QWidget {
     QTableWidget *table;
     QStackedWidget *tablePages;
     QFrame *selectionBar;
-    QComboBox *units, *outputUnits;
+    QComboBox *units;
+    QLabel *outputUnit; // The unit of the input, a setting of "3 計算条件".
     QLineEdit *filter;
     QLabel *message, *selectionHint, *selectionTitle, *moreAtoms, *measurement, *compareNote, *count,
         *previewLabel, *xyzNote, *exportNote;
@@ -66,7 +70,9 @@ class CoordinatesPanel : public QWidget {
     QWidget *unitRow, *viewCandidate;
     QPlainTextEdit *preview;
     MoleculeView *view;
-    QPushButton *originButton, *fixButton, *ghostButton, *copyButton, *saveButton, *xyzCopy, *xyzSave;
+    QPushButton *originButton, *fixButton, *ghostButton, *copyButton, *saveButton, *xyzCopy, *xyzSave,
+        *attributes;
+    ViewControls *viewControls;
     QToolButton *showAll, *showChanged, *xyzFormat;
     QList<QWidget *> editControls;
     // Icons of the atom cells by element ("@C" for a ghost), and of the change column ("#added").

@@ -77,16 +77,32 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     search->setPlaceholderText("設定を検索（計算条件と「4 詳細設定」）");
     search->setClearButtonEnabled(true);
     search->addAction(lineIcon("search"), QLineEdit::LeadingPosition);
-    search->setFixedWidth(300);
+    search->setFixedWidth(280);
     tools->addWidget(search);
-    changedOnly = new QPushButton("変更した項目のみ");
-    changedOnly->setObjectName("calculationChangedOnly");
-    changedOnly->setCheckable(true);
-    changedOnly->setToolTip("既定値から変更した設定の行だけを表示します。");
-    tools->addWidget(changedOnly);
-    connect(changedOnly, &QPushButton::toggled, this, [this] {
+    // As in "4 詳細設定": all rows or the changed ones, and the reset of everything.
+    changeFilter = new QComboBox;
+    changeFilter->setObjectName("calculationChangeFilter");
+    changeFilter->addItem("すべての項目", "all");
+    changeFilter->addItem("既定から変更した項目のみ", "changed");
+    changeFilters = new ChoiceButtons(changeFilter, ChoiceButtons::Segments, {"すべて", "変更済み"});
+    changeFilters->setObjectName("calculationChangeFilters");
+    tools->addWidget(changeFilters);
+    connect(changeFilter, &QComboBox::currentIndexChanged, this, [this] {
         filterRows();
         followScroll();
+    });
+    resetAll = new QPushButton("すべて既定へ");
+    resetAll->setObjectName("calculationResetAll");
+    resetAll->setIcon(lineIcon("reset"));
+    resetAll->setToolTip("この画面の条件を既定に戻します（計算名・タイトル・座標の単位・追加入力と、電荷・"
+                         "多重度は保持）。「元に戻す」で戻せます。");
+    tools->addWidget(resetAll);
+    connect(resetAll, &QPushButton::clicked, this, [this] {
+        QStringList keys;
+        for (const auto &key : changedKeys(nwchemSettings(window->document())))
+            if (!QStringList{"start", "title", "geometry_units"}.contains(key))
+                keys << key;
+        reset(keys, "計算条件をすべて既定に戻す");
     });
 
     // A pending candidate or a running worker: the form waits.
@@ -327,23 +343,17 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     connect(dielectric, &QDoubleSpinBox::valueChanged, this, [this](double n) { change("dielectric", n); });
     flag(environment, "「1 分子」の外部点電荷を含める", "include_point_charges");
 
+    // Set in "4 詳細設定" with the CUBE files: here what is set, and the way there.
     auto *orbitalFiles = group("orbitals", "軌道ファイル");
-    moldenOutput = new QCheckBox("計算後に分子軌道をMOLDENファイルに出力");
-    moldenOutput->setObjectName("calculationMoldenOutput");
-    moldenOutput->setToolTip("「結果ビューア」の「軌道」で分子軌道の形を表示できます。"
-                             "「4 詳細設定」の「MOLDENファイルを出力」と同じ設定です。");
-    orbitalFiles->addRow(QString(), moldenOutput);
-    connect(moldenOutput, &QCheckBox::toggled, this, [this](bool on) {
-        if (busy || !editable())
-            return;
-        window->safe([&] {
-            window->edit("MOLDEN出力を変更", [&](Document &d) {
-                setNwchemAdvanced(d, "molden_output", on ? QJsonValue(true) : QJsonValue::Undefined);
-            });
-        });
-    });
+    moldenState = new QLabel;
+    moldenState->setObjectName("calculationMoldenState");
+    auto *moldenLink = linkButton("④ 詳細設定で設定", "calculationMoldenLink");
+    moldenLink->setToolTip("「4 詳細設定」の「可視化ファイル出力（CUBE / MOLDEN）」を表示します。");
+    connect(moldenLink, &QPushButton::clicked, this,
+            [this] { window->advanced->showGroup("visualization"); });
+    orbitalFiles->addRow("MOLDEN・CUBE", readOnlyRow(moldenState, moldenLink));
     help(orbitalFiles,
-         "電子密度・軌道の格子データ（CUBE）は「4 詳細設定」の「可視化ファイル出力」で設定します。");
+         "分子軌道の形を「結果ビューア」の「軌道」で表示するには、MOLDENファイルの出力をオンにします。");
 
     auto *output = group("output", "入力ファイル");
     for (const auto &key : {"start", "title"}) {
@@ -353,7 +363,16 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
         addRow(output, key, QString(key) == "start" ? "計算名（英数字）" : "タイトル", line);
         connect(line, &QLineEdit::editingFinished, this, [this, line, key] { change(key, line->text()); });
     }
-    integer(output, "メモリ（MB / MPIプロセス）", "memory_mb", 64, 1048576);
+    // The memory is set in "5 実行設定" with the processes it is multiplied by.
+    memoryState = new QLabel;
+    memoryState->setObjectName("calculationMemoryState");
+    auto *memoryLink = linkButton("⑤ 実行設定で変更", "calculationMemoryLink");
+    connect(memoryLink, &QPushButton::clicked, this, [this] { showField("memory_mb"); });
+    auto *memoryRow = readOnlyRow(memoryState, memoryLink);
+    output->addRow("メモリ", memoryRow);
+    rows["memory_mb"] = memoryRow;
+    rowKeys[memoryRow] = "memory_mb";
+    sectionOf["memory_mb"] = "output";
     choice(output, "座標の出力単位", "geometry_units");
 
     auto *extra = group("extra", "追加入力（上級者向け）");
@@ -403,42 +422,16 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     railLayout->setContentsMargins(0, 16, 16, 16);
     railLayout->setSpacing(12);
     body->addWidget(rail);
-    auto *summaryCard = new SettingsCard({});
-    summaryCard->setObjectName("calculationSummaryCard");
-    summaryCard->body()->setSpacing(4);
-    summaryCard->body()->addWidget(caption("この計算"));
-    summaryTitle = new QLabel;
-    summaryTitle->setObjectName("calculationSummary");
-    summaryTitle->setProperty("cardTitle", true);
-    summaryTitle->setWordWrap(true);
-    summaryCard->body()->addWidget(summaryTitle);
-    summaryTask = new QLabel;
-    summaryTask->setObjectName("calculationSummaryTask");
-    summaryTask->setWordWrap(true);
-    summaryCard->body()->addWidget(summaryTask);
-    auto *facts = new QFormLayout;
-    facts->setContentsMargins(0, 6, 0, 0);
-    facts->setHorizontalSpacing(14);
-    facts->setVerticalSpacing(3);
-    for (const auto &[name, label] : {std::pair{"組成", &summaryFormula},
-                                      {"電子数", &summaryElectrons},
-                                      {"電荷・多重度", &summaryCharge},
-                                      {"メモリ", &summaryMemory}}) {
-        *label = new QLabel;
-        (*label)->setWordWrap(true);
-        auto *term = new QLabel(name);
-        term->setProperty("muted", true);
-        facts->addRow(term, *label);
-    }
-    summaryCard->body()->addLayout(facts);
+    summaryCard = new CalculationSummary("calculation", "この計算", [this](const QString &link) {
+        if (link == "tab:4")
+            showField("memory_mb");
+    });
     railLayout->addWidget(summaryCard);
 
-    validationCard = new SettingsCard({});
+    validationCard = new StatusCard;
     validationCard->setObjectName("calculationCheck");
-    auto *checkLayout = static_cast<SettingsCard *>(validationCard)->body();
-    status = new QLabel;
-    status->setObjectName("calculationStatus");
-    checkLayout->addWidget(status);
+    validationCard->headline()->setObjectName("calculationStatus");
+    auto *checkLayout = validationCard->body();
     validation = new DiagnosticsList;
     validation->setObjectName("calculationValidation");
     validation->setFrameShape(QFrame::NoFrame);
@@ -483,12 +476,8 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     changeCard->body()->addWidget(advancedChanges);
     connect(advancedChanges, &QPushButton::clicked, this, [this] { window->advanced->showChanged(); });
     railLayout->addWidget(changeCard, 1);
-    auto *showPreview = new QPushButton("入力全文を確認（6 入力プレビュー）");
-    showPreview->setObjectName("calculationShowPreview");
-    showPreview->setProperty("link", true);
-    showPreview->setIcon(lineIcon("arrow"));
-    showPreview->setLayoutDirection(Qt::RightToLeft); // The arrow after the text.
-    showPreview->setCursor(Qt::PointingHandCursor);
+    auto *showPreview = linkButton("⑥ 入力プレビューで確認", "calculationShowPreview");
+    showPreview->setToolTip("生成するNWChem入力の全文を「6 入力プレビュー」で表示します。");
     auto *previewRow = new QHBoxLayout;
     previewRow->addStretch();
     previewRow->addWidget(showPreview);
@@ -534,13 +523,19 @@ void CalculationPanel::showField(const QString &key) {
         window->workspaceTabs->setCurrentWidget(window->advanced);
         return;
     }
+    if (key == "memory_mb") { // Set in "5 実行設定".
+        window->workspaceTabs->setCurrentWidget(window->execution);
+        if (auto *memory = window->execution->findChild<QWidget *>("execution_memory"))
+            memory->setFocus(Qt::OtherFocusReason);
+        return;
+    }
     QWidget *target = key == "extra_input"   ? static_cast<QWidget *>(extraInput)
                       : key == "extra_tasks" ? static_cast<QWidget *>(extraTasks)
                                              : rows.value(key);
     if (!target)
         return;
-    if (changedOnly->isChecked() && !target->isVisibleTo(formWidget))
-        changedOnly->setChecked(false);
+    if (changedOnly() && !target->isVisibleTo(formWidget))
+        changeFilter->setCurrentIndex(0);
     // Layouts of shown cards settle before the scroll position is taken.
     formWidget->layout()->activate();
     {
@@ -923,7 +918,20 @@ QStringList CalculationPanel::changedKeys(const QJsonObject &s) const {
             result << key;
     return result;
 }
-void CalculationPanel::reset(const QStringList &keys) {
+bool CalculationPanel::changedOnly() const {
+    return changeFilter->currentData() == "changed";
+}
+QWidget *CalculationPanel::readOnlyRow(QLabel *value, QPushButton *link) {
+    auto *row = new QWidget;
+    auto *layout = new QHBoxLayout(row);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(12);
+    layout->addWidget(value);
+    layout->addWidget(link);
+    layout->addStretch();
+    return row;
+}
+void CalculationPanel::reset(const QStringList &keys, const QString &name) {
     if (busy || !editable())
         return;
     const auto defaults = nwchemDefaults();
@@ -938,6 +946,8 @@ void CalculationPanel::reset(const QStringList &keys) {
     for (const auto &section : std::as_const(sections))
         if (targets.size() > 1 && section.keys.contains(targets[0]))
             title = "「" + section.title + "」を既定に戻す";
+    if (!name.isEmpty())
+        title = name;
     window->safe([&] {
         window->edit(title, [&](Document &d) {
             auto s = d.data["nwchem"].toObject();
@@ -950,8 +960,8 @@ void CalculationPanel::reset(const QStringList &keys) {
 void CalculationPanel::showSection(const QString &key) {
     for (const auto &section : std::as_const(sections))
         if (section.key == key) {
-            if (!section.card->isVisible() && changedOnly->isChecked())
-                changedOnly->setChecked(false);
+            if (!section.card->isVisible() && changedOnly())
+                changeFilter->setCurrentIndex(0);
             formWidget->layout()->activate();
             QScopedValueRollback guard(scrolling, true);
             scroll->verticalScrollBar()->setValue(section.card->y() - 16);
@@ -973,7 +983,7 @@ void CalculationPanel::followScroll() {
     nav->setCurrentKey(current);
 }
 void CalculationPanel::filterRows() {
-    const bool only = changedOnly->isChecked();
+    const bool only = changedOnly();
     const auto changed = changedKeys(nwchemSettings(window->displayDocument()));
     for (const auto &section : std::as_const(sections)) {
         bool any = false;
@@ -1043,7 +1053,7 @@ void CalculationPanel::refreshChanges(const QJsonObject &s) {
     const int advancedCount = nwchemAdvanced(d).size();
     advancedChanges->setText(QString("「4 詳細設定」でも %1 項目を変更しています").arg(advancedCount));
     advancedChanges->setVisible(advancedCount);
-    changedOnly->setText(QString("変更した項目のみ（%1）").arg(changed.size()));
+    changeFilters->button(1)->setText(QString("変更済み %1").arg(changed.size()));
     filterRows();
 }
 void CalculationPanel::reloadPresets() {
@@ -1175,10 +1185,10 @@ void CalculationPanel::refresh() {
         group->sync();
     refreshElementBases(s);
     refreshConstraints(s);
-    {
-        const QSignalBlocker blocker(moldenOutput);
-        moldenOutput->setChecked(nwchemAdvanced(d).value("molden_output").toBool());
-    }
+    moldenState->setText(QString("MOLDEN %1 · CUBE %2")
+                             .arg(nwchemAdvanced(d).value("molden_output").toBool() ? "オン" : "オフ",
+                                  nwchemAdvanced(d).value("cube_output").toBool() ? "オン" : "オフ"));
+    memoryState->setText(QString("%1 MB / MPIプロセス").arg(s["memory_mb"].toInt()));
     for (int i = 0; i < 2; ++i) {
         const auto key = i ? "extra_tasks" : "extra_input";
         auto *edit = i ? extraTasks : extraInput;
@@ -1219,6 +1229,7 @@ void CalculationPanel::refresh() {
     formWidget->setEnabled(canEdit);
     for (auto *b : {presetButton, storeButton})
         b->setEnabled(canEdit);
+    resetAll->setEnabled(canEdit);
     message->setText(window->hasCandidate()
                          ? "未確定の分子候補を表示しています。確定・取消後に条件を編集できます。"
                      : window->worker ? "分子の整形中です。終了後に条件を編集できます。"
@@ -1232,44 +1243,15 @@ void CalculationPanel::refresh() {
                            ? "→ " + referenceName + (check.reference == "rhf" ? "（閉殻）" : "（開殻）")
                            : QString());
     formalCharge->setText(QString("原子の形式電荷の合計（%1）を適用").arg(d.formalCharge()));
-    // The calculation in brief.
-    QString taskName = task, solvent;
-    for (const auto &c : nwchemChoices("task"))
-        if (c.value == task)
-            taskName = c.label;
-    if (s["solvent"] != "none") {
-        solvent = " · " + valueText("solvent", s["solvent"]).section("（", 0, 0);
-        if (s["solvent_name"] != "dielectric")
-            solvent += "（" + valueText("solvent_name", s["solvent_name"]).section("（", 0, 0) + "）";
-    }
-    summaryTitle->setText((method == "dft" ? nwchemFunctionalLabel(s) : method.toUpper()) + " / " +
-                          nwchemBasisLabel(s));
-    summaryTask->setText(taskName + solvent);
-    summaryFormula->setText(d.atoms.isEmpty() ? QString("原子なし")
-                                              : QString("%1 · %2 原子").arg(d.formula()).arg(d.atoms.size()));
-    summaryElectrons->setText(QString("%1（α %2 / β %3）%4")
-                                  .arg(check.electrons)
-                                  .arg(check.alpha)
-                                  .arg(check.beta)
-                                  .arg(check.ecpElectrons ? "ECP適用後" : ""));
-    summaryCharge->setText(QString("%1 · %2%3")
-                               .arg(d.job()["charge"].toInt())
-                               .arg(d.job()["multiplicity"].toInt())
-                               .arg(referenceName.isEmpty() ? QString() : "（" + referenceName + "）"));
-    summaryMemory->setText(QString("%1 MB / MPIプロセス").arg(s["memory_mb"].toInt()));
+    summaryCard->update(d);
     // Whether the input can be generated, and why not.
     const bool ok = check.errors.isEmpty();
-    status->setText(ok ? (check.warnings.isEmpty()
-                              ? QString("✓ 入力を生成できます")
-                              : QString("✓ 入力を生成できます（確認 %1 件）").arg(check.warnings.size()))
-                       : QString("入力を生成できません（エラー %1 件）").arg(check.errors.size()));
-    status->setProperty("good", ok);
-    status->setProperty("bad", !ok);
-    validationCard->setProperty("state", ok ? "ok" : "error");
-    for (QWidget *w : {static_cast<QWidget *>(status), static_cast<QWidget *>(validationCard)}) {
-        w->style()->unpolish(w);
-        w->style()->polish(w);
-    }
+    validationCard->setState(
+        ok ? StatusCard::Ok : StatusCard::Error,
+        ok ? (check.warnings.isEmpty()
+                  ? QString("入力を生成できます")
+                  : QString("入力を生成できます（確認 %1 件）").arg(check.warnings.size()))
+           : QString("入力を生成できません（エラー %1 件）").arg(check.errors.size()));
     validation->setMessages(check.errors, check.warnings, {}, fixes(check.errors));
     validation->setVisible(validation->count());
     refreshChanges(s);
@@ -1285,7 +1267,6 @@ void CalculationPanel::applyChromeStyle() {
         #calculationTab, #calculationRail { background: @window; }
         #calculationNav { background: @base; border: none; border-right: 1px solid @line; }
         QTreeWidget#calculationChanges, QListWidget#calculationValidation { background: transparent; }
-        QPushButton:checked { background: @tint; border-color: @accent; color: @accentText; font-weight: bold; }
     )",
                               pal));
     if (!busy)

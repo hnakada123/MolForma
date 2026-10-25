@@ -114,7 +114,7 @@ void RunProgress::showRun(const QString &path, const QString &state, bool active
         QString detail;
         if (progress.stepTask == i && !progress.steps.isEmpty()) {
             const auto &last = progress.steps.last();
-            detail = QString("ステップ %1%2 · E = %3 Hartree · ΔE %4")
+            detail = QString("ステップ %1%2 · E = %3 Eh · ΔE %4")
                          .arg(last.step)
                          .arg(maxSteps ? QString(" / 最大 %1").arg(maxSteps) : QString())
                          .arg(number(last.energy, 6))
@@ -122,7 +122,7 @@ void RunProgress::showRun(const QString &path, const QString &state, bool active
             if (progress.convergedTask == i)
                 detail += " · 収束";
         } else if (now && std::isfinite(progress.energy))
-            detail = QString("E = %1 Hartree").arg(number(progress.energy, 6));
+            detail = QString("E = %1 Eh").arg(number(progress.energy, 6));
         stages << QString("<b>%1　%2</b>　<span style=\"color:%3\">%4</span>%5")
                       .arg(i + 1)
                       .arg(tasks[i].toHtmlEscaped(), color.name(), status)

@@ -70,6 +70,12 @@ QString coordinateText(const Atom &atom, CoordinateColumn column, CoordinateUnit
             text += ".0";
         return text;
     }
+    if (column == CoordinateColumn::Charge)
+        return QString::number(atom.charge);
+    if (column == CoordinateColumn::Radical)
+        return QString::number(atom.radical);
+    if (column == CoordinateColumn::Name)
+        return atom.name;
     return (column == CoordinateColumn::Ghost ? atom.ghost : atom.fixed) ? "1" : "0";
 }
 void setCoordinateCell(Document &document, const QString &id, CoordinateColumn column, const QString &text,
@@ -112,6 +118,20 @@ void setCoordinateCell(Document &document, const QString &id, CoordinateColumn c
         document.invalidateAssignments();
     } else if (column == CoordinateColumn::Fixed)
         atom.fixed = text == "1";
+    else if (column == CoordinateColumn::Charge || column == CoordinateColumn::Radical) {
+        bool ok;
+        const int value = text.trimmed().toInt(&ok);
+        if (!ok)
+            fail(column == CoordinateColumn::Charge ? "形式電荷は整数で入力してください。"
+                                                    : "不対電子の数は整数で入力してください。");
+        if (column == CoordinateColumn::Radical && (value < 0 || value > 8))
+            fail("不対電子の数は0〜8で入力してください。");
+        if (column == CoordinateColumn::Charge && (value < -99 || value > 20))
+            fail("形式電荷は−99〜20で入力してください。");
+        (column == CoordinateColumn::Charge ? atom.charge : atom.radical) = value;
+        document.invalidateAssignments();
+    } else if (column == CoordinateColumn::Name)
+        atom.name = text.trimmed();
 }
 Atom coordinateAtom(const QString &symbol, const QStringList &xyz, const QString &mass, CoordinateUnit unit,
                     bool ghost, bool fixed) {

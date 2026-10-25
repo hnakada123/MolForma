@@ -33,10 +33,6 @@ QLabel *note(const QString &text) {
     label->setToolTip(text);
     return label;
 }
-void repolish(QWidget *w) {
-    w->style()->unpolish(w);
-    w->style()->polish(w);
-}
 // The logical CPUs of this PC as cells, filled for those the run would use (all in the error color
 // when it would use more than there are).
 class CpuMeter : public QWidget {
@@ -71,11 +67,48 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     setObjectName("executionTab");
     setAttribute(Qt::WA_StyledBackground);
     run.setObjectName("nwchemRun");
-    auto *outer = new QHBoxLayout(this);
+    auto *outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
+    outer->setSpacing(0);
+    // The calculation, saving it as a job and what to do when a run ends. Runs start from the
+    // header's "計算を実行" (F5) and stop from its "停止", whatever the tab.
+    auto *toolbar = new QFrame;
+    toolbar->setObjectName("executionToolbar");
+    toolbar->setProperty("toolbar", true);
+    auto *tools = new FlowLayout(toolbar, 10, 6);
+    tools->setContentsMargins(12, 8, 12, 8);
+    outer->addWidget(toolbar);
+    auto *target = new QWidget;
+    auto *targetLayout = new QHBoxLayout(target);
+    targetLayout->setContentsMargins(0, 0, 0, 0);
+    targetLayout->addWidget(caption("対象の計算"));
+    context = new QLabel;
+    context->setObjectName("executionContext");
+    context->setTextFormat(Qt::PlainText);
+    targetLayout->addWidget(context);
+    tools->addWidget(target);
+    auto *toolGap = new QWidget;
+    toolGap->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    tools->addWidget(toolGap);
+    openResults = new QCheckBox("終了したら結果ビューアに読み込む");
+    openResults->setObjectName("executionOpenResults");
+    openResults->setToolTip(
+        "計算が終わると、ジョブフォルダーを「結果ビューア」に読み込みます（タブは切り替えません）。"
+        "終了はステータスバーとデスクトップ通知でも知らせます。");
+    openResults->setChecked(window->settings.value("execution/open_results", true).toBool());
+    connect(openResults, &QCheckBox::toggled, this,
+            [this](bool on) { window->settings.setValue("execution/open_results", on); });
+    tools->addWidget(openResults);
+    prepare = new QPushButton("ジョブとして保存");
+    prepare->setObjectName("executionPrepare");
+    prepare->setIcon(lineIcon("apply"));
+    prepare->setToolTip("NWChemを起動せず、入力とプロジェクトを新しいジョブフォルダーに保存します"
+                        "（別のPCで実行するときなど）。");
+    tools->addWidget(prepare);
+    connect(prepare, &QPushButton::clicked, this, [this] { window->safe([this] { saveBundle(); }); });
     auto *split = new QSplitter;
     split->setChildrenCollapsible(false);
-    outer->addWidget(split);
+    outer->addWidget(split, 1);
 
     // The settings of a run.
     auto *scroll = new QScrollArea;
@@ -180,7 +213,8 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     memory->setRange(64, 1048576);
     memory->setSuffix(" MB");
     memory->setKeyboardTracking(false);
-    memory->setToolTip("「3 計算条件」のメモリと同じ設定です。実際の使用量の上限ではありません。");
+    memory->setToolTip("NWChemの memory 指定です（「3 計算条件」と「6 入力プレビュー」の要約にも表示）。"
+                       "実際の使用量の上限ではありません。");
     memoryLayout->addWidget(memory);
     grid->addWidget(memoryCell, 1, 1);
     connect(memory, &QSpinBox::valueChanged, this, [this](int n) {
@@ -283,13 +317,10 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     auto *output = new QVBoxLayout(right);
     output->setContentsMargins(8, 16, 16, 16);
     output->setSpacing(12);
-    checkCard = new SettingsCard("実行前の確認");
+    checkCard = new StatusCard;
     checkCard->setObjectName("executionCheckCard");
-    auto *check = new QPushButton("再確認");
-    check->setObjectName("executionCheck");
-    check->setIcon(lineIcon("refresh"));
-    check->setToolTip("実行ファイル・保存先などを確認し直します。");
-    checkCard->header()->addWidget(check);
+    checkCard->headline()->setObjectName("executionCheckStatus");
+    auto *check = checkCard->addRecheck("executionCheck", "実行ファイル・保存先などを確認し直します。");
     connect(check, &QPushButton::clicked, this, &ExecutionPanel::refresh);
     checkList = new QVBoxLayout;
     checkList->setSpacing(4);
@@ -300,21 +331,19 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     diagnostics->setWordWrap(true);
     diagnostics->setTextInteractionFlags(Qt::TextSelectableByMouse);
     checkCard->body()->addWidget(diagnostics);
+    startHint = caption("ヘッダーの「計算を実行」（F5）で、入力一式を新しいジョブフォルダーに保存して"
+                        "NWChemを起動します。");
+    startHint->setObjectName("executionStartHint");
+    checkCard->body()->addWidget(startHint);
     output->addWidget(checkCard);
 
     commandCard = new SettingsCard("起動コマンド");
     commandCard->setObjectName("executionCommandCard");
     commandCard->header()->insertWidget(1, note("ジョブ名の日時・IDは保存時に決まります"), 1);
-    auto *copyCommand = new QToolButton;
-    copyCommand->setObjectName("executionCopyCommand");
-    copyCommand->setIcon(lineIcon("copy"));
-    copyCommand->setProperty("flat", true);
-    copyCommand->setToolTip("起動コマンドをコピー");
+    auto *copyCommand = copyButton("executionCopyCommand", "起動コマンドをコピー");
     commandCard->header()->addWidget(copyCommand);
-    command = new QPlainTextEdit;
-    command->setObjectName("executionCommand");
-    command->setReadOnly(true);
-    command->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    command = logView("executionCommand");
+    command->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     command->setFixedHeight(command->fontMetrics().lineSpacing() * 5 + 14);
     commandCard->body()->addWidget(command);
     connect(copyCommand, &QToolButton::clicked, this, [this] {
@@ -322,37 +351,6 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
         window->statusBar()->showMessage("起動コマンドをコピーしました。", 5000);
     });
     output->addWidget(commandCard);
-
-    auto *actions = new QHBoxLayout;
-    actions->setSpacing(8);
-    start = new QPushButton("計算を実行");
-    prepare = new QPushButton("入力一式を保存");
-    stop = new QPushButton("停止");
-    start->setObjectName("executionStart");
-    prepare->setObjectName("executionPrepare");
-    stop->setObjectName("executionStop");
-    start->setProperty("primary", true);
-    stop->setProperty("danger", true);
-    actions->addWidget(start);
-    actions->addWidget(stop);
-    actions->addWidget(prepare);
-    actions->addStretch();
-    output->addLayout(actions);
-    connect(prepare, &QPushButton::clicked, this, [this] { window->safe([this] { saveBundle(); }); });
-    connect(start, &QPushButton::clicked, this, [this] { window->safe([this] { startCalculation(); }); });
-    connect(stop, &QPushButton::clicked, this, &ExecutionPanel::confirmStop);
-    start->setToolTip("入力一式を新しいジョブフォルダーに保存し、NWChemを起動します（F5）。");
-    prepare->setToolTip(
-        "NWChemを起動せず、入力・プロジェクトをジョブフォルダーに保存します（別のPCでの実行用など）。");
-    openResults = new QCheckBox("終了したら結果ビューアに読み込む");
-    openResults->setObjectName("executionOpenResults");
-    openResults->setToolTip(
-        "計算が終わると、ジョブフォルダーを「結果ビューア」に読み込みます（タブは切り替えません）。"
-        "終了はステータスバーとデスクトップ通知でも知らせます。");
-    openResults->setChecked(window->settings.value("execution/open_results", true).toBool());
-    connect(openResults, &QCheckBox::toggled, this,
-            [this](bool on) { window->settings.setValue("execution/open_results", on); });
-    actions->addWidget(openResults);
 
     // The current or last run: its state and folder, its tasks and the optimization criteria.
     runCard = new SettingsCard("実行状況");
@@ -410,20 +408,26 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     auto *channels = new ChoiceButtons(logChannel, ChoiceButtons::Segments, {"標準出力", "標準エラー"});
     choices << channels;
     logCard->header()->insertWidget(1, channels);
-    logCard->header()->insertWidget(2, muted("末尾 128 KiB"));
-    auto *copyLog = new QToolButton;
-    copyLog->setObjectName("executionCopyLog");
-    copyLog->setIcon(lineIcon("copy"));
-    copyLog->setProperty("flat", true);
-    copyLog->setToolTip("表示中のログをコピー");
+    // As the files of "履歴": the file and how much of it, following its end, and copy.
+    logName = caption({});
+    logName->setObjectName("executionLogName");
+    logName->setWordWrap(false);
+    logName->setProperty("mono", true);
+    logCard->header()->insertWidget(2, logName);
+    follow = new QCheckBox("追尾");
+    follow->setObjectName("executionFollow");
+    follow->setChecked(true);
+    follow->setToolTip("ログが増えるたびに最後の行を表示します。");
+    logCard->header()->addWidget(follow);
+    auto *copyLog = copyButton("executionCopyLog", "表示中のログをコピー");
     logCard->header()->addWidget(copyLog);
     connect(logChannel, &QComboBox::currentIndexChanged, this, &ExecutionPanel::updateRun);
-    log = new QPlainTextEdit;
-    log->setObjectName("executionLog");
-    log->setReadOnly(true);
-    log->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    log->setLineWrapMode(QPlainTextEdit::NoWrap);
+    log = logView("executionLog");
     log->setPlaceholderText("まだ実行していません。計算を実行すると、ここにNWChemの出力を表示します。");
+    connect(follow, &QCheckBox::toggled, this, [this](bool on) {
+        if (on)
+            log->verticalScrollBar()->setValue(log->verticalScrollBar()->maximum());
+    });
     log->setMinimumHeight(220);
     logCard->body()->addWidget(log, 1);
     connect(copyLog, &QToolButton::clicked, this,
@@ -607,7 +611,7 @@ void ExecutionPanel::confirmStop() {
 }
 void ExecutionPanel::startFromMenu() {
     window->refreshPanel(this, true); // The tab may be stale while another one is shown.
-    if (!start->isEnabled()) {
+    if (!startable) {
         window->workspaceTabs->setCurrentWidget(this);
         window->statusBar()->showMessage(
             run.active() ? QString("計算を実行中です。")
@@ -759,8 +763,21 @@ void ExecutionPanel::refresh() {
     diagnostics->setProperty("bad", !runnable || !editable);
     repolish(diagnostics);
     prepare->setEnabled(editable && !run.active() && portable);
-    start->setEnabled(editable && !run.active() && runnable && portable);
-    stop->setEnabled(run.active() && run.state() != "stopping");
+    startable = editable && !run.active() && runnable && portable;
+    const int problems = report.errors.size() + int(!editable) + int(runnable != report.errors.isEmpty());
+    checkCard->setState(run.active() ? StatusCard::Waiting
+                        : startable  ? (report.warnings.isEmpty() ? StatusCard::Ok : StatusCard::Warning)
+                        : !editable  ? StatusCard::Waiting
+                                     : StatusCard::Error,
+                        run.active() ? QString("実行中です")
+                        : startable
+                            ? (report.warnings.isEmpty()
+                                   ? QString("実行できます")
+                                   : QString("実行できます（確認 %1 件）").arg(report.warnings.size()))
+                        : !editable ? QString("候補・整形の完了待ち")
+                                    : QString("実行できません（%1 件）").arg(std::max(1, problems)));
+    startHint->setVisible(startable);
+    context->setText(calculationBrief(d));
     updateRun();
 }
 void ExecutionPanel::updateRun() {
@@ -810,8 +827,7 @@ void ExecutionPanel::updateRun() {
                         : QString("所要 %1").arg(elapsedClock(seconds)));
     openFolder->setEnabled(!saved.directory.isEmpty());
     viewResults->setEnabled(!saved.directory.isEmpty() && !resultFiles(saved.directory).isEmpty());
-    stop->setEnabled(run.active() && run.state() != "stopping");
-    stop->setVisible(run.active());
+    const bool stoppable = run.active() && run.state() != "stopping";
     prepare->setVisible(!run.active());
     // While NWChem runs, its progress and log take the room of the checks before a run.
     checkCard->setVisible(!run.active());
@@ -819,12 +835,12 @@ void ExecutionPanel::updateRun() {
     runningNote->setVisible(run.active());
     state->setVisible(!run.active());
     if (window->stopAction)
-        window->stopAction->setEnabled(stop->isEnabled());
+        window->stopAction->setEnabled(stoppable);
     if (run.active()) {
-        start->setEnabled(false);
+        startable = false;
         prepare->setEnabled(false);
     }
-    window->showRun(run.active(), "実行中 " + elapsedClock(seconds), stop->isEnabled());
+    window->showRun(run.active(), "実行中 " + elapsedClock(seconds), stoppable);
     // Always visible in the status bar, whatever the tab.
     if (!run.plan().directory.isEmpty()) {
         const QMap<QString, QString> brief{{"starting", "NWChemを起動中"},
@@ -851,6 +867,8 @@ void ExecutionPanel::appendLog() {
     const QString path = saved.directory.isEmpty()
                              ? QString()
                              : QDir(saved.directory).filePath(logChannel->currentData().toString());
+    logName->setText(saved.directory.isEmpty() ? QString()
+                                               : logChannel->currentData().toString() + " · 末尾 128 KiB");
     QFile file(path);
     const bool readable = !path.isEmpty() && file.open(QIODevice::ReadOnly);
     if (path != logPath || !readable || file.size() < logOffset) {
@@ -863,7 +881,7 @@ void ExecutionPanel::appendLog() {
     if (!readable)
         return;
     auto *bar = log->verticalScrollBar();
-    const bool atEnd = bar->value() == bar->maximum();
+    const bool atEnd = follow->isChecked() || bar->value() == bar->maximum();
     QString added;
     if (logOffset < 0) {
         const bool truncated = file.size() > tail;
@@ -953,8 +971,6 @@ void ExecutionPanel::applyChromeStyle() {
     setStyleSheet(chromeRules(settingsRules() + R"(
         #executionTab { background: @window; }
         #executionUsage { background: @window; border: 1px solid @line; border-radius: 8px; }
-        QPlainTextEdit#executionCommand, QPlainTextEdit#executionLog { background: @window; border: 1px solid @line;
-                                                                        border-radius: 6px; }
         QLabel#executionStatePill { border-radius: 10px; padding: 2px 9px; font-weight: bold; }
         QLabel#executionStatePill[state="running"] { background: @tint; color: @accentText; }
         QLabel#executionStatePill[state="finished"] { background: @goodTint; color: @good; }

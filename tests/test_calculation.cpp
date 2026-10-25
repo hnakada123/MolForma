@@ -689,15 +689,16 @@ class CalculationTest : public QObject {
         QVERIFY(entry("optimization")->data(Qt::UserRole + 12).toString().isEmpty());
         QCOMPARE(changes(w), (QStringList{"計算目的: 構造最適化", "電子状態の手法: DFT"}));
         // Only changed rows: the other cards and rows give way.
-        auto *only = button(w, "calculationChangedOnly");
-        QCOMPARE(only->text(), QString("変更した項目のみ（2）"));
+        // As in "4 詳細設定": all rows, or only the changed ones.
+        auto *only = w.findChild<QToolButton *>("calculationChangeFilter_changed");
+        QCOMPARE(only->text(), QString("変更済み 2"));
         only->click();
         auto *tab = w.findChild<QWidget *>("calculationTab");
         QVERIFY(!w.findChild<QWidget *>("calculationCard_path")->isVisibleTo(tab));
         QVERIFY(w.findChild<QWidget *>("calculationCard_basic")->isVisibleTo(tab));
         QVERIFY(!combo(w, "functional")->isVisibleTo(tab));
         QVERIFY(w.findChild<QWidget *>("calculationChoice_method")->isVisibleTo(tab));
-        only->click();
+        w.findChild<QToolButton *>("calculationChangeFilter_all")->click();
         QVERIFY(combo(w, "functional")->isVisibleTo(tab));
         // Each change resets on its own, a section at once; both undo.
         w.findChild<QToolButton *>("calculationReset_method")->click();
@@ -719,6 +720,42 @@ class CalculationTest : public QObject {
         QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentWidget()->objectName(),
                  QString("advancedTab"));
         QCOMPARE(w.findChild<QComboBox *>("advancedFilter")->currentData().toString(), QString("changed"));
+        // "すべて既定へ" resets the conditions but keeps the name, title, unit and charge.
+        auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
+        tabs->setCurrentIndex(2);
+        w.edit("names", [](Document &next) {
+            auto s = next.data["nwchem"].toObject();
+            s["start"] = "kept";
+            s["geometry_units"] = "bohr";
+            s["method"] = "dft";
+            next.data["nwchem"] = s;
+            next.setJobValue("charge", 1);
+            next.setJobValue("multiplicity", 2);
+        });
+        button(w, "calculationResetAll")->click();
+        const auto reset = nwchemSettings(w.document());
+        QCOMPARE(reset["method"].toString(), QString("hf"));
+        QCOMPARE(reset["basis"].toString(), QString("sto-3g"));
+        QCOMPARE(reset["start"].toString(), QString("kept"));
+        QCOMPARE(reset["geometry_units"].toString(), QString("bohr"));
+        QCOMPARE(w.document().job()["charge"].toInt(), 1);
+        QCOMPARE(w.history()->undoText(), QString("計算条件をすべて既定に戻す"));
+        w.history()->undo();
+        QCOMPARE(nwchemSettings(w.document())["basis"].toString(), QString("6-31g*"));
+        // Settings of other tabs are shown with the way to where they are set.
+        QVERIFY(!w.findChild<QSpinBox *>("nwchem_memory_mb"));
+        QCOMPARE(w.findChild<QLabel *>("calculationMemoryState")->text(), QString("1024 MB / MPIプロセス"));
+        button(w, "calculationMemoryLink")->click();
+        QCOMPARE(tabs->currentWidget()->objectName(), QString("executionTab"));
+        tabs->setCurrentIndex(2);
+        QVERIFY(!w.findChild<QCheckBox *>("calculationMoldenOutput"));
+        QVERIFY(w.findChild<QLabel *>("calculationMoldenState")->text().startsWith("MOLDEN オフ"));
+        w.edit("molden", [](Document &next) { setNwchemAdvanced(next, "molden_output", true); });
+        QVERIFY(w.findChild<QLabel *>("calculationMoldenState")->text().startsWith("MOLDEN オン"));
+        button(w, "calculationMoldenLink")->click();
+        QCOMPARE(tabs->currentWidget()->objectName(), QString("advancedTab"));
+        QCOMPARE(w.findChild<QComboBox *>("advancedCategory")->currentData().toString(),
+                 QString("visualization"));
     }
     void nwchemImportRoundTrip() {
         // MolForma's own inputs read back to the same structure and settings.
@@ -1019,7 +1056,7 @@ class CalculationTest : public QObject {
         button(w, "editorRedo")->click();
         QCOMPARE(nwchemSettings(w.document())["method"].toString(), "dft");
         choose(w, "geometry_units", "bohr");
-        QCOMPARE(w.findChild<QComboBox *>("nwchemUnits")->currentIndex(), 1);
+        QVERIFY(w.findChild<QLabel *>("nwchemUnitState")->text().endsWith("Bohr")); // Shown in "2 座標".
         auto *charge = w.findChild<QSpinBox *>("nwchem_charge");
         auto *mult = w.findChild<QSpinBox *>("nwchem_multiplicity");
         charge->setValue(1);

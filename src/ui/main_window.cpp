@@ -527,74 +527,14 @@ void MainWindow::buildUi() {
     });
     sequenceRow->addWidget(sequenceLabel);
     viewArea->addOverlay(sequenceChip, Qt::AlignTop | Qt::AlignLeft);
-    auto *viewControls = new QFrame;
+    viewControls = new ViewControls(view, {{"viewAxisX", "viewAxisY", "viewAxisZ"},
+                                           "viewFit",
+                                           "rotationButton",
+                                           "viewMenuButton",
+                                           "rotationPopup",
+                                           {"editorYaw", "editorPitch", "editorRoll"}});
     viewControls->setObjectName("viewControls");
-    auto *controls = new QHBoxLayout(viewControls);
-    controls->setContentsMargins(3, 3, 3, 3);
-    controls->setSpacing(1);
-    for (int i = 0; i < 3; ++i) {
-        auto *b = new QToolButton;
-        b->setText(QString("+") + QString("XYZ")[i]);
-        b->setToolTip(QString("%1軸の正の側から見て、分子全体を表示します。").arg(QString("XYZ")[i]));
-        controls->addWidget(b);
-        connect(b, &QToolButton::clicked, this, [this, i] { view->viewFrom(i); });
-    }
-    const auto viewButton = [&](const QString &text, const QString &icon, const QString &name) {
-        auto *b = new QToolButton;
-        b->setObjectName(name);
-        b->setText(text);
-        b->setIcon(lineIcon(icon));
-        b->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        controls->addWidget(b);
-        return b;
-    };
-    auto *viewDivider = new QFrame;
-    viewDivider->setFrameShape(QFrame::VLine);
-    viewDivider->setFrameShadow(QFrame::Sunken);
-    controls->addWidget(viewDivider);
-    auto *reset = viewButton("視点リセット", "fit", "resetView");
-    reset->setToolTip("正面（+Z方向）から見て、分子全体を表示します。");
-    connect(reset, &QToolButton::clicked, this, [this] { view->viewFrom(2); });
-    auto *rotate = viewButton("回転", "rotate", "rotationButton");
-    rotate->setToolTip("左右・上下・画面内の回転角をスライダーで指定します。");
-    auto *display = viewButton("表示", "eye", "viewMenuButton");
-    display->setToolTip("水素・番号・ラベル・表示スタイルなどの表示を切り替えます。");
-    display->setPopupMode(QToolButton::InstantPopup);
-    viewControls->setProperty("compactButtons", true);
     viewArea->addOverlay(viewControls, Qt::AlignTop | Qt::AlignRight);
-    // Rotation angles as sliders in a popup under "回転"; the mouse rotation moves them too.
-    rotationPopup = new QFrame(this, Qt::Popup);
-    rotationPopup->setObjectName("rotationPopup");
-    auto *angles = new QFormLayout(rotationPopup);
-    angles->setContentsMargins(14, 12, 14, 12);
-    QSlider *sliders[3];
-    for (int i = 0; i < 3; ++i) {
-        sliders[i] = new QSlider(Qt::Horizontal);
-        sliders[i]->setRange(-180, 180);
-        sliders[i]->setMinimumWidth(200);
-        sliders[i]->setObjectName(QStringList{"editorYaw", "editorPitch", "editorRoll"}[i]);
-        angles->addRow(QStringList{"左右回転", "上下回転", "画面内回転"}[i], sliders[i]);
-    }
-    connect(rotate, &QToolButton::clicked, this, [this, rotate] {
-        rotationPopup->adjustSize();
-        rotationPopup->move(
-            rotate->mapToGlobal(QPoint(rotate->width() - rotationPopup->width(), rotate->height() + 4)));
-        rotationPopup->show();
-    });
-    for (int i = 0; i < 3; ++i)
-        connect(sliders[i], &QSlider::valueChanged, this,
-                [this, a = sliders[0], b = sliders[1], c = sliders[2]] {
-                    view->setAngles(a->value(), b->value(), c->value());
-                });
-    // Mouse rotation updates the sliders, so touching a slider continues from the current view.
-    connect(view, &MoleculeView::orientationChanged, this,
-            [this, a = sliders[0], b = sliders[1], c = sliders[2]] {
-                const auto angles = view->angles();
-                const QSignalBlocker ba(a), bb(b), bc(c);
-                a->setValue(qRound(angles.x()));
-                b->setValue(qRound(angles.y()));
-                c->setValue(qRound(angles.z()));
-            });
     // Distance, angle or dihedral of 2–4 atoms selected in order, and the value to set it to.
     measureCard = new QFrame;
     measureCard->setObjectName("measureCard");
@@ -651,8 +591,7 @@ void MainWindow::buildUi() {
     mouseHint = new ElidedLabel;
     mouseHint->setObjectName("toolHint");
     hints->addWidget(mouseHint);
-    auto *controlsHint = new ElidedLabel(
-        "左ドラッグ: 回転 · 右ドラッグ: 平行移動 · ホイール: カーソル位置で拡縮 · Esc: 候補・選択を解除");
+    auto *controlsHint = new ElidedLabel(viewControlsHint() + " · Esc: 候補・選択を解除");
     controlsHint->setObjectName("controlsHint");
     controlsHint->setToolTip(controlsHint->text());
     auto hintFont = controlsHint->font();
@@ -661,12 +600,34 @@ void MainWindow::buildUi() {
     hints->addWidget(controlsHint);
     ml->addWidget(hintBar);
     splitter->addWidget(middle);
+    // The properties: one page at a time, chosen with segments (their tab bar stays hidden).
+    auto *propertyColumn = new QWidget;
+    propertyColumn->setObjectName("propertyColumn");
+    propertyColumn->setAttribute(Qt::WA_StyledBackground);
+    propertyColumn->setMinimumWidth(300);
+    propertyColumn->setMaximumWidth(440);
+    auto *propertyLayout = new QVBoxLayout(propertyColumn);
+    propertyLayout->setContentsMargins(0, 0, 0, 0);
+    propertyLayout->setSpacing(0);
+    auto *pageBar = new QWidget;
+    pageBar->setObjectName("propertyPageBar");
+    pageBar->setAttribute(Qt::WA_StyledBackground);
+    auto *pageBarLayout = new QHBoxLayout(pageBar);
+    pageBarLayout->setContentsMargins(10, 8, 10, 8);
+    auto *pages = new QFrame;
+    pages->setObjectName("propertyPages");
+    pages->setProperty("choice", "segments");
+    auto *pageRow = new QHBoxLayout(pages);
+    pageRow->setContentsMargins(2, 2, 2, 2);
+    pageRow->setSpacing(2);
+    pageBarLayout->addWidget(pages, 1);
+    propertyLayout->addWidget(pageBar);
     properties = new QTabWidget;
     properties->setObjectName("propertyTabs");
-    properties->setMinimumWidth(270);
-    properties->setMaximumWidth(440);
-    properties->setUsesScrollButtons(true);
-    splitter->addWidget(properties);
+    properties->setDocumentMode(true);
+    properties->tabBar()->hide();
+    propertyLayout->addWidget(properties, 1);
+    splitter->addWidget(propertyColumn);
     buildEditPanel();
     toolBondKind->setModel(bondKind->model());
     connect(toolBondKind, &QComboBox::currentIndexChanged, bondKind, &QComboBox::setCurrentIndex);
@@ -679,6 +640,22 @@ void MainWindow::buildUi() {
     buildCoordinationPanel();
     buildResiduePanel();
     buildChargePanel();
+    propertyGroup = new QButtonGroup(this);
+    for (int i = 0; i < properties->count(); ++i) {
+        auto *b = new QToolButton;
+        b->setObjectName(QString("propertyPage_%1").arg(i));
+        b->setText(properties->tabText(i));
+        b->setCheckable(true);
+        b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        pageRow->addWidget(b);
+        propertyGroup->addButton(b, i);
+    }
+    propertyGroup->button(0)->setChecked(true);
+    connect(propertyGroup, &QButtonGroup::idClicked, properties, &QTabWidget::setCurrentIndex);
+    connect(properties, &QTabWidget::currentChanged, this, [this](int index) {
+        if (auto *b = propertyGroup->button(index))
+            b->setChecked(true);
+    });
     toolChargeValue->setValue(chargeValue->value());
     connect(toolChargeValue, &QDoubleSpinBox::valueChanged, chargeValue, &QDoubleSpinBox::setValue);
     connect(chargeValue, &QDoubleSpinBox::valueChanged, toolChargeValue, &QDoubleSpinBox::setValue);
@@ -765,9 +742,14 @@ void MainWindow::buildUi() {
     connect(workspaceTabs, &QTabWidget::currentChanged, this, [this] {
         candidateBar->setVisible(candidate.has_value() && workspaceTabs->currentWidget() != moleculePage);
     });
+    // The document in brief at the left of the status bar; a message takes its place while shown.
     summary = new QLabel;
     summary->setObjectName("documentSummary");
-    outer->addWidget(summary);
+    statusBar()->addWidget(summary, 1);
+    connect(workspaceTabs, &QTabWidget::currentChanged, this, [this] {
+        if (!refreshing)
+            refreshSummary();
+    });
     // View toggles: in the "表示" menu and the "表示" button over the 3D view.
     showHydrogens = new QAction("水素を表示", this);
     showHydrogens->setObjectName("showHydrogensAction");
@@ -1232,7 +1214,10 @@ void MainWindow::buildMenus() {
     }
     editMenu->addSeparator();
     action(editMenu, "番号で原子を選択…", {}, [this] { selectNumbers(); });
-    action(editMenu, "座標と原子属性の一覧…", {}, [this] { coordinateDialog(); });
+    auto *attributes =
+        action(editMenu, "座標と原子属性の一覧", {}, [this] { coordinates->showAttributes(); });
+    attributes->setObjectName("coordinateAttributesAction");
+    attributes->setToolTip("「2 座標」に形式電荷・不対電子・原子名の列を表示します。");
     editMenu->addSeparator();
     // Preferences hold the executable, launcher and environment: only the user may change them.
     auto *preferencesAction =
@@ -1241,7 +1226,7 @@ void MainWindow::buildMenus() {
     preferencesAction->setProperty("mcpProtected", true);
     // Checks and transformations of the whole structure.
     auto *toolsMenu = menuBar()->addMenu("ツール");
-    action(toolsMenu, "構造を確認…", {}, [this] { showReport(); })->setObjectName("reportAction");
+    action(toolsMenu, "構造を検査…", {}, [this] { showReport(); })->setObjectName("reportAction");
     action(toolsMenu, "点群・対称化…", {}, [this] { symmetryDialog(); })->setObjectName("symmetryAction");
     action(toolsMenu, "Z-matrix（内部座標）…", {}, [this] {
         zMatrixDialog();
@@ -1268,7 +1253,7 @@ void MainWindow::buildMenus() {
     stopAction = action(calculationMenu, "計算を停止…", {}, [this] { execution->confirmStop(); });
     stopAction->setObjectName("stopCalculationAction");
     stopAction->setEnabled(execution->running()); // ExecutionPanel follows the run.
-    action(calculationMenu, "入力一式を保存", {}, [this] {
+    action(calculationMenu, "ジョブとして保存", {}, [this] {
         workspaceTabs->setCurrentWidget(execution);
         execution->saveBundle();
     })->setObjectName("saveBundleAction");
@@ -1349,14 +1334,14 @@ void MainWindow::buildMenus() {
         view->setMonitors({});
     })->setObjectName("viewClearMonitors");
     viewMenu->addSeparator();
-    local(viewMenu, "表示を合わせる", QKeySequence(Qt::Key_F), [this] { view->fit(); }, "fitAction");
+    local(viewMenu, "全体を表示", QKeySequence(Qt::Key_F), [this] { view->fit(); }, "fitAction");
     auto *tabsMenu = viewMenu->addMenu("タブを表示");
     for (int i = 0; i < workspaceTabs->count(); ++i)
         action(tabsMenu, workspaceTabs->tabText(i), QKeySequence(QString("Ctrl+%1").arg(i + 1)), [this, i] {
             workspaceTabs->setCurrentIndex(i);
         })->setObjectName(QString("showTab%1Action").arg(i + 1));
     viewMenu->addSeparator();
-    action(viewMenu, "画面をPNGで保存…", {}, [this] {
+    action(viewMenu, "画面をPNGで書き出す…", {}, [this] {
         QString p = QFileDialog::getSaveFileName(this, "画面を保存", "molforma.png", "PNG (*.png)");
         if (!p.isEmpty() && !grab().save(p))
             fail("画像を書き出せません。");
@@ -1388,9 +1373,13 @@ void MainWindow::buildMenus() {
     documentButton->setMenu(documentMenu);
     connect(runButton, &QToolButton::clicked, runAction, &QAction::trigger);
     connect(runAction, &QAction::enabledChanged, runButton, &QToolButton::setEnabled);
-    if (auto *display = findChild<QToolButton *>("viewMenuButton"))
-        display->setMenu(viewMenu);
+    viewControls->menuButton()->setMenu(viewMenu);
     applyChromeStyle();
+}
+void MainWindow::showProperties(const QString &title) {
+    for (int i = 0; i < properties->count(); ++i)
+        if (properties->tabText(i) == title)
+            properties->setCurrentIndex(i);
 }
 void MainWindow::refreshPalette() {
     QString cat = paletteCategory(), needle = search->text().trimmed();
@@ -1596,9 +1585,9 @@ void MainWindow::paletteChosen() {
         elementBox->setCurrentIndex(elementBox->findData(id.mid(5)));
     } else if (id.startsWith("center:")) {
         elementBox->setCurrentIndex(elementBox->findData(id.mid(7)));
-        properties->setCurrentIndex(1);
+        showProperties("配位");
     } else if (currentTemplate()["category"] == "amino") {
-        properties->setCurrentIndex(2);
+        showProperties("残基");
         if (growth->isChecked() && !growthResidue.isEmpty() && !candidate)
             addAmino(growthResidue, growthN);
     }
@@ -1897,14 +1886,7 @@ void MainWindow::refresh() {
                                              : QString("元に戻す"));
         redoAction->setText(undo.canRedo() ? "やり直す: " + undo.redoText() : QString("やり直す"));
     }
-    summary->setText(QString("%1  |  %2 原子・%3 結合  |  電荷 %4 / 多重度 %5  |  点電荷 %6%7")
-                         .arg(d.atoms.isEmpty() ? QString("原子なし") : d.formula())
-                         .arg(d.atoms.size())
-                         .arg(d.bonds.size())
-                         .arg(d.job()["charge"].toInt())
-                         .arg(d.job()["multiplicity"].toInt(1))
-                         .arg(d.data["point_charges"].toArray().size())
-                         .arg(candidate ? "  ·  変更候補" : ""));
+    refreshSummary();
     refreshTitle();
     QStringList seq, plain;
     residueList->clear();
@@ -1956,6 +1938,20 @@ void MainWindow::refresh() {
     refreshing = false;
     refreshSelection();
     refreshPanels();
+}
+void MainWindow::refreshSummary() {
+    const auto &d = displayDocument();
+    // In the result viewer and the history the molecule is not the one shown: name it.
+    const auto *page = workspaceTabs->currentWidget();
+    summary->setText(QString("%1%2 · %3 原子 · %4 結合 · 電荷 %5 · 多重度 %6 · 点電荷 %7%8")
+                         .arg(page == results || page == calculationHistory ? "編集中の分子: " : "")
+                         .arg(d.atoms.isEmpty() ? QString("原子なし") : d.formula())
+                         .arg(d.atoms.size())
+                         .arg(d.bonds.size())
+                         .arg(d.job()["charge"].toInt())
+                         .arg(d.job()["multiplicity"].toInt(1))
+                         .arg(d.data["point_charges"].toArray().size())
+                         .arg(candidate ? " · 変更候補あり" : ""));
 }
 void MainWindow::refreshTitle() {
     const auto name = path.isEmpty() ? QString("新規分子") : QFileInfo(path).fileName();
@@ -2078,29 +2074,36 @@ void MainWindow::applyChromeStyle() {
     for (auto *icon : findChildren<QLabel *>("candidateIcon"))
         icon->setPixmap(lineIcon("layers", c.candidateText).pixmap(QSize(22, 22)));
     const QString overlay = R"(
-        #sequenceChip, #viewControls, #measureCard { background: @base; border: 1px solid @line;
-                                                     border-radius: 8px; }
+        #sequenceChip, #measureCard { background: @base; border: 1px solid @line; border-radius: 8px; }
         QToolButton { border: none; border-radius: 5px; padding: 3px 7px; color: @text; }
         QToolButton:hover { background: @hover; }
         QLabel#measurementLabel { color: @text; }
     )";
-    for (const auto *name : {"sequenceChip", "viewControls", "measureCard"})
+    for (const auto *name : {"sequenceChip", "measureCard"})
         style(findChild<QWidget *>(name), overlay);
-    style(rotationPopup, "#rotationPopup { background: @base; border: 1px solid @line; }");
+    viewControls->applyStyle(QMainWindow::palette());
     style(findChild<QWidget *>("hintBar"), R"(
         #hintBar { background: @base; border-top: 1px solid @line; }
         QLabel { color: @muted; }
         QLabel#toolHint { color: @text; }
     )");
-    style(findChild<QWidget *>("selectionCard"), R"(
-        #selectionCard { background: @base; border: 1px solid @line; border-radius: 8px; }
+    // The pages of properties: the cards and buttons of the settings tabs.
+    style(findChild<QWidget *>("propertyColumn"), settingsRules() + R"(
+        #propertyColumn { background: @window; border-left: 1px solid @line; }
+        #propertyPageBar { background: @base; border-bottom: 1px solid @line; }
+        QFrame#propertyPages QToolButton { padding: 4px 4px; }
+        QTabWidget#propertyTabs::pane { border: none; }
+        QLabel#moleculeChargeState, QLabel#moleculePointChargeState { color: @text; }
     )");
     style(candidateCard, R"(
         #candidateCard { background: @candidate; border: 1px solid @candidateLine; border-radius: 8px; }
         QLabel { color: @candidateText; }
     )");
-    style(summary, "#documentSummary { background: @base; border-top: 1px solid @line; color: @muted;"
-                   " padding: 4px 12px; }");
+    style(statusBar(), R"(
+        QStatusBar { background: @base; border-top: 1px solid @line; color: @text; }
+        QStatusBar::item { border: none; }
+        QLabel#documentSummary { color: @muted; padding: 2px 6px; }
+    )");
     if (coordinates)
         coordinates->applyChromeStyle();
     if (calculation)
@@ -3069,12 +3072,15 @@ void MainWindow::contextMenu(const QPoint &p, const QString &id) {
             auto symbol = value(elementBox);
             edit("元素を変更", [=](Document &d) { replaceElement(d, ids, symbol, false); });
         });
-        add(&menu, "固定 / 解除", [this] {
+        // As "2 座標": fixed only when every selected atom is, else all of them get fixed.
+        const bool allFixed = std::all_of(selected.begin(), selected.end(), [this](const QString &a) {
+            return displayDocument().atom(a).fixed;
+        });
+        add(&menu, allFixed ? "固定を解除" : "選択原子を固定", [this, allFixed] {
             auto ids = requireSelection();
-            edit("固定を切替", [=](Document &d) {
-                bool fixed = !d.atom(ids.first()).fixed;
+            edit(allFixed ? "選択原子の固定を解除" : "選択原子を固定", [=](Document &d) {
                 for (auto a : ids)
-                    d.atom(a).fixed = fixed;
+                    d.atom(a).fixed = !allFixed;
             });
         });
         if (selected.size() <= 3)
@@ -3098,7 +3104,7 @@ void MainWindow::contextMenu(const QPoint &p, const QString &id) {
         }
         menu.addSeparator();
     }
-    add(&menu, "視点をリセット", [this] { view->viewFrom(2); });
+    add(&menu, "全体を表示", [this] { view->fit(); });
     menu.exec(p);
 }
 void MainWindow::selectNumbers() {
@@ -3331,15 +3337,31 @@ void MainWindow::preferences() {
     QDialog dialog(this);
     dialog.setObjectName("preferencesDialog");
     dialog.setProperty("mcpProtected", true); // Same protection as the executable fields in "5 実行設定".
+    dialog.setProperty("canvas", true);
     dialog.setWindowTitle("環境設定");
+    dialog.resize(640, 700);
+    // The cards and controls of "5 実行設定", for the settings new documents start with.
+    dialog.setStyleSheet(
+        chromeRules(settingsRules() + "QDialog { background: @window; }", QMainWindow::palette()));
     auto *layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(16, 14, 16, 14);
+    layout->setSpacing(12);
     auto *intro = new QLabel("新規作成、およびプロジェクト以外の構造ファイル（XYZ・SDF・PDB等）を開いたときの"
                              "実行設定です。開いているプロジェクトの設定は「5 実行設定」で変更します。");
     intro->setWordWrap(true);
+    intro->setProperty("muted", true);
     layout->addWidget(intro);
-    auto *form = new QFormLayout;
-    layout->addLayout(form);
     const auto saved = executionPreferences();
+    const auto card = [&](const QString &title) {
+        auto *c = new SettingsCard(title);
+        auto *form = new QFormLayout;
+        form->setHorizontalSpacing(12);
+        form->setVerticalSpacing(8);
+        c->body()->addLayout(form);
+        layout->addWidget(c);
+        return form;
+    };
+    auto *files = card("実行ファイル・保存先");
     auto path = [&](const QString &label, const QString &key, bool directory) {
         auto *line = new QLineEdit(saved[key].toString());
         line->setObjectName("preferences_" + key);
@@ -3354,55 +3376,102 @@ void MainWindow::preferences() {
         auto *row = new QHBoxLayout;
         row->addWidget(line, 1);
         row->addWidget(browse);
-        form->addRow(label, row);
+        files->addRow(label, row);
         return line;
-    };
-    auto spin = [&](const QString &label, const QString &key, int minimum, int maximum) {
-        auto *box = new QSpinBox;
-        box->setObjectName("preferences_" + key);
-        box->setRange(minimum, maximum);
-        box->setValue(saved[key].toInt());
-        form->addRow(label, box);
-        return box;
     };
     auto *executable = path("NWChem実行ファイル", "executable", false);
     auto *mode = new QComboBox;
-    mode->addItem("MPI", "mpi");
-    mode->addItem("直接実行", "direct");
+    mode->setObjectName("preferences_mode");
+    mode->addItem("MPIで起動", "mpi");
+    mode->addItem("直接実行（逐次版など）", "direct");
     mode->setCurrentIndex(std::max(0, mode->findData(saved["mode"].toString())));
-    form->addRow("起動方式", mode);
+    files->addRow("起動方式", new ChoiceButtons(mode, ChoiceButtons::Segments));
     auto *launcher = new QLineEdit(saved["launcher"].toString());
-    form->addRow("MPIランチャー", launcher);
-    auto *ranks = spin("MPI起動数", "mpi_ranks", 1, 4096);
+    launcher->setObjectName("preferences_launcher");
+    files->addRow("MPIランチャー", launcher);
+    auto *root = path("ジョブ保存先", "job_root", true);
+    auto *resources = card("計算資源");
+    auto spin = [&](const QString &label, const QString &key, int minimum, int maximum,
+                    const QString &unit = {}) {
+        auto *box = new QSpinBox;
+        box->setObjectName("preferences_" + key);
+        box->setRange(minimum, maximum);
+        box->setSuffix(unit);
+        box->setValue(saved[key].toInt());
+        resources->addRow(label, box);
+        return box;
+    };
+    auto *ranks = spin("MPI起動プロセス数", "mpi_ranks", 1, 4096);
     auto *omp = spin("OpenMPスレッド / プロセス", "omp_threads", 1, 1024);
     auto *blas = spin("BLASスレッド / プロセス", "blas_threads", 1, 1024);
     auto *stack = new QLineEdit(saved["omp_stacksize"].toString());
-    stack->setPlaceholderText("空欄で継承（例: 64M）");
-    form->addRow("OpenMPスタック", stack);
-    auto *root = path("ジョブ保存先", "job_root", true);
-    auto *timeout = spin("制限時間 / 秒（0: なし）", "timeout_seconds", 0, 604800);
-    auto *environment = new QPlainTextEdit;
-    environment->setPlaceholderText(
-        "1行に1つ: NAME=VALUE（例: NWCHEM_BASIS_LIBRARY=/opt/nwchem/libraries/）");
-    QStringList lines;
-    for (const auto &value : saved["environment"].toArray()) {
-        const auto row = value.toObject();
-        if (row["enabled"].toBool())
-            lines << row["name"].toString() + '=' + row["value"].toString();
-    }
-    environment->setPlainText(lines.join('\n'));
-    environment->setMaximumHeight(90);
-    form->addRow("追加の環境変数", environment);
+    stack->setObjectName("preferences_omp_stacksize");
+    stack->setPlaceholderText("空欄: 継承（例: 64M）");
+    resources->addRow("OpenMPスタック", stack);
+    auto *timeout = spin("制限時間（0: なし）", "timeout_seconds", 0, 604800, " 秒");
+    // The environment as the table of "5 実行設定": rows that are off are kept.
+    auto *environmentCard = new SettingsCard("追加の環境変数");
+    auto *environment = new QTableWidget(0, 3);
+    environment->setObjectName("preferences_environment");
+    environment->setHorizontalHeaderLabels({"有効", "名前", "値"});
+    environment->verticalHeader()->hide();
+    environment->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    environment->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    environment->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    environment->setMinimumHeight(110);
+    environment->setMaximumHeight(170);
+    const auto showEnvironment = [environment](const QJsonArray &rows) {
+        environment->setRowCount(rows.size());
+        for (int row = 0; row < rows.size(); ++row) {
+            const auto entry = rows[row].toObject();
+            auto *enabled = new QTableWidgetItem;
+            enabled->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable);
+            enabled->setCheckState(entry["enabled"].toBool() ? Qt::Checked : Qt::Unchecked);
+            environment->setItem(row, 0, enabled);
+            environment->setItem(row, 1, new QTableWidgetItem(entry["name"].toString()));
+            environment->setItem(row, 2, new QTableWidgetItem(entry["value"].toString()));
+        }
+    };
+    showEnvironment(saved["environment"].toArray());
+    auto *addRow = new QPushButton("追加");
+    addRow->setIcon(lineIcon("plus"));
+    auto *removeRow = new QPushButton("選択行を削除");
+    environmentCard->header()->addWidget(removeRow);
+    environmentCard->header()->addWidget(addRow);
+    connect(addRow, &QPushButton::clicked, &dialog, [environment] {
+        const int row = environment->rowCount();
+        environment->insertRow(row);
+        auto *enabled = new QTableWidgetItem;
+        enabled->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable);
+        enabled->setCheckState(Qt::Checked);
+        environment->setItem(row, 0, enabled);
+        environment->setItem(row, 1, new QTableWidgetItem);
+        environment->setItem(row, 2, new QTableWidgetItem);
+        environment->editItem(environment->item(row, 1));
+    });
+    connect(removeRow, &QPushButton::clicked, &dialog, [environment] {
+        if (environment->currentRow() >= 0)
+            environment->removeRow(environment->currentRow());
+    });
+    environmentCard->body()->addWidget(environment);
+    auto *environmentNote = new QLabel("有効な行だけを起動環境へ上書きします（例: NWCHEM_BASIS_LIBRARY）。");
+    environmentNote->setProperty("caption", true);
+    environmentNote->setWordWrap(true);
+    environmentCard->body()->addWidget(environmentNote);
+    layout->addWidget(environmentCard);
+    auto *startup = card("起動と3D表示");
     auto *water = new QCheckBox("起動時に水分子を読み込む");
     water->setObjectName("preferences_startupWater");
     water->setChecked(settings.value("startupWater", false).toBool());
-    form->addRow("新しいウィンドウ", water);
+    startup->addRow("新しいウィンドウ", water);
     auto *renderer = new QComboBox;
     renderer->addItem("自動（VTKを優先）", "auto");
     renderer->addItem("QPainter（CPU）", "painter");
     renderer->setCurrentIndex(settings.value("view/renderer").toString() == "painter" ? 1 : 0);
-    form->addRow("3D描画（再起動後に反映）", renderer);
+    startup->addRow("3D描画（再起動後に反映）", renderer);
+    layout->addStretch();
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    buttons->button(QDialogButtonBox::Ok)->setProperty("primary", true);
     auto *current = buttons->addButton("現在の実行設定を読み込む", QDialogButtonBox::ResetRole);
     layout->addWidget(buttons);
     connect(current, &QPushButton::clicked, &dialog, [&] {
@@ -3416,22 +3485,20 @@ void MainWindow::preferences() {
         stack->setText(s["omp_stacksize"].toString());
         root->setText(s["job_root"].toString());
         timeout->setValue(s["timeout_seconds"].toInt());
-        QStringList rows;
-        for (const auto &value : s["environment"].toArray())
-            if (value.toObject()["enabled"].toBool())
-                rows << value.toObject()["name"].toString() + '=' + value.toObject()["value"].toString();
-        environment->setPlainText(rows.join('\n'));
+        showEnvironment(s["environment"].toArray());
     });
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
         safe([&] {
             QJsonArray rows;
-            for (const auto &line : environment->toPlainText().split('\n', Qt::SkipEmptyParts)) {
-                const auto at = line.indexOf('=');
-                if (at <= 0)
-                    fail("環境変数は NAME=VALUE の形式で1行に1つ入力してください: " + line);
-                rows.append(QJsonObject{
-                    {"enabled", true}, {"name", line.left(at).trimmed()}, {"value", line.mid(at + 1)}});
+            for (int row = 0; row < environment->rowCount(); ++row) {
+                const auto name = environment->item(row, 1)->text().trimmed();
+                const auto value = environment->item(row, 2)->text();
+                if (name.isEmpty() && value.isEmpty())
+                    continue;
+                rows.append(QJsonObject{{"enabled", environment->item(row, 0)->checkState() == Qt::Checked},
+                                        {"name", name},
+                                        {"value", value}});
             }
             const QJsonObject chosen{{"executable", executable->text().trimmed()},
                                      {"mode", mode->currentData().toString()},
@@ -3457,86 +3524,6 @@ void MainWindow::preferences() {
             saveExecutionPreferences(chosen);
             settings.setValue("startupWater", water->isChecked());
             settings.setValue("view/renderer", renderer->currentData().toString());
-            dialog.accept();
-        });
-    });
-    dialog.exec();
-}
-void MainWindow::coordinateDialog() {
-    if (!resolveCandidate())
-        return;
-    QDialog dialog(this);
-    dialog.setWindowTitle("座標（Å）と原子属性");
-    dialog.resize(820, 550);
-    auto *layout = new QVBoxLayout(&dialog);
-    auto *table = new QTableWidget(doc.atoms.size(), 8);
-    table->setHorizontalHeaderLabels(
-        {"元素", "X / Å", "Y / Å", "Z / Å", "形式電荷", "不対電子", "質量数 / amu", "原子名"});
-    for (int i = 0; i < doc.atoms.size(); ++i) {
-        const auto &a = doc.atoms[i];
-        QStringList row{a.element,
-                        QString::number(a.position.x(), 'g', 14),
-                        QString::number(a.position.y(), 'g', 14),
-                        QString::number(a.position.z(), 'g', 14),
-                        QString::number(a.charge),
-                        QString::number(a.radical),
-                        a.isotope ? QString::number(a.isotope)
-                        : a.mass  ? QString::number(a.mass, 'g', 12)
-                                  : "",
-                        a.name};
-        for (int j = 0; j < row.size(); ++j)
-            table->setItem(i, j, new QTableWidgetItem(row[j]));
-    }
-    // Like "2 座標": six decimals on screen, the full value while editing.
-    for (int column = 1; column <= 3; ++column)
-        table->setItemDelegateForColumn(column, new CoordinateDelegate(table));
-    table->resizeColumnsToContents();
-    table->horizontalHeader()->setStretchLastSection(true);
-    layout->addWidget(table);
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    layout->addWidget(buttons);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    connect(buttons, &QDialogButtonBox::accepted, this, [this, &dialog, table] {
-        safe([&] {
-            edit("座標と属性を変更", [&](Document &d) {
-                for (int i = 0; i < d.atoms.size(); ++i) {
-                    auto &a = d.atoms[i];
-                    auto cell = [&](int j) { return table->item(i, j)->text().trimmed(); };
-                    element(cell(0));
-                    a.element = cell(0);
-                    Vec p;
-                    for (int j = 0; j < 3; ++j) {
-                        bool ok;
-                        p[j] = cell(j + 1).toDouble(&ok);
-                        if (!ok || !std::isfinite(p[j]))
-                            fail("座標は有限の数値にしてください。");
-                    }
-                    if (a.fixed && (p - a.position).norm() > 1e-7)
-                        fail("固定原子の座標は変更できません。");
-                    a.position = p;
-                    bool ok;
-                    a.charge = cell(4).toInt(&ok);
-                    if (!ok)
-                        fail("形式電荷は整数です。");
-                    a.radical = cell(5).toInt(&ok);
-                    if (!ok || a.radical < 0)
-                        fail("不対電子は非負の整数です。");
-                    a.isotope = 0;
-                    a.mass = 0;
-                    if (!cell(6).isEmpty()) {
-                        a.isotope = cell(6).toInt(&ok);
-                        if (!ok) {
-                            a.isotope = 0;
-                            a.mass = cell(6).toDouble(&ok);
-                            if (!ok || a.mass <= 0)
-                                fail("質量が不正です。");
-                        } else if (a.isotope <= 0)
-                            fail("質量数は正の整数です。");
-                    }
-                    a.name = cell(7);
-                }
-                d.invalidateAssignments();
-            });
             dialog.accept();
         });
     });

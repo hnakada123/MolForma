@@ -23,6 +23,7 @@ class QToolButton;
 namespace mf {
 class ChartView;
 class ElidedLabel;
+class ViewControls;
 class FrameTimeline;
 class MainWindow;
 class MoleculeView;
@@ -80,16 +81,16 @@ class ResultsPanel : public QWidget {
     // The bar above: the job folder, the file, its kind and outcome, and the actions on it.
     QFrame *resultBar;
     QLabel *jobIcon, *emptyHint, *formatChip, *outcomeChip;
-    ElidedLabel *jobLabel;
+    ElidedLabel *jobLabel, *logName;
     QComboBox *files, *dataset, *orbitalNorm;
     QPushButton *cancel, *reload, *applyGeometry, *compareGeometry;
     QToolButton *openButton, *exportButton;
     QAction *saveXyz, *savePng;
     // The 3D view with its overlays: what is shown, the view controls and the measurement.
     MoleculeView *view;
-    QFrame *contextChip, *viewControlsFrame, *rotationPopup, *measureCard;
+    QFrame *contextChip, *measureCard;
+    ViewControls *viewControlsFrame;
     QLabel *contextTitle, *contextDetail, *measurementLabel;
-    QToolButton *labelButton;
     QList<QWidget *> viewControls; // Camera, labels and measuring: only with a structure shown.
     // Under the view, for what it shows: the structure list, the orbitals or the vibration.
     QStackedWidget *dock;

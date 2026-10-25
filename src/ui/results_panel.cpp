@@ -14,20 +14,35 @@
 
 namespace mf {
 namespace {
+// The tables of the history: no grid, a muted header, the selection in the tint.
 QTableWidget *table(const QStringList &labels, const QString &name) {
     auto *t = new QTableWidget(0, labels.size());
     t->setObjectName(name);
+    t->setProperty("plain", true);
+    t->setShowGrid(false);
     t->setHorizontalHeaderLabels(labels);
     t->setEditTriggers(QAbstractItemView::NoEditTriggers);
     t->setSelectionBehavior(QAbstractItemView::SelectRows);
     t->setSelectionMode(QAbstractItemView::SingleSelection);
     t->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     t->horizontalHeader()->setStretchLastSection(true);
+    t->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    t->verticalHeader()->setDefaultSectionSize(26);
     return t;
 }
+// Numbers in fixed-width digits at the right, so their decimal points line up.
 void row(QTableWidget *t, int index, const QStringList &values) {
-    for (int i = 0; i < values.size(); ++i)
-        t->setItem(index, i, new QTableWidgetItem(values[i]));
+    static const auto digits = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    for (int i = 0; i < values.size(); ++i) {
+        auto *item = new QTableWidgetItem(values[i]);
+        bool number = false;
+        values[i].toDouble(&number);
+        if (number) {
+            item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            item->setFont(digits);
+        }
+        t->setItem(index, i, item);
+    }
 }
 QString real(double value) {
     return std::isfinite(value) ? QString::number(value, 'g', 12) : "—";
@@ -106,7 +121,7 @@ QString formulaHtml(const QString &formula) {
     return formula.toHtmlEscaped().replace(digits, "<sub>\\1</sub>");
 }
 // Style rules that depend on a dynamic property ("tone", "chip") apply once polished again.
-void repolish(QWidget *widget) {
+void repolishAll(QWidget *widget) {
     auto widgets = widget->findChildren<QWidget *>();
     widgets << widget;
     for (auto *w : std::as_const(widgets)) {
@@ -120,7 +135,7 @@ void setChip(QLabel *chip, const QString &text, const QString &tone, const QStri
     chip->setVisible(!text.isEmpty());
     if (chip->property("chip").toString() != tone) {
         chip->setProperty("chip", tone);
-        repolish(chip);
+        repolishAll(chip);
     }
 }
 // A button as large as the labels laid out in it.
@@ -260,6 +275,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     cancel->setObjectName("resultsCancel");
     cancel->setToolTip("読込を中止");
     auto *divider = new QFrame;
+    divider->setObjectName("resultsBarDivider");
     divider->setFrameShape(QFrame::VLine);
     divider->setFrameShadow(QFrame::Sunken);
     divider->setFixedHeight(22);
@@ -278,9 +294,9 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     exportButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     exportButton->setPopupMode(QToolButton::InstantPopup);
     auto *exportMenu = new QMenu(exportButton);
-    saveXyz = exportMenu->addAction("表示中の構造をXYZで保存…");
+    saveXyz = exportMenu->addAction("表示中の構造をXYZで書き出す…");
     saveXyz->setObjectName("resultsSaveXyz");
-    savePng = exportMenu->addAction("3D表示をPNG画像で保存…");
+    savePng = exportMenu->addAction("3D表示をPNG画像で書き出す…");
     savePng->setObjectName("resultsSavePng");
     exportButton->setMenu(exportMenu);
     for (QWidget *w :
@@ -328,42 +344,17 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     context->addWidget(contextDetail);
     contextChip->hide();
     viewArea->addOverlay(contextChip, Qt::AlignTop | Qt::AlignLeft);
-    viewControlsFrame = new QFrame;
+    viewControlsFrame = new ViewControls(view, {{"resultsAxisX", "resultsAxisY", "resultsAxisZ"},
+                                                "resultsFit",
+                                                "resultsRotation",
+                                                "resultsViewMenu",
+                                                "resultsRotationPopup",
+                                                {"resultsYaw", "resultsPitch", "resultsRoll"}});
     viewControlsFrame->setObjectName("resultsViewControls");
-    auto *controls = new QHBoxLayout(viewControlsFrame);
-    controls->setContentsMargins(3, 3, 3, 3);
-    controls->setSpacing(1);
-    for (int axis = 0; axis < 3; ++axis) {
-        auto *b = new QToolButton;
-        b->setText(QString("+%1").arg("XYZ"[axis]));
-        b->setToolTip(QString("%1軸の正の側から見ます。").arg("XYZ"[axis]));
-        controls->addWidget(b);
-        viewControls << b;
-        connect(b, &QToolButton::clicked, this, [this, axis] { view->viewFrom(axis); });
-    }
-    const auto viewButton = [&](const QString &text, const QString &icon, const QString &name) {
-        auto *b = new QToolButton;
-        b->setObjectName(name);
-        b->setText(text);
-        b->setIcon(lineIcon(icon));
-        b->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        controls->addWidget(b);
-        viewControls << b;
-        return b;
-    };
-    auto *viewDivider = new QFrame;
-    viewDivider->setFrameShape(QFrame::VLine);
-    viewDivider->setFrameShadow(QFrame::Sunken);
-    controls->addWidget(viewDivider);
-    auto *fit = viewButton("合わせる", "fit", "resultsFit");
-    fit->setToolTip("分子全体が収まるように表示します（Fキー）。");
-    connect(fit, &QToolButton::clicked, view, &MoleculeView::fit);
-    auto *rotate = viewButton("回転", "rotate", "resultsRotation");
-    rotate->setToolTip("左右・上下・画面内の回転角をスライダーで指定します。");
-    labelButton = viewButton("ラベル", "label", "resultsLabelMode");
-    labelButton->setToolTip("元素記号・番号を表示する原子を選びます。");
-    labelButton->setPopupMode(QToolButton::InstantPopup);
-    auto *labelMenu = new QMenu(labelButton);
+    viewControls << viewControlsFrame->controls();
+    // What the view shows: the labels, as in the "表示" menu of "1 分子".
+    auto *labelMenu = new QMenu(viewControlsFrame->menuButton());
+    labelMenu->addSection("ラベル");
     auto *labelGroup = new QActionGroup(labelMenu);
     auto savedLabels = window->settings.value("results/labels", "all").toString();
     if (!QStringList{"all", "heavy", "selection", "none"}.contains(savedLabels))
@@ -373,55 +364,20 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
                                       {"選択した原子", "selection"},
                                       {"なし", "none"}}) {
         auto *a = labelMenu->addAction(label);
+        a->setObjectName(QString("resultsLabel_") + mode);
         a->setCheckable(true);
         a->setData(mode);
         a->setChecked(savedLabels == mode);
         labelGroup->addAction(a);
     }
-    labelButton->setMenu(labelMenu);
+    viewControlsFrame->menuButton()->setMenu(labelMenu);
+    viewControlsFrame->menuButton()->setToolTip("元素記号・番号を表示する原子を選びます。");
     view->setLabelMode(savedLabels);
     connect(labelGroup, &QActionGroup::triggered, this, [this](QAction *a) {
         view->setLabelMode(a->data().toString());
         window->settings.setValue("results/labels", a->data().toString());
     });
-    viewControlsFrame->setProperty("compactButtons", true);
     viewArea->addOverlay(viewControlsFrame, Qt::AlignTop | Qt::AlignRight);
-    // Rotation angles as sliders in a popup under "回転"; the mouse rotation moves them too.
-    rotationPopup = new QFrame(this, Qt::Popup);
-    rotationPopup->setObjectName("resultsRotationPopup");
-    auto *angles = new QFormLayout(rotationPopup);
-    angles->setContentsMargins(14, 12, 14, 12);
-    QSlider *sliders[3];
-    const int initialAngles[] = {-25, 25, 0};
-    for (int i = 0; i < 3; ++i) {
-        sliders[i] = new QSlider(Qt::Horizontal);
-        sliders[i]->setObjectName(QStringList{"resultsYaw", "resultsPitch", "resultsRoll"}[i]);
-        sliders[i]->setRange(-180, 180);
-        sliders[i]->setValue(initialAngles[i]);
-        sliders[i]->setMinimumWidth(200);
-        angles->addRow(QStringList{"左右回転", "上下回転", "画面内回転"}[i], sliders[i]);
-        viewControls << sliders[i];
-    }
-    connect(rotate, &QToolButton::clicked, this, [this, rotate] {
-        rotationPopup->adjustSize();
-        rotationPopup->move(
-            rotate->mapToGlobal(QPoint(rotate->width() - rotationPopup->width(), rotate->height() + 4)));
-        rotationPopup->show();
-    });
-    for (int i = 0; i < 3; ++i)
-        connect(sliders[i], &QSlider::valueChanged, this,
-                [this, a = sliders[0], b = sliders[1], c = sliders[2]] {
-                    view->setAngles(a->value(), b->value(), c->value());
-                });
-    // Mouse rotation and +X/+Y/+Z update the sliders, so they continue from the current view.
-    connect(view, &MoleculeView::orientationChanged, this,
-            [this, a = sliders[0], b = sliders[1], c = sliders[2]] {
-                const auto angles = view->angles();
-                const QSignalBlocker ba(a), bb(b), bc(c);
-                a->setValue(qRound(angles.x()));
-                b->setValue(qRound(angles.y()));
-                c->setValue(qRound(angles.z()));
-            });
     // Distance, angle or dihedral of the atoms clicked in order, and the ones kept on the view.
     measureCard = new QFrame;
     measureCard->setObjectName("resultsMeasureCard");
@@ -586,9 +542,9 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     modeExport->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     modeExport->setPopupMode(QToolButton::InstantPopup);
     auto *modeMenu = new QMenu(modeExport);
-    saveModeImages = modeMenu->addAction("振動の連番画像を保存…");
+    saveModeImages = modeMenu->addAction("振動の連番画像を書き出す…");
     saveModeImages->setObjectName("resultsSaveModeImages");
-    saveModeTrajectory = modeMenu->addAction("振動をXYZ（複数構造）で保存…");
+    saveModeTrajectory = modeMenu->addAction("振動をXYZ（複数構造）で書き出す…");
     saveModeTrajectory->setObjectName("resultsSaveModeXyz");
     modeExport->setMenu(modeMenu);
     closeMode = iconButton("close", "resultsCloseMode", "振動の表示を終えて構造列に戻る");
@@ -598,8 +554,8 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     modeRow->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum));
     modeRow->addWidget(group({modeExport, closeMode}));
     dock->addWidget(modePage);
-    auto *hint = new ElidedLabel("結果は編集中の分子から独立 · 左ドラッグ: 回転 · 右ドラッグ: 移動 · "
-                                 "ホイール: 拡大縮小 · 原子をクリック: 計測（2〜4原子）");
+    auto *hint = new ElidedLabel("原子をクリック: 計測（2〜4原子） · " + viewControlsHint() +
+                                 " · 結果は編集中の分子から独立");
     hint->setObjectName("resultsHint");
     hint->setToolTip(hint->text());
     auto hintFont = hint->font();
@@ -639,8 +595,24 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     bannerRow->addWidget(bannerLog, 0, Qt::AlignTop);
     banner->hide();
     sideLayout->addWidget(banner);
+    // Messages of the viewer (how the calculation ended, comparisons, loading) above the details.
+    status = new QPlainTextEdit;
+    status->setObjectName("resultsStatus");
+    status->setAccessibleName("結果ビューアのメッセージ");
+    status->setReadOnly(true);
+    status->setTabChangesFocus(true);
+    status->setFrameShape(QFrame::NoFrame);
+    status->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    status->setFixedHeight(2 * status->fontMetrics().lineSpacing() +
+                           2 * qCeil(status->document()->documentMargin()) + 14);
+    status->hide();
+    connect(status, &QPlainTextEdit::textChanged, this,
+            [this] { status->setVisible(!status->toPlainText().isEmpty()); });
+    sideLayout->addWidget(status);
     auto *tabs = details = new QTabWidget;
     tabs->setObjectName("resultsDetails");
+    tabs->setProperty("tabs", "underline");
+    tabs->tabBar()->setDrawBase(false);
     tabs->setUsesScrollButtons(true);
     sideLayout->addWidget(tabs, 1);
     split->addWidget(side);
@@ -959,32 +931,33 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     surfaceHint->setWordWrap(true);
     sf->addRow(surfaceHint);
     tabs->addTab(surfaces, "CUBE / 等値面");
-    log = new QPlainTextEdit;
-    log->setObjectName("resultsLog");
-    log->setReadOnly(true);
-    log->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    log->setLineWrapMode(QPlainTextEdit::NoWrap);
-    tabs->addTab(log, "元ファイル");
+    // The file as in "5 実行設定" and "履歴": its name and how much of it, copy, and the text.
+    auto *logPage = new QWidget;
+    auto *logLayout = new QVBoxLayout(logPage);
+    logLayout->setContentsMargins(8, 8, 8, 8);
+    logLayout->setSpacing(6);
+    auto *logHead = new QHBoxLayout;
+    logName = new ElidedLabel;
+    logName->setObjectName("resultsLogName");
+    logName->setProperty("mono", true);
+    logName->setProperty("muted", true);
+    logHead->addWidget(logName, 1);
+    auto *copyLog = copyButton("resultsCopyLog", "表示中のファイルをコピー");
+    logHead->addWidget(copyLog);
+    logLayout->addLayout(logHead);
+    log = logView("resultsLog");
+    logLayout->addWidget(log, 1);
+    tabs->addTab(logPage, "元ファイル");
+    connect(copyLog, &QToolButton::clicked, this,
+            [this] { QApplication::clipboard()->setText(log->toPlainText()); });
     split->setStretchFactor(0, 3);
     split->setStretchFactor(1, 2);
     split->setSizes({780, 540});
     connect(bannerLog, &QPushButton::clicked, this, [this] {
-        details->setCurrentWidget(log);
+        details->setCurrentWidget(log->parentWidget());
         log->moveCursor(QTextCursor::End);
         log->ensureCursorVisible();
     });
-
-    // Messages under everything, two lines high whatever they say, so the view never moves.
-    status = new QPlainTextEdit;
-    status->setObjectName("resultsStatus");
-    status->setAccessibleName("結果ビューアのメッセージ");
-    status->setReadOnly(true);
-    status->setTabChangesFocus(true);
-    status->setFrameShape(QFrame::NoFrame);
-    status->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    status->setFixedHeight(2 * status->fontMetrics().lineSpacing() +
-                           2 * qCeil(status->document()->documentMargin()) + 4);
-    layout->addWidget(status);
 
     const auto openResultFile = [this] {
         const auto p = QFileDialog::getOpenFileName(
@@ -1134,8 +1107,9 @@ ResultsPanel::~ResultsPanel() {
 }
 void ResultsPanel::applyChromeStyle() {
     const auto pal = static_cast<QWidget *>(window)->palette();
-    const auto style = [&](QWidget *w, const QString &rules) { w->setStyleSheet(chromeRules(rules, pal)); };
-    style(resultBar, R"(
+    // The rules of the other tabs, and the parts of this one.
+    setStyleSheet(chromeRules(settingsRules() + R"(
+        #resultsTab { background: @window; }
         #resultBar { background: @base; border-bottom: 1px solid @line; }
         QLabel#resultsJob { color: @text; }
         QLabel#resultsEmptyHint { color: @muted; }
@@ -1145,66 +1119,38 @@ void ResultsPanel::applyChromeStyle() {
         QLabel[chip="warn"] { background: @candidate; color: @candidateText; border: 1px solid @candidateLine;
                               font-weight: bold; }
         QLabel[chip="bad"] { background: @badTint; color: @error; font-weight: bold; }
-        QPushButton, QToolButton { border: 1px solid @line; border-radius: 6px; background: @base; color: @text;
-                                   padding: 5px 10px; }
-        QPushButton:hover, QToolButton:hover { background: @hover; }
-        QPushButton:disabled, QToolButton:disabled { color: @muted; border-color: @hover; }
+        QToolButton#resultsOpen, QToolButton#resultsExport, #resultsDock QToolButton {
+            border: 1px solid @line; border-radius: 6px; background: @base; color: @text; padding: 5px 10px; }
+        QToolButton#resultsOpen:hover, QToolButton#resultsExport:hover, #resultsDock QToolButton:hover {
+            background: @hover; }
+        QToolButton#resultsOpen:disabled, QToolButton#resultsExport:disabled, #resultsDock QToolButton:disabled {
+            color: @muted; border-color: @hover; }
         QToolButton#resultsOpen { padding-right: 24px; }
         QToolButton#resultsOpen::menu-button { border: none; border-left: 1px solid @line; width: 18px; }
-        QToolButton#resultsExport { padding-right: 20px; }
-        QPushButton#resultsApplyStructure { border-color: @accent; background: @tint; color: @accentText;
-                                            font-weight: bold; }
-        QPushButton#resultsApplyStructure:hover { background: @hover; }
-        QPushButton#resultsApplyStructure:disabled { border-color: @hover; background: @base; color: @muted;
-                                                     font-weight: normal; }
-    )");
-    jobIcon->setPixmap(lineIcon("folder", ChromeColors(pal).muted).pixmap(QSize(16, 16)));
-    style(findChild<QWidget *>("resultsViewCard"), R"(
-        #resultsViewCard { background: @base; border: 1px solid @line; border-radius: 8px; }
-        #resultsContext, #resultsViewControls, #resultsMeasureCard { background: @base; border: 1px solid @line;
-                                                                     border-radius: 8px; }
-        #resultsViewControls QToolButton { border: none; border-radius: 5px; padding: 3px 7px; color: @text; }
-        #resultsViewControls QToolButton:hover { background: @hover; }
+        QToolButton#resultsExport, #resultsDock QToolButton { padding-right: 20px; }
+        #resultsViewCard { background: @base; border: 1px solid @line; border-radius: 10px; }
+        #resultsContext, #resultsMeasureCard { background: @base; border: 1px solid @line; border-radius: 8px; }
         QLabel#resultsContextTitle, QLabel#resultsMeasurement { color: @text; }
         QLabel#resultsContextDetail, QLabel#resultsHint, QLabel#resultsFrameEnergy { color: @muted; }
-        #resultsMeasureCard QPushButton { border: 1px solid @line; border-radius: 6px; background: @base;
-                                          color: @text; padding: 3px 10px; }
-        #resultsMeasureCard QPushButton:hover { background: @hover; }
-        #resultsDock { background: @base; border-top: 1px solid @line; border-bottom-left-radius: 8px;
-                       border-bottom-right-radius: 8px; }
-        #resultsDock QPushButton, #resultsDock QToolButton { border: 1px solid @line; border-radius: 6px;
-                                                             background: @base; color: @text; padding: 4px 8px; }
-        #resultsDock QPushButton:hover, #resultsDock QToolButton:hover { background: @hover; }
-        #resultsDock QPushButton:disabled, #resultsDock QToolButton:disabled { color: @muted; border-color: @hover; }
-        #resultsDock QPushButton[primary="true"] { background: @accent; border-color: @accent; color: @onAccent; }
-        #resultsDock QPushButton[primary="true"]:hover { background: @accentHover; }
-        #resultsDock QPushButton[primary="true"]:disabled { background: @line; border-color: @line; }
-        #resultsDock QToolButton { padding-right: 20px; }
-    )");
-    style(rotationPopup, "#resultsRotationPopup { background: @base; border: 1px solid @line; }");
-    style(banner, R"(
+        #resultsDock { background: @base; border-top: 1px solid @line; border-bottom-left-radius: 10px;
+                       border-bottom-right-radius: 10px; }
+        #resultsDock QPushButton { padding: 4px 8px; }
         #resultsBanner[tone="warn"] { background: @candidate; border: 1px solid @candidateLine; border-radius: 8px; }
         #resultsBanner[tone="bad"] { background: @badTint; border: 1px solid @error; border-radius: 8px; }
         #resultsBanner[tone="warn"] QLabel { color: @candidateText; }
         #resultsBanner[tone="bad"] QLabel { color: @text; }
         #resultsBanner[tone="bad"] QLabel#resultsBannerTitle { color: @error; }
-        QPushButton { background: @base; border: 1px solid @line; border-radius: 6px; padding: 4px 10px;
-                      color: @text; }
-        QPushButton:hover { background: @hover; }
-    )");
-    style(overviewScroll, QString(R"(
+        QPlainTextEdit#resultsStatus { background: @base; border: 1px solid @line; border-radius: 8px;
+                                       color: @text; padding: 2px 8px; }
         QScrollArea#resultsOverview, #resultsOverviewPage { background: @base; border: none; }
         QLabel[role="section"] { color: @text; }
         QLabel[role="file"] { color: @text; }
-        QPushButton[role="open"] { border: 1px solid @line; border-radius: 6px; background: @base; color: @text;
-                                   padding: 2px 10px; }
-        QPushButton[role="open"]:hover { background: @hover; }
-    )") + TileRules);
-    style(criteria, TileRules);
-    style(status, R"(
-        QPlainTextEdit#resultsStatus { background: @window; border: none; border-top: 1px solid @line;
-                                       color: @text; padding: 0 10px; }
-    )");
+        QPushButton[role="open"] { padding: 2px 10px; }
+        QLabel#resultsLogName { color: @muted; }
+    )" + TileRules,
+                              pal));
+    viewControlsFrame->applyStyle(pal);
+    jobIcon->setPixmap(lineIcon("folder", ChromeColors(pal).muted).pixmap(QSize(16, 16)));
     // Icons drawn in fixed colors follow the palette here.
     const ChromeColors c(pal);
     for (auto *b : {playFrames, playMode})
@@ -1528,6 +1474,13 @@ void ResultsPanel::updateActions() {
         control->setEnabled(!data.frames.isEmpty());
     cancel->setEnabled(loading());
     reload->setEnabled(ready);
+    // Nothing open yet: only "開く…", not a row of buttons that cannot be used.
+    const bool shown = !data.source.isEmpty() || loading();
+    for (QWidget *w : {static_cast<QWidget *>(reload), static_cast<QWidget *>(compareGeometry),
+                       static_cast<QWidget *>(applyGeometry), static_cast<QWidget *>(exportButton),
+                       findChild<QWidget *>("resultsBarDivider")})
+        w->setVisible(shown);
+    cancel->setVisible(loading());
     saveXyz->setEnabled(ready && !data.frames.isEmpty());
     applyGeometry->setEnabled(ready && !data.frames.isEmpty());
     compareGeometry->setEnabled(applyGeometry->isEnabled());
@@ -1606,6 +1559,8 @@ void ResultsPanel::display(bool orbitalOnly) {
             data.status);
     if (!orbitalOnly) {
         log->setPlainText(data.log);
+        logName->setText(QFileInfo(data.source).fileName() +
+                         (data.log.startsWith("…") ? QString(" · 末尾 128 KiB") : QString()));
         referenceEnergy = -1;
         picked.clear();
         pinned.clear();
@@ -1630,7 +1585,7 @@ void ResultsPanel::display(bool orbitalOnly) {
                 const int number = o.number > 0 ? o.number : indices[o.spin] + 1;
                 indices[o.spin] = number;
                 row(orbitals, i,
-                    {QString::number(number), frontier, o.symmetry, o.spin, real(o.energy),
+                    {QString::number(number), frontier, o.symmetry, o.spin, fixed(o.energy, 6),
                      real(o.occupation)});
             }
             levels->setOrbitals(data.orbitals, data.selectedOrbital);
@@ -2084,7 +2039,7 @@ void ResultsPanel::showOutcome() {
     const bool failed = outcome == "error";
     if (banner->property("tone").toString() != (failed ? "bad" : "warn")) {
         banner->setProperty("tone", failed ? "bad" : "warn");
-        repolish(banner);
+        repolishAll(banner);
     }
     const ChromeColors c(static_cast<QWidget *>(window)->palette());
     bannerIcon->setPixmap(lineIcon("warning", failed ? c.bad : c.candidateText).pixmap(QSize(20, 20)));
@@ -2215,13 +2170,13 @@ void ResultsPanel::showEnergies() {
     for (int i = 0; i < data.energies.size(); ++i) {
         const auto &e = data.energies[i];
         row(energy, i,
-            {e.method, real(e.hartree),
+            {e.method, fixed(e.hartree, 10),
              fixed((e.hartree - data.energies[reference].hartree) * factor, unit == "hartree" ? 8 : 3),
              e.line ? QString::number(e.line) : "—"});
         if (i == reference)
             for (int c = 0; c < 4; ++c)
                 energy->item(i, c)->setFont([&] {
-                    auto f = energy->font();
+                    auto f = energy->item(i, c)->font();
                     f.setBold(true);
                     return f;
                 }());

@@ -13,8 +13,10 @@ class QTextDocument;
 class QToolButton;
 namespace mf {
 class MainWindow;
+class CalculationSummary;
 class ChoiceButtons;
 class InputEditor;
+class StatusCard;
 // Colors the comments, keywords and numbers of generated NWChem input, or a fragment of it.
 void highlightInput(QTextDocument *document);
 // "6 入力プレビュー": the blocks of the input with the tabs that set them at the left, the input
@@ -42,9 +44,10 @@ class InputPreviewPanel : public QWidget {
     InputEditor *input;
     QListWidget *outlineList;
     QTextBrowser *diagnostics;
-    QFrame *banner, *sourceChip, *checkCard;
-    QLabel *summary, *summaryTask, *summaryFormula, *summaryElectrons, *summaryCharge, *summaryMemory,
-        *status, *hint, *position, *stats, *searchStatus, *paths, *sourceTitle;
+    QFrame *banner, *sourceChip;
+    CalculationSummary *summaryCard;
+    StatusCard *checkCard;
+    QLabel *hint, *position, *stats, *searchStatus, *paths, *sourceTitle;
     QToolButton *pathsToggle;
     QWidget *sourceLinks;
     QPushButton *copy, *save;

@@ -172,12 +172,6 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     modes->setObjectName("inputPreviewModes");
     modeRow->addWidget(modes);
     tools->addWidget(modeBox);
-    auto *reload = new QPushButton("再検証");
-    reload->setObjectName("inputPreviewRefresh");
-    reload->setIcon(lineIcon("refresh"));
-    reload->setToolTip("表示は編集に追従します。参照ファイル・保存先など、MolFormaの外で変わったものを"
-                       "確認し直すときに使います。");
-    tools->addWidget(reload);
     auto *gap = new QWidget;
     gap->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     tools->addWidget(gap);
@@ -191,7 +185,7 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     search->setPlaceholderText("入力内を検索（Ctrl+F）");
     search->setClearButtonEnabled(true);
     search->addAction(lineIcon("search"), QLineEdit::LeadingPosition);
-    search->setFixedWidth(240);
+    search->setFixedWidth(280);
     findRow->addWidget(search);
     for (bool backwards : {true, false}) {
         auto *button = new QPushButton;
@@ -205,7 +199,7 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     search->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     tools->addWidget(find);
     copy = new QPushButton("全文をコピー");
-    save = new QPushButton("入力を保存…");
+    save = new QPushButton("入力ファイルを書き出す…");
     copy->setObjectName("inputPreviewCopy");
     save->setObjectName("inputPreviewSave");
     copy->setIcon(lineIcon("copy"));
@@ -326,47 +320,24 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     railLayout->setContentsMargins(0, 16, 16, 16);
     railLayout->setSpacing(12);
     body->addWidget(rail);
-    auto *summaryCard = new SettingsCard({});
-    summaryCard->body()->setSpacing(4);
-    summaryCard->body()->addWidget(caption("この入力"));
-    summary = new QLabel;
-    summary->setObjectName("inputPreviewSummary");
-    summary->setProperty("cardTitle", true);
-    summary->setWordWrap(true);
-    summaryCard->body()->addWidget(summary);
-    summaryTask = new QLabel;
-    summaryTask->setWordWrap(true);
-    summaryCard->body()->addWidget(summaryTask);
-    auto *facts = new QFormLayout;
-    facts->setContentsMargins(0, 6, 0, 0);
-    facts->setHorizontalSpacing(14);
-    facts->setVerticalSpacing(3);
-    for (const auto &[name, label] : {std::pair{"組成", &summaryFormula},
-                                      {"電子数", &summaryElectrons},
-                                      {"電荷・多重度", &summaryCharge},
-                                      {"メモリ", &summaryMemory}}) {
-        *label = new QLabel;
-        (*label)->setWordWrap(true);
-        auto *term = new QLabel(name);
-        term->setProperty("muted", true);
-        facts->addRow(term, *label);
-    }
-    summaryCard->body()->addLayout(facts);
+    summaryCard = new CalculationSummary("inputPreview", "この入力", [this](const QString &link) {
+        if (link == "tab:4")
+            window->calculation->showField("memory_mb");
+    });
     railLayout->addWidget(summaryCard);
-    auto *validation = new SettingsCard({});
-    checkCard = validation;
-    validation->setObjectName("inputPreviewCheck");
-    status = new QLabel;
-    status->setObjectName("inputPreviewStatus");
-    status->setWordWrap(true);
-    validation->body()->addWidget(status);
+    checkCard = new StatusCard;
+    checkCard->setObjectName("inputPreviewCheck");
+    checkCard->headline()->setObjectName("inputPreviewStatus");
+    auto *reload = checkCard->addRecheck("inputPreviewRefresh",
+                                         "表示は編集に追従します。参照ファイル・保存先など、MolFormaの外で"
+                                         "変わったものを確認し直すときに使います。");
     diagnostics = new QTextBrowser;
     diagnostics->setObjectName("inputPreviewDiagnostics");
     diagnostics->setOpenLinks(false);
     diagnostics->setOpenExternalLinks(false);
     diagnostics->setFrameShape(QFrame::NoFrame);
-    validation->body()->addWidget(diagnostics);
-    railLayout->addWidget(validation);
+    checkCard->body()->addWidget(diagnostics);
+    railLayout->addWidget(checkCard);
     auto *pathCard = new SettingsCard({});
     pathCard->setObjectName("inputPreviewPathCard");
     pathsToggle = new QToolButton;
@@ -589,38 +560,9 @@ void InputPreviewPanel::refresh() {
                   : QString("相対パスは変更せず出力します。外部で実行するときは、"
                             "NWChemの作業ディレクトリを基準に必要なファイル・保存先を用意してください。")) +
         "<br><br>実行ファイル・MPI・基底ライブラリ・参照ファイルの存在と書込み権限は " +
-        QString("<a href=\"tab:4\" style=\"color:%1\">5 実行設定</a>").arg(c.accentText.name()) +
+        QString("<a href=\"tab:4\" style=\"color:%1\">「5 実行設定」</a>").arg(c.accentText.name()) +
         " で確認してください。ここではNWChemを起動しません。");
-    const QString method = s["method"].toString();
-    QString task = s["task"].toString(), solvent;
-    for (const auto &choice : nwchemChoices("task"))
-        if (choice.value == task) {
-            task = choice.label;
-            break;
-        }
-    if (s["solvent"] != "none") {
-        for (const auto &choice : nwchemChoices("solvent"))
-            if (choice.value == s["solvent"].toString())
-                solvent = " · " + choice.label.section("（", 0, 0);
-        for (const auto &choice : nwchemChoices("solvent_name"))
-            if (choice.value == s["solvent_name"].toString() && s["solvent_name"] != "dielectric")
-                solvent += "（" + choice.label.section("（", 0, 0) + "）";
-    }
-    const QString referenceName = method == "dft" && report.reference != "rohf"
-                                      ? (report.reference == "rhf" ? "RKS" : "UKS")
-                                      : report.reference.toUpper();
-    summary->setText((method == "dft" ? nwchemFunctionalLabel(s) : method.toUpper()) + " / " +
-                     nwchemBasisLabel(s));
-    summaryTask->setText(task + solvent);
-    summaryFormula->setText(d.atoms.isEmpty() ? QString("原子なし")
-                                              : QString("%1 · %2 原子").arg(d.formula()).arg(d.atoms.size()));
-    summaryElectrons->setText(
-        QString("%1（α %2 / β %3）").arg(report.electrons).arg(report.alpha).arg(report.beta));
-    summaryCharge->setText(QString("%1 · %2%3")
-                               .arg(d.job()["charge"].toInt())
-                               .arg(d.job()["multiplicity"].toInt())
-                               .arg(referenceName.isEmpty() ? QString() : "（" + referenceName + "）"));
-    summaryMemory->setText(QString("%1 MB / MPIプロセス").arg(s["memory_mb"].toInt()));
+    summaryCard->update(d);
     const bool pending = window->hasCandidate() || window->worker;
     hint->setText(window->hasCandidate()
                       ? "未確定の分子候補を表示しています。確定または取消後にコピー・保存できます。"
@@ -628,21 +570,15 @@ void InputPreviewPanel::refresh() {
                                    : QString());
     banner->setVisible(pending);
     if (pending)
-        status->setText("候補・整形の完了待ち（出力不可）");
+        checkCard->setState(StatusCard::Waiting, "候補・整形の完了待ち（出力不可）");
     else if (!errors.isEmpty())
-        status->setText(QString("入力を生成できません（エラー %1 件）").arg(errors.size()));
+        checkCard->setState(StatusCard::Error,
+                            QString("入力を生成できません（エラー %1 件）").arg(errors.size()));
     else
-        status->setText(report.warnings.isEmpty()
-                            ? QString("✓ 入力を生成できます")
-                            : QString("✓ 入力を生成できます（確認 %1 件）").arg(report.warnings.size()));
-    const bool ok = !pending && errors.isEmpty();
-    status->setProperty("good", ok);
-    status->setProperty("bad", !ok);
-    checkCard->setProperty("state", ok ? "ok" : "error");
-    for (QWidget *w : {static_cast<QWidget *>(status), static_cast<QWidget *>(checkCard)}) {
-        w->style()->unpolish(w);
-        w->style()->polish(w);
-    }
+        checkCard->setState(StatusCard::Ok,
+                            report.warnings.isEmpty()
+                                ? QString("入力を生成できます")
+                                : QString("入力を生成できます（確認 %1 件）").arg(report.warnings.size()));
     contents = errors.isEmpty() ? text : QString();
     stats->setText(contents.isEmpty() ? QString()
                                       : QString("%1 行 · UTF-8 · %2 バイト")
@@ -668,13 +604,13 @@ void InputPreviewPanel::refresh() {
     followCursor();
     copy->setEnabled(!pending && !contents.isEmpty());
     save->setEnabled(copy->isEnabled());
-    setBadge(!d.atoms.isEmpty() && !errors.isEmpty(), status->text());
+    setBadge(!d.atoms.isEmpty() && !errors.isEmpty(), checkCard->headline()->text());
 }
 void InputPreviewPanel::refreshBadge() {
     const auto &d = window->displayDocument();
     const auto errors = validateNwchem(d).errors;
     setBadge(!d.atoms.isEmpty() && !errors.isEmpty(),
-             errors.isEmpty() ? QString("✓ 入力を生成できます")
+             errors.isEmpty() ? QString("入力を生成できます")
                               : QString("入力を生成できません（エラー %1 件）").arg(errors.size()));
 }
 void InputPreviewPanel::setBadge(bool failed, const QString &tip) {
@@ -705,8 +641,8 @@ void InputPreviewPanel::exportInput(bool toFile) {
         const auto text = prepareExport();
         if (toFile) {
             auto path = QFileDialog::getSaveFileName(
-                this, "NWChem入力を保存", nwchemSettings(window->document())["start"].toString() + ".nw",
-                "NWChem (*.nw)");
+                this, "NWChem入力ファイルを書き出す",
+                nwchemSettings(window->document())["start"].toString() + ".nw", "NWChem (*.nw)");
             if (path.isEmpty())
                 return;
             if (!path.endsWith(".nw", Qt::CaseInsensitive))
@@ -715,7 +651,7 @@ void InputPreviewPanel::exportInput(bool toFile) {
         } else
             QApplication::clipboard()->setText(text);
         window->statusBar()->showMessage(
-            toFile ? "NWChem入力を保存しました。" : "NWChem入力をコピーしました。", 5000);
+            toFile ? "NWChem入力を書き出しました。" : "NWChem入力をコピーしました。", 5000);
     });
 }
 void InputPreviewPanel::findText(bool backwards) {

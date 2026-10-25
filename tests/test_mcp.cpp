@@ -25,6 +25,7 @@
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QToolButton>
 #include <QtTest>
 
 using namespace mf;
@@ -410,7 +411,7 @@ class McpTest : public QObject {
         McpServer s(gui.editor());
         bool found = false;
         QTimer::singleShot(30, &w, [&] {
-            const auto ui = data(call(s, "get_ui", scoped(s, {{"query", "固定 / 解除"}})));
+            const auto ui = data(call(s, "get_ui", scoped(s, {{"query", "選択原子を固定"}})));
             QVERIFY(!ui["activePopup"].toString().isEmpty());
             for (const auto &entry : ui["items"].toArray())
                 if (entry.toObject()["class"] == "QAction") {
@@ -1358,7 +1359,7 @@ class McpTest : public QObject {
         QVERIFY(command["error"].toString().contains("MCPからはこの設定で実行できません"));
         QVERIFY(!data(call(s, "get_app_state", scoped(s)))["calculation"].toObject()["active"].toBool());
         // A person starting it confirms in a dialog that MCP can neither answer nor elicit.
-        auto *start = w.findChild<QPushButton *>("executionStart");
+        auto *start = w.findChild<QToolButton *>("runButton");
         QVERIFY(start && start->isEnabled());
         bool protectedDialog = false;
         const auto answer = [&](QMessageBox::StandardButton button) {

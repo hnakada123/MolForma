@@ -162,7 +162,7 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
     search->setPlaceholderText("項目名・NWChemキーワードで検索");
     search->setClearButtonEnabled(true);
     search->addAction(lineIcon("search"), QLineEdit::LeadingPosition);
-    search->setFixedWidth(260);
+    search->setFixedWidth(280);
     tools->addWidget(search);
     filter = new QComboBox;
     filter->setObjectName("advancedFilter");
@@ -366,6 +366,7 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
     inspector->setWidgetResizable(true);
     inspector->setFrameShape(QFrame::NoFrame);
     inspector->setFixedWidth(350);
+    this->inspector = inspector;
     auto *side = new QWidget;
     side->setObjectName("advancedSide");
     auto *sideLayout = new QVBoxLayout(side);
@@ -456,15 +457,16 @@ AdvancedPanel::AdvancedPanel(MainWindow *owner) : QWidget(owner), window(owner) 
     detailLayout->addWidget(outputSummary);
     sideLayout->addWidget(details);
     sideLayout->addStretch();
-    status = new QLabel;
-    status->setObjectName("advancedStatus");
-    status->setWordWrap(true);
-    sideLayout->addWidget(status);
+    // The checks of the options themselves, in the card of the other settings tabs.
+    statusCard = new StatusCard;
+    statusCard->setObjectName("advancedCheck");
+    statusCard->headline()->setObjectName("advancedStatus");
     diagnostics = new DiagnosticsList;
     diagnostics->setObjectName("advancedValidation");
     diagnostics->setFrameShape(QFrame::NoFrame);
     diagnostics->setFitContents(220);
-    sideLayout->addWidget(diagnostics);
+    statusCard->body()->addWidget(diagnostics);
+    sideLayout->addWidget(statusCard);
     // A message naming an option (「…」) shows its row; others belong to "3 計算条件".
     connect(diagnostics, &DiagnosticsList::messageClicked, this, [this](const QString &text) {
         for (const auto &o : nwchemAdvancedOptions())
@@ -776,14 +778,7 @@ void AdvancedPanel::refresh() {
         groupResets[it.key()]->setVisible(changed);
         groupResets[it.key()]->setEnabled(editable && changed);
     }
-    QString task = s["task"].toString();
-    for (const auto &c : nwchemChoices("task"))
-        if (c.value == task)
-            task = c.label;
-    context->setText(
-        QString("%1 / %2 · %3")
-            .arg(s["method"] == "dft" ? nwchemFunctionalLabel(s) : s["method"].toString().toUpper(),
-                 nwchemBasisLabel(s), task));
+    context->setText(calculationBrief(d));
     context->setToolTip(
         QString("詳細指定 %1項目（適用 %2 / 保留 %3）").arg(changedCount).arg(activeCount).arg(pendingCount));
     filterButtons->button(0)->setText(QString("この計算で使う %1").arg(applicable));
@@ -799,13 +794,10 @@ void AdvancedPanel::refresh() {
     NwchemValidation own;
     own.reference = report.reference;
     validateNwchemAdvanced(d, own);
-    status->setText(own.errors.isEmpty()
-                        ? QString("✓ 詳細設定に問題はありません")
-                        : QString("詳細設定にエラーがあります（%1 件）").arg(own.errors.size()));
-    status->setProperty("good", own.errors.isEmpty());
-    status->setProperty("bad", !own.errors.isEmpty());
-    status->style()->unpolish(status);
-    status->style()->polish(status);
+    statusCard->setState(own.errors.isEmpty() ? StatusCard::Ok : StatusCard::Error,
+                         own.errors.isEmpty()
+                             ? QString("詳細設定に問題はありません")
+                             : QString("詳細設定にエラーがあります（%1 件）").arg(own.errors.size()));
     diagnostics->setMessages(own.errors, own.warnings, {});
     diagnostics->setVisible(diagnostics->count());
     const auto outputs = nwchemOutputFiles(d, report);
@@ -815,6 +807,13 @@ void AdvancedPanel::refresh() {
         (outputs.isEmpty() ? QString("CUBE・MOLDENの出力はオフです。") : "出力予定:\n" + outputs.join('\n')));
     filterRows();
     describe();
+}
+void AdvancedPanel::resizeEvent(QResizeEvent *event) {
+    QWidget::resizeEvent(event);
+    // Narrow windows: a narrower inspector and value column, so the names stay readable.
+    const bool narrow = width() < 1240;
+    inspector->setFixedWidth(narrow ? 290 : 350);
+    table->setColumnWidth(Value, narrow ? 220 : 280);
 }
 void AdvancedPanel::applyChromeStyle() {
     const auto pal = static_cast<QWidget *>(window)->palette();

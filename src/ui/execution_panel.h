@@ -22,6 +22,7 @@ class MainWindow;
 class ChoiceButtons;
 class RunProgress;
 class SettingsCard;
+class StatusCard;
 // "5 実行設定": the settings of a run at the left (programs and folders, resources, environment),
 // and at the right, top to bottom, the checks before a run, the command, the run itself, its
 // progress (tasks, DRIVER steps against their thresholds) and its log.
@@ -37,8 +38,12 @@ class ExecutionPanel : public QWidget {
         return run.active();
     }
     void startCalculation();
-    // "計算 → 計算を実行": starts when "5 実行設定" allows it, otherwise shows that tab and why.
+    // "計算を実行" (header, menu, F5): starts when "5 実行設定" allows it, otherwise shows that tab
+    // and why.
     void startFromMenu();
+    bool canStart() const {
+        return startable;
+    }
     // Asks before stopping the running NWChem (the stop buttons and "計算 → 停止").
     void confirmStop();
     void saveBundle();
@@ -56,7 +61,7 @@ class ExecutionPanel : public QWidget {
     friend class McpGui;
     MainWindow *window;
     NwchemRun run;
-    bool busy = false, environmentDirty = false;
+    bool busy = false, environmentDirty = false, startable = false;
     QMap<QString, QWidget *> fields;
     QMap<QString, QLabel *> found; // Where the executable and the launcher were found.
     QWidget *form, *cpuMeter;
@@ -64,13 +69,16 @@ class ExecutionPanel : public QWidget {
     QComboBox *mode, *logChannel;
     QList<ChoiceButtons *> choices;
     QSpinBox *memory;
-    QLabel *resources, *memoryTotal, *environmentEmpty, *state, *location, *statePill, *timing, *diagnostics;
+    QLabel *resources, *memoryTotal, *environmentEmpty, *state, *location, *statePill, *timing, *diagnostics,
+        *context, *startHint, *logName;
     QVBoxLayout *checkList;
     RunProgress *progress;
     QPlainTextEdit *command, *log;
-    QPushButton *start, *stop, *prepare, *openFolder, *viewResults, *removeEnvironment;
+    QPushButton *prepare, *openFolder, *viewResults, *removeEnvironment;
     QCheckBox *openResults; // Load the job folder into the result viewer when a run finishes.
-    SettingsCard *runCard, *checkCard, *commandCard;
+    QCheckBox *follow;      // Keep the end of the log in view.
+    SettingsCard *runCard, *commandCard;
+    StatusCard *checkCard;
     QLabel *runningNote;
     QSystemTrayIcon *tray = nullptr;
     ExecutionPlan saved;

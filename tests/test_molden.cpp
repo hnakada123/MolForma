@@ -397,7 +397,9 @@ class MoldenTest : public QObject {
             QTRY_COMPARE_WITH_TIMEOUT(done.count(), count + 1, 10000);
             const auto before = geometry();
             QVERIFY(status->isReadOnly());
-            QVERIFY(before.last().top() > before[6].bottom());
+            // The messages are above the details, beside the 3D view: neither moves with them.
+            QVERIFY(before.last().bottom() < before[6].top());
+            QVERIFY(before.last().left() > before[0].right());
             next->click();
             QVERIFY(panel->loading());
             QVERIFY(status->toPlainText().contains("\n完了まで前の結果を表示します。"));
@@ -483,7 +485,7 @@ class MoldenTest : public QObject {
         QCOMPARE(panel->result().orbitals[0].energy, -.5);
         recompute(); // Same size and mtime: metadata change time must still invalidate it.
         QCOMPARE(panel->result().orbitals[0].energy, -.6);
-        QCOMPARE(widget<QTableWidget>(w, "resultsOrbitals")->item(0, 4)->text(), QString("-0.6"));
+        QCOMPARE(widget<QTableWidget>(w, "resultsOrbitals")->item(0, 4)->text(), QString("-0.600000"));
         QVERIFY(file.remove());
         const int count = failed.count();
         emit iso->editingFinished();

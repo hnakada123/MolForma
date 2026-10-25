@@ -15,6 +15,7 @@ class MainWindow;
 class ChoiceButtons;
 class DiagnosticsList;
 class NavList;
+class StatusCard;
 // "4 詳細設定": the categories at the left, the options as a table filtered by what the current
 // calculation uses, and at the right the selected option: what it does, the value NWChem uses while
 // it is blank, the calculations it takes part in and the lines it writes into the input.
@@ -32,6 +33,9 @@ class AdvancedPanel : public QWidget {
         busy = true;
     }
     void applyChromeStyle();
+
+  protected:
+    void resizeEvent(QResizeEvent *event) override;
 
   private:
     // One table row per option, under its category: name and keyword, editor, state, reset.
@@ -52,8 +56,9 @@ class AdvancedPanel : public QWidget {
     NavList *categories;
     QFrame *banner;
     QLabel *context, *empty, *message, *selectedTitle, *keyword, *selectedState, *help, *defaultValue,
-        *currentValue, *scope, *snippetNote, *outputSummary, *status;
-    QWidget *details;
+        *currentValue, *scope, *snippetNote, *outputSummary;
+    StatusCard *statusCard;
+    QWidget *details, *inspector;
     QPlainTextEdit *snippet;
     DiagnosticsList *diagnostics;
     QTreeWidget *table;

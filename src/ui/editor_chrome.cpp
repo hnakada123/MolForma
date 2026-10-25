@@ -1,15 +1,23 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/editor_chrome.h"
+#include "nwchem/nwchem.h"
+#include "ui/molecule_view.h"
 #include "ui/theme.h"
 #include <QApplication>
 #include <QButtonGroup>
 #include <QComboBox>
+#include <QFontDatabase>
+#include <QFormLayout>
 #include <QGridLayout>
 #include <QIconEngine>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPlainTextEdit>
+#include <QPushButton>
 #include <QResizeEvent>
+#include <QSlider>
 #include <QSpacerItem>
+#include <QStyle>
 #include <QStyledItemDelegate>
 #include <algorithm>
 #include <cmath>
@@ -387,7 +395,12 @@ QString settingsRules() {
         QFrame[banner="true"] QLabel { color: @candidateText; }
         QFrame[card="true"] { background: @base; border: 1px solid @line; border-radius: 10px; }
         QFrame[card="true"][state="ok"] { background: @goodTint; }
+        QFrame[card="true"][state="warn"] { background: @candidate; border-color: @candidateLine; }
         QFrame[card="true"][state="error"] { background: @badTint; }
+        QLabel[headline="ok"] { color: @good; font-weight: bold; }
+        QLabel[headline="warn"] { color: @candidateText; font-weight: bold; }
+        QLabel[headline="error"] { color: @error; font-weight: bold; }
+        QLabel[headline="waiting"] { color: @muted; font-weight: bold; }
         QLabel[cardTitle="true"] { color: @text; font-weight: bold; font-size: 14px; }
         QLabel[caption="true"] { color: @muted; font-size: 11px; }
         QLabel[muted="true"] { color: @muted; }
@@ -429,7 +442,83 @@ QString settingsRules() {
         QScrollArea[canvas="true"] { background: @window; border: none; }
         QWidget[canvas="true"] { background: @window; }
         QListWidget[nav="true"] { background: @base; border: none; }
+        QTabWidget[tabs="underline"]::pane { background: @base; border: none; border-top: 1px solid @line; }
+        QTabWidget[tabs="underline"]::tab-bar { left: 4px; }
+        QTabWidget[tabs="underline"] > QTabBar { background: transparent; }
+        QTabWidget[tabs="underline"] > QTabBar::tab { background: transparent; border: none; color: @muted;
+                                                      border-bottom: 2px solid transparent; padding: 6px 3px;
+                                                      margin-right: 14px; }
+        QTabWidget[tabs="underline"] > QTabBar::tab:hover { color: @text; }
+        QTabWidget[tabs="underline"] > QTabBar::tab:selected { color: @accentText; border-bottom-color: @accent; }
+        QTabWidget[tabs="underline"] > QTabBar::tab:disabled { color: @line; }
+        QTableView[plain="true"], QTreeView[plain="true"] { background: @base; border: 1px solid @line;
+            border-radius: 8px; gridline-color: @hover; selection-background-color: @tint; selection-color: @text;
+            alternate-background-color: @window; }
+        QTableView[plain="true"]::item:selected, QTreeView[plain="true"]::item:selected { background: @tint;
+                                                                                         color: @text; }
+        QTableView[plain="true"] QHeaderView::section, QTreeView[plain="true"] QHeaderView::section {
+            background: @base; color: @muted; border: none; border-bottom: 1px solid @line; padding: 5px 8px; }
+        QTableView[plain="true"] QTableCornerButton::section { background: @base; border: none; }
+        QPlainTextEdit[log="true"] { background: @window; border: 1px solid @line; border-radius: 6px; }
     )";
+}
+QPushButton *linkButton(const QString &text, const QString &objectName) {
+    auto *b = new QPushButton(text);
+    if (!objectName.isEmpty())
+        b->setObjectName(objectName);
+    b->setProperty("link", true);
+    b->setIcon(lineIcon("arrow"));
+    b->setLayoutDirection(Qt::RightToLeft); // The arrow after the text.
+    b->setCursor(Qt::PointingHandCursor);
+    b->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed); // As wide as its text, also in a form row.
+    return b;
+}
+QString tabName(int index) {
+    static const QStringList names{"① 分子",     "② 座標",           "③ 計算条件",   "④ 詳細設定",
+                                   "⑤ 実行設定", "⑥ 入力プレビュー", "結果ビューア", "履歴"};
+    return names.value(index);
+}
+QPlainTextEdit *logView(const QString &objectName) {
+    auto *text = new QPlainTextEdit;
+    text->setObjectName(objectName);
+    text->setReadOnly(true);
+    text->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    text->setLineWrapMode(QPlainTextEdit::NoWrap);
+    text->setProperty("log", true);
+    return text;
+}
+QToolButton *copyButton(const QString &objectName, const QString &toolTip) {
+    auto *b = new QToolButton;
+    b->setObjectName(objectName);
+    b->setIcon(lineIcon("copy"));
+    b->setProperty("flat", true);
+    b->setToolTip(toolTip);
+    b->setAccessibleName(toolTip);
+    return b;
+}
+void repolish(QWidget *widget) {
+    widget->style()->unpolish(widget);
+    widget->style()->polish(widget);
+}
+QString viewControlsHint() {
+    return "左ドラッグ: 回転 · 右ドラッグ: 平行移動 · ホイール: 拡大縮小";
+}
+QString calculationBrief(const Document &d) {
+    const auto s = nwchemSettings(d);
+    QString task = s["task"].toString(), solvent;
+    for (const auto &c : nwchemChoices("task"))
+        if (c.value == task)
+            task = c.label;
+    if (s["solvent"] != "none") {
+        for (const auto &c : nwchemChoices("solvent"))
+            if (c.value == s["solvent"].toString())
+                solvent = " · " + c.label.section("（", 0, 0);
+        for (const auto &c : nwchemChoices("solvent_name"))
+            if (c.value == s["solvent_name"].toString() && s["solvent_name"] != "dielectric")
+                solvent += "（" + c.label.section("（", 0, 0) + "）";
+    }
+    return (s["method"] == "dft" ? nwchemFunctionalLabel(s) : s["method"].toString().toUpper()) + " / " +
+           nwchemBasisLabel(s) + " · " + task + solvent;
 }
 QIcon lineIcon(const QString &name, const QColor &color) {
     return QIcon(new LineIconEngine(name, color));
@@ -769,10 +858,226 @@ SettingsCard::SettingsCard(const QString &title, QWidget *parent) : QFrame(paren
     head->addWidget(heading);
     head->addStretch();
     layout->addLayout(head);
-    content = new QVBoxLayout;
+    contents = new QWidget;
+    content = new QVBoxLayout(contents);
+    content->setContentsMargins(0, 0, 0, 0);
     content->setSpacing(8);
-    layout->addLayout(content);
+    layout->addWidget(contents);
     heading->setVisible(!title.isEmpty());
+}
+void SettingsCard::setCollapsible(bool open) {
+    auto *toggle = new QToolButton;
+    toggle->setObjectName(objectName().isEmpty() ? QString() : objectName() + "Toggle");
+    toggle->setProperty("flat", true);
+    toggle->setCheckable(true);
+    toggle->setChecked(open);
+    toggle->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+    toggle->setToolTip(open ? "閉じる" : "開く");
+    toggle->setAccessibleName(heading->text());
+    head->insertWidget(0, toggle);
+    contents->setVisible(open);
+    connect(toggle, &QToolButton::toggled, this, [this, toggle](bool on) {
+        contents->setVisible(on);
+        toggle->setArrowType(on ? Qt::DownArrow : Qt::RightArrow);
+        toggle->setToolTip(on ? "閉じる" : "開く");
+    });
+}
+
+StatusCard::StatusCard(QWidget *parent) : SettingsCard({}, parent) {
+    icon = new QLabel;
+    icon->setFixedSize(18, 18);
+    text = new QLabel;
+    text->setWordWrap(true);
+    header()->insertWidget(0, icon, 0, Qt::AlignVCenter);
+    header()->insertWidget(1, text, 1);
+    setState(Waiting, {});
+}
+void StatusCard::setState(State state, const QString &headline) {
+    static const char *names[]{"ok", "warn", "error", "waiting"};
+    current = state;
+    text->setText(headline);
+    const ChromeColors c(palette());
+    const QColor color = state == Ok        ? c.good
+                         : state == Warning ? c.candidateText
+                         : state == Error   ? c.bad
+                                            : c.muted;
+    icon->setPixmap(lineIcon(state == Ok        ? "check"
+                             : state == Error   ? "error"
+                             : state == Warning ? "warning"
+                                                : "info",
+                             color)
+                        .pixmap(QSize(18, 18)));
+    if (property("state").toString() != names[state] ||
+        text->property("headline").toString() != names[state]) {
+        setProperty("state", names[state]);
+        text->setProperty("headline", names[state]);
+        repolish(this);
+        repolish(text);
+    }
+}
+QPushButton *StatusCard::addRecheck(const QString &objectName, const QString &toolTip) {
+    auto *b = new QPushButton("再検査");
+    b->setObjectName(objectName);
+    b->setIcon(lineIcon("refresh"));
+    b->setToolTip(toolTip);
+    header()->addWidget(b, 0, Qt::AlignVCenter);
+    return b;
+}
+
+CalculationSummary::CalculationSummary(const QString &prefix, const QString &caption,
+                                       const std::function<void(const QString &)> &openLink, QWidget *parent)
+    : SettingsCard({}, parent) {
+    setObjectName(prefix + "SummaryCard");
+    body()->setSpacing(4);
+    auto *kind = new QLabel(caption);
+    kind->setProperty("caption", true);
+    body()->addWidget(kind);
+    title = new QLabel;
+    title->setObjectName(prefix + "Summary");
+    title->setProperty("cardTitle", true);
+    title->setWordWrap(true);
+    body()->addWidget(title);
+    task = new QLabel;
+    task->setObjectName(prefix + "SummaryTask");
+    task->setWordWrap(true);
+    body()->addWidget(task);
+    auto *facts = new QFormLayout;
+    facts->setContentsMargins(0, 6, 0, 0);
+    facts->setHorizontalSpacing(14);
+    facts->setVerticalSpacing(3);
+    for (const auto &[name, label, key] : {std::tuple{"組成", &formula, "Formula"},
+                                           {"電子数", &electrons, "Electrons"},
+                                           {"電荷・多重度", &charge, "Charge"},
+                                           {"メモリ", &memory, "Memory"}}) {
+        *label = new QLabel;
+        (*label)->setObjectName(prefix + "Summary" + key);
+        (*label)->setWordWrap(true);
+        auto *term = new QLabel(name);
+        term->setProperty("muted", true);
+        facts->addRow(term, *label);
+    }
+    memory->setTextFormat(Qt::RichText);
+    connect(memory, &QLabel::linkActivated, this, [openLink](const QString &link) { openLink(link); });
+    body()->addLayout(facts);
+}
+void CalculationSummary::update(const Document &d) {
+    const auto s = nwchemSettings(d);
+    const auto check = validateNwchem(d);
+    const auto brief = calculationBrief(d);
+    title->setText(brief.section(" · ", 0, 0));
+    task->setText(brief.section(" · ", 1));
+    const QString method = s["method"].toString();
+    const QString reference = method == "dft" && check.reference != "rohf"
+                                  ? (check.reference == "rhf" ? "RKS" : "UKS")
+                                  : check.reference.toUpper();
+    formula->setText(d.atoms.isEmpty() ? QString("原子なし")
+                                       : QString("%1 · %2 原子").arg(d.formula()).arg(d.atoms.size()));
+    electrons->setText(QString("%1（α %2 / β %3）%4")
+                           .arg(check.electrons)
+                           .arg(check.alpha)
+                           .arg(check.beta)
+                           .arg(check.ecpElectrons ? "ECP適用後" : ""));
+    charge->setText(QString("%1 · %2%3")
+                        .arg(d.job()["charge"].toInt())
+                        .arg(d.job()["multiplicity"].toInt(1))
+                        .arg(reference.isEmpty() ? QString() : "（" + reference + "）"));
+    memory->setText(
+        QString("%1 MB / MPIプロセス · <a href=\"tab:4\" style=\"color:%2; text-decoration:none\">"
+                "⑤で変更</a>")
+            .arg(s["memory_mb"].toInt())
+            .arg(ChromeColors(palette()).accentText.name()));
+}
+
+ViewControls::ViewControls(MoleculeView *view, const Names &names, bool rotate, bool menu, QWidget *parent)
+    : QFrame(parent), view(view) {
+    setProperty("viewControls", true);
+    setProperty("compactButtons", true); // OverlayHost shows only the icons when narrow.
+    auto *row = new QHBoxLayout(this);
+    row->setContentsMargins(3, 3, 3, 3);
+    row->setSpacing(1);
+    for (int i = 0; i < 3; ++i) {
+        auto *b = new QToolButton;
+        b->setObjectName(names.axes[i]);
+        b->setText(QString("+") + QString("XYZ")[i]);
+        b->setToolTip(QString("%1軸の正の側から見て、分子全体を表示します。").arg(QString("XYZ")[i]));
+        row->addWidget(b);
+        parts << b;
+        connect(b, &QToolButton::clicked, this, [view, i] { view->viewFrom(i); });
+    }
+    auto *divider = new QFrame;
+    divider->setFrameShape(QFrame::VLine);
+    divider->setFrameShadow(QFrame::Sunken);
+    row->addWidget(divider);
+    const auto button = [&](const QString &text, const QString &icon, const QString &name) {
+        auto *b = new QToolButton;
+        b->setObjectName(name);
+        b->setText(text);
+        b->setIcon(lineIcon(icon));
+        b->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        row->addWidget(b);
+        parts << b;
+        return b;
+    };
+    fit = button("全体を表示", "fit", names.fit);
+    fit->setToolTip("向きを変えずに、分子全体が収まるように表示します。");
+    connect(fit, &QToolButton::clicked, view, &MoleculeView::fit);
+    if (rotate) {
+        rotation = button("回転", "rotate", names.rotate);
+        rotation->setToolTip("左右・上下・画面内の回転角をスライダーで指定します。");
+        // The angles as sliders in a popup under "回転"; the mouse rotation moves them too.
+        popup = new QFrame(this, Qt::Popup);
+        popup->setObjectName(names.popup);
+        auto *angles = new QFormLayout(popup);
+        angles->setContentsMargins(14, 12, 14, 12);
+        QSlider *sliders[3];
+        const auto start = view->angles();
+        for (int i = 0; i < 3; ++i) {
+            sliders[i] = new QSlider(Qt::Horizontal);
+            sliders[i]->setObjectName(names.sliders[i]);
+            sliders[i]->setRange(-180, 180);
+            sliders[i]->setValue(qRound(start[i]));
+            sliders[i]->setMinimumWidth(200);
+            angles->addRow(QStringList{"左右回転", "上下回転", "画面内回転"}[i], sliders[i]);
+            parts << sliders[i];
+        }
+        connect(rotation, &QToolButton::clicked, this, [this] {
+            popup->adjustSize();
+            popup->move(
+                rotation->mapToGlobal(QPoint(rotation->width() - popup->width(), rotation->height() + 4)));
+            popup->show();
+        });
+        for (int i = 0; i < 3; ++i)
+            connect(sliders[i], &QSlider::valueChanged, this,
+                    [view, a = sliders[0], b = sliders[1], c = sliders[2]] {
+                        view->setAngles(a->value(), b->value(), c->value());
+                    });
+        // Mouse rotation and +X/+Y/+Z move the sliders, so touching one continues from the view.
+        connect(view, &MoleculeView::orientationChanged, this,
+                [view, a = sliders[0], b = sliders[1], c = sliders[2]] {
+                    const auto angles = view->angles();
+                    const QSignalBlocker ba(a), bb(b), bc(c);
+                    a->setValue(qRound(angles.x()));
+                    b->setValue(qRound(angles.y()));
+                    c->setValue(qRound(angles.z()));
+                });
+    }
+    if (menu) {
+        display = button("表示", "eye", names.menu);
+        display->setToolTip("ラベル・水素・表示スタイルなどの表示を切り替えます。");
+        display->setPopupMode(QToolButton::InstantPopup);
+    }
+}
+void ViewControls::applyStyle(const QPalette &palette) {
+    setStyleSheet(chromeRules(R"(
+        QFrame[viewControls="true"] { background: @base; border: 1px solid @line; border-radius: 8px; }
+        QToolButton { border: none; border-radius: 5px; padding: 3px 7px; color: @text; background: transparent; }
+        QToolButton:hover { background: @hover; }
+        QToolButton:disabled { color: @muted; }
+        QToolButton::menu-indicator { width: 0; }
+    )",
+                              palette));
+    if (popup)
+        popup->setStyleSheet(chromeRules("QFrame { background: @base; border: 1px solid @line; }", palette));
 }
 
 ElidedLabel::ElidedLabel(const QString &text, QWidget *parent) : QLabel(text, parent) {

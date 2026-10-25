@@ -28,8 +28,11 @@ class QStackedWidget;
 class QToolButton;
 class QActionGroup;
 class QFrame;
+class QVBoxLayout;
 namespace mf {
 class HeaderBar;
+class SettingsCard;
+class ViewControls;
 class CoordinatesPanel;
 class CalculationPanel;
 class AdvancedPanel;
@@ -138,14 +141,22 @@ class MainWindow : public QMainWindow {
     QComboBox *elementBox = nullptr, *bondKind = nullptr;
     QLineEdit *search = nullptr;
     QListWidget *palette = nullptr, *residueList = nullptr, *pointList = nullptr;
-    QTabWidget *properties = nullptr, *editPages = nullptr;
+    // The pages at the right of "1 分子"; segments above them switch the hidden tab bar.
+    QTabWidget *properties = nullptr;
+    QButtonGroup *propertyGroup = nullptr;
+    ViewControls *viewControls = nullptr;
+    // The cards of a page of properties by the form that adds to it, and the row of buttons that
+    // button() adds to (its row in the form).
+    QHash<QFormLayout *, QVBoxLayout *> pageCards;
+    QHash<QFormLayout *, std::pair<int, QWidget *>> buttonRows;
     QLabel *summary = nullptr, *measurement = nullptr, *candidateLabel = nullptr, *sequenceLabel = nullptr,
            *mouseHint = nullptr, *measureTitle = nullptr, *dimensionLabel = nullptr,
            *selectionTitle = nullptr, *selectionList = nullptr, *candidateTitle = nullptr,
            *candidateChanges = nullptr, *toolPart = nullptr;
     QWidget *candidateBar = nullptr, *chargeEditor = nullptr;
-    QLabel *chargeSummary = nullptr;
-    QCheckBox *includePointCharges = nullptr;
+    // The charge page: the calculation's charge and point-charge settings ("3 計算条件"), shown.
+    QLabel *chargeSummary = nullptr, *chargeState = nullptr, *pointChargeState = nullptr,
+           *inputState = nullptr;
     QCheckBox *deleteTerminate = nullptr;      // "削除後に水素で終端化" in the edit panel,
     QCheckBox *toolDeleteTerminate = nullptr;  // and the same in the option bar of the delete tool.
     QDoubleSpinBox *toolChargeValue = nullptr; // The point-charge tool's charge; mirrors chargeValue.
@@ -154,7 +165,6 @@ class MainWindow : public QMainWindow {
     QStackedWidget *topRow = nullptr;
     QHash<QString, QWidget *> toolOptionGroups; // Option bar groups by object name.
     QWidget *sequenceChip = nullptr, *measureCard = nullptr, *candidateCard = nullptr;
-    QFrame *rotationPopup = nullptr;
     QLabel *bannerLabel = nullptr;
     QPushButton *undoButton = nullptr, *redoButton = nullptr;
     QAction *undoAction = nullptr, *redoAction = nullptr, *confirmAction = nullptr, *stopAction = nullptr;
@@ -168,8 +178,7 @@ class MainWindow : public QMainWindow {
     QJsonArray customParts;
     QDoubleSpinBox *positionFields[3]{}, *translateFields[3]{}, *duplicateFields[3]{}, *chargeFields[3]{};
     QDoubleSpinBox *twist = nullptr, *distance = nullptr, *chargeValue = nullptr;
-    QSpinBox *formal = nullptr, *radical = nullptr, *oxidation = nullptr, *totalCharge = nullptr,
-             *multiplicity = nullptr;
+    QSpinBox *formal = nullptr, *radical = nullptr, *oxidation = nullptr;
     QLineEdit *mass = nullptr, *siteInput = nullptr, *sequenceInput = nullptr;
     QComboBox *geometryBox = nullptr, *aminoState = nullptr, *chiralityBox = nullptr, *nTerm = nullptr,
               *cTerm = nullptr;
@@ -191,6 +200,7 @@ class MainWindow : public QMainWindow {
     void buildChargePanel();
     void refresh();
     void refreshTitle();
+    void refreshSummary();
     // The tabs "2 座標" to "6 入力プレビュー"; while the window is shown, only the open one refreshes
     // on each change and the others are marked stale until opened.
     QList<QWidget *> workspacePanels() const;
@@ -212,8 +222,12 @@ class MainWindow : public QMainWindow {
     void refreshSelectionControls();
     // Delete, the bond-order keys and similar: a missing selection is a hint, not an error dialog.
     bool hasSelection(int count = 0);
+    // A page of the properties at the right of "1 分子", and the form for what comes before its cards.
     QFormLayout *panel(const QString &title);
-    void section(QFormLayout *form, const QString &title);
+    // A card on the page of form, which then adds to the card. open: 1 or 0 for a card that opens and
+    // closes (open or closed at first), -1 for one always open.
+    SettingsCard *section(QFormLayout *&form, const QString &title, int open = -1);
+    void showProperties(const QString &title);
     QPushButton *button(QFormLayout *form, const QString &text, const std::function<void()> &slot,
                         const QString &objectName = {});
     QDoubleSpinBox *number(QFormLayout *form, const QString &label, double value = 0, double minimum = -10000,
@@ -256,7 +270,6 @@ class MainWindow : public QMainWindow {
     void runWorker(const QString &mode, const QString &smiles = {}, const Ids &moving = {}, int count = 10);
     void cancelWorker();
     void contextMenu(const QPoint &p, const QString &id);
-    void coordinateDialog();
     void savePart();
     void loadPart();
     void selectNumbers();

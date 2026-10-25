@@ -55,6 +55,7 @@ class HistoryPanel : public QWidget {
 
   protected:
     void showEvent(QShowEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
 
   private:
@@ -86,7 +87,8 @@ class HistoryPanel : public QWidget {
     QLineEdit *search;
     QComboBox *filter, *energyUnit, *fileChoice;
     ChoiceButtons *filterButtons, *unitButtons;
-    QPushButton *compare, *cancel, *refreshButton, *csv, *repairAll;
+    QPushButton *compare, *cancel, *refreshButton, *repairAll;
+    QAction *csv;
     QFrame *orphanBanner;
     QLabel *orphanText;
     // The list and the files.
@@ -132,6 +134,7 @@ class HistoryPanel : public QWidget {
     void updateActions();
     void updateLogs();
     void setFilesOpen(bool open, bool remember = true);
+    void fitDetail();
     void saveMemo();
     void openResult();
     void trashSelected();
