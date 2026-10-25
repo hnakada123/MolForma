@@ -1919,10 +1919,13 @@ void MainWindow::refresh() {
     refreshTitle();
     QStringList seq, plain;
     residueList->clear();
+    // Residue links colored in the markup, in the accent rather than the theme's link color.
+    const auto link = ChromeColors(QMainWindow::palette()).accentText.name();
     for (auto v : d.data["residues"].toArray()) {
         auto r = v.toObject();
         QString label = r["code"].toString() + " " + QString::number(r["number"].toInt());
-        seq << QString("<a href=\"%1\">%2</a>").arg(r["id"].toString(), label.toHtmlEscaped());
+        seq << QString("<a href=\"%1\"><span style=\"color:%3\">%2</span></a>")
+                   .arg(r["id"].toString(), label.toHtmlEscaped(), link);
         plain << label;
         auto *item = new QListWidgetItem(
             label + "  " + r["n_terminal"].toString() + " / " + r["c_terminal"].toString(), residueList);
@@ -1998,8 +2001,10 @@ void MainWindow::syncWorkflowSteps() {
 }
 void MainWindow::changeEvent(QEvent *e) {
     QMainWindow::changeEvent(e);
-    if (e->type() == QEvent::PaletteChange && !stylingChrome)
+    if (e->type() == QEvent::PaletteChange && !stylingChrome) {
         applyChromeStyle();
+        refresh(); // Texts colored in their markup, such as the residue links.
+    }
 }
 void MainWindow::applyChromeStyle() {
     if (!header)
@@ -2098,10 +2103,6 @@ void MainWindow::applyChromeStyle() {
     )";
     for (const auto *name : {"sequenceChip", "viewControls", "measureCard"})
         style(findChild<QWidget *>(name), overlay);
-    // Residue links in the accent, readable on the chip in either theme.
-    auto links = sequenceLabel->palette();
-    links.setColor(QPalette::Link, c.accentText);
-    sequenceLabel->setPalette(links);
     style(rotationPopup, "#rotationPopup { background: @base; border: 1px solid @line; }");
     style(findChild<QWidget *>("hintBar"), R"(
         #hintBar { background: @base; border-top: 1px solid @line; }
@@ -2997,13 +2998,13 @@ void MainWindow::showManual() {
     dialog.setWindowTitle("MolForma 操作ガイド・マニュアル");
     dialog.resize(900, 720);
     auto *layout = new QVBoxLayout(&dialog);
-    auto *tips =
-        new QLabel("左のパレットで部品・原子を選び、3D画面をクリックするかドロップして配置します。"
-                   "左端の列でツールを切り替え、3D画面の上にツールの設定、下にクリックしたときの動作を表示します。"
-                   "原子をクリックで選択、Shift／Ctrl＋クリックで順に追加し、2〜4原子で距離・角度・二面角を"
-                   "測定できます。配位子・削除・整形などは「変更を確定」（Ctrl+Enter）で適用し、Escで"
-                   "候補を取消、Ctrl+Zで確定済みの変更を戻します。計算は「計算 → 計算を実行」（F5）で"
-                   "始めます。キー操作の一覧は「ヘルプ → キーボードショートカット一覧」にあります。");
+    auto *tips = new QLabel(
+        "左のパレットで部品・原子を選び、3D画面をクリックするかドロップして配置します。"
+        "左端の列でツールを切り替え、3D画面の上にツールの設定、下にクリックしたときの動作を表示します。"
+        "原子をクリックで選択、Shift／Ctrl＋クリックで順に追加し、2〜4原子で距離・角度・二面角を"
+        "測定できます。配位子・削除・整形などは「変更を確定」（Ctrl+Enter）で適用し、Escで"
+        "候補を取消、Ctrl+Zで確定済みの変更を戻します。計算は「計算 → 計算を実行」（F5）で"
+        "始めます。キー操作の一覧は「ヘルプ → キーボードショートカット一覧」にあります。");
     tips->setWordWrap(true);
     layout->addWidget(tips);
     auto *bar = new QHBoxLayout;

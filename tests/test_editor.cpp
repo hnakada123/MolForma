@@ -1465,8 +1465,17 @@ class EditorTest : public QObject {
         w.resize(1600, 900);
         QTest::qWait(150);
         QVERIFY(header->singleRow());
-        // A dark palette restyles the header, rail, option bar and overlays from its colors.
+        // The accent is MolForma's own blue, not a pale selection color of the desktop theme.
         const auto light = QApplication::palette();
+        auto pale = light;
+        pale.setColor(QPalette::Highlight, QColor("#b299ec"));
+        pale.setColor(QPalette::HighlightedText, QColor(Qt::black));
+        QApplication::setPalette(pale);
+        QTest::qWait(20);
+        QVERIFY(header->styleSheet().contains("#1d5fd1"));
+        QVERIFY(!header->styleSheet().contains("#b299ec"));
+        QVERIFY(w.findChild<QLabel *>("sequenceLabel")->text().contains("color:#1d5fd1"));
+        // A dark palette restyles the header, rail, option bar and overlays from its colors.
         QPalette dark(QColor("#2b2d31"), QColor("#202225"));
         dark.setColor(QPalette::Base, QColor("#1e1f22"));
         dark.setColor(QPalette::Text, QColor("#e3e5e8"));
@@ -1476,7 +1485,7 @@ class EditorTest : public QObject {
         dark.setColor(QPalette::HighlightedText, QColor("#ffffff"));
         QApplication::setPalette(dark);
         QTest::qWait(20);
-        QVERIFY(header->styleSheet().contains("#1e1f22"));
+        QVERIFY(header->styleSheet().contains("#1e1f22") && header->styleSheet().contains("#2f6fe4"));
         if (!artifacts.isEmpty()) {
             w.resize(1380, 900);
             QTest::qWait(150);

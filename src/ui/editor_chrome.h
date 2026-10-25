@@ -9,8 +9,9 @@
 #include <utility>
 class QGridLayout;
 namespace mf {
-// Colors of the editor chrome (header, tool rail, option bar, overlays), derived from the widget
-// palette so that light and dark themes both stay readable. accentText keeps 4.5:1 on tint.
+// Colors of the editor chrome (header, tool rail, option bar, overlays): MolForma's own accent, and
+// the rest derived from the widget palette so that light and dark themes both stay readable.
+// accentText keeps 4.5:1 on tint.
 struct ChromeColors {
     QColor base, window, text, muted, line, hover, segment, accent, accentText, tint, onAccent;
     QColor candidate, candidateLine, candidateText; // The banner of a pending change.

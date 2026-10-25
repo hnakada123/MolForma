@@ -213,15 +213,17 @@ ChromeColors::ChromeColors(const QPalette &p) {
     base = p.color(QPalette::Base);
     window = p.color(QPalette::Window);
     text = p.color(QPalette::Text);
-    accent = p.color(QPalette::Highlight);
-    onAccent = p.color(QPalette::HighlightedText);
+    const bool dark = window.lightness() < 128;
+    // MolForma's own accent, the cobalt of the redesign, whatever the desktop's selection color
+    // (a pale one would wash out the chosen tool and step); a little lighter on dark themes.
+    accent = QColor(dark ? "#2f6fe4" : "#1d5fd1");
+    onAccent = QColor(Qt::white);
     line = mix(text, base, .17);
     hover = mix(text, base, .07);
     segment = mix(text, window, .08);
     tint = mix(accent, base, .16);
     muted = readable(mix(text, base, .55), text, base);
     accentText = readable(accent, text, tint);
-    const bool dark = window.lightness() < 128;
     candidate = QColor(dark ? "#3b2a12" : "#fff4e5");
     candidateLine = QColor(dark ? "#8a5a1c" : "#f3c98b");
     candidateText = QColor(dark ? "#fcd9a8" : "#5c2e04");
