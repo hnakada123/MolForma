@@ -383,8 +383,8 @@ class MoldenTest : public QObject {
             QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
             QVector<QRect> rectangles;
             for (const auto *name :
-                 {"resultsView", "resultsYaw", "resultsPitch", "resultsRoll", "resultsOrbitalFirst",
-                  "resultsOrbitalNext", "resultsDetails", "resultsStatus"}) {
+                 {"resultsView", "resultsHint", "resultsOrbitalPosition", "resultsFiles",
+                  "resultsOrbitalFirst", "resultsOrbitalNext", "resultsDetails", "resultsStatus"}) {
                 auto *control = widget<QWidget>(w, name);
                 rectangles << QRect(control->mapTo(panel, QPoint()), control->size());
             }

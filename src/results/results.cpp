@@ -163,8 +163,12 @@ QJsonObject NwchemEnergySummary::energy() const {
     return {};
 }
 namespace {
+// The status lines of an NWChem log; resultOutcome() tells them apart.
+const QString IncompleteStatus = "正常終了マーカーなし（実行中・中断・不完全なログの可能性）",
+              ErrorStatus = "NWChemエラー: ", MessageStatus = "エラー・未収束メッセージあり（ログを確認）",
+              NormalStatus = "正常終了マーカーあり（各taskの結果は「概要」とログで確認）";
 void nwchem(ResultData &r, const QStringList &lines) {
-    r.status = "正常終了マーカーなし（実行中・中断・不完全なログの可能性）";
+    r.status = IncompleteStatus;
     bool fatal = false, ended = false, recognized = false;
     static const QRegularExpression energy(
         R"(\bTotal\s+(SCF|DFT|MP2|CCSD(?:\(T\))?)\s+energy\s*[:=]?\s*([-+0-9.eEdD]+))",
@@ -540,11 +544,11 @@ void nwchem(ResultData &r, const QStringList &lines) {
     if (!r.steps.isEmpty() && !r.properties.contains("optimization"))
         r.properties["optimization"] = "not_converged";
     if (!abort.isEmpty())
-        r.status = "NWChemエラー: " + abort;
+        r.status = ErrorStatus + abort;
     else if (fatal)
-        r.status = "エラー・未収束メッセージあり（ログを確認）";
+        r.status = MessageStatus;
     else if (ended)
-        r.status = "正常終了マーカーあり（各taskの結果は「概要」とログで確認）";
+        r.status = NormalStatus;
     if (const auto energy = summary.energy(); !energy.isEmpty())
         r.properties["final_energy"] = energy;
     r.warnings.removeDuplicates();
@@ -1175,6 +1179,15 @@ int resultWorker(const QString &request, const QString &response) {
         }
         return 1;
     }
+}
+QString resultOutcome(const ResultData &data) {
+    if (data.format != "NWChem")
+        return {};
+    if (data.status == NormalStatus)
+        return "normal";
+    if (data.status == IncompleteStatus)
+        return "incomplete";
+    return data.status.startsWith(ErrorStatus) || data.status == MessageStatus ? "error" : QString();
 }
 QStringList resultFiles(const QString &directory) {
     auto files = QDir(directory).entryList(

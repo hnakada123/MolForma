@@ -3,8 +3,11 @@
 #include "editing/coordinates.h"
 #include "model/geometry.h"
 #include "results/molden_orbitals.h"
+#include "ui/editor_chrome.h"
 #include "ui/main_window.h"
+#include "ui/molecule_view.h"
 #include "ui/result_charts.h"
+#include "ui/theme.h"
 #include <QtWidgets>
 #include <algorithm>
 #include <cmath>
@@ -94,124 +97,317 @@ QString orbitalKey(int orbital, double iso, const QString &normalization, int di
     return QString::fromUtf8(
         QJsonDocument(QJsonArray{orbital, iso, normalization, divisions}).toJson(QJsonDocument::Compact));
 }
+QString formatName(const QString &format) {
+    return format == "NWChem" ? QString("NWChem 出力") : format;
+}
+// "C6H12O6" with the counts as subscripts.
+QString formulaHtml(const QString &formula) {
+    static const QRegularExpression digits("(\\d+)");
+    return formula.toHtmlEscaped().replace(digits, "<sub>\\1</sub>");
+}
+// Style rules that depend on a dynamic property ("tone", "chip") apply once polished again.
+void repolish(QWidget *widget) {
+    auto widgets = widget->findChildren<QWidget *>();
+    widgets << widget;
+    for (auto *w : std::as_const(widgets)) {
+        w->style()->unpolish(w);
+        w->style()->polish(w);
+    }
+}
+void setChip(QLabel *chip, const QString &text, const QString &tone, const QString &tip = {}) {
+    chip->setText(text);
+    chip->setToolTip(tip);
+    chip->setVisible(!text.isEmpty());
+    if (chip->property("chip").toString() != tone) {
+        chip->setProperty("chip", tone);
+        repolish(chip);
+    }
+}
+// A button as large as the labels laid out in it.
+class TileButton : public QPushButton {
+  public:
+    QSize sizeHint() const override {
+        return layout() ? layout()->sizeHint() : QPushButton::sizeHint();
+    }
+    QSize minimumSizeHint() const override {
+        return layout() ? layout()->minimumSize() : QPushButton::minimumSizeHint();
+    }
+    bool hasHeightForWidth() const override {
+        return layout() && layout()->hasHeightForWidth();
+    }
+    int heightForWidth(int width) const override {
+        return layout() ? layout()->totalHeightForWidth(width) : QPushButton::heightForWidth(width);
+    }
+};
+// A card of the summary: what, the value and a line about it. With a tab it is a button to it.
+QWidget *summaryTile(const QString &title, const QString &value, const QString &caption, const QString &tone,
+                     bool button) {
+    QWidget *tile = button ? static_cast<QWidget *>(new TileButton) : new QFrame;
+    tile->setProperty("tile", true);
+    tile->setProperty("tone", tone);
+    auto *layout = new QVBoxLayout(tile);
+    layout->setContentsMargins(12, 9, 12, 10);
+    layout->setSpacing(2);
+    for (const auto &[role, text] : {std::pair{"title", title}, {"value", value}, {"caption", caption}}) {
+        if (text.isEmpty())
+            continue;
+        auto *label = new QLabel(text);
+        label->setProperty("role", role);
+        label->setAttribute(Qt::WA_TransparentForMouseEvents);
+        label->setWordWrap(QString(role) != "value");
+        if (QString(role) == "value") {
+            auto font = label->font();
+            font.setPointSizeF(font.pointSizeF() * 1.35);
+            font.setBold(true);
+            label->setFont(font);
+        }
+        layout->addWidget(label);
+    }
+    tile->setAccessibleName(QStringList{title, value, caption}.join(' ').trimmed());
+    tile->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    return tile;
+}
+// The IR intensity of a mode as a bar behind its value, relative to the strongest mode.
+class IntensityDelegate : public QStyledItemDelegate {
+  public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    void paint(QPainter *painter, const QStyleOptionViewItem &option,
+               const QModelIndex &index) const override {
+        const auto share = index.data(Qt::UserRole);
+        if (share.isValid() && !(option.state & QStyle::State_Selected)) {
+            const ChromeColors c(option.palette);
+            const QRectF r = QRectF(option.rect).adjusted(4, option.rect.height() - 7, -4, -3);
+            painter->save();
+            painter->setRenderHint(QPainter::Antialiasing);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(c.hover);
+            painter->drawRoundedRect(r, 2, 2);
+            painter->setBrush(c.accent);
+            painter->drawRoundedRect(
+                QRectF(r.left(), r.top(), std::max(2., r.width() * share.toDouble()), r.height()), 2, 2);
+            painter->restore();
+        }
+        QStyledItemDelegate::paint(painter, option, index);
+    }
+};
+// Shared by the summary cards and the convergence criteria.
+const char *TileRules = R"(
+    QPushButton[tile="true"], QFrame[tile="true"] { background: @base; border: 1px solid @line;
+                                                    border-radius: 8px; text-align: left; padding: 0; }
+    QPushButton[tile="true"]:hover { background: @hover; }
+    QPushButton[tile="true"]:focus { border-color: @accent; }
+    QLabel[role="title"], QLabel[role="caption"], QLabel[role="muted"] { color: @muted; }
+    QLabel[role="value"] { color: @text; }
+    *[tone="good"] QLabel[role="value"] { color: @good; }
+    *[tone="warn"] QLabel[role="value"] { color: @candidateText; }
+    *[tone="warn"][tile="true"] { background: @candidate; border-color: @candidateLine; }
+    *[tone="bad"] QLabel[role="value"] { color: @error; }
+    QLabel[chip="current"] { background: @tint; color: @accentText; border-radius: 8px; padding: 1px 8px; }
+)";
 } // namespace
+
 ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     setObjectName("resultsTab");
     auto *layout = new QVBoxLayout(this);
-    auto *actions = new QHBoxLayout;
-    layout->addLayout(actions);
-    auto *open = new QPushButton("結果ファイルを開く…");
-    open->setObjectName("resultsOpen");
-    auto *directory = new QPushButton("ジョブフォルダーを開く…");
-    directory->setObjectName("resultsDirectory");
-    reload = new QPushButton("再読込");
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+    // The bar: which job and file, what kind of file and how the calculation ended, then actions.
+    resultBar = new QFrame;
+    resultBar->setObjectName("resultBar");
+    auto *bar = new FlowLayout(resultBar, 8, 6);
+    bar->setContentsMargins(14, 8, 14, 8);
+    jobIcon = new QLabel;
+    jobIcon->setObjectName("resultsJobIcon");
+    jobLabel = new ElidedLabel;
+    jobLabel->setObjectName("resultsJob");
+    jobLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed); // Its width in the flow.
+    jobLabel->setMaximumWidth(300);
+    files = new QComboBox;
+    files->setObjectName("resultsFiles");
+    files->setAccessibleName("結果ファイル");
+    files->setToolTip("ジョブフォルダーの結果ファイル。選ぶとすぐに読み込みます。");
+    files->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    files->setMinimumContentsLength(20);
+    formatChip = new QLabel;
+    formatChip->setObjectName("resultsFormat");
+    outcomeChip = new QLabel;
+    outcomeChip->setObjectName("resultsOutcome");
+    emptyHint = new QLabel("結果ファイルまたはジョブフォルダーを開いてください。");
+    emptyHint->setObjectName("resultsEmptyHint");
+    for (QWidget *w : {static_cast<QWidget *>(jobIcon), static_cast<QWidget *>(jobLabel),
+                       static_cast<QWidget *>(files), static_cast<QWidget *>(formatChip),
+                       static_cast<QWidget *>(outcomeChip), static_cast<QWidget *>(emptyHint)})
+        bar->addWidget(w);
+    bar->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum));
+    openButton = new QToolButton;
+    openButton->setObjectName("resultsOpen");
+    openButton->setText("開く…");
+    openButton->setIcon(lineIcon("folder"));
+    openButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    openButton->setPopupMode(QToolButton::MenuButtonPopup);
+    openButton->setToolTip("結果ファイル（NWChem出力・XYZ・CUBE・MOLDEN）を開きます。▾ からジョブフォルダーも"
+                           "開けます。");
+    auto *openMenu = new QMenu(openButton);
+    auto *openFileAction = openMenu->addAction("結果ファイルを開く…");
+    auto *openDirectoryAction = openMenu->addAction("ジョブフォルダーを開く…");
+    openDirectoryAction->setObjectName("resultsDirectory");
+    openButton->setMenu(openMenu);
+    reload = new QPushButton(lineIcon("refresh"), QString());
     reload->setObjectName("resultsReload");
-    cancel = new QPushButton("読込を中止");
+    reload->setToolTip("再読込（実行途中のログを更新）");
+    reload->setAccessibleName("再読込");
+    cancel = new QPushButton(lineIcon("close"), "中止");
     cancel->setObjectName("resultsCancel");
-    for (auto *b : {open, directory, reload, cancel})
-        actions->addWidget(b);
-    actions->addStretch();
-    applyGeometry = new QPushButton("編集中の分子へ適用");
-    applyGeometry->setObjectName("resultsApplyStructure");
-    applyGeometry->setToolTip("表示中の構造の座標を「1 分子」の分子へ候補として適用します。原子の数と順番が同"
-                              "じ計算結果に使えます。結合・設定は変わりません。");
-    actions->addWidget(applyGeometry);
-    compareGeometry = new QPushButton("編集中の分子と比較");
+    cancel->setToolTip("読込を中止");
+    auto *divider = new QFrame;
+    divider->setFrameShape(QFrame::VLine);
+    divider->setFrameShadow(QFrame::Sunken);
+    divider->setFixedHeight(22);
+    compareGeometry = new QPushButton(lineIcon("compare"), "分子と比較");
     compareGeometry->setObjectName("resultsCompare");
     compareGeometry->setToolTip(
         "表示中の構造と「1 分子」の分子を重ね合わせ、RMSDを表示します（同じ原子・同じ順番）。");
-    actions->addWidget(compareGeometry);
-    saveXyz = new QPushButton("構造を保存…");
+    applyGeometry = new QPushButton(lineIcon("apply"), "分子へ候補として適用");
+    applyGeometry->setObjectName("resultsApplyStructure");
+    applyGeometry->setToolTip("表示中の構造の座標を「1 分子」の分子へ候補として適用します。原子の数と順番が同"
+                              "じ計算結果に使えます。結合・設定は変わりません。");
+    exportButton = new QToolButton;
+    exportButton->setObjectName("resultsExport");
+    exportButton->setText("書き出し");
+    exportButton->setIcon(lineIcon("export"));
+    exportButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    exportButton->setPopupMode(QToolButton::InstantPopup);
+    auto *exportMenu = new QMenu(exportButton);
+    saveXyz = exportMenu->addAction("表示中の構造をXYZで保存…");
     saveXyz->setObjectName("resultsSaveXyz");
-    savePng = new QPushButton("画像を保存…");
+    savePng = exportMenu->addAction("3D表示をPNG画像で保存…");
     savePng->setObjectName("resultsSavePng");
-    actions->addWidget(saveXyz);
-    actions->addWidget(savePng);
-    files = new QComboBox;
-    files->setObjectName("resultsFiles");
-    files->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    files->setMinimumContentsLength(20);
-    layout->addWidget(files);
-    source = new QLabel("結果ファイルを開いてください。");
-    source->setObjectName("resultsSource");
-    source->setTextFormat(Qt::PlainText);
-    source->setWordWrap(true);
-    layout->addWidget(source);
-    status = new QPlainTextEdit;
-    status->setObjectName("resultsStatus");
-    status->setAccessibleName("結果ビューアのメッセージ");
-    status->setReadOnly(true);
-    status->setTabChangesFocus(true);
-    status->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    // Keep two lines of status visible without resizing the view during orbital navigation.
-    // Longer paths and errors remain selectable and scrollable within this fixed footer.
-    status->setFixedHeight(2 * status->fontMetrics().lineSpacing() + 2 * status->frameWidth() +
-                           2 * qCeil(status->document()->documentMargin()));
-    auto *hint = new QLabel("結果は編集中の分子から独立しています。左ドラッグ: 回転／右ドラッグ: "
-                            "移動／ホイール: 拡大縮小。結合は距離から推定します。");
-    hint->setWordWrap(true);
-    layout->addWidget(hint);
+    exportButton->setMenu(exportMenu);
+    for (QWidget *w :
+         {static_cast<QWidget *>(openButton), static_cast<QWidget *>(reload), static_cast<QWidget *>(cancel),
+          static_cast<QWidget *>(divider), static_cast<QWidget *>(compareGeometry),
+          static_cast<QWidget *>(applyGeometry), static_cast<QWidget *>(exportButton)})
+        bar->addWidget(w);
+    layout->addWidget(resultBar);
+    auto *body = new QWidget;
+    auto *bodyLayout = new QVBoxLayout(body);
+    bodyLayout->setContentsMargins(10, 10, 10, 10);
     auto *split = new QSplitter;
-    layout->addWidget(split, 1);
-    layout->addWidget(status);
-    auto *left = new QWidget;
-    auto *visual = new QVBoxLayout(left);
-    visual->setContentsMargins(0, 0, 0, 0);
-    auto *camera = new QHBoxLayout;
-    visual->addLayout(camera);
-    auto *fit = new QPushButton("表示を合わせる");
-    camera->addWidget(fit);
-    viewControls << fit;
-    for (int axis = 0; axis < 3; ++axis) {
-        auto *b = new QPushButton(QString("+%1").arg("XYZ"[axis]));
-        b->setToolTip(QString("%1軸の正の側から見ます。").arg("XYZ"[axis]));
-        viewControls << b;
-        camera->addWidget(b);
-        connect(b, &QPushButton::clicked, this, [this, axis] { view->viewFrom(axis); });
-    }
-    camera->addStretch();
-    auto *labelMode = new QComboBox;
-    labelMode->setObjectName("resultsLabelMode");
-    for (const auto &[label, mode] : {std::pair{"ラベル: すべて", "all"},
-                                      {"ラベル: 水素以外", "heavy"},
-                                      {"ラベル: 選択した原子", "selection"},
-                                      {"ラベル: なし", "none"}})
-        labelMode->addItem(label, mode);
-    camera->addWidget(labelMode);
-    viewControls << labelMode;
+    split->setChildrenCollapsible(false);
+    split->setHandleWidth(10);
+    bodyLayout->addWidget(split);
+    layout->addWidget(body, 1);
+
+    // The 3D view, with what it shows, the view controls and the measurement in its corners.
+    auto *viewCard = new QFrame;
+    viewCard->setObjectName("resultsViewCard");
+    auto *card = new QVBoxLayout(viewCard);
+    card->setContentsMargins(1, 1, 1, 1);
+    card->setSpacing(0);
     view = new MoleculeView;
     view->setObjectName("resultsView");
     view->setAcceptDrops(false);
     view->setAngles(-25, 25, 0);
     view->setEmptyMessage("NWChem出力・XYZ・CUBE・MOLDENを開いて\n構造・軌道の等値面・振動を確認できます。");
-    labelMode->setCurrentIndex(
-        std::max(0, labelMode->findData(window->settings.value("results/labels", "all").toString())));
-    view->setLabelMode(labelMode->currentData().toString());
-    connect(labelMode, &QComboBox::currentIndexChanged, this, [this, labelMode] {
-        view->setLabelMode(labelMode->currentData().toString());
-        window->settings.setValue("results/labels", labelMode->currentData().toString());
+    auto *viewArea = new OverlayHost(view);
+    viewArea->setObjectName("resultsViewArea");
+    card->addWidget(viewArea, 1);
+    contextChip = new QFrame;
+    contextChip->setObjectName("resultsContext");
+    auto *context = new QVBoxLayout(contextChip);
+    context->setContentsMargins(10, 5, 10, 6);
+    context->setSpacing(0);
+    contextTitle = new QLabel;
+    contextTitle->setObjectName("resultsContextTitle");
+    auto bold = contextTitle->font();
+    bold.setBold(true);
+    contextTitle->setFont(bold);
+    contextDetail = new QLabel;
+    contextDetail->setObjectName("resultsContextDetail");
+    context->addWidget(contextTitle);
+    context->addWidget(contextDetail);
+    contextChip->hide();
+    viewArea->addOverlay(contextChip, Qt::AlignTop | Qt::AlignLeft);
+    viewControlsFrame = new QFrame;
+    viewControlsFrame->setObjectName("resultsViewControls");
+    auto *controls = new QHBoxLayout(viewControlsFrame);
+    controls->setContentsMargins(3, 3, 3, 3);
+    controls->setSpacing(1);
+    for (int axis = 0; axis < 3; ++axis) {
+        auto *b = new QToolButton;
+        b->setText(QString("+%1").arg("XYZ"[axis]));
+        b->setToolTip(QString("%1軸の正の側から見ます。").arg("XYZ"[axis]));
+        controls->addWidget(b);
+        viewControls << b;
+        connect(b, &QToolButton::clicked, this, [this, axis] { view->viewFrom(axis); });
+    }
+    const auto viewButton = [&](const QString &text, const QString &icon, const QString &name) {
+        auto *b = new QToolButton;
+        b->setObjectName(name);
+        b->setText(text);
+        b->setIcon(lineIcon(icon));
+        b->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        controls->addWidget(b);
+        viewControls << b;
+        return b;
+    };
+    auto *viewDivider = new QFrame;
+    viewDivider->setFrameShape(QFrame::VLine);
+    viewDivider->setFrameShadow(QFrame::Sunken);
+    controls->addWidget(viewDivider);
+    auto *fit = viewButton("合わせる", "fit", "resultsFit");
+    fit->setToolTip("分子全体が収まるように表示します（Fキー）。");
+    connect(fit, &QToolButton::clicked, view, &MoleculeView::fit);
+    auto *rotate = viewButton("回転", "rotate", "resultsRotation");
+    rotate->setToolTip("左右・上下・画面内の回転角をスライダーで指定します。");
+    labelButton = viewButton("ラベル", "label", "resultsLabelMode");
+    labelButton->setToolTip("元素記号・番号を表示する原子を選びます。");
+    labelButton->setPopupMode(QToolButton::InstantPopup);
+    auto *labelMenu = new QMenu(labelButton);
+    auto *labelGroup = new QActionGroup(labelMenu);
+    auto savedLabels = window->settings.value("results/labels", "all").toString();
+    if (!QStringList{"all", "heavy", "selection", "none"}.contains(savedLabels))
+        savedLabels = "all";
+    for (const auto &[label, mode] : {std::pair{"すべて", "all"},
+                                      {"水素以外", "heavy"},
+                                      {"選択した原子", "selection"},
+                                      {"なし", "none"}}) {
+        auto *a = labelMenu->addAction(label);
+        a->setCheckable(true);
+        a->setData(mode);
+        a->setChecked(savedLabels == mode);
+        labelGroup->addAction(a);
+    }
+    labelButton->setMenu(labelMenu);
+    view->setLabelMode(savedLabels);
+    connect(labelGroup, &QActionGroup::triggered, this, [this](QAction *a) {
+        view->setLabelMode(a->data().toString());
+        window->settings.setValue("results/labels", a->data().toString());
     });
-    visual->addWidget(view, 1);
-    connect(fit, &QPushButton::clicked, view, &MoleculeView::fit);
-    auto *angles = new QHBoxLayout;
-    angles->setSpacing(16);
-    visual->addLayout(angles);
+    viewControlsFrame->setProperty("compactButtons", true);
+    viewArea->addOverlay(viewControlsFrame, Qt::AlignTop | Qt::AlignRight);
+    // Rotation angles as sliders in a popup under "回転"; the mouse rotation moves them too.
+    rotationPopup = new QFrame(this, Qt::Popup);
+    rotationPopup->setObjectName("resultsRotationPopup");
+    auto *angles = new QFormLayout(rotationPopup);
+    angles->setContentsMargins(14, 12, 14, 12);
     QSlider *sliders[3];
     const int initialAngles[] = {-25, 25, 0};
     for (int i = 0; i < 3; ++i) {
-        auto *control = new QVBoxLayout;
-        control->setSpacing(2);
-        auto *label = new QLabel(QStringList{"左右回転", "上下回転", "画面内回転"}[i]);
-        control->addWidget(label);
         sliders[i] = new QSlider(Qt::Horizontal);
         sliders[i]->setObjectName(QStringList{"resultsYaw", "resultsPitch", "resultsRoll"}[i]);
         sliders[i]->setRange(-180, 180);
         sliders[i]->setValue(initialAngles[i]);
-        label->setBuddy(sliders[i]);
-        control->addWidget(sliders[i]);
-        angles->addLayout(control, 1);
+        sliders[i]->setMinimumWidth(200);
+        angles->addRow(QStringList{"左右回転", "上下回転", "画面内回転"}[i], sliders[i]);
         viewControls << sliders[i];
     }
+    connect(rotate, &QToolButton::clicked, this, [this, rotate] {
+        rotationPopup->adjustSize();
+        rotationPopup->move(
+            rotate->mapToGlobal(QPoint(rotate->width() - rotationPopup->width(), rotate->height() + 4)));
+        rotationPopup->show();
+    });
     for (int i = 0; i < 3; ++i)
         connect(sliders[i], &QSlider::valueChanged, this,
                 [this, a = sliders[0], b = sliders[1], c = sliders[2]] {
@@ -226,60 +422,33 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
                 b->setValue(qRound(angles.y()));
                 c->setValue(qRound(angles.z()));
             });
-    auto *navigation = new QHBoxLayout;
-    visual->addLayout(navigation);
-    navigation->addWidget(new QLabel("軌道"));
-    const QStringList navigationNames{"First", "Back10", "Previous", "Next", "Forward10", "Last"};
-    const QStringList navigationLabels{"先頭", "−10", "−1", "+1", "+10", "末尾"};
-    const QStringList navigationTips{"最初の軌道へ", "10軌道戻る", "1軌道戻る",
-                                     "1軌道進む",    "10軌道進む", "最後の軌道へ"};
-    const QStyle::StandardPixmap navigationIcons[]{QStyle::SP_MediaSkipBackward, QStyle::SP_MediaSeekBackward,
-                                                   QStyle::SP_ArrowLeft,         QStyle::SP_ArrowRight,
-                                                   QStyle::SP_MediaSeekForward,  QStyle::SP_MediaSkipForward};
-    for (int i = 0; i < 6; ++i) {
-        auto *button = orbitalNavigation[i] =
-            new QPushButton(style()->standardIcon(navigationIcons[i]), navigationLabels[i]);
-        button->setObjectName("resultsOrbital" + navigationNames[i]);
-        button->setToolTip(navigationTips[i]);
-        button->setAccessibleName(navigationTips[i]);
-        navigation->addWidget(button);
-        connect(button, &QPushButton::clicked, this, [this, i] {
-            const int last = data.orbitals.size() - 1;
-            if (last < 0)
-                return;
-            const int offsets[]{0, -10, -1, 1, 10, 0};
-            renderOrbital(i == 0   ? 0
-                          : i == 5 ? last
-                                   : std::clamp(data.selectedOrbital + offsets[i], 0, last));
-        });
-    }
-    orbitalPosition = new QLabel;
-    orbitalPosition->setObjectName("resultsOrbitalPosition");
-    navigation->addWidget(orbitalPosition);
-    navigation->addStretch();
-    auto *frames = new QHBoxLayout;
-    visual->addLayout(frames);
-    frames->addWidget(new QLabel("構造"));
-    frame = new QSpinBox;
-    frame->setObjectName("resultsFrame");
-    frames->addWidget(frame);
-    playFrames = new QPushButton("構造列を再生");
-    playFrames->setObjectName("resultsPlayFrames");
-    frames->addWidget(playFrames);
-    frames->addStretch();
-    auto *measuring = new QHBoxLayout;
-    visual->addLayout(measuring);
+    // Distance, angle or dihedral of the atoms clicked in order, and the ones kept on the view.
+    measureCard = new QFrame;
+    measureCard->setObjectName("resultsMeasureCard");
+    measureCard->setMaximumWidth(340);
+    auto *measuring = new QVBoxLayout(measureCard);
+    measuring->setContentsMargins(12, 8, 12, 9);
+    measuring->setSpacing(6);
     measurementLabel = new QLabel("原子をクリックすると距離・角度・二面角を測定します（2〜4原子）。");
     measurementLabel->setObjectName("resultsMeasurement");
+    measurementLabel->setWordWrap(true);
     measurementLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    measuring->addWidget(measurementLabel, 1);
-    auto *pin = new QPushButton("計測を画面に表示");
+    measuring->addWidget(measurementLabel);
+    auto *measureActions = new QHBoxLayout;
+    measureActions->setSpacing(4);
+    auto *pin = new QPushButton("画面に表示");
     pin->setObjectName("resultsPinMeasurement");
-    auto *clearMeasure = new QPushButton("計測を消去");
+    pin->setToolTip("選んだ原子の計測を3D表示に残します。");
+    auto *clearMeasure = new QPushButton("消去");
     clearMeasure->setObjectName("resultsClearMeasurement");
-    measuring->addWidget(pin);
-    measuring->addWidget(clearMeasure);
+    clearMeasure->setToolTip("選択と、画面に表示中の計測をすべて消去します。");
+    measureActions->addWidget(pin);
+    measureActions->addWidget(clearMeasure);
+    measureActions->addStretch();
+    measuring->addLayout(measureActions);
     viewControls << pin << clearMeasure;
+    measureCard->hide();
+    viewArea->addOverlay(measureCard, Qt::AlignBottom | Qt::AlignLeft);
     connect(view, &MoleculeView::atomClicked, this, [this](const QString &id) { pickAtom(id); });
     connect(pin, &QPushButton::clicked, this, [this] {
         const auto &d = view->documentRef();
@@ -305,19 +474,181 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         pinned.clear();
         setViewDocument(Document(view->documentCopy()));
     });
-    split->addWidget(left);
+
+    // Under the view: the controls for what it shows. Pages of one height, so the view keeps its size.
+    auto *dockFrame = new QFrame;
+    dockFrame->setObjectName("resultsDock");
+    auto *dockLayout = new QVBoxLayout(dockFrame);
+    dockLayout->setContentsMargins(10, 7, 10, 5);
+    dockLayout->setSpacing(3);
+    dock = new QStackedWidget;
+    dock->setObjectName("resultsDockPages");
+    dockLayout->addWidget(dock);
+    const auto iconButton = [](const QString &icon, const QString &name, const QString &tip) {
+        auto *b = new QPushButton(lineIcon(icon), QString());
+        b->setObjectName(name);
+        b->setToolTip(tip);
+        b->setAccessibleName(tip);
+        return b;
+    };
+    // Groups of controls that move to a second row together when the view is narrow.
+    const auto group = [](std::initializer_list<QWidget *> widgets, int spacing = 4) {
+        auto *g = new QWidget;
+        auto *row = new QHBoxLayout(g);
+        row->setContentsMargins(0, 0, 0, 0);
+        row->setSpacing(spacing);
+        for (auto *w : widgets)
+            row->addWidget(w);
+        return g;
+    };
+    auto *framesPage = new QWidget;
+    auto *framesRow = new FlowLayout(framesPage, 10, 4);
+    framesRow->setContentsMargins(0, 0, 0, 0);
+    firstFrame = iconButton("first", "resultsFirstFrame", "最初の構造");
+    playFrames = iconButton("play", "resultsPlayFrames", "構造列を再生");
+    playFrames->setProperty("primary", true);
+    lastFrame = iconButton("last", "resultsLastFrame", "最後の構造");
+    auto *frameLabel = new QLabel("構造");
+    frame = new QSpinBox;
+    frame->setObjectName("resultsFrame");
+    frameLabel->setBuddy(frame);
+    timeline = new FrameTimeline;
+    timeline->setObjectName("resultsTimeline");
+    frameEnergy = new QLabel;
+    frameEnergy->setObjectName("resultsFrameEnergy");
+    // Room for any value, so that the row keeps its layout while the frames change.
+    frameEnergy->setMinimumWidth(frameEnergy->fontMetrics().horizontalAdvance("ΔE −99999.99 kcal/mol") + 4);
+    frameEnergy->hide();
+    framesRow->addWidget(group({firstFrame, playFrames, lastFrame}));
+    framesRow->addWidget(group({frameLabel, frame}, 6));
+    framesRow->addWidget(timeline);
+    framesRow->addWidget(frameEnergy);
+    dock->addWidget(framesPage);
+    auto *orbitalPage = new QWidget;
+    auto *orbitalRow = new FlowLayout(orbitalPage, 10, 4);
+    orbitalRow->setContentsMargins(0, 0, 0, 0);
+    const QStringList navigationNames{"First", "Back10", "Previous", "Next", "Forward10", "Last"};
+    const QStringList navigationIcons{"first", "back10", "previous", "next", "forward10", "last"};
+    const QStringList navigationTips{"最初の軌道へ", "10軌道戻る", "1軌道戻る",
+                                     "1軌道進む",    "10軌道進む", "最後の軌道へ"};
+    orbitalPosition = new QLabel;
+    orbitalPosition->setObjectName("resultsOrbitalPosition");
+    orbitalPosition->setAlignment(Qt::AlignCenter);
+    // A fixed width, so that the buttons after it stay put while the number changes.
+    orbitalPosition->setFixedWidth(orbitalPosition->fontMetrics().horizontalAdvance("Alpha 99999番") + 12);
+    for (int i = 0; i < 6; ++i) {
+        orbitalNavigation[i] =
+            iconButton(navigationIcons[i], "resultsOrbital" + navigationNames[i], navigationTips[i]);
+        connect(orbitalNavigation[i], &QPushButton::clicked, this, [this, i] {
+            const int last = data.orbitals.size() - 1;
+            if (last < 0)
+                return;
+            const int offsets[]{0, -10, -1, 1, 10, 0};
+            renderOrbital(i == 0   ? 0
+                          : i == 5 ? last
+                                   : std::clamp(data.selectedOrbital + offsets[i], 0, last));
+        });
+    }
+    homo = new QPushButton("HOMO");
+    lumo = new QPushButton("LUMO");
+    homo->setObjectName("resultsHomo");
+    lumo->setObjectName("resultsLumo");
+    homo->setToolTip("選択中のスピンのHOMOを表示します。");
+    lumo->setToolTip("選択中のスピンのLUMOを表示します。");
+    orbitalRow->addWidget(
+        group({orbitalNavigation[0], orbitalNavigation[1], orbitalNavigation[2], orbitalPosition,
+               orbitalNavigation[3], orbitalNavigation[4], orbitalNavigation[5]}));
+    orbitalRow->addWidget(group({homo, lumo}));
+    dock->addWidget(orbitalPage);
+    auto *modePage = new QWidget;
+    auto *modeRow = new FlowLayout(modePage, 10, 4);
+    modeRow->setContentsMargins(0, 0, 0, 0);
+    playMode = iconButton("play", "resultsPlayMode", "選択したモードを再生");
+    playMode->setProperty("primary", true);
+    modeLabel = new QLabel;
+    modeLabel->setObjectName("resultsModeLabel");
+    auto *amplitudeLabel = new QLabel("振幅");
+    amplitude = new QDoubleSpinBox;
+    amplitude->setObjectName("resultsAmplitude");
+    amplitude->setRange(.01, 2);
+    amplitude->setSingleStep(.05);
+    amplitude->setValue(.3);
+    amplitude->setSuffix(" Å");
+    amplitude->setToolTip("表示用に規格化した最大変位です。");
+    amplitudeLabel->setBuddy(amplitude);
+    arrows = new QCheckBox("矢印");
+    arrows->setObjectName("resultsModeArrows");
+    arrows->setToolTip("選択したモードの変位を基準構造に矢印で重ねます（最大の矢印は振幅の3倍）。");
+    modeExport = new QToolButton;
+    modeExport->setObjectName("resultsModeExport");
+    modeExport->setText("書き出し");
+    modeExport->setIcon(lineIcon("export"));
+    modeExport->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    modeExport->setPopupMode(QToolButton::InstantPopup);
+    auto *modeMenu = new QMenu(modeExport);
+    saveModeImages = modeMenu->addAction("振動の連番画像を保存…");
+    saveModeImages->setObjectName("resultsSaveModeImages");
+    saveModeTrajectory = modeMenu->addAction("振動をXYZ（複数構造）で保存…");
+    saveModeTrajectory->setObjectName("resultsSaveModeXyz");
+    modeExport->setMenu(modeMenu);
+    closeMode = iconButton("close", "resultsCloseMode", "振動の表示を終えて構造列に戻る");
+    modeRow->addWidget(group({playMode, modeLabel}, 8));
+    modeRow->addWidget(group({amplitudeLabel, amplitude}, 6));
+    modeRow->addWidget(arrows);
+    modeRow->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum));
+    modeRow->addWidget(group({modeExport, closeMode}));
+    dock->addWidget(modePage);
+    auto *hint = new ElidedLabel("結果は編集中の分子から独立 · 左ドラッグ: 回転 · 右ドラッグ: 移動 · "
+                                 "ホイール: 拡大縮小 · 原子をクリック: 計測（2〜4原子）");
+    hint->setObjectName("resultsHint");
+    hint->setToolTip(hint->text());
+    auto hintFont = hint->font();
+    hintFont.setPointSizeF(hintFont.pointSizeF() * .9);
+    hint->setFont(hintFont);
+    dockLayout->addWidget(hint);
+    card->addWidget(dockFrame);
+    split->addWidget(viewCard);
+
+    // The details: a banner when the calculation did not end normally, over the tabs with data.
+    auto *side = new QWidget;
+    auto *sideLayout = new QVBoxLayout(side);
+    sideLayout->setContentsMargins(0, 0, 0, 0);
+    sideLayout->setSpacing(8);
+    banner = new QFrame;
+    banner->setObjectName("resultsBanner");
+    auto *bannerRow = new QHBoxLayout(banner);
+    bannerRow->setContentsMargins(12, 10, 12, 10);
+    bannerRow->setSpacing(10);
+    bannerIcon = new QLabel;
+    bannerRow->addWidget(bannerIcon, 0, Qt::AlignTop);
+    auto *bannerTexts = new QVBoxLayout;
+    bannerTexts->setSpacing(3);
+    bannerTitle = new QLabel;
+    bannerTitle->setObjectName("resultsBannerTitle");
+    bannerTitle->setFont(bold);
+    bannerTitle->setWordWrap(true);
+    bannerText = new QLabel;
+    bannerText->setObjectName("resultsBannerText");
+    bannerText->setWordWrap(true);
+    bannerText->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    bannerTexts->addWidget(bannerTitle);
+    bannerTexts->addWidget(bannerText);
+    bannerRow->addLayout(bannerTexts, 1);
+    auto *bannerLog = new QPushButton("ログの末尾を表示");
+    bannerLog->setObjectName("resultsBannerLog");
+    bannerRow->addWidget(bannerLog, 0, Qt::AlignTop);
+    banner->hide();
+    sideLayout->addWidget(banner);
     auto *tabs = details = new QTabWidget;
     tabs->setObjectName("resultsDetails");
-    split->addWidget(tabs);
-    summary = new QLabel;
-    summary->setTextFormat(Qt::PlainText);
-    summary->setWordWrap(true);
-    summary->setAlignment(Qt::AlignTop);
-    summary->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    auto *scroll = new QScrollArea;
-    scroll->setWidgetResizable(true);
-    scroll->setWidget(summary);
-    tabs->addTab(scroll, "概要");
+    tabs->setUsesScrollButtons(true);
+    sideLayout->addWidget(tabs, 1);
+    split->addWidget(side);
+    overviewScroll = new QScrollArea;
+    overviewScroll->setObjectName("resultsOverview");
+    overviewScroll->setWidgetResizable(true);
+    overviewScroll->setFrameShape(QFrame::NoFrame);
+    tabs->addTab(overviewScroll, "概要");
     auto *energyPage = new QWidget;
     auto *enl = new QVBoxLayout(energyPage);
     auto *energyRow = new QHBoxLayout;
@@ -349,56 +680,76 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
             showEnergies();
         }
     });
-    auto *orbitalPage = new QWidget;
-    auto *ol = new QVBoxLayout(orbitalPage);
-    auto *orbitalActions = new QHBoxLayout;
-    homo = new QPushButton("HOMO");
-    lumo = new QPushButton("LUMO");
-    homo->setObjectName("resultsHomo");
-    lumo->setObjectName("resultsLumo");
-    for (auto *b : {homo, lumo})
-        orbitalActions->addWidget(b);
-    orbitalActions->addStretch();
-    ol->addLayout(orbitalActions);
-    auto *orbitalOptions = new QFormLayout;
+    auto *orbitalTab = new QWidget;
+    auto *ol = new QVBoxLayout(orbitalTab);
+    auto *sourceRow = new QHBoxLayout;
+    orbitalSource = new QLabel;
+    orbitalSource->setObjectName("resultsOrbitalSource");
+    orbitalSource->setWordWrap(true);
+    orbitalSource->setTextFormat(Qt::PlainText);
+    sourceRow->addWidget(orbitalSource, 1);
+    openMolden = new QPushButton("形を表示");
+    openMolden->setObjectName("resultsOpenMolden");
+    openMolden->hide();
+    sourceRow->addWidget(openMolden, 0, Qt::AlignTop);
+    ol->addLayout(sourceRow);
+    auto *orbitalViews = new QHBoxLayout;
+    levels = new OrbitalLevels;
+    levels->setObjectName("resultsOrbitalLevels");
+    orbitalViews->addWidget(levels);
+    orbitals = table({"番号", "軌道", "対称性", "スピン", "エネルギー / Eh", "占有数"}, "resultsOrbitals");
+    orbitals->verticalHeader()->hide();
+    orbitalViews->addWidget(orbitals, 1);
+    ol->addLayout(orbitalViews, 1);
+    orbitalOptions = new QGroupBox("等値面の設定");
+    auto *optionGrid = new QGridLayout(orbitalOptions);
+    optionGrid->setVerticalSpacing(3);
     orbitalIso = new QLineEdit("0.03");
     orbitalIso->setObjectName("resultsOrbitalIso");
-    orbitalOptions->addRow("等値 / bohr⁻³ᐟ²（±）", orbitalIso);
     orbitalGrid = new QSpinBox;
     orbitalGrid->setObjectName("resultsOrbitalGrid");
     orbitalGrid->setRange(16, 100);
     orbitalGrid->setValue(40);
     orbitalGrid->setToolTip("最も長い辺の分割数です。格子間隔は全軸で同じです。");
-    orbitalOptions->addRow("格子分割数（最長辺）", orbitalGrid);
     orbitalNorm = new QComboBox;
     orbitalNorm->setObjectName("resultsOrbitalNorm");
     orbitalNorm->addItem("自動判定", "auto");
     orbitalNorm->addItem("標準MOLDEN（NWChemのNONE / JANPA）", "standard");
     orbitalNorm->addItem("NWChem（正規化因子を含む係数）", "nwchem");
-    orbitalOptions->addRow("基底係数の正規化", orbitalNorm);
-    ol->addLayout(orbitalOptions);
+    const QList<std::pair<QString, QWidget *>> optionFields{{"等値 / bohr⁻³ᐟ²（±）", orbitalIso},
+                                                            {"格子分割数（最長辺）", orbitalGrid},
+                                                            {"基底係数の正規化", orbitalNorm}};
+    for (int i = 0; i < optionFields.size(); ++i) {
+        auto *label = new QLabel(optionFields[i].first);
+        label->setBuddy(optionFields[i].second);
+        optionGrid->addWidget(label, 0, i);
+        optionGrid->addWidget(optionFields[i].second, 1, i);
+        optionGrid->setColumnStretch(i, i == 2 ? 2 : 1);
+    }
+    ol->addWidget(orbitalOptions);
     orbitalStatus = new QLabel;
     orbitalStatus->setObjectName("resultsOrbitalStatus");
     orbitalStatus->setTextFormat(Qt::PlainText);
     orbitalStatus->setWordWrap(true);
     ol->addWidget(orbitalStatus);
-    openMolden = new QPushButton("同じジョブのMOLDENで軌道の形を表示");
-    openMolden->setObjectName("resultsOpenMolden");
-    openMolden->hide();
-    ol->addWidget(openMolden, 0, Qt::AlignLeft);
-    connect(openMolden, &QPushButton::clicked, this, [this] {
-        const int index = files->findData(openMolden->property("file"));
-        if (index >= 0)
-            files->setCurrentIndex(index); // Loads it like a choice in the file list.
+    tabs->addTab(orbitalTab, "軌道");
+    connect(openMolden, &QPushButton::clicked, this, [this] { openOrbitalShape(orbitals->currentRow()); });
+    connect(orbitals, &QTableWidget::cellDoubleClicked, this, [this](int row) {
+        if (data.format == "NWChem" && !jobMolden().isEmpty())
+            openOrbitalShape(row);
     });
-    orbitals = table({"番号", "軌道", "対称性", "スピン", "エネルギー / Eh", "占有数"}, "resultsOrbitals");
-    orbitals->verticalHeader()->hide();
-    ol->addWidget(orbitals, 1);
-    tabs->addTab(orbitalPage, "軌道");
     connect(orbitals, &QTableWidget::currentCellChanged, this, [this](int row, int, int previousRow, int) {
+        if (data.format != "MOLDEN")
+            levels->setSelected(row);
         if (row != previousRow)
             renderOrbital(row);
         updateActions();
+    });
+    connect(levels, &OrbitalLevels::orbitalClicked, this, [this](int index) {
+        if (index == orbitals->currentRow() && data.format == "MOLDEN" && index != data.selectedOrbital)
+            renderOrbital(index);
+        else
+            orbitals->setCurrentCell(index, 0);
     });
     const auto applyOrbitalOptions = [this] {
         if (loading())
@@ -427,7 +778,28 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     connect(lumo, &QPushButton::clicked, this, [frontier] { frontier(true); });
     auto *vibrations = new QWidget;
     auto *vl = new QVBoxLayout(vibrations);
+    modeSummary = new QLabel;
+    modeSummary->setObjectName("resultsModeSummary");
+    modeSummary->setWordWrap(true);
+    vl->addWidget(modeSummary);
+    auto *irRow = new QHBoxLayout;
+    vl->addLayout(irRow);
+    auto *irTitle = new QLabel("IRスペクトル（棒をクリックするとそのモードを表示）");
+    irRow->addWidget(irTitle, 1);
+    irWidth = new QDoubleSpinBox;
+    irWidth->setObjectName("resultsIrWidth");
+    irWidth->setRange(1, 200);
+    irWidth->setValue(20);
+    irWidth->setPrefix("半値全幅 ");
+    irWidth->setSuffix(" cm⁻¹");
+    irRow->addWidget(irWidth);
+    irSpectrum = new ChartView;
+    irSpectrum->setObjectName("resultsIrSpectrum");
+    irSpectrum->setReversedX(true);
+    irSpectrum->setCursor(Qt::PointingHandCursor);
+    vl->addWidget(irSpectrum, 1);
     modes = table({"振動数 / cm⁻¹", "IR強度 / km mol⁻¹", "種類"}, "resultsModes");
+    modes->setItemDelegateForColumn(1, new IntensityDelegate(modes));
     vl->addWidget(modes, 1);
     showRigid = new QCheckBox("並進・回転のモードも表示");
     showRigid->setObjectName("resultsShowRigid");
@@ -437,71 +809,51 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         for (int i = 0; i < modes->rowCount(); ++i)
             modes->setRowHidden(i, !on && rigidMotion.value(i));
     });
-    auto *modeRow = new QHBoxLayout;
-    vl->addLayout(modeRow);
-    playMode = new QPushButton("選択モードを再生");
-    playMode->setObjectName("resultsPlayMode");
-    modeRow->addWidget(playMode);
-    amplitude = new QDoubleSpinBox;
-    amplitude->setObjectName("resultsAmplitude");
-    amplitude->setRange(.01, 2);
-    amplitude->setSingleStep(.05);
-    amplitude->setValue(.3);
-    amplitude->setSuffix(" Å");
-    modeRow->addWidget(amplitude);
-    arrows = new QCheckBox("変位を矢印で表示");
-    arrows->setObjectName("resultsModeArrows");
-    modeRow->addWidget(arrows);
-    modeRow->addStretch();
-    auto *exportRow = new QHBoxLayout;
-    vl->addLayout(exportRow);
-    saveModeImages = new QPushButton("振動の連番画像を保存…");
-    saveModeImages->setObjectName("resultsSaveModeImages");
-    saveModeTrajectory = new QPushButton("振動をXYZ（複数構造）で保存…");
-    saveModeTrajectory->setObjectName("resultsSaveModeXyz");
-    exportRow->addWidget(saveModeImages);
-    exportRow->addWidget(saveModeTrajectory);
-    exportRow->addStretch();
-    auto *irRow = new QHBoxLayout;
-    vl->addLayout(irRow);
-    irWidth = new QDoubleSpinBox;
-    irWidth->setObjectName("resultsIrWidth");
-    irWidth->setRange(1, 200);
-    irWidth->setValue(20);
-    irWidth->setPrefix("IRスペクトルの半値全幅 ");
-    irWidth->setSuffix(" cm⁻¹");
-    irRow->addWidget(irWidth);
-    irRow->addStretch();
-    irSpectrum = new ChartView;
-    irSpectrum->setObjectName("resultsIrSpectrum");
-    vl->addWidget(irSpectrum, 1);
     auto *modeHint = new QLabel(
-        "振幅は表示用に規格化した最大変位です。負の振動数は虚振動を表します。振動数の絶対値が最も小さい"
-        "3N−6個以外（直線分子は3N−5個以外）を並進・回転とみなし、IRスペクトル（ローレンツ関数で表示用に"
-        "広げた曲線）から除きます。アニメーションの速さは実際の振動数を表しません。");
+        "モードを選ぶと3Dビューに基準構造を表示し、下の操作で再生・書き出しできます。負の振動数は虚振動です。"
+        "振幅は表示用に規格化した最大変位で、アニメーションの速さは実際の振動数を表しません。振動数の絶対値が"
+        "最も小さい3N−6個以外（直線分子は3N−5個以外）を並進・回転とみなし、IRスペクトル（ローレンツ関数で表示"
+        "用に広げた曲線）から除きます。");
     modeHint->setWordWrap(true);
     vl->addWidget(modeHint);
     tabs->addTab(vibrations, "振動");
     connect(irWidth, &QDoubleSpinBox::valueChanged, this, &ResultsPanel::showIrSpectrum);
+    connect(irSpectrum, &ChartView::stickClicked, this, [this](int series, int index) {
+        if (series == 1 && index >= 0 && index < irModes.size())
+            modes->setCurrentCell(irModes[index], 0);
+    });
     connect(arrows, &QCheckBox::toggled, this, &ResultsPanel::showArrows);
-    connect(amplitude, &QDoubleSpinBox::valueChanged, this, &ResultsPanel::showArrows);
-    connect(saveModeImages, &QPushButton::clicked, this,
+    connect(amplitude, &QDoubleSpinBox::valueChanged, this, [this] {
+        showArrows();
+        showContext();
+    });
+    connect(saveModeImages, &QAction::triggered, this,
             [this] { window->safe([this] { exportMode(true); }); });
-    connect(saveModeTrajectory, &QPushButton::clicked, this,
+    connect(saveModeTrajectory, &QAction::triggered, this,
             [this] { window->safe([this] { exportMode(false); }); });
     auto *optimizationPage = new QWidget;
+    optimizationPage->setObjectName("resultsOptimizationPage");
     auto *opl = new QVBoxLayout(optimizationPage);
-    steps = table({"ステップ", "エネルギー / Eh", "ΔE / Eh", "Gmax", "Grms", "Xrms", "Xmax", "経過 / s"},
-                  "resultsSteps");
-    opl->addWidget(steps, 1);
+    criteria = new QFrame;
+    criteria->setObjectName("resultsCriteria");
+    auto *criteriaLayout = new QVBoxLayout(criteria);
+    criteriaLayout->setContentsMargins(0, 0, 0, 0);
+    criteriaLayout->setSpacing(6);
+    opl->addWidget(criteria);
+    auto *charts = new QHBoxLayout;
     energyChart = new ChartView;
     energyChart->setObjectName("resultsEnergyChart");
-    opl->addWidget(energyChart, 1);
+    charts->addWidget(energyChart, 1);
     gradientChart = new ChartView;
     gradientChart->setObjectName("resultsGradientChart");
-    opl->addWidget(gradientChart, 1);
-    auto *stepHint =
-        new QLabel("NWChem DRIVERの「@」行です。勾配はHartree/Bohr、変位はBohr。破線は収束閾値です。");
+    charts->addWidget(gradientChart, 1);
+    opl->addLayout(charts, 1);
+    steps = table({"ステップ", "エネルギー / Eh", "ΔE / Eh", "Gmax", "Grms", "Xrms", "Xmax", "経過 / s"},
+                  "resultsSteps");
+    steps->verticalHeader()->hide();
+    opl->addWidget(steps, 1);
+    auto *stepHint = new QLabel("NWChem DRIVERの「@」行です。勾配はHartree/Bohr、変位はBohr。破線は収束閾値、"
+                                "表の色付きの値は閾値を満たした値です。");
     stepHint->setWordWrap(true);
     opl->addWidget(stepHint);
     tabs->addTab(optimizationPage, "最適化");
@@ -616,19 +968,34 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     split->setStretchFactor(0, 3);
     split->setStretchFactor(1, 2);
     split->setSizes({780, 540});
-    summary->setText(
-        "結果ファイル（NWChem出力・MOLDEN・CUBE・XYZ）またはジョブフォルダーを開くと、"
-        "ここに概要を表示し、データのあるタブ（エネルギー・軌道・振動など）が現れます。\n\n"
-        "「5 実行設定」で計算すると、終了後に自動で読み込みます。過去の計算は「履歴」から開けます。");
-    updateTabs();
-    connect(open, &QPushButton::clicked, this, [this] {
+    connect(bannerLog, &QPushButton::clicked, this, [this] {
+        details->setCurrentWidget(log);
+        log->moveCursor(QTextCursor::End);
+        log->ensureCursorVisible();
+    });
+
+    // Messages under everything, two lines high whatever they say, so the view never moves.
+    status = new QPlainTextEdit;
+    status->setObjectName("resultsStatus");
+    status->setAccessibleName("結果ビューアのメッセージ");
+    status->setReadOnly(true);
+    status->setTabChangesFocus(true);
+    status->setFrameShape(QFrame::NoFrame);
+    status->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    status->setFixedHeight(2 * status->fontMetrics().lineSpacing() +
+                           2 * qCeil(status->document()->documentMargin()) + 4);
+    layout->addWidget(status);
+
+    const auto openResultFile = [this] {
         const auto p = QFileDialog::getOpenFileName(
             this, "結果ファイルを開く", folder,
             "NWChem・可視化 (*.out *.log *.xyz *.cube *.cub *.molden *.mld *.molde);;すべて (*)");
         if (!p.isEmpty())
             openFile(p);
-    });
-    connect(directory, &QPushButton::clicked, this, [this] {
+    };
+    connect(openButton, &QToolButton::clicked, this, openResultFile);
+    connect(openFileAction, &QAction::triggered, this, openResultFile);
+    connect(openDirectoryAction, &QAction::triggered, this, [this] {
         const auto p = QFileDialog::getExistingDirectory(this, "ジョブフォルダーを開く", folder);
         if (!p.isEmpty())
             openDirectory(p);
@@ -646,7 +1013,21 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         if (!animation.isActive())
             showFrame();
     });
-    connect(playFrames, &QPushButton::clicked, this, [this] {
+    const auto goToFrame = [this](int index) {
+        stopAnimation();
+        const QSignalBlocker guard(frame);
+        frame->setValue(index + 1);
+        showFrame();
+    };
+    connect(timeline, &FrameTimeline::frameSelected, this, goToFrame);
+    connect(firstFrame, &QPushButton::clicked, this, [goToFrame] { goToFrame(0); });
+    connect(lastFrame, &QPushButton::clicked, this, [this, goToFrame] { goToFrame(data.frames.size() - 1); });
+    const auto setPlaying = [this](QPushButton *button, const QString &tip) {
+        button->setIcon(lineIcon("pause", ChromeColors(palette()).onAccent));
+        button->setToolTip(tip);
+        button->setAccessibleName(tip);
+    };
+    connect(playFrames, &QPushButton::clicked, this, [this, setPlaying] {
         if (animation.isActive()) {
             stopAnimation();
             showFrame();
@@ -654,10 +1035,10 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
             phase = 0;
             animation.setInterval(180);
             animation.start();
-            playFrames->setText("再生を停止");
+            setPlaying(playFrames, "再生を停止");
         }
     });
-    connect(playMode, &QPushButton::clicked, this, [this] {
+    connect(playMode, &QPushButton::clicked, this, [this, setPlaying] {
         if (animation.isActive()) {
             stopAnimation();
             showFrame();
@@ -665,14 +1046,26 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
             phase = 0;
             animation.setInterval(40);
             animation.start();
-            playMode->setText("再生を停止");
+            setPlaying(playMode, "再生を停止");
             view->setArrows({}); // Arrows belong to the reference structure, not the moving one.
             showMode();
         }
     });
+    connect(closeMode, &QPushButton::clicked, this, [this] {
+        stopAnimation();
+        {
+            const QSignalBlocker guard(modes);
+            modes->clearSelection();
+            modes->setCurrentCell(-1, -1);
+        }
+        irSpectrum->setSelectedStick(-1, -1);
+        showFrame();
+        updateActions();
+    });
     connect(modes, &QTableWidget::currentCellChanged, this, [this] {
         stopAnimation();
         updateActions();
+        irSpectrum->setSelectedStick(1, irModes.indexOf(modes->currentRow()));
         if (modes->currentRow() >= 0 && modes->currentRow() < data.modes.size() &&
             !data.modes[modes->currentRow()].displacement.isEmpty()) {
             modeDisplayed = true;
@@ -680,6 +1073,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
             view->setSurface({});
         }
         showArrows();
+        showContext();
     });
     connect(&animation, &QTimer::timeout, this, [this] {
         if (animation.interval() == 180) {
@@ -713,7 +1107,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
                     .arg(fit.maximum, 0, 'f', 4));
         });
     });
-    connect(saveXyz, &QPushButton::clicked, this, [this] {
+    connect(saveXyz, &QAction::triggered, this, [this] {
         window->safe([&] {
             const auto p =
                 QFileDialog::getSaveFileName(this, "表示中の基準構造を保存", "result.xyz", "XYZ (*.xyz)");
@@ -721,7 +1115,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
                 saveGeometry(p.endsWith(".xyz", Qt::CaseInsensitive) ? p : p + ".xyz");
         });
     });
-    connect(savePng, &QPushButton::clicked, this, [this] {
+    connect(savePng, &QAction::triggered, this, [this] {
         window->safe([&] {
             auto p = QFileDialog::getSaveFileName(this, "結果画像を保存", "result.png", "PNG (*.png)");
             if (p.isEmpty())
@@ -732,15 +1126,103 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
                 fail("画像を保存できません。");
         });
     });
+    display(true);
     updateActions();
 }
 ResultsPanel::~ResultsPanel() {
     cancelLoad();
 }
+void ResultsPanel::applyChromeStyle() {
+    const auto pal = static_cast<QWidget *>(window)->palette();
+    const auto style = [&](QWidget *w, const QString &rules) { w->setStyleSheet(chromeRules(rules, pal)); };
+    style(resultBar, R"(
+        #resultBar { background: @base; border-bottom: 1px solid @line; }
+        QLabel#resultsJob { color: @text; }
+        QLabel#resultsEmptyHint { color: @muted; }
+        QLabel[chip] { border-radius: 9px; padding: 2px 9px; }
+        QLabel[chip="neutral"] { background: @segment; color: @text; }
+        QLabel[chip="good"] { background: @goodTint; color: @good; font-weight: bold; }
+        QLabel[chip="warn"] { background: @candidate; color: @candidateText; border: 1px solid @candidateLine;
+                              font-weight: bold; }
+        QLabel[chip="bad"] { background: @badTint; color: @error; font-weight: bold; }
+        QPushButton, QToolButton { border: 1px solid @line; border-radius: 6px; background: @base; color: @text;
+                                   padding: 5px 10px; }
+        QPushButton:hover, QToolButton:hover { background: @hover; }
+        QPushButton:disabled, QToolButton:disabled { color: @muted; border-color: @hover; }
+        QToolButton#resultsOpen { padding-right: 24px; }
+        QToolButton#resultsOpen::menu-button { border: none; border-left: 1px solid @line; width: 18px; }
+        QToolButton#resultsExport { padding-right: 20px; }
+        QPushButton#resultsApplyStructure { border-color: @accent; background: @tint; color: @accentText;
+                                            font-weight: bold; }
+        QPushButton#resultsApplyStructure:hover { background: @hover; }
+        QPushButton#resultsApplyStructure:disabled { border-color: @hover; background: @base; color: @muted;
+                                                     font-weight: normal; }
+    )");
+    jobIcon->setPixmap(lineIcon("folder", ChromeColors(pal).muted).pixmap(QSize(16, 16)));
+    style(findChild<QWidget *>("resultsViewCard"), R"(
+        #resultsViewCard { background: @base; border: 1px solid @line; border-radius: 8px; }
+        #resultsContext, #resultsViewControls, #resultsMeasureCard { background: @base; border: 1px solid @line;
+                                                                     border-radius: 8px; }
+        #resultsViewControls QToolButton { border: none; border-radius: 5px; padding: 3px 7px; color: @text; }
+        #resultsViewControls QToolButton:hover { background: @hover; }
+        QLabel#resultsContextTitle, QLabel#resultsMeasurement { color: @text; }
+        QLabel#resultsContextDetail, QLabel#resultsHint, QLabel#resultsFrameEnergy { color: @muted; }
+        #resultsMeasureCard QPushButton { border: 1px solid @line; border-radius: 6px; background: @base;
+                                          color: @text; padding: 3px 10px; }
+        #resultsMeasureCard QPushButton:hover { background: @hover; }
+        #resultsDock { background: @base; border-top: 1px solid @line; border-bottom-left-radius: 8px;
+                       border-bottom-right-radius: 8px; }
+        #resultsDock QPushButton, #resultsDock QToolButton { border: 1px solid @line; border-radius: 6px;
+                                                             background: @base; color: @text; padding: 4px 8px; }
+        #resultsDock QPushButton:hover, #resultsDock QToolButton:hover { background: @hover; }
+        #resultsDock QPushButton:disabled, #resultsDock QToolButton:disabled { color: @muted; border-color: @hover; }
+        #resultsDock QPushButton[primary="true"] { background: @accent; border-color: @accent; color: @onAccent; }
+        #resultsDock QPushButton[primary="true"]:hover { background: @accentHover; }
+        #resultsDock QPushButton[primary="true"]:disabled { background: @line; border-color: @line; }
+        #resultsDock QToolButton { padding-right: 20px; }
+    )");
+    style(rotationPopup, "#resultsRotationPopup { background: @base; border: 1px solid @line; }");
+    style(banner, R"(
+        #resultsBanner[tone="warn"] { background: @candidate; border: 1px solid @candidateLine; border-radius: 8px; }
+        #resultsBanner[tone="bad"] { background: @badTint; border: 1px solid @error; border-radius: 8px; }
+        #resultsBanner[tone="warn"] QLabel { color: @candidateText; }
+        #resultsBanner[tone="bad"] QLabel { color: @text; }
+        #resultsBanner[tone="bad"] QLabel#resultsBannerTitle { color: @error; }
+        QPushButton { background: @base; border: 1px solid @line; border-radius: 6px; padding: 4px 10px;
+                      color: @text; }
+        QPushButton:hover { background: @hover; }
+    )");
+    style(overviewScroll, QString(R"(
+        QScrollArea#resultsOverview, #resultsOverviewPage { background: @base; border: none; }
+        QLabel[role="section"] { color: @text; }
+        QLabel[role="file"] { color: @text; }
+        QPushButton[role="open"] { border: 1px solid @line; border-radius: 6px; background: @base; color: @text;
+                                   padding: 2px 10px; }
+        QPushButton[role="open"]:hover { background: @hover; }
+    )") + TileRules);
+    style(criteria, TileRules);
+    style(status, R"(
+        QPlainTextEdit#resultsStatus { background: @window; border: none; border-top: 1px solid @line;
+                                       color: @text; padding: 0 10px; }
+    )");
+    // Icons drawn in fixed colors follow the palette here.
+    const ChromeColors c(pal);
+    for (auto *b : {playFrames, playMode})
+        b->setIcon(
+            lineIcon(animation.isActive() && b->toolTip() == "再生を停止" ? "pause" : "play", c.onAccent));
+    showOutcome();
+    showOptimization();
+}
 void ResultsPanel::stopAnimation() {
     animation.stop();
-    playFrames->setText("構造列を再生");
-    playMode->setText("選択モードを再生");
+    const auto onAccent = ChromeColors(palette()).onAccent;
+    playFrames->setIcon(lineIcon("play", onAccent));
+    playFrames->setToolTip("構造列を再生");
+    playFrames->setAccessibleName("構造列を再生");
+    playMode->setIcon(lineIcon("play", onAccent));
+    playMode->setToolTip("選択したモードを再生");
+    playMode->setAccessibleName("選択したモードを再生");
+    showContext();
 }
 void ResultsPanel::error(const QString &message) {
     status->setPlainText("読込・表示エラー: " + message + "\n前の結果は保持しています。");
@@ -862,6 +1344,29 @@ void ResultsPanel::openEntry(const QString &entry) {
     animationSources[path] = entry;
     openFile(path);
 }
+QString ResultsPanel::jobMolden() const {
+    if (data.format != "NWChem")
+        return {};
+    for (const auto &name : resultFiles(QFileInfo(data.source).absolutePath()))
+        if (QStringList{"molden", "mld", "molde"}.contains(QFileInfo(name).suffix().toLower()) &&
+            files->findData(name) >= 0)
+            return name;
+    return {};
+}
+void ResultsPanel::openOrbitalShape(int logOrbital) {
+    const auto molden = jobMolden();
+    const int index = molden.isEmpty() ? -1 : files->findData(molden);
+    if (index < 0)
+        return;
+    if (logOrbital < 0 || logOrbital >= data.orbitals.size())
+        logOrbital = frontierOrbital(data.orbitals, "Alpha");
+    // The same orbital (spin and NWChem's number) is selected once the MOLDEN file has loaded.
+    pendingOrbital = {};
+    if (logOrbital >= 0 && data.orbitals[logOrbital].number > 0)
+        pendingOrbital = {QFileInfo(QDir(folder).filePath(molden)).absoluteFilePath(),
+                          data.orbitals[logOrbital].spin, data.orbitals[logOrbital].number};
+    files->setCurrentIndex(index); // Loads it like a choice in the file list.
+}
 void ResultsPanel::renderOrbital(int orbital) {
     if (data.format != "MOLDEN" || orbital < 0 || orbital >= data.orbitals.size())
         return;
@@ -939,6 +1444,7 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
         process = nullptr;
         p->deleteLater();
         work.reset();
+        pendingOrbital = {};
         updateActions();
         error(message);
     });
@@ -950,6 +1456,8 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
             process = nullptr;
             p->deleteLater();
             QString failure;
+            int follow = -1; // The log's orbital in the job's MOLDEN file, to show next.
+            const auto wanted = std::exchange(pendingOrbital, {});
             try {
                 if (code != 0 || state != QProcess::NormalExit) {
                     const QString e = QFileInfo::exists(response + ".error")
@@ -975,6 +1483,14 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
                     layout()->activate();
                     view->fit();
                 }
+                if (data.format == "MOLDEN" && !wanted.path.isEmpty() &&
+                    QFileInfo(data.source).absoluteFilePath() == wanted.path)
+                    for (int i = 0; i < data.orbitals.size(); ++i)
+                        if (data.orbitals[i].spin == wanted.spin &&
+                            data.orbitals[i].number == wanted.number) {
+                            follow = i != data.selectedOrbital ? i : -1;
+                            break;
+                        }
             } catch (const std::exception &e) {
                 failure = QString::fromUtf8(e.what());
             }
@@ -985,6 +1501,8 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
                 emit loaded();
             else
                 error(failure);
+            if (follow >= 0)
+                orbitals->setCurrentCell(follow, 0); // Renders it like a choice in the list.
         });
     status->setPlainText("読込中: " + pendingPath + "\n完了まで前の結果を表示します。");
     updateActions();
@@ -1014,13 +1532,18 @@ void ResultsPanel::updateActions() {
     applyGeometry->setEnabled(ready && !data.frames.isEmpty());
     compareGeometry->setEnabled(applyGeometry->isEnabled());
     savePng->setEnabled(ready && !data.frames.isEmpty());
+    exportButton->setEnabled(saveXyz->isEnabled() || savePng->isEnabled());
     frame->setEnabled(ready && !data.frames.isEmpty());
+    timeline->setEnabled(ready && data.frames.size() > 1);
     playFrames->setEnabled(ready && data.frames.size() > 1);
+    firstFrame->setEnabled(playFrames->isEnabled());
+    lastFrame->setEnabled(playFrames->isEnabled());
     const int mode = modes->currentRow();
     playMode->setEnabled(ready && mode >= 0 && mode < data.modes.size() &&
                          !data.modes[mode].displacement.isEmpty());
     saveModeImages->setEnabled(playMode->isEnabled());
     saveModeTrajectory->setEnabled(playMode->isEnabled());
+    modeExport->setEnabled(playMode->isEnabled());
     energyReference->setEnabled(ready && !data.energies.isEmpty());
     applyIso->setEnabled(ready && data.format == "CUBE");
     dataset->setEnabled(applyIso->isEnabled());
@@ -1043,10 +1566,11 @@ void ResultsPanel::updateActions() {
                                  : QString());
 }
 void ResultsPanel::display(bool orbitalOnly) {
-    source->setText(data.source);
     const auto brief = briefSummary();
-    status->setPlainText(brief.isEmpty() ? data.status : data.status + "\n" + brief);
-    if (!orbitalOnly) {
+    status->setPlainText(data.source.isEmpty() ? QString()
+                         : brief.isEmpty()     ? data.status
+                                               : data.status + "\n" + brief);
+    if (!orbitalOnly && !data.source.isEmpty()) {
         QString selectedFile = animationSources.value(data.source);
         for (int i = 0; selectedFile.isEmpty() && i < files->count(); ++i) {
             const auto entry = files->itemData(i).toString();
@@ -1061,92 +1585,25 @@ void ResultsPanel::display(bool orbitalOnly) {
         }
         fillFiles(selectedFile);
     }
-    QString info = QString("形式: %1\n構造: %2 / エネルギー: %3 / 軌道: %4 / 振動: %5\n")
-                       .arg(data.format)
-                       .arg(data.frames.size())
-                       .arg(data.energies.size())
-                       .arg(data.orbitals.size())
-                       .arg(data.modes.size());
-    if (!data.frames.isEmpty())
-        info += QString("最終表示構造: %1（%2原子）\n")
-                    .arg(data.frames.last().molecule.formula())
-                    .arg(data.frames.last().molecule.atoms.size());
-    if (const auto final = data.properties["final_energy"].toObject(); !final.isEmpty())
-        info += "計算のエネルギー: " + final["method"].toString() + " " + real(final["hartree"].toDouble()) +
-                " Eh（" +
-                (final["source"] == "frequency_reference" ? QString("振動数の参照構造")
-                 : final["source"] == "bsse_corrected"    ? QString("BSSE補正後")
-                                                          : QString("最後のtask")) +
-                "）\n";
-    if (!data.energies.isEmpty())
-        info += "最後の記録: " + data.energies.last().method + " " + real(data.energies.last().hartree) +
-                " Eh\nエネルギーは出力順です。最適化ステップとの1対1対応ではありません。\n";
-    if (data.format == "CUBE" || data.selectedOrbital >= 0)
-        info += QString("格子: %1 × %2 × %3\n値の範囲: %4 ～ %5\n等値: ±%6 / 三角形: %7\n")
-                    .arg(data.grid[0])
-                    .arg(data.grid[1])
-                    .arg(data.grid[2])
-                    .arg(real(data.minimum), real(data.maximum), real(data.isovalue))
-                    .arg(data.surface.size());
-    if (!data.steps.isEmpty())
-        info += QString("最適化: %1（%2ステップ、最終 %3 Eh）\n")
-                    .arg(data.properties.value("optimization") == "converged" ? "収束" : "収束メッセージなし")
-                    .arg(data.steps.last().step)
-                    .arg(real(data.steps.last().energy));
-    for (const auto &value : data.properties.value("thermochemistry").toArray()) {
-        const auto t = value.toObject();
-        const double temperature = t["temperature"].toDouble(), h = t["enthalpy_kcal"].toDouble(),
-                     g = h - temperature * t["entropy_cal"].toDouble() / 1000;
-        info +=
-            QString("熱化学（%1 K、対称数 %2）: ZPE %3 kcal/mol、内部エネルギー補正 %4 kcal/mol、"
-                    "エンタルピー補正 %5 kcal/mol、エントロピー %6 cal/(mol·K)、"
-                    "Gibbs補正 G = H − TS %7 kcal/mol（%8 Eh、算出値）\n")
-                .arg(fixed(temperature, 2), real(t["symmetry_number"].toDouble()),
-                     fixed(t["zpe_kcal"].toDouble(), 3), fixed(t["energy_kcal"].toDouble(), 3), fixed(h, 3),
-                     fixed(t["entropy_cal"].toDouble(), 3), fixed(g, 3), fixed(g / HartreeToKcal, 6));
-    }
-    if (!data.properties.value("thermochemistry").toArray().isEmpty())
-        info += "補正は電子エネルギーに加えて使います。対称数はNWChemの値です（MolFormaの入力では1）。\n";
-    if (data.properties.contains("dipole")) {
-        const auto d = data.properties.value("dipole").toObject();
-        info += QString("双極子モーメント: %1 D（x %2 / y %3 / z %4 a.u.）\n")
-                    .arg(fixed(d["debye"].toDouble(), 4), real(d["x"].toDouble()), real(d["y"].toDouble()),
-                         real(d["z"].toDouble()));
-    }
-    for (const auto &spin : {QString("Alpha"), QString("Beta")}) {
-        const int homo = frontierOrbital(data.orbitals, spin),
-                  lumo = frontierOrbital(data.orbitals, spin, true);
-        if (homo >= 0 && lumo >= 0)
-            info +=
-                QString("HOMO–LUMOギャップ（%1）: %2 eV\n")
-                    .arg(spin,
-                         fixed((data.orbitals[lumo].energy - data.orbitals[homo].energy) * HartreeToEv, 3));
-    }
-    if (!data.modes.isEmpty()) {
-        const auto rigid = resultRigidModes(data);
-        int imaginary = 0;
-        QStringList values;
-        for (int i = 0; i < data.modes.size(); ++i)
-            if (!rigid.value(i) && data.modes[i].frequency < -10) {
-                ++imaginary;
-                values << fixed(data.modes[i].frequency, 1);
-            }
-        info += QString("虚振動: %1個（並進・回転を除く−10 cm⁻¹未満%2）\n")
-                    .arg(imaginary)
-                    .arg(values.isEmpty() ? QString() : "、" + values.join(", ") + " cm⁻¹");
-    }
-    info += resultPropertyLines(data);
-    if (!data.excitations.isEmpty()) {
-        const auto strongest =
-            std::max_element(data.excitations.begin(), data.excitations.end(),
-                             [](const auto &a, const auto &b) { return a.oscillator < b.oscillator; });
-        info += QString("励起状態: %1件（最大の振動子強度 %2、%3 eV / %4 nm）\n")
-                    .arg(data.excitations.size())
-                    .arg(fixed(strongest->oscillator, 4), fixed(strongest->ev, 3),
-                         fixed(EvNanometer / strongest->ev, 1));
-    }
-    info += "\n" + data.warnings.join("\n\n");
-    summary->setText(info);
+    // The bar: the job folder and file, the kind of file and how the calculation ended.
+    const bool open = !data.source.isEmpty();
+    emptyHint->setVisible(!open);
+    for (QWidget *w :
+         {static_cast<QWidget *>(jobIcon), static_cast<QWidget *>(jobLabel), static_cast<QWidget *>(files)})
+        w->setVisible(open);
+    jobLabel->setText(QFileInfo(folder).fileName());
+    jobLabel->setToolTip(QDir::toNativeSeparators(data.source));
+    setChip(formatChip, open ? formatName(data.format) : QString(), "neutral");
+    const auto outcome = resultOutcome(data);
+    setChip(outcomeChip,
+            outcome == "normal"       ? QString("正常終了")
+            : outcome == "incomplete" ? QString("正常終了の記録なし")
+            : outcome == "error"      ? QString("エラー")
+                                      : QString(),
+            outcome == "normal"       ? "good"
+            : outcome == "incomplete" ? "warn"
+                                      : "bad",
+            data.status);
     if (!orbitalOnly) {
         log->setPlainText(data.log);
         referenceEnergy = -1;
@@ -1176,7 +1633,17 @@ void ResultsPanel::display(bool orbitalOnly) {
                     {QString::number(number), frontier, o.symmetry, o.spin, real(o.energy),
                      real(o.occupation)});
             }
-        }
+            levels->setOrbitals(data.orbitals, data.selectedOrbital);
+            // Columns that would say the same on every row stay hidden (one spin, no symmetry labels).
+            QSet<QString> symmetries, spins;
+            for (const auto &o : data.orbitals) {
+                symmetries << o.symmetry.trimmed().toLower();
+                spins << o.spin;
+            }
+            orbitals->setColumnHidden(2, symmetries.size() <= 1);
+            orbitals->setColumnHidden(3, spins.size() <= 1);
+        } else
+            levels->setSelected(data.selectedOrbital);
         orbitals->clearSelection();
         orbitals->setCurrentCell(data.selectedOrbital, 0);
         if (data.selectedOrbital >= 0)
@@ -1189,29 +1656,31 @@ void ResultsPanel::display(bool orbitalOnly) {
         orbitalNorm->setCurrentIndex(orbitalNorm->findData(data.normalizationRequest));
     }
     // A log has energies only; the shapes come from a MOLDEN file, if the job wrote one.
-    QString molden;
-    if (data.format == "NWChem")
-        for (const auto &name : resultFiles(QFileInfo(data.source).absolutePath()))
-            if (QStringList{"molden", "mld", "molde"}.contains(QFileInfo(name).suffix().toLower()) &&
-                files->findData(name) >= 0) {
-                molden = name;
-                break;
-            }
-    openMolden->setProperty("file", molden);
+    const auto molden = jobMolden();
     openMolden->setVisible(!molden.isEmpty());
-    orbitalStatus->setText(
+    openMolden->setText("形を表示: " + molden);
+    openMolden->setToolTip(
+        QString("選択中の軌道（未選択ならHOMO）を、同じジョブの %1 から表示します。").arg(molden));
+    orbitalSource->setText(
         data.format == "NWChem" && !data.orbitals.isEmpty()
             ? (molden.isEmpty()
-                   ? QString("ログに出力された軌道エネルギーです（番号はNWChemの軌道番号）。軌道の形を"
-                             "表示するには、「3 計算条件」で「計算後に分子軌道をMOLDENファイルに出力」"
-                             "をオンにして計算してください。")
-                   : QString("ログに出力された軌道エネルギーです（番号はNWChemの軌道番号）。"
-                             "軌道の形は下のボタンで同じジョブのMOLDENを開いて表示します。"))
+                   ? QString("ログの軌道エネルギーです。軌道の形を表示するには、「3 計算条件」で"
+                             "「計算後に分子軌道をMOLDENファイルに出力」をオンにして計算してください。")
+                   : QString("ログの軌道エネルギーです。行をダブルクリックするか「形を表示」で、"
+                             "同じジョブの %1 からその軌道の形を表示します。")
+                         .arg(molden))
+        : data.format == "MOLDEN" ? QString("エネルギーと形: %1").arg(QFileInfo(data.source).fileName())
+                                  : QString());
+    orbitalSource->setVisible(!orbitalSource->text().isEmpty());
+    orbitalOptions->setVisible(data.format == "MOLDEN");
+    orbitalStatus->setText(
+        data.format == "NWChem" && !data.orbitals.isEmpty()
+            ? QString("番号はNWChemの軌道番号です（ログに一部の軌道しかなくてもMOLDENと同じ番号）。")
         : data.format != "MOLDEN"      ? "MOLDENファイルを開くと分子軌道を表示します。"
         : !data.orbitalError.isEmpty() ? data.orbitalError
         : data.selectedOrbital >= 0
             ? QString("表示中: %1 %2番 / 等値 ±%3 / 正規化: "
-                      "%4\n一覧の行を選ぶと表示を切り替えます。赤: 正 / 青: 負。")
+                      "%4\n準位図か一覧で軌道を選ぶと表示を切り替えます。赤: 正 / 青: 負。")
                   .arg(data.orbitals[data.selectedOrbital].spin,
                        orbitals->item(data.selectedOrbital, 0)->text(), real(data.isovalue),
                        data.orbitalNormalization == "nwchem" ? "NWChem" : "標準MOLDEN")
@@ -1220,49 +1689,42 @@ void ResultsPanel::display(bool orbitalOnly) {
         const QSignalBlocker guard(modes);
         modes->setRowCount(data.modes.size());
         rigidMotion = resultRigidModes(data);
+        double strongest = 0;
+        for (int i = 0; i < data.modes.size(); ++i)
+            if (!rigidMotion.value(i) && std::isfinite(data.modes[i].intensity))
+                strongest = std::max(strongest, data.modes[i].intensity);
+        int vibrationCount = 0, imaginary = 0;
         for (int i = 0; i < data.modes.size(); ++i) {
             const auto &m = data.modes[i];
             const bool rigid = rigidMotion.value(i);
+            vibrationCount += !rigid;
+            imaginary += !rigid && m.frequency < -10;
             // Translations and rotations are no vibrations: hidden by default, without an IR intensity.
             row(modes, i,
                 {real(m.frequency), rigid ? QString("—") : real(m.intensity),
                  rigid             ? "並進・回転"
                  : m.frequency < 0 ? "虚振動"
                                    : "振動"});
+            if (!rigid && strongest > 0 && std::isfinite(m.intensity))
+                modes->item(i, 1)->setData(Qt::UserRole, std::clamp(m.intensity / strongest, 0., 1.));
+            if (!rigid && m.frequency < -10)
+                modes->item(i, 2)->setForeground(errorColor(palette()));
             modes->setRowHidden(i, rigid && !showRigid->isChecked());
         }
         modes->clearSelection();
         modes->setCurrentCell(-1, -1);
+        QStringList parts{QString("振動 %1").arg(vibrationCount),
+                          imaginary ? QString("虚振動 %1個").arg(imaginary) : QString("虚振動なし")};
+        if (const auto thermo = data.properties.value("thermochemistry").toArray(); !thermo.isEmpty())
+            parts << QString("ゼロ点補正 %1 kcal/mol")
+                         .arg(fixed(thermo[0].toObject()["zpe_kcal"].toDouble(), 3));
+        if (data.modes.size() > vibrationCount)
+            parts << QString("並進・回転 %1").arg(data.modes.size() - vibrationCount);
+        modeSummary->setText(parts.join(" · "));
         showIrSpectrum();
         showPath();
         showProperties();
-        steps->setRowCount(data.steps.size());
-        QVector<QPointF> relative, gmax, grms;
-        for (int i = 0; i < data.steps.size(); ++i) {
-            const auto &t = data.steps[i];
-            row(steps, i,
-                {QString::number(t.step), fixed(t.energy, 8), real(t.deltaE), real(t.gmax), real(t.grms),
-                 real(t.xrms), real(t.xmax), real(t.seconds)});
-            relative << QPointF(t.step, (t.energy - data.steps.last().energy) * HartreeToKcal);
-            gmax << QPointF(t.step, t.gmax);
-            grms << QPointF(t.step, t.grms);
-        }
-        if (data.steps.isEmpty()) {
-            energyChart->clear();
-            gradientChart->clear();
-        } else {
-            energyChart->setChart("エネルギー（最終ステップ基準）", "ステップ", "ΔE / kcal mol⁻¹",
-                                  {{"エネルギー", relative, QColor("#2f6db5")}});
-            const auto thresholds = data.properties.value("thresholds").toObject();
-            QVector<QPair<QString, double>> levels;
-            if (thresholds.contains("gmax"))
-                levels.append({"gmax閾値", thresholds["gmax"].toDouble()});
-            if (thresholds.contains("grms"))
-                levels.append({"grms閾値", thresholds["grms"].toDouble()});
-            gradientChart->setChart("勾配", "ステップ", "Hartree / Bohr",
-                                    {{"Gmax", gmax, QColor("#c0392b")}, {"Grms", grms, QColor("#27845a")}},
-                                    true, levels);
-        }
+        showOptimization();
         excitations->setRowCount(data.excitations.size());
         for (int i = 0; i < data.excitations.size(); ++i) {
             const auto &x = data.excitations[i];
@@ -1275,6 +1737,27 @@ void ResultsPanel::display(bool orbitalOnly) {
                  std::isfinite(x.s2) ? fixed(x.s2, 4) : "—"});
         }
         showSpectrum();
+        // Energies of the frames that scan and IRC points name, against the lowest of them.
+        frameEnergies = QVector<double>(data.frames.size(), std::numeric_limits<double>::quiet_NaN());
+        const auto setEnergy = [&](int index, double hartree) {
+            if (index >= 0 && index < frameEnergies.size() && std::isfinite(hartree))
+                frameEnergies[index] = hartree;
+        };
+        for (const auto &value : data.properties.value("scan").toArray())
+            setEnergy(value.toObject()["frame"].toInt(-1), value.toObject()["energy"].toDouble(NAN));
+        const auto irc = data.properties.value("irc").toObject();
+        for (const auto &value : irc["points"].toArray())
+            setEnergy(value.toObject()["frame"].toInt(-1), value.toObject()["energy"].toDouble(NAN));
+        if (irc.contains("ts_energy"))
+            setEnergy(irc["ts_frame"].toInt(-1), irc["ts_energy"].toDouble(NAN));
+        double lowest = INFINITY;
+        for (double e : std::as_const(frameEnergies))
+            if (std::isfinite(e))
+                lowest = std::min(lowest, e);
+        for (double &e : frameEnergies)
+            e = (e - lowest) * HartreeToKcal;
+        timeline->setFrames(data.frames.size(), frameEnergies);
+        frameEnergy->setVisible(std::isfinite(lowest));
     }
     {
         const QSignalBlocker guard(frame);
@@ -1287,8 +1770,10 @@ void ResultsPanel::display(bool orbitalOnly) {
         dataset->addItem(QString::number(n));
     dataset->setCurrentIndex(data.dataset);
     isovalue->setText(real(data.isovalue));
-    showFrame();
     updateTabs();
+    showOverview();
+    showOutcome();
+    showFrame();
     updateActions();
 }
 void ResultsPanel::updateTabs() {
@@ -1307,8 +1792,363 @@ void ResultsPanel::updateTabs() {
                          loaded && properties,
                          loaded && (data.format == "CUBE" || data.format == "MOLDEN"),
                          loaded && !data.log.isEmpty()};
-    for (int i = 0; i < details->count() && i < int(std::size(visible)); ++i)
+    // Counts after the names: what each tab lists.
+    const int vibrations = int(std::count(rigidMotion.begin(), rigidMotion.end(), false)) +
+                           std::max(0, int(data.modes.size() - rigidMotion.size()));
+    const int counts[]{0,
+                       int(data.energies.size()),
+                       int(data.orbitals.size()),
+                       loaded ? vibrations : 0,
+                       int(data.steps.size()),
+                       int(data.excitations.size()),
+                       path->rowCount(),
+                       0,
+                       0,
+                       0};
+    const QStringList names{"概要",     "エネルギー",     "軌道", "振動",          "最適化",
+                            "励起状態", "経路・スキャン", "物性", "CUBE / 等値面", "元ファイル"};
+    for (int i = 0; i < details->count() && i < int(std::size(visible)); ++i) {
         details->setTabVisible(i, visible[i]);
+        details->setTabText(i, counts[i] > 0 ? QString("%1 %2").arg(names[i]).arg(counts[i]) : names[i]);
+    }
+}
+void ResultsPanel::setOverview(QWidget *page) {
+    // The old page goes later: a button on it may be what led here.
+    if (auto *old = overviewScroll->takeWidget())
+        old->deleteLater();
+    overviewScroll->setWidget(page);
+}
+void ResultsPanel::showOverview() {
+    auto *page = new QWidget;
+    page->setObjectName("resultsOverviewPage");
+    auto *layout = new QVBoxLayout(page);
+    layout->setContentsMargins(14, 14, 14, 14);
+    layout->setSpacing(10);
+    const auto label = [&](const QString &text, const char *role, QLayout *into = nullptr) {
+        auto *l = new QLabel(text);
+        l->setProperty("role", role);
+        l->setWordWrap(true);
+        l->setTextFormat(Qt::PlainText);
+        l->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        (into ? into : layout)->addWidget(l);
+        return l;
+    };
+    const auto section = [&](const QString &text) {
+        layout->addSpacing(6);
+        auto *l = label(text, "section");
+        auto font = l->font();
+        font.setBold(true);
+        l->setFont(font);
+    };
+    if (data.source.isEmpty()) {
+        label(
+            "結果ファイル（NWChem出力・MOLDEN・CUBE・XYZ）またはジョブフォルダーを開くと、ここに結果の要点を"
+            "表"
+            "示し、データのあるタブ（エネルギー・軌道・振動など）が現れます。\n\n「5 実行設定」で計算すると、"
+            "終了後に自動で読み込みます。過去の計算は「履歴」から開けます。",
+            "");
+        layout->addStretch();
+        setOverview(page);
+        return;
+    }
+    // What was calculated: the formula of the last structure and the file.
+    if (!data.frames.isEmpty()) {
+        const auto &molecule = data.frames.last().molecule;
+        auto *formula = new QLabel(formulaHtml(molecule.formula()));
+        formula->setObjectName("resultsFormula");
+        formula->setTextFormat(Qt::RichText);
+        auto font = formula->font();
+        font.setPointSizeF(font.pointSizeF() * 1.5);
+        font.setBold(true);
+        formula->setFont(font);
+        layout->addWidget(formula);
+        label(QString("%1原子 · %2 · %3")
+                  .arg(molecule.atoms.size())
+                  .arg(formatName(data.format), QFileInfo(data.source).fileName()),
+              "muted");
+    } else
+        label(QString("%1 · %2").arg(formatName(data.format), QFileInfo(data.source).fileName()), "muted");
+    // The outcomes as cards; a card with a tab opens it.
+    auto *grid = new QGridLayout;
+    grid->setSpacing(8);
+    grid->setColumnStretch(0, 1);
+    grid->setColumnStretch(1, 1);
+    int cell = 0;
+    const auto tile = [&](const QString &name, const QString &title, const QString &value,
+                          const QString &caption, const QString &tone, int tab, bool wide = false) {
+        const bool button = tab >= 0 && details->isTabVisible(tab);
+        auto *t = summaryTile(title, value, caption, tone, button);
+        t->setObjectName(name);
+        if (button) {
+            t->setToolTip(QString("「%1」を表示").arg(details->tabText(tab)));
+            connect(static_cast<QPushButton *>(t), &QPushButton::clicked, this,
+                    [this, tab] { details->setCurrentIndex(tab); });
+        }
+        if (wide) {
+            cell += cell % 2;
+            grid->addWidget(t, cell / 2, 0, 1, 2);
+            cell += 2;
+        } else {
+            grid->addWidget(t, cell / 2, cell % 2);
+            ++cell;
+        }
+    };
+    if (const auto final = data.properties["final_energy"].toObject(); !final.isEmpty()) {
+        const auto source = final["source"] == "frequency_reference" ? QString("振動数の参照構造")
+                            : final["source"] == "bsse_corrected"    ? QString("BSSE補正後")
+                                                                     : QString("最後のtask");
+        QString caption;
+        if (!data.energies.isEmpty() && data.energies.last().hartree != final["hartree"].toDouble())
+            caption = QString("出力の最後の記録: %1 %2 Eh")
+                          .arg(data.energies.last().method, real(data.energies.last().hartree));
+        tile("resultsTileEnergy",
+             QString("計算のエネルギー（%1 · %2）").arg(final["method"].toString(), source),
+             real(final["hartree"].toDouble()) + " Eh", caption, "neutral", 1, true);
+    } else if (!data.energies.isEmpty())
+        tile("resultsTileEnergy", QString("最後のエネルギー記録（%1）").arg(data.energies.last().method),
+             real(data.energies.last().hartree) + " Eh", "出力順の最後の値です。", "neutral", 1, true);
+    if (data.properties.contains("optimization") || !data.steps.isEmpty()) {
+        const bool converged = data.properties.value("optimization") == "converged";
+        QString caption;
+        if (!data.steps.isEmpty()) {
+            caption = QString("%1ステップ").arg(data.steps.last().step);
+            const auto t = data.properties.value("thresholds").toObject();
+            const auto &last = data.steps.last();
+            int met = 0, judged = 0;
+            for (const auto &[key, value] : {std::pair{"gmax", last.gmax},
+                                             {"grms", last.grms},
+                                             {"xrms", last.xrms},
+                                             {"xmax", last.xmax}})
+                if (t.contains(key)) {
+                    ++judged;
+                    met += value <= t[key].toDouble();
+                }
+            if (judged)
+                caption += QString(" · 最終ステップは判定 %1/%2 を満たす").arg(met).arg(judged);
+        }
+        tile("resultsTileOptimization", "構造最適化", converged ? "収束" : "収束メッセージなし", caption,
+             converged ? "good" : "warn", 4);
+    }
+    if (!data.modes.isEmpty()) {
+        int vibrations = 0;
+        QStringList imaginary;
+        for (int i = 0; i < data.modes.size(); ++i) {
+            if (rigidMotion.value(i))
+                continue;
+            ++vibrations;
+            if (data.modes[i].frequency < -10)
+                imaginary << fixed(data.modes[i].frequency, 1);
+        }
+        const int rigid = int(data.modes.size()) - vibrations;
+        tile("resultsTileImaginary", "虚振動（−10 cm⁻¹未満）",
+             imaginary.isEmpty() ? QString("なし") : QString("%1個").arg(imaginary.size()),
+             imaginary.isEmpty() ? QString("振動 %1%2")
+                                       .arg(vibrations)
+                                       .arg(rigid ? QString(" · 並進・回転 %1 は除外").arg(rigid) : QString())
+                                 : imaginary.join(", ") + " cm⁻¹",
+             imaginary.isEmpty() ? "good" : "warn", 3);
+    }
+    QStringList spins;
+    for (const auto &o : data.orbitals)
+        if (!spins.contains(o.spin))
+            spins << o.spin;
+    for (const auto &spin : std::as_const(spins)) {
+        const int h = frontierOrbital(data.orbitals, spin), l = frontierOrbital(data.orbitals, spin, true);
+        if (h < 0 || l < 0)
+            continue;
+        tile("resultsTileGap" + spin,
+             spins.size() > 1 ? QString("HOMO–LUMOギャップ（%1）").arg(spin) : QString("HOMO–LUMOギャップ"),
+             fixed((data.orbitals[l].energy - data.orbitals[h].energy) * HartreeToEv, 2) + " eV",
+             QString("HOMO %1 · LUMO %2 eV")
+                 .arg(fixed(data.orbitals[h].energy * HartreeToEv, 2),
+                      fixed(data.orbitals[l].energy * HartreeToEv, 2)),
+             "neutral", 2);
+    }
+    if (data.properties.contains("dipole")) {
+        const auto d = data.properties.value("dipole").toObject();
+        tile("resultsTileDipole", "双極子モーメント", fixed(d["debye"].toDouble(), 2) + " D",
+             QString("x %1 · y %2 · z %3 a.u.")
+                 .arg(fixed(d["x"].toDouble(), 4), fixed(d["y"].toDouble(), 4), fixed(d["z"].toDouble(), 4)),
+             "neutral", 7);
+    }
+    if (!data.excitations.isEmpty()) {
+        const auto strongest =
+            std::max_element(data.excitations.begin(), data.excitations.end(),
+                             [](const auto &a, const auto &b) { return a.oscillator < b.oscillator; });
+        tile("resultsTileExcitations", "励起状態", QString("%1件").arg(data.excitations.size()),
+             QString("最大の振動子強度 %1（%2 eV / %3 nm）")
+                 .arg(fixed(strongest->oscillator, 4), fixed(strongest->ev, 3),
+                      fixed(EvNanometer / strongest->ev, 1)),
+             "neutral", 5);
+    }
+    if (path->rowCount())
+        tile("resultsTilePath", data.properties.contains("scan") ? "座標スキャン" : "IRC",
+             QString("%1点").arg(path->rowCount()), "行を選ぶとその点の構造を表示します。", "neutral", 6);
+    if (data.format == "CUBE" || data.selectedOrbital >= 0)
+        tile("resultsTileSurface", "等値面", "±" + real(data.isovalue),
+             QString("格子 %1 × %2 × %3 · 値 %4 ～ %5 · 三角形 %6")
+                 .arg(data.grid[0])
+                 .arg(data.grid[1])
+                 .arg(data.grid[2])
+                 .arg(real(data.minimum), real(data.maximum))
+                 .arg(data.surface.size()),
+             "neutral", data.format == "CUBE" ? 8 : 2);
+    if (data.frames.size() > 1)
+        tile("resultsTileFrames", "構造列", QString("%1構造").arg(data.frames.size()),
+             "3Dビューの下のタイムラインで切り替えます。", "neutral", -1);
+    if (cell)
+        layout->addLayout(grid);
+    else
+        delete grid;
+    // Thermochemistry of each temperature.
+    for (const auto &value : data.properties.value("thermochemistry").toArray()) {
+        const auto t = value.toObject();
+        const double temperature = t["temperature"].toDouble(), h = t["enthalpy_kcal"].toDouble(),
+                     g = h - temperature * t["entropy_cal"].toDouble() / 1000;
+        section(QString("熱化学（%1 K）").arg(fixed(temperature, 2)));
+        auto *values = new QGridLayout;
+        values->setHorizontalSpacing(16);
+        values->setVerticalSpacing(4);
+        const QList<std::pair<QString, QString>> rows{
+            {"ゼロ点補正", fixed(t["zpe_kcal"].toDouble(), 3) + " kcal/mol"},
+            {"熱補正（内部エネルギー）", fixed(t["energy_kcal"].toDouble(), 3) + " kcal/mol"},
+            {"熱補正（エンタルピー）", fixed(h, 3) + " kcal/mol"},
+            {"エントロピー", fixed(t["entropy_cal"].toDouble(), 3) + " cal/(mol·K)"},
+            {"Gibbs補正 G = H − TS（算出値）",
+             QString("%1 kcal/mol（%2 Eh）").arg(fixed(g, 3), fixed(g / HartreeToKcal, 6))}};
+        for (int r = 0; r < rows.size(); ++r) {
+            auto *name = new QLabel(rows[r].first);
+            auto *number = new QLabel(rows[r].second);
+            number->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            number->setTextInteractionFlags(Qt::TextSelectableByMouse);
+            values->addWidget(name, r, 0);
+            values->addWidget(number, r, 1);
+        }
+        values->setColumnStretch(0, 1);
+        layout->addLayout(values);
+        label(QString(
+                  "補正は電子エネルギーに加えて使います。対称数 %1 はNWChemの値です（MolFormaの入力では1）。")
+                  .arg(real(t["symmetry_number"].toDouble())),
+              "muted");
+    }
+    if (const auto other = resultPropertyLines(data).trimmed(); !other.isEmpty()) {
+        section("ほかの結果");
+        label(other, "");
+    }
+    section("メッセージ");
+    label(data.status, "");
+    if (!data.warnings.isEmpty())
+        label(data.warnings.join("\n\n"), "muted");
+    // The other files of the job, to open with one click.
+    QList<int> entries;
+    for (int i = 0; i < files->count(); ++i)
+        if (!files->itemData(i).toString().isEmpty())
+            entries << i;
+    if (entries.size() > 1) {
+        section("このフォルダーの結果ファイル");
+        for (int k = 0; k < entries.size() && k < 12; ++k) {
+            const int i = entries[k];
+            auto *line = new QHBoxLayout;
+            line->setSpacing(8);
+            auto *name = new QLabel(files->itemText(i));
+            name->setProperty("role", "file");
+            name->setTextFormat(Qt::PlainText);
+            line->addWidget(name, 1);
+            if (i == files->currentIndex()) {
+                auto *current = new QLabel("表示中");
+                current->setProperty("chip", "current");
+                line->addWidget(current);
+            } else {
+                auto *openIt = new QPushButton("開く");
+                openIt->setProperty("role", "open");
+                openIt->setAccessibleName(files->itemText(i) + " を開く");
+                connect(openIt, &QPushButton::clicked, this, [this, entry = files->itemData(i).toString()] {
+                    if (const int index = files->findData(entry); index >= 0)
+                        files->setCurrentIndex(index);
+                });
+                line->addWidget(openIt);
+            }
+            layout->addLayout(line);
+        }
+        if (entries.size() > 12)
+            label(QString("ほか %1 件はバーのファイル一覧から選べます。").arg(entries.size() - 12), "muted");
+    }
+    layout->addStretch();
+    setOverview(page);
+}
+void ResultsPanel::showOutcome() {
+    const auto outcome = resultOutcome(data);
+    banner->setVisible(outcome == "incomplete" || outcome == "error");
+    if (banner->isHidden())
+        return;
+    const bool failed = outcome == "error";
+    if (banner->property("tone").toString() != (failed ? "bad" : "warn")) {
+        banner->setProperty("tone", failed ? "bad" : "warn");
+        repolish(banner);
+    }
+    const ChromeColors c(static_cast<QWidget *>(window)->palette());
+    bannerIcon->setPixmap(lineIcon("warning", failed ? c.bad : c.candidateText).pixmap(QSize(20, 20)));
+    bannerTitle->setText(failed ? "NWChemのエラーを検出しました" : "NWChemの正常終了の記録がありません");
+    bannerText->setText(
+        failed ? data.status + "。詳細は「概要」のメッセージとログで確認してください。"
+               : QString("実行中・中断・途中までのログの可能性があります。%1実行中なら「再読込」で"
+                         "更新します。")
+                     .arg(data.properties.value("optimization") == "converged" ? "最適化は収束しています。"
+                                                                               : ""));
+}
+void ResultsPanel::showContext() {
+    const int i = frame->value() - 1, mode = modes->currentRow();
+    int page = 0;
+    QString title, detail;
+    if (modeDisplayed && mode >= 0 && mode < data.modes.size()) {
+        page = 2;
+        const auto &m = data.modes[mode];
+        title = QString("モード %1 · %2 cm⁻¹").arg(mode + 1).arg(fixed(m.frequency, 1));
+        detail = animation.isActive() ? QString("再生中 · 振幅 %1 Å").arg(fixed(amplitude->value(), 2))
+                                      : QString("基準構造");
+        if (rigidMotion.value(mode))
+            detail += " · 並進・回転";
+        else if (m.frequency < -10)
+            detail += " · 虚振動";
+        modeLabel->setText(title);
+    } else if (data.format == "MOLDEN" && data.orbitalBasis && !data.orbitals.isEmpty() &&
+               (data.frames.size() <= 1 || i == data.orbitalFrame)) {
+        page = 1;
+        if (data.selectedOrbital >= 0 && i == data.orbitalFrame) {
+            const auto &o = data.orbitals[data.selectedOrbital];
+            title = QString("%1 · %2 %3番")
+                        .arg(frontierName(data.orbitals, data.selectedOrbital), o.spin,
+                             orbitals->item(data.selectedOrbital, 0)->text());
+            detail = QString("%1 eV · 等値 ±%2").arg(fixed(o.energy * HartreeToEv, 3), real(data.isovalue));
+        } else {
+            title = "分子軌道";
+            detail = data.orbitalError.isEmpty() ? QString("軌道を選ぶと等値面を表示します")
+                                                 : data.orbitalError.section('\n', 0, 0).left(80);
+        }
+    } else if (data.format == "CUBE" && !data.frames.isEmpty()) {
+        title = data.datasets.isEmpty() ? QString("CUBE")
+                                        : QString("CUBE · データ %1").arg(data.datasets.value(data.dataset));
+        detail = QString("等値 ±%1 · 格子 %2 × %3 × %4")
+                     .arg(real(data.isovalue))
+                     .arg(data.grid[0])
+                     .arg(data.grid[1])
+                     .arg(data.grid[2]);
+    } else if (i >= 0 && i < data.frames.size()) {
+        title = data.frames.size() > 1 ? QString("構造 %1 / %2%3")
+                                             .arg(i + 1)
+                                             .arg(data.frames.size())
+                                             .arg(i == data.frames.size() - 1 ? "（最後）" : "")
+                                       : QString("構造");
+        detail = data.frames[i].label;
+    }
+    contextChip->setVisible(!title.isEmpty());
+    if (contextTitle->text() != title)
+        contextTitle->setText(title);
+    if (contextDetail->text() != detail)
+        contextDetail->setText(detail);
+    contextDetail->setVisible(!detail.isEmpty());
+    if (dock->currentIndex() != page)
+        dock->setCurrentIndex(page);
 }
 QString ResultsPanel::briefSummary() const {
     QStringList parts;
@@ -1390,7 +2230,8 @@ void ResultsPanel::showEnergies() {
         data.energies.isEmpty()
             ? QString()
             : QString("ΔEは %1 行目（太字）を基準にした差です。手法の異なる行どうしの差には意味がありま"
-                      "せん。1 Eh = 627.509 kcal/mol = 2625.50 kJ/mol = 27.2114 eV。")
+                      "せん。エネルギーは出力順で、最適化ステップとの1対1対応ではありません。"
+                      "1 Eh = 627.509 kcal/mol = 2625.50 kJ/mol = 27.2114 eV。")
                   .arg(reference + 1));
 }
 void ResultsPanel::showPath() {
@@ -1471,6 +2312,12 @@ void ResultsPanel::showProperties() {
              nmr.contains("anisotropy") ? fixed(nmr["anisotropy"].toDouble(), 3) : "—"});
     }
     auto text = resultPropertyLines(data);
+    if (data.properties.contains("dipole")) {
+        const auto d = data.properties.value("dipole").toObject();
+        text += QString("双極子モーメント: %1 D（x %2 / y %3 / z %4 a.u.）\n")
+                    .arg(fixed(d["debye"].toDouble(), 4), real(d["x"].toDouble()), real(d["y"].toDouble()),
+                         real(d["z"].toDouble()));
+    }
     if (data.properties.contains("polarizability")) {
         const auto t = data.properties.value("polarizability").toObject()["tensor"].toArray();
         QStringList rows;
@@ -1488,12 +2335,14 @@ void ResultsPanel::showProperties() {
 }
 void ResultsPanel::showIrSpectrum() {
     QVector<QPointF> sticks, curve;
+    irModes.clear();
     double top = 0;
     for (int i = 0; i < data.modes.size(); ++i) {
         const auto &m = data.modes[i];
         if (rigidMotion.value(i) || m.frequency <= 0 || !std::isfinite(m.intensity))
             continue;
         sticks << QPointF(m.frequency, m.intensity);
+        irModes << i;
         top = std::max(top, m.frequency);
     }
     if (sticks.isEmpty()) {
@@ -1510,9 +2359,87 @@ void ResultsPanel::showIrSpectrum() {
             y += s.y() * gamma * gamma / ((x - s.x()) * (x - s.x()) + gamma * gamma);
         curve << QPointF(x, y);
     }
-    irSpectrum->setChart(
-        "IRスペクトル（表示用）", "波数 / cm⁻¹", "IR強度 / km mol⁻¹",
-        {{"広がり", curve, QColor("#2f6db5")}, {"各モード", sticks, QColor("#c0392b"), true}});
+    const ChromeColors c(palette());
+    irSpectrum->setChart("IRスペクトル（表示用）", "波数 / cm⁻¹", "IR強度 / km mol⁻¹",
+                         {{"広がり", curve, c.muted}, {"各モード", sticks, c.text, true}});
+    irSpectrum->setSelectedStick(1, irModes.indexOf(modes->currentRow()));
+}
+void ResultsPanel::showOptimization() {
+    const ChromeColors c(static_cast<QWidget *>(window)->palette());
+    const QColor orange =
+        darkPalette(static_cast<QWidget *>(window)->palette()) ? QColor("#f0883e") : QColor("#c2570c");
+    const auto thresholds = data.properties.value("thresholds").toObject();
+    // The four criteria of the last step against their thresholds.
+    auto *box = static_cast<QVBoxLayout *>(criteria->layout());
+    while (auto *item = box->takeAt(0)) {
+        if (item->layout())
+            while (auto *inner = item->layout()->takeAt(0)) {
+                delete inner->widget();
+                delete inner;
+            }
+        delete item->widget();
+        delete item;
+    }
+    criteria->setVisible(!data.steps.isEmpty());
+    if (!data.steps.isEmpty()) {
+        const auto &last = data.steps.last();
+        auto *title = new QLabel(QString("収束判定（最終ステップ %1）").arg(last.step));
+        auto font = title->font();
+        font.setBold(true);
+        title->setFont(font);
+        box->addWidget(title);
+        auto *row = new QHBoxLayout;
+        row->setSpacing(6);
+        for (const auto &[key, name, value] : {std::tuple{"gmax", "Gmax", last.gmax},
+                                               {"grms", "Grms", last.grms},
+                                               {"xrms", "Xrms", last.xrms},
+                                               {"xmax", "Xmax", last.xmax}}) {
+            const bool judged = thresholds.contains(key);
+            const bool met = judged && value <= thresholds[key].toDouble();
+            // Five decimals, as NWChem prints them.
+            auto *chip = summaryTile(judged ? QString("%1 %2").arg(name, met ? "✓" : "✗") : QString(name),
+                                     fixed(value, 5),
+                                     judged ? "閾値 " + fixed(thresholds[key].toDouble(), 5) : QString(),
+                                     !judged ? "neutral"
+                                     : met   ? "good"
+                                             : "warn",
+                                     false);
+            chip->setObjectName(QString("resultsCriterion") + name);
+            row->addWidget(chip, 1);
+        }
+        box->addLayout(row);
+    }
+    steps->setRowCount(data.steps.size());
+    QVector<QPointF> relative, gmax, grms;
+    for (int i = 0; i < data.steps.size(); ++i) {
+        const auto &t = data.steps[i];
+        row(steps, i,
+            {QString::number(t.step), fixed(t.energy, 8), real(t.deltaE), fixed(t.gmax, 5), fixed(t.grms, 5),
+             fixed(t.xrms, 5), fixed(t.xmax, 5), real(t.seconds)});
+        // Values within their threshold in the color of a met criterion (no step yet at step 0).
+        const std::tuple<int, const char *, double> columns[]{
+            {3, "gmax", t.gmax}, {4, "grms", t.grms}, {5, "xrms", t.xrms}, {6, "xmax", t.xmax}};
+        for (const auto &[column, key, value] : columns)
+            if (thresholds.contains(key) && value <= thresholds[key].toDouble() && (column < 5 || t.step > 0))
+                steps->item(i, column)->setForeground(c.good);
+        relative << QPointF(t.step, (t.energy - data.steps.last().energy) * HartreeToKcal);
+        gmax << QPointF(t.step, t.gmax);
+        grms << QPointF(t.step, t.grms);
+    }
+    if (data.steps.isEmpty()) {
+        energyChart->clear();
+        gradientChart->clear();
+        return;
+    }
+    energyChart->setChart("エネルギー（最終ステップ基準）", "ステップ", "ΔE / kcal mol⁻¹",
+                          {{"エネルギー", relative, c.accent}});
+    QVector<QPair<QString, double>> levels;
+    if (thresholds.contains("gmax"))
+        levels.append({"Gmax閾値", thresholds["gmax"].toDouble()});
+    if (thresholds.contains("grms"))
+        levels.append({"Grms閾値", thresholds["grms"].toDouble()});
+    gradientChart->setChart("勾配", "ステップ", "Hartree / Bohr",
+                            {{"Gmax", gmax, c.accent}, {"Grms", grms, orange}}, true, levels);
 }
 void ResultsPanel::showArrows() {
     const int n = modes->currentRow();
@@ -1593,7 +2520,10 @@ void ResultsPanel::setViewDocument(const Document &d) {
     view->setDocument(d);
     view->setSelection(ids(picked));
     view->setMonitors(monitors);
-    QString text = "原子をクリックすると距離・角度・二面角を測定します（2〜4原子）。";
+    QString text =
+        pinned.isEmpty()
+            ? QString("原子をクリックすると距離・角度・二面角を測定します（2〜4原子）。")
+            : QString("画面に表示中の計測: %1件。原子をクリックすると続けて測定します。").arg(pinned.size());
     if (!picked.isEmpty()) {
         QStringList labels;
         for (int n : picked)
@@ -1611,6 +2541,7 @@ void ResultsPanel::setViewDocument(const Document &d) {
             }
     }
     measurementLabel->setText(text);
+    measureCard->setVisible(!picked.isEmpty() || !pinned.isEmpty());
 }
 void ResultsPanel::pickAtom(const QString &id) {
     const auto &d = view->documentRef();
@@ -1633,6 +2564,11 @@ void ResultsPanel::showFrame() {
     setViewDocument(i >= 0 && i < data.frames.size() ? data.frames[i].molecule : Document());
     view->setSurface(data.format != "MOLDEN" || i == data.orbitalFrame ? data.surface
                                                                        : QVector<SurfaceTriangle>{});
+    timeline->setCurrent(i);
+    frameEnergy->setText(std::isfinite(frameEnergies.value(i, NAN))
+                             ? QString("ΔE %1 kcal/mol").arg(fixed(frameEnergies[i], 2))
+                             : QString("ΔE —"));
+    showContext();
 }
 void ResultsPanel::showMode() {
     modeDisplayed = true;
@@ -1643,6 +2579,7 @@ void ResultsPanel::showMode() {
     }
     view->setSurface({});
     setViewDocument(resultModeGeometry(data, n, phase, amplitude->value()));
+    showContext();
 }
 const Document &ResultsPanel::displayedGeometry() const {
     if (loading())

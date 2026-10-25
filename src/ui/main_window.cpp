@@ -1274,7 +1274,7 @@ void MainWindow::buildMenus() {
     calculationMenu->addSeparator();
     action(calculationMenu, "結果ファイルを開く…", {}, [this] {
         workspaceTabs->setCurrentWidget(results);
-        if (auto *open = results->findChild<QPushButton *>("resultsOpen"))
+        if (auto *open = results->findChild<QAbstractButton *>("resultsOpen"))
             open->click();
     });
     action(calculationMenu, "計算の履歴", {},
@@ -2011,29 +2011,9 @@ void MainWindow::applyChromeStyle() {
         return;
     QScopedValueRollback guard(stylingChrome, true);
     const ChromeColors c(QMainWindow::palette());
-    const auto accentHover = c.accent.lightness() > 128 ? c.accent.darker(112) : c.accent.lighter(115);
-    const auto style = [&](QWidget *w, QString rules) {
-        if (!w)
-            return;
-        const QList<std::pair<const char *, QColor>> tokens{{"@accentText", c.accentText},
-                                                            {"@accentHover", accentHover},
-                                                            {"@accent", c.accent},
-                                                            {"@onAccent", c.onAccent},
-                                                            {"@candidateLine", c.candidateLine},
-                                                            {"@candidateText", c.candidateText},
-                                                            {"@candidate", c.candidate},
-                                                            {"@base", c.base},
-                                                            {"@window", c.window},
-                                                            {"@text", c.text},
-                                                            {"@muted", c.muted},
-                                                            {"@line", c.line},
-                                                            {"@hover", c.hover},
-                                                            {"@segment", c.segment},
-                                                            {"@tint", c.tint},
-                                                            {"@error", errorColor(QMainWindow::palette())}};
-        for (const auto &[token, color] : tokens)
-            rules.replace(token, color.name());
-        w->setStyleSheet(rules);
+    const auto style = [&](QWidget *w, const QString &rules) {
+        if (w)
+            w->setStyleSheet(chromeRules(rules, QMainWindow::palette()));
     };
     style(header, R"(
         #headerBar { background: @base; border-bottom: 1px solid @line; }
@@ -2118,6 +2098,8 @@ void MainWindow::applyChromeStyle() {
     )");
     style(summary, "#documentSummary { background: @base; border-top: 1px solid @line; color: @muted;"
                    " padding: 4px 12px; }");
+    if (results)
+        results->applyChromeStyle();
 }
 QList<QWidget *> MainWindow::workspacePanels() const {
     return {coordinates, calculation, advanced, execution, inputPreview};

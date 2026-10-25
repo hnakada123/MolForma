@@ -443,14 +443,17 @@ class EditorTest : public QObject {
         w.resize(width, 900);
         w.show();
         QTest::qWait(40);
-        // "1 分子" keeps the sliders in a popup under "回転" over the 3D view, a label before each;
-        // the results viewer shows them side by side under its view, each under its label.
-        QWidget *area = tabs->currentWidget();
+        // Both keep the sliders in a popup under "回転" over the 3D view, a label before each. The
+        // results viewer's button waits for a structure, so its popup is shown directly here.
+        QWidget *area = nullptr;
         if (tab == 0) {
             w.findChild<QToolButton *>("rotationButton")->click();
             area = w.findChild<QWidget *>("rotationPopup");
-            QTRY_VERIFY(area->isVisible());
+        } else {
+            area = w.findChild<QWidget *>("resultsRotationPopup");
+            area->show();
         }
+        QTRY_VERIFY(area->isVisible());
         const auto labels = area->findChildren<QLabel *>();
         QRect previous, controls;
         int sliderWidth = 0;
@@ -466,22 +469,12 @@ class EditorTest : public QObject {
             const QRect labelRect(label->mapTo(area->window(), QPoint()), label->size());
             const QRect sliderRect(slider->mapTo(area->window(), QPoint()), slider->size());
             QVERIFY(label->width() >= label->sizeHint().width());
-            if (tab == 0) {
-                QVERIFY(labelRect.right() < sliderRect.left());
-                QVERIFY(labelRect.top() < sliderRect.bottom() && sliderRect.top() < labelRect.bottom());
-                if (!previous.isNull()) {
-                    QVERIFY(sliderRect.top() > previous.bottom());
-                    QCOMPARE(sliderRect.left(), previous.left());
-                    QCOMPARE(slider->width(), sliderWidth);
-                }
-            } else {
-                QCOMPARE(labelRect.left(), sliderRect.left());
-                QVERIFY(labelRect.bottom() < sliderRect.top());
-                QVERIFY(sliderRect.top() - labelRect.bottom() <= 6);
-                if (!previous.isNull()) {
-                    QVERIFY(sliderRect.left() - previous.right() >= 12);
-                    QVERIFY(std::abs(slider->width() - sliderWidth) <= 1);
-                }
+            QVERIFY(labelRect.right() < sliderRect.left());
+            QVERIFY(labelRect.top() < sliderRect.bottom() && sliderRect.top() < labelRect.bottom());
+            if (!previous.isNull()) {
+                QVERIFY(sliderRect.top() > previous.bottom());
+                QCOMPARE(sliderRect.left(), previous.left());
+                QCOMPARE(slider->width(), sliderWidth);
             }
             previous = sliderRect;
             sliderWidth = slider->width();
@@ -494,8 +487,7 @@ class EditorTest : public QObject {
             QVERIFY(w.grab().save(path + ".png"));
             QVERIFY(area->window()->grab(controls.adjusted(-4, -4, 4, 4)).save(path + "-controls.png"));
         }
-        if (tab == 0)
-            area->hide();
+        area->hide();
     }
     void skeletonPalette() {
         MainWindow w;

@@ -2,6 +2,7 @@
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
 #include "ui/molecule_view.h"
+#include "ui/result_charts.h"
 #include "ui/results_panel.h"
 #include <Eigen/LU>
 #include <QtTest>
@@ -73,8 +74,10 @@ class ResultsTest : public QObject {
         QVERIFY(std::abs(r.energies[0].hartree + 74.945628203255) < 1e-12);
         QCOMPARE(r.energies[2].method, "CCSD(T)");
         QVERIFY(r.status.contains("正常終了マーカーあり"));
+        QCOMPARE(resultOutcome(r), QString("normal"));
         r = readResult(save("failed.out", source + "An error occurred\nMPI_ABORT\n"));
         QVERIFY(r.status.contains("エラー"));
+        QCOMPARE(resultOutcome(r), QString("error"));
         // NWChem 7.3 errquit block (here: an unknown basis name), without any generic error words.
         const QString dashes(" " + QString(72, '-') + "\n");
         r = readResult(save("errquit.out",
@@ -83,6 +86,7 @@ class ResultsTest : public QObject {
                                 dashes + "  current input line : \n" + "    11: task scf energy\n" + dashes +
                                 dashes + " There is an error in the specified basis set\n" + dashes));
         QCOMPARE(r.status, QString("NWChemエラー: bas_tag_lib: failed opening basis file"));
+        QCOMPARE(resultOutcome(r), QString("error"));
         r = readResult(save("optfail.out", "NWChem\n" + geometry() + dashes +
                                                " scf optimize failed                                    0\n" +
                                                dashes + dashes + "  current input line : \n" +
@@ -91,6 +95,7 @@ class ResultsTest : public QObject {
         r = readResult(save("partial.out", "NWChem\n" + geometry() + geometry().chopped(35)));
         QCOMPARE(r.frames.size(), 1);
         QVERIFY(r.status.contains("マーカーなし"));
+        QCOMPARE(resultOutcome(r), QString("incomplete"));
         QVERIFY(!r.warnings.isEmpty());
         auto au = geometry();
         au.replace("in angstroms", "in a.u.");
@@ -117,6 +122,7 @@ class ResultsTest : public QObject {
         auto r = readResult(save("path.xyz", "2\n\nH 0 0 0\nH 0 0 1\n2\nsecond\nH 0 0 0\nH 0 0 2\n"));
         QCOMPARE(r.frames.size(), 2);
         QCOMPARE(r.frames[1].label, "second");
+        QVERIFY(resultOutcome(r).isEmpty()); // Only logs have an outcome.
         QVERIFY_EXCEPTION_THROWN(readResult(save("truncated.xyz", "2\ntitle\nH 0 0 0\n")),
                                  std::runtime_error);
         r = readResult(save("orbitals.molden", moldenText()));
@@ -413,6 +419,88 @@ class ResultsTest : public QObject {
         QCOMPARE(modes->item(0, 1)->text(), QString("—"));
         widget<QCheckBox>(w, "resultsShowRigid")->setChecked(true);
         QVERIFY(!modes->isRowHidden(0));
+    }
+    void outcomeOverviewAndDock() {
+        // A log cut short (no "Total times"): two structures, an optimization, orbitals 1–2 and modes.
+        QTemporaryDir job;
+        const QString log =
+            "NWChem\n" + geometry() + geometry() +
+            " maximum gradient threshold         (gmax) =   0.000450\n"
+            " rms gradient threshold             (grms) =   0.000300\n"
+            "@ Step       Energy      Delta E   Gmax     Grms     Xrms     Xmax   Walltime\n"
+            "@ ---- ---------------- -------- -------- -------- -------- -------- --------\n"
+            "@    0     -76.00723755  0.0D+00  0.06730  0.02421  0.00000  0.00000      0.3\n"
+            "@    1     -76.01098000 -3.7D-03  0.00035  0.00348  0.02135  0.04987      0.7\n"
+            "      Optimization converged\n"
+            "                       DFT Final Molecular Orbital Analysis\n"
+            " Vector    1  Occ=2.000000D+00  E=-5.000000D-01\n"
+            " Vector    2  Occ=0.000000D+00  E= 2.500000D-01\n"
+            " (Projected Frequencies expressed in cm-1)\n\n P.Frequency -100 1600\n\n" +
+            [] {
+                QString rows;
+                for (int i = 0; i < 9; ++i)
+                    rows += QString(" %1 %2 %3\n").arg(i + 1).arg(i == 0 ? 1 : 0).arg(i == 4 ? .5 : 0);
+                return rows;
+            }() +
+            "\n Normal Eigenvalue || Projected Infra Red Intensities\n Mode [cm**-1] || units units "
+            "units units\n ---- ---- || ---- ---- ---- ----\n"
+            " 1 -100 || 0.1 0.2 5.5 1.0\n 2 1600 || 0.2 0.3 8.5 1.2\n ----\n";
+        writeFile(job.filePath("output.out"), log.toUtf8());
+        writeFile(job.filePath("job.molden"),
+                  "[Molden Format]\n[Atoms] AU\nH 1 1 0 0 0\nH 2 1 0 0 1.4\n[GTO]\n1 0\ns 1 1.0\n1.0 1.0\n"
+                  "2 0\ns 1 1.0\n1.0 1.0\n"
+                  "[MO]\nSym= A1\nEne= -0.5\nSpin= Alpha\nOccup= 2.0\n1 0.5\n2 0.5\n"
+                  "Sym= B1\nEne= 0.25\nSpin= Alpha\nOccup= 0\n1 0.5\n2 -0.5\n");
+        MainWindow w;
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentWidget(panel);
+        w.show();
+        auto *details = widget<QTabWidget>(w, "resultsDetails");
+        auto *dock = widget<QStackedWidget>(w, "resultsDockPages");
+        QVERIFY(widget<QLabel>(w, "resultsOutcome")->isHidden() &&
+                widget<QFrame>(w, "resultsBanner")->isHidden());
+        QSignalSpy done(panel, &ResultsPanel::loaded);
+        panel->openDirectory(job.path());
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        // How the run ended: in the bar and as a banner over the details.
+        QCOMPARE(resultOutcome(panel->result()), QString("incomplete"));
+        QCOMPARE(widget<QLabel>(w, "resultsOutcome")->text(), QString("正常終了の記録なし"));
+        QVERIFY(widget<QFrame>(w, "resultsBanner")->isVisible());
+        QVERIFY(widget<QLabel>(w, "resultsBannerText")->text().contains("最適化は収束しています"));
+        // Tab names count what they list; the summary cards open their tabs.
+        QCOMPARE(details->tabText(3), QString("振動 2"));
+        QCOMPARE(details->tabText(4), QString("最適化 2"));
+        widget<QPushButton>(w, "resultsTileImaginary")->click();
+        QCOMPARE(details->currentIndex(), 3);
+        details->setCurrentIndex(0);
+        widget<QPushButton>(w, "resultsTileOptimization")->click();
+        QCOMPARE(details->currentIndex(), 4);
+        QCOMPARE(widget<QFrame>(w, "resultsCriterionGmax")->property("tone").toString(), QString("good"));
+        QCOMPARE(widget<QFrame>(w, "resultsCriterionGrms")->property("tone").toString(), QString("warn"));
+        // Under the view: the structures first, with a timeline to pick one.
+        QCOMPARE(dock->currentIndex(), 0);
+        QCOMPARE(widget<QLabel>(w, "resultsContextTitle")->text(), QString("構造 2 / 2（最後）"));
+        emit widget<FrameTimeline>(w, "resultsTimeline")->frameSelected(0);
+        QCOMPARE(widget<QSpinBox>(w, "resultsFrame")->value(), 1);
+        // A stick of the IR spectrum picks its mode (the imaginary one has no stick) and plays it below.
+        emit widget<ChartView>(w, "resultsIrSpectrum")->stickClicked(1, 0);
+        QCOMPARE(widget<QTableWidget>(w, "resultsModes")->currentRow(), 1);
+        QCOMPARE(dock->currentIndex(), 2);
+        QVERIFY(widget<QLabel>(w, "resultsContextTitle")->text().startsWith("モード 2 · 1600.0"));
+        widget<QPushButton>(w, "resultsCloseMode")->click();
+        QCOMPARE(dock->currentIndex(), 0);
+        QCOMPARE(widget<QTableWidget>(w, "resultsModes")->currentRow(), -1);
+        // The log's LUMO opens in the job's MOLDEN file as the same orbital (spin and number).
+        auto *table = widget<QTableWidget>(w, "resultsOrbitals");
+        QVERIFY(table->isColumnHidden(3)); // One spin: no column saying "Alpha" on every row.
+        emit table->cellDoubleClicked(1, 0);
+        QTRY_VERIFY_WITH_TIMEOUT(panel->result().source.endsWith("job.molden"), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(panel->result().selectedOrbital, 1, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!panel->loading(), 10000);
+        QCOMPARE(dock->currentIndex(), 1);
+        QVERIFY(widget<QLabel>(w, "resultsContextTitle")->text().startsWith("LUMO · Alpha 2番"));
+        QVERIFY(widget<QFrame>(w, "resultsBanner")->isHidden()); // A MOLDEN file has no outcome to judge.
+        QCOMPARE(frontierName(panel->result().orbitals, 0), QString("HOMO"));
     }
     void fileSelectionLoadsAndCancels() {
         QTemporaryDir job;
@@ -736,6 +824,8 @@ class ResultsTest : public QObject {
         expected.setAngles(angles[0], angles[1], angles[2]);
         for (const auto &atom : molecule.atoms)
             QCOMPARE(view->atomScreenPosition(atom.id), expected.atomScreenPosition(atom.id));
+        // The sliders are in the popup of "回転" over the view.
+        widget<QToolButton>(w, "resultsRotation")->click();
         for (int i = 0; i < 3; ++i) {
             auto *slider = widget<QSlider>(w, names[i]);
             QVERIFY(slider->isVisible());
@@ -793,7 +883,7 @@ class ResultsTest : public QObject {
         widget<QLineEdit>(w, "resultsIsovalue")->setText("0.25");
         widget<QComboBox>(w, "resultsDataset")->setCurrentIndex(1);
         widget<QPushButton>(w, "resultsApplyIso")->click();
-        QVERIFY(!widget<QPushButton>(w, "resultsSaveXyz")->isEnabled());
+        QVERIFY(!w.findChild<QAction *>("resultsSaveXyz")->isEnabled());
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 3, 10000);
         QCOMPARE(panel->result().isovalue, .25);
         QCOMPARE(panel->result().dataset, 1);

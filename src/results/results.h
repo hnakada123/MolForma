@@ -99,4 +99,7 @@ Document resultModeGeometry(const ResultData &data, int mode, double phase, doub
 // Translations and rotations among the normal modes: the 6 (linear: 5, atom: 3) modes with the
 // smallest |frequency| of a complete 3N-mode set. Other mode sets are all treated as vibrations.
 QVector<bool> resultRigidModes(const ResultData &data);
+// How an NWChem log ended: "normal" (the termination marker), "incomplete" (no marker: running,
+// stopped or cut short) or "error"; empty for other files, whose outcome is not judged.
+QString resultOutcome(const ResultData &data);
 } // namespace mf

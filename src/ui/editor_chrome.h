@@ -15,11 +15,16 @@ namespace mf {
 struct ChromeColors {
     QColor base, window, text, muted, line, hover, segment, accent, accentText, tint, onAccent;
     QColor candidate, candidateLine, candidateText; // The banner of a pending change.
+    QColor good, goodTint, bad, badTint;            // Outcomes: text and a tinted background.
     explicit ChromeColors(const QPalette &palette);
 };
+// A style sheet with the chrome colors put in for the tokens "@accent", "@accentText", "@base",
+// "@window", "@text", "@muted", "@line", "@hover", "@segment", "@tint", "@onAccent", "@accentHover",
+// "@candidate…", "@good", "@goodTint", "@error" and "@badTint".
+QString chromeRules(QString rules, const QPalette &palette);
 // Stroked icons on a 24×24 grid ("select", "move", "undo", …), in the palette's text color, the
-// accent when checked and the disabled color when off, or always in `color` if given. "play" is
-// filled.
+// accent when checked and the disabled color when off, or always in `color` if given. "play",
+// "pause", "first" and "last" are filled.
 QIcon lineIcon(const QString &name, const QColor &color = {});
 // The number of a workflow step in a circle, filled with the accent while its tab is open.
 QIcon stepIcon(int number);

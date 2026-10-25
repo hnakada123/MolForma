@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/editor_chrome.h"
+#include "ui/theme.h"
 #include <QApplication>
 #include <QGridLayout>
 #include <QIconEngine>
@@ -117,6 +118,61 @@ QPainterPath iconPath(const QString &name, bool &filled) {
     } else if (name == "search") {
         circle({10.5, 10.5}, 6.5);
         line({{15.5, 15.5}, {20, 20}});
+    } else if (name == "folder")
+        line({{3, 6}, {9.5, 6}, {11.5, 8.5}, {21, 8.5}, {21, 19}, {3, 19}}, true);
+    else if (name == "refresh") {
+        const QRectF ring(5, 5, 14, 14);
+        p.arcMoveTo(ring, 20);
+        p.arcTo(ring, 20, 290);
+        line({{19.5, 4.5}, {19.5, 9.5}, {14.5, 9.5}});
+    } else if (name == "export") { // An arrow up out of a tray.
+        line({{12, 15}, {12, 4}});
+        line({{7.5, 8.5}, {12, 4}, {16.5, 8.5}});
+        line({{4, 14}, {4, 20}, {20, 20}, {20, 14}});
+    } else if (name == "apply") { // An arrow down into a tray.
+        line({{12, 4}, {12, 15}});
+        line({{7.5, 10.5}, {12, 15}, {16.5, 10.5}});
+        line({{4, 14}, {4, 20}, {20, 20}, {20, 14}});
+    } else if (name == "compare") {
+        circle({9, 12}, 5.5);
+        circle({15, 12}, 5.5);
+    } else if (name == "pause") {
+        filled = true;
+        p.addRect(QRectF(6.5, 5, 4, 14));
+        p.addRect(QRectF(13.5, 5, 4, 14));
+    } else if (name == "first" || name == "last") {
+        filled = true;
+        const bool first = name == "first";
+        const double x = first ? 0 : 24, s = first ? 1 : -1;
+        p.addRect(QRectF(first ? 5 : 17, 5, 2, 14));
+        line({{x + s * 19, 5}, {x + s * 19, 19}, {x + s * 8.5, 12}}, true);
+    } else if (name == "previous")
+        line({{15, 5}, {8, 12}, {15, 19}});
+    else if (name == "next")
+        line({{9, 5}, {16, 12}, {9, 19}});
+    else if (name == "back10") {
+        line({{12, 5}, {5, 12}, {12, 19}});
+        line({{19, 5}, {12, 12}, {19, 19}});
+    } else if (name == "forward10") {
+        line({{5, 5}, {12, 12}, {5, 19}});
+        line({{12, 5}, {19, 12}, {12, 19}});
+    } else if (name == "ruler") {
+        line({{3, 16}, {16, 3}, {21, 8}, {8, 21}}, true);
+        line({{7, 12}, {9, 14}});
+        line({{10, 9}, {12, 11}});
+        line({{13, 6}, {15, 8}});
+    } else if (name == "label") { // The letter A.
+        line({{5, 20}, {12, 4}, {19, 20}});
+        line({{8, 14}, {16, 14}});
+    } else if (name == "warning") {
+        line({{12, 3.5}, {21.5, 20}, {2.5, 20}}, true);
+        line({{12, 9.5}, {12, 14}});
+        line({{12, 17}, {12, 17.2}});
+    } else if (name == "check")
+        line({{5, 12.5}, {10, 17.5}, {19, 6.5}});
+    else if (name == "close") {
+        line({{6, 6}, {18, 18}});
+        line({{18, 6}, {6, 18}});
     }
     return p;
 }
@@ -227,6 +283,38 @@ ChromeColors::ChromeColors(const QPalette &p) {
     candidate = QColor(dark ? "#3b2a12" : "#fff4e5");
     candidateLine = QColor(dark ? "#8a5a1c" : "#f3c98b");
     candidateText = QColor(dark ? "#fcd9a8" : "#5c2e04");
+    good = goodColor(p);
+    goodTint = mix(good, base, .13);
+    bad = errorColor(p);
+    badTint = mix(bad, base, .12);
+}
+
+QString chromeRules(QString rules, const QPalette &palette) {
+    const ChromeColors c(palette);
+    const auto accentHover = c.accent.lightness() > 128 ? c.accent.darker(112) : c.accent.lighter(115);
+    // Longer names first, so that "@accentText" is not taken for "@accent" followed by "Text".
+    const QList<std::pair<const char *, QColor>> tokens{{"@candidateLine", c.candidateLine},
+                                                        {"@candidateText", c.candidateText},
+                                                        {"@accentHover", accentHover},
+                                                        {"@accentText", c.accentText},
+                                                        {"@candidate", c.candidate},
+                                                        {"@goodTint", c.goodTint},
+                                                        {"@onAccent", c.onAccent},
+                                                        {"@badTint", c.badTint},
+                                                        {"@segment", c.segment},
+                                                        {"@accent", c.accent},
+                                                        {"@window", c.window},
+                                                        {"@error", c.bad},
+                                                        {"@hover", c.hover},
+                                                        {"@muted", c.muted},
+                                                        {"@good", c.good},
+                                                        {"@base", c.base},
+                                                        {"@line", c.line},
+                                                        {"@tint", c.tint},
+                                                        {"@text", c.text}};
+    for (const auto &[token, color] : tokens)
+        rules.replace(token, color.name());
+    return rules;
 }
 
 QIcon lineIcon(const QString &name, const QColor &color) {
