@@ -27,10 +27,14 @@ by responsibility, with paired headers and implementations in the same directory
   wrapping option bar layout, 3D-view overlays and palette-derived chrome colors.
   `template_delegate.*` renders and caches the palette's molecular thumbnails and
   tiles; `periodic_table.*` provides the element picker.
-  `coordinates_panel.*`, `calculation_panel.*`, `advanced_panel.*` and
-  `execution_panel.*` provide the native tabs "2 Coordinates" through
-  "5 Execution settings". `input_preview_panel.*` provides the read-only
-  "6 Input preview" tab using the shared NWChem input generator and execution plan.
+  The numbered tabs are "1 分子" through "4 入力プレビュー". `coordinates_panel.*`
+  provides the coordinate table of "1 分子", shown under the 3D view or in its place
+  (layouts 3D / 3D＋表 / 表). `calculation_panel.*` provides "2 計算条件"; each
+  section opens its `nwchem_advanced.*` overrides as "詳細設定". `execution_panel.*`
+  provides the settings of "3 実行設定" and the run panel over the tabs (state,
+  `run_progress.*` and log), opened from the header run pill. `input_preview_panel.*`
+  provides the read-only "4 入力プレビュー" tab using the shared NWChem input
+  generator and execution plan.
   `results_panel.*` provides the independent result viewer with cancellable native
   readers. `history_panel.*` provides calculation history, log browsing, reuse and
   result navigation. `mcp_gui.*` exposes GUI, execution and result tools to MCP
