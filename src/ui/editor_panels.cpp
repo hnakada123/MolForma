@@ -97,8 +97,9 @@ void MainWindow::buildEditPanel() {
     elementBox = choices(f, "追加・変更する元素", symbols);
     elementBox->setCurrentIndex(elementBox->findData("C"));
     elementBox->setObjectName("elementSelector");
-    elementBox->setToolTip("「原子追加」ツールで置く元素、「元素を変更」で選択原子に設定する元素です。"
-                           "パレットで原子を選ぶと連動します。");
+    elementBox->setToolTip(
+        "「配置」ツールで置く原子・配位中心の元素、「元素を変更」で選択原子に設定する元素です。"
+        "パレットで原子・配位中心を選ぶと連動します。");
     enableWithSelection(button(f, "選択原子をこの元素に変更",
                                [this] {
                                    auto ids = requireSelection();

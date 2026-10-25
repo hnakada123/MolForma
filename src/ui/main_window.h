@@ -118,9 +118,8 @@ class MainWindow : public QMainWindow {
     ResultsPanel *results = nullptr;
     HistoryPanel *calculationHistory = nullptr;
     QTabWidget *workspaceTabs = nullptr;
-    QButtonGroup *toolGroup = nullptr; // The editing tools beside the 3D view of "1 分子".
-    QLabel *toolBondLabel = nullptr;
-    QComboBox *toolBondKind = nullptr; // Shown with the bond tool; mirrors bondKind.
+    QButtonGroup *toolGroup = nullptr; // The editing tools above the palette of "1 分子".
+    QComboBox *toolBondKind = nullptr; // Below the tools; mirrors bondKind.
     QComboBox *unitBox = nullptr, *category = nullptr, *elementBox = nullptr, *bondKind = nullptr;
     QLineEdit *search = nullptr;
     QListWidget *palette = nullptr, *residueList = nullptr, *pointList = nullptr;
@@ -238,9 +237,12 @@ class MainWindow : public QMainWindow {
     void selectAll();
     void copySelection();
     void pasteFragment();
-    // The editing tool ("select", "atom", "place", …) and the hint under the 3D view for it.
+    // The editing tool ("select", "place", "replace", …) and the hint under the 3D view for it.
     QString currentTool() const;
     void setTool(const QString &code);
+    // What "配置" puts down, from the palette's chosen item: "atom", "center", "part" (skeletons,
+    // amino acids, caps), "substituent", "ligand" or "smiles".
+    QString placementKind() const;
     void refreshToolHint();
     void addRecent(const QString &path);
     void refreshRecent();

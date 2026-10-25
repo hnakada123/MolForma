@@ -399,9 +399,9 @@ class EditorTest : public QObject {
         QTest::qWait(40);
         auto *element = w.findChild<QComboBox *>("elementSelector");
         element->setCurrentIndex(element->findData("C"));
-        w.findChild<QToolButton *>("tool_atom")->click();
+        w.findChild<QToolButton *>("tool_place")->click();
         // The hint under the view says what a click does with this tool and element.
-        QVERIFY(w.findChild<QLabel *>("toolHint")->text().startsWith("原子追加（C）"));
+        QVERIFY(w.findChild<QLabel *>("toolHint")->text().startsWith("配置（C）"));
         QTest::mouseClick(w.canvas(), Qt::LeftButton, Qt::NoModifier, w.canvas()->rect().center());
         QCOMPARE(w.document().formula(), QString("CH4"));
         auto id = w.document().atoms.first().id;
@@ -620,7 +620,7 @@ class EditorTest : public QObject {
         const auto rowRect = palette->visualItemRect(palette->item(first));
         QTest::mouseClick(palette->viewport(), Qt::LeftButton, Qt::NoModifier,
                           QPoint(rowRect.left() + 30, rowRect.center().y()));
-        QVERIFY(w.findChild<QToolButton *>("tool_center")->isChecked());
+        QVERIFY(w.findChild<QToolButton *>("tool_place")->isChecked());
         QCOMPARE(w.findChild<QComboBox *>("elementSelector")->currentData().toString(), QString("Zn"));
         QCOMPARE(w.findChild<QTabWidget *>("propertyTabs")->currentIndex(), 1);
         QVERIFY(w.document().atoms.isEmpty());
@@ -993,6 +993,8 @@ class EditorTest : public QObject {
         QTest::keyClick(w.canvas(), Qt::Key_B);
         QVERIFY(w.findChild<QToolButton *>("tool_bond")->isChecked());
         QVERIFY(w.findChild<QToolButton *>("tool_bond")->toolTip().endsWith("（B）"));
+        QTest::keyClick(w.canvas(), Qt::Key_A);
+        QVERIFY(w.findChild<QToolButton *>("tool_place")->isChecked());
         QTest::keyClick(w.canvas(), Qt::Key_S);
         QVERIFY(w.findChild<QToolButton *>("tool_select")->isChecked());
         // In the search field the letters are typed, not tools chosen.
@@ -1008,10 +1010,12 @@ class EditorTest : public QObject {
         Document d;
         placeTemplate(d, findTemplate("skeleton:ethane"), Vec::Zero());
         w.loadDocument(d);
+        // Below the tools for every tool ("配置" bonds atoms with it too), so the palette never shifts.
         auto *kind = w.findChild<QComboBox *>("toolBondKind");
-        QVERIFY(kind->isHidden());
+        QVERIFY(!kind->isHidden());
+        QCOMPARE(kind->parentWidget(), w.findChild<QToolButton *>("tool_bond")->parentWidget());
         w.findChild<QToolButton *>("tool_bond")->click();
-        QVERIFY(!kind->isHidden()); // Beside the tool, not only at the bottom of the edit panel.
+        QVERIFY(!kind->isHidden());
         kind->setCurrentIndex(kind->findData("double"));
         QVERIFY(w.findChild<QLabel *>("toolHint")->text().startsWith("結合（二重結合）"));
         Ids carbons;
@@ -1031,7 +1035,52 @@ class EditorTest : public QObject {
         w.findChild<QToolButton *>("quickElement_O")->click();
         // Choosing what to put in stays with the replace tool.
         QVERIFY(w.findChild<QToolButton *>("tool_replace")->isChecked());
-        QVERIFY(w.findChild<QLabel *>("toolHint")->text().startsWith("置換（酸素）"));
+        QVERIFY(w.findChild<QLabel *>("toolHint")->text().startsWith("置き換え（酸素）"));
+    }
+    void placeToolFollowsPalette() {
+        // One "配置" tool puts down what the palette has chosen; the clicked target decides how.
+        MainWindow w;
+        w.loadDocument(Document());
+        auto *palette = w.findChild<QListWidget *>("templatePalette");
+        auto *place = w.findChild<QToolButton *>("tool_place");
+        // The tools sit above the palette, not beside the 3D view.
+        QCOMPARE(place->parentWidget(), palette->parentWidget());
+        QCOMPARE(w.findChildren<QToolButton *>(QRegularExpression("^tool_")).size(), 7);
+        const auto hint = [&] { return w.findChild<QLabel *>("toolHint")->text(); };
+        const auto choose = [&](const QString &key) {
+            for (int i = 0; i < palette->count(); ++i)
+                if (palette->item(i)->data(Qt::UserRole) == key) {
+                    palette->setCurrentRow(i);
+                    emit palette->itemClicked(palette->item(i));
+                    return true;
+                }
+            return false;
+        };
+        QVERIFY(choose("skeleton:methane"));
+        QVERIFY(place->isChecked());
+        QVERIFY(hint().startsWith("配置（メタン）"));
+        emit w.canvas()->blankClicked(Vec::Zero());
+        QCOMPARE(w.document().formula(), QString("CH4"));
+        // A part put down returns to "選択", which no longer shows it as chosen; "配置" shows it again.
+        QVERIFY(w.findChild<QToolButton *>("tool_select")->isChecked());
+        QVERIFY(palette->selectedItems().isEmpty());
+        place->click();
+        QCOMPARE(palette->selectedItems(), QList{palette->currentItem()});
+        QVERIFY(hint().startsWith("配置（メタン）"));
+        // A substituent replaces the clicked hydrogen.
+        QVERIFY(choose("substituent:methyl"));
+        QVERIFY(hint().contains("置き換える水素をクリック"));
+        QString hydrogen;
+        for (const auto &a : w.document().atoms)
+            if (a.element == "H")
+                hydrogen = a.id;
+        emit w.canvas()->atomClicked(hydrogen, Qt::NoModifier);
+        QCOMPARE(w.document().formula(), QString("C2H6"));
+        // A ligand goes to a free site of a center, or on its own on a blank.
+        QVERIFY(choose("ligand:ammine"));
+        QVERIFY(hint().contains("紫の番号"));
+        emit w.canvas()->blankClicked(Vec(6, 0, 0));
+        QCOMPARE(w.document().formula(), QString("C2H9N"));
     }
     void moveToolCarriesHydrogens() {
         // The dragged atom moves with its own hydrogens, shown while dragging and applied on release.
@@ -1085,7 +1134,7 @@ class EditorTest : public QObject {
         search->setText("アンミン");
         palette->setCurrentRow(0);
         emit palette->itemClicked(palette->item(0));
-        QVERIFY(w.findChild<QToolButton *>("tool_ligand")->isChecked());
+        QVERIFY(w.findChild<QToolButton *>("tool_place")->isChecked());
         emit w.canvas()->siteClicked(zinc, 0);
         QVERIFY(w.hasCandidate());
         emit w.canvas()->siteClicked(zinc, 1);
@@ -1171,9 +1220,9 @@ class EditorTest : public QObject {
         w.show();
         auto *search = w.findChild<QLineEdit *>("paletteSearch");
         auto *palette = w.findChild<QListWidget *>("templatePalette");
-        // One click arms the atom tool with a common element.
+        // One click arms the place tool with a common element.
         w.findChild<QToolButton *>("quickElement_N")->click();
-        QVERIFY(w.findChild<QToolButton *>("tool_atom")->isChecked());
+        QVERIFY(w.findChild<QToolButton *>("tool_place")->isChecked());
         QCOMPARE(w.findChild<QComboBox *>("elementSelector")->currentData().toString(), QString("N"));
         QTest::mouseClick(w.canvas(), Qt::LeftButton, Qt::NoModifier, w.canvas()->rect().center());
         QCOMPARE(w.document().formula(), QString("H3N"));

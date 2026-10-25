@@ -329,8 +329,8 @@ void MainWindow::buildUi() {
     keepSelection->setChecked(settings.value("keepSelection", true).toBool());
     options->addWidget(keepSelection);
     keepTool = new QCheckBox("部品の配置後もツールを保持");
-    keepTool->setToolTip("オフでは、骨格・置換基・アミノ酸を1つ置くと「選択」ツールに戻ります。"
-                         "原子追加などのツールは切り替えるまで続きます。");
+    keepTool->setToolTip("オフでは、骨格・置換基・アミノ酸などの部品を1つ置くと「選択」ツールに戻ります。"
+                         "原子・配位中心や配位サイトへの配位子の配置は、切り替えるまで続きます。");
     keepTool->setChecked(settings.value("keepTool", false).toBool());
     options->addWidget(keepTool);
     // Structure commands share the first row, so the option row fits narrow windows.
@@ -355,10 +355,69 @@ void MainWindow::buildUi() {
     auto *splitter = new QSplitter;
     layout->addWidget(splitter, 1);
     auto *left = new QWidget;
-    left->setMinimumWidth(160);
     left->setMaximumWidth(320);
     auto *ll = new QVBoxLayout(left);
     ll->setContentsMargins(0, 0, 6, 0);
+    // Editing tools above the palette, so the 3D view keeps the width: the first row works on the
+    // structure, the second puts down what the palette below has chosen (and point charges).
+    ll->addWidget(new QLabel("編集ツール"));
+    auto *toolGrid = new QGridLayout;
+    toolGrid->setSpacing(2);
+    toolGroup = new QButtonGroup(this);
+    for (const auto &[code, label, key, tip] :
+         {std::tuple{"select", "選択", "S",
+                     "原子を選択します。Shift／Ctrl＋クリックで追加、Shiftドラッグで範囲選択。"},
+          {"move", "移動", "M",
+           "原子をドラッグして動かします（付いている水素と、選択中なら選択全体が一緒に動きます）。"},
+          {"bond", "結合", "B", "2原子を順にクリックして、下の「結合の種類」にします。"},
+          {"delete", "削除", "X", "クリックした原子を削除する候補を作ります。"},
+          {"place", "配置", "A",
+           "下のパレットで選んだ原子・部品を置きます。空白・原子・水素・配位中心の紫の番号のどれを"
+           "クリックするかで置き方が決まります。"},
+          {"replace", "置き換え", "R", "クリックした原子を、下のパレットで選んだ元素・部品に置き換えます。"},
+          {"charge", "点電荷", "Q", "空白をクリックして外部点電荷を置きます（値は「電荷」タブ）。"}}) {
+        auto *b = new QToolButton;
+        b->setObjectName(QString("tool_") + code);
+        b->setText(label);
+        b->setToolTip(tip);
+        b->setCheckable(true);
+        b->setProperty("tool", code);
+        b->setProperty("toolKey", key);
+        b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        // Of 12 columns, the four of the first row span 3 each and the three of the second 4 each.
+        const int i = toolGroup->buttons().size();
+        toolGrid->addWidget(b, i < 4 ? 0 : 1, i < 4 ? 3 * i : 4 * (i - 4), 1, i < 4 ? 3 : 4);
+        toolGroup->addButton(b);
+    }
+    // Equal columns, so the buttons of a row are equal and fit their names: they set how narrow the
+    // palette column can get.
+    int column = 0;
+    for (auto *b : toolGroup->buttons()) {
+        int row, first, rows, span;
+        toolGrid->getItemPosition(toolGrid->indexOf(b), &row, &first, &rows, &span);
+        const int inside = (span - 1) * toolGrid->horizontalSpacing();
+        column = std::max(column, (b->sizeHint().width() - inside + span - 1) / span);
+    }
+    for (int c = 0; c < 12; ++c) {
+        toolGrid->setColumnMinimumWidth(c, column);
+        toolGrid->setColumnStretch(c, 1);
+    }
+    toolGroup->buttons().first()->setChecked(true);
+    ll->addLayout(toolGrid);
+    // The bond tool's one choice (the same list as "結合種類" in the edit panel). "配置" bonds an atom
+    // put on another atom with it too, so it stays in place for every tool.
+    auto *bondRow = new QHBoxLayout;
+    auto *bondLabel = new QLabel("結合の種類");
+    bondRow->addWidget(bondLabel);
+    toolBondKind = new QComboBox;
+    toolBondKind->setObjectName("toolBondKind");
+    toolBondKind->setToolTip("「結合」ツールで作る結合と、「配置」で原子に原子をつなぐ結合の種類です。");
+    toolBondKind->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    toolBondKind->setMinimumContentsLength(4);
+    bondLabel->setBuddy(toolBondKind);
+    bondRow->addWidget(toolBondKind, 1);
+    ll->addLayout(bondRow);
+    ll->addSpacing(6);
     ll->addWidget(new QLabel("部品パレット"));
     search = new QLineEdit;
     search->setObjectName("paletteSearch");
@@ -392,7 +451,7 @@ void MainWindow::buildUi() {
         auto *b = new QToolButton;
         b->setObjectName(QString("quickElement_") + symbol);
         b->setText(symbol);
-        b->setToolTip(QString("%1（%2）を「原子追加」で置きます").arg(symbol, element(symbol).nameJa));
+        b->setToolTip(QString("%1（%2）を「配置」で置きます").arg(symbol, element(symbol).nameJa));
         b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         b->setMinimumWidth(16);
         quick->addWidget(b);
@@ -450,53 +509,8 @@ void MainWindow::buildUi() {
     topRow->setFixedHeight(
         std::max(2 * fontMetrics().lineSpacing() + 12, QPushButton().sizeHint().height() + 12));
     ml->addWidget(topRow);
-    auto *canvasRow = new QHBoxLayout;
-    canvasRow->setSpacing(6);
-    ml->addLayout(canvasRow, 1);
-    // Editing tools: one always-visible column of buttons beside the 3D view.
-    auto *strip = new QVBoxLayout;
-    strip->setSpacing(2);
-    canvasRow->addLayout(strip);
-    toolGroup = new QButtonGroup(this);
-    for (const auto &[code, label, key, tip] :
-         {std::tuple{"select", "選択", "S",
-                     "原子を選択します。Shift／Ctrl＋クリックで追加、Shiftドラッグで範囲選択。"},
-          {"atom", "原子追加", "A", "パレットの元素の原子を、空白・原子・結合のクリックで追加します。"},
-          {"place", "部品配置", "P", "パレットの骨格・アミノ酸を空白に置くか、原子へ接続します。"},
-          {"substituent", "置換基", "U", "パレットの置換基で、クリックした水素を置き換えます。"},
-          {"center", "配位中心", "C", "パレットの金属を、配位サイトつきの配位中心として置きます。"},
-          {"ligand", "配位子", "L", "パレットの配位子を、配位中心の空きサイト（紫の番号）へ置きます。"},
-          {"bond", "結合", "B", "2原子を順にクリックして、「編集」タブの結合種類にします。"},
-          {"move", "移動", "M",
-           "原子をドラッグして動かします（付いている水素と、選択中なら選択全体が一緒に動きます）。"},
-          {"replace", "置換", "R", "クリックした原子を、パレットの元素・部品に置き換えます。"},
-          {"delete", "削除", "X", "クリックした原子を削除する候補を作ります。"},
-          {"charge", "点電荷", "Q", "空白をクリックして外部点電荷を置きます（値は「電荷」タブ）。"}}) {
-        auto *b = new QToolButton;
-        b->setObjectName(QString("tool_") + code);
-        b->setText(label);
-        b->setToolTip(tip);
-        b->setCheckable(true);
-        b->setProperty("tool", code);
-        b->setProperty("toolKey", key);
-        b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        b->setMinimumWidth(68);
-        toolGroup->addButton(b);
-        strip->addWidget(b);
-    }
-    // The bond tool's one choice sits with it (the same list as "結合種類" in the edit panel).
-    toolBondLabel = new QLabel("結合の種類");
-    strip->addSpacing(4);
-    strip->addWidget(toolBondLabel);
-    toolBondKind = new QComboBox;
-    toolBondKind->setObjectName("toolBondKind");
-    toolBondKind->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    toolBondKind->setMinimumContentsLength(4);
-    strip->addWidget(toolBondKind);
-    strip->addStretch();
-    toolGroup->buttons().first()->setChecked(true);
     view = new MoleculeView;
-    canvasRow->addWidget(view, 1);
+    ml->addWidget(view, 1);
     auto *angles = new QHBoxLayout;
     angles->setSpacing(16);
     ml->addLayout(angles);
@@ -656,9 +670,12 @@ void MainWindow::buildUi() {
         if (!on)
             return;
         view->setTool(currentTool());
-        // "選択" does not place the palette part: it is no longer shown as chosen.
+        // "選択" does not place the palette part: it is no longer shown as chosen. The tools that use
+        // it show again the one chosen last.
         if (currentTool() == "select")
             palette->clearSelection();
+        else if ((currentTool() == "place" || currentTool() == "replace") && palette->currentItem())
+            palette->currentItem()->setSelected(true);
         refreshToolHint();
     });
     connect(elementBox, &QComboBox::currentIndexChanged, this, &MainWindow::refreshToolHint);
@@ -697,7 +714,7 @@ void MainWindow::buildUi() {
     });
     connect(view, &MoleculeView::bondClicked, this, [this](auto a, auto b) {
         safe([this, a, b] {
-            if (currentTool() == "atom") {
+            if (currentTool() == "place" && placementKind() == "atom") {
                 edit("結合間に原子を挿入", [=, this](Document &d) {
                     Vec p = (d.atom(a).position + d.atom(b).position) * .5;
                     d.setBond(a, b, "none");
@@ -717,7 +734,7 @@ void MainWindow::buildUi() {
     connect(view, &MoleculeView::siteClicked, this, [this](auto c, int site) {
         safe([this, c, site] {
             setSelection({c});
-            if (currentTool() == "ligand") {
+            if (currentTool() == "place" && placementKind() == "ligand") {
                 auto t = currentTemplate();
                 auto indices = sites();
                 if (t["connections"].toArray().size() == 2 && !indices.contains(site) &&
@@ -1286,28 +1303,21 @@ void MainWindow::paletteChosen() {
         runWorker(doc.atoms.isEmpty() ? "smiles" : "fragment", smiles);
         return;
     }
-    QString mode;
     if (id.startsWith("atom:")) {
-        mode = "atom";
         paletteElement = id.mid(5);
         elementBox->setCurrentIndex(elementBox->findData(id.mid(5)));
     } else if (id.startsWith("center:")) {
-        mode = "center";
         elementBox->setCurrentIndex(elementBox->findData(id.mid(7)));
         properties->setCurrentIndex(1);
-    } else {
-        auto t = currentTemplate();
-        QString cat = t["category"].toString();
-        mode = cat == "substituent" ? "substituent" : cat == "ligand" ? "ligand" : "place";
-        if (cat == "amino") {
-            properties->setCurrentIndex(2);
-            if (growth->isChecked() && !growthResidue.isEmpty() && !candidate)
-                addAmino(growthResidue, growthN);
-        }
+    } else if (currentTemplate()["category"] == "amino") {
+        properties->setCurrentIndex(2);
+        if (growth->isChecked() && !growthResidue.isEmpty() && !candidate)
+            addAmino(growthResidue, growthN);
     }
     // The replace tool keeps working with whatever is chosen: it replaces atoms with that part.
     if (currentTool() != "replace")
-        setTool(mode);
+        setTool("place");
+    refreshToolHint();
     view->setAminoHandles(id.startsWith("amino:"));
 }
 bool MainWindow::hasSelection(int count) {
@@ -1420,6 +1430,8 @@ void MainWindow::atomClicked(const QString &id, Qt::KeyboardModifiers mods) {
 }
 void MainWindow::place(const QString &id, const Vec &position) {
     QString mode = currentTool();
+    if (mode == "place")
+        mode = placementKind();
     auto symbol = value(elementBox), kind = value(bondKind);
     bool hydrogen = autoH->isChecked();
     if (mode == "atom")
@@ -1457,9 +1469,12 @@ void MainWindow::place(const QString &id, const Vec &position) {
             double angle = twist->value();
             edit("部品を置換", [=](Document &d) { replacePart(d, ids, t, angle); }, true);
         }
-    } else if (mode == "ligand")
-        fail("番号付きの配位サイトをクリックしてください。");
-    else if (mode == "place" || mode == "substituent") {
+    } else if (mode == "smiles")
+        fail("SMILESの項目は、パレットでクリックすると3D構造を作ります。");
+    else if (mode == "ligand" && !id.isEmpty())
+        fail("配位中心の紫の番号（空きサイト）をクリックしてください。空白をクリックすると単独で置きます。");
+    // A ligand clicked on a blank is put down on its own, like a skeleton.
+    else if (mode == "part" || mode == "substituent" || mode == "ligand") {
         auto t = currentTemplate();
         double angle = twist->value();
         if (t["category"] == "amino") {
@@ -2330,30 +2345,42 @@ void MainWindow::setTool(const QString &code) {
         if (b->property("tool") == code)
             b->setChecked(true);
 }
+QString MainWindow::placementKind() const {
+    const auto *item = palette->currentItem();
+    const auto key = item ? item->data(Qt::UserRole).toString() : QString();
+    if (key.isEmpty() || key.startsWith("atom:"))
+        return "atom";
+    if (key.startsWith("center:") || key.startsWith("smiles:"))
+        return key.section(':', 0, 0);
+    const auto category = item->data(TemplateDelegate::TemplateRole).toJsonObject()["category"].toString();
+    return category == "substituent" || category == "ligand" ? category : "part";
+}
 void MainWindow::refreshToolHint() {
     if (!mouseHint || !palette)
         return;
     // What a click does with the current tool, naming the element or part it places.
     const auto mode = currentTool();
-    toolBondLabel->setVisible(mode == "bond");
-    toolBondKind->setVisible(mode == "bond");
     const auto part = palette->currentItem() ? palette->currentItem()->text() : QString("パレットで選択");
     const auto symbol = value(elementBox);
+    const QMap<QString, QString> places{
+        {"atom", QString("配置（%1）: 空白をクリックで配置 · 原子をクリックで結合した%1を追加 · "
+                         "結合をクリックで間に挿入")
+                     .arg(symbol)},
+        {"part", QString("配置（%1）: 空白をクリックで配置 · 原子・水素をクリックで接続").arg(part)},
+        {"substituent", QString("配置（%1）: 置き換える水素をクリック（ドロップも可）").arg(part)},
+        {"center", QString("配置（配位中心 %1）: 空白をクリックで配置 · 配位形状は「配位」タブ").arg(symbol)},
+        {"ligand",
+         QString("配置（%1）: 配位中心の紫の番号（空きサイト）をクリック · 空白なら単独で配置").arg(part)},
+        {"smiles", QString("配置: パレットの「%1」をクリックすると3D構造を作ります").arg(part)}};
     const QMap<QString, QString> hints{
         {"select",
          "クリック: 選択 · Shift／Ctrl＋クリック: 追加・解除（順番を保持） · Shiftドラッグ: 範囲選択"},
-        {"atom", QString("原子追加（%1）: 空白をクリックで配置 · 原子をクリックで結合した%1を追加 · "
-                         "結合をクリックで間に挿入")
-                     .arg(symbol)},
-        {"place", QString("部品配置（%1）: 空白をクリックで配置 · 原子・水素をクリックで接続").arg(part)},
-        {"substituent", QString("置換基（%1）: 置き換える水素をクリック（ドロップも可）").arg(part)},
-        {"center", QString("配位中心（%1）: 空白をクリックで配置 · 配位形状は「配位」タブ").arg(symbol)},
-        {"ligand", QString("配位子（%1）: 配位中心の紫の番号（空きサイト）をクリック").arg(part)},
-        {"bond",
-         QString("結合（%1）: 2原子を順にクリック · 種類はツール列の下で選択").arg(bondKind->currentText())},
+        {"place", places.value(placementKind())},
+        {"bond", QString("結合（%1）: 2原子を順にクリック · 種類は左の「結合の種類」で選択")
+                     .arg(bondKind->currentText())},
         {"move", "移動: 原子をドラッグ（付いている水素と、選択中なら選択全体も動く） · Altドラッグ: 回転"},
         {"replace",
-         QString("置換（%1）: 置き換える原子をクリック").arg(palette->currentItem() ? part : symbol)},
+         QString("置き換え（%1）: 置き換える原子をクリック").arg(palette->currentItem() ? part : symbol)},
         {"delete", "削除: 原子をクリックすると削除の候補を作ります"},
         {"charge", "点電荷: 空白をクリックで配置 · 電荷の値は「電荷」タブ"}};
     mouseHint->setText(hints.value(mode));
