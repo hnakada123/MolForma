@@ -43,7 +43,8 @@ Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#inc
 - `molforma_core` — `src/model`, `src/editing`, `src/nwchem`, `src/results`, plus `assets/resources.qrc`
   (fragment template/element data embedded as Qt resources; no runtime file dependency). No UI code here.
 - `molforma_ui` — `src/ui`, links core and mcp (McpGui reuses the shared tool definitions and policy).
-  `main_window.*` + `editor_panels.cpp` host the editor; numbered tabs
+  `main_window.*` + `editor_panels.cpp` host the editor; `editor_chrome.*` holds the header (workflow steps that
+  switch the hidden tab bar), tool rail, flow layout and 3D-view overlays. Numbered tabs
   "2 Coordinates" … "6 Input preview" are separate `*_panel.*` classes; result viewer and history are panels too.
 - `molforma_mcp` — `src/mcp`, links core only. A JSON-RPC MCP server over stdio (protocols 2026-07-28 and legacy
   2025-11-25); see `docs/mcp.md`. `headless.*` adds NWChem runs and result loading to `--mcp`, `tools.*` holds

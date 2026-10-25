@@ -1,8 +1,10 @@
 #include "editing/coordination.h"
 #include "editing/library.h"
 #include "editing/operations.h"
+#include "editing/peptide.h"
 #include "model/geometry.h"
 #include "nwchem/nwchem.h"
+#include "ui/editor_chrome.h"
 #include "ui/main_window.h"
 #include "ui/periodic_table.h"
 #include "ui/template_delegate.h"
@@ -234,7 +236,7 @@ class EditorTest : public QObject {
         QVERIFY(w.hasCandidate());
         QCOMPARE(w.displayDocument().formula(), QString("CH4"));
         auto *text = w.findChild<QLabel *>("candidateBannerText");
-        QVERIFY(text->text().contains("追加 1・削除 4"));
+        QVERIFY(text->text().contains("追加 1") && text->text().contains("削除 4"));
         QVERIFY(w.findChild<QWidget *>("candidateBanner")->isVisible());
         QVERIFY(!w.findChild<QWidget *>("candidateBar")->isVisible());
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
@@ -263,9 +265,13 @@ class EditorTest : public QObject {
         QCOMPARE(w.displayDocument().atoms.size(), 16);
         w.cancelCandidate();
         // Labels and tab shortcuts.
-        auto *labels = w.findChild<QComboBox *>("labelMode");
-        labels->setCurrentIndex(labels->findData("heavy"));
+        // Labels are chosen in the "表示" menu, also opened by the button over the 3D view.
+        w.findChild<QAction *>("labelMode_heavy")->trigger();
         QCOMPARE(view->labels(), QString("heavy"));
+        QVERIFY(w.findChild<QToolButton *>("viewMenuButton")
+                    ->menu()
+                    ->actions()
+                    .contains(w.findChild<QAction *>("showHydrogensAction")));
         w.findChild<QAction *>("showTab3Action")->trigger();
         QCOMPARE(tabs->currentIndex(), 2);
         QString listed;
@@ -437,7 +443,15 @@ class EditorTest : public QObject {
         w.resize(width, 900);
         w.show();
         QTest::qWait(40);
-        const auto labels = tabs->currentWidget()->findChildren<QLabel *>();
+        // "1 分子" keeps the sliders in a popup under "回転" over the 3D view, a label before each;
+        // the results viewer shows them side by side under its view, each under its label.
+        QWidget *area = tabs->currentWidget();
+        if (tab == 0) {
+            w.findChild<QToolButton *>("rotationButton")->click();
+            area = w.findChild<QWidget *>("rotationPopup");
+            QTRY_VERIFY(area->isVisible());
+        }
+        const auto labels = area->findChildren<QLabel *>();
         QRect previous, controls;
         int sliderWidth = 0;
         for (const auto &text : {QString("左右回転"), QString("上下回転"), QString("画面内回転")}) {
@@ -449,15 +463,25 @@ class EditorTest : public QObject {
             auto *slider = qobject_cast<QSlider *>(label->buddy());
             QVERIFY(label->isVisible());
             QVERIFY(slider->isVisible());
-            const QRect labelRect(label->mapTo(&w, QPoint()), label->size());
-            const QRect sliderRect(slider->mapTo(&w, QPoint()), slider->size());
-            QCOMPARE(labelRect.left(), sliderRect.left());
-            QVERIFY(labelRect.bottom() < sliderRect.top());
-            QVERIFY(sliderRect.top() - labelRect.bottom() <= 6);
+            const QRect labelRect(label->mapTo(area->window(), QPoint()), label->size());
+            const QRect sliderRect(slider->mapTo(area->window(), QPoint()), slider->size());
             QVERIFY(label->width() >= label->sizeHint().width());
-            if (!previous.isNull()) {
-                QVERIFY(sliderRect.left() - previous.right() >= 12);
-                QVERIFY(std::abs(slider->width() - sliderWidth) <= 1);
+            if (tab == 0) {
+                QVERIFY(labelRect.right() < sliderRect.left());
+                QVERIFY(labelRect.top() < sliderRect.bottom() && sliderRect.top() < labelRect.bottom());
+                if (!previous.isNull()) {
+                    QVERIFY(sliderRect.top() > previous.bottom());
+                    QCOMPARE(sliderRect.left(), previous.left());
+                    QCOMPARE(slider->width(), sliderWidth);
+                }
+            } else {
+                QCOMPARE(labelRect.left(), sliderRect.left());
+                QVERIFY(labelRect.bottom() < sliderRect.top());
+                QVERIFY(sliderRect.top() - labelRect.bottom() <= 6);
+                if (!previous.isNull()) {
+                    QVERIFY(sliderRect.left() - previous.right() >= 12);
+                    QVERIFY(std::abs(slider->width() - sliderWidth) <= 1);
+                }
             }
             previous = sliderRect;
             sliderWidth = slider->width();
@@ -468,34 +492,41 @@ class EditorTest : public QObject {
             QVERIFY(QDir().mkpath(artifacts));
             const auto path = QDir(artifacts).filePath(QString::fromLatin1(QTest::currentDataTag()));
             QVERIFY(w.grab().save(path + ".png"));
-            QVERIFY(w.grab(controls.adjusted(-4, -4, 4, 4)).save(path + "-controls.png"));
+            QVERIFY(area->window()->grab(controls.adjusted(-4, -4, 4, 4)).save(path + "-controls.png"));
         }
+        if (tab == 0)
+            area->hide();
     }
     void skeletonPalette() {
         MainWindow w;
         w.loadDocument(Document());
         w.show();
-        auto *category = w.findChild<QComboBox *>("paletteCategory");
         auto *search = w.findChild<QLineEdit *>("paletteSearch");
         auto *palette = w.findChild<QListWidget *>("templatePalette");
-        category->setCurrentIndex(category->findData("skeleton"));
-        QTest::qWait(40);
+        w.findChild<QToolButton *>("paletteCategory_skeleton")->click();
+        QTest::qWait(150); // The list lays the tiles out again after a resize.
         QCOMPARE(palette->count(), 19);
+        // Equal tiles, several in a row, none cut off at the right.
+        const auto first = palette->visualItemRect(palette->item(0));
+        QVERIFY(first.height() >= 80);
+        QCOMPARE(palette->visualItemRect(palette->item(1)).top(), first.top());
         for (int row = 0; row < palette->count(); ++row) {
             QVERIFY(!palette->item(row)->text().contains('\n'));
-            QCOMPARE(palette->visualItemRect(palette->item(row)).height(), 48);
+            const auto rect = palette->visualItemRect(palette->item(row));
+            QCOMPARE(rect.size(), first.size());
+            QVERIFY(rect.right() < palette->viewport()->width());
         }
         search->setText("benzene");
         QCOMPARE(palette->count(), 1);
         QCOMPARE(palette->item(0)->text(), QString("ベンゼン"));
         palette->clearSelection();
-        auto image = palette->viewport()->grab().toImage();
+        auto image = palette->viewport()->grab(palette->visualItemRect(palette->item(0))).toImage();
         int atomPixels = 0;
-        for (int y = 0; y < qRound(48 * image.devicePixelRatio()); ++y)
-            for (int x = 0; x < qRound(64 * image.devicePixelRatio()); ++x)
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
                 if (image.pixelColor(x, y) == QColor("#475569"))
                     ++atomPixels;
-        QVERIFY2(atomPixels > 20, "The molecule thumbnail is missing from the palette row");
+        QVERIFY2(atomPixels > 20, "The molecule thumbnail is missing from the palette tile");
         QVERIFY(w.document().atoms.isEmpty());
         QTest::mouseClick(palette->viewport(), Qt::LeftButton, Qt::NoModifier,
                           palette->visualItemRect(palette->item(0)).center());
@@ -503,7 +534,7 @@ class EditorTest : public QObject {
         QCOMPARE(w.document().formula(), QString("C6H6"));
         w.history()->undo();
         QVERIFY(w.document().atoms.isEmpty());
-        category->setCurrentIndex(category->findData("amino"));
+        w.findChild<QToolButton *>("paletteCategory_amino")->click();
         search->setText("Histidine");
         QCOMPARE(palette->count(), 3);
         QSet<QString> names;
@@ -581,11 +612,10 @@ class EditorTest : public QObject {
         MainWindow w;
         w.loadDocument(Document());
         w.show();
-        auto *category = w.findChild<QComboBox *>("paletteCategory");
         auto *search = w.findChild<QLineEdit *>("paletteSearch");
         auto *palette = w.findChild<QListWidget *>("templatePalette");
-        category->setCurrentIndex(category->findData(categoryId));
-        QTest::qWait(40);
+        w.findChild<QToolButton *>("paletteCategory_" + categoryId)->click();
+        QTest::qWait(150);
         int centers = 0;
         for (int row = 0; row < palette->count(); ++row) {
             auto *item = palette->item(row);
@@ -613,10 +643,10 @@ class EditorTest : public QObject {
             QCOMPARE(palette->item(first)->text(), QString("亜鉛"));
         }
         palette->clearSelection();
-        const auto image = palette->viewport()->grab().toImage();
+        const auto image = palette->viewport()->grab(palette->visualItemRect(palette->item(first))).toImage();
         int colorPixels = 0;
-        for (int y = 0; y < qRound(48 * image.devicePixelRatio()); ++y)
-            for (int x = 0; x < qRound(64 * image.devicePixelRatio()); ++x)
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
                 if (image.pixelColor(x, y) == element("Zn").color)
                     ++colorPixels;
         QVERIFY2(colorPixels > 100, "The coordination center element icon is missing");
@@ -665,10 +695,9 @@ class EditorTest : public QObject {
         w.loadDocument(Document());
         w.show();
         QTest::qWait(40);
-        auto *category = w.findChild<QComboBox *>("paletteCategory");
         auto *palette = w.findChild<QListWidget *>("templatePalette");
         auto *open = w.findChild<QPushButton *>("openPeriodicTable");
-        category->setCurrentIndex(category->findData("atom"));
+        w.findChild<QToolButton *>("paletteCategory_atom")->click();
         QVERIFY(open->isVisible());
         QCOMPARE(palette->count(), 10); // The chosen element (C) and the other common ones.
         QTimer::singleShot(0, &w, [&] {
@@ -697,7 +726,7 @@ class EditorTest : public QObject {
         open->click();
         QCOMPARE(palette->item(0)->data(Qt::UserRole).toString(), QString("atom:U"));
         QCOMPARE(w.document().atoms.size(), 1);
-        category->setCurrentIndex(category->findData("skeleton"));
+        w.findChild<QToolButton *>("paletteCategory_skeleton")->click();
         QVERIFY(!open->isVisible());
         QCOMPARE(palette->count(), 19);
     }
@@ -1029,12 +1058,20 @@ class EditorTest : public QObject {
         Document d;
         placeTemplate(d, findTemplate("skeleton:ethane"), Vec::Zero());
         w.loadDocument(d);
-        // Below the tools for every tool ("配置" bonds atoms with it too), so the palette never shifts.
+        // In the option bar above the 3D view for the bond tool, and for "配置" of atoms, which
+        // bonds them with it too; the selection unit is for the tools that pick atoms.
         auto *kind = w.findChild<QComboBox *>("toolBondKind");
-        QVERIFY(!kind->isHidden());
-        QCOMPARE(kind->parentWidget(), w.findChild<QToolButton *>("tool_bond")->parentWidget());
+        auto *options = w.findChild<QWidget *>("toolOptions");
+        auto *unit = w.findChild<QWidget *>("selectionUnitOption");
+        QVERIFY(options->isAncestorOf(kind));
+        QVERIFY(!kind->isVisibleTo(options) && unit->isVisibleTo(options));
         w.findChild<QToolButton *>("tool_bond")->click();
-        QVERIFY(!kind->isHidden());
+        QVERIFY(kind->isVisibleTo(options) && !unit->isVisibleTo(options));
+        w.findChild<QToolButton *>("quickElement_C")->click();
+        QVERIFY(w.findChild<QToolButton *>("tool_place")->isChecked());
+        QVERIFY(kind->isVisibleTo(options));
+        QVERIFY(w.findChild<QLabel *>("toolPart")->text().contains("炭素（C）"));
+        w.findChild<QToolButton *>("tool_bond")->click();
         kind->setCurrentIndex(kind->findData("double"));
         QVERIFY(w.findChild<QLabel *>("toolHint")->text().startsWith("結合（二重結合）"));
         Ids carbons;
@@ -1062,8 +1099,10 @@ class EditorTest : public QObject {
         w.loadDocument(Document());
         auto *palette = w.findChild<QListWidget *>("templatePalette");
         auto *place = w.findChild<QToolButton *>("tool_place");
-        // The tools sit above the palette, not beside the 3D view.
-        QCOMPARE(place->parentWidget(), palette->parentWidget());
+        // The tools sit in the rail at the left edge, apart from the palette.
+        auto *rail = w.findChild<QWidget *>("toolRail");
+        QCOMPARE(place->parentWidget(), rail);
+        QVERIFY(!rail->isAncestorOf(palette));
         QCOMPARE(w.findChildren<QToolButton *>(QRegularExpression("^tool_")).size(), 7);
         const auto hint = [&] { return w.findChild<QLabel *>("toolHint")->text(); };
         const auto choose = [&](const QString &key) {
@@ -1330,6 +1369,122 @@ class EditorTest : public QObject {
             QVERIFY(label);
             QVERIFY2(!label->text().contains(QRegularExpression("[A-Za-z]{3}")), qPrintable(label->text()));
         }
+    }
+    void editorChromeFollowsTheWork() {
+        // The header steps switch the tabs, the option bar follows the tool, the corners of the 3D
+        // view show the sequence and the measurement, and a candidate takes the option bar's place.
+        MainWindow w;
+        w.resize(1380, 900);
+        w.show();
+        Document d;
+        buildPeptide(d, {"ALA", "GLY", "SER"}, "charged", "charged");
+        w.loadDocument(d);
+        QTest::qWait(150);
+        auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
+        QVERIFY(!tabs->tabBar()->isVisible());
+        QCOMPARE(w.findChildren<QToolButton *>(QRegularExpression("^workflowStep_")).size(), tabs->count());
+        auto *step3 = w.findChild<QToolButton *>("workflowStep_3");
+        QCOMPARE(step3->text(), QString("計算条件"));
+        QCOMPARE(step3->accessibleName(), QString("3 計算条件"));
+        step3->click();
+        QCOMPARE(tabs->currentIndex(), 2);
+        tabs->setCurrentIndex(0);
+        QVERIFY(w.findChild<QToolButton *>("workflowStep_1")->isChecked());
+        // An input that cannot be generated marks its step as on the hidden tab.
+        auto *step6 = w.findChild<QToolButton *>("workflowStep_6");
+        QVERIFY(!step6->property("failed").toBool());
+        w.edit("multiplicity", [](Document &x) { x.setJobValue("multiplicity", 2); });
+        QVERIFY(step6->property("failed").toBool());
+        QVERIFY(step6->toolTip().contains("エラー"));
+        w.history()->undo();
+        QVERIFY(!step6->property("failed").toBool());
+        auto *header = dynamic_cast<HeaderBar *>(w.findChild<QWidget *>("headerBar"));
+        QVERIFY(header);
+        QVERIFY(header->singleRow());
+        QVERIFY(w.findChild<QToolButton *>("documentButton")->text().startsWith("新規分子"));
+        // The sequence over the view selects a residue; 2–4 atoms show their measurement.
+        auto *chip = w.findChild<QWidget *>("sequenceChip");
+        auto *card = w.findChild<QWidget *>("measureCard");
+        QVERIFY(chip->isVisible());
+        QVERIFY(w.findChild<QLabel *>("sequenceLabel")->text().contains("GLY 2"));
+        QVERIFY(!card->isVisible());
+        const auto ids = w.document().ids();
+        w.setSelection({ids[0], ids[1], ids[2]});
+        QVERIFY(card->isVisible());
+        QCOMPARE(w.findChild<QLabel *>("measureTitle")->text(), QString("角度"));
+        QVERIFY(w.findChild<QLabel *>("measurementLabel")->text().contains("°"));
+        QCOMPARE(w.findChild<QLabel *>("selectionTitle")->text(), QString("選択 3 原子"));
+        QVERIFY(w.findChild<QLabel *>("selectionList")->text().contains("ALA 1 · "));
+        auto *view = w.canvas();
+        const auto viewArea = QRect(view->mapTo(&w, QPoint()), view->size());
+        for (auto *overlay : {chip, card, w.findChild<QWidget *>("viewControls")}) {
+            const QRect area(overlay->mapTo(&w, QPoint()), overlay->size());
+            QVERIFY(viewArea.contains(area));
+        }
+        QVERIFY(!QRect(chip->mapTo(&w, QPoint()), chip->size())
+                     .intersects(QRect(w.findChild<QWidget *>("viewControls")->mapTo(&w, QPoint()),
+                                       w.findChild<QWidget *>("viewControls")->size())));
+        // Tools change the options above the view, not the view itself.
+        auto *top = w.findChild<QWidget *>("editorTopRow");
+        const int height = top->height();
+        for (const auto *tool :
+             {"tool_move", "tool_bond", "tool_delete", "tool_place", "tool_charge", "tool_select"}) {
+            w.findChild<QToolButton *>(tool)->click();
+            QTest::qWait(10);
+            QCOMPARE(top->height(), height);
+            QCOMPARE(QRect(view->mapTo(&w, QPoint()), view->size()), viewArea);
+        }
+        QVERIFY(w.findChild<QWidget *>("chargeOption")->isVisibleTo(top) == false);
+        // A candidate: the banner in the option bar's place and its changes listed in "編集".
+        w.findChild<QAction *>("deleteAction")->trigger();
+        QVERIFY(w.hasCandidate());
+        QTest::qWait(10);
+        QVERIFY(w.findChild<QWidget *>("candidateBanner")->isVisible());
+        QVERIFY(w.findChild<QLabel *>("candidateBannerTitle")->text().startsWith("変更候補: "));
+        QVERIFY(w.findChild<QWidget *>("candidateCard")->isVisible());
+        QVERIFY(w.findChild<QLabel *>("candidateChanges")->text().contains("削除"));
+        QCOMPARE(top->height(), height);
+        QCOMPARE(QRect(view->mapTo(&w, QPoint()), view->size()), viewArea);
+        const auto artifacts = qEnvironmentVariable("MOLFORMA_EDITOR_ARTIFACTS");
+        if (!artifacts.isEmpty()) {
+            QVERIFY(QDir().mkpath(artifacts));
+            QVERIFY(w.grab().save(QDir(artifacts).filePath("candidate-1380.png")));
+        }
+        w.cancelCandidate();
+        QVERIFY(!w.findChild<QWidget *>("candidateCard")->isVisible());
+        if (!artifacts.isEmpty())
+            QVERIFY(w.grab().save(QDir(artifacts).filePath("selection-1380.png")));
+        // A narrow window puts the steps on a second header row, all of them visible.
+        w.resize(900, 760);
+        QTest::qWait(150);
+        QVERIFY(!header->singleRow());
+        auto *steps = w.findChild<QWidget *>("workflowSteps");
+        QVERIFY(QRect(QPoint(), w.size()).contains(QRect(steps->mapTo(&w, QPoint()), steps->size())));
+        if (!artifacts.isEmpty())
+            QVERIFY(w.grab().save(QDir(artifacts).filePath("selection-900.png")));
+        w.resize(1600, 900);
+        QTest::qWait(150);
+        QVERIFY(header->singleRow());
+        // A dark palette restyles the header, rail, option bar and overlays from its colors.
+        const auto light = QApplication::palette();
+        QPalette dark(QColor("#2b2d31"), QColor("#202225"));
+        dark.setColor(QPalette::Base, QColor("#1e1f22"));
+        dark.setColor(QPalette::Text, QColor("#e3e5e8"));
+        dark.setColor(QPalette::WindowText, QColor("#e3e5e8"));
+        dark.setColor(QPalette::ButtonText, QColor("#e3e5e8"));
+        dark.setColor(QPalette::Highlight, QColor("#4c8dff"));
+        dark.setColor(QPalette::HighlightedText, QColor("#ffffff"));
+        QApplication::setPalette(dark);
+        QTest::qWait(20);
+        QVERIFY(header->styleSheet().contains("#1e1f22"));
+        if (!artifacts.isEmpty()) {
+            w.resize(1380, 900);
+            QTest::qWait(150);
+            QVERIFY(w.grab().save(QDir(artifacts).filePath("dark-1380.png")));
+        }
+        QApplication::setPalette(light);
+        QTest::qWait(20);
+        QVERIFY(!header->styleSheet().contains("#1e1f22"));
     }
 };
 QTEST_MAIN(EditorTest)

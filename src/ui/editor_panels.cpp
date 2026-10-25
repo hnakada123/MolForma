@@ -76,6 +76,61 @@ void MainWindow::section(QFormLayout *f, const QString &title) {
 }
 void MainWindow::buildEditPanel() {
     auto *outer = panel("編集");
+    // A pending candidate atom by atom, then the selection in click order, above the edit pages.
+    candidateCard = new QFrame;
+    candidateCard->setObjectName("candidateCard");
+    auto *changes = new QVBoxLayout(candidateCard);
+    changes->setContentsMargins(10, 8, 10, 10);
+    changes->setSpacing(6);
+    auto *changesTitle = new QLabel("変更候補の内容");
+    auto bold = changesTitle->font();
+    bold.setBold(true);
+    changesTitle->setFont(bold);
+    changes->addWidget(changesTitle);
+    candidateChanges = new QLabel;
+    candidateChanges->setObjectName("candidateChanges");
+    candidateChanges->setTextFormat(Qt::RichText);
+    candidateChanges->setWordWrap(true);
+    changes->addWidget(candidateChanges);
+    auto *changesNote = new QLabel("確定するまで分子は変わりません。確定後も Ctrl+Z で戻せます。");
+    changesNote->setWordWrap(true);
+    changes->addWidget(changesNote);
+    candidateCard->hide();
+    outer->addRow(candidateCard);
+    auto *card = new QFrame;
+    card->setObjectName("selectionCard");
+    auto *cardLayout = new QVBoxLayout(card);
+    cardLayout->setContentsMargins(10, 8, 10, 10);
+    cardLayout->setSpacing(6);
+    selectionTitle = new QLabel;
+    selectionTitle->setObjectName("selectionTitle");
+    selectionTitle->setFont(bold);
+    cardLayout->addWidget(selectionTitle);
+    selectionList = new QLabel;
+    selectionList->setObjectName("selectionList");
+    selectionList->setTextFormat(Qt::RichText);
+    selectionList->setWordWrap(true);
+    cardLayout->addWidget(selectionList);
+    auto *cardButtons = new QHBoxLayout;
+    auto *clearSelection = new QPushButton("選択解除");
+    clearSelection->setObjectName("clearSelection");
+    connect(clearSelection, &QPushButton::clicked, this, [this] { setSelection({}); });
+    enableWithSelection(clearSelection, 1);
+    cardButtons->addWidget(clearSelection);
+    auto *deleteSelection = new QPushButton("選択原子を削除");
+    deleteSelection->setObjectName("deleteSelection");
+    deleteSelection->setToolTip("選択した原子を削除する候補を作ります（Delete）。確定するまで元に戻せます。");
+    connect(deleteSelection, &QPushButton::clicked, this,
+            [this] { safe([this] { deleteAtoms(requireSelection()); }); });
+    enableWithSelection(deleteSelection, 1);
+    cardButtons->addWidget(deleteSelection);
+    cardButtons->addStretch();
+    cardLayout->addLayout(cardButtons);
+    keepSelection = new QCheckBox("編集後に選択維持");
+    keepSelection->setToolTip("オフでは、編集を確定するたびに選択を解除します。");
+    keepSelection->setChecked(settings.value("keepSelection", true).toBool());
+    cardLayout->addWidget(keepSelection);
+    outer->addRow(card);
     auto *color = choices(outer, "色分け", {"元素", "残基"}, {"element", "residue"});
     color->setObjectName("moleculeColorMode");
     connect(color, &QComboBox::currentIndexChanged, this,
@@ -493,7 +548,7 @@ void MainWindow::buildCoordinationPanel() {
     siteInput->setToolTip("3D画面の紫の番号です。サイトをクリックしても入力されます。"
                           "二座配位子は2サイトをカンマで区切ります。");
     f->addRow("サイト番号", siteInput);
-    button(f, "配位子パレットを開く", [this] { category->setCurrentIndex(category->findData("ligand")); });
+    button(f, "配位子パレットを開く", [this] { setPaletteCategory("ligand"); });
     button(f, "選択サイトへ配置プレビュー", [this] {
         QString c = selectedCenter();
         auto idx = sites();

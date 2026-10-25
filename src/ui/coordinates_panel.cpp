@@ -324,7 +324,7 @@ void CoordinatesPanel::refreshSelection() {
     }
     table->selectionModel()->select(rows, QItemSelectionModel::ClearAndSelect);
     view->setSelection(window->selected);
-    selectionLabel->setText(window->measurement->text());
+    selectionLabel->setText(window->selectionText);
 }
 void CoordinatesPanel::cellChanged(QTableWidgetItem *item) {
     if (busy)

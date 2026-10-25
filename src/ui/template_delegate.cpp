@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/template_delegate.h"
 #include "model/document.h"
+#include "ui/editor_chrome.h"
 #include <QApplication>
 #include <QFontMetrics>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QListView>
 #include <QPainter>
 #include <QSet>
 #include <QWidget>
@@ -14,6 +16,29 @@
 namespace mf {
 namespace {
 const QSize thumbnailSize(60, 44);
+constexpr int minimumTile = 70;
+
+bool fullWidth(const QModelIndex &index) {
+    return index.data(TemplateDelegate::HeadingRole).toBool() ||
+           (index.data(TemplateDelegate::ElementRole).toString().isEmpty() &&
+            index.data(TemplateDelegate::TemplateRole).toJsonObject()["atoms"].toArray().isEmpty());
+}
+// The width a row of tiles may use: the list's viewport less the spacing at both ends, and less
+// the room QListView keeps for a vertical scroll bar when it wraps items into rows.
+int rowWidth(const QStyleOptionViewItem &option) {
+    const auto *view = qobject_cast<const QListView *>(option.widget);
+    if (!view)
+        return 228;
+    const int bar = view->style()->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, view);
+    return std::max(minimumTile, view->viewport()->width() - 2 * view->spacing() - bar - 3);
+}
+QFont smaller(QFont font, double factor) {
+    if (font.pointSizeF() > 0)
+        font.setPointSizeF(font.pointSizeF() * factor);
+    else
+        font.setPixelSize(std::max(1, qRound(font.pixelSize() * factor)));
+    return font;
+}
 
 QIcon elementThumbnail(const Element &e, const QFont &font, qreal ratio) {
     QPixmap pixmap(qRound(thumbnailSize.width() * ratio), qRound(thumbnailSize.height() * ratio));
@@ -120,8 +145,42 @@ void TemplateDelegate::initStyleOption(QStyleOptionViewItem *option, const QMode
     option->features |= QStyleOptionViewItem::HasDecoration;
 }
 
+void TemplateDelegate::paintTile(QPainter *painter, const QStyleOptionViewItem &option,
+                                 const QModelIndex &index) const {
+    QStyleOptionViewItem styled(option);
+    initStyleOption(&styled, index);
+    const ChromeColors colors(styled.palette);
+    const bool selected = styled.state & QStyle::State_Selected,
+               hovered = styled.state & QStyle::State_MouseOver;
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->setPen(QPen(selected ? colors.accent : colors.line, selected ? 1.5 : 1));
+    painter->setBrush(selected ? colors.tint : hovered ? colors.hover : colors.base);
+    painter->drawRoundedRect(QRectF(styled.rect).adjusted(.75, .75, -.75, -.75), 7, 7);
+    const QRect icon(styled.rect.center().x() - thumbnailSize.width() / 2, styled.rect.top() + 5,
+                     thumbnailSize.width(), thumbnailSize.height());
+    styled.icon.paint(painter, icon);
+    // The name in up to two lines under the thumbnail, shortened with "…" when longer.
+    const QFont font = smaller(styled.font, .9);
+    const QFontMetrics metrics(font);
+    const QRect text(styled.rect.left() + 4, icon.bottom() + 3, styled.rect.width() - 8,
+                     2 * metrics.height());
+    const int flags = Qt::AlignHCenter | Qt::AlignTop | Qt::TextWrapAnywhere;
+    auto name = index.data().toString();
+    while (name.size() > 1 && metrics.boundingRect(text, flags, name).height() > text.height())
+        name = name.left(name.size() - 2) + "…";
+    painter->setFont(font);
+    painter->setPen(selected ? colors.accentText : colors.text);
+    painter->drawText(text, flags, name);
+    painter->restore();
+}
+
 void TemplateDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option,
                              const QModelIndex &index) const {
+    if (tiles && !fullWidth(index)) {
+        paintTile(painter, option, index);
+        return;
+    }
     if (index.data(HeadingRole).toBool()) {
         // A bold group title over a thin rule.
         painter->save();
@@ -184,6 +243,18 @@ void TemplateDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 }
 
 QSize TemplateDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const {
+    if (tiles) {
+        const int width = rowWidth(option);
+        if (index.data(HeadingRole).toBool())
+            return {width, option.fontMetrics.height() + 12};
+        if (fullWidth(index))
+            return {width, std::max(40, option.fontMetrics.height() + 12)};
+        const auto *view = qobject_cast<const QListView *>(option.widget);
+        const int spacing = view ? view->spacing() : 0;
+        const int columns = std::max(1, (width + spacing) / (minimumTile + spacing));
+        return {(width - (columns - 1) * spacing) / columns,
+                5 + thumbnailSize.height() + 3 + 2 * QFontMetrics(smaller(option.font, .9)).height() + 6};
+    }
     if (index.data(HeadingRole).toBool())
         return {220, option.fontMetrics.height() + 10};
     if (!index.data(ElementRole).toString().isEmpty())

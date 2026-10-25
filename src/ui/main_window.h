@@ -1,6 +1,7 @@
 #pragma once
 #include "mcp/policy.h"
 #include "ui/molecule_view.h"
+#include <QHash>
 #include <QLockFile>
 #include <QMainWindow>
 #include <QProcess>
@@ -24,7 +25,11 @@ class QMenu;
 class QTimer;
 class QButtonGroup;
 class QStackedWidget;
+class QToolButton;
+class QActionGroup;
+class QFrame;
 namespace mf {
+class HeaderBar;
 class CoordinatesPanel;
 class CalculationPanel;
 class AdvancedPanel;
@@ -71,6 +76,7 @@ class MainWindow : public QMainWindow {
     void refreshStalePanels();
 
   protected:
+    void changeEvent(QEvent *) override;
     void closeEvent(QCloseEvent *) override;
     void dragEnterEvent(QDragEnterEvent *) override;
     void dropEvent(QDropEvent *) override;
@@ -117,28 +123,44 @@ class MainWindow : public QMainWindow {
     InputPreviewPanel *inputPreview = nullptr;
     ResultsPanel *results = nullptr;
     HistoryPanel *calculationHistory = nullptr;
+    // The tabs; their bar is hidden and the workflow steps of the header switch them.
     QTabWidget *workspaceTabs = nullptr;
-    QButtonGroup *toolGroup = nullptr; // The editing tools above the palette of "1 分子".
-    QComboBox *toolBondKind = nullptr; // Below the tools; mirrors bondKind.
-    QComboBox *unitBox = nullptr, *category = nullptr, *elementBox = nullptr, *bondKind = nullptr;
+    HeaderBar *header = nullptr;
+    QWidget *workflowSteps = nullptr;
+    QButtonGroup *stepGroup = nullptr; // One button per tab, its index as id.
+    QToolButton *documentButton = nullptr, *runButton = nullptr;
+    QButtonGroup *toolGroup = nullptr; // The editing tools in the rail at the left of "1 分子".
+    QComboBox *toolBondKind = nullptr; // In the option bar of the bond and place tools; mirrors bondKind.
+    QButtonGroup *unitGroup = nullptr, *categoryGroup = nullptr; // Selection unit, palette category.
+    QComboBox *elementBox = nullptr, *bondKind = nullptr;
     QLineEdit *search = nullptr;
     QListWidget *palette = nullptr, *residueList = nullptr, *pointList = nullptr;
     QTabWidget *properties = nullptr, *editPages = nullptr;
     QLabel *summary = nullptr, *measurement = nullptr, *candidateLabel = nullptr, *sequenceLabel = nullptr,
-           *mouseHint = nullptr;
+           *mouseHint = nullptr, *measureTitle = nullptr, *dimensionLabel = nullptr,
+           *selectionTitle = nullptr, *selectionList = nullptr, *candidateTitle = nullptr,
+           *candidateChanges = nullptr, *toolPart = nullptr;
+    QString selectionText; // "選択順: …" with the measurement, also shown by the coordinate tab.
     QWidget *candidateBar = nullptr, *chargeEditor = nullptr;
     QLabel *chargeSummary = nullptr;
     QCheckBox *includePointCharges = nullptr;
-    QCheckBox *deleteTerminate = nullptr; // "削除後に水素で終端化" in the edit panel.
+    QCheckBox *deleteTerminate = nullptr;      // "削除後に水素で終端化" in the edit panel,
+    QCheckBox *toolDeleteTerminate = nullptr;  // and the same in the option bar of the delete tool.
+    QDoubleSpinBox *toolChargeValue = nullptr; // The point-charge tool's charge; mirrors chargeValue.
     QWidget *moleculePage = nullptr, *banner = nullptr;
-    QStackedWidget *topRow = nullptr; // Above the 3D view: sequence and tool hint, or the candidate.
+    // Above the 3D view: the options of the current tool, or the candidate in their place.
+    QStackedWidget *topRow = nullptr;
+    QHash<QString, QWidget *> toolOptionGroups; // Option bar groups by object name.
+    QWidget *sequenceChip = nullptr, *measureCard = nullptr, *candidateCard = nullptr;
+    QFrame *rotationPopup = nullptr;
     QLabel *bannerLabel = nullptr;
     QPushButton *undoButton = nullptr, *redoButton = nullptr;
     QAction *undoAction = nullptr, *redoAction = nullptr, *confirmAction = nullptr, *stopAction = nullptr;
-    QComboBox *labelModeBox = nullptr;
-    QCheckBox *autoH = nullptr, *keepSelection = nullptr, *keepTool = nullptr, *showH = nullptr,
-              *growth = nullptr;
+    QAction *showHydrogens = nullptr, *showIndices = nullptr;
+    QActionGroup *labelModes = nullptr;
+    QCheckBox *autoH = nullptr, *keepSelection = nullptr, *keepTool = nullptr, *growth = nullptr;
     QPushButton *cancelWorkerButton = nullptr, *periodicTableButton = nullptr;
+    bool stylingChrome = false;
     QString paletteElement = "C";
     QDoubleSpinBox *dimension = nullptr;
     QJsonArray customParts;
@@ -152,7 +174,15 @@ class MainWindow : public QMainWindow {
     QString growthResidue;
     bool growthN = false;
     void buildUi();
+    void buildHeader();
     void buildMenus();
+    // Style sheets of the header, rail, option bar and overlays from the current palette.
+    void applyChromeStyle();
+    // The header's steps follow the tabs: the open one, and the error mark of "6 入力プレビュー".
+    void syncWorkflowSteps();
+    QString selectionUnit() const;
+    QString paletteCategory() const;
+    void setPaletteCategory(const QString &code);
     void buildEditPanel();
     void buildCoordinationPanel();
     void buildResiduePanel();
@@ -243,6 +273,7 @@ class MainWindow : public QMainWindow {
     // What "配置" puts down, from the palette's chosen item: "atom", "center", "part" (skeletons,
     // amino acids, caps), "substituent", "ligand" or "smiles".
     QString placementKind() const;
+    // The hint under the 3D view and the option bar groups for the current tool.
     void refreshToolHint();
     void addRecent(const QString &path);
     void refreshRecent();

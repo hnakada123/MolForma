@@ -12,12 +12,14 @@
 #include "ui/advanced_panel.h"
 #include "ui/calculation_panel.h"
 #include "ui/coordinates_panel.h"
+#include "ui/editor_chrome.h"
 #include "ui/execution_panel.h"
 #include "ui/history_panel.h"
 #include "ui/input_preview_panel.h"
 #include "ui/periodic_table.h"
 #include "ui/results_panel.h"
 #include "ui/template_delegate.h"
+#include "ui/theme.h"
 #include <Eigen/Eigenvalues>
 #include <QDrag>
 #include <QJsonDocument>
@@ -70,6 +72,22 @@ static QString value(QComboBox *box) {
 }
 static QByteArray identity(const Document &d) {
     return QJsonDocument(d.project()).toJson(QJsonDocument::Compact);
+}
+// An atom as the 3D view labels it ("C14"), and its place in a residue ("GLY 2 · CA").
+static QString atomName(const Document &d, const QString &id) {
+    return d.atom(id).element + QString::number(d.index(id) + 1);
+}
+static QString atomPlace(const Document &d, const QString &id) {
+    const auto rid = residueForAtom(d, id);
+    if (rid.isEmpty())
+        return {};
+    const auto r = residue(d, rid);
+    const auto names = r["atoms"].toObject();
+    const auto code = QString("%1 %2").arg(r["code"].toString()).arg(r["number"].toInt());
+    for (auto it = names.begin(); it != names.end(); ++it)
+        if (it.value().toString() == id)
+            return code + " · " + it.key();
+    return code;
 }
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), settings("MolForma", "MolForma") {
     setObjectName("mainWindow");
@@ -245,99 +263,242 @@ void MainWindow::remoteHistory(const QString &action) {
 void MainWindow::buildUi() {
     auto *central = new QWidget;
     auto *outer = new QVBoxLayout(central);
-    outer->setContentsMargins(6, 6, 6, 6);
+    outer->setContentsMargins(0, 0, 0, 0);
+    outer->setSpacing(0);
     setCentralWidget(central);
     workspaceTabs = new QTabWidget;
     workspaceTabs->setObjectName("workspaceTabs");
+    workspaceTabs->setDocumentMode(true);
+    // The workflow steps of the header switch the tabs, so their own bar stays hidden.
+    workspaceTabs->tabBar()->hide();
     outer->addWidget(workspaceTabs, 1);
     auto *root = moleculePage = new QWidget;
     workspaceTabs->addTab(root, "1 分子");
-    auto *layout = new QVBoxLayout(root);
-    layout->setContentsMargins(10, 6, 10, 8);
-    auto *tools = new QHBoxLayout;
-    layout->addLayout(tools);
-    auto add = [&](QString text, auto fn) {
-        auto *b = new QPushButton(text);
-        tools->addWidget(b);
-        connect(b, &QPushButton::clicked, this, [this, fn] { safe(fn); });
-        return b;
+    auto *page = new QHBoxLayout(root);
+    page->setContentsMargins(0, 0, 0, 0);
+    page->setSpacing(0);
+    // The editing tools in a rail at the left edge: icon, name and key, the chosen one tinted.
+    auto *rail = new QWidget;
+    rail->setObjectName("toolRail");
+    rail->setAttribute(Qt::WA_StyledBackground);
+    auto *railLayout = new QVBoxLayout(rail);
+    railLayout->setContentsMargins(6, 10, 6, 10);
+    railLayout->setSpacing(4);
+    toolGroup = new QButtonGroup(this);
+    for (const auto &[code, label, key, tip] :
+         {std::tuple{"select", "選択", "S",
+                     "原子を選択します。Shift／Ctrl＋クリックで追加、Shiftドラッグで範囲選択。"},
+          {"move", "移動", "M",
+           "原子をドラッグして動かします（付いている水素と、選択中なら選択全体が一緒に動きます）。"},
+          {"bond", "結合", "B", "2原子を順にクリックして、上の「結合の種類」にします。"},
+          {"delete", "削除", "X", "クリックした原子を削除する候補を作ります。"},
+          {"place", "配置", "A",
+           "パレットで選んだ原子・部品を置きます。空白・原子・水素・配位中心の紫の番号のどれを"
+           "クリックするかで置き方が決まります。"},
+          {"replace", "置き換え", "R", "クリックした原子を、パレットで選んだ元素・部品に置き換えます。"},
+          {"charge", "点電荷", "Q", "空白をクリックして外部点電荷を置きます。"}}) {
+        auto *b = new ToolRailButton(key);
+        b->setObjectName(QString("tool_") + code);
+        b->setText(label);
+        b->setIcon(lineIcon(code));
+        b->setToolTip(tip);
+        b->setProperty("tool", code);
+        b->setProperty("toolKey", key);
+        railLayout->addWidget(b, 0, Qt::AlignHCenter);
+        toolGroup->addButton(b);
+    }
+    railLayout->addStretch();
+    toolGroup->buttons().first()->setChecked(true);
+    page->addWidget(rail);
+    auto *splitter = new QSplitter;
+    splitter->setObjectName("editorSplitter");
+    splitter->setChildrenCollapsible(false);
+    page->addWidget(splitter, 1);
+    // The palette: search, categories, the common elements and the parts as tiles.
+    auto *left = new QWidget;
+    left->setObjectName("paletteColumn");
+    left->setAttribute(Qt::WA_StyledBackground);
+    left->setMinimumWidth(230); // Three columns of tiles and the element buttons.
+    left->setMaximumWidth(360);
+    auto *ll = new QVBoxLayout(left);
+    ll->setContentsMargins(12, 12, 8, 8);
+    ll->setSpacing(8);
+    auto *paletteTitle = new QLabel("部品パレット");
+    auto titleFont = paletteTitle->font();
+    titleFont.setBold(true);
+    paletteTitle->setFont(titleFont);
+    ll->addWidget(paletteTitle);
+    search = new QLineEdit;
+    search->setObjectName("paletteSearch");
+    search->setPlaceholderText("名前・元素・SMILESを検索");
+    search->setClearButtonEnabled(true);
+    search->addAction(lineIcon("search"), QLineEdit::LeadingPosition);
+    ll->addWidget(search);
+    auto *categories = new QWidget;
+    categories->setObjectName("paletteCategories");
+    auto *chips = new FlowLayout(categories, 5, 5);
+    chips->setContentsMargins(0, 0, 0, 0);
+    categoryGroup = new QButtonGroup(this);
+    for (const auto &[label, code, tip] :
+         {std::tuple{"すべて", "all",
+                     "原子・骨格・置換基・配位子・アミノ酸・配位中心を、見出しを付けて並べます。"},
+          {"原子", "atom", "よく使う元素です。ほかの元素は周期表（H〜Og）から選びます。"},
+          {"骨格", "skeleton", ""},
+          {"置換基", "substituent", "置き換える水素をクリックして付けます。"},
+          {"配位中心", "center", "金属の配位中心です。"},
+          {"配位子", "ligand", "配位中心の紫の番号（空きサイト）をクリックして付けます。"},
+          {"アミノ酸", "amino", "アミノ酸と末端キャップです。"},
+          {"マイ部品", "my", "「選択原子をマイ部品に保存」で登録した部品です。"}}) {
+        auto *chip = new QToolButton;
+        chip->setObjectName(QString("paletteCategory_") + code);
+        chip->setText(label);
+        chip->setToolTip(tip);
+        chip->setCheckable(true);
+        chip->setProperty("category", code);
+        chips->addWidget(chip);
+        categoryGroup->addButton(chip);
+    }
+    categoryGroup->buttons().first()->setChecked(true);
+    ll->addWidget(categories);
+    // The common elements of organic molecules, one click each (the atom tool then places them).
+    auto *elements = new QWidget;
+    elements->setObjectName("quickElements");
+    auto *quick = new QGridLayout(elements);
+    quick->setContentsMargins(0, 0, 0, 0);
+    quick->setSpacing(4);
+    for (const auto *symbol : {"H", "C", "N", "O", "F", "P", "S", "Cl", "Br", "I"}) {
+        auto *b = new QToolButton;
+        b->setObjectName(QString("quickElement_") + symbol);
+        b->setText(symbol);
+        b->setToolTip(QString("%1（%2）を「配置」で置きます").arg(symbol, element(symbol).nameJa));
+        b->setCheckable(true);
+        b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        b->setMinimumWidth(16);
+        const int i = quick->count();
+        quick->addWidget(b, i / 6, i % 6);
+        connect(b, &QToolButton::clicked, this, [this, symbol] { safe([&] { chooseElement(symbol); }); });
+    }
+    periodicTableButton = new QPushButton("周期表…");
+    periodicTableButton->setObjectName("openPeriodicTable");
+    periodicTableButton->setToolTip("周期表から原子を選択します（H〜Og）。");
+    periodicTableButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    quick->addWidget(periodicTableButton, 1, 4, 1, 2);
+    for (int c = 0; c < 6; ++c)
+        quick->setColumnStretch(c, 1);
+    connect(periodicTableButton, &QPushButton::clicked, this, [this] {
+        PeriodicTableDialog dialog(paletteElement, search->text(), this);
+        if (dialog.exec() == QDialog::Accepted)
+            safe([&] { chooseElement(dialog.selectedElement()); });
+    });
+    ll->addWidget(elements);
+    growth = new QCheckBox("アミノ酸の連続追加");
+    ll->addWidget(growth);
+    palette = new PaletteList;
+    palette->setObjectName("templatePalette");
+    auto *tiles = new TemplateDelegate(palette);
+    tiles->setTiles(true);
+    palette->setItemDelegate(tiles);
+    palette->setDragEnabled(true);
+    palette->setDragDropMode(QAbstractItemView::DragOnly);
+    palette->setDefaultDropAction(Qt::CopyAction);
+    // Tiles left to right, a group heading taking a row of its own.
+    palette->setFlow(QListView::LeftToRight);
+    palette->setWrapping(true);
+    palette->setResizeMode(QListView::Adjust);
+    palette->setSpacing(3);
+    palette->setMouseTracking(true);
+    palette->setFrameShape(QFrame::NoFrame);
+    palette->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    palette->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn); // A fixed width keeps the columns.
+    ll->addWidget(palette, 1);
+    splitter->addWidget(left);
+    auto *middle = new QWidget;
+    auto *ml = new QVBoxLayout(middle);
+    ml->setContentsMargins(0, 0, 0, 0);
+    ml->setSpacing(0);
+    // One row above the 3D view: the options of the current tool, or the candidate controls in their
+    // place; it keeps the height of the taller one, so the view keeps its size and position.
+    topRow = new QStackedWidget;
+    topRow->setObjectName("editorTopRow");
+    auto *optionBar = new QWidget;
+    optionBar->setObjectName("toolOptions");
+    optionBar->setAttribute(Qt::WA_StyledBackground);
+    auto *options = new FlowLayout(optionBar, 12, 6);
+    options->setContentsMargins(10, 7, 10, 7);
+    options->setUniformRows(true); // Other tools' options keep the height: the view does not move.
+    const auto optionGroup = [&](const QString &name, const QList<QWidget *> &widgets) {
+        auto *group = new QWidget;
+        group->setObjectName(name);
+        auto *row = new QHBoxLayout(group);
+        row->setContentsMargins(0, 0, 0, 0);
+        row->setSpacing(6);
+        for (auto *w : widgets)
+            row->addWidget(w);
+        options->addWidget(group);
+        toolOptionGroups.insert(name, group);
+        return group;
     };
-    undoButton = add("元に戻す", [this] {
-        if (candidate)
-            cancelCandidate();
-        else
-            undo.undo();
-    });
-    undoButton->setObjectName("editorUndo");
-    redoButton = add("やり直す", [this] {
-        if (!candidate)
-            undo.redo();
-    });
-    redoButton->setObjectName("editorRedo");
-    tools->addSpacing(8);
-    unitBox = new QComboBox;
-    for (auto pair : QList<QPair<QString, QString>>{{"原子", "atom"},
-                                                    {"結合", "bond"},
-                                                    {"部品", "part"},
-                                                    {"残基", "residue"},
-                                                    {"分子", "component"},
-                                                    {"全体", "all"}})
-        unitBox->addItem(pair.first, pair.second);
-    unitBox->setToolTip(
+    auto *units = new QFrame;
+    units->setObjectName("selectionUnit");
+    units->setToolTip(
         "原子をクリックしたときにまとめて選ぶ範囲です（原子・部品・残基・つながった分子・全体）。");
-    tools->addWidget(new QLabel("選択単位"));
-    tools->addWidget(unitBox);
-    auto *clearSelection = add("選択解除", [this] { setSelection({}); });
-    clearSelection->setObjectName("clearSelection");
-    enableWithSelection(clearSelection, 1);
-    auto *deleteSelection = add("選択原子を削除", [this] { deleteAtoms(requireSelection()); });
-    deleteSelection->setObjectName("deleteSelection");
-    deleteSelection->setToolTip("選択した原子を削除する候補を作ります（Delete）。確定するまで元に戻せます。");
-    enableWithSelection(deleteSelection, 1);
-    tools->addStretch();
-    add("視点リセット", [this] {
-        view->viewFrom(2);
-    })->setToolTip("正面（+Z方向）から見て、分子全体を表示します。");
-    auto *options = new QHBoxLayout;
-    layout->addLayout(options);
-    showH = new QCheckBox("水素表示");
-    showH->setToolTip("水素原子の表示を切り替えます（H）。隠しても計算・保存には含みます。");
-    showH->setChecked(true);
-    options->addWidget(showH);
-    auto *indices = new QCheckBox("番号を表示");
-    indices->setObjectName("showIndices");
-    indices->setToolTip("ラベルに原子の通し番号（座標表・NWChem入力の順番）を付けます。");
-    indices->setChecked(true);
-    options->addWidget(indices);
-    labelModeBox = new QComboBox;
-    labelModeBox->setObjectName("labelMode");
-    for (const auto &[label, mode] : {std::pair{"ラベル: すべて", "all"},
-                                      {"ラベル: 水素以外", "heavy"},
-                                      {"ラベル: 選択した原子", "selection"},
-                                      {"ラベル: なし", "none"}})
-        labelModeBox->addItem(label, mode);
-    labelModeBox->setToolTip(
-        "元素記号・番号を表示する原子です。ラベルはほかのラベル・原子に重ならない向きに置き、置けないものは"
-        "選択した原子・配位中心・水素以外・手前の原子を優先して省きます。");
-    options->addWidget(labelModeBox);
-    autoH = new QCheckBox("水素自動補完");
-    autoH->setToolTip("原子の追加・結合の変更・元素の変更のあとに、空いた原子価へ水素を付けます。");
-    autoH->setChecked(true);
-    options->addWidget(autoH);
-    keepSelection = new QCheckBox("編集後に選択維持");
-    keepSelection->setToolTip("オフでは、編集を確定するたびに選択を解除します。");
-    keepSelection->setChecked(settings.value("keepSelection", true).toBool());
-    options->addWidget(keepSelection);
+    auto *unitRow = new QHBoxLayout(units);
+    unitRow->setContentsMargins(2, 2, 2, 2);
+    unitRow->setSpacing(2);
+    unitGroup = new QButtonGroup(this);
+    for (const auto &[label, code] : {std::pair{"原子", "atom"},
+                                      {"結合", "bond"},
+                                      {"部品", "part"},
+                                      {"残基", "residue"},
+                                      {"分子", "component"},
+                                      {"全体", "all"}}) {
+        auto *b = new QToolButton;
+        b->setObjectName(QString("selectionUnit_") + code);
+        b->setText(label);
+        b->setCheckable(true);
+        b->setProperty("unit", code);
+        unitRow->addWidget(b);
+        unitGroup->addButton(b);
+    }
+    unitGroup->buttons().first()->setChecked(true);
+    auto *unitLabel = new QLabel("選択単位");
+    optionGroup("selectionUnitOption", {unitLabel, units});
+    toolPart = new QLabel;
+    toolPart->setObjectName("toolPart");
+    toolPart->setTextFormat(Qt::RichText);
+    optionGroup("partOption", {toolPart});
+    auto *bondLabel = new QLabel("結合の種類");
+    toolBondKind = new QComboBox;
+    toolBondKind->setObjectName("toolBondKind");
+    toolBondKind->setToolTip("「結合」ツールで作る結合と、「配置」で原子に原子をつなぐ結合の種類です。");
+    toolBondKind->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    bondLabel->setBuddy(toolBondKind);
+    optionGroup("bondOption", {bondLabel, toolBondKind});
     keepTool = new QCheckBox("部品の配置後もツールを保持");
     keepTool->setToolTip("オフでは、骨格・置換基・アミノ酸などの部品を1つ置くと「選択」ツールに戻ります。"
                          "原子・配位中心や配位サイトへの配位子の配置は、切り替えるまで続きます。");
     keepTool->setChecked(settings.value("keepTool", false).toBool());
-    options->addWidget(keepTool);
-    // Structure commands share the first row, so the option row fits narrow windows.
-    const auto beforeStretch = [tools](QWidget *w) { tools->insertWidget(tools->count() - 2, w); };
+    optionGroup("keepToolOption", {keepTool});
+    toolDeleteTerminate = new QCheckBox("削除後に水素で終端化");
+    toolDeleteTerminate->setObjectName("toolDeleteTerminate");
+    toolDeleteTerminate->setChecked(true);
+    toolDeleteTerminate->setToolTip("すべての削除に適用します（「編集」タブの同じ項目と共通）。");
+    optionGroup("deleteOption", {toolDeleteTerminate});
+    auto *chargeLabel = new QLabel("置く点電荷 / e");
+    toolChargeValue = new QDoubleSpinBox;
+    toolChargeValue->setObjectName("toolChargeValue");
+    toolChargeValue->setDecimals(5);
+    toolChargeValue->setRange(-10000, 10000);
+    toolChargeValue->setToolTip("「電荷」タブの「電荷 / e」と共通です。");
+    chargeLabel->setBuddy(toolChargeValue);
+    optionGroup("chargeOption", {chargeLabel, toolChargeValue});
+    // The structure commands stay at the right end, after the options of the tool.
+    options->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum));
+    autoH = new QCheckBox("水素自動補完");
+    autoH->setToolTip("原子の追加・結合の変更・元素の変更のあとに、空いた原子価へ水素を付けます。");
+    autoH->setChecked(true);
     auto *h = new QPushButton("水素を補完");
     h->setToolTip("選択原子（未選択なら分子全体）の空いた原子価に水素を付けます。");
-    beforeStretch(h);
     connect(h, &QPushButton::clicked, this, [this] {
         safe([this] { edit("水素を補完", [this](Document &d) { completeHydrogens(d, selected); }); });
     });
@@ -345,145 +506,27 @@ void MainWindow::buildUi() {
     refineButton->setObjectName("refineButton");
     refineButton->setToolTip("力場（MMFF94、使えない場合UFF）で分子全体の構造を整え、候補として表示します。"
                              "金属錯体・ゴースト原子を含む分子には使えません。");
-    beforeStretch(refineButton);
     connect(refineButton, &QPushButton::clicked, this, [this] { safe([this] { runWorker("refine"); }); });
     cancelWorkerButton = new QPushButton("整形を中止");
     cancelWorkerButton->hide();
-    beforeStretch(cancelWorkerButton);
     connect(cancelWorkerButton, &QPushButton::clicked, this, &MainWindow::cancelWorker);
-    options->addStretch();
-    auto *splitter = new QSplitter;
-    layout->addWidget(splitter, 1);
-    auto *left = new QWidget;
-    left->setMaximumWidth(320);
-    auto *ll = new QVBoxLayout(left);
-    ll->setContentsMargins(0, 0, 6, 0);
-    // Editing tools above the palette, so the 3D view keeps the width: the first row works on the
-    // structure, the second puts down what the palette below has chosen (and point charges).
-    ll->addWidget(new QLabel("編集ツール"));
-    auto *toolGrid = new QGridLayout;
-    toolGrid->setSpacing(2);
-    toolGroup = new QButtonGroup(this);
-    for (const auto &[code, label, key, tip] :
-         {std::tuple{"select", "選択", "S",
-                     "原子を選択します。Shift／Ctrl＋クリックで追加、Shiftドラッグで範囲選択。"},
-          {"move", "移動", "M",
-           "原子をドラッグして動かします（付いている水素と、選択中なら選択全体が一緒に動きます）。"},
-          {"bond", "結合", "B", "2原子を順にクリックして、下の「結合の種類」にします。"},
-          {"delete", "削除", "X", "クリックした原子を削除する候補を作ります。"},
-          {"place", "配置", "A",
-           "下のパレットで選んだ原子・部品を置きます。空白・原子・水素・配位中心の紫の番号のどれを"
-           "クリックするかで置き方が決まります。"},
-          {"replace", "置き換え", "R", "クリックした原子を、下のパレットで選んだ元素・部品に置き換えます。"},
-          {"charge", "点電荷", "Q", "空白をクリックして外部点電荷を置きます（値は「電荷」タブ）。"}}) {
-        auto *b = new QToolButton;
-        b->setObjectName(QString("tool_") + code);
-        b->setText(label);
-        b->setToolTip(tip);
-        b->setCheckable(true);
-        b->setProperty("tool", code);
-        b->setProperty("toolKey", key);
-        b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        // Of 12 columns, the four of the first row span 3 each and the three of the second 4 each.
-        const int i = toolGroup->buttons().size();
-        toolGrid->addWidget(b, i < 4 ? 0 : 1, i < 4 ? 3 * i : 4 * (i - 4), 1, i < 4 ? 3 : 4);
-        toolGroup->addButton(b);
-    }
-    // Equal columns, so the buttons of a row are equal and fit their names: they set how narrow the
-    // palette column can get.
-    int column = 0;
-    for (auto *b : toolGroup->buttons()) {
-        int row, first, rows, span;
-        toolGrid->getItemPosition(toolGrid->indexOf(b), &row, &first, &rows, &span);
-        const int inside = (span - 1) * toolGrid->horizontalSpacing();
-        column = std::max(column, (b->sizeHint().width() - inside + span - 1) / span);
-    }
-    for (int c = 0; c < 12; ++c) {
-        toolGrid->setColumnMinimumWidth(c, column);
-        toolGrid->setColumnStretch(c, 1);
-    }
-    toolGroup->buttons().first()->setChecked(true);
-    ll->addLayout(toolGrid);
-    // The bond tool's one choice (the same list as "結合種類" in the edit panel). "配置" bonds an atom
-    // put on another atom with it too, so it stays in place for every tool.
-    auto *bondRow = new QHBoxLayout;
-    auto *bondLabel = new QLabel("結合の種類");
-    bondRow->addWidget(bondLabel);
-    toolBondKind = new QComboBox;
-    toolBondKind->setObjectName("toolBondKind");
-    toolBondKind->setToolTip("「結合」ツールで作る結合と、「配置」で原子に原子をつなぐ結合の種類です。");
-    toolBondKind->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    toolBondKind->setMinimumContentsLength(4);
-    bondLabel->setBuddy(toolBondKind);
-    bondRow->addWidget(toolBondKind, 1);
-    ll->addLayout(bondRow);
-    ll->addSpacing(6);
-    ll->addWidget(new QLabel("部品パレット"));
-    search = new QLineEdit;
-    search->setObjectName("paletteSearch");
-    search->setPlaceholderText("名前・元素・SMILESを検索");
-    search->setClearButtonEnabled(true);
-    ll->addWidget(search);
-    category = new QComboBox;
-    category->setObjectName("paletteCategory");
-    for (auto pair : QList<QPair<QString, QString>>{{"すべて", "all"},
-                                                    {"原子（周期表 H〜Og）", "atom"},
-                                                    {"骨格", "skeleton"},
-                                                    {"置換基", "substituent"},
-                                                    {"配位中心", "center"},
-                                                    {"配位子", "ligand"},
-                                                    {"アミノ酸", "amino"},
-                                                    {"マイ部品", "my"}})
-        category->addItem(pair.first, pair.second);
-    ll->addWidget(category);
-    periodicTableButton = new QPushButton("周期表から原子を選択…");
-    periodicTableButton->setObjectName("openPeriodicTable");
-    ll->addWidget(periodicTableButton);
-    connect(periodicTableButton, &QPushButton::clicked, this, [this] {
-        PeriodicTableDialog dialog(paletteElement, search->text(), this);
-        if (dialog.exec() == QDialog::Accepted)
-            safe([&] { chooseElement(dialog.selectedElement()); });
-    });
-    // The common elements of organic molecules, one click each (the atom tool then places them).
-    auto *quick = new QHBoxLayout;
-    quick->setSpacing(2);
-    for (const auto *symbol : {"H", "C", "N", "O", "F", "P", "S", "Cl", "Br", "I"}) {
-        auto *b = new QToolButton;
-        b->setObjectName(QString("quickElement_") + symbol);
-        b->setText(symbol);
-        b->setToolTip(QString("%1（%2）を「配置」で置きます").arg(symbol, element(symbol).nameJa));
-        b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        b->setMinimumWidth(16);
-        quick->addWidget(b);
-        connect(b, &QToolButton::clicked, this, [this, symbol] { safe([&] { chooseElement(symbol); }); });
-    }
-    ll->addLayout(quick);
-    growth = new QCheckBox("アミノ酸の連続追加");
-    ll->addWidget(growth);
-    palette = new PaletteList;
-    palette->setObjectName("templatePalette");
-    palette->setItemDelegate(new TemplateDelegate(palette));
-    palette->setDragEnabled(true);
-    palette->setDragDropMode(QAbstractItemView::DragOnly);
-    palette->setDefaultDropAction(Qt::CopyAction);
-    palette->setSpacing(0);
-    palette->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff); // Rows elide in narrow windows.
-    ll->addWidget(palette, 1);
-    splitter->addWidget(left);
-    auto *middle = new QWidget;
-    auto *ml = new QVBoxLayout(middle);
-    ml->setContentsMargins(0, 0, 0, 0);
-    // One row of fixed height above the 3D view: the peptide sequence and what a click does with
-    // the tool, or the candidate controls in their place, so the view keeps its size and position.
-    topRow = new QStackedWidget;
-    topRow->setObjectName("editorTopRow");
-    auto *info = new QWidget;
-    auto *il = new QVBoxLayout(info);
-    il->setContentsMargins(2, 2, 2, 2);
-    il->setSpacing(0);
+    optionGroup("structureOption", {autoH, h, refineButton, cancelWorkerButton});
+    topRow->addWidget(optionBar);
+    banner = new QFrame;
+    banner->setObjectName("candidateBanner");
+    topRow->addWidget(banner);
+    ml->addWidget(topRow);
+    // The 3D view, with the sequence, the view controls and the measurement in its corners.
+    view = new MoleculeView;
+    auto *viewArea = new OverlayHost(view);
+    viewArea->setObjectName("viewArea");
+    sequenceChip = new QFrame;
+    sequenceChip->setObjectName("sequenceChip");
+    auto *sequenceRow = new QHBoxLayout(sequenceChip);
+    sequenceRow->setContentsMargins(10, 4, 10, 4);
     sequenceLabel = new QLabel;
     sequenceLabel->setObjectName("sequenceLabel");
-    sequenceLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    sequenceLabel->setWordWrap(true);
     sequenceLabel->setTextFormat(Qt::RichText);
     sequenceLabel->setTextInteractionFlags(Qt::LinksAccessibleByMouse);
     connect(sequenceLabel, &QLabel::linkActivated, this, [this](const QString &rid) {
@@ -494,45 +537,67 @@ void MainWindow::buildUi() {
             setSelection(ids);
         });
     });
-    il->addWidget(sequenceLabel);
-    mouseHint = new QLabel;
-    mouseHint->setObjectName("toolHint");
-    mouseHint->setWordWrap(true);
-    mouseHint->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    il->addWidget(mouseHint);
-    il->addStretch();
-    topRow->addWidget(info);
-    banner = new QFrame;
-    static_cast<QFrame *>(banner)->setFrameShape(QFrame::StyledPanel);
-    banner->setObjectName("candidateBanner");
-    topRow->addWidget(banner);
-    topRow->setFixedHeight(
-        std::max(2 * fontMetrics().lineSpacing() + 12, QPushButton().sizeHint().height() + 12));
-    ml->addWidget(topRow);
-    view = new MoleculeView;
-    ml->addWidget(view, 1);
-    auto *angles = new QHBoxLayout;
-    angles->setSpacing(16);
-    ml->addLayout(angles);
+    sequenceRow->addWidget(sequenceLabel);
+    viewArea->addOverlay(sequenceChip, Qt::AlignTop | Qt::AlignLeft);
+    auto *viewControls = new QFrame;
+    viewControls->setObjectName("viewControls");
+    auto *controls = new QHBoxLayout(viewControls);
+    controls->setContentsMargins(3, 3, 3, 3);
+    controls->setSpacing(1);
+    for (int i = 0; i < 3; ++i) {
+        auto *b = new QToolButton;
+        b->setText(QString("+") + QString("XYZ")[i]);
+        b->setToolTip(QString("%1軸の正の側から見て、分子全体を表示します。").arg(QString("XYZ")[i]));
+        controls->addWidget(b);
+        connect(b, &QToolButton::clicked, this, [this, i] { view->viewFrom(i); });
+    }
+    const auto viewButton = [&](const QString &text, const QString &icon, const QString &name) {
+        auto *b = new QToolButton;
+        b->setObjectName(name);
+        b->setText(text);
+        b->setIcon(lineIcon(icon));
+        b->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        controls->addWidget(b);
+        return b;
+    };
+    auto *viewDivider = new QFrame;
+    viewDivider->setFrameShape(QFrame::VLine);
+    viewDivider->setFrameShadow(QFrame::Sunken);
+    controls->addWidget(viewDivider);
+    auto *reset = viewButton("視点リセット", "fit", "resetView");
+    reset->setToolTip("正面（+Z方向）から見て、分子全体を表示します。");
+    connect(reset, &QToolButton::clicked, this, [this] { view->viewFrom(2); });
+    auto *rotate = viewButton("回転", "rotate", "rotationButton");
+    rotate->setToolTip("左右・上下・画面内の回転角をスライダーで指定します。");
+    auto *display = viewButton("表示", "eye", "viewMenuButton");
+    display->setToolTip("水素・番号・ラベル・表示スタイルなどの表示を切り替えます。");
+    display->setPopupMode(QToolButton::InstantPopup);
+    viewControls->setProperty("compactButtons", true);
+    viewArea->addOverlay(viewControls, Qt::AlignTop | Qt::AlignRight);
+    // Rotation angles as sliders in a popup under "回転"; the mouse rotation moves them too.
+    rotationPopup = new QFrame(this, Qt::Popup);
+    rotationPopup->setObjectName("rotationPopup");
+    auto *angles = new QFormLayout(rotationPopup);
+    angles->setContentsMargins(14, 12, 14, 12);
     QSlider *sliders[3];
     for (int i = 0; i < 3; ++i) {
-        auto *control = new QVBoxLayout;
-        control->setSpacing(2);
-        auto *label = new QLabel(QStringList{"左右回転", "上下回転", "画面内回転"}[i]);
-        control->addWidget(label);
         sliders[i] = new QSlider(Qt::Horizontal);
         sliders[i]->setRange(-180, 180);
-        label->setBuddy(sliders[i]);
-        control->addWidget(sliders[i]);
-        angles->addLayout(control, 1);
-    }
-    for (int i = 0; i < 3; ++i) {
+        sliders[i]->setMinimumWidth(200);
         sliders[i]->setObjectName(QStringList{"editorYaw", "editorPitch", "editorRoll"}[i]);
+        angles->addRow(QStringList{"左右回転", "上下回転", "画面内回転"}[i], sliders[i]);
+    }
+    connect(rotate, &QToolButton::clicked, this, [this, rotate] {
+        rotationPopup->adjustSize();
+        rotationPopup->move(
+            rotate->mapToGlobal(QPoint(rotate->width() - rotationPopup->width(), rotate->height() + 4)));
+        rotationPopup->show();
+    });
+    for (int i = 0; i < 3; ++i)
         connect(sliders[i], &QSlider::valueChanged, this,
                 [this, a = sliders[0], b = sliders[1], c = sliders[2]] {
                     view->setAngles(a->value(), b->value(), c->value());
                 });
-    }
     // Mouse rotation updates the sliders, so touching a slider continues from the current view.
     connect(view, &MoleculeView::orientationChanged, this,
             [this, a = sliders[0], b = sliders[1], c = sliders[2]] {
@@ -542,38 +607,41 @@ void MainWindow::buildUi() {
                 b->setValue(qRound(angles.y()));
                 c->setValue(qRound(angles.z()));
             });
-    auto *axes = new QHBoxLayout;
-    axes->setSpacing(4);
-    angles->addLayout(axes);
-    for (int i = 0; i < 3; ++i) {
-        auto *b = new QPushButton(QString("+") + QString("XYZ")[i]);
-        b->setToolTip(QString("%1軸の正の側から見て、分子全体を表示します。").arg(QString("XYZ")[i]));
-        b->setMaximumWidth(40);
-        axes->addWidget(b, 0, Qt::AlignBottom);
-        connect(b, &QPushButton::clicked, this, [this, i] { view->viewFrom(i); });
-    }
-    measurement = new QLabel("原子をクリックで選択、Shift／Ctrl＋クリックで順に追加します。2〜4原子で距離・角"
-                             "度・二面角を測定します。");
-    measurement->setWordWrap(true);
+    // Distance, angle or dihedral of 2–4 atoms selected in order, and the value to set it to.
+    measureCard = new QFrame;
+    measureCard->setObjectName("measureCard");
+    auto *measureLayout = new QVBoxLayout(measureCard);
+    measureLayout->setContentsMargins(12, 9, 12, 10);
+    measureLayout->setSpacing(5);
+    measureTitle = new QLabel;
+    measureTitle->setObjectName("measureTitle");
+    auto boldFont = measureTitle->font();
+    boldFont.setBold(true);
+    measureTitle->setFont(boldFont);
+    measureLayout->addWidget(measureTitle);
+    measurement = new QLabel;
     measurement->setObjectName("measurementLabel");
-    ml->addWidget(measurement);
+    measurement->setWordWrap(true);
+    measureLayout->addWidget(measurement);
     auto *dimensions = new QHBoxLayout;
+    dimensions->setSpacing(6);
+    dimensionLabel = new QLabel;
     dimension = new QDoubleSpinBox;
     dimension->setDecimals(5);
     dimension->setRange(-10000, 10000);
     dimension->setObjectName("dimensionValue");
-    dimensions->addWidget(new QLabel("距離 Å / 角度 °"));
-    dimensions->addWidget(dimension);
+    dimension->setSpecialValueText("—");
+    dimensionLabel->setBuddy(dimension);
+    dimensions->addWidget(dimensionLabel);
+    dimensions->addWidget(dimension, 1);
     auto *applyDimension = new QPushButton("寸法を適用");
     applyDimension->setObjectName("applyDimension");
     applyDimension->setToolTip(
         "選択順の2〜4原子の距離・角度・二面角を指定値にします。後に選んだ原子の側が動きます。");
     dimensions->addWidget(applyDimension);
-    dimension->setSpecialValueText("—");
     enableWithSelection(dimension, 2, 4);
     enableWithSelection(applyDimension, 2, 4);
-    dimensions->addStretch();
-    ml->addLayout(dimensions);
+    measureLayout->addLayout(dimensions);
     connect(applyDimension, &QPushButton::clicked, this, [this] {
         safe([this] {
             auto ids = requireSelection();
@@ -581,15 +649,29 @@ void MainWindow::buildUi() {
             edit("寸法を適用", [=](Document &d) { setDimension(d, ids, v); });
         });
     });
-    auto *controlsHint = new QLabel(
+    measureCard->hide();
+    viewArea->addOverlay(measureCard, Qt::AlignBottom | Qt::AlignLeft);
+    ml->addWidget(viewArea, 1);
+    // Under the view: what a click does with the tool, and the mouse controls of the view.
+    auto *hintBar = new QWidget;
+    hintBar->setObjectName("hintBar");
+    hintBar->setAttribute(Qt::WA_StyledBackground);
+    auto *hints = new QVBoxLayout(hintBar);
+    hints->setContentsMargins(12, 4, 12, 5);
+    hints->setSpacing(1);
+    // One line each (shortened when narrow, in full as a tooltip), so the view never moves.
+    mouseHint = new ElidedLabel;
+    mouseHint->setObjectName("toolHint");
+    hints->addWidget(mouseHint);
+    auto *controlsHint = new ElidedLabel(
         "左ドラッグ: 回転 · 右ドラッグ: 平行移動 · ホイール: カーソル位置で拡縮 · Esc: 候補・選択を解除");
     controlsHint->setObjectName("controlsHint");
-    controlsHint->setWordWrap(true);
-    controlsHint->setForegroundRole(QPalette::PlaceholderText);
+    controlsHint->setToolTip(controlsHint->text());
     auto hintFont = controlsHint->font();
     hintFont.setPointSizeF(hintFont.pointSizeF() * .9);
     controlsHint->setFont(hintFont);
-    ml->addWidget(controlsHint);
+    hints->addWidget(controlsHint);
+    ml->addWidget(hintBar);
     splitter->addWidget(middle);
     properties = new QTabWidget;
     properties->setObjectName("propertyTabs");
@@ -604,10 +686,16 @@ void MainWindow::buildUi() {
         toolBondKind->setCurrentIndex(index);
         refreshToolHint();
     });
+    connect(toolDeleteTerminate, &QCheckBox::toggled, deleteTerminate, &QCheckBox::setChecked);
+    connect(deleteTerminate, &QCheckBox::toggled, toolDeleteTerminate, &QCheckBox::setChecked);
     buildCoordinationPanel();
     buildResiduePanel();
     buildChargePanel();
-    splitter->setSizes({300, 690, 340});
+    toolChargeValue->setValue(chargeValue->value());
+    connect(toolChargeValue, &QDoubleSpinBox::valueChanged, chargeValue, &QDoubleSpinBox::setValue);
+    connect(chargeValue, &QDoubleSpinBox::valueChanged, toolChargeValue, &QDoubleSpinBox::setValue);
+    splitter->setSizes({280, 760, 330});
+    splitter->setStretchFactor(1, 1);
     coordinates = new CoordinatesPanel(this);
     workspaceTabs->addTab(coordinates, "2 座標");
     calculation = new CalculationPanel(this);
@@ -631,34 +719,60 @@ void MainWindow::buildUi() {
         } else
             refreshPanel(page);
     });
-    // Candidate controls: a banner over the 3D view of "1 分子", and a bar below the tabs for the
-    // other tabs. Colors come from the palette (tool-tip roles), so dark themes stay readable.
-    const auto candidateControls = [this](QWidget *box, QLabel *&text, const QString &confirmName,
-                                          const QString &cancelName) {
-        box->setAutoFillBackground(true);
-        box->setBackgroundRole(QPalette::ToolTipBase);
-        box->setForegroundRole(QPalette::ToolTipText);
-        auto *row = new QHBoxLayout(box);
-        row->setContentsMargins(8, 4, 8, 4);
+    buildHeader();
+    outer->insertWidget(0, header);
+    // Candidate controls: a banner in place of the tool options of "1 分子", and a bar below the
+    // tabs for the other tabs. Amber backgrounds come from the chrome style for either theme.
+    const auto candidateControls = [this](QWidget *box, QLabel *title, QLabel *&text,
+                                          const QString &confirmName, const QString &cancelName) {
+        // What the candidate changes, and the buttons beside it or, when narrow, below it.
+        auto *flow = new FlowLayout(box, 12, 4);
+        flow->setContentsMargins(12, 4, 12, 4);
+        auto *about = new QWidget;
+        about->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        auto *row = new QHBoxLayout(about);
+        row->setContentsMargins(0, 0, 0, 0);
+        row->setSpacing(10);
+        flow->addWidget(about);
+        auto *icon = new QLabel;
+        icon->setObjectName("candidateIcon");
+        row->addWidget(icon);
+        auto *texts = new QVBoxLayout;
+        texts->setSpacing(1);
+        if (title) {
+            auto font = title->font();
+            font.setBold(true);
+            title->setFont(font);
+            title->setWordWrap(true);
+            texts->addWidget(title);
+        }
         text = new QLabel;
         text->setWordWrap(true);
-        text->setForegroundRole(QPalette::ToolTipText);
-        row->addWidget(text, 1);
+        text->setTextFormat(Qt::RichText);
+        texts->addWidget(text);
+        row->addLayout(texts, 1);
+        auto *buttons = new QWidget;
+        auto *buttonRow = new QHBoxLayout(buttons);
+        buttonRow->setContentsMargins(0, 0, 0, 0);
+        buttonRow->setSpacing(8);
+        flow->addWidget(buttons);
+        auto *cancel = new QPushButton("候補を取消（Esc）");
+        cancel->setObjectName(cancelName);
+        buttonRow->addWidget(cancel);
         auto *confirm = new QPushButton("変更を確定（Ctrl+Enter）");
         confirm->setObjectName(confirmName);
-        row->addWidget(confirm);
-        auto *cancel = new QPushButton("取消（Esc）");
-        cancel->setObjectName(cancelName);
-        row->addWidget(cancel);
+        confirm->setProperty("primary", true);
+        buttonRow->addWidget(confirm);
         connect(confirm, &QPushButton::clicked, this, [this] { safe([this] { confirmCandidate(); }); });
         connect(cancel, &QPushButton::clicked, this, &MainWindow::cancelCandidate);
     };
     candidateBar = new QFrame;
     candidateBar->setObjectName("candidateBar");
-    static_cast<QFrame *>(candidateBar)->setFrameShape(QFrame::StyledPanel);
-    candidateControls(candidateBar, candidateLabel, "candidateBarConfirm", "candidateBarCancel");
+    candidateControls(candidateBar, nullptr, candidateLabel, "candidateBarConfirm", "candidateBarCancel");
     outer->addWidget(candidateBar);
-    candidateControls(banner, bannerLabel, "confirmCandidate", "cancelCandidate");
+    candidateTitle = new QLabel;
+    candidateTitle->setObjectName("candidateBannerTitle");
+    candidateControls(banner, candidateTitle, bannerLabel, "confirmCandidate", "cancelCandidate");
     bannerLabel->setObjectName("candidateBannerText");
     connect(workspaceTabs, &QTabWidget::currentChanged, this, [this] {
         candidateBar->setVisible(candidate.has_value() && workspaceTabs->currentWidget() != moleculePage);
@@ -666,6 +780,32 @@ void MainWindow::buildUi() {
     summary = new QLabel;
     summary->setObjectName("documentSummary");
     outer->addWidget(summary);
+    // View toggles: in the "表示" menu and the "表示" button over the 3D view.
+    showHydrogens = new QAction("水素を表示", this);
+    showHydrogens->setObjectName("showHydrogensAction");
+    showHydrogens->setToolTip("水素原子の表示を切り替えます（H）。隠しても計算・保存には含みます。");
+    showHydrogens->setCheckable(true);
+    showHydrogens->setChecked(true);
+    showIndices = new QAction("番号を表示", this);
+    showIndices->setObjectName("showIndices");
+    showIndices->setToolTip("ラベルに原子の通し番号（座標表・NWChem入力の順番）を付けます。");
+    showIndices->setCheckable(true);
+    showIndices->setChecked(true);
+    labelModes = new QActionGroup(this);
+    const auto labels = settings.value("view/labels", "all").toString();
+    for (const auto &[label, mode] : {std::pair{"すべて", "all"},
+                                      {"水素以外", "heavy"},
+                                      {"選択した原子", "selection"},
+                                      {"なし", "none"}}) {
+        auto *a = labelModes->addAction(label);
+        a->setObjectName(QString("labelMode_") + mode);
+        a->setCheckable(true);
+        a->setData(mode);
+        a->setChecked(labels == mode);
+    }
+    if (!labelModes->checkedAction())
+        labelModes->actions().first()->setChecked(true);
+    view->setLabelMode(labelModes->checkedAction()->data().toString());
     connect(toolGroup, &QButtonGroup::buttonToggled, this, [this](QAbstractButton *, bool on) {
         if (!on)
             return;
@@ -680,19 +820,24 @@ void MainWindow::buildUi() {
     });
     connect(elementBox, &QComboBox::currentIndexChanged, this, &MainWindow::refreshToolHint);
     connect(palette, &QListWidget::currentItemChanged, this, &MainWindow::refreshToolHint);
-    connect(unitBox, &QComboBox::currentIndexChanged, this,
-            [this] { safe([this] { setSelection(expandedSelection(selected)); }); });
-    connect(showH, &QCheckBox::toggled, view, &MoleculeView::setShowHydrogens);
-    connect(indices, &QCheckBox::toggled, view, &MoleculeView::setShowIndices);
-    labelModeBox->setCurrentIndex(
-        std::max(0, labelModeBox->findData(settings.value("view/labels", "all").toString())));
-    view->setLabelMode(labelModeBox->currentData().toString());
-    connect(labelModeBox, &QComboBox::currentIndexChanged, this, [this] {
-        view->setLabelMode(labelModeBox->currentData().toString());
-        settings.setValue("view/labels", labelModeBox->currentData().toString());
+    connect(unitGroup, &QButtonGroup::buttonToggled, this, [this](QAbstractButton *, bool on) {
+        if (on)
+            safe([this] {
+                setSelection(expandedSelection(selected));
+                refreshToolHint();
+            });
+    });
+    connect(showHydrogens, &QAction::toggled, view, &MoleculeView::setShowHydrogens);
+    connect(showIndices, &QAction::toggled, view, &MoleculeView::setShowIndices);
+    connect(labelModes, &QActionGroup::triggered, this, [this](QAction *a) {
+        view->setLabelMode(a->data().toString());
+        settings.setValue("view/labels", a->data().toString());
     });
     connect(search, &QLineEdit::textChanged, this, &MainWindow::refreshPalette);
-    connect(category, &QComboBox::currentIndexChanged, this, &MainWindow::refreshPalette);
+    connect(categoryGroup, &QButtonGroup::buttonToggled, this, [this](QAbstractButton *, bool on) {
+        if (on)
+            refreshPalette();
+    });
     connect(palette, &QListWidget::itemClicked, this, [this] { safe([this] { paletteChosen(); }); });
     // Enter in the search box takes the first match, like a click on it.
     connect(search, &QLineEdit::returnPressed, this, [this] {
@@ -799,7 +944,7 @@ void MainWindow::buildUi() {
                 growth->setChecked(false);
                 growthResidue.clear();
             } else if (key == Qt::Key_H)
-                showH->toggle();
+                showHydrogens->toggle();
             else if (key == Qt::Key_Delete) {
                 if (hasSelection())
                     deleteAtoms(selected);
@@ -833,7 +978,7 @@ void MainWindow::buildUi() {
                         if (key.startsWith("atom:"))
                             paletteElement = element(key.mid(5)).symbol;
                         search->clear();
-                        category->setCurrentIndex(0);
+                        setPaletteCategory("all");
                         refreshPalette();
                         if (!select())
                             fail("部品が見つかりません: " + key);
@@ -853,6 +998,117 @@ void MainWindow::buildUi() {
     refreshPalette();
     refreshToolHint();
 }
+void MainWindow::buildHeader() {
+    initManualResources(); // The application icon.
+    auto *identity = new QWidget;
+    auto *left = new QHBoxLayout(identity);
+    left->setContentsMargins(0, 0, 0, 0);
+    left->setSpacing(10);
+    auto *logo = new QLabel;
+    logo->setPixmap(QIcon(":/icons/molforma.png").pixmap(QSize(26, 26)));
+    left->addWidget(logo);
+    auto *name = new QLabel("MolForma");
+    name->setObjectName("appName");
+    auto nameFont = name->font();
+    nameFont.setBold(true);
+    nameFont.setPointSizeF(nameFont.pointSizeF() * 1.15);
+    name->setFont(nameFont);
+    left->addWidget(name);
+    auto *rule = new QFrame;
+    rule->setFrameShape(QFrame::VLine);
+    rule->setFrameShadow(QFrame::Sunken);
+    left->addWidget(rule);
+    // The open file; its menu creates, opens and saves (the "ファイル" menu has the same).
+    documentButton = new QToolButton;
+    documentButton->setObjectName("documentButton");
+    documentButton->setIcon(lineIcon("document"));
+    documentButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    documentButton->setPopupMode(QToolButton::InstantPopup);
+    documentButton->setToolTip("新規・開く・保存・SMILESから作成");
+    left->addWidget(documentButton);
+    // The workflow: one step per tab, in the order of building, setting up and running a calculation.
+    workflowSteps = new QWidget;
+    workflowSteps->setObjectName("workflowSteps");
+    auto *steps = new QHBoxLayout(workflowSteps);
+    steps->setContentsMargins(0, 0, 0, 0);
+    steps->setSpacing(2);
+    stepGroup = new QButtonGroup(this);
+    static const QRegularExpression numbered(R"(^(\d) (.+)$)");
+    bool numberedSteps = true;
+    for (int i = 0; i < workspaceTabs->count(); ++i) {
+        const auto text = workspaceTabs->tabText(i);
+        const auto match = numbered.match(text);
+        if (numberedSteps && !match.hasMatch()) {
+            numberedSteps = false; // Results and history are looked at, not steps of a calculation.
+            auto *gap = new QFrame;
+            gap->setFrameShape(QFrame::VLine);
+            gap->setFrameShadow(QFrame::Sunken);
+            steps->addSpacing(6);
+            steps->addWidget(gap);
+            steps->addSpacing(6);
+        }
+        auto *b = new QToolButton;
+        b->setObjectName(QString("workflowStep_%1").arg(i + 1));
+        b->setText(match.hasMatch() ? match.captured(2) : text);
+        if (match.hasMatch()) {
+            b->setIcon(stepIcon(match.captured(1).toInt()));
+            b->setIconSize(QSize(18, 18));
+            b->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        }
+        b->setAccessibleName(text);
+        b->setCheckable(true);
+        steps->addWidget(b);
+        stepGroup->addButton(b, i);
+        connect(b, &QToolButton::clicked, this, [this, i] { workspaceTabs->setCurrentIndex(i); });
+    }
+    connect(workspaceTabs, &QTabWidget::currentChanged, this, [this](int index) {
+        if (auto *b = stepGroup->button(index))
+            b->setChecked(true);
+    });
+    stepGroup->button(workspaceTabs->currentIndex())->setChecked(true);
+    auto *actions = new QWidget;
+    auto *right = new QHBoxLayout(actions);
+    right->setContentsMargins(0, 0, 0, 0);
+    right->setSpacing(6);
+    // One history for the molecule and the settings of every tab, so Undo/Redo sit in the header.
+    const auto history = [&](const QString &text, const QString &icon, const QString &objectName) {
+        auto *b = new QPushButton;
+        b->setObjectName(objectName);
+        b->setIcon(lineIcon(icon));
+        b->setIconSize(QSize(18, 18));
+        b->setAccessibleName(text);
+        b->setToolTip(text);
+        right->addWidget(b);
+        return b;
+    };
+    undoButton = history("元に戻す", "undo", "editorUndo");
+    connect(undoButton, &QPushButton::clicked, this, [this] {
+        safe([this] {
+            if (candidate)
+                cancelCandidate();
+            else
+                undo.undo();
+        });
+    });
+    redoButton = history("やり直す", "redo", "editorRedo");
+    connect(redoButton, &QPushButton::clicked, this, [this] {
+        safe([this] {
+            if (!candidate)
+                undo.redo();
+        });
+    });
+    runButton = new QToolButton;
+    runButton->setObjectName("runButton");
+    runButton->setText("計算を実行");
+    runButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    runButton->setToolTip("入力一式を新しいジョブフォルダーに保存し、NWChemを起動します（F5）。");
+    right->addSpacing(4);
+    right->addWidget(runButton);
+    header = new HeaderBar(identity, workflowSteps, actions);
+    header->setObjectName("headerBar");
+    header->setAttribute(Qt::WA_StyledBackground);
+    syncWorkflowSteps();
+}
 void MainWindow::buildMenus() {
     auto *file = menuBar()->addMenu("ファイル");
     auto action = [&](QMenu *m, const QString &text, const QKeySequence &key, auto fn) {
@@ -862,11 +1118,11 @@ void MainWindow::buildMenus() {
         connect(a, &QAction::triggered, this, [this, fn] { safe(fn); });
         return a;
     };
-    const QList<QAction *> toolbarActions{action(file, "新規", QKeySequence::New, [this] { newDocument(); }),
-                                          action(file, "開く…", QKeySequence::Open, [this] { open(); }),
-                                          action(file, "SMILESから作成…", {}, [this] { importSmiles(); })};
-    for (int i = 0; i < toolbarActions.size(); ++i)
-        toolbarActions[i]->setObjectName(QStringList{"newAction", "openAction", "smilesAction"}[i]);
+    const QList<QAction *> documentActions{action(file, "新規", QKeySequence::New, [this] { newDocument(); }),
+                                           action(file, "開く…", QKeySequence::Open, [this] { open(); }),
+                                           action(file, "SMILESから作成…", {}, [this] { importSmiles(); })};
+    for (int i = 0; i < documentActions.size(); ++i)
+        documentActions[i]->setObjectName(QStringList{"newAction", "openAction", "smilesAction"}[i]);
     recentMenu = file->addMenu("最近使ったファイル");
     recentMenu->setObjectName("recentMenu");
     refreshRecent();
@@ -874,7 +1130,7 @@ void MainWindow::buildMenus() {
     action(file, "ファイルから断片を追加…", {}, [this] { addFragmentFromFile(); });
     file->addSeparator();
     auto *saveAction = action(file, "プロジェクトを保存", QKeySequence::Save, [this] { save(); });
-    action(file, "名前を付けて保存…", QKeySequence::SaveAs, [this] { save(true); });
+    auto *saveAsAction = action(file, "名前を付けて保存…", QKeySequence::SaveAs, [this] { save(true); });
     action(file, "構造を書き出す…", {}, [this] { exportFile(); });
     action(file, "分子全体をXYZでコピー", {}, [this] {
         if (resolveCandidate())
@@ -1024,6 +1280,18 @@ void MainWindow::buildMenus() {
     action(calculationMenu, "計算の履歴", {},
            [this] { workspaceTabs->setCurrentWidget(calculationHistory); });
     auto *viewMenu = menuBar()->addMenu("表示");
+    // H toggles the hydrogens while "1 分子" has the focus, like the other editing keys.
+    showHydrogens->setShortcut(QKeySequence(Qt::Key_H));
+    showHydrogens->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    moleculePage->addAction(showHydrogens);
+    viewMenu->addAction(showHydrogens);
+    viewMenu->addAction(showIndices);
+    auto *labelMenu = viewMenu->addMenu("ラベル");
+    labelMenu->setToolTipsVisible(true);
+    labelMenu->menuAction()->setToolTip(
+        "元素記号・番号を表示する原子です。ラベルはほかのラベル・原子に重ならない向きに置き、置けないものは"
+        "選択した原子・配位中心・水素以外・手前の原子を優先して省きます。");
+    labelMenu->addActions(labelModes->actions());
     auto *styles = viewMenu->addMenu("表示スタイル");
     auto *styleGroup = new QActionGroup(this);
     const auto chosenStyle = settings.value("view/style", "ball_and_stick").toString();
@@ -1080,9 +1348,6 @@ void MainWindow::buildMenus() {
         view->setMonitors({});
     })->setObjectName("viewClearMonitors");
     viewMenu->addSeparator();
-    local(
-        viewMenu, "水素の表示を切り替え", QKeySequence(Qt::Key_H), [this] { showH->toggle(); },
-        "toggleHydrogensAction");
     local(viewMenu, "表示を合わせる", QKeySequence(Qt::Key_F), [this] { view->fit(); }, "fitAction");
     auto *tabsMenu = viewMenu->addMenu("タブを表示");
     for (int i = 0; i < workspaceTabs->count(); ++i)
@@ -1111,18 +1376,27 @@ void MainWindow::buildMenus() {
                 .arg(MOLFORMA_VERSION, hasStereochemistryBackend() ? "有効" : "無効",
                      view->rendererName() == "vtk" ? "VTK（OpenGL）" : "QPainter（CPU）"));
     });
-    auto *bar = addToolBar("ファイル");
-    bar->setMovable(false);
-    bar->addActions(toolbarActions);
-    bar->addAction(saveAction);
-    bar->addSeparator();
-    bar->addAction(runAction);
-    if (auto *button = qobject_cast<QToolButton *>(bar->widgetForAction(runAction)))
-        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    // The header's document menu and run button, and the "表示" button over the 3D view.
+    auto *documentMenu = new QMenu(documentButton);
+    documentMenu->addActions(documentActions.mid(0, 2));
+    documentMenu->addMenu(recentMenu);
+    documentMenu->addAction(documentActions[2]);
+    documentMenu->addSeparator();
+    documentMenu->addAction(saveAction);
+    documentMenu->addAction(saveAsAction);
+    documentButton->setMenu(documentMenu);
+    connect(runButton, &QToolButton::clicked, runAction, &QAction::trigger);
+    connect(runAction, &QAction::enabledChanged, runButton, &QToolButton::setEnabled);
+    if (auto *display = findChild<QToolButton *>("viewMenuButton"))
+        display->setMenu(viewMenu);
+    applyChromeStyle();
 }
 void MainWindow::refreshPalette() {
-    QString cat = value(category), needle = search->text().trimmed();
+    QString cat = paletteCategory(), needle = search->text().trimmed();
     periodicTableButton->setVisible(cat == "all" || cat == "atom");
+    // The element the atom tool places is marked among the common ones.
+    for (auto *b : findChild<QWidget *>("quickElements")->findChildren<QToolButton *>())
+        b->setChecked(b->text() == paletteElement);
     search->setPlaceholderText(cat == "atom"     ? "周期表で元素記号・名前・番号を検索"
                                : cat == "center" ? "元素記号・名前・原子番号を検索"
                                                  : "名前・元素・SMILESを検索");
@@ -1275,6 +1549,19 @@ void MainWindow::selectFirstPart() {
             return;
         }
 }
+QString MainWindow::paletteCategory() const {
+    return categoryGroup->checkedButton() ? categoryGroup->checkedButton()->property("category").toString()
+                                          : QString("all");
+}
+void MainWindow::setPaletteCategory(const QString &code) {
+    for (auto *b : categoryGroup->buttons())
+        if (b->property("category") == code)
+            b->setChecked(true);
+}
+QString MainWindow::selectionUnit() const {
+    return unitGroup->checkedButton() ? unitGroup->checkedButton()->property("unit").toString()
+                                      : QString("atom");
+}
 void MainWindow::chooseElement(const QString &symbol) {
     paletteElement = element(symbol).symbol;
     search->clear();
@@ -1351,7 +1638,7 @@ Ids MainWindow::requireSelection(int count) const {
 }
 Ids MainWindow::expandedSelection(const Ids &ids) const {
     const auto &d = displayDocument();
-    QString mode = value(unitBox);
+    QString mode = selectionUnit();
     if (mode == "atom" || mode == "bond" || ids.isEmpty())
         return ids;
     Ids out;
@@ -1549,14 +1836,58 @@ void MainWindow::refresh() {
             removedAtoms.append({a->position, a->element});
     }
     view->setChanges(removedAtoms, addedAtoms, movedAtoms);
-    const auto change = QString("未確定: %1（追加 %2・削除 %3・移動 %4 原子）")
-                            .arg(candidateName)
+    const auto counts = QString("追加 %1・削除 %2・移動 %3 原子")
                             .arg(addedAtoms.size())
                             .arg(removedAtoms.size())
                             .arg(movedAtoms.size());
-    for (auto *label : {candidateLabel, bannerLabel}) {
-        label->setText(change);
+    const auto marker = [](const char *color, const QString &mark) {
+        return QString("<span style=\"color:%1\"><b>%2</b></span>").arg(color, mark);
+    };
+    // The counts with the marks the 3D view uses for them.
+    candidateTitle->setText("変更候補: " + candidateName);
+    bannerLabel->setText(QString("%1 追加 %2　%3 削除 %4　%5 移動 %6 原子")
+                             .arg(marker("#25a35a", "○"))
+                             .arg(addedAtoms.size())
+                             .arg(marker("#d23c3c", "×"))
+                             .arg(removedAtoms.size())
+                             .arg(marker("#e08a1e", "○"))
+                             .arg(movedAtoms.size()));
+    candidateLabel->setText(QString("<b>変更候補: %1</b>　%2").arg(candidateName.toHtmlEscaped(), counts));
+    for (auto *label : {candidateLabel, bannerLabel})
         label->setToolTip("3D画面の印: 緑の円は追加、赤の×は削除（元の位置）、橙の円は移動する原子です。");
+    // The same changes listed atom by atom in the "編集" tab, beside the selection.
+    candidateCard->setVisible(candidate.has_value());
+    if (candidate) {
+        QStringList lines;
+        int listed = 0, total = 0;
+        const auto line = [&](const char *color, const QString &mark, const QString &name,
+                              const QString &text) {
+            if (++total > 8)
+                return;
+            ++listed;
+            lines << QString("%1&nbsp; <b>%2</b>&nbsp; %3")
+                         .arg(marker(color, mark), name.toHtmlEscaped(), text.toHtmlEscaped());
+        };
+        for (const auto &a : doc.atoms)
+            if (!candidate->contains(a.id)) {
+                const auto place = atomPlace(doc, a.id);
+                line("#d23c3c", "×", atomName(doc, a.id), place.isEmpty() ? "削除" : place + "　削除");
+            }
+        for (const auto &a : candidate->atoms)
+            if (addedAtoms.contains(a.id)) {
+                QString partner;
+                for (const auto &n : candidate->neighbors(a.id))
+                    if (doc.contains(n)) {
+                        partner = atomName(doc, n);
+                        break;
+                    }
+                line("#25a35a", "○", a.element, partner.isEmpty() ? "追加" : partner + " に結合　追加");
+            }
+        if (!movedAtoms.isEmpty())
+            line("#e08a1e", "○", QString("%1 原子").arg(movedAtoms.size()), "移動");
+        if (total > listed)
+            lines << QString("ほか %1 件").arg(total - listed);
+        candidateChanges->setText(lines.join("<br>"));
     }
     candidateBar->setVisible(candidate.has_value() && workspaceTabs->currentWidget() != moleculePage);
     topRow->setCurrentIndex(candidate ? 1 : 0);
@@ -1586,20 +1917,32 @@ void MainWindow::refresh() {
                          .arg(d.data["point_charges"].toArray().size())
                          .arg(candidate ? "  ·  変更候補" : ""));
     refreshTitle();
-    QStringList seq;
+    QStringList seq, plain;
     residueList->clear();
     for (auto v : d.data["residues"].toArray()) {
         auto r = v.toObject();
         QString label = r["code"].toString() + " " + QString::number(r["number"].toInt());
         seq << QString("<a href=\"%1\">%2</a>").arg(r["id"].toString(), label.toHtmlEscaped());
+        plain << label;
         auto *item = new QListWidgetItem(
             label + "  " + r["n_terminal"].toString() + " / " + r["c_terminal"].toString(), residueList);
         item->setData(Qt::UserRole, r["id"].toString());
     }
+    // Long chains show their first residues; the "残基" tab lists them all.
+    const int residues = seq.size();
+    if (residues > 24) {
+        seq = seq.mid(0, 24) << QString("…（全 %1 残基）").arg(residues);
+        plain = plain.mid(0, 24) << seq.last();
+    }
     sequenceLabel->setText(seq.isEmpty() ? QString() : QString("配列 N → C　") + seq.join(" · "));
+    // One line when the view is wide enough, wrapping below the view controls otherwise.
+    const auto margins = sequenceChip->layout()->contentsMargins();
+    sequenceChip->setMaximumWidth(
+        sequenceLabel->fontMetrics().horizontalAdvance("配列 N → C　" + plain.join(" · ")) + margins.left() +
+        margins.right() + 8);
     sequenceLabel->setToolTip(seq.isEmpty() ? QString()
                                             : "残基をクリックすると、その残基の原子を選択します。");
-    sequenceLabel->setVisible(!seq.isEmpty());
+    sequenceChip->setVisible(!seq.isEmpty());
     QString current = pointList->currentItem() ? pointList->currentItem()->data(Qt::UserRole).toString() : "";
     pointList->clear();
     int index = 0;
@@ -1623,9 +1966,157 @@ void MainWindow::refresh() {
     refreshPanels();
 }
 void MainWindow::refreshTitle() {
-    setWindowTitle(QString("%1%2 — MolForma")
-                       .arg(path.isEmpty() ? "新規分子" : QFileInfo(path).fileName())
-                       .arg(undo.isClean() && !candidate ? "" : " *"));
+    const auto name = path.isEmpty() ? QString("新規分子") : QFileInfo(path).fileName();
+    const auto mark = undo.isClean() && !candidate ? "" : " *";
+    setWindowTitle(QString("%1%2 — MolForma").arg(name, mark));
+    if (documentButton) {
+        documentButton->setText(documentButton->fontMetrics().elidedText(name, Qt::ElideMiddle, 220) + mark);
+        documentButton->setToolTip((path.isEmpty() ? name : QDir::toNativeSeparators(path)) +
+                                   "\n新規・開く・保存・SMILESから作成");
+    }
+}
+void MainWindow::syncWorkflowSteps() {
+    if (!stepGroup)
+        return;
+    for (int i = 0; i < workspaceTabs->count(); ++i) {
+        auto *b = stepGroup->button(i);
+        if (!b)
+            continue;
+        const auto tip = workspaceTabs->tabToolTip(i);
+        b->setToolTip(QString("「%1」を表示します（Ctrl+%2）%3")
+                          .arg(workspaceTabs->tabText(i))
+                          .arg(i + 1)
+                          .arg(tip.isEmpty() ? QString() : "\n" + tip));
+        // The input preview marks an input that cannot be generated, as on its tab.
+        const bool failed = workspaceTabs->tabBar()->tabTextColor(i).isValid();
+        if (b->property("failed").toBool() != failed) {
+            b->setProperty("failed", failed);
+            b->style()->unpolish(b);
+            b->style()->polish(b);
+        }
+    }
+}
+void MainWindow::changeEvent(QEvent *e) {
+    QMainWindow::changeEvent(e);
+    if (e->type() == QEvent::PaletteChange && !stylingChrome)
+        applyChromeStyle();
+}
+void MainWindow::applyChromeStyle() {
+    if (!header)
+        return;
+    QScopedValueRollback guard(stylingChrome, true);
+    const ChromeColors c(QMainWindow::palette());
+    const auto accentHover = c.accent.lightness() > 128 ? c.accent.darker(112) : c.accent.lighter(115);
+    const auto style = [&](QWidget *w, QString rules) {
+        if (!w)
+            return;
+        const QList<std::pair<const char *, QColor>> tokens{{"@accentText", c.accentText},
+                                                            {"@accentHover", accentHover},
+                                                            {"@accent", c.accent},
+                                                            {"@onAccent", c.onAccent},
+                                                            {"@candidateLine", c.candidateLine},
+                                                            {"@candidateText", c.candidateText},
+                                                            {"@candidate", c.candidate},
+                                                            {"@base", c.base},
+                                                            {"@window", c.window},
+                                                            {"@text", c.text},
+                                                            {"@muted", c.muted},
+                                                            {"@line", c.line},
+                                                            {"@hover", c.hover},
+                                                            {"@segment", c.segment},
+                                                            {"@tint", c.tint},
+                                                            {"@error", errorColor(QMainWindow::palette())}};
+        for (const auto &[token, color] : tokens)
+            rules.replace(token, color.name());
+        w->setStyleSheet(rules);
+    };
+    style(header, R"(
+        #headerBar { background: @base; border-bottom: 1px solid @line; }
+        QToolButton { border: none; border-radius: 6px; padding: 5px 9px; color: @text; }
+        QToolButton:hover { background: @hover; }
+        QToolButton:checked { background: @tint; color: @accentText; font-weight: bold; }
+        QToolButton[failed="true"] { color: @error; }
+        QToolButton#documentButton { color: @muted; }
+        QPushButton { border: 1px solid @line; border-radius: 6px; background: @base; padding: 6px; }
+        QPushButton:hover { background: @hover; }
+        QPushButton:disabled { border-color: @hover; }
+        QToolButton#runButton { background: @accent; color: @onAccent; font-weight: bold; padding: 6px 14px; }
+        QToolButton#runButton:hover { background: @accentHover; }
+        QToolButton#runButton:disabled { background: @line; color: @muted; }
+    )");
+    runButton->setIcon(lineIcon("play", c.onAccent));
+    style(findChild<QWidget *>("toolRail"), R"(
+        #toolRail { background: @base; border-right: 1px solid @line; }
+        QToolButton { border: none; border-radius: 8px; color: @text; padding-top: 3px; }
+        QToolButton:hover { background: @hover; }
+        QToolButton:checked { background: @tint; color: @accentText; font-weight: bold; }
+    )");
+    style(findChild<QWidget *>("paletteColumn"), R"(
+        #paletteColumn { background: @base; }
+        #paletteCategories QToolButton { border: 1px solid @line; border-radius: 11px; padding: 2px 7px;
+                                         background: @base; color: @text; }
+        #paletteCategories QToolButton:hover { background: @hover; }
+        #paletteCategories QToolButton:checked { background: @accent; border-color: @accent; color: @onAccent; }
+        #quickElements QToolButton, #quickElements QPushButton { border: 1px solid @line; border-radius: 5px;
+                                         background: @base; color: @text; min-height: 24px; padding: 1px 2px; }
+        #quickElements QToolButton:hover, #quickElements QPushButton:hover { background: @hover; }
+        #quickElements QToolButton:checked { background: @accent; border-color: @accent; color: @onAccent;
+                                             font-weight: bold; }
+        QListWidget#templatePalette { background: @base; border: none; }
+    )");
+    style(findChild<QWidget *>("toolOptions"), R"(
+        #toolOptions { background: @base; border-bottom: 1px solid @line; }
+        QLabel { color: @muted; }
+        QLabel#toolPart { color: @text; }
+        #selectionUnit { background: @segment; border-radius: 7px; }
+        #selectionUnit QToolButton { border: none; border-radius: 5px; padding: 3px 7px; color: @muted;
+                                     background: transparent; }
+        #selectionUnit QToolButton:hover { color: @text; }
+        #selectionUnit QToolButton:checked { background: @base; color: @text; font-weight: bold; }
+    )");
+    const QString candidateRules = R"(
+        #candidateBanner, #candidateBar { background: @candidate; border: none; }
+        #candidateBanner { border-bottom: 1px solid @candidateLine; }
+        #candidateBar { border-top: 1px solid @candidateLine; }
+        QLabel { color: @candidateText; }
+        QPushButton { background: @base; color: @candidateText; border: 1px solid @candidateLine;
+                      border-radius: 6px; padding: 5px 12px; }
+        QPushButton:hover { background: @hover; }
+        QPushButton[primary="true"] { background: @accent; color: @onAccent; border: none; font-weight: bold; }
+        QPushButton[primary="true"]:hover { background: @accentHover; }
+    )";
+    style(banner, candidateRules);
+    style(candidateBar, candidateRules);
+    for (auto *icon : findChildren<QLabel *>("candidateIcon"))
+        icon->setPixmap(lineIcon("layers", c.candidateText).pixmap(QSize(22, 22)));
+    const QString overlay = R"(
+        #sequenceChip, #viewControls, #measureCard { background: @base; border: 1px solid @line;
+                                                     border-radius: 8px; }
+        QToolButton { border: none; border-radius: 5px; padding: 3px 7px; color: @text; }
+        QToolButton:hover { background: @hover; }
+        QLabel#measurementLabel { color: @text; }
+    )";
+    for (const auto *name : {"sequenceChip", "viewControls", "measureCard"})
+        style(findChild<QWidget *>(name), overlay);
+    // Residue links in the accent, readable on the chip in either theme.
+    auto links = sequenceLabel->palette();
+    links.setColor(QPalette::Link, c.accentText);
+    sequenceLabel->setPalette(links);
+    style(rotationPopup, "#rotationPopup { background: @base; border: 1px solid @line; }");
+    style(findChild<QWidget *>("hintBar"), R"(
+        #hintBar { background: @base; border-top: 1px solid @line; }
+        QLabel { color: @muted; }
+        QLabel#toolHint { color: @text; }
+    )");
+    style(findChild<QWidget *>("selectionCard"), R"(
+        #selectionCard { background: @base; border: 1px solid @line; border-radius: 8px; }
+    )");
+    style(candidateCard, R"(
+        #candidateCard { background: @candidate; border: 1px solid @candidateLine; border-radius: 8px; }
+        QLabel { color: @candidateText; }
+    )");
+    style(summary, "#documentSummary { background: @base; border-top: 1px solid @line; color: @muted;"
+                   " padding: 4px 12px; }");
 }
 QList<QWidget *> MainWindow::workspacePanels() const {
     return {coordinates, calculation, advanced, execution, inputPreview};
@@ -1672,19 +2163,51 @@ void MainWindow::refreshSelection() {
         if (const int i = index.value(id, -1); i >= 0)
             labels << d.atoms[i].element + QString::number(i + 1);
     QString text = "選択順: " + labels.join(" → ");
-    if (selected.size() >= 2 && selected.size() <= 4) {
+    // 2–4 atoms in order: their distance, angle or dihedral in the card over the 3D view. Atoms
+    // that a candidate removes are left out until it is confirmed or cancelled.
+    Ids shown;
+    for (const auto &id : selected)
+        if (index.contains(id))
+            shown << id;
+    const int count = shown.size();
+    const bool measuring = count >= 2 && count <= 4 && count == selected.size();
+    QString value;
+    if (measuring) {
         try {
             double m = measure(d, selected);
-            text += QString("    %1 %2").arg(m, 0, 'f', 4).arg(selected.size() == 2 ? "Å" : "°");
+            value = QString("%1 %2").arg(m, 0, 'f', 4).arg(count == 2 ? "Å" : "°");
+            text += "    " + value;
             dimension->setValue(m);
         } catch (const std::exception &e) {
-            text += "  " + QString::fromUtf8(e.what());
+            value = QString::fromUtf8(e.what());
+            text += "  " + value;
         }
+        measureTitle->setText(QStringList{"距離", "角度", "二面角"}[count - 2]);
+        dimensionLabel->setText(QStringList{"距離 / Å", "角度 / °", "二面角 / °"}[count - 2]);
+        measurement->setText(labels.join(" – ") + " = " + value);
     }
-    measurement->setText(
-        selected.isEmpty()
-            ? "原子をクリックで選択、Shift／Ctrl＋クリックで順に追加して距離・角度・二面角を測定"
-            : text);
+    measureCard->setVisible(measuring);
+    selectionText = selected.isEmpty()
+                        ? "原子をクリックで選択、Shift／Ctrl＋クリックで順に追加して距離・角度・二面角を測定"
+                        : text;
+    // The selection in click order at the top of the "編集" tab.
+    selectionTitle->setText(shown.isEmpty() ? QString("選択なし") : QString("選択 %1 原子").arg(count));
+    if (shown.isEmpty())
+        selectionList->setText("3D画面で原子をクリックして選択します。Shift／Ctrl＋クリックで順に追加し、"
+                               "2〜4原子で距離・角度・二面角を測定します。");
+    else {
+        QStringList rows;
+        for (int n = 0; n < std::min<int>(count, 8); ++n) {
+            const auto place = atomPlace(d, shown[n]);
+            rows << QString("<b>%1</b>&nbsp; %2%3")
+                        .arg(n + 1)
+                        .arg(atomName(d, shown[n]))
+                        .arg(place.isEmpty() ? QString() : "&nbsp;&nbsp;" + place.toHtmlEscaped());
+        }
+        if (count > 8)
+            rows << QString("ほか %1 原子").arg(count - 8);
+        selectionList->setText(rows.join("<br>"));
+    }
     // Fields that show the selection are blank ("—") without one, never left from an earlier atom.
     if (selected.size() < 2 || selected.size() > 4)
         dimension->setValue(dimension->minimum());
@@ -2383,8 +2906,32 @@ void MainWindow::refreshToolHint() {
          QString("置き換え（%1）: 置き換える原子をクリック").arg(palette->currentItem() ? part : symbol)},
         {"delete", "削除: 原子をクリックすると削除の候補を作ります"},
         {"charge", "点電荷: 空白をクリックで配置 · 電荷の値は「電荷」タブ"}};
-    mouseHint->setText(hints.value(mode));
-    mouseHint->setToolTip(hints.value(mode));
+    // Delete and replace act on the selection unit too, which is set with the select tool.
+    auto hint = hints.value(mode);
+    if ((mode == "delete" || mode == "replace") && selectionUnit() != "atom")
+        hint += QString("（選択単位: %1）").arg(unitGroup->checkedButton()->text());
+    mouseHint->setText(hint);
+    mouseHint->setToolTip(hint);
+    // The option bar shows what the tool uses: the selection unit for the tools that pick atoms,
+    // the bond kind for bonds and atoms put on atoms, and what the palette has chosen.
+    const auto kind = placementKind();
+    const QHash<QString, bool> shown{
+        {"selectionUnitOption", mode == "select" || mode == "move"},
+        {"partOption", mode == "place" || mode == "replace"},
+        {"bondOption", mode == "bond" || (mode == "place" && kind == "atom")},
+        {"keepToolOption", mode == "place" && QStringList{"part", "substituent", "ligand"}.contains(kind)},
+        {"deleteOption", mode == "delete"},
+        {"chargeOption", mode == "charge"}};
+    for (auto it = shown.begin(); it != shown.end(); ++it)
+        if (auto *group = toolOptionGroups.value(it.key()))
+            group->setVisible(it.value());
+    const auto &e = element(symbol);
+    const auto chosen = mode == "replace" && (kind == "atom" || kind == "center") ? e.nameJa
+                        : kind == "atom"   ? QString("%1（%2）").arg(e.nameJa, e.symbol)
+                        : kind == "center" ? QString("配位中心 %1（%2）").arg(e.nameJa, e.symbol)
+                                           : part;
+    toolPart->setText(QString("%1 <b>%2</b>")
+                          .arg(mode == "replace" ? "置き換え先" : "配置する部品", chosen.toHtmlEscaped()));
 }
 void MainWindow::showShortcuts() {
     QDialog dialog(this);
@@ -2452,7 +2999,7 @@ void MainWindow::showManual() {
     auto *layout = new QVBoxLayout(&dialog);
     auto *tips =
         new QLabel("左のパレットで部品・原子を選び、3D画面をクリックするかドロップして配置します。"
-                   "3D画面の左の列でツールを切り替え、画面下にクリックしたときの動作を表示します。"
+                   "左端の列でツールを切り替え、3D画面の上にツールの設定、下にクリックしたときの動作を表示します。"
                    "原子をクリックで選択、Shift／Ctrl＋クリックで順に追加し、2〜4原子で距離・角度・二面角を"
                    "測定できます。配位子・削除・整形などは「変更を確定」（Ctrl+Enter）で適用し、Escで"
                    "候補を取消、Ctrl+Zで確定済みの変更を戻します。計算は「計算 → 計算を実行」（F5）で"
@@ -3039,7 +3586,7 @@ void MainWindow::loadPart() {
             customParts.removeAt(i);
     customParts.append(t);
     settings.setValue("parts", customParts);
-    category->setCurrentIndex(category->findData("my"));
+    setPaletteCategory("my");
     refreshPalette();
 }
 } // namespace mf

@@ -23,8 +23,10 @@ by responsibility, with paired headers and implementations in the same directory
 - `src/ui/`: `main_window.*` and `editor_panels.cpp` provide the Qt UI, candidate
   edits and undo history. `molecule_view.*` owns camera/input, Qt annotations and
   the QPainter fallback; `vtk_molecule_renderer.*` provides optional retained
-  native VTK/OpenGL rendering. `template_delegate.*` renders and caches the palette's
-  molecular thumbnails; `periodic_table.*` provides the element picker.
+  native VTK/OpenGL rendering. `editor_chrome.*` holds the window header, tool rail,
+  wrapping option bar layout, 3D-view overlays and palette-derived chrome colors.
+  `template_delegate.*` renders and caches the palette's molecular thumbnails and
+  tiles; `periodic_table.*` provides the element picker.
   `coordinates_panel.*`, `calculation_panel.*`, `advanced_panel.*` and
   `execution_panel.*` provide the native tabs "2 Coordinates" through
   "5 Execution settings". `input_preview_panel.*` provides the read-only

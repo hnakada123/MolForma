@@ -343,6 +343,7 @@ void InputPreviewPanel::setBadge(bool failed, const QString &tip) {
     if (index >= 0) {
         window->workspaceTabs->tabBar()->setTabTextColor(index, failed ? errorColor(palette()) : QColor());
         window->workspaceTabs->setTabToolTip(index, tip);
+        window->syncWorkflowSteps();
     }
 }
 QString InputPreviewPanel::prepareExport() {
