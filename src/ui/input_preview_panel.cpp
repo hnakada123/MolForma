@@ -94,6 +94,9 @@ QString tabLink(int index, const QString &text) {
     return QString("<a href=\"tab:%1\">%2</a>").arg(index).arg(text.toHtmlEscaped());
 }
 } // namespace
+void highlightInput(QTextDocument *document) {
+    new InputHighlighter(document);
+}
 InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     setObjectName("inputPreviewTab");
     auto *layout = new QVBoxLayout(this);

@@ -140,7 +140,6 @@ class MainWindow : public QMainWindow {
            *mouseHint = nullptr, *measureTitle = nullptr, *dimensionLabel = nullptr,
            *selectionTitle = nullptr, *selectionList = nullptr, *candidateTitle = nullptr,
            *candidateChanges = nullptr, *toolPart = nullptr;
-    QString selectionText; // "選択順: …" with the measurement, also shown by the coordinate tab.
     QWidget *candidateBar = nullptr, *chargeEditor = nullptr;
     QLabel *chargeSummary = nullptr;
     QCheckBox *includePointCharges = nullptr;

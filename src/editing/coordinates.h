@@ -13,6 +13,17 @@ void setCoordinateCell(Document &document, const QString &id, CoordinateColumn c
 Atom coordinateAtom(const QString &symbol, const QStringList &xyz, const QString &mass, CoordinateUnit unit,
                     bool ghost = false, bool fixed = false);
 void replaceCoordinateStructure(Document &document, const Document &structure);
+// What a candidate changes, atom by atom. Atoms are matched by stable ID and count as moved beyond
+// 1e-4 Å. A replacement that gives every atom a new ID (a structure read from a file or pasted) is
+// matched by order instead when one element sequence starts the other, so that reading the same
+// structure again, or with atoms appended, shows only what changed; atoms matched by order count
+// as unchanged within 0.001 Å, the precision of PDB files.
+struct AtomChanges {
+    QSet<QString> added, moved; // Atom IDs in the changed document.
+    QVector<Atom> removed;      // Atoms of the original that the changed document no longer has.
+    bool byOrder = false;
+};
+AtomChanges atomChanges(const Document &before, const Document &after);
 // Moves the atoms to a calculation result with the same atoms in the same order (element and
 // ghost flag). Fixed atoms must already sit at the result position (NWChem keeps them); IDs,
 // bonds, residues and settings stay. Returns the RMSD and the largest displacement in Å.

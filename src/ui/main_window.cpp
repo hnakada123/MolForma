@@ -73,21 +73,9 @@ static QString value(QComboBox *box) {
 static QByteArray identity(const Document &d) {
     return QJsonDocument(d.project()).toJson(QJsonDocument::Compact);
 }
-// An atom as the 3D view labels it ("C14"), and its place in a residue ("GLY 2 · CA").
+// An atom as the 3D view labels it ("C14"); atomPlace() gives its place in a residue.
 static QString atomName(const Document &d, const QString &id) {
     return d.atom(id).element + QString::number(d.index(id) + 1);
-}
-static QString atomPlace(const Document &d, const QString &id) {
-    const auto rid = residueForAtom(d, id);
-    if (rid.isEmpty())
-        return {};
-    const auto r = residue(d, rid);
-    const auto names = r["atoms"].toObject();
-    const auto code = QString("%1 %2").arg(r["code"].toString()).arg(r["number"].toInt());
-    for (auto it = names.begin(); it != names.end(); ++it)
-        if (it.value().toString() == id)
-            return code + " · " + it.key();
-    return code;
 }
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), settings("MolForma", "MolForma") {
     setObjectName("mainWindow");
@@ -1819,22 +1807,11 @@ void MainWindow::refresh() {
     });
     view->setMonitors(monitors);
     // Candidate changes: atoms removed (shown where they were), added and moved.
+    const auto changes = candidate ? atomChanges(doc, *candidate) : AtomChanges{};
+    const auto &addedAtoms = changes.added, &movedAtoms = changes.moved;
     QVector<std::pair<Vec, QString>> removedAtoms;
-    QSet<QString> addedAtoms, movedAtoms;
-    if (candidate) {
-        QHash<QString, const Atom *> before;
-        for (const auto &a : doc.atoms)
-            before.insert(a.id, &a);
-        for (const auto &a : candidate->atoms) {
-            const auto *old = before.take(a.id);
-            if (!old)
-                addedAtoms.insert(a.id);
-            else if ((old->position - a.position).norm() > 1e-4)
-                movedAtoms.insert(a.id);
-        }
-        for (const auto *a : std::as_const(before))
-            removedAtoms.append({a->position, a->element});
-    }
+    for (const auto &a : changes.removed)
+        removedAtoms.append({a.position, a.element});
     view->setChanges(removedAtoms, addedAtoms, movedAtoms);
     const auto counts = QString("追加 %1・削除 %2・移動 %3 原子")
                             .arg(addedAtoms.size())
@@ -1868,11 +1845,10 @@ void MainWindow::refresh() {
             lines << QString("%1&nbsp; <b>%2</b>&nbsp; %3")
                          .arg(marker(color, mark), name.toHtmlEscaped(), text.toHtmlEscaped());
         };
-        for (const auto &a : doc.atoms)
-            if (!candidate->contains(a.id)) {
-                const auto place = atomPlace(doc, a.id);
-                line("#d23c3c", "×", atomName(doc, a.id), place.isEmpty() ? "削除" : place + "　削除");
-            }
+        for (const auto &a : changes.removed) {
+            const auto place = atomPlace(doc, a.id);
+            line("#d23c3c", "×", atomName(doc, a.id), place.isEmpty() ? "削除" : place + "　削除");
+        }
         for (const auto &a : candidate->atoms)
             if (addedAtoms.contains(a.id)) {
                 QString partner;
@@ -2098,6 +2074,8 @@ void MainWindow::applyChromeStyle() {
     )");
     style(summary, "#documentSummary { background: @base; border-top: 1px solid @line; color: @muted;"
                    " padding: 4px 12px; }");
+    if (coordinates)
+        coordinates->applyChromeStyle();
     if (results)
         results->applyChromeStyle();
 }
@@ -2145,7 +2123,6 @@ void MainWindow::refreshSelection() {
     for (const auto &id : selected)
         if (const int i = index.value(id, -1); i >= 0)
             labels << d.atoms[i].element + QString::number(i + 1);
-    QString text = "選択順: " + labels.join(" → ");
     // 2–4 atoms in order: their distance, angle or dihedral in the card over the 3D view. Atoms
     // that a candidate removes are left out until it is confirmed or cancelled.
     Ids shown;
@@ -2159,20 +2136,15 @@ void MainWindow::refreshSelection() {
         try {
             double m = measure(d, selected);
             value = QString("%1 %2").arg(m, 0, 'f', 4).arg(count == 2 ? "Å" : "°");
-            text += "    " + value;
             dimension->setValue(m);
         } catch (const std::exception &e) {
             value = QString::fromUtf8(e.what());
-            text += "  " + value;
         }
         measureTitle->setText(QStringList{"距離", "角度", "二面角"}[count - 2]);
         dimensionLabel->setText(QStringList{"距離 / Å", "角度 / °", "二面角 / °"}[count - 2]);
         measurement->setText(labels.join(" – ") + " = " + value);
     }
     measureCard->setVisible(measuring);
-    selectionText = selected.isEmpty()
-                        ? "原子をクリックで選択、Shift／Ctrl＋クリックで順に追加して距離・角度・二面角を測定"
-                        : text;
     // The selection in click order at the top of the "編集" tab.
     selectionTitle->setText(shown.isEmpty() ? QString("選択なし") : QString("選択 %1 原子").arg(count));
     if (shown.isEmpty())

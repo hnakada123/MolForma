@@ -1,3 +1,4 @@
+#include "editing/peptide.h"
 #include "model/geometry.h"
 #include "ui/coordinates_panel.h"
 #include "ui/main_window.h"
@@ -16,8 +17,8 @@ class CoordinatesTest : public QObject {
     static QTableWidget *table(MainWindow &w) {
         return w.findChild<QTableWidget *>("coordinateTable");
     }
-    static QPushButton *button(MainWindow &w, const char *name) {
-        return w.findChild<QPushButton *>(name);
+    static QAbstractButton *button(MainWindow &w, const char *name) {
+        return w.findChild<QAbstractButton *>(name);
     }
   private slots:
     void initTestCase() {
@@ -80,9 +81,9 @@ class CoordinatesTest : public QObject {
         QCOMPARE(w.document().bonds.size(), d.bonds.size());
         QCOMPARE(w.document().envelope, d.envelope);
         QCOMPARE(w.history()->count(), 1);
-        button(w, "coordinateUndo")->click();
+        button(w, "editorUndo")->click();
         QCOMPARE(w.document().toJson(), d.toJson());
-        button(w, "coordinateRedo")->click();
+        button(w, "editorRedo")->click();
         QCOMPARE(w.document().atoms[0].position.x(), 2 * BohrToAngstrom);
         button(w, "coordinateCopyXyz")->click();
         auto copied = Document::fromXyz(QApplication::clipboard()->text());
@@ -210,7 +211,7 @@ class CoordinatesTest : public QObject {
         QVERIFY(!button(w, "copyNwchemGeometry")->isEnabled());
         QVERIFY(!button(w, "coordinateAdd")->isEnabled());
         QVERIFY(!(t->item(0, 0)->flags() & Qt::ItemIsEditable));
-        button(w, "coordinateUndo")->click();
+        button(w, "editorUndo")->click(); // Cancels the candidate.
         QVERIFY(!w.hasCandidate());
         QCOMPARE(t->rowCount(), 3);
         w.setSelection({d.atoms[1].id});
@@ -234,13 +235,23 @@ class CoordinatesTest : public QObject {
             auto *buttons = dialog->findChild<QDialogButtonBox *>();
             QVERIFY(!buttons->button(QDialogButtonBox::Ok)->isEnabled());
             auto *symbol = dialog->findChild<QComboBox *>("coordinateAtomElement");
+            // The common elements are buttons that choose in the list.
+            auto *nitrogen = dialog->findChild<QToolButton *>("coordinateAtomQuickN");
+            nitrogen->click();
+            QCOMPARE(symbol->currentText(), QString("N"));
+            QVERIFY(nitrogen->isChecked());
+            QCOMPARE(dialog->findChild<QLabel *>("coordinateAtomName")->text(), QString("窒素"));
             symbol->setCurrentText("He");
+            QVERIFY(!nitrogen->isChecked());
             for (const auto *name : {"coordinateAtomX", "coordinateAtomY", "coordinateAtomZ"})
                 dialog->findChild<QLineEdit *>(name)->setText("0");
+            QVERIFY(dialog->findChild<QLabel *>("coordinateAtomNearest")->text().contains("O1、0.000 Å"));
             // Exact overlap with oxygen must be rejected.
             QVERIFY(!buttons->button(QDialogButtonBox::Ok)->isEnabled());
             dialog->findChild<QLineEdit *>("coordinateAtomX")->setText("4");
             QVERIFY(buttons->button(QDialogButtonBox::Ok)->isEnabled());
+            // 4 Bohr along X: nearest to the hydrogen on that side.
+            QVERIFY(dialog->findChild<QLabel *>("coordinateAtomNearest")->text().contains("H2、1.449 Å"));
             buttons->button(QDialogButtonBox::Ok)->click();
         });
         button(w, "coordinateAdd")->click();
@@ -259,6 +270,141 @@ class CoordinatesTest : public QObject {
         QVERIFY(!button(w, "copyNwchemGeometry")->isEnabled());
         w.history()->undo();
         QCOMPARE(w.document().atoms.size(), 3);
+    }
+    void candidateChangesByOrder() {
+        const auto before = water();
+        // Read again from a file: new IDs, the same atoms in the same order, one appended.
+        auto after = Document::fromXyz("4\nagain\nO 0.0004 0 0\nH 0.758 0 0.504\nH -0.758 0 0.6\nHe 3 0 0\n");
+        auto changes = atomChanges(before, after);
+        QVERIFY(changes.byOrder);
+        QCOMPARE(changes.added, QSet<QString>{after.atoms[3].id});
+        QCOMPARE(changes.moved, QSet<QString>{after.atoms[2].id}); // 0.0004 Å counts as the same place.
+        QVERIFY(changes.removed.isEmpty());
+        // Fewer atoms: the rest of the original goes.
+        after.atoms.remove(1, 3);
+        changes = atomChanges(before, after);
+        QVERIFY(changes.byOrder && changes.added.isEmpty() && changes.moved.isEmpty());
+        QCOMPARE(changes.removed.size(), 2);
+        QCOMPARE(changes.removed[0].id, before.atoms[1].id);
+        // Elements in another order make another structure: all removed and added.
+        after = Document::fromXyz("3\nother\nH 0.758 0 0.504\nO 0 0 0\nH -0.758 0 0.504\n");
+        changes = atomChanges(before, after);
+        QVERIFY(!changes.byOrder);
+        QCOMPARE(changes.added.size(), 3);
+        QCOMPARE(changes.removed.size(), 3);
+        // Atoms that keep their IDs are matched by ID, also in another order.
+        after = before;
+        std::reverse(after.atoms.begin(), after.atoms.end());
+        after.atoms[0].position.x() += 0.01;
+        changes = atomChanges(before, after);
+        QVERIFY(!changes.byOrder);
+        QCOMPARE(changes.moved, QSet<QString>{before.atoms[2].id});
+        QVERIFY(changes.added.isEmpty() && changes.removed.isEmpty());
+    }
+    void labelsFilterAndSelectionBar() {
+        MainWindow w;
+        auto d = water();
+        d.data["residues"] = QJsonArray{QJsonObject{
+            {"id", "r1"},
+            {"code", "HOH"},
+            {"number", 1},
+            {"atoms", QJsonObject{{"O", d.atoms[0].id}, {"HA", d.atoms[1].id}, {"HB", d.atoms[2].id}}}}};
+        w.loadDocument(d);
+        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(1);
+        auto *t = table(w);
+        // Cells keep their model columns; the residue is shown beside the atom.
+        auto *header = t->horizontalHeader();
+        QCOMPARE(header->visualIndex(0), 1);
+        QCOMPARE(header->visualIndex(7), 2);
+        QCOMPARE(t->item(1, 7)->text(), QString("HOH 1 · HA"));
+        QCOMPARE(atomPlace(w.document(), d.atoms[2].id), QString("HOH 1 · HB"));
+        QVERIFY(t->isColumnHidden(8));
+        auto *filter = w.findChild<QLineEdit *>("coordinateFilter");
+        filter->setText("h2");
+        QVERIFY(t->isRowHidden(0) && !t->isRowHidden(1) && t->isRowHidden(2));
+        QVERIFY(w.findChild<QLabel *>("coordinateCount")->text().contains("表示 1"));
+        filter->setText("HOH");
+        QVERIFY(!t->isRowHidden(0) && !t->isRowHidden(2));
+        filter->clear();
+        // The selection bar measures and acts on the selection.
+        w.setSelection({d.atoms[1].id, d.atoms[0].id});
+        QCOMPARE(w.findChild<QLabel *>("coordinateSelectionTitle")->text(), QString("2 原子を選択"));
+        QCOMPARE(w.findChild<QLabel *>("coordinateMeasurement")->text(),
+                 QString("距離 %1 Å").arg(measure(d, {d.atoms[1].id, d.atoms[0].id}), 0, 'f', 4));
+        QVERIFY(w.findChild<QLabel *>("coordinateSelectionAtom0")->text().contains("HOH 1 · HA"));
+        QVERIFY(button(w, "coordinateOrigin")->isHidden());
+        button(w, "coordinateFixSelection")->click();
+        QVERIFY(w.document().atoms[0].fixed && w.document().atoms[1].fixed && !w.document().atoms[2].fixed);
+        QCOMPARE(w.history()->count(), 1);
+        QCOMPARE(button(w, "coordinateFixSelection")->text(), QString("固定を解除"));
+        QVERIFY(t->item(0, 0)->data(Qt::UserRole + 1).toBool()); // The lock in the atom cell.
+        QVERIFY(!(t->item(0, 1)->flags() & Qt::ItemIsEditable));
+        button(w, "coordinateGhostSelection")->click();
+        QVERIFY(w.document().atoms[0].ghost && w.document().atoms[1].ghost);
+        QVERIFY(w.findChild<QPlainTextEdit *>("nwchemGeometryPreview")->toPlainText().contains("bqO"));
+        button(w, "coordinateFixSelection")->click();
+        QVERIFY(!w.document().atoms[0].fixed && !w.document().atoms[1].fixed);
+        w.setSelection({d.atoms[1].id});
+        QVERIFY(!button(w, "coordinateOrigin")->isHidden());
+        QVERIFY(w.findChild<QLabel *>("coordinateMeasurement")->isHidden());
+        button(w, "coordinateDeselect")->click();
+        QVERIFY(w.canvas()->selection().isEmpty());
+        QVERIFY(!w.findChild<QLabel *>("coordinateSelectionHint")->isHidden());
+        // The written-out format: NWChem or XYZ, each with its own copy and save.
+        button(w, "coordinateFormatXyz")->click();
+        QVERIFY(w.findChild<QPlainTextEdit *>("nwchemGeometryPreview")->toPlainText().startsWith("3\n"));
+        QVERIFY(!button(w, "coordinateCopyXyz")->isHidden() && button(w, "copyNwchemGeometry")->isHidden());
+        QVERIFY(w.findChild<QComboBox *>("nwchemUnits")->parentWidget()->isHidden());
+    }
+    void candidateChangesAndEmptyTable() {
+        MainWindow w;
+        const auto d = water();
+        w.loadDocument(d);
+        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(1);
+        auto *panel = w.findChild<CoordinatesPanel *>();
+        auto *t = table(w);
+        // Read again with an atom appended: only that atom is new.
+        panel->previewStructure(
+            Document::fromXyz("4\nwith helium\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\nHe 3 0 0\n"));
+        QVERIFY(w.hasCandidate());
+        QVERIFY(!t->isColumnHidden(8));
+        QCOMPARE(t->item(3, 8)->text(), QString("追加"));
+        QVERIFY(t->item(0, 8)->text().isEmpty());
+        QVERIFY(w.findChild<QLabel *>("candidateBannerText")->text().contains("追加 1"));
+        QVERIFY(w.findChild<QLabel *>("candidateBannerText")->text().contains("削除 0"));
+        QVERIFY(!w.findChild<QLabel *>("coordinateCompareNote")->text().isEmpty());
+        QCOMPARE(button(w, "coordinateShowChanged")->text(), QString("変化あり 1"));
+        button(w, "coordinateShowChanged")->click();
+        QVERIFY(t->isRowHidden(0) && !t->isRowHidden(3));
+        QVERIFY(w.findChild<QLabel *>("coordinateCount")->text().contains("候補 4 原子（今は 3）"));
+        QVERIFY(!w.findChild<QLabel *>("nwchemPreviewLabel")->isHidden());
+        w.cancelCandidate();
+        QVERIFY(t->isColumnHidden(8) && !t->isRowHidden(0));
+        // A structure file dropped on the tab becomes a replacement candidate (other files go on to
+        // the window, which opens them).
+        QTemporaryDir dir;
+        const auto path = dir.filePath("dropped.xyz");
+        writeFile(path, "2\nH2\nH 0 0 0\nH 0 0 0.74\n");
+        QMimeData mime;
+        mime.setUrls({QUrl::fromLocalFile(path)});
+        QDragEnterEvent enter(QPointF(5, 5), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(panel, &enter);
+        QVERIFY(enter.isAccepted());
+        QDropEvent drop(QPointF(5, 5), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(panel, &drop);
+        QTRY_VERIFY(w.hasCandidate());
+        QCOMPARE(w.displayDocument().atoms.size(), 2);
+        w.cancelCandidate();
+        // Without atoms the table gives way to what to do first.
+        auto *empty = w.findChild<QWidget *>("coordinateEmpty");
+        auto *pages = qobject_cast<QStackedWidget *>(empty->parentWidget());
+        QVERIFY(pages->currentWidget() != empty);
+        w.loadDocument(Document());
+        QCOMPARE(pages->currentWidget(), empty);
+        QVERIFY(button(w, "coordinateEmptyImport")->isEnabled());
+        QVERIFY(w.findChild<QWidget *>("coordinateSelectionBar")->isHidden());
+        w.findChild<QLabel *>("coordinateEmptyNote")->linkActivated("molecule");
+        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 0);
     }
     void importPreservesEnvelopeAndInvalidatesReferences() {
         MainWindow w;

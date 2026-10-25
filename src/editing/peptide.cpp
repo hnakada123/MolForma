@@ -45,6 +45,29 @@ QString residueForAtom(const Document &d, const QString &id) {
     }
     return {};
 }
+QHash<QString, QString> atomPlaces(const Document &d) {
+    QHash<QString, QString> places;
+    for (auto v : d.data["residues"].toArray()) {
+        const auto r = v.toObject();
+        const auto code = QString("%1 %2").arg(r["code"].toString()).arg(r["number"].toInt());
+        const auto names = r["atoms"].toObject();
+        for (auto it = names.begin(); it != names.end(); ++it)
+            if (const auto id = it.value().toString(); !places.contains(id))
+                places.insert(id, code + " · " + it.key());
+    }
+    return places;
+}
+QString atomPlace(const Document &d, const QString &atom) {
+    const auto rid = residueForAtom(d, atom);
+    if (rid.isEmpty())
+        return {};
+    const auto r = residue(d, rid);
+    const auto names = r["atoms"].toObject();
+    for (auto it = names.begin(); it != names.end(); ++it)
+        if (it.value().toString() == atom)
+            return QString("%1 %2 · %3").arg(r["code"].toString()).arg(r["number"].toInt()).arg(it.key());
+    return {};
+}
 void updateResidue(Document &d, const QJsonObject &r) {
     auto rows = d.data["residues"].toArray();
     for (int i = 0; i < rows.size(); ++i)

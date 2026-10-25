@@ -6,8 +6,11 @@ class QLineEdit;
 class QPlainTextEdit;
 class QPushButton;
 class QTextBrowser;
+class QTextDocument;
 namespace mf {
 class MainWindow;
+// Colors the comments, keywords and numbers of generated NWChem input, or a fragment of it.
+void highlightInput(QTextDocument *document);
 class InputPreviewPanel : public QWidget {
     Q_OBJECT
   public:

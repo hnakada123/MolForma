@@ -143,6 +143,40 @@ void replaceCoordinateStructure(Document &document, const Document &structure) {
         document.data[key] = structure.data[key];
     document.invalidateAssignments();
 }
+AtomChanges atomChanges(const Document &before, const Document &after) {
+    AtomChanges changes;
+    QHash<QString, const Atom *> old;
+    for (const auto &a : before.atoms)
+        old.insert(a.id, &a);
+    const bool shared = std::any_of(after.atoms.begin(), after.atoms.end(),
+                                    [&](const Atom &a) { return old.contains(a.id); });
+    const int common = std::min(before.atoms.size(), after.atoms.size());
+    changes.byOrder = !shared && common > 0;
+    for (int i = 0; changes.byOrder && i < common; ++i)
+        changes.byOrder = before.atoms[i].element == after.atoms[i].element &&
+                          before.atoms[i].ghost == after.atoms[i].ghost;
+    if (changes.byOrder) {
+        for (int i = 0; i < after.atoms.size(); ++i)
+            if (i >= before.atoms.size())
+                changes.added.insert(after.atoms[i].id);
+            else if ((before.atoms[i].position - after.atoms[i].position).norm() > 1e-3)
+                changes.moved.insert(after.atoms[i].id);
+        for (int i = after.atoms.size(); i < before.atoms.size(); ++i)
+            changes.removed << before.atoms[i];
+        return changes;
+    }
+    for (const auto &a : after.atoms) {
+        const auto *original = old.take(a.id);
+        if (!original)
+            changes.added.insert(a.id);
+        else if ((original->position - a.position).norm() > 1e-4)
+            changes.moved.insert(a.id);
+    }
+    for (const auto &a : before.atoms)
+        if (old.contains(a.id))
+            changes.removed << a;
+    return changes;
+}
 std::pair<double, double> applyResultGeometry(Document &document, const Document &result) {
     if (result.atoms.size() != document.atoms.size())
         fail(QString("結果の原子数（%1）が編集中の分子（%2）と異なります。")

@@ -304,7 +304,7 @@ class EditorTest : public QObject {
         // The open tab follows undo at once, once the Undo/Redo texts have moved too.
         w.history()->undo();
         QCOMPARE(table->item(0, 1)->text().toDouble(), 0.0);
-        QVERIFY(w.findChild<QPushButton *>("coordinateRedo")->isEnabled());
+        QVERIFY(w.findChild<QPushButton *>("editorRedo")->isEnabled());
         tabs->setCurrentIndex(0);
         w.history()->redo();
         QCOMPARE(table->item(0, 1)->text().toDouble(), 0.0);
