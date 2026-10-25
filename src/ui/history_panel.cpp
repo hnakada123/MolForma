@@ -1,184 +1,838 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/history_panel.h"
+#include "ui/editor_chrome.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
 #include "ui/results_panel.h"
+#include "ui/run_progress.h"
 #include <QtWidgets>
+#include <algorithm>
 
 namespace mf {
 namespace {
-class SortItem : public QTableWidgetItem {
-  public:
-    SortItem(const QString &text, const QVariant &key) : QTableWidgetItem(text) {
-        setData(Qt::UserRole + 1, key);
-    }
-    bool operator<(const QTableWidgetItem &other) const override {
-        const auto a = data(Qt::UserRole + 1), b = other.data(Qt::UserRole + 1);
-        if (a.metaType().id() == QMetaType::Double || a.metaType().id() == QMetaType::LongLong)
-            return a.toDouble() < b.toDouble();
-        return QString::localeAwareCompare(a.toString(), b.toString()) < 0;
-    }
+// Item data: the job folder of a row, the kind of its state (or of its ΔE), the line under a text,
+// the length of its ΔE bar (0–1), and whether a row is the heading of a day.
+constexpr int DirectoryRole = Qt::UserRole, KindRole = Qt::UserRole + 1, DetailRole = Qt::UserRole + 2,
+              BarRole = Qt::UserRole + 3, GroupRole = Qt::UserRole + 4;
+enum Column {
+    StateColumn,
+    NameColumn,
+    LevelColumn,
+    TaskColumn,
+    CreatedColumn,
+    DurationColumn,
+    EnergyColumn,
+    DeltaColumn,
+    MemoColumn,
+    ColumnCount
 };
-void text(QPlainTextEdit *edit, const QString &value, bool follow = false) {
+struct EnergyUnit {
+    const char *key, *label;
+    double factor; // Per Hartree.
+    int digits;
+};
+constexpr EnergyUnit energyUnits[]{{"kcal", "kcal/mol", 627.509474, 2},
+                                   {"kj", "kJ/mol", 2625.499639, 2},
+                                   {"ev", "eV", 27.211386245988, 4},
+                                   {"hartree", "Hartree", 1, 8}};
+bool pending(const QString &s) {
+    return s == "starting" || s == "running" || s == "stopping";
+}
+// The state of a job in a word, and the kind of label it takes.
+std::pair<QString, QString> stateLabel(const HistoryEntry &e, bool owned) {
+    if (pending(e.status)) {
+        if (owned)
+            return {e.status == "starting"   ? "起動中"
+                    : e.status == "stopping" ? "停止処理中"
+                                             : "実行中",
+                    "running"};
+        return e.orphaned ? std::pair<QString, QString>{"プロセスなし", "orphan"}
+                          : std::pair<QString, QString>{"稼働未確認", "unknown"};
+    }
+    static const QMap<QString, std::pair<QString, QString>> states{
+        {"prepared", {"保存のみ", "saved"}}, {"finished", {"終了", "finished"}},
+        {"failed", {"失敗", "failed"}},      {"cancelled", {"停止", "stopped"}},
+        {"timed_out", {"時間制限", "time"}}, {"interrupted", {"中断", "stopped"}}};
+    return states.value(e.status, {"読めません", "failed"});
+}
+// The state filter a job falls under: active, finished, stopped (also failed and orphaned) or prepared.
+QString stateGroup(const HistoryEntry &e, bool owned) {
+    if (e.status == "prepared" || e.status == "finished")
+        return e.status;
+    return pending(e.status) && (owned || !e.orphaned) ? "active" : "stopped";
+}
+struct PillColors {
+    QColor background, text, line;
+};
+PillColors pillColors(const QString &kind, const ChromeColors &c) {
+    if (kind == "running")
+        return {c.tint, c.accentText, c.tint};
+    if (kind == "finished")
+        return {c.goodTint, c.good, c.goodTint};
+    if (kind == "failed")
+        return {c.badTint, c.bad, c.badTint};
+    if (kind == "time")
+        return {c.candidate, c.candidateText, c.candidate};
+    if (kind == "orphan")
+        return {c.candidate, c.candidateText, c.candidateLine};
+    if (kind == "saved")
+        return {c.base, c.text, c.line};
+    if (kind == "unknown")
+        return {c.segment, c.muted, c.line};
+    if (kind == "reference")
+        return {c.accent, c.onAccent, c.accent};
+    return {c.segment, c.text, c.segment}; // stopped
+}
+void paintPill(QPainter *p, const QRect &cell, const QString &text, const QString &kind, const QFont &font,
+               const ChromeColors &c) {
+    const auto colors = pillColors(kind, c);
+    auto small = font;
+    small.setPointSizeF(font.pointSizeF() * .88);
+    small.setBold(true);
+    const QFontMetrics metrics(small);
+    const int w = std::min(metrics.horizontalAdvance(text) + 18, cell.width()), h = metrics.height() + 6;
+    const QRectF pill(cell.left() + .5, cell.center().y() - h / 2. + .5, w - 1, h - 1);
+    p->setRenderHint(QPainter::Antialiasing);
+    p->setPen(colors.line == colors.background ? QPen(Qt::NoPen) : QPen(colors.line, 1));
+    p->setBrush(colors.background);
+    p->drawRoundedRect(pill, h / 2., h / 2.);
+    p->setFont(small);
+    p->setPen(colors.text);
+    p->drawText(pill, Qt::AlignCenter, metrics.elidedText(text, Qt::ElideRight, w - 10));
+}
+QString hartree(double value, int digits = 8) {
+    return QString::number(value, 'f', digits).replace('-', "−");
+}
+// "+1.84", "−0.52" or "0.00".
+QString signedNumber(double value, int digits) {
+    const auto text = QString::number(std::abs(value), 'f', digits);
+    if (text.toDouble() == 0)
+        return text;
+    return (value > 0 ? "+" : "−") + text;
+}
+QString displayPath(const QString &path) {
+    const auto home = QDir::homePath();
+    return path == home ? QString("~") : path.startsWith(home + '/') ? "~" + path.mid(home.size()) : path;
+}
+// The method in short (the functional names a DFT method), then the basis.
+QString levelText(const HistoryEntry &e) {
+    if (e.method.isEmpty() && e.basis.isEmpty())
+        return "—";
+    const auto method = e.method.startsWith("DFT / ") ? e.method.mid(6)
+                        : e.method == "Hartree–Fock"  ? QString("HF")
+                                                      : e.method;
+    return method + " / " + e.basis;
+}
+const QLocale &japanese() {
+    static const QLocale locale(QLocale::Japanese, QLocale::Japan);
+    return locale;
+}
+QString dayTitle(const QDate &day) {
+    if (!day.isValid())
+        return "作成日時なし";
+    const auto today = QDate::currentDate();
+    const auto date =
+        japanese().toString(day, day.year() == today.year() ? "M月d日（ddd）" : "yyyy年M月d日（ddd）");
+    return day == today ? "今日 · " + date : day == today.addDays(-1) ? "昨日 · " + date : date;
+}
+// Local times: "10月25日（日）15:20", and in the list "15:20" under a day or "10/25 15:20".
+QString dayAndTime(const QDateTime &t) {
+    const auto local = t.toLocalTime();
+    return japanese().toString(local, local.date().year() == QDate::currentDate().year()
+                                          ? "M月d日（ddd）HH:mm"
+                                          : "yyyy年M月d日（ddd）HH:mm");
+}
+QString listTime(const QDateTime &t, bool underDay) {
+    const auto local = t.toLocalTime();
+    return local.toString(underDay                                             ? "HH:mm"
+                          : local.date().year() == QDate::currentDate().year() ? "M/d HH:mm"
+                                                                               : "yyyy/M/d HH:mm");
+}
+// What the energy of a job is, as the run's log summary recorded it.
+QString energySource(const HistoryEntry &e) {
+    const auto summary = e.manifest["summary"].toObject();
+    if (!summary["energy"].isDouble())
+        return "ログ末尾の最後の値";
+    const auto source = summary["energy_source"].toString();
+    return source == "frequency_reference" ? "振動数の参照構造"
+           : source == "bsse_corrected"    ? "BSSE補正後"
+                                           : "最後のtask";
+}
+// Why a job has no ΔE against the reference; empty when it has one.
+QString comparisonNote(const HistoryEntry &e, const HistoryEntry &reference) {
+    if (pending(e.status))
+        return e.orphaned ? "記録の修復後に表示" : "終了後に表示";
+    if (!e.energy)
+        return "エネルギーの記録なし";
+    return historyIncomparable(e, reference);
+}
+QLabel *caption(const QString &text = {}) {
+    auto *label = new QLabel(text);
+    label->setProperty("caption", true);
+    label->setWordWrap(true);
+    return label;
+}
+void repolish(QWidget *w) {
+    w->style()->unpolish(w);
+    w->style()->polish(w);
+}
+void setFlag(QWidget *w, const char *name, const QVariant &value) {
+    if (w->property(name) == value)
+        return;
+    w->setProperty(name, value);
+    repolish(w);
+}
+void showText(QPlainTextEdit *edit, const QString &value, bool follow = false) {
     if (edit->toPlainText() == value)
         return;
     const int old = edit->verticalScrollBar()->value();
     edit->setPlainText(value);
     edit->verticalScrollBar()->setValue(follow ? edit->verticalScrollBar()->maximum() : old);
 }
+
+// The rows of the list: a state label, the name over the composition, energies in figures, the ΔE
+// with a bar, and the headings of the days.
+class JobDelegate : public QStyledItemDelegate {
+  public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override {
+        const int line = option.fontMetrics.height();
+        const auto first = index.siblingAtColumn(StateColumn);
+        const int height = first.data(GroupRole).toBool()          ? line + 14
+                           : first.data(KindRole) == "placeholder" ? 4 * line
+                                                                   : 2 * line + 14;
+        return {QStyledItemDelegate::sizeHint(option, index).width(), height};
+    }
+    void paint(QPainter *p, const QStyleOptionViewItem &option, const QModelIndex &index) const override {
+        const ChromeColors c(option.palette);
+        const auto first = index.siblingAtColumn(StateColumn);
+        p->save();
+        if (first.data(GroupRole).toBool()) { // A day: its date and the number of its jobs.
+            p->fillRect(option.rect, c.window);
+            p->setPen(c.line);
+            p->drawLine(option.rect.bottomLeft(), option.rect.bottomRight());
+            auto bold = option.font;
+            bold.setBold(true);
+            const QRect r = option.rect.adjusted(14, 0, -14, 0);
+            const auto title = index.data().toString();
+            p->setFont(bold);
+            p->setPen(c.text);
+            p->drawText(r, Qt::AlignVCenter | Qt::AlignLeft, title);
+            p->setFont(option.font);
+            p->setPen(c.muted);
+            p->drawText(r.adjusted(QFontMetrics(bold).horizontalAdvance(title) + 10, 0, 0, 0),
+                        Qt::AlignVCenter | Qt::AlignLeft, index.data(DetailRole).toString());
+            p->restore();
+            return;
+        }
+        if (first.data(KindRole) == "placeholder") {
+            p->setPen(c.muted);
+            p->drawText(option.rect.adjusted(14, 0, -14, 0), Qt::AlignCenter | Qt::TextWordWrap,
+                        index.data().toString());
+            p->restore();
+            return;
+        }
+        QStyleOptionViewItem base = option;
+        initStyleOption(&base, index);
+        base.text.clear();
+        option.widget->style()->drawControl(QStyle::CE_ItemViewItem, &base, p, option.widget);
+        p->setPen(c.hover);
+        p->drawLine(option.rect.bottomLeft(), option.rect.bottomRight());
+        const QRect r = option.rect.adjusted(index.column() == StateColumn ? 14 : 6, 0, -6, 0);
+        const auto text = index.data().toString(), detail = index.data(DetailRole).toString();
+        auto font = option.font, small = option.font;
+        small.setPointSizeF(font.pointSizeF() * .9);
+        auto mono = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        mono.setPointSizeF(font.pointSizeF() * .95);
+        const auto elided = [&](const QFont &f, const QString &s, int width) {
+            return QFontMetrics(f).elidedText(s, Qt::ElideRight, width);
+        };
+        switch (index.column()) {
+        case StateColumn:
+            if (option.state & QStyle::State_Selected)
+                p->fillRect(QRect(option.rect.left(), option.rect.top(), 3, option.rect.height()), c.accent);
+            paintPill(p, r, text, index.data(KindRole).toString(), font, c);
+            break;
+        case NameColumn: {
+            font.setBold(true);
+            const int line = QFontMetrics(font).height(), below = QFontMetrics(small).height();
+            p->setFont(font);
+            p->setPen(c.text);
+            p->drawText(QRect(r.left(), r.center().y() - line, r.width(), line),
+                        Qt::AlignLeft | Qt::AlignVCenter, elided(font, text, r.width()));
+            p->setFont(small);
+            p->setPen(c.muted);
+            p->drawText(QRect(r.left(), r.center().y() + 1, r.width(), below),
+                        Qt::AlignLeft | Qt::AlignVCenter, elided(small, detail, r.width()));
+            break;
+        }
+        case EnergyColumn: {
+            const int suffix = detail.isEmpty() ? 0 : QFontMetrics(small).horizontalAdvance(detail) + 5;
+            p->setFont(small);
+            p->setPen(c.muted);
+            p->drawText(r, Qt::AlignRight | Qt::AlignVCenter, detail);
+            p->setFont(mono);
+            p->setPen(text == "—" ? c.muted : c.text);
+            p->drawText(r.adjusted(0, 0, -suffix, 0), Qt::AlignRight | Qt::AlignVCenter, text);
+            break;
+        }
+        case DeltaColumn: {
+            const auto kind = index.data(KindRole).toString();
+            if (kind != "reference" && kind != "delta") { // Why there is no ΔE.
+                p->setFont(small);
+                p->setPen(c.muted);
+                p->drawText(r, Qt::AlignLeft | Qt::AlignVCenter,
+                            elided(small, detail.isEmpty() ? text : detail, r.width()));
+                break;
+            }
+            auto bold = mono;
+            bold.setBold(true);
+            const int number = std::min(QFontMetrics(bold).horizontalAdvance("+0000.00"), r.width() / 2);
+            p->setFont(bold);
+            p->setPen(c.text);
+            p->drawText(QRect(r.left(), r.top(), number, r.height()), Qt::AlignRight | Qt::AlignVCenter,
+                        text);
+            const QRect rest(r.left() + number + 10, r.top(), r.width() - number - 10, r.height());
+            if (kind == "reference") {
+                paintPill(p, rest, "基準", "reference", font, c);
+                break;
+            }
+            const QRectF track(rest.left(), rest.center().y() - 4, rest.width(), 8);
+            p->setRenderHint(QPainter::Antialiasing);
+            p->setPen(Qt::NoPen);
+            p->setBrush(c.segment);
+            p->drawRoundedRect(track, 4, 4);
+            if (const double fraction = index.data(BarRole).toDouble(); fraction > 0) {
+                p->setBrush(c.accent);
+                p->drawRoundedRect(
+                    QRectF(track.left(), track.top(), std::max(6., track.width() * fraction), 8), 4, 4);
+            }
+            break;
+        }
+        case DurationColumn:
+            p->setPen(index.data(KindRole) == "running" ? c.accentText : text == "—" ? c.muted : c.text);
+            p->drawText(r, Qt::AlignRight | Qt::AlignVCenter, text);
+            break;
+        default:
+            p->setPen(index.column() == MemoColumn || text == "—" ? c.muted : c.text);
+            p->drawText(r, Qt::AlignLeft | Qt::AlignVCenter, elided(font, text, r.width()));
+        }
+        p->restore();
+    }
+};
 } // namespace
+
 HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), scan(this) {
     setObjectName("historyTab");
-    auto *layout = new QVBoxLayout(this);
-    auto *paths = new QHBoxLayout;
-    paths->addWidget(new QLabel("ジョブ保存先"));
-    rootField = new QLineEdit;
-    rootField->setObjectName("historyRoot");
+    setAttribute(Qt::WA_StyledBackground);
+    auto *outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 0);
+    outer->setSpacing(0);
+
+    // The folder, search and the states, comparing, refresh and the CSV of the list.
+    auto *toolbar = new QFrame;
+    toolbar->setObjectName("historyToolbar");
+    toolbar->setProperty("toolbar", true);
+    auto *tools = new FlowLayout(toolbar, 10, 6);
+    tools->setContentsMargins(16, 8, 16, 8);
+    outer->addWidget(toolbar);
+    auto *rootBox = new QWidget;
+    auto *rootRow = new QHBoxLayout(rootBox);
+    rootRow->setContentsMargins(0, 0, 0, 0);
+    rootRow->setSpacing(6);
+    auto *rootCaption = caption("ジョブ保存先");
+    rootCaption->setWordWrap(false);
+    rootRow->addWidget(rootCaption);
+    rootButton = new QToolButton;
+    rootButton->setObjectName("historyRootButton");
+    rootButton->setProperty("chip", true);
+    rootButton->setIcon(lineIcon("folder"));
+    rootButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    rootButton->setPopupMode(QToolButton::InstantPopup);
+    auto *rootMenu = new QMenu(rootButton);
+    rootMenu->setObjectName("historyRootMenu");
+    browseAction = rootMenu->addAction(lineIcon("folder"), "保存先を選ぶ…");
+    browseAction->setObjectName("historyBrowse");
     // With --mcp-allow-dir, MCP scans only checked paths through history_action.
-    rootField->setProperty("mcpPath", true);
-    paths->addWidget(rootField, 1);
-    auto *browse = new QPushButton("参照…");
-    browse->setProperty("mcpPath", true);
-    paths->addWidget(browse);
-    auto *current = new QPushButton("実行設定の保存先");
-    current->setObjectName("historyExecutionRoot");
-    current->setProperty("mcpPath", true);
-    paths->addWidget(current);
-    layout->addLayout(paths);
-    auto *filters = new QHBoxLayout;
+    browseAction->setProperty("mcpPath", true);
+    executionRootAction = rootMenu->addAction("「5 実行設定」の保存先に戻す");
+    executionRootAction->setObjectName("historyExecutionRoot");
+    executionRootAction->setProperty("mcpPath", true);
+    rootMenu->addSeparator();
+    auto *copyRoot = rootMenu->addAction(lineIcon("copy"), "保存先のパスをコピー");
+    copyRoot->setObjectName("historyCopyRoot");
+    rootButton->setMenu(rootMenu);
+    rootRow->addWidget(rootButton);
+    tools->addWidget(rootBox);
     search = new QLineEdit;
     search->setObjectName("historySearch");
-    search->setPlaceholderText("計算名・手法・基底・目的・フォルダーを検索");
+    search->setProperty("search", true);
+    search->setPlaceholderText("計算名・手法・基底・組成・メモで検索");
     search->setClearButtonEnabled(true);
-    filters->addWidget(search, 1);
+    search->addAction(lineIcon("search"), QLineEdit::LeadingPosition);
+    search->setFixedWidth(290);
+    tools->addWidget(search);
     filter = new QComboBox;
     filter->setObjectName("historyFilter");
     filter->addItem("すべての状態", "");
-    for (const auto &s : {"prepared", "running", "unconfirmed", "orphaned", "finished", "failed", "cancelled",
-                          "timed_out", "interrupted", "invalid"})
-        filter->addItem(QString(s) == "running"       ? "このウィンドウで実行中"
-                        : QString(s) == "unconfirmed" ? "稼働未確認"
-                        : QString(s) == "orphaned"    ? "中断・プロセスなし"
-                                                      : historyStatus(s),
-                        s);
-    filters->addWidget(filter);
-    refreshButton = new QPushButton("更新");
+    filter->addItem("実行中・稼働未確認", "active");
+    filter->addItem("終了（コード0）", "finished");
+    filter->addItem("停止・失敗・中断・プロセスなし", "stopped");
+    filter->addItem("保存のみ（未実行）", "prepared");
+    filterButtons = new ChoiceButtons(filter, ChoiceButtons::Segments,
+                                      {"すべて", "実行中", "終了", "停止・失敗", "保存のみ"});
+    filterButtons->setObjectName("historyFilters");
+    tools->addWidget(filterButtons);
+    auto *gap = new QWidget;
+    gap->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    tools->addWidget(gap);
+    compare = new QPushButton("ΔEを比べる");
+    compare->setObjectName("historyCompare");
+    compare->setIcon(lineIcon("compare"));
+    compare->setCheckable(true);
+    compare->setToolTip("計算のエネルギーの差（ΔE）を、基準のジョブに対して一覧に表示します。");
+    tools->addWidget(compare);
+    energyUnit = new QComboBox;
+    energyUnit->setObjectName("historyEnergyUnit");
+    for (const auto &u : energyUnits)
+        energyUnit->addItem(u.label, u.key);
+    unitButtons = new ChoiceButtons(energyUnit, ChoiceButtons::Segments);
+    unitButtons->setObjectName("historyEnergyUnits");
+    unitButtons->hide();
+    tools->addWidget(unitButtons);
+    refreshButton = new QPushButton;
     refreshButton->setObjectName("historyRefresh");
-    filters->addWidget(refreshButton);
+    refreshButton->setIcon(lineIcon("refresh"));
+    refreshButton->setToolTip("一覧を更新");
+    refreshButton->setAccessibleName("一覧を更新");
+    tools->addWidget(refreshButton);
     cancel = new QPushButton("読込を中止");
     cancel->setObjectName("historyCancel");
     cancel->setEnabled(false);
-    filters->addWidget(cancel);
-    layout->addLayout(filters);
-    auto *actions = new QHBoxLayout;
-    auto button = [&](const QString &label, const QString &name) {
-        auto *b = new QPushButton(label);
-        b->setObjectName(name);
-        actions->addWidget(b);
-        return b;
-    };
-    viewer = button("結果ビューアで開く", "historyResults");
-    reuse = button("分子・条件を再利用", "historyReuse");
-    folder = button("保存先を開く", "historyFolder");
-    csv = button("一覧CSVを保存", "historyCsv");
-    setReference = button("選択した計算をΔEの基準にする", "historyReference");
-    energyUnit = new QComboBox;
-    energyUnit->setObjectName("historyEnergyUnit");
-    for (const auto &[label, unit] :
-         {std::pair{"kcal/mol", "kcal"}, {"kJ/mol", "kj"}, {"eV", "ev"}, {"Hartree", "hartree"}})
-        energyUnit->addItem(label, unit);
-    actions->addWidget(energyUnit);
-    connect(setReference, &QPushButton::clicked, this, [this] {
-        reference = selectedDirectory();
-        populate(false);
-    });
-    connect(energyUnit, &QComboBox::currentIndexChanged, this, [this] { populate(false); });
-    actions->addStretch();
-    stop = button("選択した計算を停止", "historyStop");
-    repair = button("記録を修復", "historyRepair");
-    repair->setToolTip("このPCで実行中と記録されたまま、計算のプロセスが終了しているジョブの記録を"
-                       "「中断」に直し、ログからエネルギーを求めます。");
-    trash = button("ごみ箱へ", "historyTrash");
-    layout->addLayout(actions);
-    status = new QLabel;
-    status->setObjectName("historyStatus");
-    status->setWordWrap(true);
-    status->setTextFormat(Qt::PlainText);
-    layout->addWidget(status);
-    auto *split = new QSplitter(Qt::Vertical);
-    layout->addWidget(split, 1);
-    table = new QTableWidget(0, 10);
+    cancel->hide();
+    tools->addWidget(cancel);
+    csv = new QPushButton("一覧をCSVで保存");
+    csv->setObjectName("historyCsv");
+    csv->setIcon(lineIcon("export"));
+    csv->setToolTip("表示中の一覧を、絞り込みと並び順のままCSVに書き出します。");
+    tools->addWidget(csv);
+
+    // Jobs recorded as running whose process has ended.
+    orphanBanner = new QFrame;
+    orphanBanner->setObjectName("historyOrphanBanner");
+    orphanBanner->setProperty("banner", true);
+    auto *bannerRow = new QHBoxLayout(orphanBanner);
+    bannerRow->setContentsMargins(16, 7, 16, 7);
+    bannerRow->setSpacing(12);
+    orphanText = new QLabel;
+    orphanText->setObjectName("historyOrphanText");
+    orphanText->setWordWrap(true);
+    orphanText->setTextFormat(Qt::PlainText);
+    bannerRow->addWidget(orphanText, 1);
+    repairAll = new QPushButton("記録を修復");
+    repairAll->setObjectName("historyRepairAll");
+    bannerRow->addWidget(repairAll);
+    orphanBanner->hide();
+    outer->addWidget(orphanBanner);
+
+    pages = new QStackedWidget;
+    pages->setObjectName("historyPages");
+    outer->addWidget(pages, 1);
+    auto *split = new QSplitter(Qt::Horizontal);
+    split->setObjectName("historySplit");
+    split->setChildrenCollapsible(false);
+    split->setHandleWidth(1);
+    pages->addWidget(split);
+
+    // The list, and the files of the selected job below it.
+    auto *left = new QWidget;
+    left->setProperty("canvas", true);
+    auto *leftLayout = new QVBoxLayout(left);
+    leftLayout->setContentsMargins(16, 14, 16, 14);
+    listSplit = new QSplitter(Qt::Vertical);
+    listSplit->setObjectName("historyListSplit");
+    listSplit->setChildrenCollapsible(false);
+    listSplit->setHandleWidth(12);
+    leftLayout->addWidget(listSplit);
+    auto *listCard = new QFrame;
+    listCard->setObjectName("historyListCard");
+    listCard->setProperty("card", true);
+    auto *listLayout = new QVBoxLayout(listCard);
+    listLayout->setContentsMargins(1, 1, 1, 1);
+    listLayout->setSpacing(0);
+    table = new QTreeWidget;
     table->setObjectName("historyTable");
-    table->setHorizontalHeaderLabels({"作成日時（ローカル）", "計算名", "手法 / 基底", "目的", "実行状態",
-                                      "計算のE / Hartree", "経過 / 秒", "ΔE", "組成", "メモ"});
-    // Only the memo column is editable (double click or F2); the composition sits beside the name.
-    table->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
-    table->horizontalHeader()->moveSection(8, 2);
+    table->setColumnCount(ColumnCount);
+    table->setHeaderLabels(
+        {"状態", "計算名 / 組成", "手法 / 基底", "目的", "作成", "所要", "計算のE / Hartree", "ΔE", "メモ"});
+    table->setRootIsDecorated(false);
+    table->setIndentation(0);
+    table->setItemsExpandable(false);
+    table->setUniformRowHeights(false);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setSelectionMode(QAbstractItemView::SingleSelection);
-    table->verticalHeader()->hide();
-    table->setAlternatingRowColors(true);
-    table->setSortingEnabled(true);
-    table->sortItems(0, Qt::DescendingOrder);
-    // Fits the window's default width; the memo takes what is left.
-    const QList<int> widths{150, 130, 190, 120, 150, 180, 64, 170, 90, 80};
-    for (int i = 0; i < widths.size(); ++i)
-        table->setColumnWidth(i, widths[i]);
-    table->horizontalHeader()->setStretchLastSection(true);
-    split->addWidget(table);
-    auto *lower = new QWidget;
-    auto *lowerLayout = new QVBoxLayout(lower);
-    lowerLayout->setContentsMargins(0, 0, 0, 0);
-    follow = new QCheckBox("ログを追尾（1秒間隔・末尾128 KiB）");
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setFrameShape(QFrame::NoFrame);
+    table->setItemDelegate(new JobDelegate(table));
+    table->setMouseTracking(true);
+    auto *header = table->header();
+    header->setSectionsClickable(true);
+    header->setSortIndicatorShown(true);
+    header->setSortIndicator(sortColumn, sortOrder);
+    header->setHighlightSections(false);
+    header->setStretchLastSection(false);
+    header->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    header->setMinimumSectionSize(48);
+    const QList<std::pair<int, int>> widths{{StateColumn, 100},   {NameColumn, 150},   {CreatedColumn, 64},
+                                            {DurationColumn, 66}, {EnergyColumn, 150}, {DeltaColumn, 180}};
+    for (const auto &[column, width] : widths)
+        table->setColumnWidth(column, width);
+    // The method, the task and the memo share what is left.
+    for (const int column : {LevelColumn, TaskColumn, MemoColumn})
+        header->setSectionResizeMode(column, QHeaderView::Stretch);
+    table->setColumnHidden(DeltaColumn, true);
+    listLayout->addWidget(table, 1);
+    auto *footer = new QFrame;
+    footer->setObjectName("historyListFooter");
+    auto *footerRow = new QHBoxLayout(footer);
+    footerRow->setContentsMargins(14, 6, 14, 6);
+    footerRow->setSpacing(16);
+    status = caption();
+    status->setObjectName("historyStatus");
+    status->setTextFormat(Qt::PlainText);
+    footerRow->addWidget(status);
+    note = caption();
+    note->setObjectName("historyNote");
+    note->setTextFormat(Qt::PlainText);
+    footerRow->addWidget(note, 1);
+    listLayout->addWidget(footer);
+    listSplit->addWidget(listCard);
+
+    filesCard = new SettingsCard("ファイル");
+    filesCard->setObjectName("historyFilesCard");
+    filesToggle = new QToolButton;
+    filesToggle->setObjectName("historyFilesToggle");
+    filesToggle->setProperty("flat", true);
+    filesCard->header()->insertWidget(0, filesToggle);
+    fileChoice = new QComboBox;
+    fileChoice->setObjectName("historyFile");
+    fileChoice->addItem("保存した入力（input.nw）", "input.nw");
+    fileChoice->addItem("標準出力（output.out・末尾128 KiB）", "output.out");
+    fileChoice->addItem("標準エラー（stderr.err・末尾128 KiB）", "stderr.err");
+    fileChoice->addItem("実行記録（run.json）", "run.json");
+    auto *fileButtons = new ChoiceButtons(fileChoice, ChoiceButtons::Segments,
+                                          {"入力", "標準出力", "標準エラー", "実行記録"});
+    fileButtons->setObjectName("historyFiles");
+    filesCard->header()->insertWidget(2, fileButtons);
+    fileName = caption();
+    fileName->setObjectName("historyFileName");
+    fileName->setWordWrap(false);
+    fileName->setProperty("mono", true);
+    filesCard->header()->insertWidget(3, fileName);
+    follow = new QCheckBox("追尾");
     follow->setObjectName("historyFollow");
     follow->setChecked(true);
-    lowerLayout->addWidget(follow);
-    details = new QTabWidget;
-    details->setObjectName("historyDetails");
-    lowerLayout->addWidget(details, 1);
-    auto pane = [&](const QString &label, const QString &name) {
+    follow->setToolTip("表示中は1秒ごとにログの末尾（128 KiB）を読み直し、最後の行を表示します。");
+    filesCard->header()->addWidget(follow);
+    copyFile = new QToolButton;
+    copyFile->setObjectName("historyCopyFile");
+    copyFile->setIcon(lineIcon("copy"));
+    copyFile->setProperty("flat", true);
+    copyFile->setToolTip("表示中のファイルをコピー");
+    filesCard->header()->addWidget(copyFile);
+    fileStack = new QStackedWidget;
+    const auto pane = [&](const QString &name) {
         auto *p = new QPlainTextEdit;
         p->setObjectName(name);
         p->setReadOnly(true);
         p->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
         p->setLineWrapMode(QPlainTextEdit::NoWrap);
-        details->addTab(p, label);
+        p->setProperty("file", true);
+        fileStack->addWidget(p);
         return p;
     };
-    summary = pane("概要", "historySummary");
-    summary->setLineWrapMode(QPlainTextEdit::WidgetWidth);
-    input = pane("保存した入力", "historyInput");
-    output = pane("標準出力", "historyOutput");
-    errors = pane("標準エラー", "historyError");
-    record = pane("実行記録", "historyRecord");
-    split->addWidget(lower);
-    split->setSizes({300, 400});
-    connect(rootField, &QLineEdit::editingFinished, this, [this] {
-        if (rootField->isModified())
-            setRoot(rootField->text());
-        rootField->setModified(false);
-    });
-    connect(browse, &QPushButton::clicked, this, [this] {
+    input = pane("historyInput");
+    output = pane("historyOutput");
+    errors = pane("historyError");
+    record = pane("historyRecord");
+    fileStack->setMinimumHeight(120);
+    filesCard->body()->addWidget(fileStack, 1);
+    listSplit->addWidget(filesCard);
+    listSplit->setStretchFactor(0, 1);
+    listSplit->setStretchFactor(1, 0);
+    listSplit->setSizes({600, filesHeight});
+    split->addWidget(left);
+
+    // The selected job.
+    auto *detailScroll = new QScrollArea;
+    detailScroll->setObjectName("historyDetailScroll");
+    detailScroll->setWidgetResizable(true);
+    detailScroll->setFrameShape(QFrame::NoFrame);
+    detailScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    detailScroll->setMinimumWidth(320);
+    auto *rail = new QWidget;
+    rail->setObjectName("historyRail");
+    auto *railLayout = new QVBoxLayout(rail);
+    railLayout->setContentsMargins(20, 18, 20, 18);
+    railLayout->setSpacing(0);
+    detailEmpty = new QLabel("一覧のジョブを選ぶと、エネルギー・記録・メモと操作をここに表示します。");
+    detailEmpty->setObjectName("historyDetailEmpty");
+    detailEmpty->setProperty("muted", true);
+    detailEmpty->setWordWrap(true);
+    railLayout->addWidget(detailEmpty);
+    detail = new QWidget;
+    detail->setObjectName("historyDetail");
+    railLayout->addWidget(detail, 1);
+    detailScroll->setWidget(rail);
+    split->addWidget(detailScroll);
+    split->setStretchFactor(0, 1);
+    split->setStretchFactor(1, 0);
+    split->setSizes({960, 400});
+    auto *d = new QVBoxLayout(detail);
+    d->setContentsMargins(0, 0, 0, 0);
+    d->setSpacing(14);
+    auto *heading = new QVBoxLayout;
+    heading->setSpacing(4);
+    auto *titleRow = new QHBoxLayout;
+    titleRow->setSpacing(10);
+    title = new ElidedLabel;
+    title->setObjectName("historyDetailTitle");
+    titleRow->addWidget(title, 1);
+    statePill = new QLabel;
+    statePill->setObjectName("historyDetailState");
+    titleRow->addWidget(statePill);
+    heading->addLayout(titleRow);
+    level = new QLabel;
+    level->setObjectName("historyDetailLevel");
+    level->setWordWrap(true);
+    level->setTextFormat(Qt::PlainText);
+    heading->addWidget(level);
+    facts = caption();
+    facts->setObjectName("historyDetailFacts");
+    facts->setTextFormat(Qt::PlainText);
+    heading->addWidget(facts);
+    d->addLayout(heading);
+
+    energyBox = new QFrame;
+    energyBox->setObjectName("historyEnergyBox");
+    auto *energyLayout = new QVBoxLayout(energyBox);
+    energyLayout->setContentsMargins(14, 12, 14, 12);
+    energyLayout->setSpacing(2);
+    energyCaption = caption();
+    energyCaption->setObjectName("historyEnergyCaption");
+    energyLayout->addWidget(energyCaption);
+    auto *valueRow = new QHBoxLayout;
+    valueRow->setSpacing(8);
+    energyValue = new QLabel;
+    energyValue->setObjectName("historyEnergyValue");
+    energyValue->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    valueRow->addWidget(energyValue);
+    energySuffix = new QLabel;
+    energySuffix->setObjectName("historyEnergySuffix");
+    valueRow->addWidget(energySuffix, 1, Qt::AlignBaseline);
+    energyLayout->addLayout(valueRow);
+    energyNote = caption();
+    energyNote->setObjectName("historyEnergyNote");
+    energyNote->setTextFormat(Qt::PlainText);
+    energyLayout->addWidget(energyNote);
+    d->addWidget(energyBox);
+
+    // A run of this window: its tasks, steps and criteria as in "5 実行設定".
+    progressBox = new QFrame;
+    progressBox->setObjectName("historyProgressBox");
+    auto *progressLayout = new QVBoxLayout(progressBox);
+    progressLayout->setContentsMargins(14, 12, 14, 12);
+    progressLayout->setSpacing(10);
+    auto *progressHead = new QHBoxLayout;
+    auto *progressTitle = new QLabel("進み具合");
+    progressTitle->setProperty("cardTitle", true);
+    progressHead->addWidget(progressTitle);
+    progressTiming = caption();
+    progressTiming->setObjectName("historyProgressTiming");
+    progressHead->addWidget(progressTiming, 1);
+    progressLayout->addLayout(progressHead);
+    progress = new RunProgress("history", 2);
+    progressLayout->addWidget(progress);
+    progressBox->hide();
+    d->addWidget(progressBox);
+
+    factGrid = new QGridLayout;
+    factGrid->setHorizontalSpacing(12);
+    factGrid->setVerticalSpacing(6);
+    factGrid->setColumnMinimumWidth(0, 72);
+    factGrid->setColumnStretch(1, 1);
+    d->addLayout(factGrid);
+
+    memoBox = new QWidget;
+    auto *memoLayout = new QVBoxLayout(memoBox);
+    memoLayout->setContentsMargins(0, 0, 0, 0);
+    memoLayout->setSpacing(6);
+    memoLayout->addWidget(caption("メモ"));
+    memo = new QPlainTextEdit;
+    memo->setObjectName("historyMemo");
+    memo->setPlaceholderText("このジョブについてのメモ（ジョブフォルダーの memo.txt に保存します）");
+    memo->setTabChangesFocus(true);
+    memo->setFixedHeight(memo->fontMetrics().lineSpacing() * 3 + 16);
+    memo->installEventFilter(this);
+    memoLayout->addWidget(memo);
+    memoStatus = caption();
+    memoStatus->setObjectName("historyMemoStatus");
+    memoStatus->setProperty("bad", true);
+    memoStatus->hide();
+    memoLayout->addWidget(memoStatus);
+    d->addWidget(memoBox);
+
+    actionGrid = new QGridLayout;
+    actionGrid->setSpacing(8);
+    actionGrid->setColumnStretch(0, 1);
+    actionGrid->setColumnStretch(1, 1);
+    // Placed by arrangeActions() for the selected job; owned by the panel while not placed.
+    const auto action = [&](const QString &text, const QString &name, const char *look = nullptr) {
+        auto *b = new QPushButton(text, detail);
+        b->setObjectName(name);
+        if (look)
+            b->setProperty(look, true);
+        b->hide();
+        return b;
+    };
+    viewer = action("結果ビューアで開く", "historyResults", "primary");
+    reuse = action("分子・条件を再利用", "historyReuse");
+    reuse->setToolTip("保存した分子と条件を、新しい未保存のプロジェクトとして開きます。");
+    folder = action("保存先を開く", "historyFolder");
+    folder->setIcon(lineIcon("folder"));
+    stop = action("この計算を停止", "historyStop", "danger");
+    stop->setIcon(lineIcon("stop"));
+    setReference = action("このジョブを基準にΔEを比べる", "historyReference", "link");
+    showExecution = action("「5 実行設定」で見る", "historyExecution", "link");
+    d->addLayout(actionGrid);
+    d->addStretch(1);
+
+    repairBox = new QFrame;
+    repairBox->setObjectName("historyRepairBox");
+    auto *repairLayout = new QVBoxLayout(repairBox);
+    repairLayout->setContentsMargins(12, 10, 12, 10);
+    repairLayout->setSpacing(8);
+    auto *repairText = new QLabel("このPCで「実行中」と記録されたまま、計算のプロセスが終了しています。記録を"
+                                  "「中断」に直し、ログからエネルギーを求めます。");
+    repairText->setWordWrap(true);
+    repairLayout->addWidget(repairText);
+    repair = new QPushButton("記録を修復");
+    repair->setObjectName("historyRepair");
+    repairLayout->addWidget(repair, 0, Qt::AlignLeft);
+    repairBox->hide();
+    d->addWidget(repairBox);
+    stopComparing = action("比較をやめる", "historyCompareOff", "link");
+    d->addWidget(stopComparing, 0, Qt::AlignLeft);
+    trashRow = new QFrame;
+    trashRow->setObjectName("historyTrashRow");
+    auto *trashLayout = new QHBoxLayout(trashRow);
+    trashLayout->setContentsMargins(0, 12, 0, 0);
+    trashLayout->setSpacing(10);
+    trashNote = caption();
+    trashNote->setObjectName("historyTrashNote");
+    trashLayout->addWidget(trashNote, 1);
+    trash = new QPushButton("ごみ箱へ");
+    trash->setObjectName("historyTrash");
+    trash->setIcon(lineIcon("delete"));
+    trash->setProperty("danger", true);
+    trashLayout->addWidget(trash, 0, Qt::AlignVCenter);
+    d->addWidget(trashRow);
+    detail->hide();
+
+    // A folder without jobs.
+    auto *emptyPage = new QWidget;
+    emptyPage->setProperty("canvas", true);
+    auto *emptyLayout = new QVBoxLayout(emptyPage);
+    emptyLayout->setContentsMargins(24, 24, 24, 24);
+    auto *emptyCard = new QFrame;
+    emptyCard->setObjectName("historyEmptyCard");
+    emptyCard->setFixedWidth(560);
+    auto *card = new QVBoxLayout(emptyCard);
+    card->setContentsMargins(40, 32, 40, 32);
+    card->setSpacing(12);
+    auto *emptyIcon = new QLabel;
+    emptyIcon->setPixmap(lineIcon("folder", ChromeColors(palette()).muted).pixmap(48, 48));
+    emptyIcon->setAlignment(Qt::AlignCenter);
+    card->addWidget(emptyIcon);
+    emptyTitle = new QLabel;
+    emptyTitle->setObjectName("historyEmptyTitle");
+    emptyTitle->setProperty("cardTitle", true);
+    emptyTitle->setAlignment(Qt::AlignCenter);
+    emptyTitle->setWordWrap(true);
+    card->addWidget(emptyTitle);
+    emptyText = new QLabel;
+    emptyText->setObjectName("historyEmptyText");
+    emptyText->setProperty("muted", true);
+    emptyText->setAlignment(Qt::AlignCenter);
+    emptyText->setWordWrap(true);
+    emptyText->setTextFormat(Qt::PlainText);
+    card->addWidget(emptyText);
+    auto *emptyButtons = new QHBoxLayout;
+    emptyButtons->addStretch();
+    auto *emptyBrowse = new QPushButton("保存先を選ぶ…");
+    emptyBrowse->setObjectName("historyEmptyBrowse");
+    emptyBrowse->setIcon(lineIcon("folder", Qt::white));
+    emptyBrowse->setProperty("primary", true);
+    emptyBrowse->setProperty("mcpPath", true);
+    emptyButtons->addWidget(emptyBrowse);
+    emptyBack = new QPushButton("5 実行設定の保存先に戻す");
+    emptyBack->setObjectName("historyEmptyExecutionRoot");
+    emptyBack->setProperty("mcpPath", true);
+    emptyButtons->addWidget(emptyBack);
+    emptyButtons->addStretch();
+    card->addLayout(emptyButtons);
+    emptyExecution = caption();
+    emptyExecution->setObjectName("historyEmptyExecution");
+    emptyExecution->setAlignment(Qt::AlignCenter);
+    emptyExecution->setTextFormat(Qt::PlainText);
+    card->addWidget(emptyExecution);
+    emptyLayout->addStretch();
+    emptyLayout->addWidget(emptyCard, 0, Qt::AlignHCenter);
+    emptyLayout->addStretch();
+    pages->addWidget(emptyPage);
+
+    connect(browseAction, &QAction::triggered, this, [this] {
         const auto p = QFileDialog::getExistingDirectory(this, "ジョブ保存先", root);
         if (!p.isEmpty())
             setRoot(p);
     });
-    connect(current, &QPushButton::clicked, this, [this] {
+    connect(executionRootAction, &QAction::triggered, this, [this] {
         window->execution->commitPendingEdits();
-        setRoot(historyRoot(window->document(), window->path.isEmpty()
-                                                    ? QDir::currentPath()
-                                                    : QFileInfo(window->path).absolutePath()),
-                false);
+        setRoot(executionRoot(), false);
     });
-    connect(search, &QLineEdit::textChanged, this, [this] { populate(); });
-    connect(filter, &QComboBox::currentIndexChanged, this, [this] { populate(); });
+    connect(copyRoot, &QAction::triggered, this, [this] { QApplication::clipboard()->setText(root); });
+    connect(emptyBrowse, &QPushButton::clicked, browseAction, &QAction::trigger);
+    connect(emptyBack, &QPushButton::clicked, executionRootAction, &QAction::trigger);
+    // Another search, state or order starts at the top of the list; rescans keep the place.
+    connect(search, &QLineEdit::textChanged, this, [this] {
+        table->scrollToTop();
+        populate();
+    });
+    connect(filter, &QComboBox::currentIndexChanged, this, [this] {
+        table->scrollToTop();
+        populate();
+    });
+    connect(compare, &QPushButton::toggled, this, &HistoryPanel::setComparing);
+    connect(energyUnit, &QComboBox::currentIndexChanged, this, [this] { populate(false); });
     connect(refreshButton, &QPushButton::clicked, this, &HistoryPanel::refresh);
     connect(cancel, &QPushButton::clicked, this, [this] {
         scan.cancel();
         cancel->setEnabled(false);
+        cancel->hide();
         refreshButton->setEnabled(true);
         status->setText("読込を中止しました。前の一覧を表示しています。");
     });
+    connect(csv, &QPushButton::clicked, this, [this] {
+        auto p =
+            QFileDialog::getSaveFileName(this, "表示中の一覧を保存", "nwchem-history.csv", "CSV (*.csv)");
+        if (!p.isEmpty())
+            window->safe([&] {
+                if (QFileInfo(p).suffix().isEmpty())
+                    p += ".csv";
+                exportCsv(p);
+            });
+    });
+    connect(repairAll, &QPushButton::clicked, this, [this] { window->safe([this] { repairOrphans(); }); });
     connect(&scan, &HistoryScan::finished, this, [this] {
         entries = scan.entries;
         for (const auto &path : std::as_const(changedJobs)) {
@@ -193,29 +847,43 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
                 entries << readHistoryEntry(path);
         }
         changedJobs.clear();
+        scanned = true;
         cancel->setEnabled(false);
+        cancel->hide();
         refreshButton->setEnabled(true);
         populate();
         if (!scan.message.isEmpty())
             status->setText(status->text() + "\n" + scan.message);
     });
-    connect(table, &QTableWidget::itemSelectionChanged, this, &HistoryPanel::showDetails);
-    connect(table, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
-        if (item->column() != 9)
-            return;
-        const auto directory = item->data(Qt::UserRole).toString();
-        window->safe([&] {
-            window->checkMcpPath(directory);
-            setHistoryMemo(directory, item->text());
-            for (auto &e : entries)
-                if (e.directory == directory)
-                    e.memo = item->text().trimmed();
-        });
-    });
-    connect(table, &QTableWidget::cellDoubleClicked, this, [this](int, int column) {
-        if (column != 9) // Double click on the memo edits it.
+    connect(table, &QTreeWidget::itemSelectionChanged, this, &HistoryPanel::showDetails);
+    connect(table, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem *item) {
+        if (!item->data(StateColumn, DirectoryRole).toString().isEmpty())
             window->safe([this] { openResult(); });
     });
+    connect(header, &QHeaderView::sortIndicatorChanged, this, [this](int column, Qt::SortOrder order) {
+        sortColumn = column;
+        sortOrder = order;
+        table->scrollToTop();
+        populate(false);
+    });
+    connect(fileChoice, &QComboBox::currentIndexChanged, this, [this](int index) {
+        fileStack->setCurrentIndex(index);
+        const auto name = fileChoice->currentData().toString();
+        fileName->setText(name + (index == 1 || index == 2 ? " · 末尾 128 KiB" : ""));
+        follow->setEnabled(index == 1 || index == 2);
+        if (!filesOpen)
+            setFilesOpen(true);
+    });
+    fileChoice->setCurrentIndex(1);
+    connect(follow, &QCheckBox::toggled, this, [this](bool on) {
+        if (on)
+            updateLogs();
+    });
+    connect(copyFile, &QToolButton::clicked, this, [this] {
+        QApplication::clipboard()->setText(
+            static_cast<QPlainTextEdit *>(fileStack->currentWidget())->toPlainText());
+    });
+    connect(filesToggle, &QToolButton::clicked, this, [this] { setFilesOpen(!filesOpen); });
     connect(viewer, &QPushButton::clicked, this, [this] { window->safe([this] { openResult(); }); });
     connect(reuse, &QPushButton::clicked, this, [this] { window->safe([this] { reuseSelected(); }); });
     connect(folder, &QPushButton::clicked, this, [this] {
@@ -227,22 +895,33 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
                 fail("保存先を開けません。");
         });
     });
-    connect(csv, &QPushButton::clicked, this, [this] {
-        auto p =
-            QFileDialog::getSaveFileName(this, "表示中の一覧を保存", "nwchem-history.csv", "CSV (*.csv)");
-        if (!p.isEmpty())
-            window->safe([&] {
-                if (QFileInfo(p).suffix().isEmpty())
-                    p += ".csv";
-                exportCsv(p);
-            });
-    });
     connect(stop, &QPushButton::clicked, this, [this] {
-        if (selectedDirectory() == activeDirectory())
-            window->execution->stopCalculation();
+        if (!selectedDirectory().isEmpty() && selectedDirectory() == activeDirectory())
+            window->execution->confirmStop();
     });
+    connect(setReference, &QPushButton::clicked, this, [this] {
+        const auto *e = selectedEntry();
+        if (!e || !e->energy || pending(e->status))
+            return;
+        reference = e->directory;
+        table->scrollToTop();
+        if (comparing)
+            populate(true);
+        else
+            setComparing(true);
+    });
+    connect(showExecution, &QPushButton::clicked, this,
+            [this] { window->workspaceTabs->setCurrentWidget(window->execution); });
+    connect(stopComparing, &QPushButton::clicked, this, [this] { setComparing(false); });
     connect(repair, &QPushButton::clicked, this, [this] { window->safe([this] { repairSelected(); }); });
     connect(trash, &QPushButton::clicked, this, [this] { window->safe([this] { trashSelected(); }); });
+    memoTimer.setSingleShot(true);
+    memoTimer.setInterval(600);
+    connect(&memoTimer, &QTimer::timeout, this, &HistoryPanel::saveMemo);
+    connect(memo, &QPlainTextEdit::textChanged, this, [this] {
+        if (!loadingMemo)
+            memoTimer.start();
+    });
     timer.setInterval(1000);
     connect(&timer, &QTimer::timeout, this, [this] {
         if (!isVisible())
@@ -253,26 +932,35 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
         if (follow->isChecked())
             updateLogs();
         updateActions();
+        updateLive();
     });
     timer.start();
     const auto saved = window->settings.value("history/root").toString();
     followsExecution = saved.isEmpty();
     root = saved;
-    rootField->setText(root);
+    setFilesOpen(window->settings.value("history/files_open", true).toBool(), false);
     updateActions();
 }
 void HistoryPanel::showEvent(QShowEvent *event) {
     QWidget::showEvent(event);
+    setFilesOpen(filesOpen, false); // The splitter has its height now.
     if (followsExecution) {
-        const auto next =
-            historyRoot(window->document(), window->path.isEmpty() ? QDir::currentPath()
-                                                                   : QFileInfo(window->path).absolutePath());
+        const auto next = executionRoot();
         if (next != root) {
             setRoot(next, false);
             return;
         }
     }
     refresh();
+}
+bool HistoryPanel::eventFilter(QObject *watched, QEvent *event) {
+    if (watched == memo && event->type() == QEvent::FocusOut)
+        saveMemo();
+    return QWidget::eventFilter(watched, event);
+}
+QString HistoryPanel::executionRoot() const {
+    return historyRoot(window->document(),
+                       window->path.isEmpty() ? QDir::currentPath() : QFileInfo(window->path).absolutePath());
 }
 void HistoryPanel::setRoot(const QString &path, bool remember) {
     auto value = path.trimmed();
@@ -286,17 +974,20 @@ void HistoryPanel::setRoot(const QString &path, bool remember) {
     followsExecution = !remember;
     window->settings.setValue("history/root", remember ? value : QString());
     if (root != value) {
+        saveMemo();
         scan.cancel();
         entries.clear();
         changedJobs.clear();
         pendingSelection.clear();
+        reference.clear();
+        scanned = false;
         root = value;
         populate();
     }
-    rootField->setText(root);
     refresh();
 }
 void HistoryPanel::refresh() {
+    updateToolbar();
     if (root.isEmpty())
         return;
     try { // Showing the tab over MCP must not scan outside --mcp-allow-dir.
@@ -308,6 +999,7 @@ void HistoryPanel::refresh() {
     if (pendingSelection.isEmpty())
         pendingSelection = selectedDirectory();
     cancel->setEnabled(true);
+    cancel->show();
     refreshButton->setEnabled(false);
     status->setText("ジョブを読み込んでいます…");
     scan.start(root);
@@ -322,104 +1014,345 @@ void HistoryPanel::selectDirectory(const QString &path) {
     refresh();
 }
 QString HistoryPanel::selectedDirectory() const {
-    const auto selected = table->selectionModel()->selectedRows();
-    return selected.isEmpty() ? QString()
-                              : table->item(selected.first().row(), 0)->data(Qt::UserRole).toString();
+    const auto selected = table->selectedItems();
+    return selected.isEmpty() ? QString() : selected.first()->data(StateColumn, DirectoryRole).toString();
 }
-const HistoryEntry *HistoryPanel::selectedEntry() const {
-    const auto path = selectedDirectory();
+const HistoryEntry *HistoryPanel::entry(const QString &directory) const {
+    if (directory.isEmpty())
+        return nullptr;
     for (const auto &e : entries)
-        if (e.directory == path)
+        if (e.directory == directory)
             return &e;
     return nullptr;
+}
+const HistoryEntry *HistoryPanel::selectedEntry() const {
+    return entry(selectedDirectory());
 }
 QString HistoryPanel::activeDirectory() const {
     const auto &run = window->execution->currentRun();
     return run.active() ? run.plan().directory : QString();
+}
+QVector<HistoryEntry> HistoryPanel::visibleEntries() const {
+    QVector<HistoryEntry> visible;
+    for (const auto &directory : listed)
+        if (const auto *e = entry(directory))
+            visible << *e;
+    return visible;
 }
 void HistoryPanel::populate(bool reloadDetails) {
     const auto selected = pendingSelection.isEmpty() ? selectedDirectory() : pendingSelection;
     pendingSelection.clear();
     const auto query = search->text().trimmed();
     const auto state = filter->currentData().toString(), active = activeDirectory();
+    const auto *base = entry(reference);
+    if (!base || !base->energy || pending(base->status)) {
+        reference.clear();
+        base = nullptr;
+    }
+    const auto &unit = energyUnits[std::max(0, energyUnit->currentIndex())];
+    // The jobs that match the search, counted by state, and those of the chosen state.
+    QMap<QString, int> counts;
+    QVector<Row> rows;
+    for (const auto &e : std::as_const(entries)) {
+        const bool owned = e.directory == active;
+        const auto words = QStringList{e.name,    e.method, e.basis,     e.task,
+                                       e.formula, e.memo,   e.directory, stateLabel(e, owned).first}
+                               .join(' ');
+        if (!words.contains(query, Qt::CaseInsensitive))
+            continue;
+        const auto group = stateGroup(e, owned);
+        ++counts[group];
+        ++counts[""];
+        if (!state.isEmpty() && group != state)
+            continue;
+        Row row{&e, owned, {}, {}};
+        if (comparing && base) {
+            row.note = comparisonNote(e, *base);
+            if (row.note.isEmpty())
+                row.delta = *e.energy - *base->energy;
+        }
+        rows << row;
+    }
+    // Values first in the chosen order, then the rows without one; the newest first among equals.
+    const auto missing = [&](const Row &r) {
+        const auto &e = *r.entry;
+        switch (sortColumn) {
+        case CreatedColumn:
+            return !e.created.isValid();
+        case DurationColumn:
+            return e.seconds < 0;
+        case EnergyColumn:
+            return !e.energy.has_value();
+        case DeltaColumn:
+            return !r.delta.has_value();
+        case MemoColumn:
+            return e.memo.isEmpty();
+        default:
+            return false;
+        }
+    };
+    const auto compareValues = [&](const Row &a, const Row &b) -> int {
+        const auto &x = *a.entry, &y = *b.entry;
+        const auto order = [](auto u, auto v) { return u < v ? -1 : v < u ? 1 : 0; };
+        switch (sortColumn) {
+        case StateColumn:
+            return QString::localeAwareCompare(stateLabel(x, a.owned).first, stateLabel(y, b.owned).first);
+        case NameColumn:
+            return QString::localeAwareCompare(x.name, y.name);
+        case LevelColumn:
+            return QString::localeAwareCompare(levelText(x), levelText(y));
+        case TaskColumn:
+            return QString::localeAwareCompare(x.task, y.task);
+        case CreatedColumn:
+            return order(x.created.toMSecsSinceEpoch(), y.created.toMSecsSinceEpoch());
+        case DurationColumn:
+            return order(x.seconds, y.seconds);
+        case EnergyColumn:
+            return order(*x.energy, *y.energy);
+        case DeltaColumn:
+            return order(*a.delta, *b.delta);
+        default:
+            return QString::localeAwareCompare(x.memo, y.memo);
+        }
+    };
+    const auto time = [](const HistoryEntry &e) {
+        return e.created.isValid() ? e.created.toMSecsSinceEpoch() : std::numeric_limits<qint64>::min();
+    };
+    std::stable_sort(rows.begin(), rows.end(), [&](const Row &a, const Row &b) {
+        const bool ma = missing(a), mb = missing(b);
+        if (ma != mb)
+            return mb;
+        if (!ma)
+            if (const int c = compareValues(a, b))
+                return sortOrder == Qt::AscendingOrder ? c < 0 : c > 0;
+        return time(*a.entry) > time(*b.entry);
+    });
+    double largest = 0;
+    for (const auto &r : rows)
+        if (r.delta)
+            largest = std::max(largest, std::abs(*r.delta));
+    const bool byDay = sortColumn == CreatedColumn;
+    listed.clear();
+    const int scrolled = table->verticalScrollBar()->value();
     {
         QSignalBlocker block(table);
-        table->setSortingEnabled(false);
-        table->setRowCount(0);
-        const auto unit = energyUnit->currentData().toString();
-        const double factor = unit == "kcal" ? 627.509474
-                              : unit == "kj" ? 2625.499639
-                              : unit == "ev" ? 27.211386245988
-                                             : 1.;
-        std::optional<double> referenceEnergy;
-        for (const auto &e : entries)
-            if (e.directory == reference)
-                referenceEnergy = e.energy;
-        table->setHorizontalHeaderItem(7, new QTableWidgetItem("ΔE / " + energyUnit->currentText() +
-                                                               (referenceEnergy ? "" : "（基準未選択）")));
-        for (const auto &e : entries) {
-            const bool owned = e.directory == active;
-            const bool uncertain =
-                !owned && !e.orphaned && QStringList{"starting", "running", "stopping"}.contains(e.status);
-            if (!state.isEmpty() && !(state == "running"       ? owned
-                                      : state == "unconfirmed" ? uncertain
-                                      : state == "orphaned"    ? e.orphaned && !owned
-                                                               : state == e.status))
-                continue;
-            if (!(e.name + " " + e.method + " " + e.basis + " " + e.task + " " + e.directory)
-                     .contains(query, Qt::CaseInsensitive))
-                continue;
-            const int row = table->rowCount();
-            table->insertRow(row);
-            std::optional<double> delta;
-            if (e.energy && referenceEnergy)
-                delta = (*e.energy - *referenceEnergy) * factor;
-            const QStringList labels{
-                e.created.isValid() ? e.created.toLocalTime().toString("yyyy-MM-dd HH:mm:ss") : "—",
-                e.name,
-                e.method + " / " + e.basis,
-                e.task,
-                historyStatus(e.status, owned, e.orphaned),
-                e.energy ? QString::number(*e.energy, 'f', 10) + " (" + e.energyMethod + ")" : "—",
-                e.seconds < 0 ? "—" : QString::number(e.seconds),
-                delta ? QString::number(*delta, 'f', unit == "hartree" ? 8 : 3) +
-                            (e.directory == reference ? "（基準）" : "")
-                      : "—",
-                e.formula.isEmpty() ? "—" : e.formula,
-                e.memo};
-            for (int col = 0; col < labels.size(); ++col) {
-                QVariant key = labels[col];
-                if (col == 0)
-                    key = e.created.toMSecsSinceEpoch();
-                if (col == 5)
-                    key = e.energy.value_or(-std::numeric_limits<double>::infinity());
-                if (col == 6)
-                    key = e.seconds;
-                if (col == 7)
-                    key = delta.value_or(-std::numeric_limits<double>::infinity());
-                auto *item = new SortItem(labels[col], key);
-                item->setData(Qt::UserRole, e.directory);
-                if (col != 9 || !e.valid)
-                    item->setFlags(item->flags() & ~Qt::ItemIsEditable);
-                item->setToolTip(e.directory + (e.warnings.isEmpty() ? "" : "\n" + e.warnings.join('\n')));
-                table->setItem(row, col, item);
+        QSignalBlocker blockHeader(table->header());
+        table->header()->setSortIndicator(sortColumn, sortOrder);
+        table->clear();
+        table->setColumnHidden(DurationColumn, comparing);
+        table->setColumnHidden(DeltaColumn, !comparing);
+        if (byDay != grouped) // Times under a day, or with their date.
+            table->setColumnWidth(CreatedColumn, byDay ? 64 : 92);
+        grouped = byDay;
+        table->headerItem()->setText(DeltaColumn, QString("ΔE / ") + unit.label);
+        QTreeWidgetItem *day = nullptr;
+        QDate date;
+        int inDay = 0;
+        const auto closeDay = [&] {
+            if (day)
+                day->setData(StateColumn, DetailRole, QString("%1 件").arg(inDay));
+        };
+        for (const auto &r : std::as_const(rows)) {
+            if (byDay) {
+                const auto next =
+                    r.entry->created.isValid() ? r.entry->created.toLocalTime().date() : QDate();
+                if (!day || next != date) {
+                    closeDay();
+                    day = new QTreeWidgetItem(table, {dayTitle(next)});
+                    day->setData(StateColumn, GroupRole, true);
+                    day->setFlags(Qt::ItemIsEnabled);
+                    day->setFirstColumnSpanned(true);
+                    date = next;
+                    inDay = 0;
+                }
+                ++inDay;
             }
+            auto *item = day ? new QTreeWidgetItem(day) : new QTreeWidgetItem(table);
+            fillRow(item, r, byDay, largest);
+            listed << r.entry->directory;
         }
-        table->setSortingEnabled(true);
-        for (int row = 0; row < table->rowCount(); ++row)
-            if (table->item(row, 0)->data(Qt::UserRole).toString() == selected)
-                table->selectRow(row);
+        closeDay();
+        if (rows.isEmpty() && !entries.isEmpty()) {
+            auto *none = new QTreeWidgetItem(
+                table, {"条件に合うジョブはありません。検索語と状態の絞り込みを見直してください。"});
+            none->setData(StateColumn, KindRole, "placeholder");
+            none->setFlags(Qt::ItemIsEnabled);
+            none->setFirstColumnSpanned(true);
+        }
+        table->expandAll();
+        table->verticalScrollBar()->setValue(scrolled);
+        for (QTreeWidgetItemIterator it(table); *it; ++it)
+            if ((*it)->data(StateColumn, DirectoryRole).toString() == selected && !selected.isEmpty()) {
+                table->setCurrentItem(*it);
+                table->scrollToItem(*it);
+                break;
+            }
     }
-    status->setText(
-        QString("%1 / %2 件　·　終了コード0は収束の保証ではありません。Eは最後のtaskの全エネルギーです。")
-            .arg(table->rowCount())
-            .arg(entries.size()));
+    // The states with their counts, and the folder.
+    const QStringList keys{"", "active", "finished", "stopped", "prepared"},
+        names{"すべて", "実行中", "終了", "停止・失敗", "保存のみ"};
+    for (int i = 0; i < keys.size(); ++i)
+        filterButtons->button(i)->setText(QString("%1  %2").arg(names[i]).arg(counts.value(keys[i])));
+    updateToolbar();
+    if (scan.active())
+        status->setText("ジョブを読み込んでいます…");
+    else
+        status->setText(QString("%1 / %2 件%3")
+                            .arg(listed.size())
+                            .arg(entries.size())
+                            .arg(query.isEmpty() ? QString() : QString("（「%1」で絞り込み）").arg(query)));
+    note->setText(
+        !comparing ? "計算のEは最後のtaskの全エネルギーです。終了コード0は収束の保証ではありません。"
+        : base     ? QString("ΔEは基準（%1）と組成・手法・基底・エネルギーの種類が同じジョブだけに"
+                             "表示します。熱補正は含みません。")
+                         .arg(base->name)
+                   : QString("基準にするジョブを選び、右の「このジョブを基準にする」を押してください。"));
+    const bool empty = scanned && entries.isEmpty() && !scan.active();
+    pages->setCurrentIndex(empty ? 1 : 0);
+    if (empty)
+        showEmptyPage();
+    for (QWidget *w : {static_cast<QWidget *>(search), static_cast<QWidget *>(filterButtons),
+                       static_cast<QWidget *>(compare)})
+        w->setEnabled(!empty);
     if (reloadDetails || selectedDirectory() != selected)
         showDetails();
     else
         updateActions();
 }
+void HistoryPanel::fillRow(QTreeWidgetItem *item, const Row &r, bool grouped, double largest) const {
+    const auto &e = *r.entry;
+    const auto &unit = energyUnits[std::max(0, energyUnit->currentIndex())];
+    const auto [label, kind] = stateLabel(e, r.owned);
+    item->setText(StateColumn, label);
+    item->setData(StateColumn, KindRole, kind);
+    item->setText(NameColumn, e.name);
+    item->setData(NameColumn, DetailRole, e.formula.isEmpty() ? QString("組成不明") : e.formula);
+    item->setText(LevelColumn, levelText(e));
+    item->setText(TaskColumn, e.task.isEmpty() ? QString("—") : e.task);
+    item->setText(CreatedColumn, e.created.isValid() ? listTime(e.created, grouped) : QString("—"));
+    item->setText(DurationColumn, e.seconds < 0 ? QString("—") : elapsedClock(e.seconds));
+    item->setData(DurationColumn, KindRole, r.owned ? "running" : "");
+    item->setText(EnergyColumn, e.energy ? hartree(*e.energy) : QString("—"));
+    item->setData(EnergyColumn, DetailRole, e.energy ? e.energyMethod : QString());
+    if (r.delta) {
+        item->setText(DeltaColumn, signedNumber(*r.delta * unit.factor, unit.digits));
+        item->setData(DeltaColumn, KindRole, e.directory == reference ? "reference" : "delta");
+        item->setData(DeltaColumn, BarRole, largest > 0 ? std::abs(*r.delta) / largest : 0.);
+    } else {
+        item->setText(DeltaColumn, "—");
+        item->setData(DeltaColumn, DetailRole, r.note);
+    }
+    item->setText(MemoColumn, e.memo);
+    item->setData(StateColumn, DirectoryRole, e.directory);
+    const auto tip = historyStatus(e.status, r.owned, e.orphaned) + "\n" + displayPath(e.directory) +
+                     (e.warnings.isEmpty() ? "" : "\n" + e.warnings.join('\n'));
+    for (int column = 0; column < ColumnCount; ++column)
+        item->setToolTip(column, column == MemoColumn && !e.memo.isEmpty() ? e.memo : tip);
+    item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+}
+void HistoryPanel::updateRow(const HistoryEntry &e) {
+    for (QTreeWidgetItemIterator it(table); *it; ++it)
+        if ((*it)->data(StateColumn, DirectoryRole).toString() == e.directory) {
+            (*it)->setText(DurationColumn, e.seconds < 0 ? QString("—") : elapsedClock(e.seconds));
+            (*it)->setText(EnergyColumn, e.energy ? hartree(*e.energy) : QString("—"));
+            (*it)->setData(EnergyColumn, DetailRole, e.energy ? e.energyMethod : QString());
+            (*it)->setText(MemoColumn, e.memo);
+        }
+}
+void HistoryPanel::updateToolbar() {
+    const auto other = executionRoot();
+    const bool same = QDir::cleanPath(other) == QDir::cleanPath(root);
+    const auto path = root.isEmpty() ? QString("未設定") : displayPath(root);
+    rootButton->setText(fontMetrics().elidedText(path, Qt::ElideMiddle, 360) +
+                        (same ? "（5 実行設定と同じ）" : "（選んだ保存先）"));
+    rootButton->setToolTip(root);
+    executionRootAction->setEnabled(!same || !followsExecution);
+    // Jobs recorded as running by MolForma on this PC whose process has ended.
+    QStringList orphans;
+    for (const auto &e : std::as_const(entries))
+        if (e.orphaned && e.directory != activeDirectory())
+            orphans << (e.created.isValid() ? japanese().toString(e.created.toLocalTime(), "M月d日") + " "
+                                            : "") +
+                           e.name;
+    orphanBanner->setVisible(!orphans.isEmpty());
+    if (!orphans.isEmpty())
+        orphanText->setText(
+            QString("このPCで「実行中」と記録されたまま、計算のプロセスが終了しているジョブが %1 "
+                    "件あります（%2）。記録を「中断」に直し、ログからエネルギーを求めます。")
+                .arg(orphans.size())
+                .arg(orphans.mid(0, 2).join("、") + (orphans.size() > 2 ? " ほか" : "")));
+}
+void HistoryPanel::showEmptyPage() {
+    const QFileInfo info(root);
+    const bool readable = info.isDir() && info.isReadable();
+    emptyTitle->setText(readable ? "この保存先にはジョブがありません"
+                                 : "この保存先は見つからないか、読めません");
+    emptyText->setText(readable ? QString("「5 実行設定」で計算を実行するか、入力一式を保存すると、ここに一覧"
+                                          "します。別の場所に保存したジョブは、保存先を切り替えて開けます。")
+                                : displayPath(root));
+    const auto other = executionRoot();
+    const bool elsewhere = QDir::cleanPath(other) != QDir::cleanPath(root);
+    emptyBack->setVisible(elsewhere);
+    emptyExecution->setVisible(elsewhere);
+    if (!elsewhere)
+        return;
+    QString count;
+    try { // Over MCP, folders outside --mcp-allow-dir are not counted.
+        window->checkMcpPath(other);
+        const int n = historyJobCount(other);
+        count = n < 0       ? QString("（見つかりません）")
+                : n >= 2000 ? QString("（2000 件以上）")
+                            : QString("（%1 件）").arg(n);
+    } catch (const std::exception &) {
+    }
+    emptyExecution->setText("「5 実行設定」の保存先: " + displayPath(other) + count);
+}
+void HistoryPanel::setComparing(bool on) {
+    {
+        QSignalBlocker block(compare);
+        compare->setChecked(on);
+    }
+    if (comparing == on)
+        return;
+    comparing = on;
+    unitButtons->setVisible(on);
+    if (on) {
+        const auto *e = selectedEntry();
+        if (reference.isEmpty() && e && e->energy && !pending(e->status))
+            reference = e->directory;
+        filesOpenBeforeComparing = filesOpen;
+        setFilesOpen(false, false);
+        sortColumn = DeltaColumn;
+        sortOrder = Qt::AscendingOrder;
+    } else {
+        setFilesOpen(filesOpenBeforeComparing, false);
+        sortColumn = CreatedColumn;
+        sortOrder = Qt::DescendingOrder;
+    }
+    table->scrollToTop();
+    populate();
+}
+void HistoryPanel::setFilesOpen(bool open, bool remember) {
+    if (filesOpen && !open && listSplit->sizes().value(1) > 80)
+        filesHeight = listSplit->sizes().value(1);
+    filesOpen = open;
+    if (remember)
+        window->settings.setValue("history/files_open", open);
+    filesToggle->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+    filesToggle->setToolTip(open ? "ファイルの表示を閉じる" : "ファイルを表示");
+    for (QWidget *w : {static_cast<QWidget *>(fileStack), static_cast<QWidget *>(fileName),
+                       static_cast<QWidget *>(follow), static_cast<QWidget *>(copyFile)})
+        w->setVisible(open);
+    const auto m = filesCard->layout()->contentsMargins();
+    const int closed = m.top() + m.bottom() + filesCard->header()->sizeHint().height() + 2;
+    filesCard->setMaximumHeight(open ? QWIDGETSIZE_MAX : closed);
+    // The list takes the room of the files, and gives it back.
+    const int total = listSplit->height() > 0 ? listSplit->height() : 600;
+    const int files = open ? filesHeight : closed;
+    listSplit->setSizes({std::max(160, total - files - listSplit->handleWidth()), files});
+}
 void HistoryPanel::showDetails() {
+    saveMemo(); // The memo of the job selected before.
     const auto *e = selectedEntry();
     try {
         if (e)
@@ -427,70 +1360,314 @@ void HistoryPanel::showDetails() {
     } catch (const std::exception &) {
         e = nullptr; // An MCP selection does not read jobs outside --mcp-allow-dir.
     }
+    detailEmpty->setVisible(!e);
+    detail->setVisible(e != nullptr);
     if (!e) {
-        for (auto *p : {summary, input, output, errors, record})
+        memoDirectory.clear();
+        for (auto *p : {input, output, errors, record})
             p->clear();
+        progress->clear();
         updateActions();
         return;
     }
-    // Recorded in UTC; shown in local time like the table.
-    const auto local = [&](const char *key) {
-        const auto time = QDateTime::fromString(e->manifest[key].toString(), Qt::ISODateWithMs);
-        return time.isValid() ? time.toLocalTime().toString("yyyy-MM-dd HH:mm:ss") : QString("—");
-    };
-    QStringList lines{e->name,
-                      e->directory,
-                      "状態: " + historyStatus(e->status, e->directory == activeDirectory(), e->orphaned),
-                      "手法 / 基底: " + e->method + " / " + e->basis,
-                      "目的: " + e->task,
-                      "開始: " + local("started_at") + "　終了: " + local("finished_at") + "（ローカル時刻）",
-                      "終了コード: " + (e->manifest.contains("exit_code")
-                                            ? QString::number(e->manifest["exit_code"].toInt())
-                                            : "未記録"),
-                      "入力照合: " + historyIntegrity(*e)};
-    lines << e->warnings;
-    if (!e->manifest["error"].toString().isEmpty())
-        lines << "実行エラー: " + e->manifest["error"].toString();
-    lines << "\nエネルギーは計算の終了時にログ全体から求めた、最後のtaskのSCF/DFT/MP2/CCSD/CCSD(T)値です"
-             "（振動数のtaskは参照構造の値、BSSEは補正後の値）。実行中・以前の記録はログ末尾128 KiB内の"
-             "最後の値です。収束値とは限りません。異なる手法・基底・組成の値をそのまま比較しないでください。"
-             "\n再利用は保存した分子と条件を編集画面へ取り込みます。計算の開始は「5 実行設定」で行います。";
-    text(summary, lines.join('\n'));
-    for (auto pair : {qMakePair(input, "input.nw"), qMakePair(record, "run.json")}) {
+    const bool owned = e->directory == activeDirectory();
+    const auto [label, kind] = stateLabel(*e, owned);
+    title->setText(e->name);
+    title->setToolTip(e->name);
+    statePill->setText(label);
+    statePill->setToolTip(historyStatus(e->status, owned, e->orphaned));
+    setFlag(statePill, "pill", kind);
+    level->setText(levelText(*e) + (e->task.isEmpty() ? "" : " · " + e->task));
+    // The molecule as saved with the job (read once per job: the bundle does not change).
+    if (!molecules.contains(e->directory)) {
         try {
-            text(pair.first, historyText(e->directory, pair.second));
+            molecules[e->directory] = historyMolecule(e->directory);
+        } catch (const std::exception &) {
+            molecules[e->directory] = std::nullopt;
+        }
+    }
+    QStringList line{e->formula.isEmpty() ? QString("組成不明") : e->formula};
+    if (const auto &m = molecules.value(e->directory)) {
+        line << QString("%1 原子").arg(m->atoms);
+        if (!comparing)
+            line << QString("電荷 %1 / 多重度 %2").arg(m->charge).arg(m->multiplicity);
+    }
+    if (comparing) {
+        if (e->created.isValid())
+            line << dayAndTime(e->created);
+        if (e->seconds >= 0)
+            line << "所要 " + elapsedClock(e->seconds);
+    }
+    facts->setText(line.join(" · "));
+    showEnergy(*e, owned);
+    showFacts(*e, owned);
+    // Over MCP with --mcp-allow-dir, memos are written only inside the allowed folders.
+    bool outside = false;
+    if (window->mcp.policy && window->mcp.policy->restricted())
+        try {
+            window->mcp.policy->checkPath(e->directory);
+        } catch (const std::exception &) {
+            outside = true;
+        }
+    memo->setProperty("mcpPath", outside);
+    if (memoDirectory != e->directory || !memo->hasFocus()) {
+        loadingMemo = true;
+        memo->setPlainText(e->memo);
+        loadingMemo = false;
+    }
+    memoDirectory = e->directory;
+    memo->setReadOnly(!e->valid);
+    memoStatus->hide();
+    memoBox->setVisible(!comparing && !(owned && pending(e->status))); // A run keeps its stop button in view.
+    for (auto pair : {std::pair{input, "input.nw"}, std::pair{record, "run.json"}}) {
+        try {
+            showText(pair.first, historyText(e->directory, pair.second));
         } catch (const std::exception &error) {
-            text(pair.first, QString::fromUtf8(error.what()));
+            showText(pair.first, QString::fromUtf8(error.what()));
         }
     }
     updateLogs();
+    arrangeActions(e, owned);
     updateActions();
+    updateLive();
+}
+void HistoryPanel::showEnergy(const HistoryEntry &e, bool owned) {
+    const bool running = owned && pending(e.status);
+    progressBox->setVisible(running);
+    energyBox->setVisible(!running);
+    if (running)
+        return;
+    setFlag(energyBox, "compare", comparing);
+    const auto &unit = energyUnits[std::max(0, energyUnit->currentIndex())];
+    if (!comparing) {
+        energyCaption->setText("計算のE（" + energySource(e) + "）");
+        energyValue->setText(e.energy ? hartree(*e.energy, 10) : QString("—"));
+        energySuffix->setText(e.energy ? "Hartree · " + e.energyMethod : QString());
+        energyNote->setText(e.energy ? e.manifest["summary"].toObject()["energy"].isDouble()
+                                           ? "最後のtaskの値です。収束の保証ではありません。"
+                                           : "ログ末尾128 KiB内の最後の値です。収束の保証ではありません。"
+                            : e.status == "prepared" ? "NWChemは起動していません（入力一式の保存のみ）。"
+                                                     : "ログに全エネルギーの記録がありません。");
+        return;
+    }
+    const auto *base = entry(reference);
+    if (!base) {
+        energyCaption->setText("ΔEの基準");
+        energyValue->setText("—");
+        energySuffix->clear();
+        energyNote->setText(e.energy && !pending(e.status)
+                                ? "「このジョブを基準にする」で、このジョブとの差を一覧に表示します。"
+                                : "エネルギーのある終了したジョブを選び、基準にしてください。");
+        return;
+    }
+    if (base == &e) {
+        energyCaption->setText("このジョブが基準です");
+        energyValue->setText(signedNumber(0, unit.digits));
+        energySuffix->setText(unit.label);
+        energyNote->setText("ほかのジョブを選ぶと、基準との差をここにも表示します。");
+        return;
+    }
+    energyCaption->setText("基準 " + base->name + " との差");
+    auto why = comparisonNote(e, *base);
+    if (!why.isEmpty()) {
+        const auto pair = [](const QString &a, const QString &b) {
+            return QString("（%1、基準は %2）").arg(a, b);
+        };
+        if (why.startsWith("組成"))
+            why += pair(e.formula, base->formula);
+        else if (why.startsWith("手法"))
+            why += pair(e.method, base->method);
+        else if (why.startsWith("基底"))
+            why += pair(e.basis, base->basis);
+        else if (why.startsWith("エネルギーの種類"))
+            why += pair(e.energyMethod, base->energyMethod);
+        energyValue->setText("—");
+        energySuffix->clear();
+        energyNote->setText(why + "。差を表示しません。");
+        return;
+    }
+    const double delta = *e.energy - *base->energy;
+    energyValue->setText(signedNumber(delta * unit.factor, unit.digits));
+    energySuffix->setText(unit.label);
+    QStringList others;
+    for (const auto &u : energyUnits)
+        if (&u != &unit)
+            others << signedNumber(delta * u.factor, u.digits) + " " + u.label;
+    energyNote->setText(others.join(" · "));
+}
+void HistoryPanel::showFacts(const HistoryEntry &e, bool owned) {
+    while (auto *item = factGrid->takeAt(0)) {
+        delete item->widget();
+        delete item;
+    }
+    int row = 0;
+    const auto add = [&](const QString &key, const QString &name, QWidget *value) {
+        auto *label = caption(name);
+        label->setWordWrap(false);
+        factGrid->addWidget(label, row, 0, Qt::AlignTop);
+        value->setObjectName("historyFact_" + key);
+        factGrid->addWidget(value, row++, 1);
+    };
+    const auto text = [&](const QString &key, const QString &name, const QString &value, bool mono = false) {
+        auto *label = new QLabel(value);
+        label->setWordWrap(true);
+        label->setTextFormat(Qt::PlainText);
+        label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        if (mono)
+            label->setProperty("mono", true);
+        add(key, name, label);
+    };
+    const auto energy = [](const HistoryEntry &x) {
+        return x.energy ? hartree(*x.energy, 10) + " Hartree（" + x.energyMethod + "）" : QString("—");
+    };
+    if (comparing) {
+        const auto *base = entry(reference);
+        text("energy", "計算のE", energy(e), true);
+        if (base && base != &e) {
+            text("referenceEnergy", "基準のE", energy(*base), true);
+            if (e.energy && comparisonNote(e, *base).isEmpty()) {
+                const auto mine = energySource(e), theirs = energySource(*base);
+                text("compared", "比べた値",
+                     mine == theirs ? "どちらも" + mine + "の全エネルギー"
+                                    : QString("このジョブは%1、基準は%2の全エネルギー").arg(mine, theirs));
+            }
+        }
+        return;
+    }
+    const auto time = [&](const char *key) {
+        return QDateTime::fromString(e.manifest[key].toString(), Qt::ISODateWithMs);
+    };
+    const auto started = time("started_at"), finished = time("finished_at");
+    if (e.status == "prepared")
+        text("created", "保存", e.created.isValid() ? dayAndTime(e.created) : QString("—"));
+    else
+        text("started", "開始", started.isValid() ? dayAndTime(started) : QString("—"));
+    if (owned && pending(e.status))
+        text("elapsed", "経過", elapsedClock(window->execution->currentRun().elapsedSeconds()));
+    else if (e.status != "prepared") {
+        QString end = finished.isValid() ? (finished.toLocalTime().date() == started.toLocalTime().date()
+                                                ? finished.toLocalTime().toString("HH:mm")
+                                                : dayAndTime(finished))
+                                         : QString("—");
+        if (e.seconds >= 0)
+            end += " · 所要 " + elapsedClock(e.seconds);
+        text("finished", "終了", end);
+        const auto summary = e.manifest["summary"].toObject();
+        text("exit", "終了コード",
+             e.manifest.contains("exit_code")
+                 ? QString::number(e.manifest["exit_code"].toInt()) +
+                       (summary.isEmpty()                        ? ""
+                        : summary["normal_termination"].toBool() ? " · 正常終了の記録あり"
+                                                                 : " · 正常終了の記録なし")
+                 : QString("未記録"));
+    }
+    text("integrity", "入力照合", historyIntegrity(e));
+    if (!e.manifest["error"].toString().isEmpty())
+        text("error", "実行エラー", e.manifest["error"].toString());
+    if (!e.warnings.isEmpty())
+        text("warnings", "注意", e.warnings.join('\n'));
+    auto *place = new QWidget;
+    auto *placeRow = new QHBoxLayout(place);
+    placeRow->setContentsMargins(0, 0, 0, 0);
+    placeRow->setSpacing(6);
+    auto *path = new QLabel(displayPath(e.directory));
+    path->setProperty("mono", true);
+    path->setWordWrap(true);
+    path->setTextFormat(Qt::PlainText);
+    path->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    path->setToolTip(e.directory);
+    placeRow->addWidget(path, 1);
+    auto *copy = new QToolButton;
+    copy->setObjectName("historyCopyFolder");
+    copy->setIcon(lineIcon("copy"));
+    copy->setProperty("flat", true);
+    copy->setToolTip("フォルダーのパスをコピー");
+    connect(copy, &QToolButton::clicked, this,
+            [directory = e.directory] { QApplication::clipboard()->setText(directory); });
+    placeRow->addWidget(copy, 0, Qt::AlignTop);
+    add("folder", "フォルダー", place);
+}
+void HistoryPanel::arrangeActions(const HistoryEntry *e, bool owned) {
+    for (auto *b : {viewer, reuse, folder, stop, setReference, showExecution}) {
+        actionGrid->removeWidget(b);
+        b->hide();
+    }
+    const auto place = [&](QPushButton *b, int row, int column, int span = 1) {
+        actionGrid->addWidget(b, row, column, 1, span);
+        b->show();
+    };
+    const bool running = e && owned && pending(e->status);
+    viewer->setText(running ? "途中のログを開く" : "結果ビューアで開く");
+    setFlag(viewer, "primary", !running);
+    setReference->setText(comparing ? "このジョブを基準にする" : "このジョブを基準にΔEを比べる");
+    setFlag(setReference, "link", !comparing);
+    if (running) {
+        place(stop, 0, 0, 2);
+        place(viewer, 1, 0);
+        place(folder, 1, 1);
+        actionGrid->addWidget(showExecution, 2, 0, 1, 2, Qt::AlignLeft);
+        showExecution->show();
+    } else if (comparing) {
+        place(viewer, 0, 0, 2);
+        place(setReference, 1, 0);
+        place(reuse, 1, 1);
+    } else {
+        place(viewer, 0, 0, 2);
+        place(reuse, 1, 0);
+        place(folder, 1, 1);
+        if (e && e->energy && !pending(e->status)) {
+            actionGrid->addWidget(setReference, 2, 0, 1, 2, Qt::AlignLeft);
+            setReference->show();
+        }
+    }
+    stopComparing->setVisible(comparing);
+}
+void HistoryPanel::updateLive() {
+    const auto *e = selectedEntry();
+    if (!e || e->directory != activeDirectory() || !detail->isVisible())
+        return;
+    const auto &run = window->execution->currentRun();
+    progress->showRun(e->directory, run.state(), run.active());
+    const qint64 seconds = run.elapsedSeconds();
+    progressTiming->setText(QString("経過 %1 · %2 開始 · このウィンドウで実行中")
+                                .arg(elapsedClock(seconds))
+                                .arg(QDateTime::currentDateTime().addSecs(-seconds).toString("HH:mm")));
+    if (auto *elapsed = findChild<QLabel *>("historyFact_elapsed"))
+        elapsed->setText(elapsedClock(seconds));
 }
 void HistoryPanel::updateLogs() {
     const auto directory = selectedDirectory();
-    if (directory.isEmpty())
+    if (directory.isEmpty() || !detail->isVisible())
         return;
-    for (auto pair : {qMakePair(output, "output.out"), qMakePair(errors, "stderr.err")}) {
+    for (auto pair : {std::pair{output, "output.out"}, std::pair{errors, "stderr.err"}}) {
         try {
-            text(pair.first, historyText(directory, pair.second, true), follow->isChecked());
+            showText(pair.first, historyText(directory, pair.second, true), follow->isChecked());
         } catch (const std::exception &error) {
-            text(pair.first, QString::fromUtf8(error.what()));
+            showText(pair.first, QString::fromUtf8(error.what()));
         }
     }
 }
 void HistoryPanel::updateActions() {
     const auto *e = selectedEntry();
     const bool exists = e && QFileInfo(e->directory).isDir();
+    const bool owned = e && e->directory == activeDirectory();
     viewer->setEnabled(exists && !resultFiles(e->directory).isEmpty());
     folder->setEnabled(exists);
     reuse->setEnabled(exists && e->valid && !window->hasCandidate() && !window->worker);
-    stop->setEnabled(exists && e->directory == activeDirectory() &&
-                     window->execution->currentRun().state() != "stopping");
-    const bool pending = QStringList{"starting", "running", "stopping"}.contains(e ? e->status : QString());
-    repair->setEnabled(exists && e->valid && e->orphaned && e->directory != activeDirectory());
-    trash->setEnabled(exists && e->valid && e->directory != activeDirectory() && (!pending || e->orphaned));
-    csv->setEnabled(table->rowCount() > 0);
-    setReference->setEnabled(e && e->energy.has_value());
+    stop->setEnabled(exists && owned && window->execution->currentRun().state() != "stopping");
+    const bool unfinished = e && pending(e->status);
+    repair->setEnabled(exists && e->valid && e->orphaned && !owned);
+    repairBox->setVisible(e && e->orphaned && !owned && !comparing);
+    const bool movable = exists && e->valid && !owned && (!unfinished || e->orphaned);
+    trash->setEnabled(movable);
+    trash->setVisible(movable);
+    trashNote->setText(movable ? "ジョブフォルダーごとごみ箱へ移します（戻すときは、ごみ箱から戻します）。"
+                       : unfinished ? "実行中・稼働未確認のジョブはごみ箱へ移せません。停止してから操作して"
+                                      "ください。"
+                                    : "読めない記録のフォルダーは、ファイルマネージャーで確認してください。");
+    trashRow->setVisible(e && !comparing);
+    csv->setEnabled(!listed.isEmpty());
+    setReference->setEnabled(e && e->energy && !unfinished && (!comparing || e->directory != reference));
 }
 void HistoryPanel::notifyJob(const QString &path) {
     if (!isVisible() || QFileInfo(path).absolutePath() != root)
@@ -506,13 +1683,39 @@ void HistoryPanel::notifyJob(const QString &path) {
     }
     for (auto &e : entries)
         if (e.directory == path) {
-            const bool transition = e.status != next.status;
-            e = next;
-            populate(transition);
+            if (e.status != next.status || e.orphaned != next.orphaned) {
+                e = next;
+                populate(true);
+            } else {
+                e = next;
+                updateRow(e);
+            }
             return;
         }
     entries << next;
     populate();
+}
+void HistoryPanel::saveMemo() {
+    memoTimer.stop();
+    if (memoDirectory.isEmpty() || loadingMemo)
+        return;
+    const auto *e = entry(memoDirectory);
+    const auto text = memo->toPlainText().trimmed();
+    if (!e || !e->valid || e->memo == text)
+        return;
+    try {
+        window->checkMcpPath(memoDirectory);
+        setHistoryMemo(memoDirectory, text);
+        for (auto &x : entries)
+            if (x.directory == memoDirectory) {
+                x.memo = text;
+                updateRow(x);
+            }
+        memoStatus->hide();
+    } catch (const std::exception &error) {
+        memoStatus->setText(QString::fromUtf8(error.what()));
+        memoStatus->show();
+    }
 }
 void HistoryPanel::reuseSelected() {
     const auto directory = selectedDirectory();
@@ -566,14 +1769,65 @@ void HistoryPanel::repairSelected() {
     repairHistoryEntry(directory);
     refresh();
 }
+void HistoryPanel::repairOrphans() {
+    for (const auto &e : std::as_const(entries))
+        if (e.orphaned && e.directory != activeDirectory()) {
+            window->checkMcpPath(e.directory);
+            repairHistoryEntry(e.directory);
+        }
+    refresh();
+}
 void HistoryPanel::exportCsv(const QString &path) const {
-    QVector<HistoryEntry> visible;
-    for (int row = 0; row < table->rowCount(); ++row)
-        for (const auto &e : entries)
-            if (e.directory == table->item(row, 0)->data(Qt::UserRole).toString()) {
-                visible << e;
-                break;
-            }
-    writeFile(path, historyCsv(visible).toUtf8());
+    writeFile(path, historyCsv(visibleEntries()).toUtf8());
+}
+void HistoryPanel::applyChromeStyle() {
+    const auto pal = static_cast<QWidget *>(window)->palette();
+    setStyleSheet(chromeRules(settingsRules() + R"(
+        #historyTab { background: @window; }
+        #historyRail { background: @base; }
+        QScrollArea#historyDetailScroll { background: @base; border: none; border-left: 1px solid @line; }
+        QSplitter#historySplit::handle { background: @line; }
+        QToolButton#historyRootButton { border: 1px solid @line; border-radius: 6px; padding: 4px 8px; background: @base;
+                                        color: @text; }
+        QToolButton#historyRootButton:hover { background: @hover; }
+        QToolButton#historyRootButton::menu-indicator { subcontrol-position: right center; right: 6px; }
+        QPushButton#historyCompare:checked { background: @tint; border-color: @accent; color: @accentText;
+                                             font-weight: bold; }
+        QTreeWidget#historyTable { background: @base; border: none; border-top-left-radius: 9px;
+                                   border-top-right-radius: 9px; }
+        QTreeWidget#historyTable::item { border: none; }
+        QTreeWidget#historyTable::item:hover { background: @hover; }
+        QTreeWidget#historyTable::item:selected { background: @tint; color: @text; }
+        QTreeWidget#historyTable QHeaderView::section { background: @base; color: @muted; border: none;
+                                                        border-bottom: 1px solid @line; padding: 6px 8px; }
+        QFrame#historyListFooter { background: @window; border: none; border-top: 1px solid @line;
+                                   border-bottom-left-radius: 9px; border-bottom-right-radius: 9px; }
+        QPlainTextEdit[file="true"] { background: @window; border: 1px solid @line; border-radius: 6px; }
+        QLabel#historyDetailTitle { font-size: 18px; font-weight: bold; }
+        QLabel#historyDetailState { border-radius: 10px; padding: 2px 9px; font-weight: bold; }
+        QLabel#historyDetailState[pill="running"] { background: @tint; color: @accentText; }
+        QLabel#historyDetailState[pill="finished"] { background: @goodTint; color: @good; }
+        QLabel#historyDetailState[pill="failed"] { background: @badTint; color: @error; }
+        QLabel#historyDetailState[pill="time"] { background: @candidate; color: @candidateText; }
+        QLabel#historyDetailState[pill="orphan"] { background: @candidate; color: @candidateText;
+                                                   border: 1px solid @candidateLine; }
+        QLabel#historyDetailState[pill="saved"] { background: @base; color: @text; border: 1px solid @line; }
+        QLabel#historyDetailState[pill="unknown"] { background: @segment; color: @muted; border: 1px solid @line; }
+        QLabel#historyDetailState[pill="stopped"] { background: @segment; color: @text; }
+        QFrame#historyEnergyBox { background: @window; border: none; border-radius: 8px; }
+        QFrame#historyEnergyBox[compare="true"] { background: @tint; border: 1px solid @accent; }
+        QLabel#historyEnergyValue { font-family: monospace; font-size: 22px; font-weight: 600; }
+        QFrame#historyEnergyBox[compare="true"] QLabel#historyEnergyValue,
+        QFrame#historyEnergyBox[compare="true"] QLabel#historyEnergySuffix { color: @accentText; font-weight: bold; }
+        QFrame#historyProgressBox { background: @base; border: 1px solid @line; border-radius: 8px; }
+        QLabel[tile="true"] { background: @window; border: 1px solid @line; border-radius: 6px; padding: 5px 8px; }
+        QFrame#historyRepairBox { background: @candidate; border: 1px solid @candidateLine; border-radius: 8px; }
+        QFrame#historyRepairBox QLabel { color: @candidateText; }
+        QFrame#historyTrashRow { border: none; border-top: 1px solid @hover; }
+        QFrame#historyEmptyCard { background: @base; border: 1px dashed @line; border-radius: 12px; }
+        QPlainTextEdit#historyMemo { background: @base; border: 1px solid @line; border-radius: 6px; padding: 2px; }
+    )",
+                              pal));
+    setFilesOpen(filesOpen, false); // The height of the closed card follows the fonts of the style.
 }
 } // namespace mf

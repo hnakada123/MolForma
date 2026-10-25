@@ -1486,7 +1486,7 @@ class McpTest : public QObject {
         QVERIFY(failed(change(s, "history_action", {{"action", "scan"}, {"path", outside.path()}})));
         QVERIFY(failed(call(s, "capture_screenshot", scoped(s, {{"path", outside.filePath("view.png")}}))));
         QVERIFY(!QFile::exists(outside.filePath("view.png")));
-        QVERIFY(failed(change(s, "ui_set_value", {{"target", "historyRoot"}, {"value", outside.path()}})));
+        QVERIFY(failed(change(s, "ui_activate", {{"target", "historyBrowse"}})));
         QFileDialog dialog(&w, "MCP test", allowed.path());
         dialog.setOption(QFileDialog::DontUseNativeDialog);
         dialog.setObjectName("testDialog");

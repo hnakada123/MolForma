@@ -8,6 +8,7 @@
 #include "ui/input_preview_panel.h"
 #include "ui/main_window.h"
 #include "ui/results_panel.h"
+#include "ui/run_progress.h"
 #include "ui/theme.h"
 #include <QtWidgets>
 
@@ -35,14 +36,6 @@ QLabel *note(const QString &text) {
 void repolish(QWidget *w) {
     w->style()->unpolish(w);
     w->style()->polish(w);
-}
-// "18:31", or "1:02:03" past an hour.
-QString clock(qint64 seconds) {
-    return seconds >= 3600 ? QString("%1:%2:%3")
-                                 .arg(seconds / 3600)
-                                 .arg(seconds / 60 % 60, 2, 10, QChar('0'))
-                                 .arg(seconds % 60, 2, 10, QChar('0'))
-                           : QString("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QChar('0'));
 }
 // The logical CPUs of this PC as cells, filled for those the run would use (all in the error color
 // when it would use more than there are).
@@ -404,23 +397,8 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     state->setWordWrap(true);
     state->setTextFormat(Qt::PlainText);
     runCard->body()->addWidget(state);
-    stageList = new QVBoxLayout;
-    stageList->setSpacing(4);
-    runCard->body()->addLayout(stageList);
-    criteria = new QWidget;
-    criteria->setObjectName("executionCriteria");
-    auto *tiles = new QHBoxLayout(criteria);
-    tiles->setContentsMargins(0, 0, 0, 0);
-    tiles->setSpacing(8);
-    for (int i = 0; i < 4; ++i) {
-        auto *tile = new QLabel;
-        tile->setObjectName(QString("executionCriterion%1").arg(i));
-        tile->setProperty("tile", true);
-        tile->setTextFormat(Qt::RichText);
-        tiles->addWidget(tile, 1);
-        criterionLabels << tile;
-    }
-    runCard->body()->addWidget(criteria);
+    progress = new RunProgress("execution", 4);
+    runCard->body()->addWidget(progress);
     output->addWidget(runCard);
 
     auto *logCard = new SettingsCard("ログ");
@@ -827,9 +805,9 @@ void ExecutionPanel::updateRun() {
     timing->setText(!showingRun ? QString()
                     : run.active()
                         ? QString("経過 %1 · %2 開始")
-                              .arg(clock(seconds))
+                              .arg(elapsedClock(seconds))
                               .arg(QDateTime::currentDateTime().addSecs(-seconds).toString("HH:mm"))
-                        : QString("所要 %1").arg(clock(seconds)));
+                        : QString("所要 %1").arg(elapsedClock(seconds)));
     openFolder->setEnabled(!saved.directory.isEmpty());
     viewResults->setEnabled(!saved.directory.isEmpty() && !resultFiles(saved.directory).isEmpty());
     stop->setEnabled(run.active() && run.state() != "stopping");
@@ -846,7 +824,7 @@ void ExecutionPanel::updateRun() {
         start->setEnabled(false);
         prepare->setEnabled(false);
     }
-    window->showRun(run.active(), "実行中 " + clock(seconds), stop->isEnabled());
+    window->showRun(run.active(), "実行中 " + elapsedClock(seconds), stop->isEnabled());
     // Always visible in the status bar, whatever the tab.
     if (!run.plan().directory.isEmpty()) {
         const QMap<QString, QString> brief{{"starting", "NWChemを起動中"},
@@ -859,132 +837,14 @@ void ExecutionPanel::updateRun() {
         runStatus->setText(
             QString("%1%2 · %3")
                 .arg(run.active() ? "▶ " : "", brief.value(run.state(), run.state()))
-                .arg(run.active() ? clock(seconds) : QFileInfo(run.plan().directory).fileName()));
+                .arg(run.active() ? elapsedClock(seconds) : QFileInfo(run.plan().directory).fileName()));
         runStatus->show();
     }
-    showProgress(showingRun);
+    if (showingRun)
+        progress->showRun(saved.directory, run.state(), run.active());
+    else
+        progress->clear();
     appendLog();
-}
-void ExecutionPanel::readProgress() {
-    if (saved.directory != progressDirectory) {
-        progress = NwchemProgress();
-        progressDirectory = saved.directory;
-        progressOffset = 0;
-        progressRest.clear();
-        QFile input(QDir(saved.directory).filePath("input.nw"));
-        const auto text = input.open(QIODevice::ReadOnly) ? QString::fromUtf8(input.readAll()) : QString();
-        plannedTasks = NwchemProgress::tasks(text);
-        maxSteps = NwchemProgress::driverSteps(text);
-    }
-    if (saved.directory.isEmpty())
-        return;
-    QFile file(QDir(saved.directory).filePath("output.out"));
-    if (!file.open(QIODevice::ReadOnly) || file.size() == progressOffset)
-        return;
-    if (file.size() < progressOffset) { // A rewritten log: read it again.
-        progress = NwchemProgress();
-        progressOffset = 0;
-        progressRest.clear();
-    }
-    file.seek(progressOffset);
-    const auto chunk = file.read(std::min<qint64>(file.size() - progressOffset, 8 << 20));
-    progressOffset += chunk.size();
-    progressRest += chunk;
-    const int end = progressRest.lastIndexOf('\n');
-    if (end < 0)
-        return;
-    for (const auto &line : progressRest.left(end).split('\n'))
-        progress.add(QString::fromUtf8(line));
-    progressRest.remove(0, end + 1);
-}
-void ExecutionPanel::showProgress(bool showingRun) {
-    // The tasks of the run with their state, and the criteria of a running optimization.
-    QStringList stages;
-    const auto showStages = [&] {
-        // Rows in place while their number stays (the view updates four times a second).
-        if (stageList->count() != stages.size())
-            while (auto *item = stageList->takeAt(0)) {
-                delete item->widget();
-                delete item;
-            }
-        for (int i = 0; i < stages.size(); ++i) {
-            auto *row =
-                stageList->itemAt(i) ? qobject_cast<QLabel *>(stageList->itemAt(i)->widget()) : nullptr;
-            if (!row) {
-                row = new QLabel;
-                row->setObjectName(QString("executionStage%1").arg(i));
-                row->setTextFormat(Qt::RichText);
-                stageList->addWidget(row);
-            }
-            if (row->text() != stages[i])
-                row->setText(stages[i]);
-        }
-    };
-    if (!showingRun || run.state() == "starting") {
-        criteria->hide();
-        showStages();
-        return;
-    }
-    readProgress();
-    const ChromeColors c(palette());
-    const bool finished = run.state() == "finished" && !run.active();
-    const int current = std::clamp(progress.started - 1, 0, std::max(0, int(plannedTasks.size()) - 1));
-    const auto number = [](double value, int digits) {
-        return QString::number(value, 'f', digits).replace('-', "−");
-    };
-    for (int i = 0; i < plannedTasks.size(); ++i) {
-        const bool done =
-            finished || i < current || (i == current && progress.convergedTask == i && !run.active());
-        const bool now = run.active() && i == current;
-        const QString status = done ? "完了" : now ? "実行中" : run.active() ? "待機" : "未完了";
-        const QColor color = done ? c.good : now ? c.accentText : c.muted;
-        QString detail;
-        if (progress.stepTask == i && !progress.steps.isEmpty()) {
-            const auto &last = progress.steps.last();
-            detail = QString("ステップ %1%2 · E = %3 Hartree · ΔE %4")
-                         .arg(last.step)
-                         .arg(maxSteps ? QString(" / 最大 %1").arg(maxSteps) : QString())
-                         .arg(number(last.energy, 6))
-                         .arg(QString::number(last.deltaE, 'e', 1).replace('-', "−"));
-            if (progress.convergedTask == i)
-                detail += " · 収束";
-        } else if (now && std::isfinite(progress.energy))
-            detail = QString("E = %1 Hartree").arg(number(progress.energy, 6));
-        stages << QString("<b>%1　%2</b>　<span style=\"color:%3\">%4</span>%5")
-                      .arg(i + 1)
-                      .arg(plannedTasks[i].toHtmlEscaped(), color.name(), status)
-                      .arg(detail.isEmpty() ? QString()
-                                            : QString("<br><span style=\"color:%1\">%2</span>")
-                                                  .arg(c.muted.name(), detail.toHtmlEscaped()));
-    }
-    showStages();
-    // The four DRIVER criteria of the last step against their thresholds.
-    const bool optimizing = progress.stepTask >= 0 && !progress.steps.isEmpty() &&
-                            progress.stepTask == current && !progress.thresholds.isEmpty();
-    criteria->setVisible(optimizing);
-    if (!optimizing)
-        return;
-    const auto &last = progress.steps.last();
-    const QList<std::tuple<QString, QString, double>> values{{"Gmax", "gmax", last.gmax},
-                                                             {"Grms", "grms", last.grms},
-                                                             {"Xmax", "xmax", last.xmax},
-                                                             {"Xrms", "xrms", last.xrms}};
-    for (int i = 0; i < 4; ++i) {
-        const auto &[name, key, value] = values[i];
-        const double target = progress.thresholds.value(key).toDouble();
-        // At step 0 the displacements are not measured yet.
-        const bool measured = key.startsWith('g') || last.step > 0;
-        const bool met = measured && value <= target;
-        criterionLabels[i]->setText(QString("<b>%1</b>　<span style=\"color:%2\">%3</span><br><span "
-                                            "style=\"font-family:monospace\">%4</span>"
-                                            "<br><span style=\"color:%5\">目標 %6</span>")
-                                        .arg(name, met ? c.good.name() : c.muted.name(),
-                                             met        ? "達成"
-                                             : measured ? "未達"
-                                                        : "—")
-                                        .arg(measured ? QString::number(value, 'f', 5) : QString("—"),
-                                             c.muted.name(), QString::number(target, 'f', 5)));
-    }
 }
 void ExecutionPanel::appendLog() {
     constexpr qint64 tail = 128 * 1024;

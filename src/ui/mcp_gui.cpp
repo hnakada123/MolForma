@@ -1191,14 +1191,8 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
                 fail("Directory is not in the current history.");
             p->selectDirectory(path);
         } else if (action == "save_csv") {
-            QVector<HistoryEntry> visible;
-            for (int row = 0; row < p->table->rowCount(); ++row)
-                for (const auto &entry : p->entries)
-                    if (entry.directory == p->table->item(row, 0)->data(Qt::UserRole).toString()) {
-                        visible.append(entry);
-                        break;
-                    }
-            writeOutput(args["path"].toString(), historyCsv(visible).toUtf8(), args["overwrite"].toBool());
+            writeOutput(args["path"].toString(), historyCsv(p->visibleEntries()).toUtf8(),
+                        args["overwrite"].toBool());
         } else {
             if (p->selectedDirectory().isEmpty())
                 fail("Select a history entry first.");

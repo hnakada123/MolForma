@@ -36,6 +36,31 @@ class HistoryTest : public QObject {
         widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(7);
         w.show();
     }
+    // The job rows of the list, in their order (the headings of the days hold no job folder).
+    static QList<QTreeWidgetItem *> rows(MainWindow &w) {
+        QList<QTreeWidgetItem *> jobs;
+        for (QTreeWidgetItemIterator it(widget<QTreeWidget>(w, "historyTable")); *it; ++it)
+            if (!(*it)->data(0, Qt::UserRole).toString().isEmpty())
+                jobs << *it;
+        return jobs;
+    }
+    static QTreeWidgetItem *row(MainWindow &w, const QString &directory) {
+        for (auto *item : rows(w))
+            if (item->data(0, Qt::UserRole).toString() == directory)
+                return item;
+        return nullptr;
+    }
+    static QString fact(MainWindow &w, const QString &key) {
+        auto *label = w.findChild<QLabel *>("historyFact_" + key);
+        return label ? label->text() : QString();
+    }
+    // Answers the next question box with Yes.
+    static void acceptQuestion(QWidget *context) {
+        QTimer::singleShot(50, context, [] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()))
+                box->button(QMessageBox::Yes)->click();
+        });
+    }
   private slots:
     void initTestCase() {
         QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
@@ -58,6 +83,12 @@ class HistoryTest : public QObject {
         QCOMPARE(entry.method, "Hartree–Fock");
         QCOMPARE(entry.basis, "STO-3G");
         QVERIFY(historyIntegrity(entry).contains("入力・プロジェクトのSHA-256一致"));
+        const auto molecule = historyMolecule(p.directory);
+        QCOMPARE(molecule.atoms, 3);
+        QCOMPARE(molecule.charge, 0);
+        QCOMPARE(molecule.multiplicity, 1);
+        QCOMPARE(historyJobCount(tmp.filePath("jobs")), 1);
+        QCOMPARE(historyJobCount(tmp.filePath("missing")), -1);
         const auto before = readFile(p.directory + "/project.kgui.json");
         auto next = historyDocument(p.directory);
         QCOMPARE(next.atoms[0].id, d.atoms[0].id);
@@ -159,6 +190,30 @@ class HistoryTest : public QObject {
         QCOMPARE(historyStatus("running", true), "実行中");
         QVERIFY(!historyStatus("finished").contains("成功"));
     }
+    void comparableEnergies() {
+        HistoryEntry a;
+        a.formula = "H2O";
+        a.method = "Hartree–Fock";
+        a.basis = "STO-3G";
+        a.energyMethod = "SCF";
+        auto b = a;
+        QVERIFY(historyIncomparable(a, b).isEmpty());
+        b.formula = "H4O2";
+        QVERIFY(historyIncomparable(a, b).contains("組成"));
+        b = a;
+        b.method = "DFT / B3LYP";
+        QVERIFY(historyIncomparable(a, b).contains("手法"));
+        b = a;
+        b.basis = "6-31G*";
+        QVERIFY(historyIncomparable(a, b).contains("基底"));
+        b = a;
+        b.energyMethod = "SCF・BSSE補正"; // A counterpoise-corrected energy is another quantity.
+        QVERIFY(historyIncomparable(a, b).contains("エネルギーの種類"));
+        b = a;
+        a.formula.clear();
+        b.formula.clear();
+        QVERIFY(historyIncomparable(a, b).contains("組成")); // Unknown compositions never compare.
+    }
     void logSummaryOfTasks() {
         QTemporaryDir tmp;
         const auto log = tmp.filePath("output.out");
@@ -248,6 +303,9 @@ class HistoryTest : public QObject {
         QTRY_VERIFY(!panel->scanning());
         QVERIFY(widget<QPushButton>(w, "historyTrash")->isEnabled());
         QVERIFY(widget<QPushButton>(w, "historyRepair")->isEnabled());
+        QCOMPARE(rows(w).first()->text(0), "プロセスなし");
+        QVERIFY(widget<QFrame>(w, "historyOrphanBanner")->isVisibleTo(&w));
+        QVERIFY(widget<QLabel>(w, "historyOrphanText")->text().contains("1 件"));
         widget<QPushButton>(w, "historyRepair")->click();
         QTRY_VERIFY(!panel->scanning());
         e = readHistoryEntry(p.directory);
@@ -257,6 +315,8 @@ class HistoryTest : public QObject {
         QCOMPARE(parseJson(readFile(p.directory + "/run.json"))["summary"].toObject()["energy"].toDouble(),
                  -74.9);
         QVERIFY(!widget<QPushButton>(w, "historyRepair")->isEnabled());
+        QVERIFY(!widget<QFrame>(w, "historyOrphanBanner")->isVisibleTo(&w));
+        QCOMPARE(rows(w).first()->text(0), "中断");
         QVERIFY(historyStatus("interrupted").contains("中断"));
 #endif
     }
@@ -290,13 +350,17 @@ class HistoryTest : public QObject {
         QTRY_COMPARE(done.count(), 3);
         QVERIFY(scan.entries.isEmpty()); // No stale rows from the superseded root.
     }
-    void tableFiltersSortingSelectionAndReuse() {
+    void listFiltersSortingSelectionAndReuse() {
         QTemporaryDir tmp;
         auto d = water(tmp.filePath("jobs"));
         auto first = saveExecutionBundle(d, tmp.path());
         manifest(first, "finished", 9);
         writeFile(first.directory + "/output.out",
                   "NWChem\n Total SCF energy = -75\n Total times  cpu: 1s\n");
+        auto third = saveExecutionBundle(d, tmp.path());
+        manifest(third, "finished", 20);
+        writeFile(third.directory + "/output.out",
+                  "NWChem\n Total SCF energy = -75.01\n Total times  cpu: 1s\n");
         auto s = nwchemSettings(d);
         s["start"] = "pbe_water";
         s["method"] = "dft";
@@ -310,61 +374,92 @@ class HistoryTest : public QObject {
         const int undo = w.history()->count();
         showHistory(w);
         auto *panel = widget<HistoryPanel>(w, "historyTab");
-        auto *table = widget<QTableWidget>(w, "historyTable");
+        auto *table = widget<QTreeWidget>(w, "historyTable");
         QTRY_VERIFY(!panel->scanning());
-        QCOMPARE(table->rowCount(), 2);
+        QCOMPARE(rows(w).size(), 3);
         QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->tabText(7), "履歴");
+        // Newest first under the heading of their day, which is not a job to select.
+        QCOMPARE(table->topLevelItemCount(), 1);
+        QVERIFY(table->topLevelItem(0)->text(0).startsWith("今日 · "));
+        QCOMPARE(table->topLevelItem(0)->childCount(), 3);
+        QVERIFY(!(table->topLevelItem(0)->flags() & Qt::ItemIsSelectable));
+        QCOMPARE(rows(w).first()->data(0, Qt::UserRole).toString(), second.directory);
+        QCOMPARE(rows(w).first()->text(0), "稼働未確認");
+        // The states with their counts.
+        QCOMPARE(widget<QToolButton>(w, "historyFilter_")->text(), "すべて  3");
+        QCOMPARE(widget<QToolButton>(w, "historyFilter_finished")->text(), "終了  2");
+        QCOMPARE(widget<QToolButton>(w, "historyFilter_active")->text(), "実行中  1");
         panel->selectDirectory(first.directory);
         QTRY_VERIFY(!panel->scanning());
         QCOMPARE(panel->selectedDirectory(), first.directory);
-        // ΔE against the selected job, in the chosen unit.
-        writeFile(second.directory + "/output.out", "NWChem\n Total DFT energy = -75.01\n");
-        widget<QPushButton>(w, "historyRefresh")->click();
-        QTRY_VERIFY(!panel->scanning());
-        panel->selectDirectory(first.directory);
-        QTRY_VERIFY(!panel->scanning());
+        // The selected job at the right: the molecule saved with it, its energy and its record.
+        QCOMPARE(widget<QLabel>(w, "historyDetailTitle")->text(), "molforma");
+        QCOMPARE(widget<QLabel>(w, "historyDetailState")->text(), "終了");
+        QCOMPARE(widget<QLabel>(w, "historyDetailFacts")->text(), "H2O · 3 原子 · 電荷 0 / 多重度 1");
+        QCOMPARE(widget<QLabel>(w, "historyEnergyValue")->text(), "−75.0000000000");
+        QVERIFY(widget<QLabel>(w, "historyEnergySuffix")->text().contains("SCF"));
+        QVERIFY(fact(w, "integrity").contains("SHA-256一致"));
+        QVERIFY(w.findChild<QWidget *>("historyFact_folder")); // The path and a copy button.
+        QVERIFY(widget<QPlainTextEdit>(w, "historyInput")->toPlainText().contains("task scf energy"));
+        // ΔE against the chosen job, in the chosen unit, for jobs of the same composition, method,
+        // basis and kind of energy; not for unfinished jobs.
         widget<QPushButton>(w, "historyReference")->click();
-        QStringList deltas;
-        for (int row = 0; row < table->rowCount(); ++row)
-            deltas << table->item(row, 7)->text();
-        QVERIFY2(deltas.contains("0.000（基準）") && deltas.contains("-6.275"),
-                 qPrintable(deltas.join(", ")));
+        QVERIFY(widget<QPushButton>(w, "historyCompare")->isChecked());
+        QVERIFY(!table->isColumnHidden(7));
+        QCOMPARE(table->headerItem()->text(7), "ΔE / kcal/mol");
+        QCOMPARE(row(w, first.directory)->text(7), "0.00");
+        QCOMPARE(row(w, third.directory)->text(7), "−6.28");
+        QCOMPARE(row(w, second.directory)->data(7, Qt::UserRole + 2).toString(), "終了後に表示");
+        // Sorted by ΔE, the lowest first; the jobs without ΔE last.
+        QCOMPARE(rows(w).first()->data(0, Qt::UserRole).toString(), third.directory);
+        QCOMPARE(rows(w).last()->data(0, Qt::UserRole).toString(), second.directory);
+        QCOMPARE(widget<QLabel>(w, "historyEnergyCaption")->text(), "このジョブが基準です");
         auto *unit = widget<QComboBox>(w, "historyEnergyUnit");
         unit->setCurrentIndex(unit->findData("hartree"));
-        deltas.clear();
-        for (int row = 0; row < table->rowCount(); ++row)
-            deltas << table->item(row, 7)->text();
-        QVERIFY2(deltas.contains("-0.01000000"), qPrintable(deltas.join(", ")));
-        // Composition beside the name, and an editable memo kept in the job folder.
-        QCOMPARE(table->item(0, 8)->text(), QString("H2O"));
-        for (int row = 0; row < table->rowCount(); ++row)
-            if (table->item(row, 0)->data(Qt::UserRole).toString() == first.directory)
-                table->item(row, 9)->setText("基準構造");
+        QCOMPARE(row(w, third.directory)->text(7), "−0.01000000");
+        table->setCurrentItem(row(w, third.directory));
+        QCOMPARE(widget<QLabel>(w, "historyEnergyCaption")->text(), "基準 molforma との差");
+        QCOMPARE(widget<QLabel>(w, "historyEnergyValue")->text(), "−0.01000000");
+        QVERIFY(widget<QLabel>(w, "historyEnergyNote")->text().contains("−6.28 kcal/mol"));
+        QVERIFY(fact(w, "compared").contains("ログ末尾"));
+        widget<QPushButton>(w, "historyCompareOff")->click();
+        QVERIFY(table->isColumnHidden(7));
+        QVERIFY(!widget<QPushButton>(w, "historyCompare")->isChecked());
+        // A memo kept in the job folder, shown in the list and written to CSV.
+        table->setCurrentItem(row(w, first.directory));
+        widget<QPlainTextEdit>(w, "historyMemo")->setPlainText("基準構造");
+        QTRY_VERIFY(QFileInfo::exists(first.directory + "/memo.txt")); // Saved shortly after typing.
         QCOMPARE(readFile(first.directory + "/memo.txt").trimmed(), QByteArray("基準構造"));
         QCOMPARE(readHistoryEntry(first.directory).memo, QString("基準構造"));
+        QCOMPARE(row(w, first.directory)->text(8), "基準構造");
         QVERIFY(historyCsv({readHistoryEntry(first.directory)}).contains("\"H2O\",\"基準構造\""));
-        QVERIFY(widget<QPlainTextEdit>(w, "historyInput")->toPlainText().contains("task scf energy"));
-        QVERIFY(widget<QPlainTextEdit>(w, "historySummary")->toPlainText().contains("SHA-256一致"));
-        table->sortItems(6, Qt::AscendingOrder);
-        QCOMPARE(table->item(0, 6)->text(), "9");
-        table->sortItems(6, Qt::DescendingOrder);
-        QCOMPARE(table->item(0, 6)->text(), "100");
+        // Sorting by another column lists the jobs without days.
+        table->header()->setSortIndicator(5, Qt::AscendingOrder);
+        QCOMPARE(table->topLevelItemCount(), 3);
+        QCOMPARE(rows(w).first()->text(5), "0:09");
+        table->header()->setSortIndicator(5, Qt::DescendingOrder);
+        QCOMPARE(rows(w).first()->text(5), "1:40");
         QCOMPARE(panel->selectedDirectory(), first.directory);
         auto *filter = widget<QComboBox>(w, "historyFilter");
-        filter->setCurrentIndex(filter->findData("unconfirmed"));
-        QCOMPARE(table->rowCount(), 1);
+        filter->setCurrentIndex(filter->findData("active"));
+        QCOMPARE(rows(w).size(), 1);
         QVERIFY(panel->selectedDirectory().isEmpty());
         QVERIFY(!widget<QPushButton>(w, "historyReuse")->isEnabled());
-        table->selectRow(0);
+        table->setCurrentItem(rows(w).first());
         QCOMPARE(panel->selectedDirectory(), second.directory);
         QVERIFY(!widget<QPushButton>(w, "historyStop")->isEnabled());
         QVERIFY(!widget<QPushButton>(w, "historyTrash")->isEnabled());
         filter->setCurrentIndex(0);
         widget<QLineEdit>(w, "historySearch")->setText("pbe");
-        QCOMPARE(table->rowCount(), 1);
+        QCOMPARE(rows(w).size(), 1);
+        QCOMPARE(widget<QToolButton>(w, "historyFilter_")->text(), "すべて  1");
         const auto csvPath = tmp.filePath("history.csv");
         panel->exportCsv(csvPath);
         QVERIFY(readFile(csvPath).contains("pbe_water"));
+        QVERIFY(!readFile(csvPath).contains("基準構造"));
+        widget<QLineEdit>(w, "historySearch")->setText("zzz");
+        QCOMPARE(rows(w).size(), 0);
+        QCOMPARE(table->topLevelItemCount(), 1); // A line that says nothing matches.
         QCOMPARE(w.document().project(), before);
         QCOMPARE(w.history()->count(), undo);
         widget<QLineEdit>(w, "historySearch")->clear();
@@ -401,9 +496,12 @@ class HistoryTest : public QObject {
     void runIntegrationAndResultNavigation() {
         QTemporaryDir tmp;
         auto d = water(tmp.filePath("jobs"));
-        setExecutionSetting(
-            d, "environment",
-            QJsonArray{QJsonObject{{"enabled", true}, {"name", "MOLFORMA_FAKE_MODE"}, {"value", "slow"}}});
+        setExecutionSetting(d, "environment",
+                            QJsonArray{QJsonObject{
+                                {"enabled", true}, {"name", "MOLFORMA_FAKE_MODE"}, {"value", "optimize"}}});
+        auto s = nwchemSettings(d);
+        s["task"] = "optimize";
+        d.data["nwchem"] = s;
         MainWindow w;
         w.loadDocument(d);
         showHistory(w);
@@ -415,10 +513,24 @@ class HistoryTest : public QObject {
         QTRY_VERIFY(!history->scanning());
         QTRY_VERIFY(widget<QPushButton>(w, "historyStop")->isEnabled());
         QVERIFY(!widget<QPushButton>(w, "historyTrash")->isEnabled());
+        QVERIFY(!widget<QPushButton>(w, "historyReuse")->isVisibleTo(&w));
+        // The progress of the run of this window, as in "5 実行設定".
+        QVERIFY(widget<QFrame>(w, "historyProgressBox")->isVisibleTo(&w));
+        QVERIFY(!widget<QFrame>(w, "historyEnergyBox")->isVisibleTo(&w));
+        QTRY_VERIFY(w.findChild<QLabel *>("historyStage0") &&
+                    w.findChild<QLabel *>("historyStage0")->text().contains("ステップ 1 / 最大 100"));
+        QVERIFY(widget<QWidget>(w, "historyCriteria")->isVisibleTo(&w));
+        QVERIFY(widget<QLabel>(w, "historyCriterion2")->text().contains("未達"));
+        QVERIFY(widget<QLabel>(w, "historyProgressTiming")->text().contains("このウィンドウで実行中"));
+        QCOMPARE(row(w, directory)->text(0), "実行中");
+        // Stopping asks first, as everywhere.
+        acceptQuestion(&w);
         widget<QPushButton>(w, "historyStop")->click();
-        QTRY_VERIFY(!execution->running());
+        QTRY_VERIFY_WITH_TIMEOUT(!execution->running(), 10000);
         QTRY_VERIFY(widget<QPushButton>(w, "historyTrash")->isEnabled());
-        QVERIFY(widget<QPlainTextEdit>(w, "historySummary")->toPlainText().contains("停止済み"));
+        QVERIFY(widget<QLabel>(w, "historyDetailState")->toolTip().contains("停止済み"));
+        QVERIFY(widget<QFrame>(w, "historyEnergyBox")->isVisibleTo(&w));
+        QVERIFY(widget<QPushButton>(w, "historyReuse")->isVisibleTo(&w));
         writeFile(directory + "/result.xyz", "3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");
         history->refresh();
         QTRY_VERIFY(!history->scanning());
@@ -503,13 +615,40 @@ class HistoryTest : public QObject {
         showHistory(w);
         auto *panel = widget<HistoryPanel>(w, "historyTab");
         QTRY_VERIFY(!panel->scanning());
-        QCOMPARE(widget<QLineEdit>(w, "historyRoot")->text(), first.path());
+        QCOMPARE(panel->rootDirectory(), first.path());
+        QVERIFY(widget<QToolButton>(w, "historyRootButton")->text().endsWith("（5 実行設定と同じ）"));
         widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(4);
         w.edit("NWChem実行設定を変更",
                [&](Document &d) { setExecutionSetting(d, "job_root", second.path()); });
         widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(7);
         QTRY_VERIFY(!panel->scanning());
-        QCOMPARE(widget<QLineEdit>(w, "historyRoot")->text(), second.path());
+        QCOMPARE(panel->rootDirectory(), second.path());
+    }
+    void emptyFolderAndBackToExecution() {
+        QTemporaryDir jobs, other;
+        const auto d = water(jobs.path());
+        saveExecutionBundle(d, jobs.path());
+        MainWindow w;
+        w.loadDocument(d);
+        showHistory(w);
+        auto *panel = widget<HistoryPanel>(w, "historyTab");
+        QTRY_VERIFY(!panel->scanning());
+        QCOMPARE(widget<QStackedWidget>(w, "historyPages")->currentIndex(), 0);
+        panel->setRoot(other.path());
+        QTRY_VERIFY(!panel->scanning());
+        QVERIFY(widget<QToolButton>(w, "historyRootButton")->text().endsWith("（選んだ保存先）"));
+        QCOMPARE(widget<QStackedWidget>(w, "historyPages")->currentIndex(), 1);
+        QCOMPARE(widget<QLabel>(w, "historyEmptyTitle")->text(), "この保存先にはジョブがありません");
+        QVERIFY(widget<QLabel>(w, "historyEmptyExecution")->text().endsWith("（1 件）"));
+        QVERIFY(!widget<QLineEdit>(w, "historySearch")->isEnabled());
+        widget<QPushButton>(w, "historyEmptyExecutionRoot")->click();
+        QTRY_VERIFY(!panel->scanning());
+        QCOMPARE(panel->rootDirectory(), jobs.path());
+        QCOMPARE(widget<QStackedWidget>(w, "historyPages")->currentIndex(), 0);
+        QCOMPARE(rows(w).size(), 1);
+        panel->setRoot(other.filePath("missing"));
+        QTRY_VERIFY(!panel->scanning());
+        QCOMPARE(widget<QLabel>(w, "historyEmptyTitle")->text(), "この保存先は見つからないか、読めません");
     }
     void restartAndLogFollow() {
         QTemporaryDir tmp;
@@ -526,8 +665,8 @@ class HistoryTest : public QObject {
         showHistory(w);
         auto *panel = widget<HistoryPanel>(w, "historyTab");
         QTRY_VERIFY(!panel->scanning());
-        QCOMPARE(widget<QLineEdit>(w, "historyRoot")->text(), tmp.path());
-        QCOMPARE(widget<QTableWidget>(w, "historyTable")->rowCount(), 1);
+        QCOMPARE(panel->rootDirectory(), tmp.path());
+        QCOMPARE(rows(w).size(), 1);
         panel->selectDirectory(p.directory);
         QTRY_VERIFY(!panel->scanning());
         auto *log = widget<QPlainTextEdit>(w, "historyOutput");

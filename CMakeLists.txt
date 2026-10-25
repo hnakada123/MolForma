@@ -57,6 +57,7 @@ add_library(molforma_ui STATIC
     src/ui/periodic_table.cpp
     src/ui/result_charts.cpp
     src/ui/results_panel.cpp
+    src/ui/run_progress.cpp
     src/ui/template_delegate.cpp
     src/ui/translations.cpp
     docs/manual.qrc)

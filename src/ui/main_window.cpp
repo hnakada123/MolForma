@@ -2113,6 +2113,8 @@ void MainWindow::applyChromeStyle() {
         inputPreview->applyChromeStyle();
     if (results)
         results->applyChromeStyle();
+    if (calculationHistory)
+        calculationHistory->applyChromeStyle();
 }
 QList<QWidget *> MainWindow::workspacePanels() const {
     return {coordinates, calculation, advanced, execution, inputPreview};

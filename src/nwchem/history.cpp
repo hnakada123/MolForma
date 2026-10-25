@@ -231,6 +231,30 @@ void setHistoryMemo(const QString &directory, const QString &text) {
     }
     writeFile(path, text.trimmed().toUtf8() + '\n');
 }
+HistoryMolecule historyMolecule(const QString &directory) {
+    const auto d = Document::fromProject(parseJson(bytes(directory, "project.kgui.json", projectLimit)));
+    return {int(d.atoms.size()), d.job()["charge"].toInt(), d.job()["multiplicity"].toInt(1)};
+}
+QString historyIncomparable(const HistoryEntry &e, const HistoryEntry &reference) {
+    if (e.formula.isEmpty() || e.formula != reference.formula)
+        return "組成が基準と異なる";
+    if (e.method != reference.method)
+        return "手法が基準と異なる";
+    if (e.basis != reference.basis)
+        return "基底が基準と異なる";
+    if (e.energyMethod != reference.energyMethod)
+        return "エネルギーの種類が基準と異なる";
+    return {};
+}
+int historyJobCount(const QString &root, int limit) {
+    if (!QFileInfo(root).isDir() || !QFileInfo(root).isReadable())
+        return -1;
+    QDirIterator it(root, QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
+    int count = 0, examined = 0;
+    while (it.hasNext() && count < limit && examined++ < 20000)
+        count += QFileInfo::exists(QDir(it.next()).filePath("run.json"));
+    return count;
+}
 QString historyText(const QString &directory, const QString &name, bool tail) {
     if (!QStringList{"input.nw", "output.out", "stderr.err", "run.json"}.contains(name))
         fail("履歴で表示できないファイルです。");

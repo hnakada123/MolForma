@@ -39,6 +39,17 @@ QString historyCsv(const QVector<HistoryEntry> &entries);
 // The user's note on a job: memo.txt in the job folder, outside the files the bundle hashes.
 QString historyMemo(const QString &directory);
 void setHistoryMemo(const QString &directory, const QString &text);
+// The molecule a job was saved with (its project.kgui.json): the atoms, ghosts included, the charge
+// and the multiplicity.
+struct HistoryMolecule {
+    int atoms = 0, charge = 0, multiplicity = 1;
+};
+HistoryMolecule historyMolecule(const QString &directory);
+// Why the energy of a job is not compared with that of a reference job as ΔE: another composition,
+// method, basis or kind of energy ("組成が基準と異なる", …); empty when they compare.
+QString historyIncomparable(const HistoryEntry &entry, const HistoryEntry &reference);
+// The job folders (with run.json) directly in root, counted up to limit; -1 if root cannot be read.
+int historyJobCount(const QString &root, int limit = 2000);
 
 // Incremental, bounded directory scan. Each event reads at most one bundle.
 class HistoryScan : public QObject {

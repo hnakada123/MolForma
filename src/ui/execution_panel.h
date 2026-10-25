@@ -20,6 +20,7 @@ class QVBoxLayout;
 namespace mf {
 class MainWindow;
 class ChoiceButtons;
+class RunProgress;
 class SettingsCard;
 // "5 実行設定": the settings of a run at the left (programs and folders, resources, environment),
 // and at the right, top to bottom, the checks before a run, the command, the run itself, its
@@ -58,14 +59,14 @@ class ExecutionPanel : public QWidget {
     bool busy = false, environmentDirty = false;
     QMap<QString, QWidget *> fields;
     QMap<QString, QLabel *> found; // Where the executable and the launcher were found.
-    QWidget *form, *cpuMeter, *criteria;
+    QWidget *form, *cpuMeter;
     QTableWidget *environment;
     QComboBox *mode, *logChannel;
     QList<ChoiceButtons *> choices;
     QSpinBox *memory;
     QLabel *resources, *memoryTotal, *environmentEmpty, *state, *location, *statePill, *timing, *diagnostics;
-    QVBoxLayout *checkList, *stageList;
-    QList<QLabel *> criterionLabels;
+    QVBoxLayout *checkList;
+    RunProgress *progress;
     QPlainTextEdit *command, *log;
     QPushButton *start, *stop, *prepare, *openFolder, *viewResults, *removeEnvironment;
     QCheckBox *openResults; // Load the job folder into the result viewer when a run finishes.
@@ -78,20 +79,11 @@ class ExecutionPanel : public QWidget {
     QString logPath;
     qint64 logOffset = -1;
     QStringDecoder logDecoder{QStringDecoder::Utf8};
-    // The progress read from the job's output.out, and the tasks of its input.
-    NwchemProgress progress;
-    QString progressDirectory;
-    qint64 progressOffset = 0;
-    QByteArray progressRest;
-    QStringList plannedTasks;
-    int maxSteps = 0;
     QToolButton *runStatus; // Permanent status-bar entry for the current or last run.
     // The finished run whose log is loading into the result viewer, and that log's outcome.
     QString summaryDirectory, resultSummary;
     void showResultSummary();
     void appendLog();
-    void readProgress();
-    void showProgress(bool showingRun);
     QString baseDirectory() const;
     void change(const QString &key, const QJsonValue &value);
     void editEnvironment();
