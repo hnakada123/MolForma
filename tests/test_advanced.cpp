@@ -288,26 +288,33 @@ class AdvancedTest : public QObject {
         QCOMPARE(tabs->tabText(3), "4 詳細設定");
         tabs->setCurrentIndex(3);
         QCOMPARE(w.document().toJson(), d.toJson());
+        // A blank value shows what NWChem uses instead, and where it comes from.
+        QCOMPARE(w.findChild<QLineEdit *>("advanced_scf_thresh")->placeholderText(),
+                 QString("1e-7（3 計算条件のSCF収束: 厳密）"));
         input(w, "scf_thresh", "2d-8");
         QCOMPARE(nwchemAdvanced(w.document())["scf_thresh"].toDouble(), 2e-8);
         QCOMPARE(w.history()->count(), 1);
-        QCOMPARE(w.findChild<QPlainTextEdit *>("advancedInput")->toPlainText(),
-                 w.findChild<QPlainTextEdit *>("calculationInput")->toPlainText());
-        button(w, "advancedCopy")->click();
+        button(w, "inputPreviewCopy")->click();
         QCOMPARE(QApplication::clipboard()->text(), nwchemInput(w.document()));
-        button(w, "advancedUndo")->click();
+        w.history()->undo();
         QCOMPARE(w.document().toJson(), d.toJson());
-        button(w, "advancedRedo")->click();
+        w.history()->redo();
         input(w, "scf_thresh", "invalid");
-        QVERIFY(!button(w, "advancedCopy")->isEnabled());
-        QVERIFY(!button(w, "calculationSave")->isEnabled());
+        QVERIFY(!button(w, "inputPreviewCopy")->isEnabled());
+        QVERIFY(w.findChild<QLabel *>("advancedStatus")->text().contains("エラー"));
         QVERIFY(row(w, "scf_thresh")->text(2).contains("エラー"));
-        QVERIFY(row(w, "scf_thresh")->text(0).startsWith("● "));
-        QCOMPARE(row(w, "scf_thresh")->parent()->text(2), "変更 1項目");
+        QVERIFY(row(w, "scf_thresh")->data(0, Qt::UserRole + 3).toBool()); // Marked as changed.
+        QVERIFY(row(w, "scf_thresh")->parent()->data(0, Qt::UserRole + 2).toString().contains("変更 1"));
+        QVERIFY(w.findChild<QPushButton *>("advancedResetField_scf_thresh")->isVisibleTo(&w));
+        QVERIFY(!w.findChild<QPushButton *>("advancedResetField_scf_tol2e")->isVisibleTo(&w));
         button(w, "advancedResetField_scf_thresh")->click();
-        QVERIFY(button(w, "advancedCopy")->isEnabled());
+        QTRY_VERIFY(button(w, "inputPreviewCopy")->isEnabled());
+        QVERIFY(w.findChild<QLabel *>("advancedStatus")->text().contains("問題はありません"));
         auto *filter = w.findChild<QComboBox *>("advancedFilter");
-        filter->setCurrentIndex(filter->findData("all"));
+        QCOMPARE(w.findChild<QToolButton *>("advancedFilter_applicable")->text(),
+                 QString("この計算で使う 11"));
+        w.findChild<QToolButton *>("advancedFilter_all")->click();
+        QCOMPARE(filter->currentData().toString(), "all");
         auto *search = w.findChild<QLineEdit *>("advancedSearch");
         search->setText("damp");
         QVERIFY(!hidden(w, "dft_damp"));
@@ -315,35 +322,84 @@ class AdvancedTest : public QObject {
         QVERIFY(row(w, "dft_damp")->parent()->text(0).contains("DFT"));
         QVERIFY(!w.findChild<QLineEdit *>("advanced_dft_damp")->isEnabled());
         search->clear();
+        // The categories follow the filter: the DFT options do not take part in an HF calculation.
+        auto *categories = w.findChild<QListWidget *>("advancedCategories");
+        filter->setCurrentIndex(filter->findData("applicable"));
+        for (int i = 0; i < categories->count(); ++i)
+            if (categories->item(i)->data(Qt::UserRole) == "dft")
+                QCOMPARE(categories->item(i)->data(Qt::UserRole + 12).toString(), QString("使わない"));
         input(w, "scf_thresh", "1e-8");
         input(w, "scf_tol2e", "1e-12");
         const auto beforeReset = w.document().toJson();
         button(w, "advancedReset_scf")->click();
         QVERIFY(nwchemAdvanced(w.document()).isEmpty());
-        button(w, "advancedUndo")->click();
+        w.history()->undo();
         QCOMPARE(w.document().toJson(), beforeReset);
         filter->setCurrentIndex(filter->findData("changed"));
         QVERIFY(hidden(w, "dft_damp"));
         QVERIFY(!hidden(w, "scf_thresh"));
+        // The selected row at the right: its values, scope and line in the input.
+        w.findChild<QTreeWidget *>("advancedTable")->setCurrentItem(row(w, "scf_thresh"));
+        QCOMPARE(w.findChild<QLabel *>("advancedCurrent")->text(), QString("1e-08"));
+        QCOMPARE(w.findChild<QLabel *>("advancedScope")->text(), QString("HF・MP2・CCSD（参照SCF）"));
+        const auto snippet = w.findChild<QPlainTextEdit *>("advancedSnippet")->toPlainText();
+        QVERIFY2(snippet.startsWith("scf\n") && snippet.contains("  thresh 1e-08") && snippet.endsWith("end"),
+                 qPrintable(snippet));
+        button(w, "advancedShowInInput")->click();
+        QCOMPARE(tabs->currentIndex(), 5);
+        QCOMPARE(w.findChild<QPlainTextEdit *>("inputPreviewText")->textCursor().block().text(),
+                 QString("  thresh 1e-08"));
+        tabs->setCurrentIndex(3);
         // A diagnostic naming an option selects its row (showing every option if it is pending)
-        // and the description below the table follows the selected row.
+        // and the description at the right follows the selected row.
         filter->setCurrentIndex(filter->findData("applicable"));
         auto *diagnostics = w.findChild<QListWidget *>("advancedValidation");
         QMetaObject::invokeMethod(diagnostics, "messageClicked", Q_ARG(QString, "「密度のダンピング / %」"),
                                   Q_ARG(bool, true));
         QCOMPARE(w.findChild<QTreeWidget *>("advancedTable")->currentItem(), row(w, "dft_damp"));
         QCOMPARE(filter->currentData().toString(), "all");
-        QVERIFY(w.findChild<QLabel *>("advancedHelp")->text().contains("convergence damp"));
+        QCOMPARE(w.findChild<QLabel *>("advancedKeyword")->text(), QString("dft › convergence damp"));
+        QVERIFY(w.findChild<QLabel *>("advancedScope")->text().contains("今の計算では使いません"));
         w.edit("candidate", [](Document &next) { next.atoms[1].position.x() += 0.1; }, true);
         QVERIFY(!w.findChild<QLineEdit *>("advanced_scf_thresh")->isEnabled());
         QVERIFY(!button(w, "advancedResetAll")->isEnabled());
-        QVERIFY(!button(w, "advancedSave")->isEnabled());
+        QVERIFY(!button(w, "inputPreviewSave")->isEnabled());
+        QVERIFY(w.findChild<QLabel *>("advancedMessage")->text().contains("候補"));
         w.cancelCandidate();
-        QVERIFY(button(w, "advancedSave")->isEnabled());
-        button(w, "advancedBasic")->click();
-        QCOMPARE(tabs->currentIndex(), 2);
-        button(w, "calculationAdvanced")->click();
-        QCOMPARE(tabs->currentIndex(), 3);
+        QVERIFY(button(w, "inputPreviewSave")->isEnabled());
+    }
+    void effectiveDefaultsAndScopes() {
+        auto d = water();
+        const auto text = [&](const QString &key) { return nwchemAdvancedDefault(option(key), d); };
+        QCOMPARE(text("dft_energy"), QString("1e-7（3 計算条件のSCF収束: 厳密）"));
+        QCOMPARE(text("driver_gmax"), QString("0.00045（3 計算条件の最適化収束: 標準）"));
+        QCOMPARE(text("driver_trust"), QString("0.3（NWChem既定）"));
+        QCOMPARE(text("cube_divisions"), QString("40")); // MolForma's own default.
+        QCOMPARE(text("corr_freeze"), QString("0（凍結なし）"));
+        QCOMPARE(text("freq_fd_delta"), QString("0.001"));
+        base(d, "scf_convergence", "default");
+        base(d, "opt_convergence", "tight");
+        base(d, "freeze_core", true);
+        base(d, "method", "dft");
+        QCOMPARE(text("scf_thresh"), QString("NWChem既定（3 計算条件のSCF収束: NWChem既定）"));
+        QCOMPARE(text("driver_xrms"), QString("0.00004（3 計算条件の最適化収束: 厳密）"));
+        QCOMPARE(text("corr_freeze"), QString("atomic（3 計算条件の内殻凍結）"));
+        QCOMPARE(text("freq_fd_delta"), QString("0.010（DFT）"));
+        base(d, "opt_convergence", "loose");
+        QCOMPARE(text("driver_xmax"), QString("0.018（3 計算条件の最適化収束: 緩い）"));
+        // Where an option goes, and when it takes part.
+        QCOMPARE(nwchemAdvancedBlock(option("dft_damp"), d), QString("dft"));
+        QCOMPARE(nwchemAdvancedBlock(option("vectors_guess"), d), QString("dft"));
+        QCOMPARE(nwchemAdvancedBlock(option("scratch_dir"), d), QString("scratch_dir"));
+        QCOMPARE(nwchemAdvancedBlock(option("hessian_thresh"), d), QString("hessian"));
+        QCOMPARE(nwchemAdvancedBlock(option("molden_output"), d), QString("property"));
+        QCOMPARE(nwchemAdvancedBlock(option("driver_cartesian"), d), QString("geometry"));
+        QCOMPARE(nwchemAdvancedScope(option("cc_thresh")), QString("CCSD・CCSD(T)"));
+        QCOMPARE(nwchemAdvancedScope(option("freq_fd_delta")), QString("数値Hessianを使う振動数"));
+        for (const auto &o : nwchemAdvancedOptions()) {
+            QVERIFY(!nwchemAdvancedScope(o).isEmpty());
+            QVERIFY(!nwchemAdvancedDefault(o, d).isEmpty());
+        }
     }
     void saveShortcutAndFocusedTeardown() {
         QTemporaryDir files;

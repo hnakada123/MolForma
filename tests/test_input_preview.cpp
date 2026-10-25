@@ -51,7 +51,7 @@ class InputPreviewTest : public QObject {
         auto *tabs = widget<QTabWidget>(w, "workspaceTabs");
         QCOMPARE(tabs->count(), 8);
         QCOMPARE(tabs->tabText(5), "6 入力プレビュー");
-        widget<QPushButton>(w, "executionPreview")->click();
+        widget<QPushButton>(w, "calculationShowPreview")->click(); // The link of "3 計算条件".
         QCOMPARE(tabs->currentIndex(), 5);
         QVERIFY(text(w)->isReadOnly());
         QCOMPARE(text(w)->toPlainText(), nwchemInput(d));
@@ -178,7 +178,8 @@ class InputPreviewTest : public QObject {
         QVERIFY(QMetaObject::invokeMethod(checks, "anchorClicked", Q_ARG(QUrl, QUrl("tab:3"))));
         QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 3);
         openPreview(w);
-        widget<QPushButton>(w, "inputPreviewGo5")->click();
+        QVERIFY(QMetaObject::invokeMethod(widget<QLabel>(w, "inputPreviewPaths"), "linkActivated",
+                                          Q_ARG(QString, "tab:4")));
         QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 4);
         w.edit("apply DFT", [](Document &next) { set(next, "method", "dft"); });
         QVERIFY(text(w)->toPlainText().contains("convergence energy 1e-09"));
@@ -204,16 +205,112 @@ class InputPreviewTest : public QObject {
         widget<QPushButton>(w, "inputPreviewNext")->click();
         QVERIFY(widget<QLabel>(w, "inputPreviewSearchStatus")->text().contains("ありません"));
         QCOMPARE(text(w)->textCursor().position(), position);
-        auto *sections = widget<QComboBox>(w, "inputPreviewSections");
+        auto *outline = widget<QListWidget>(w, "inputPreviewOutline");
         int geometry = -1;
-        for (int i = 0; i < sections->count(); ++i)
-            if (sections->itemText(i).contains("geometry"))
+        for (int i = 0; i < outline->count(); ++i)
+            if (outline->item(i)->toolTip().startsWith("geometry"))
                 geometry = i;
         QVERIFY(geometry >= 0);
-        sections->setCurrentIndex(geometry);
-        QVERIFY(QMetaObject::invokeMethod(sections, "activated", Q_ARG(int, geometry)));
-        QCOMPARE(text(w)->textCursor().blockNumber(), sections->currentData().toInt());
+        QCOMPARE(outline->item(geometry)->toolTip(), QString("geometry（3 原子）"));
+        outline->setCurrentRow(geometry);
+        QCOMPARE(text(w)->textCursor().blockNumber(), outline->item(geometry)->data(Qt::UserRole).toInt());
         QVERIFY(text(w)->textCursor().block().text().startsWith("geometry"));
+        QCOMPARE(widget<QLabel>(w, "inputPreviewPosition")->text(),
+                 QString("行 %1 / 列 1").arg(text(w)->textCursor().blockNumber() + 1));
+    }
+    void outlineMarksAdvancedAndExtraLines() {
+        auto d = water();
+        set(d, "method", "dft");
+        set(d, "task", "optimize");
+        set(d, "extra_input", "set cphf:maxiter 50");
+        setNwchemAdvanced(d, "dft_grid_nodisk", true);
+        setNwchemAdvanced(d, "driver_trust", 0.2);
+        setNwchemAdvanced(d, "scratch_dir", "scratch");
+        setNwchemAdvanced(d, "freq_animate", true); // Kept for frequency tasks: no line.
+        const auto input = nwchemInput(d);
+        const auto lines = input.split('\n');
+        const auto outline = nwchemInputOutline(d, input);
+        // The lines that the settings of "4 詳細設定" and the additional input add or change.
+        QStringList advanced, extra;
+        for (const int line : outline.advanced)
+            advanced << lines[line].trimmed();
+        for (const int line : outline.extra)
+            extra << lines[line].trimmed();
+        advanced.sort();
+        extra.sort();
+        QCOMPARE(advanced, (QStringList{"grid fine nodisk", "scratch_dir scratch", "trust 0.2"}));
+        QCOMPARE(extra, (QStringList{"# Additional input (not checked by MolForma)", "set cphf:maxiter 50"}));
+        QHash<QString, NwchemInputBlock> blocks;
+        for (const auto &b : outline.blocks)
+            blocks.insert(b.keyword, b);
+        QCOMPARE(blocks["geometry"].title, QString("geometry（3 原子）"));
+        QCOMPARE(blocks["geometry"].tabs, QList<int>{2});
+        QCOMPARE(blocks["geometry"].lines, 5);
+        QCOMPARE(blocks["basis"].title, QString("basis \"sto-3g\""));
+        QCOMPARE(blocks["dft"].tabs, (QList<int>{3, 4}));
+        QCOMPARE(blocks["dft"].setting, QString("method"));
+        QCOMPARE(blocks["dft"].group, QString("dft"));
+        QCOMPARE(lines[blocks["dft"].line + blocks["dft"].lines - 1], QString("end"));
+        QCOMPARE(blocks["driver"].group, QString("driver"));
+        QCOMPARE(blocks["set"].tabs, QList<int>{3});
+        QCOMPARE(blocks["set"].setting, QString("extra_input"));
+        QCOMPARE(blocks["task"].tabs, QList<int>{3});
+        QCOMPARE(lines[blocks["task"].line], QString("task dft optimize"));
+        // A block that only "4 詳細設定" writes belongs to it alone.
+        setNwchemAdvanced(d, "molden_output", true);
+        const auto molden = nwchemInput(d);
+        const auto withMolden = nwchemInputOutline(d, molden);
+        const auto property = std::find_if(withMolden.blocks.begin(), withMolden.blocks.end(),
+                                           [](const auto &b) { return b.keyword == "property"; });
+        QVERIFY(property != withMolden.blocks.end());
+        QCOMPARE(property->tabs, QList<int>{4});
+        QCOMPARE(property->group, QString("visualization"));
+        // Without such settings nothing is marked; an empty input has no outline.
+        const auto plain = water();
+        const auto none = nwchemInputOutline(plain, nwchemInput(plain));
+        QVERIFY(none.advanced.isEmpty() && none.extra.isEmpty() && !none.blocks.isEmpty());
+        QVERIFY(nwchemInputOutline(plain, {}).blocks.isEmpty());
+    }
+    void blockSourcesLeadToTheirTabs() {
+        auto d = water();
+        set(d, "method", "dft");
+        setNwchemAdvanced(d, "dft_grid_nodisk", true);
+        MainWindow w;
+        w.loadDocument(d);
+        openPreview(w);
+        auto *tabs = widget<QTabWidget>(w, "workspaceTabs");
+        auto *outline = widget<QListWidget>(w, "inputPreviewOutline");
+        int dft = -1;
+        for (int i = 0; i < outline->count(); ++i)
+            if (outline->item(i)->toolTip() == "dft")
+                dft = i;
+        QVERIFY(dft >= 0);
+        const int line = outline->item(dft)->data(Qt::UserRole).toInt() + 1;
+        // The block at the cursor names the tabs that set it.
+        outline->setCurrentRow(dft);
+        QVERIFY(widget<QFrame>(w, "inputPreviewSource")->isVisibleTo(&w));
+        QCOMPARE(widget<QLabel>(w, "inputPreviewSourceTitle")->text(), QString("dft ブロックの編集元"));
+        QStringList links;
+        for (auto *link : widget<QFrame>(w, "inputPreviewSource")->findChildren<QPushButton *>())
+            links << link->text();
+        QCOMPARE(links, (QStringList{"3 計算条件 › 基本設定", "4 詳細設定 › DFT"}));
+        // Its numbers in the outline lead there: "4 詳細設定" shows the category of the block.
+        auto *advanced = w.findChild<QToolButton *>(QString("inputPreviewSource%1_4").arg(line));
+        QVERIFY(advanced);
+        advanced->click();
+        QCOMPARE(tabs->currentIndex(), 3);
+        QCOMPARE(widget<QComboBox>(w, "advancedCategory")->currentData().toString(), QString("dft"));
+        openPreview(w);
+        w.findChild<QToolButton *>(QString("inputPreviewSource%1_3").arg(line))->click();
+        QCOMPARE(tabs->currentIndex(), 2);
+        // The geometry is set in "2 座標".
+        openPreview(w);
+        QVERIFY(w.findChild<QToolButton *>("inputPreviewSource7_2"));
+        QVERIFY(!w.findChild<QToolButton *>("inputPreviewSource7_3"));
+        QCOMPARE(widget<QLabel>(w, "inputPreviewStats")->text(),
+                 QString("%1 行 · UTF-8 · %2 バイト")
+                     .arg(nwchemInput(d).count('\n'))
+                     .arg(QLocale().toString(nwchemInput(d).toUtf8().size())));
     }
     void focusedSettingAndSaveDialog() {
         MainWindow w;

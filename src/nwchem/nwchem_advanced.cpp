@@ -1,9 +1,11 @@
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_output.h"
+#include <QHash>
 #include <QJsonDocument>
 #include <QLocale>
 #include <QRegularExpression>
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace mf {
@@ -285,6 +287,102 @@ bool nwchemAdvancedApplies(const AdvancedOption &o, const Document &d) {
     if (o.group == "cosmo")
         return s["solvent"] != "none" && (method == "hf" || method == "dft");
     return true;
+}
+QString nwchemAdvancedScope(const AdvancedOption &o) {
+    // In the order of nwchemAdvancedApplies.
+    if (o.group == "visualization") {
+        if (o.key == "cube_output" || o.key == "molden_output")
+            return "すべての計算";
+        if (o.key == "molden_norm")
+            return "MOLDEN出力がオンのとき";
+        if (o.key == "cube_index")
+            return "CUBEで分子軌道を番号指定するとき";
+        if (o.key == "cube_spin" || o.key == "cube_orbital")
+            return "CUBEの内容が分子軌道のとき";
+        if (o.key == "cube_padding" || o.key == "cube_divisions")
+            return "CUBE出力（X/Y/Zの範囲に空欄があるとき）";
+        return "CUBE出力がオンのとき";
+    }
+    if (o.key == "scf_diisbas")
+        return "HF・MP2・CCSD（SCF収束法がDIISのとき）";
+    if (o.key == "vectors_input")
+        return "初期分子軌道がファイル指定のとき";
+    if (o.key == "freq_fd_delta")
+        return "数値Hessianを使う振動数";
+    if (o.key == "hessian_thresh")
+        return "解析Hessianを使う振動数";
+    if (o.key == "driver_cartesian")
+        return "構造最適化・遷移状態探索（内部座標の拘束・スキャンなし）";
+    if (o.group == "scf")
+        return "HF・MP2・CCSD（参照SCF）";
+    if (o.group == "dft")
+        return "DFTの計算";
+    if (o.group == "correlation")
+        return o.key.startsWith("mp2_")  ? "MP2"
+               : o.key.startsWith("cc_") ? "CCSD・CCSD(T)"
+                                         : "MP2・CCSD・CCSD(T)";
+    if (o.group == "driver")
+        return "構造最適化・遷移状態探索・緩和スキャン";
+    if (o.group == "frequency")
+        return "振動数を含む計算";
+    if (o.group == "cosmo")
+        return "溶媒（COSMO・SMD）を使うHF・DFT";
+    return "すべての計算";
+}
+QString nwchemAdvancedDefault(const AdvancedOption &o, const Document &d) {
+    const auto s = nwchemSettings(d);
+    const auto label = [](const QString &key, const QString &value) {
+        for (const auto &c : nwchemChoices(key))
+            if (c.value == value)
+                return c.label;
+        return value;
+    };
+    if (QStringList{"scf_thresh", "dft_energy", "dft_density", "dft_gradient"}.contains(o.key)) {
+        const auto threshold = nwchemScfThreshold(s);
+        return (threshold.isEmpty() ? QString("NWChem既定") : threshold) +
+               "（3 計算条件のSCF収束: " + label("scf_convergence", s["scf_convergence"].toString()) + "）";
+    }
+    if (o.key == "corr_freeze")
+        return s["freeze_core"].toBool() ? "atomic（3 計算条件の内殻凍結）" : "0（凍結なし）";
+    // NWChem's DRIVER criteria for the keyword MolForma writes (default, tight, loose).
+    static const QHash<QString, std::array<const char *, 4>> criteria{
+        {"default", {"0.00045", "0.0003", "0.0018", "0.0012"}},
+        {"tight", {"0.000015", "0.00001", "0.00006", "0.00004"}},
+        {"loose", {"0.0045", "0.003", "0.018", "0.012"}}};
+    static const QStringList driver{"driver_gmax", "driver_grms", "driver_xmax", "driver_xrms"};
+    if (const int index = driver.indexOf(o.key); index >= 0) {
+        const auto convergence = s["opt_convergence"].toString();
+        if (criteria.contains(convergence))
+            return QString(criteria[convergence][index]) +
+                   "（3 計算条件の最適化収束: " + label("opt_convergence", convergence) + "）";
+    }
+    const bool dft = s["method"] == "dft";
+    if (o.key == "driver_eprec")
+        return dft ? "5e-6（DFT）" : "1e-7";
+    if (o.key == "freq_fd_delta")
+        return dft ? "0.010（DFT）" : "0.001";
+    // A bare number is NWChem's own default; the output options' numbers are MolForma's.
+    bool number = false;
+    o.defaultText.toDouble(&number);
+    return number && o.group != "visualization" ? o.defaultText + "（NWChem既定）" : o.defaultText;
+}
+QString nwchemAdvancedBlock(const AdvancedOption &o, const Document &d) {
+    const auto method = nwchemSettings(d)["method"].toString();
+    if (o.key.startsWith("vectors_"))
+        return method == "dft" ? "dft" : "scf";
+    if (o.key == "driver_cartesian")
+        return "geometry";
+    if (o.key == "hessian_thresh")
+        return "hessian";
+    if (o.group == "files")
+        return o.keyword;
+    if (o.group == "correlation")
+        return method == "mp2" ? "mp2" : "ccsd";
+    if (o.group == "frequency")
+        return "freq";
+    if (o.group == "visualization")
+        return o.key.startsWith("molden_") ? "property" : "dplot";
+    return o.group;
 }
 QString nwchemAdvancedError(const AdvancedOption &o, const QJsonValue &v) {
     if (v.isUndefined())

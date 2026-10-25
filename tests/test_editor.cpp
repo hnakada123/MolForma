@@ -862,7 +862,7 @@ class EditorTest : public QObject {
         charge->setValue(1);
         QCOMPARE(w.document().job()["charge"].toInt(), 1);
         QVERIFY(summary->text().contains("整合しません"));
-        QVERIFY(!w.findChild<QPushButton *>("calculationCopy")->isEnabled());
+        QVERIFY(w.findChild<QLabel *>("calculationStatus")->text().contains("生成できません"));
         mult->setValue(2);
         QVERIFY(summary->text().contains("電子数 9"));
         QVERIFY(summary->text().contains("α 5 / β 4"));

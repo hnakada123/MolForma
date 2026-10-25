@@ -230,24 +230,30 @@ class OutputTest : public QObject {
         type->setCurrentIndex(type->findData("orbital"));
         auto *orb = widget<QComboBox>(w, "advanced_cube_orbital");
         orb->setCurrentIndex(orb->findData("index"));
-        QVERIFY(!widget<QPushButton>(w, "advancedCopy")->isEnabled());
+        QVERIFY(widget<QLabel>(w, "advancedStatus")->text().contains("エラー"));
         edit(w, "cube_index", "5");
         edit(w, "cube_x", "-3 3 24");
         QCOMPARE(nwchemAdvanced(w.document())["cube_x"].toArray(), QJsonArray({-3, 3, 24}));
-        QVERIFY(widget<QPushButton>(w, "advancedCopy")->isEnabled());
+        QVERIFY(widget<QLabel>(w, "advancedStatus")->text().contains("問題はありません"));
         const auto generated = nwchemInput(w.document());
-        QCOMPARE(widget<QPlainTextEdit>(w, "advancedInput")->toPlainText(), generated);
+        // The CUBE options write into the dplot block, as the selected row shows.
+        widget<QTreeWidget>(w, "advancedTable")
+            ->setCurrentItem(widget<QTreeWidget>(w, "advancedTable")
+                                 ->findItems("X範囲・分割数", Qt::MatchExactly | Qt::MatchRecursive)[0]);
+        const auto snippet = widget<QPlainTextEdit>(w, "advancedSnippet")->toPlainText();
+        QVERIFY2(snippet.startsWith("dplot") && snippet.contains("-3 3 24"), qPrintable(snippet));
+        QVERIFY(widget<QLabel>(w, "advancedOutputSummary")->isVisibleTo(&w));
         auto *preview = widget<InputPreviewPanel>(w, "inputPreviewTab");
         preview->saveInput(tmp.filePath("output.nw"));
         QCOMPARE(QString::fromUtf8(readFile(tmp.filePath("output.nw"))), generated);
         const auto before = w.document().project();
         widget<QPushButton>(w, "advancedReset_visualization")->click();
         QVERIFY(!nwchemInput(w.document()).contains("dplot"));
-        widget<QPushButton>(w, "advancedUndo")->click();
+        w.history()->undo();
         QCOMPARE(w.document().project(), before);
         w.edit("candidate", [](Document &d) { d.atoms[1].position.x() += .1; }, true);
         QVERIFY(!cubeOutput->isEnabled());
-        QVERIFY(!widget<QPushButton>(w, "advancedSave")->isEnabled());
+        QVERIFY(!widget<QPushButton>(w, "advancedResetAll")->isEnabled());
         w.cancelCandidate();
     }
     void realEngineArtifacts() {

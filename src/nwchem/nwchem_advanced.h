@@ -13,6 +13,14 @@ const QVector<AdvancedOption> &nwchemAdvancedOptions();
 QVector<NwchemChoice> nwchemAdvancedGroups();
 QJsonObject nwchemAdvanced(const Document &document);
 bool nwchemAdvancedApplies(const AdvancedOption &option, const Document &document);
+// The calculations an option is used in, in words ("DFTの計算"), as nwchemAdvancedApplies decides.
+QString nwchemAdvancedScope(const AdvancedOption &option);
+// What NWChem uses while the option is blank, with where it comes from: "1e-7（3 計算条件のSCF収束:
+// 厳密）" for the thresholds that follow "3 計算条件", otherwise the option's defaultText.
+QString nwchemAdvancedDefault(const AdvancedOption &option, const Document &document);
+// The keyword of the input block that carries the option ("dft", "driver"; "scratch_dir" for a
+// top-level directive), for showing it in the generated input.
+QString nwchemAdvancedBlock(const AdvancedOption &option, const Document &document);
 QString nwchemAdvancedError(const AdvancedOption &option, const QJsonValue &value);
 QJsonValue parseNwchemAdvanced(const AdvancedOption &option, const QString &text);
 QString nwchemAdvancedText(const QJsonValue &value);

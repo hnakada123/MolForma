@@ -128,7 +128,10 @@ class MainWindow : public QMainWindow {
     HeaderBar *header = nullptr;
     QWidget *workflowSteps = nullptr;
     QButtonGroup *stepGroup = nullptr; // One button per tab, its index as id.
-    QToolButton *documentButton = nullptr, *runButton = nullptr;
+    QToolButton *documentButton = nullptr, *runButton = nullptr, *headerStop = nullptr;
+    QLabel *runPill = nullptr; // "実行中 18:31" in the header while NWChem runs.
+    // The header while a run is active: the elapsed time, and stop instead of run.
+    void showRun(bool active, const QString &text, bool stoppable);
     QButtonGroup *toolGroup = nullptr; // The editing tools in the rail at the left of "1 分子".
     QComboBox *toolBondKind = nullptr; // In the option bar of the bond and place tools; mirrors bondKind.
     QButtonGroup *unitGroup = nullptr, *categoryGroup = nullptr; // Selection unit, palette category.

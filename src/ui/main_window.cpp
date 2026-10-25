@@ -1085,6 +1085,19 @@ void MainWindow::buildHeader() {
                 undo.redo();
         });
     });
+    runPill = new QLabel;
+    runPill->setObjectName("runStatePill");
+    runPill->hide();
+    right->addSpacing(4);
+    right->addWidget(runPill);
+    headerStop = new QToolButton;
+    headerStop->setObjectName("headerStop");
+    headerStop->setText("停止");
+    headerStop->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    headerStop->setToolTip("実行中のNWChemを停止します（確認してから停止）。");
+    headerStop->hide();
+    right->addWidget(headerStop);
+    connect(headerStop, &QToolButton::clicked, this, [this] { execution->confirmStop(); });
     runButton = new QToolButton;
     runButton->setObjectName("runButton");
     runButton->setText("計算を実行");
@@ -1954,6 +1967,15 @@ void MainWindow::refreshTitle() {
                                    "\n新規・開く・保存・SMILESから作成");
     }
 }
+void MainWindow::showRun(bool active, const QString &text, bool stoppable) {
+    if (!runPill)
+        return;
+    runPill->setText(text);
+    runPill->setVisible(active);
+    headerStop->setVisible(active);
+    headerStop->setEnabled(stoppable);
+    runButton->setVisible(!active);
+}
 void MainWindow::syncWorkflowSteps() {
     if (!stepGroup)
         return;
@@ -2004,8 +2026,13 @@ void MainWindow::applyChromeStyle() {
         QToolButton#runButton { background: @accent; color: @onAccent; font-weight: bold; padding: 6px 14px; }
         QToolButton#runButton:hover { background: @accentHover; }
         QToolButton#runButton:disabled { background: @line; color: @muted; }
+        QLabel#runStatePill { background: @tint; color: @accentText; border-radius: 12px; padding: 4px 11px;
+                              font-weight: bold; }
+        QToolButton#headerStop { border: 1px solid @error; color: @error; font-weight: bold; padding: 5px 12px; }
+        QToolButton#headerStop:hover { background: @badTint; }
     )");
     runButton->setIcon(lineIcon("play", c.onAccent));
+    headerStop->setIcon(lineIcon("stop", c.bad));
     style(findChild<QWidget *>("toolRail"), R"(
         #toolRail { background: @base; border-right: 1px solid @line; }
         QToolButton { border: none; border-radius: 8px; color: @text; padding-top: 3px; }
@@ -2076,6 +2103,14 @@ void MainWindow::applyChromeStyle() {
                    " padding: 4px 12px; }");
     if (coordinates)
         coordinates->applyChromeStyle();
+    if (calculation)
+        calculation->applyChromeStyle();
+    if (advanced)
+        advanced->applyChromeStyle();
+    if (execution)
+        execution->applyChromeStyle();
+    if (inputPreview)
+        inputPreview->applyChromeStyle();
     if (results)
         results->applyChromeStyle();
 }

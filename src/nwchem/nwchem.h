@@ -40,5 +40,28 @@ bool nwchemAutoz(const Document &document);
 QString nwchemCoordinateLabel(const Document &document, const Ids &ids);
 // The bonded molecules that act as counterpoise (BSSE) monomers, in atom order.
 QVector<Ids> nwchemBsseMonomers(const Document &document);
+// The SCF/DFT convergence threshold written for scf_convergence ("1e-7"); empty for "default",
+// which leaves NWChem's own thresholds.
+QString nwchemScfThreshold(const QJsonObject &settings);
+// Why a section of "3 計算条件" takes no part in the current calculation ("最適化のみ"), or empty
+// when it does. Sections: "path" (IRC・座標スキャン), "constraints", "optimization" (最適化・振動数),
+// "followup", "bsse" and "excited" (TDDFT); the others always take part.
+QString nwchemSectionUnused(const Document &document, const QString &section);
 QString nwchemInput(const Document &document);
+// A top-level directive or block of a generated input, and where it is set.
+struct NwchemInputBlock {
+    int line = 0, lines = 1; // First line (from 0) and the number of lines, up to its "end".
+    QString keyword, title;  // "dft", and its header line as shown ("geometry（3 原子）").
+    QList<int> tabs;         // The workspace tabs that set it, by number (1 分子 … 4 詳細設定).
+    QString setting, group;  // A setting key of "3 計算条件" and a group of "4 詳細設定", if any.
+};
+struct NwchemInputOutline {
+    QVector<NwchemInputBlock> blocks;
+    // Lines (from 0) that "4 詳細設定" and the additional input of "3 計算条件" add or change.
+    QSet<int> advanced, extra;
+};
+// The outline of an input generated for the document (nwchemInput, or the input of an execution
+// plan). A line comes from "4 詳細設定" (or the additional input) when the input generated without
+// those settings lacks it; blocks take their tabs from their keyword and from such lines.
+NwchemInputOutline nwchemInputOutline(const Document &document, const QString &input);
 } // namespace mf

@@ -2,12 +2,15 @@
 #include "ui/editor_chrome.h"
 #include "ui/theme.h"
 #include <QApplication>
+#include <QButtonGroup>
+#include <QComboBox>
 #include <QGridLayout>
 #include <QIconEngine>
 #include <QPainter>
 #include <QPainterPath>
 #include <QResizeEvent>
 #include <QSpacerItem>
+#include <QStyledItemDelegate>
 #include <algorithm>
 #include <cmath>
 
@@ -205,6 +208,28 @@ QPainterPath iconPath(const QString &name, bool &filled) {
         line({{6, 3}, {14, 3}, {19, 8}, {19, 21}, {6, 21}}, true);
         line({{12, 10}, {12, 17}});
         line({{9, 14}, {12, 17}, {15, 14}});
+    } else if (name == "preset") { // A bookmark.
+        line({{6, 3}, {18, 3}, {18, 21}, {12, 17}, {6, 21}}, true);
+    } else if (name == "reset") { // Back to the default: an arrow turning counterclockwise.
+        const QRectF ring(4.5, 4, 16, 16);
+        p.arcMoveTo(ring, 200);
+        p.arcTo(ring, 200, 295);
+        p.lineTo(3, 10.2);
+        line({{3, 4.8}, {3, 10.2}, {8.4, 10.2}});
+    } else if (name == "info") {
+        circle({12, 12}, 9);
+        line({{12, 11}, {12, 16.5}});
+        line({{12, 7.8}, {12, 8}});
+    } else if (name == "error") {
+        circle({12, 12}, 9);
+        line({{9, 9}, {15, 15}});
+        line({{15, 9}, {9, 15}});
+    } else if (name == "arrow") {
+        line({{5, 12}, {19, 12}});
+        line({{13, 6}, {19, 12}, {13, 18}});
+    } else if (name == "stop") {
+        filled = true;
+        p.addRoundedRect(QRectF(6, 6, 12, 12), 2, 2);
     } else if (name == "origin") {
         circle({12, 12}, 6.5);
         line({{12, 2}, {12, 7}});
@@ -355,6 +380,57 @@ QString chromeRules(QString rules, const QPalette &palette) {
     return rules;
 }
 
+QString settingsRules() {
+    return R"(
+        QFrame[toolbar="true"] { background: @base; border: none; border-bottom: 1px solid @line; }
+        QFrame[banner="true"] { background: @candidate; border: none; border-bottom: 1px solid @candidateLine; }
+        QFrame[banner="true"] QLabel { color: @candidateText; }
+        QFrame[card="true"] { background: @base; border: 1px solid @line; border-radius: 10px; }
+        QFrame[card="true"][state="ok"] { background: @goodTint; }
+        QFrame[card="true"][state="error"] { background: @badTint; }
+        QLabel[cardTitle="true"] { color: @text; font-weight: bold; font-size: 14px; }
+        QLabel[caption="true"] { color: @muted; font-size: 11px; }
+        QLabel[muted="true"] { color: @muted; }
+        QLabel[good="true"] { color: @good; font-weight: bold; }
+        QLabel[bad="true"] { color: @error; font-weight: bold; }
+        QLabel[mono="true"] { font-family: monospace; }
+        QFrame[choice="segments"] { background: @segment; border: none; border-radius: 7px; }
+        QFrame[choice="segments"] QToolButton { border: none; border-radius: 5px; padding: 4px 10px; color: @muted;
+                                                background: transparent; }
+        QFrame[choice="segments"] QToolButton:hover { color: @text; }
+        QFrame[choice="segments"] QToolButton:checked { background: @base; color: @accentText; font-weight: bold; }
+        QFrame[choice="chips"] { background: transparent; border: none; }
+        QFrame[choice="chips"] QToolButton { border: 1px solid @line; border-radius: 13px; padding: 4px 11px;
+                                             background: @base; color: @text; }
+        QFrame[choice="chips"] QToolButton:hover { background: @hover; }
+        QFrame[choice="chips"] QToolButton:checked { background: @tint; border-color: @accent; color: @accentText;
+                                                     font-weight: bold; }
+        QFrame[choice] QToolButton:disabled { color: @muted; }
+        QFrame[choice] QLabel { color: @error; }
+        QPushButton { border: 1px solid @line; border-radius: 6px; background: @base; color: @text; padding: 5px 10px; }
+        QPushButton:hover { background: @hover; }
+        QPushButton:disabled { color: @muted; border-color: @hover; }
+        QPushButton[primary="true"] { background: @accent; border-color: @accent; color: @onAccent; font-weight: bold;
+                                      padding: 6px 14px; }
+        QPushButton[primary="true"]:hover { background: @accentHover; }
+        QPushButton[primary="true"]:disabled { background: @line; border-color: @line; color: @muted; }
+        QPushButton[danger="true"] { color: @error; border-color: @error; font-weight: bold; }
+        QPushButton[danger="true"]:disabled { color: @muted; border-color: @hover; font-weight: normal; }
+        QPushButton[link="true"] { border: none; background: transparent; color: @accentText; padding: 2px 0;
+                                   text-align: left; }
+        QPushButton[link="true"]:hover { text-decoration: underline; }
+        QPushButton[flat="true"] { border: none; background: transparent; padding: 3px; }
+        QPushButton[flat="true"]:hover { background: @hover; }
+        QToolButton[flat="true"] { border: none; border-radius: 5px; padding: 3px 6px; color: @text; }
+        QToolButton[flat="true"]:hover { background: @hover; }
+        QToolButton[flat="true"]:checked { background: @tint; color: @accentText; font-weight: bold; }
+        QLineEdit[search="true"] { border: 1px solid @line; border-radius: 6px; padding: 4px; background: @base;
+                                   color: @text; }
+        QScrollArea[canvas="true"] { background: @window; border: none; }
+        QWidget[canvas="true"] { background: @window; }
+        QListWidget[nav="true"] { background: @base; border: none; }
+    )";
+}
 QIcon lineIcon(const QString &name, const QColor &color) {
     return QIcon(new LineIconEngine(name, color));
 }
@@ -515,6 +591,188 @@ int FlowLayout::arrange(const QRect &rect, bool testOnly) const {
         }
     }
     return total + m.top() + m.bottom();
+}
+
+ChoiceButtons::ChoiceButtons(QComboBox *box, Look look, const QStringList &labels, QWidget *parent)
+    : QFrame(parent), combo(box), other(new QLabel) {
+    setProperty("choice", look == Segments ? "segments" : "chips");
+    QLayout *row;
+    if (look == Segments) {
+        auto *h = new QHBoxLayout(this);
+        h->setContentsMargins(2, 2, 2, 2);
+        h->setSpacing(2);
+        row = h;
+        setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed); // As wide as its buttons.
+    } else {
+        row = new FlowLayout(this, 6, 6);
+        row->setContentsMargins(0, 0, 0, 0);
+    }
+    combo->setParent(this);
+    combo->hide();
+    auto *group = new QButtonGroup(this);
+    for (int i = 0; i < combo->count(); ++i) {
+        auto *b = new QToolButton;
+        b->setObjectName(combo->objectName() + '_' + combo->itemData(i).toString());
+        b->setText(labels.value(i, combo->itemText(i)));
+        if (b->text() != combo->itemText(i))
+            b->setToolTip(combo->itemText(i));
+        b->setCheckable(true);
+        b->setAutoRaise(true);
+        row->addWidget(b);
+        group->addButton(b, i);
+        buttons << b;
+    }
+    if (look == Segments)
+        static_cast<QHBoxLayout *>(row)->addWidget(other);
+    else
+        row->addWidget(other);
+    other->hide();
+    connect(group, &QButtonGroup::idClicked, this, [this](int index) {
+        if (combo->currentIndex() != index)
+            combo->setCurrentIndex(index);
+        sync();
+    });
+    connect(combo, &QComboBox::currentIndexChanged, this, [this] { sync(); });
+    combo->installEventFilter(this);
+    sync();
+}
+void ChoiceButtons::sync() {
+    const int index = combo->currentIndex();
+    for (int i = 0; i < buttons.size(); ++i) {
+        buttons[i]->setChecked(i == index);
+        buttons[i]->setEnabled(combo->isEnabled());
+    }
+    other->setVisible(index >= buttons.size());
+    other->setText(index >= buttons.size() ? combo->currentText() : QString());
+}
+bool ChoiceButtons::eventFilter(QObject *watched, QEvent *event) {
+    if (watched == combo && event->type() == QEvent::EnabledChange)
+        for (auto *b : std::as_const(buttons))
+            b->setEnabled(combo->isEnabled());
+    return QFrame::eventFilter(watched, event);
+}
+
+namespace {
+class NavDelegate : public QStyledItemDelegate {
+  public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override {
+        const int line = option.fontMetrics.height();
+        return {120, index.data(NavList::HeadingRole).toBool() ? line + 16 : line + 14};
+    }
+    void paint(QPainter *p, const QStyleOptionViewItem &option, const QModelIndex &index) const override {
+        const ChromeColors c(option.palette);
+        p->save();
+        p->setRenderHint(QPainter::Antialiasing);
+        const QRect r = option.rect.adjusted(6, 1, -6, -1);
+        auto font = option.font;
+        if (index.data(NavList::HeadingRole).toBool()) {
+            font.setBold(true);
+            font.setPointSizeF(font.pointSizeF() * .88);
+            p->setFont(font);
+            p->setPen(c.muted);
+            p->drawText(r.adjusted(6, 0, 0, -3), Qt::AlignLeft | Qt::AlignBottom, index.data().toString());
+            p->restore();
+            return;
+        }
+        const bool selected = option.state & QStyle::State_Selected,
+                   hover = option.state & QStyle::State_MouseOver,
+                   muted = index.data(NavList::MutedRole).toBool();
+        if (selected || hover) {
+            p->setPen(Qt::NoPen);
+            p->setBrush(selected ? c.tint : c.hover);
+            p->drawRoundedRect(r, 6, 6);
+        }
+        int right = r.right() - 8;
+        auto small = option.font;
+        small.setPointSizeF(small.pointSizeF() * .86);
+        const auto badge = index.data(NavList::BadgeRole).toString(),
+                   note = index.data(NavList::NoteRole).toString();
+        const QFontMetrics sm(small);
+        if (!badge.isEmpty()) {
+            p->setFont(small);
+            const int w = sm.horizontalAdvance(badge) + 12, h = sm.height() + 2;
+            const QRect pill(right - w + 1, r.center().y() - h / 2, w, h);
+            p->setPen(Qt::NoPen);
+            p->setBrush(selected ? c.base : c.segment);
+            p->drawRoundedRect(pill, h / 2., h / 2.);
+            p->setPen(selected ? c.accentText : c.muted);
+            p->drawText(pill, Qt::AlignCenter, badge);
+            right = pill.left() - 6;
+        } else if (!note.isEmpty()) {
+            p->setFont(small);
+            const int w = sm.horizontalAdvance(note);
+            p->setPen(c.muted);
+            p->drawText(QRect(right - w + 1, r.top(), w, r.height()), Qt::AlignVCenter | Qt::AlignRight,
+                        note);
+            right -= w + 6;
+        }
+        if (index.data(NavList::MarkRole).toBool()) {
+            p->setPen(Qt::NoPen);
+            p->setBrush(c.accent);
+            p->drawEllipse(QPointF(right - 3, r.center().y() + .5), 3, 3);
+            right -= 12;
+        }
+        font.setBold(selected);
+        p->setFont(font);
+        p->setPen(selected ? c.accentText : muted ? c.muted : c.text);
+        const QRect text(r.left() + 10, r.top(), std::max(0, right - r.left() - 12), r.height());
+        p->drawText(text, Qt::AlignVCenter | Qt::AlignLeft,
+                    QFontMetrics(font).elidedText(index.data().toString(), Qt::ElideRight, text.width()));
+        p->restore();
+    }
+};
+} // namespace
+
+NavList::NavList(QWidget *parent) : QListWidget(parent) {
+    setItemDelegate(new NavDelegate(this));
+    setFrameShape(QFrame::NoFrame);
+    setMouseTracking(true);
+    setSelectionMode(QAbstractItemView::SingleSelection);
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setProperty("nav", true);
+}
+QListWidgetItem *NavList::addHeading(const QString &text) {
+    auto *item = new QListWidgetItem(text, this);
+    item->setData(HeadingRole, true);
+    item->setFlags(Qt::NoItemFlags);
+    return item;
+}
+QListWidgetItem *NavList::addEntry(const QString &text, const QVariant &key) {
+    auto *item = new QListWidgetItem(text, this);
+    item->setData(Qt::UserRole, key);
+    return item;
+}
+QListWidgetItem *NavList::entry(const QVariant &key) const {
+    for (int i = 0; i < count(); ++i)
+        if (!item(i)->data(HeadingRole).toBool() && item(i)->data(Qt::UserRole) == key)
+            return item(i);
+    return nullptr;
+}
+void NavList::setCurrentKey(const QVariant &key) {
+    if (auto *e = entry(key); e && e != currentItem()) {
+        const QSignalBlocker blocker(this);
+        setCurrentItem(e);
+        viewport()->update();
+    }
+}
+
+SettingsCard::SettingsCard(const QString &title, QWidget *parent) : QFrame(parent) {
+    setProperty("card", true);
+    auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(16, 12, 16, 14);
+    layout->setSpacing(10);
+    head = new QHBoxLayout;
+    head->setSpacing(8);
+    heading = new QLabel(title);
+    heading->setProperty("cardTitle", true);
+    head->addWidget(heading);
+    head->addStretch();
+    layout->addLayout(head);
+    content = new QVBoxLayout;
+    content->setSpacing(8);
+    layout->addLayout(content);
+    heading->setVisible(!title.isEmpty());
 }
 
 ElidedLabel::ElidedLabel(const QString &text, QWidget *parent) : QLabel(text, parent) {

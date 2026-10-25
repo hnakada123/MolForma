@@ -9,12 +9,22 @@ class DiagnosticsList : public QListWidget {
   public:
     static constexpr int MessageRole = Qt::UserRole, ErrorRole = Qt::UserRole + 1, FixRole = Qt::UserRole + 2;
     explicit DiagnosticsList(QWidget *parent = nullptr);
-    // fixes: message → description of the quick fix offered for it.
+    // fixes: message → description of the quick fix offered for it. Without errors, an ok text
+    // (when not empty) takes the first row.
     void setMessages(const QStringList &errors, const QStringList &warnings, const QString &ok,
                      const QMap<QString, QString> &fixes = {});
     QStringList messages() const;
+    // As tall as its rows for the width it gets, up to maximum (then it scrolls).
+    void setFitContents(int maximum);
+    QSize sizeHint() const override;
   signals:
     void messageClicked(QString message, bool error);
     void fixRequested(QString message);
+
+  protected:
+    void resizeEvent(QResizeEvent *event) override;
+
+  private:
+    int fit = 0;
 };
 } // namespace mf

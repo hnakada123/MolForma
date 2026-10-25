@@ -4,6 +4,7 @@
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_import.h"
 #include "nwchem/nwchem_output.h"
+#include <QHash>
 #include <QLocale>
 #include <QRegularExpression>
 #include <algorithm>
@@ -345,6 +346,30 @@ QString nwchemCoordinateLabel(const Document &d, const Ids &ids) {
 }
 QVector<Ids> nwchemBsseMonomers(const Document &d) {
     return bsseMonomers(d);
+}
+QString nwchemScfThreshold(const QJsonObject &s) {
+    const auto convergence = s["scf_convergence"].toString();
+    return convergence == "default"  ? QString()
+           : convergence == "normal" ? "1e-5"
+           : convergence == "tight"  ? "1e-7"
+                                     : "1e-9";
+}
+QString nwchemSectionUnused(const Document &d, const QString &section) {
+    const auto s = nwchemSettings(d);
+    const auto task = s["task"].toString(), method = s["method"].toString();
+    if (section == "path")
+        return task == "irc" || task == "scan" ? QString() : "使わない";
+    if (section == "constraints") // Optimizations and relaxed scans write them as zcoord.
+        return nwchemDriverTask(s) ? QString() : "最適化のみ";
+    if (section == "optimization")
+        return nwchemDriverTask(s) || frequencyTask(task) || task == "irc" ? QString() : "使わない";
+    if (section == "followup")
+        return optimizationTask(task) ? QString() : "最適化のみ";
+    if (section == "bsse")
+        return bsseMonomers(d).size() >= 2 ? QString() : "単量体なし";
+    if (section == "excited")
+        return method != "dft" ? "DFTのみ" : task != "energy" ? "一点計算のみ" : QString();
+    return {};
 }
 QJsonObject nwchemDefaults() {
     return {{"start", "molforma"},
@@ -1024,9 +1049,7 @@ QString methodBlocks(const Document &d, const QJsonObject &s, const NwchemValida
     const auto method = str("method");
     // "default" leaves NWChem's own thresholds, apart from those set in "4 詳細設定".
     const bool own = str("scf_convergence") == "default";
-    const QString threshold = str("scf_convergence") == "normal"  ? "1e-5"
-                              : str("scf_convergence") == "tight" ? "1e-7"
-                                                                  : "1e-9";
+    const QString threshold = nwchemScfThreshold(s);
     QString text;
     if (method == "dft") {
         const auto *f = functional(str("functional"));
@@ -1246,5 +1269,181 @@ QString nwchemInput(const Document &d) {
     if (!str("extra_tasks").trimmed().isEmpty())
         text += "\n# Additional input (not checked by MolForma)\n" + str("extra_tasks").trimmed() + '\n';
     return text;
+}
+namespace {
+// Lines of `input` that a shortest edit script from `base` inserts (Myers' O(ND) diff, after the
+// common head and tail). Settings change a few lines; a larger difference marks nothing.
+QVector<bool> insertedLines(const QStringList &input, const QStringList &base) {
+    QVector<bool> inserted(input.size(), false);
+    int start = 0, endA = input.size(), endB = base.size();
+    while (start < endA && start < endB && input[start] == base[start])
+        ++start;
+    while (endA > start && endB > start && input[endA - 1] == base[endB - 1])
+        --endA, --endB;
+    const int n = endB - start, m = endA - start; // x walks the base, y the input.
+    if (m == 0)
+        return inserted;
+    if (n == 0) {
+        std::fill(inserted.begin() + start, inserted.begin() + endA, true);
+        return inserted;
+    }
+    const int offset = n + m, limit = std::min(n + m, 2000);
+    QVector<int> v(2 * offset + 2, 0);
+    QVector<QVector<int>> trace;
+    for (int d = 0; d <= limit; ++d) {
+        trace.append(v);
+        for (int k = -d; k <= d; k += 2) {
+            const bool down = k == -d || (k != d && v[offset + k - 1] < v[offset + k + 1]);
+            int x = down ? v[offset + k + 1] : v[offset + k - 1] + 1, y = x - k;
+            while (x < n && y < m && base[start + x] == input[start + y])
+                ++x, ++y;
+            v[offset + k] = x;
+            if (x < n || y < m)
+                continue;
+            // Back from the end: each step down of the path inserts one input line.
+            for (int step = d; step > 0; --step) {
+                const auto &before = trace[step];
+                const int key = x - y;
+                const bool fromAbove =
+                    key == -step || (key != step && before[offset + key - 1] < before[offset + key + 1]);
+                const int previous = fromAbove ? key + 1 : key - 1;
+                const int px = before[offset + previous], py = px - previous;
+                if (fromAbove)
+                    inserted[start + py] = true;
+                x = px;
+                y = py;
+            }
+            return inserted;
+        }
+    }
+    return QVector<bool>(input.size(), false);
+}
+QStringList generatedLines(const Document &d) {
+    try {
+        return nwchemInput(d).split('\n');
+    } catch (const std::exception &) {
+        return {};
+    }
+}
+} // namespace
+NwchemInputOutline nwchemInputOutline(const Document &d, const QString &input) {
+    NwchemInputOutline outline;
+    if (input.isEmpty())
+        return outline;
+    const auto lines = input.split('\n');
+    auto plain = d;
+    resetNwchemAdvanced(plain);
+    auto bare = d;
+    auto s = bare.data["nwchem"].toObject();
+    s.remove("extra_input");
+    s.remove("extra_tasks");
+    bare.data["nwchem"] = s;
+    for (auto [document, marks] : {std::pair{&plain, &outline.advanced}, std::pair{&bare, &outline.extra}}) {
+        const auto base = generatedLines(*document);
+        if (base.isEmpty())
+            continue;
+        const auto inserted = insertedLines(lines, base);
+        for (int i = 0; i < inserted.size(); ++i)
+            if (inserted[i] && !lines[i].trimmed().isEmpty())
+                marks->insert(i);
+    }
+    // Where each keyword is set: a tab and a setting of "3 計算条件", or a group of "4 詳細設定".
+    static const QHash<QString, std::pair<int, const char *>> sources{{"start", {3, "start"}},
+                                                                      {"title", {3, "title"}},
+                                                                      {"memory", {3, "memory_mb"}},
+                                                                      {"charge", {3, "charge"}},
+                                                                      {"geometry", {2, ""}},
+                                                                      {"constraints", {2, ""}},
+                                                                      {"basis", {3, "basis"}},
+                                                                      {"ecp", {3, "basis"}},
+                                                                      {"bq", {1, ""}},
+                                                                      {"relativistic", {3, "relativistic"}},
+                                                                      {"scf", {3, "method"}},
+                                                                      {"dft", {3, "method"}},
+                                                                      {"mp2", {3, "method"}},
+                                                                      {"ccsd", {3, "method"}},
+                                                                      {"cosmo", {3, "solvent"}},
+                                                                      {"tddft", {3, "tddft"}},
+                                                                      {"driver", {3, "opt_maxiter"}},
+                                                                      {"mepgs", {3, "irc_points"}},
+                                                                      {"bsse", {3, "bsse"}},
+                                                                      {"property", {3, "prop_mulliken"}},
+                                                                      {"esp", {3, "prop_esp"}},
+                                                                      {"unset", {3, "followup"}},
+                                                                      {"set", {3, "task"}},
+                                                                      {"task", {3, "task"}}};
+    static const QHash<QString, QString> groups{{"scf", "scf"},
+                                                {"dft", "dft"},
+                                                {"mp2", "correlation"},
+                                                {"ccsd", "correlation"},
+                                                {"driver", "driver"},
+                                                {"freq", "frequency"},
+                                                {"hessian", "frequency"},
+                                                {"cosmo", "cosmo"},
+                                                {"geometry", "driver"},
+                                                {"property", "visualization"},
+                                                {"dplot", "visualization"},
+                                                {"task", "visualization"},
+                                                {"echo", "files"},
+                                                {"scratch_dir", "files"},
+                                                {"permanent_dir", "files"},
+                                                {"memory", "files"}};
+    static const QRegularExpression atomLine(R"(^\s+\S+(?:\s+[-+0-9.eE]+){3}\s*$)");
+    for (int i = 0; i < lines.size(); ++i) {
+        const auto &line = lines[i];
+        if (line.isEmpty() || line[0].isSpace() || line.startsWith('#') || line == "end")
+            continue;
+        NwchemInputBlock block;
+        block.line = i;
+        block.keyword = line.section(' ', 0, 0).toLower();
+        int last = i;
+        // A block: indented lines up to an "end" of its own.
+        if (i + 1 < lines.size() && !lines[i + 1].isEmpty() && lines[i + 1][0].isSpace())
+            for (int j = i + 1; j < lines.size(); ++j) {
+                if (lines[j] == "end") {
+                    last = j;
+                    break;
+                }
+                if (lines[j].isEmpty() || !lines[j][0].isSpace())
+                    break;
+                last = j;
+            }
+        block.lines = last - i + 1;
+        block.title = line.trimmed();
+        if (block.keyword == "geometry") {
+            int atoms = 0;
+            for (int j = i + 1; j <= last; ++j)
+                atoms += atomLine.match(lines[j]).hasMatch();
+            block.title = QString("geometry（%1 原子）").arg(atoms);
+        } else if (block.keyword == "basis") // The library of the common basis, if there is one.
+            for (int j = i + 1; j <= last; ++j)
+                if (lines[j].startsWith("  * library "))
+                    block.title = "basis " + lines[j].mid(12).trimmed();
+        int advanced = 0, extra = 0;
+        for (int j = i; j <= last; ++j) {
+            advanced += outline.advanced.contains(j);
+            extra += outline.extra.contains(j);
+        }
+        const auto source = sources.value(block.keyword, {3, ""});
+        if (extra == block.lines) {
+            block.tabs = {3};
+            block.setting = "extra_input";
+        } else if (advanced == block.lines) {
+            block.tabs = {4};
+            block.group = groups.value(block.keyword, "files");
+        } else {
+            block.tabs = {source.first};
+            block.setting = source.second;
+            if (block.keyword == "bq")
+                block.tabs << 3;
+            if (advanced) {
+                block.tabs << 4;
+                block.group = groups.value(block.keyword, "files");
+            }
+        }
+        outline.blocks << block;
+        i = last;
+    }
+    return outline;
 }
 } // namespace mf

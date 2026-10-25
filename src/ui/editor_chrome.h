@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
+#include <QFrame>
 #include <QIcon>
 #include <QLabel>
 #include <QLayout>
+#include <QListWidget>
 #include <QPalette>
 #include <QToolButton>
 #include <QVector>
 #include <utility>
+class QButtonGroup;
+class QComboBox;
 class QGridLayout;
+class QHBoxLayout;
+class QVBoxLayout;
 namespace mf {
 // Colors of the editor chrome (header, tool rail, option bar, overlays): MolForma's own accent, and
 // the rest derived from the widget palette so that light and dark themes both stay readable.
@@ -22,6 +28,10 @@ struct ChromeColors {
 // "@window", "@text", "@muted", "@line", "@hover", "@segment", "@tint", "@onAccent", "@accentHover",
 // "@candidate…", "@good", "@goodTint", "@error" and "@badTint".
 QString chromeRules(QString rules, const QPalette &palette);
+// The rules shared by the settings tabs (3 計算条件 … 6 入力プレビュー), as tokens for chromeRules():
+// the toolbar and banner rows, cards, segmented controls and chips (ChoiceButtons), buttons (with
+// the properties primary, danger, link and flat), search fields and status texts.
+QString settingsRules();
 // Stroked icons on a 24×24 grid ("select", "move", "undo", "lock", "copy", …), in the palette's text color,
 // the accent when checked and the disabled color when off, or always in `color` if given. "play", "pause",
 // "first" and "last" are filled.
@@ -60,6 +70,68 @@ class FlowLayout : public QLayout {
     QList<QLayoutItem *> items;
     int horizontal, vertical;
     bool uniform = false;
+};
+
+// Buttons for the items of a combo box: a segmented control, or chips that wrap. The combo box
+// stays the control that holds the value, hidden inside (so callers and MCP clients that set it
+// keep working): a click selects its item, and the buttons follow its current item. A value
+// without a button ("未対応: …") is named beside them. The buttons take the combo box's name with
+// the item's value ("nwchem_task_energy") and follow its enabled state.
+class ChoiceButtons : public QFrame {
+  public:
+    enum Look { Segments, Chips };
+    // labels: shorter texts for the buttons, in the order of the items (else the item texts).
+    ChoiceButtons(QComboBox *combo, Look look, const QStringList &labels = {}, QWidget *parent = nullptr);
+    QComboBox *comboBox() const {
+        return combo;
+    }
+    QToolButton *button(int index) const {
+        return buttons.value(index);
+    }
+    void sync();
+
+  protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
+  private:
+    QComboBox *combo;
+    QList<QToolButton *> buttons;
+    QLabel *other;
+};
+
+// The list at the left of a settings tab: headings, and entries with a count or a note at the
+// right ("変更 4", "使わない"). Muted entries take no part in the current calculation; a mark is a
+// dot before the count. Entries hold their key in Qt::UserRole.
+class NavList : public QListWidget {
+  public:
+    enum Role { HeadingRole = Qt::UserRole + 10, BadgeRole, NoteRole, MutedRole, MarkRole };
+    explicit NavList(QWidget *parent = nullptr);
+    QListWidgetItem *addHeading(const QString &text);
+    QListWidgetItem *addEntry(const QString &text, const QVariant &key);
+    QListWidgetItem *entry(const QVariant &key) const;
+    // Selects the entry of a key without emitting a click (the list follows the scroll position).
+    void setCurrentKey(const QVariant &key);
+};
+
+// A card of a settings tab: a bordered box with a title row (the title, then what is added to
+// header()) above its contents (body()).
+class SettingsCard : public QFrame {
+  public:
+    explicit SettingsCard(const QString &title, QWidget *parent = nullptr);
+    QHBoxLayout *header() const {
+        return head;
+    }
+    QVBoxLayout *body() const {
+        return content;
+    }
+    QLabel *titleLabel() const {
+        return heading;
+    }
+
+  private:
+    QHBoxLayout *head;
+    QVBoxLayout *content;
+    QLabel *heading;
 };
 
 // One line of text, shortened with "…" when narrower than the text (the full text in toolTip).

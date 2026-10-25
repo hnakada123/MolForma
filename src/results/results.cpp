@@ -6,6 +6,7 @@
 #include <QDataStream>
 #include <QDir>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QTextStream>
@@ -167,6 +168,26 @@ namespace {
 const QString IncompleteStatus = "正常終了マーカーなし（実行中・中断・不完全なログの可能性）",
               ErrorStatus = "NWChemエラー: ", MessageStatus = "エラー・未収束メッセージあり（ログを確認）",
               NormalStatus = "正常終了マーカーあり（各taskの結果は「概要」とログで確認）";
+// A DRIVER step ("@ 3 -76.02 -1.2D-05 0.0003 ..."), and the thresholds printed before the steps.
+const QRegularExpression &stepLine() {
+    static const QRegularExpression pattern(R"(^@\s+(\d+)((?:\s+\S+){7})\s*$)");
+    return pattern;
+}
+const QRegularExpression &thresholdLine() {
+    static const QRegularExpression pattern(
+        R"(^\s*(?:maximum|rms) (?:gradient|cartesian step) threshold\s+\((gmax|grms|xmax|xrms)\)\s*=\s*(\S+))");
+    return pattern;
+}
+double logNumber(QString text) {
+    bool ok;
+    const double n = text.replace('D', 'E', Qt::CaseInsensitive).toDouble(&ok);
+    return ok && std::isfinite(n) ? n : std::numeric_limits<double>::quiet_NaN();
+}
+ResultStep resultStep(const QRegularExpressionMatch &m) {
+    const auto columns = words(m.captured(2));
+    return {m.captured(1).toInt(), logNumber(columns[0]), logNumber(columns[1]), logNumber(columns[2]),
+            logNumber(columns[3]), logNumber(columns[4]), logNumber(columns[5]), logNumber(columns[6])};
+}
 void nwchem(ResultData &r, const QStringList &lines) {
     r.status = IncompleteStatus;
     bool fatal = false, ended = false, recognized = false;
@@ -182,9 +203,8 @@ void nwchem(ResultData &r, const QStringList &lines) {
     static const QRegularExpression code(R"(\s+-?\d+\s*$)");
     static const QRegularExpression root(
         R"(^\s*Root\s+(\d+)\s+(?:(singlet|triplet)\s+)?(\S+)\s+(-?[\d.]+)\s+a\.u\.\s+(-?[\d.]+)\s+eV)");
-    static const QRegularExpression step(R"(^@\s+(\d+)((?:\s+\S+){7})\s*$)");
-    static const QRegularExpression threshold(
-        R"(^\s*(?:maximum|rms) (?:gradient|cartesian step) threshold\s+\((gmax|grms|xmax|xrms)\)\s*=\s*(\S+))");
+    const auto &step = stepLine();
+    const auto &threshold = thresholdLine();
     static const QRegularExpression orbitalHeader(R"(Final (Alpha |Beta )?Molecular Orbital Analysis)");
     static const QRegularExpression vector(
         R"(^\s*Vector\s+(\d+)\s+Occ=\s*(\S+)\s+E=\s*(\S+)(?:\s+Symmetry=\s*(\S+))?)");
@@ -370,9 +390,7 @@ void nwchem(ResultData &r, const QStringList &lines) {
                 r.excitations << x;
         }
         if (auto m = step.match(line); m.hasMatch()) {
-            const auto columns = words(m.captured(2));
-            ResultStep s{m.captured(1).toInt(), value(columns[0]), value(columns[1]), value(columns[2]),
-                         value(columns[3]),     value(columns[4]), value(columns[5]), value(columns[6])};
+            const auto s = resultStep(m);
             // The converged step is printed twice; a new step 0 starts another optimization.
             if (s.step == 0 || (!r.steps.isEmpty() && s.step <= r.steps.last().step))
                 while (!r.steps.isEmpty() && r.steps.last().step >= s.step)
@@ -953,6 +971,79 @@ void cube(ResultData &r, QString text) {
                   "条件を確認してください。";
 }
 } // namespace
+void NwchemProgress::add(const QString &line) {
+    static const QRegularExpression total(
+        R"(^\s*Total\s+(?:SCF|DFT|MP2|CCSD(?:\(T\))?)\s+energy\s*[:=]?\s*(\S+)\s*$)",
+        QRegularExpression::CaseInsensitiveOption);
+    if (line.contains("NWChem Input Module")) {
+        // NWChem reads the input again before each task; repeated banners start no new task.
+        if (started == 0 || busy)
+            ++started;
+        busy = false;
+    } else if (line.contains("Total times  cpu:"))
+        ended = true;
+    else if (const auto m = stepLine().match(line); m.hasMatch()) {
+        const auto s = resultStep(m);
+        // The converged step is printed twice; a new step 0 starts another optimization.
+        if (s.step == 0 || stepTask != started - 1)
+            steps.clear();
+        while (!steps.isEmpty() && steps.last().step >= s.step)
+            steps.removeLast();
+        if (std::isfinite(s.energy) && steps.size() < 20000)
+            steps << s;
+        stepTask = started - 1;
+        busy = true;
+    } else if (const auto t = thresholdLine().match(line); t.hasMatch()) {
+        thresholds[t.captured(1)] = logNumber(t.captured(2));
+        busy = true;
+    } else if (line.contains("Optimization converged")) {
+        convergedTask = started - 1;
+        busy = true;
+    } else if (const auto e = total.match(line); e.hasMatch()) {
+        if (const double value = logNumber(e.captured(1)); std::isfinite(value))
+            energy = value;
+        busy = true;
+    } else if (line.contains("Frequency Analysis"))
+        busy = true;
+}
+int NwchemProgress::driverSteps(const QString &input) {
+    bool driver = false;
+    for (const auto &line : input.split('\n')) {
+        if (!line.isEmpty() && !line[0].isSpace())
+            driver = line == "driver";
+        else if (driver && line.trimmed().startsWith("maxiter "))
+            return line.trimmed().section(' ', 1, 1).toInt();
+    }
+    return 0;
+}
+QStringList NwchemProgress::tasks(const QString &input) {
+    static const QHash<QString, QString> names{{"energy", "一点エネルギー"},
+                                               {"gradient", "勾配"},
+                                               {"optimize", "構造最適化"},
+                                               {"saddle", "遷移状態探索"},
+                                               {"frequencies", "振動数"},
+                                               {"freq", "振動数"},
+                                               {"mepgs", "IRC"},
+                                               {"property", "物性"},
+                                               {"dplot", "CUBE出力"}};
+    QStringList result;
+    for (const auto &line : input.split('\n')) {
+        if (!line.startsWith("task "))
+            continue;
+        const auto words = line.split(' ', Qt::SkipEmptyParts);
+        // "task dft optimize", "task esp", "task dplot", "task tddft energy".
+        const auto theory = words.value(1).toLower(), operation = words.value(2).toLower();
+        if (theory == "tddft")
+            result << "励起状態（TDDFT）";
+        else if (theory == "esp")
+            result << "ESP電荷";
+        else if (theory == "dplot")
+            result << names["dplot"];
+        else
+            result << names.value(operation.isEmpty() ? "energy" : operation, operation);
+    }
+    return result;
+}
 ResultData readResult(const QString &path, double iso, int dataset, int orbital, const QString &normalization,
                       int orbitalDivisions) {
     if (!std::isfinite(iso) || iso <= 0 || iso > 1e6)

@@ -88,6 +88,26 @@ class NwchemEnergySummary {
     QVector<Task> tasks{Task{}};
     bool ended = false;
 };
+// What the log of a running NWChem job tells so far, fed line by line: the tasks begun, the DRIVER
+// steps of the latest optimization with their thresholds, and the last total energy.
+class NwchemProgress {
+  public:
+    void add(const QString &line);
+    // The tasks of an input in their order, in words ("構造最適化", "振動数"), and the most steps
+    // its DRIVER takes (maxiter; 0 without a DRIVER block).
+    static QStringList tasks(const QString &input);
+    static int driverSteps(const QString &input);
+    int started = 0;   // Tasks begun; the current one is started - 1.
+    int stepTask = -1; // The task of the steps, and the task whose optimization converged.
+    int convergedTask = -1;
+    QVector<ResultStep> steps;                                // Of the latest optimization.
+    QJsonObject thresholds;                                   // {gmax, grms, xmax, xrms} of the DRIVER.
+    double energy = std::numeric_limits<double>::quiet_NaN(); // The last total energy / Hartree.
+    bool ended = false;                                       // NWChem's closing timing line.
+
+  private:
+    bool busy = false; // The current task has printed something since its input banner.
+};
 // Parsing/meshing is bounded and runs in a cancellable native process in the UI.
 ResultData readResult(const QString &path, double isovalue = .03, int dataset = 0, int orbital = -1,
                       const QString &normalization = "auto", int orbitalDivisions = 40);

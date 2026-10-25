@@ -36,6 +36,23 @@ class CalculationTest : public QObject {
     static QPushButton *button(MainWindow &w, const char *name) {
         return w.findChild<QPushButton *>(name);
     }
+    static QAction *action(MainWindow &w, const QString &name) {
+        return w.findChild<QAction *>(name);
+    }
+    static int userPresets(MainWindow &w) {
+        int count = 0;
+        for (const auto *a : w.findChildren<QAction *>())
+            count += a->objectName().startsWith("calculationUserPreset");
+        return count;
+    }
+    // The rows of "既定から変更した条件" as "label: value".
+    static QStringList changes(MainWindow &w) {
+        QStringList rows;
+        auto *tree = w.findChild<QTreeWidget *>("calculationChanges");
+        for (int i = 0; i < tree->topLevelItemCount(); ++i)
+            rows << tree->topLevelItem(i)->text(0) + ": " + tree->topLevelItem(i)->text(1);
+        return rows;
+    }
 
   private slots:
     void initTestCase() {
@@ -603,9 +620,9 @@ class CalculationTest : public QObject {
         choose(w, "dispersion", "d3");
         choose(w, "functional", "pbe0");
         // Changes from the defaults, in the form's words.
-        const auto changes = w.findChild<QLabel *>("calculationChanges")->text();
-        QVERIFY2(changes.contains("電子状態の手法: DFT") && changes.contains("DFT汎関数: PBE0"),
-                 qPrintable(changes));
+        const auto rows = changes(w);
+        QVERIFY2(rows.contains("電子状態の手法: DFT") && rows.contains("DFT汎関数: PBE0"),
+                 qPrintable(rows.join('\n')));
         // A diagnostic with a quick fix (PBE0-D3 is fine; SCAN-D3 has no parameters).
         choose(w, "functional", "scan");
         auto *list = w.findChild<QListWidget *>("calculationValidation");
@@ -622,14 +639,86 @@ class CalculationTest : public QObject {
             if (list->item(i)->text().contains("多重度"))
                 emit list->itemDoubleClicked(list->item(i));
         QCOMPARE(w.document().job()["multiplicity"].toInt(), 2);
-        // The complete input is folded by default; searching an advanced option opens "4 詳細設定".
-        QVERIFY(!w.findChild<QPlainTextEdit *>("calculationInput")->isVisibleTo(&w));
+        // Searching an advanced option opens "4 詳細設定".
         auto *search = w.findChild<QLineEdit *>("calculationSearch");
         search->setText("DIIS部分空間");
         QMetaObject::invokeMethod(search, "returnPressed");
         QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentWidget()->objectName(),
                  QString("advancedTab"));
         QCOMPARE(w.findChild<QLineEdit *>("advancedSearch")->text(), QString("DIIS部分空間"));
+    }
+    void sectionsChangesAndResets() {
+        // Sections without a part in the calculation, and why.
+        auto d = water();
+        QCOMPARE(nwchemSectionUnused(d, "path"), QString("使わない"));
+        QCOMPARE(nwchemSectionUnused(d, "constraints"), QString("最適化のみ"));
+        QCOMPARE(nwchemSectionUnused(d, "optimization"), QString("使わない"));
+        QCOMPARE(nwchemSectionUnused(d, "bsse"), QString("単量体なし"));
+        QCOMPARE(nwchemSectionUnused(d, "excited"), QString("DFTのみ"));
+        QVERIFY(nwchemSectionUnused(d, "basic").isEmpty());
+        set(d, "method", "dft");
+        QVERIFY(nwchemSectionUnused(d, "excited").isEmpty());
+        set(d, "task", "optimize_frequencies");
+        QCOMPARE(nwchemSectionUnused(d, "excited"), QString("一点計算のみ"));
+        QVERIFY(nwchemSectionUnused(d, "constraints").isEmpty() &&
+                nwchemSectionUnused(d, "optimization").isEmpty());
+        set(d, "task", "scan");
+        set(d, "scan_relaxed", false);
+        QVERIFY(nwchemSectionUnused(d, "path").isEmpty());
+        QCOMPARE(nwchemSectionUnused(d, "constraints"), QString("最適化のみ"));
+
+        MainWindow w;
+        w.loadDocument(water());
+        auto *sections = w.findChild<QListWidget *>("calculationSections");
+        const auto entry = [&](const QString &key) -> QListWidgetItem * {
+            for (int i = 0; i < sections->count(); ++i)
+                if (sections->item(i)->data(Qt::UserRole) == key)
+                    return sections->item(i);
+            return nullptr;
+        };
+        QCOMPARE(entry("path")->data(Qt::UserRole + 12).toString(), QString("使わない"));
+        QVERIFY(entry("basic")->data(Qt::UserRole + 11).toString().isEmpty());
+        // Chips and segments set the hidden combo boxes that hold the values.
+        w.findChild<QToolButton *>("nwchem_task_optimize")->click();
+        w.findChild<QToolButton *>("nwchem_method_dft")->click();
+        QCOMPARE(nwchemSettings(w.document())["task"].toString(), "optimize");
+        QCOMPARE(nwchemSettings(w.document())["method"].toString(), "dft");
+        QVERIFY(w.findChild<QToolButton *>("nwchem_method_dft")->isChecked());
+        QVERIFY(w.findChild<QToolButton *>("nwchem_grid_fine")->isEnabled());
+        QCOMPARE(entry("basic")->data(Qt::UserRole + 11).toString(), QString("変更 2"));
+        QVERIFY(entry("optimization")->data(Qt::UserRole + 12).toString().isEmpty());
+        QCOMPARE(changes(w), (QStringList{"計算目的: 構造最適化", "電子状態の手法: DFT"}));
+        // Only changed rows: the other cards and rows give way.
+        auto *only = button(w, "calculationChangedOnly");
+        QCOMPARE(only->text(), QString("変更した項目のみ（2）"));
+        only->click();
+        auto *tab = w.findChild<QWidget *>("calculationTab");
+        QVERIFY(!w.findChild<QWidget *>("calculationCard_path")->isVisibleTo(tab));
+        QVERIFY(w.findChild<QWidget *>("calculationCard_basic")->isVisibleTo(tab));
+        QVERIFY(!combo(w, "functional")->isVisibleTo(tab));
+        QVERIFY(w.findChild<QWidget *>("calculationChoice_method")->isVisibleTo(tab));
+        only->click();
+        QVERIFY(combo(w, "functional")->isVisibleTo(tab));
+        // Each change resets on its own, a section at once; both undo.
+        w.findChild<QToolButton *>("calculationReset_method")->click();
+        QTRY_COMPARE(nwchemSettings(w.document())["method"].toString(), "hf");
+        QCOMPARE(nwchemSettings(w.document())["task"].toString(), "optimize");
+        choose(w, "basis", "6-31g*");
+        button(w, "calculationResetSection_basic")->click();
+        QCOMPARE(nwchemSettings(w.document())["task"].toString(), "energy");
+        QCOMPARE(nwchemSettings(w.document())["basis"].toString(), "sto-3g");
+        QVERIFY(changes(w).isEmpty());
+        QVERIFY(w.findChild<QLabel *>("calculationNoChanges")->isVisibleTo(tab));
+        w.history()->undo();
+        QCOMPARE(nwchemSettings(w.document())["basis"].toString(), "6-31g*");
+        // Changes of "4 詳細設定" are counted, and lead there.
+        w.edit("detail", [](Document &next) { setNwchemAdvanced(next, "scf_thresh", 1e-8); });
+        auto *advanced = button(w, "calculationAdvancedChanges");
+        QVERIFY(advanced->isVisibleTo(tab) && advanced->text().contains("1 項目"));
+        advanced->click();
+        QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentWidget()->objectName(),
+                 QString("advancedTab"));
+        QCOMPARE(w.findChild<QComboBox *>("advancedFilter")->currentData().toString(), QString("changed"));
     }
     void nwchemImportRoundTrip() {
         // MolForma's own inputs read back to the same structure and settings.
@@ -919,14 +1008,15 @@ class CalculationTest : public QObject {
         tabs->setCurrentIndex(2);
         QCOMPARE(w.document().toJson(), d.toJson());
         QCOMPARE(w.history()->count(), 0);
-        QVERIFY(button(w, "calculationCopy")->isEnabled());
+        auto *status = w.findChild<QLabel *>("calculationStatus");
+        QVERIFY(status->text().contains("入力を生成できます"));
         choose(w, "method", "dft");
         QVERIFY(combo(w, "functional")->isEnabled());
         QCOMPARE(w.history()->count(), 1);
-        button(w, "calculationUndo")->click();
+        button(w, "editorUndo")->click(); // Undo and Redo are the header's.
         QCOMPARE(w.document().toJson(), d.toJson());
-        QVERIFY(button(w, "calculationRedo")->isEnabled());
-        button(w, "calculationRedo")->click();
+        QVERIFY(button(w, "editorRedo")->isEnabled());
+        button(w, "editorRedo")->click();
         QCOMPARE(nwchemSettings(w.document())["method"].toString(), "dft");
         choose(w, "geometry_units", "bohr");
         QCOMPARE(w.findChild<QComboBox *>("nwchemUnits")->currentIndex(), 1);
@@ -934,11 +1024,11 @@ class CalculationTest : public QObject {
         auto *mult = w.findChild<QSpinBox *>("nwchem_multiplicity");
         charge->setValue(1);
         QCOMPARE(w.document().job()["charge"].toInt(), 1);
-        QVERIFY(!button(w, "calculationCopy")->isEnabled());
-        QVERIFY(!w.findChild<QPlainTextEdit *>("calculationInput")->toPlainText().contains("task dft"));
+        QVERIFY(status->text().contains("生成できません"));
+        QVERIFY(!button(w, "inputPreviewCopy")->isEnabled());
         mult->setValue(2);
-        QVERIFY(button(w, "calculationCopy")->isEnabled());
-        button(w, "calculationCopy")->click();
+        QVERIFY(status->text().contains("入力を生成できます"));
+        button(w, "inputPreviewCopy")->click();
         QCOMPARE(QApplication::clipboard()->text(), nwchemInput(w.document()));
         QVERIFY(QApplication::clipboard()->text().contains("  mult 2\n  odft\n"));
         const int count = w.history()->count();
@@ -949,7 +1039,10 @@ class CalculationTest : public QObject {
         set(modified, "method", "future_method");
         w.loadDocument(modified);
         QVERIFY(combo(w, "method")->currentText().contains("未対応"));
-        QVERIFY(!button(w, "calculationSave")->isEnabled());
+        // The segments name a value they have no button for.
+        auto *methods = w.findChild<QWidget *>("calculationChoice_method");
+        QVERIFY(methods->findChild<QLabel *>()->text().contains("未対応"));
+        QVERIFY(!button(w, "inputPreviewSave")->isEnabled());
         QCOMPARE(nwchemSettings(w.document())["method"].toString(), "future_method");
     }
     void presetUndoAndCandidates() {
@@ -957,21 +1050,25 @@ class CalculationTest : public QObject {
         auto d = water();
         set(d, "geometry_units", "bohr");
         w.loadDocument(d);
-        auto *presets = w.findChild<QComboBox *>("calculationPresets");
-        presets->setCurrentIndex(1);
-        button(w, "calculationApplyPreset")->click();
+        // The menu names what a preset changes before it is applied.
+        auto *preset = action(w, "calculationPreset1");
+        emit w.findChild<QMenu *>("calculationPresetMenu")->aboutToShow();
+        QVERIFY(preset->toolTip().contains("電子状態の手法: Hartree–Fock → DFT"));
+        preset->trigger();
         QCOMPARE(w.history()->count(), 1);
         QCOMPARE(nwchemSettings(w.document())["method"].toString(), "dft");
         QCOMPARE(nwchemSettings(w.document())["geometry_units"].toString(), "bohr");
-        button(w, "calculationUndo")->click();
+        w.history()->undo();
         QCOMPARE(w.document().toJson(), d.toJson());
         w.edit("候補", [](Document &next) { next.atoms[1].position.x() += 0.1; }, true);
         QVERIFY(!combo(w, "method")->isEnabled());
-        QVERIFY(!button(w, "calculationCopy")->isEnabled());
-        QVERIFY(!button(w, "calculationApplyPreset")->isEnabled());
-        QVERIFY(w.findChild<QPlainTextEdit *>("calculationInput")->toPlainText().contains("task scf energy"));
+        QVERIFY(!button(w, "inputPreviewCopy")->isEnabled());
+        QVERIFY(!button(w, "calculationPresets")->isEnabled());
+        QVERIFY(w.findChild<QLabel *>("calculationMessage")->text().contains("候補"));
+        preset->trigger(); // Ignored while the candidate is pending.
+        QCOMPARE(nwchemSettings(w.displayDocument())["method"].toString(), "hf");
         w.cancelCandidate();
-        QVERIFY(button(w, "calculationCopy")->isEnabled());
+        QVERIFY(button(w, "inputPreviewCopy")->isEnabled());
         QCOMPARE(w.document().toJson(), d.toJson());
         w.edit("別タブの電荷変更", [](Document &next) {
             next.setJobValue("charge", 1);
@@ -994,23 +1091,23 @@ class CalculationTest : public QObject {
             dialog->accept();
         });
         button(w, "calculationStorePreset")->click();
-        auto *presets = w.findChild<QComboBox *>("calculationPresets");
-        QCOMPARE(presets->count(), nwchemPresets().size() + 1);
+        QCOMPARE(userPresets(w), 1);
+        QCOMPARE(action(w, "calculationUserPreset0")->text(), QString("test PBE"));
         choose(w, "functional", "blyp");
-        button(w, "calculationApplyPreset")->click();
+        action(w, "calculationUserPreset0")->trigger();
         QCOMPARE(nwchemSettings(w.document())["functional"].toString(), "pbe");
         auto *title = w.findChild<QLineEdit *>("nwchem_title");
         title->setText("invalid#title");
         QMetaObject::invokeMethod(title, "editingFinished");
-        QVERIFY(!button(w, "calculationCopy")->isEnabled());
+        QVERIFY(w.findChild<QLabel *>("calculationStatus")->text().contains("生成できません"));
         title->setText("Valid title");
         QMetaObject::invokeMethod(title, "editingFinished");
-        QVERIFY(button(w, "calculationCopy")->isEnabled());
+        QVERIFY(w.findChild<QLabel *>("calculationStatus")->text().contains("入力を生成できます"));
         QVERIFY(nwchemInput(w.document()).contains("title \"Valid title\""));
         MainWindow second;
-        QCOMPARE(second.findChild<QComboBox *>("calculationPresets")->count(), presets->count());
-        button(w, "calculationRemovePreset")->click();
-        QCOMPARE(presets->count(), nwchemPresets().size());
+        QCOMPARE(userPresets(second), 1);
+        action(w, "calculationRemovePreset0")->trigger();
+        QTRY_COMPARE(userPresets(w), 0);
     }
     void saveCommitsFocusedField() {
         QTemporaryDir files;

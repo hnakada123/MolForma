@@ -1,5 +1,6 @@
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
+#include "results/results.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
 #include <QtTest>
@@ -294,7 +295,7 @@ class ExecutionTest : public QObject {
         QVERIFY(w.findChild<QPlainTextEdit *>("executionCommand")->isReadOnly());
         w.findChild<QSpinBox *>("execution_memory")->setValue(256);
         QCOMPARE(nwchemSettings(w.document())["memory_mb"].toInt(), 256);
-        button(w, "executionUndo")->click();
+        w.history()->undo(); // Undo is the header's.
         QCOMPARE(w.document().toJson(), d.toJson());
         input(w, "omp_stacksize", "bad");
         QVERIFY(!button(w, "executionStart")->isEnabled());
@@ -335,6 +336,90 @@ class ExecutionTest : public QObject {
         QVERIFY(!button(w, "executionStop")->isEnabled());
         button(w, "executionPrepare")->click();
         QVERIFY(w.findChild<QLabel *>("executionState")->text().contains("入力一式"));
+    }
+    void checksAndProgressParsing() {
+        // The checks before a run, one per program, folder and the input.
+        const auto report = validateExecution(configured(), files.path(), true);
+        QStringList labels;
+        for (const auto &c : report.checks) {
+            labels << c.label;
+            QVERIFY2(c.ok, qPrintable(c.label + ": " + c.detail));
+        }
+        QCOMPARE(labels,
+                 (QStringList{"NWChem実行ファイル", "参照ファイルの基準", "ジョブ保存先", "NWChem入力"}));
+        QCOMPARE(report.checks[0].detail, helper);
+        auto broken = configured();
+        setExecutionSetting(broken, "executable", files.filePath("missing"));
+        const auto failed = validateExecution(broken, files.path(), true);
+        QVERIFY(!failed.checks[0].ok);
+        QVERIFY(failed.errors.contains(failed.checks[0].error));
+        // What a running log tells: tasks begun, DRIVER steps against thresholds, the energy.
+        NwchemProgress progress;
+        for (const auto &line :
+             QStringList{" NWChem Input Module", " NWChem Input Module",
+                         "  maximum gradient threshold         (gmax) =   0.000450",
+                         "  rms cartesian step threshold       (xrms) =   0.001200",
+                         "@    0     -76.02658720  0.0D+00  0.03036  0.02303  0.00000  0.00000  0.4",
+                         "         Total DFT energy =      -76.026587203",
+                         "@    1     -76.03010450 -3.5D-03  0.00040  0.00020  0.00500  0.00900  0.9",
+                         "@    1     -76.03010450 -3.5D-03  0.00040  0.00020  0.00500  0.00900  0.9",
+                         "      Optimization converged"})
+            progress.add(line);
+        QCOMPARE(progress.started, 1); // A repeated banner starts no task.
+        QCOMPARE(progress.steps.size(), 2);
+        QCOMPARE(progress.steps.last().gmax, 0.0004);
+        QCOMPARE(progress.thresholds["gmax"].toDouble(), 0.00045);
+        QCOMPARE(progress.thresholds["xrms"].toDouble(), 0.0012);
+        QCOMPARE(progress.stepTask, 0);
+        QCOMPARE(progress.convergedTask, 0);
+        QCOMPARE(progress.energy, -76.026587203);
+        progress.add(" NWChem Input Module");
+        progress.add(" Total times  cpu: 1.0s");
+        QCOMPARE(progress.started, 2);
+        QVERIFY(progress.ended);
+        const auto input =
+            QString("driver\n  maxiter 80\nend\ntask dft optimize\ntask dft frequencies numerical\n"
+                    "task tddft energy\ntask dplot\n");
+        QCOMPARE(NwchemProgress::tasks(input),
+                 (QStringList{"構造最適化", "振動数", "励起状態（TDDFT）", "CUBE出力"}));
+        QCOMPARE(NwchemProgress::driverSteps(input), 80);
+        QCOMPARE(NwchemProgress::driverSteps("task scf energy\n"), 0);
+    }
+    void runningProgressAndHeader() {
+        MainWindow w;
+        auto d = configured("optimize");
+        auto s = nwchemSettings(d);
+        s["task"] = "optimize_frequencies";
+        d.data["nwchem"] = s;
+        w.loadDocument(d);
+        auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
+        tabs->setCurrentIndex(4);
+        QVERIFY(!w.findChild<QWidget *>("executionRunCard")->isVisibleTo(&w));
+        button(w, "executionStart")->click();
+        auto *run = w.findChild<NwchemRun *>("nwchemRun");
+        QVERIFY(run->active());
+        // The header shows the run and offers to stop it instead of starting another.
+        QVERIFY(w.findChild<QLabel *>("runStatePill")->isVisibleTo(&w));
+        QVERIFY(w.findChild<QLabel *>("runStatePill")->text().startsWith("実行中"));
+        QVERIFY(!w.findChild<QToolButton *>("runButton")->isVisibleTo(&w));
+        QVERIFY(w.findChild<QToolButton *>("headerStop")->isVisibleTo(&w));
+        QVERIFY(!w.findChild<QWidget *>("executionCheckCard")->isVisibleTo(&w));
+        // The tasks of the input, the current one with its last step, and the four criteria.
+        QTRY_VERIFY(w.findChild<QLabel *>("executionStage0") &&
+                    w.findChild<QLabel *>("executionStage0")->text().contains("ステップ 1 / 最大 100"));
+        QVERIFY(w.findChild<QLabel *>("executionStage0")->text().contains("構造最適化"));
+        QVERIFY(w.findChild<QLabel *>("executionStage1")->text().contains("振動数"));
+        QVERIFY(w.findChild<QLabel *>("executionStage1")->text().contains("待機"));
+        QVERIFY(w.findChild<QWidget *>("executionCriteria")->isVisibleTo(&w));
+        QVERIFY(
+            w.findChild<QLabel *>("executionCriterion0")->text().contains("達成")); // Gmax 0.0004 ≤ 0.00045
+        QVERIFY(w.findChild<QLabel *>("executionCriterion2")->text().contains("未達")); // Xmax 0.009 > 0.0018
+        run->stop();
+        QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 10000);
+        QVERIFY(!w.findChild<QLabel *>("runStatePill")->isVisibleTo(&w));
+        QVERIFY(w.findChild<QToolButton *>("runButton")->isVisibleTo(&w));
+        QVERIFY(w.findChild<QLabel *>("executionStage0")->text().contains("未完了"));
+        QVERIFY(w.findChild<QLabel *>("executionStatePill")->text().contains("停止"));
     }
     void saveFocusedFieldsAndTeardown() {
         const auto path = files.filePath("settings.kgui.json");

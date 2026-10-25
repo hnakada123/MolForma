@@ -18,10 +18,17 @@ void saveExecutionPreferences(const QJsonObject &settings);
 void applyExecutionPreferences(Document &document);
 QJsonObject executionSettings(const Document &document);
 void setExecutionSetting(Document &document, const QString &key, const QJsonValue &value);
+// One item of the local checks before a run: the program, folder or input checked, what was
+// found ("/usr/bin/nwchem"), and the error it stands for in ExecutionValidation::errors, if any.
+struct ExecutionCheck {
+    QString label, detail, error;
+    bool ok = true;
+};
 struct ExecutionValidation {
     QStringList errors, warnings;
     QString executable, launcher, referenceDirectory;
     QMap<QString, QString> environment; // Only explicit overrides, never the inherited environment.
+    QVector<ExecutionCheck> checks;     // With checkLocal: programs, folders and the NWChem input.
 };
 ExecutionValidation validateExecution(const Document &document, const QString &projectDirectory,
                                       bool checkLocal = true);

@@ -208,21 +208,36 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
     r.executable = locateProgram(s["executable"].toString(), base, environment);
     r.launcher = locateProgram(s["launcher"].toString(), base, environment);
     if (local) {
-        auto checkProgram = [&](const QString &path, const QString &label) {
-            const QFileInfo f(path);
-            if (path.isEmpty() || !f.isFile() || !f.isExecutable())
-                r.errors << label + "が見つからないか、実行権限がありません。";
+        const auto check = [&](const QString &label, bool ok, const QString &found, const QString &error) {
+            r.checks << ExecutionCheck{label, ok ? found : error, ok ? QString() : error, ok};
+            if (!ok)
+                r.errors << error;
         };
-        checkProgram(r.executable, "NWChem実行ファイル");
+        const auto program = [&](const QString &path, const QString &label) {
+            const QFileInfo f(path);
+            check(label, !path.isEmpty() && f.isFile() && f.isExecutable(), path,
+                  label + "が見つからないか、実行権限がありません。");
+        };
+        program(r.executable, "NWChem実行ファイル");
         if (mpi)
-            checkProgram(r.launcher, "MPIランチャー");
-        if (!QFileInfo(r.referenceDirectory).isDir())
-            r.errors << "参照ファイルの基準ディレクトリがありません。";
-        if (!writableDirectory(executionRoot(s, base), true))
-            r.errors << "ジョブ保存先にディレクトリを作成できません。";
+            program(r.launcher, "MPIランチャー");
+        check("参照ファイルの基準", QFileInfo(r.referenceDirectory).isDir(), r.referenceDirectory,
+              "参照ファイルの基準ディレクトリがありません。");
+        const auto root = executionRoot(s, base);
+        check("ジョブ保存先", writableDirectory(root, true), root,
+              "ジョブ保存先にディレクトリを作成できません。");
         const auto basis = r.environment.value("NWCHEM_BASIS_LIBRARY");
-        if (!basis.isEmpty() && !QFileInfo(basis).isDir())
-            r.errors << "NWCHEM_BASIS_LIBRARYのディレクトリがありません。";
+        if (!basis.isEmpty())
+            check("NWCHEM_BASIS_LIBRARY", QFileInfo(basis).isDir(), basis,
+                  "NWCHEM_BASIS_LIBRARYのディレクトリがありません。");
+        // The input's own errors stay in the list; the check only counts them.
+        r.checks << ExecutionCheck{
+            "NWChem入力",
+            calculation.errors.isEmpty()
+                ? QString("生成できます")
+                : QString("生成できません（エラー %1 件）").arg(calculation.errors.size()),
+            {},
+            calculation.errors.isEmpty()};
     }
     const int ranks = mpi ? s["mpi_ranks"].toInt() : 1;
     if (mpi && ranks == 1)
