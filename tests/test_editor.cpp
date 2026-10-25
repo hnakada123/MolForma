@@ -25,6 +25,7 @@
 #include <QMimeData>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSettings>
 #include <QSlider>
 #include <QSpinBox>
 #include <QStandardItemModel>
@@ -128,7 +129,7 @@ class EditorTest : public QObject {
             MainWindow later;
             QTimer::singleShot(0, &later, [&] { answer("後で決める"); });
             later.offerRecovery();
-            QCOMPARE(later.document().atoms.size(), 3); // The startup water.
+            QVERIFY(later.document().atoms.isEmpty()); // The window starts with a new document.
         }
         const QDir autosaves(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
                              "/autosave");
@@ -355,6 +356,9 @@ class EditorTest : public QObject {
     }
     void trackballZoomAndSliders() {
         MainWindow w;
+        Document water;
+        placeTemplate(water, findTemplate("skeleton:water"), Vec::Zero());
+        w.loadDocument(water);
         w.resize(1300, 900);
         w.show();
         QTest::qWait(40);
@@ -958,6 +962,21 @@ class EditorTest : public QObject {
                                  std::runtime_error);
         QCOMPARE(w.document().atoms.size(), 3);
         QCOMPARE(w.history()->count(), 0);
+    }
+    void startsWithNewDocument() {
+        // A new window starts like "新規": no molecule and nothing to save.
+        {
+            MainWindow w;
+            QVERIFY(w.document().atoms.isEmpty());
+            QVERIFY(w.history()->isClean());
+            QVERIFY(!w.windowTitle().contains('*'));
+        }
+        // The preference still loads a water molecule when it is turned on.
+        QSettings settings("MolForma", "MolForma");
+        settings.setValue("startupWater", true);
+        MainWindow w;
+        settings.remove("startupWater");
+        QCOMPARE(w.document().formula(), QString("H2O"));
     }
     void newDocumentIsClean() {
         MainWindow w;

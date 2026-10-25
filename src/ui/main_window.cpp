@@ -84,7 +84,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), settings("MolForm
     undo.setUndoLimit(100);
     connect(&undo, &QUndoStack::indexChanged, this, [this] { refresh(); });
     connect(&undo, &QUndoStack::cleanChanged, this, &MainWindow::refreshTitle);
-    if (settings.value("startupWater", true).toBool())
+    if (settings.value("startupWater", false).toBool())
         placeTemplate(doc, findTemplate("skeleton:water"), Vec::Zero());
     applyExecutionPreferences(doc);
     mcp.trustedExecution = protectedExecution(doc);
@@ -2856,7 +2856,7 @@ void MainWindow::preferences() {
     form->addRow("追加の環境変数", environment);
     auto *water = new QCheckBox("起動時に水分子を読み込む");
     water->setObjectName("preferences_startupWater");
-    water->setChecked(settings.value("startupWater", true).toBool());
+    water->setChecked(settings.value("startupWater", false).toBool());
     form->addRow("新しいウィンドウ", water);
     auto *renderer = new QComboBox;
     renderer->addItem("自動（VTKを優先）", "auto");

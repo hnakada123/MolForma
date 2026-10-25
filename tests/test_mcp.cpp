@@ -1322,6 +1322,9 @@ class McpTest : public QObject {
     void guiExecutionGuard() {
         QTemporaryDir jobs;
         MainWindow w;
+        Document water; // Execution settings are checked with a valid calculation.
+        placeTemplate(water, findTemplate("skeleton:water"), Vec::Zero());
+        w.loadDocument(water);
         w.show();
         McpGui gui(w);
         McpServer s(gui.editor());
@@ -1387,6 +1390,9 @@ class McpTest : public QObject {
     void mcpEditsNeverBecomeTrusted() {
         QTemporaryDir jobs;
         MainWindow w;
+        Document water; // Execution settings are checked with a valid calculation.
+        placeTemplate(water, findTemplate("skeleton:water"), Vec::Zero());
+        w.loadDocument(water);
         w.show();
         McpGui gui(w);
         McpServer s(gui.editor());
