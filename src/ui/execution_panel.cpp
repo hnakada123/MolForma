@@ -351,8 +351,69 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
         window->statusBar()->showMessage("起動コマンドをコピーしました。", 5000);
     });
     output->addWidget(commandCard);
+    // As tall as their contents; the room left is below them.
+    for (QWidget *card : {static_cast<QWidget *>(checkCard), static_cast<QWidget *>(commandCard)})
+        card->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
 
-    // The current or last run: its state and folder, its tasks and the optimization criteria.
+    // The current or last run is in the run panel, which any tab can open.
+    showRunLink = linkButton("実行状況とログを表示", "executionShowRun");
+    showRunLink->setToolTip("最後に保存・実行したジョブの状態・進み具合・ログを表示します。");
+    connect(showRunLink, &QPushButton::clicked, this, [this] { showRunPanel(); });
+    auto *showRunRow = new QHBoxLayout;
+    showRunRow->addStretch();
+    showRunRow->addWidget(showRunLink);
+    output->addLayout(showRunRow);
+    output->addStretch();
+    buildRunPanel();
+    split->addWidget(rightScroll);
+    split->setStretchFactor(0, 5);
+    split->setStretchFactor(1, 6);
+    split->setSizes({600, 720});
+
+    runStatus = new QToolButton;
+    runStatus->setObjectName("runStatusButton");
+    runStatus->setAutoRaise(true);
+    runStatus->setToolTip("実行状況とログを表示します。");
+    runStatus->hide();
+    window->statusBar()->addPermanentWidget(runStatus);
+    connect(runStatus, &QToolButton::clicked, this, [this] { showRunPanel(); });
+    connect(&run, &NwchemRun::changed, this, [this] {
+        if (run.state() != previousRunState) {
+            const bool ended =
+                QStringList{"starting", "running", "stopping"}.contains(previousRunState) && !run.active();
+            previousRunState = run.state();
+            refresh();
+            emit bundleChanged(run.plan().directory);
+            if (ended)
+                runEnded();
+        } else
+            updateRun();
+    });
+}
+void ExecutionPanel::buildRunPanel() {
+    // Over the tabs at the right of the window, whatever the tab: its title and close, the state of
+    // the run with its folder and progress, and its log.
+    runPanel = new QFrame(window);
+    runPanel->setObjectName("runPanel");
+    runPanel->setAttribute(Qt::WA_StyledBackground);
+    runPanel->hide();
+    auto *panel = new QVBoxLayout(runPanel);
+    panel->setContentsMargins(14, 12, 14, 14);
+    panel->setSpacing(12);
+    auto *head = new QHBoxLayout;
+    auto *title = new QLabel("計算の実行");
+    title->setProperty("cardTitle", true);
+    head->addWidget(title);
+    head->addStretch();
+    auto *close = new QToolButton;
+    close->setObjectName("runPanelClose");
+    close->setIcon(lineIcon("close"));
+    close->setProperty("flat", true);
+    close->setToolTip("閉じる（実行は続きます）");
+    close->setAccessibleName("実行状況を閉じる");
+    head->addWidget(close);
+    panel->addLayout(head);
+    connect(close, &QToolButton::clicked, this, [this] { showRunPanel(false); });
     runCard = new SettingsCard("実行状況");
     runCard->setObjectName("executionRunCard");
     statePill = new QLabel;
@@ -362,26 +423,6 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     timing->setObjectName("executionTiming");
     timing->setWordWrap(false);
     runCard->header()->insertWidget(2, timing);
-    openFolder = new QPushButton("保存先を開く");
-    openFolder->setObjectName("executionOpenFolder");
-    openFolder->setIcon(lineIcon("folder"));
-    viewResults = new QPushButton("結果ビューアへ");
-    viewResults->setObjectName("executionResults");
-    auto *history = new QPushButton("履歴で見る");
-    history->setObjectName("executionHistory");
-    for (auto *b : {openFolder, viewResults, history})
-        runCard->header()->addWidget(b);
-    connect(openFolder, &QPushButton::clicked, this,
-            [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(saved.directory)); });
-    connect(history, &QPushButton::clicked, this, [this] {
-        window->workspaceTabs->setCurrentWidget(window->calculationHistory);
-        if (!saved.directory.isEmpty())
-            window->calculationHistory->selectDirectory(saved.directory);
-    });
-    connect(viewResults, &QPushButton::clicked, this, [this] {
-        window->workspaceTabs->setCurrentWidget(window->results);
-        window->results->openDirectory(saved.directory);
-    });
     location = new QLabel;
     location->setObjectName("executionLocation");
     location->setProperty("mono", true);
@@ -395,9 +436,33 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     state->setWordWrap(true);
     state->setTextFormat(Qt::PlainText);
     runCard->body()->addWidget(state);
-    progress = new RunProgress("execution", 4);
+    progress = new RunProgress("execution", 2);
     runCard->body()->addWidget(progress);
-    output->addWidget(runCard);
+    auto *actions = new QHBoxLayout;
+    actions->setSpacing(8);
+    openFolder = new QPushButton("保存先を開く");
+    openFolder->setObjectName("executionOpenFolder");
+    openFolder->setIcon(lineIcon("folder"));
+    viewResults = new QPushButton("結果ビューアへ");
+    viewResults->setObjectName("executionResults");
+    auto *history = new QPushButton("履歴で見る");
+    history->setObjectName("executionHistory");
+    for (auto *b : {openFolder, viewResults, history})
+        actions->addWidget(b);
+    actions->addStretch();
+    runCard->body()->addLayout(actions);
+    connect(openFolder, &QPushButton::clicked, this,
+            [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(saved.directory)); });
+    connect(history, &QPushButton::clicked, this, [this] {
+        window->workspaceTabs->setCurrentWidget(window->calculationHistory);
+        if (!saved.directory.isEmpty())
+            window->calculationHistory->selectDirectory(saved.directory);
+    });
+    connect(viewResults, &QPushButton::clicked, this, [this] {
+        window->workspaceTabs->setCurrentWidget(window->results);
+        window->results->openDirectory(saved.directory);
+    });
+    panel->addWidget(runCard);
 
     auto *logCard = new SettingsCard("ログ");
     logCard->setObjectName("executionLogCard");
@@ -413,7 +478,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     logName->setObjectName("executionLogName");
     logName->setWordWrap(false);
     logName->setProperty("mono", true);
-    logCard->header()->insertWidget(2, logName);
+    logCard->body()->addWidget(logName);
     follow = new QCheckBox("追尾");
     follow->setObjectName("executionFollow");
     follow->setChecked(true);
@@ -428,36 +493,38 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
         if (on)
             log->verticalScrollBar()->setValue(log->verticalScrollBar()->maximum());
     });
-    log->setMinimumHeight(220);
+    log->setMinimumHeight(160);
     logCard->body()->addWidget(log, 1);
     connect(copyLog, &QToolButton::clicked, this,
             [this] { QApplication::clipboard()->setText(log->toPlainText()); });
-    output->addWidget(logCard, 1);
-    split->addWidget(rightScroll);
-    split->setStretchFactor(0, 5);
-    split->setStretchFactor(1, 6);
-    split->setSizes({600, 720});
-
-    runStatus = new QToolButton;
-    runStatus->setObjectName("runStatusButton");
-    runStatus->setAutoRaise(true);
-    runStatus->setToolTip("「5 実行設定」を表示します。");
-    runStatus->hide();
-    window->statusBar()->addPermanentWidget(runStatus);
-    connect(runStatus, &QToolButton::clicked, this,
-            [this] { window->workspaceTabs->setCurrentWidget(this); });
-    connect(&run, &NwchemRun::changed, this, [this] {
-        if (run.state() != previousRunState) {
-            const bool ended =
-                QStringList{"starting", "running", "stopping"}.contains(previousRunState) && !run.active();
-            previousRunState = run.state();
-            refresh();
-            emit bundleChanged(run.plan().directory);
-            if (ended)
-                runEnded();
-        } else
-            updateRun();
-    });
+    panel->addWidget(logCard, 1);
+    // The panel follows the area of the tabs.
+    window->workspaceTabs->installEventFilter(this);
+}
+void ExecutionPanel::showRunPanel(bool show) {
+    if (show) {
+        placeRunPanel();
+        runPanel->show();
+        runPanel->raise();
+    } else
+        runPanel->hide();
+    if (window->runPanelAction)
+        window->runPanelAction->setChecked(show);
+}
+bool ExecutionPanel::runPanelShown() const {
+    return runPanel->isVisible();
+}
+void ExecutionPanel::placeRunPanel() {
+    auto *tabs = window->workspaceTabs;
+    const QRect area(tabs->mapTo(window, QPoint()), tabs->size());
+    const int width = std::clamp(area.width() * 2 / 5, std::min(420, area.width()), 600);
+    runPanel->setGeometry(area.right() + 1 - width, area.top(), width, area.height());
+}
+bool ExecutionPanel::eventFilter(QObject *watched, QEvent *event) {
+    if (watched == window->workspaceTabs &&
+        (event->type() == QEvent::Resize || event->type() == QEvent::Move) && runPanel->isVisible())
+        placeRunPanel();
+    return QWidget::eventFilter(watched, event);
 }
 QString ExecutionPanel::baseDirectory() const {
     return window->path.isEmpty() ? QDir::currentPath() : QFileInfo(window->path).absolutePath();
@@ -598,6 +665,7 @@ void ExecutionPanel::startCalculation() {
         }
     }
     run.start(window->document(), baseDirectory());
+    showRunPanel();
 }
 void ExecutionPanel::confirmStop() {
     if (!run.active()) {
@@ -805,7 +873,8 @@ void ExecutionPanel::updateRun() {
     if (state->text() != stateText)
         state->setText(stateText);
     location->setText(saved.directory);
-    runCard->setVisible(!saved.directory.isEmpty());
+    location->setVisible(!saved.directory.isEmpty());
+    showRunLink->setVisible(!saved.directory.isEmpty());
     const QMap<QString, QString> pills{
         {"starting", "起動中"},    {"running", "実行中"}, {"stopping", "停止処理中"}, {"cancelled", "停止"},
         {"timed_out", "時間制限"}, {"failed", "失敗"},    {"finished", "終了"}};
@@ -813,7 +882,10 @@ void ExecutionPanel::updateRun() {
                       : run.active()              ? QString("running")
                       : run.state() == "finished" ? QString("finished")
                                                   : QString("failed");
-    statePill->setText(showingRun ? pills.value(run.state(), run.state()) : QString("保存のみ"));
+    statePill->setText(showingRun                  ? pills.value(run.state(), run.state())
+                       : saved.directory.isEmpty() ? QString()
+                                                   : QString("保存のみ"));
+    statePill->setVisible(!statePill->text().isEmpty());
     if (statePill->property("state").toString() != kind) {
         statePill->setProperty("state", kind);
         repolish(statePill);
@@ -829,9 +901,6 @@ void ExecutionPanel::updateRun() {
     viewResults->setEnabled(!saved.directory.isEmpty() && !resultFiles(saved.directory).isEmpty());
     const bool stoppable = run.active() && run.state() != "stopping";
     prepare->setVisible(!run.active());
-    // While NWChem runs, its progress and log take the room of the checks before a run.
-    checkCard->setVisible(!run.active());
-    commandCard->setVisible(!run.active());
     runningNote->setVisible(run.active());
     state->setVisible(!run.active());
     if (window->stopAction)
@@ -968,8 +1037,9 @@ void ExecutionPanel::shutdown() {
 }
 void ExecutionPanel::applyChromeStyle() {
     const auto pal = static_cast<QWidget *>(window)->palette();
-    setStyleSheet(chromeRules(settingsRules() + R"(
+    const QString rules = settingsRules() + R"(
         #executionTab { background: @window; }
+        #runPanel { background: @window; border: none; border-left: 1px solid @line; }
         #executionUsage { background: @window; border: 1px solid @line; border-radius: 8px; }
         QLabel#executionStatePill { border-radius: 10px; padding: 2px 9px; font-weight: bold; }
         QLabel#executionStatePill[state="running"] { background: @tint; color: @accentText; }
@@ -978,7 +1048,8 @@ void ExecutionPanel::applyChromeStyle() {
         QLabel#executionStatePill[state="saved"] { background: @segment; color: @muted; }
         QLabel#executionRunningNote { background: @tint; color: @accentText; border-radius: 8px; padding: 8px 12px; }
         QLabel[tile="true"] { background: @window; border: 1px solid @line; border-radius: 8px; padding: 6px 9px; }
-    )",
-                              pal));
+    )";
+    setStyleSheet(chromeRules(rules, pal));
+    runPanel->setStyleSheet(chromeRules(rules, pal));
 }
 } // namespace mf

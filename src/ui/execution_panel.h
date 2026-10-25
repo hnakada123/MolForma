@@ -44,6 +44,9 @@ class ExecutionPanel : public QWidget {
     bool canStart() const {
         return startable;
     }
+    // The run panel over the tabs (state, progress and log of the current or last run).
+    void showRunPanel(bool show = true);
+    bool runPanelShown() const;
     // Asks before stopping the running NWChem (the stop buttons and "計算 → 停止").
     void confirmStop();
     void saveBundle();
@@ -56,6 +59,9 @@ class ExecutionPanel : public QWidget {
     void applyChromeStyle();
   signals:
     void bundleChanged(QString directory);
+
+  protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
   private:
     friend class McpGui;
@@ -74,7 +80,8 @@ class ExecutionPanel : public QWidget {
     QVBoxLayout *checkList;
     RunProgress *progress;
     QPlainTextEdit *command, *log;
-    QPushButton *prepare, *openFolder, *viewResults, *removeEnvironment;
+    QPushButton *prepare, *openFolder, *viewResults, *removeEnvironment, *showRunLink;
+    QFrame *runPanel;
     QCheckBox *openResults; // Load the job folder into the result viewer when a run finishes.
     QCheckBox *follow;      // Keep the end of the log in view.
     SettingsCard *runCard, *commandCard;
@@ -97,6 +104,8 @@ class ExecutionPanel : public QWidget {
     void editEnvironment();
     void updateRun();
     void runEnded();
+    void buildRunPanel();
+    void placeRunPanel();
     void pathField(QGridLayout *grid, const QString &label, const QString &key, bool directory);
     QWidget *integer(const QString &label, const QString &key, int lo, int hi, const QString &unit = {});
 };

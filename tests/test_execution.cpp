@@ -328,8 +328,16 @@ class ExecutionTest : public QObject {
         QTRY_VERIFY(w.statusBar()->currentMessage().contains("計算が終了しました"));
         auto *runStatus = w.findChild<QToolButton *>("runStatusButton");
         QVERIFY(runStatus->isVisibleTo(&w) && runStatus->text().contains("最後の計算: 終了"));
-        runStatus->click(); // Leads back to "5 実行設定".
-        QCOMPARE(tabs->currentIndex(), 4);
+        // The run panel is over the tabs, whatever the tab: it opens on a run and from the status bar.
+        auto *panel = w.findChild<QWidget *>("runPanel");
+        QVERIFY(panel->isVisibleTo(&w));
+        w.findChild<QToolButton *>("runPanelClose")->click();
+        QVERIFY(!panel->isVisibleTo(&w));
+        tabs->setCurrentIndex(0);
+        runStatus->click();
+        QVERIFY(panel->isVisibleTo(&w));
+        QCOMPARE(tabs->currentIndex(), 0);
+        tabs->setCurrentIndex(4);
         // (This test executable is not a result worker, so only the request is checked.)
         QTRY_COMPARE(w.findChild<QComboBox *>("resultsFiles")->currentText(), QString("output.out"));
         QCOMPARE(tabs->currentIndex(), 4);
@@ -398,16 +406,29 @@ class ExecutionTest : public QObject {
         w.loadDocument(d);
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
         tabs->setCurrentIndex(4);
-        QVERIFY(!w.findChild<QWidget *>("executionRunCard")->isVisibleTo(&w));
+        w.resize(1380, 900);
+        w.show();
+        auto *panel = w.findChild<QWidget *>("runPanel");
+        QVERIFY(!panel->isVisibleTo(&w));
         w.findChild<QToolButton *>("runButton")->click();
         auto *run = w.findChild<NwchemRun *>("nwchemRun");
         QVERIFY(run->active());
-        // The header shows the run and offers to stop it instead of starting another.
-        QVERIFY(w.findChild<QLabel *>("runStatePill")->isVisibleTo(&w));
-        QVERIFY(w.findChild<QLabel *>("runStatePill")->text().startsWith("実行中"));
+        // The header shows the run and offers to stop it instead of starting another; the run panel
+        // with its progress opens over the tabs.
+        auto *pill = w.findChild<QToolButton *>("runStatePill");
+        QVERIFY(pill->isVisibleTo(&w));
+        QVERIFY(pill->text().startsWith("実行中"));
         QVERIFY(!w.findChild<QToolButton *>("runButton")->isVisibleTo(&w));
         QVERIFY(w.findChild<QToolButton *>("headerStop")->isVisibleTo(&w));
-        QVERIFY(!w.findChild<QWidget *>("executionCheckCard")->isVisibleTo(&w));
+        QVERIFY(panel->isVisibleTo(&w));
+        QVERIFY(w.findChild<QWidget *>("executionRunCard")->isVisibleTo(&w));
+        w.findChild<QToolButton *>("runPanelClose")->click();
+        QVERIFY(!panel->isVisibleTo(&w));
+        tabs->setCurrentIndex(0);
+        pill->click(); // From any tab.
+        QVERIFY(panel->isVisibleTo(&w));
+        const QRect area(tabs->mapTo(&w, QPoint()), tabs->size());
+        QVERIFY(area.contains(QRect(panel->mapTo(&w, QPoint()), panel->size())));
         // The tasks of the input, the current one with its last step, and the four criteria.
         QTRY_VERIFY(w.findChild<QLabel *>("executionStage0") &&
                     w.findChild<QLabel *>("executionStage0")->text().contains("ステップ 1 / 最大 100"));
@@ -420,7 +441,7 @@ class ExecutionTest : public QObject {
         QVERIFY(w.findChild<QLabel *>("executionCriterion2")->text().contains("未達")); // Xmax 0.009 > 0.0018
         run->stop();
         QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 10000);
-        QVERIFY(!w.findChild<QLabel *>("runStatePill")->isVisibleTo(&w));
+        QVERIFY(!pill->isVisibleTo(&w));
         QVERIFY(w.findChild<QToolButton *>("runButton")->isVisibleTo(&w));
         QVERIFY(w.findChild<QLabel *>("executionStage0")->text().contains("未完了"));
         QVERIFY(w.findChild<QLabel *>("executionStatePill")->text().contains("停止"));

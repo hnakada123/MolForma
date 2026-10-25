@@ -132,7 +132,8 @@ class MainWindow : public QMainWindow {
     QWidget *workflowSteps = nullptr;
     QButtonGroup *stepGroup = nullptr; // One button per tab, its index as id.
     QToolButton *documentButton = nullptr, *runButton = nullptr, *headerStop = nullptr;
-    QLabel *runPill = nullptr; // "実行中 18:31" in the header while NWChem runs.
+    // "実行中 18:31" in the header while NWChem runs; it opens the run panel.
+    QToolButton *runPill = nullptr;
     // The header while a run is active: the elapsed time, and stop instead of run.
     void showRun(bool active, const QString &text, bool stoppable);
     QButtonGroup *toolGroup = nullptr; // The editing tools in the rail at the left of "1 分子".
@@ -167,7 +168,8 @@ class MainWindow : public QMainWindow {
     QWidget *sequenceChip = nullptr, *measureCard = nullptr, *candidateCard = nullptr;
     QLabel *bannerLabel = nullptr;
     QPushButton *undoButton = nullptr, *redoButton = nullptr;
-    QAction *undoAction = nullptr, *redoAction = nullptr, *confirmAction = nullptr, *stopAction = nullptr;
+    QAction *undoAction = nullptr, *redoAction = nullptr, *confirmAction = nullptr, *stopAction = nullptr,
+            *runPanelAction = nullptr;
     QAction *showHydrogens = nullptr, *showIndices = nullptr;
     QActionGroup *labelModes = nullptr;
     QCheckBox *autoH = nullptr, *keepSelection = nullptr, *keepTool = nullptr, *growth = nullptr;

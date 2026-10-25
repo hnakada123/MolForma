@@ -1067,9 +1067,11 @@ void MainWindow::buildHeader() {
                 undo.redo();
         });
     });
-    runPill = new QLabel;
+    runPill = new QToolButton;
     runPill->setObjectName("runStatePill");
+    runPill->setToolTip("実行状況とログを表示します。");
     runPill->hide();
+    connect(runPill, &QToolButton::clicked, this, [this] { execution->showRunPanel(); });
     right->addSpacing(4);
     right->addWidget(runPill);
     headerStop = new QToolButton;
@@ -1253,6 +1255,10 @@ void MainWindow::buildMenus() {
     stopAction = action(calculationMenu, "計算を停止…", {}, [this] { execution->confirmStop(); });
     stopAction->setObjectName("stopCalculationAction");
     stopAction->setEnabled(execution->running()); // ExecutionPanel follows the run.
+    runPanelAction = action(calculationMenu, "実行状況とログ", QKeySequence("Ctrl+Shift+L"),
+                            [this] { execution->showRunPanel(!execution->runPanelShown()); });
+    runPanelAction->setObjectName("runPanelAction");
+    runPanelAction->setCheckable(true);
     action(calculationMenu, "ジョブとして保存", {}, [this] {
         workspaceTabs->setCurrentWidget(execution);
         execution->saveBundle();
@@ -2022,8 +2028,9 @@ void MainWindow::applyChromeStyle() {
         QToolButton#runButton { background: @accent; color: @onAccent; font-weight: bold; padding: 6px 14px; }
         QToolButton#runButton:hover { background: @accentHover; }
         QToolButton#runButton:disabled { background: @line; color: @muted; }
-        QLabel#runStatePill { background: @tint; color: @accentText; border-radius: 12px; padding: 4px 11px;
-                              font-weight: bold; }
+        QToolButton#runStatePill { background: @tint; color: @accentText; border-radius: 12px; padding: 4px 11px;
+                                   font-weight: bold; }
+        QToolButton#runStatePill:hover { background: @hover; }
         QToolButton#headerStop { border: 1px solid @error; color: @error; font-weight: bold; padding: 5px 12px; }
         QToolButton#headerStop:hover { background: @badTint; }
     )");

@@ -698,7 +698,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     stop = action("この計算を停止", "historyStop", "danger");
     stop->setIcon(lineIcon("stop"));
     setReference = action("このジョブを基準にΔEを比べる", "historyReference", "link");
-    showExecution = action("「5 実行設定」で見る", "historyExecution", "link");
+    showExecution = action("実行状況とログを表示", "historyExecution", "link");
     d->addLayout(actionGrid);
     d->addStretch(1);
 
@@ -905,8 +905,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
         else
             setComparing(true);
     });
-    connect(showExecution, &QPushButton::clicked, this,
-            [this] { window->workspaceTabs->setCurrentWidget(window->execution); });
+    connect(showExecution, &QPushButton::clicked, this, [this] { window->execution->showRunPanel(); });
     connect(stopComparing, &QPushButton::clicked, this, [this] { setComparing(false); });
     connect(repair, &QPushButton::clicked, this, [this] { window->safe([this] { repairSelected(); }); });
     connect(trash, &QPushButton::clicked, this, [this] { window->safe([this] { trashSelected(); }); });
