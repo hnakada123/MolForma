@@ -193,19 +193,6 @@ QPainterPath iconPath(const QString &name, bool &filled) {
         p.lineTo(8, 8);
         p.arcTo(QRectF(8, 4, 8, 8), 180, -180);
         p.lineTo(16, 11);
-    } else if (name == "ghost") {
-        p.moveTo(4, 21);
-        p.lineTo(4, 10);
-        p.arcTo(QRectF(4, 2, 16, 16), 180, -180);
-        p.lineTo(20, 21);
-        p.lineTo(17, 18.5);
-        p.lineTo(14.5, 21);
-        p.lineTo(12, 18.5);
-        p.lineTo(9.5, 21);
-        p.lineTo(7, 18.5);
-        p.closeSubpath();
-        line({{9, 10}, {9, 10.2}});
-        line({{15, 10}, {15, 10.2}});
     } else if (name == "copy") {
         p.addRoundedRect(QRectF(9, 9, 12, 12), 2, 2);
         line({{5, 15}, {3, 15}, {3, 3}, {15, 3}, {15, 5}});
@@ -238,12 +225,6 @@ QPainterPath iconPath(const QString &name, bool &filled) {
     } else if (name == "stop") {
         filled = true;
         p.addRoundedRect(QRectF(6, 6, 12, 12), 2, 2);
-    } else if (name == "origin") {
-        circle({12, 12}, 6.5);
-        line({{12, 2}, {12, 7}});
-        line({{12, 17}, {12, 22}});
-        line({{2, 12}, {7, 12}});
-        line({{17, 12}, {22, 12}});
     }
     return p;
 }

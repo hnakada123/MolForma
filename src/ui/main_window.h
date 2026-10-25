@@ -166,6 +166,7 @@ class MainWindow : public QMainWindow {
     QStackedWidget *topRow = nullptr;
     QSplitter *moleculeSplit = nullptr;         // The 3D view over the coordinate table.
     QComboBox *moleculeLayout = nullptr;        // "view", "both" or "table", behind the segments under them.
+    SettingsCard *positionCard = nullptr;       // "座標（1原子）", hidden while the table is shown.
     QHash<QString, QWidget *> toolOptionGroups; // Option bar groups by object name.
     QWidget *sequenceChip = nullptr, *measureCard = nullptr, *candidateCard = nullptr;
     QLabel *bannerLabel = nullptr;

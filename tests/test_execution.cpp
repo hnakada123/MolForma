@@ -325,12 +325,15 @@ class ExecutionTest : public QObject {
         QCOMPARE(run->state(), "finished");
         // The end is announced, and the job folder loads into the result viewer (tab unchanged).
         QVERIFY(w.findChild<QCheckBox *>("executionOpenResults")->isChecked());
-        QTRY_VERIFY(w.statusBar()->currentMessage().contains("計算が終了しました"));
         auto *runStatus = w.findChild<QToolButton *>("runStatusButton");
-        QVERIFY(runStatus->isVisibleTo(&w) && runStatus->text().contains("最後の計算: 終了"));
+        QTRY_VERIFY(runStatus->isVisibleTo(&w) && runStatus->text().contains("最後の計算: 終了"));
+        // The message at the left does not repeat it (it would add the summary of the log only).
+        QVERIFY(!w.statusBar()->currentMessage().contains("計算が終了しました"));
         // The run panel is over the tabs, whatever the tab: it opens on a run and from the status bar.
         auto *panel = w.findChild<QWidget *>("runPanel");
         QVERIFY(panel->isVisibleTo(&w));
+        QCOMPARE(w.findChild<QLabel *>("runPanelTitle")->text(),
+                 w.findChild<QAction *>("runPanelAction")->text());
         w.findChild<QToolButton *>("runPanelClose")->click();
         QVERIFY(!panel->isVisibleTo(&w));
         tabs->setCurrentIndex(0);

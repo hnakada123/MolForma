@@ -220,7 +220,8 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     message->hide();
     ll->addWidget(message);
 
-    // The selection with its measurement and what can be done to it; a candidate replaces it.
+    // The selection, and its measurement while the 3D view is hidden; a candidate replaces it. What
+    // can be done to the selection is in the pages at the right of "1 分子", next to the table.
     selectionBar = new QFrame;
     selectionBar->setObjectName("coordinateSelectionBar");
     auto *bar = new FlowLayout(selectionBar, 8, 6);
@@ -249,41 +250,13 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     selectionItems << moreAtoms << measurement << gap();
     for (auto *item : std::as_const(selectionItems))
         bar->addWidget(item);
-    // As the Delete key of "1 分子" (and its "削除後に水素で終端化"): a candidate to confirm.
-    auto remove = [this] { window->deleteAtoms(window->requireSelection()); };
-    originButton = button(
-        bar, "原点へ移動", "coordinateOrigin", "origin",
-        [this] {
-            auto id = window->requireSelection(1).first();
-            window->edit("選択原子を原点へ", [id](Document &d) {
-                Vec shift = -d.atom(id).position;
-                if (!shift.isZero(0.))
-                    for (const auto &atom : d.atoms)
-                        if (atom.fixed)
-                            fail("固定原子を動かす操作です。固定を解除してください。");
-                transform(d, d.ids(), Mat::Identity(), shift);
-            });
-            window->canvas()->keepInView();
-        },
-        true);
-    originButton->setToolTip("選んだ1原子が原点に来るよう、分子全体を平行移動します。");
-    fixButton = button(
-        bar, "選択原子を固定", "coordinateFixSelection", "lock",
-        [this] { setSelectionFlag(CoordinateColumn::Fixed); }, true);
-    fixButton->setToolTip("選んだ原子の座標編集・削除を禁止し、NWChemのconstraints fix atomへ出力します。");
-    ghostButton = button(
-        bar, "ゴーストにする", "coordinateGhostSelection", "ghost",
-        [this] { setSelectionFlag(CoordinateColumn::Ghost); }, true);
-    ghostButton->setToolTip("NWChemではbq元素として出力します。基底の割当が別途必要です。");
-    auto *removeButton = button(bar, "削除", "coordinateRemove", "delete", remove, true);
-    removeButton->setProperty("danger", true);
     auto *deselect = new QToolButton;
     deselect->setObjectName("coordinateDeselect");
     deselect->setIcon(lineIcon("close"));
     deselect->setToolTip("選択を解除");
     bar->addWidget(deselect);
     connect(deselect, &QToolButton::clicked, this, [this] { window->setSelection({}); });
-    selectionItems << originButton << fixButton << ghostButton << removeButton << deselect;
+    selectionItems << deselect;
     auto *candidateIcon = new QLabel;
     candidateIcon->setObjectName("coordinateCandidateIcon");
     auto *candidateTitle = new QLabel("候補の座標を表示中");
@@ -713,31 +686,11 @@ void CoordinatesPanel::refreshSelectionBar() {
             }
         }
         measurement->setText(measured);
-        measurement->setVisible(!measured.isEmpty());
-        originButton->setVisible(n == 1);
-        const auto all = [&](bool Atom::*flag) {
-            return std::all_of(shown.begin(), shown.end(),
-                               [&](const QString &id) { return d.atoms[index[id]].*flag; });
-        };
-        fixButton->setText(all(&Atom::fixed) ? "固定を解除" : "選択原子を固定");
-        ghostButton->setText(all(&Atom::ghost) ? "ゴーストを解除" : "ゴーストにする");
+        // The measurement panel of the 3D view shows it, unless the table is shown in its place.
+        measurement->setVisible(!measured.isEmpty() && window->moleculeLayout &&
+                                window->moleculeLayout->currentData() == "table");
     }
     refreshCount();
-}
-void CoordinatesPanel::setSelectionFlag(CoordinateColumn column) {
-    const auto ids = window->requireSelection();
-    const auto &d = window->document();
-    const bool fixed = column == CoordinateColumn::Fixed;
-    const bool all = std::all_of(ids.begin(), ids.end(), [&](const QString &id) {
-        const auto &a = d.atom(id);
-        return fixed ? a.fixed : a.ghost;
-    });
-    const QString name = fixed ? (all ? "選択原子の固定を解除" : "選択原子を固定")
-                               : (all ? "選択原子のゴーストを解除" : "選択原子をゴーストにする");
-    window->edit(name, [=](Document &d) {
-        for (const auto &id : ids)
-            setCoordinateCell(d, id, column, all ? "0" : "1", CoordinateUnit::Angstrom);
-    });
 }
 void CoordinatesPanel::cellChanged(QTableWidgetItem *item) {
     if (busy || item->column() == PlaceColumn || item->column() == ChangeColumn)

@@ -400,7 +400,8 @@ void ExecutionPanel::buildRunPanel() {
     panel->setContentsMargins(14, 12, 14, 14);
     panel->setSpacing(12);
     auto *head = new QHBoxLayout;
-    auto *title = new QLabel("計算の実行");
+    auto *title = new QLabel("実行状況とログ"); // The name of every way to open it.
+    title->setObjectName("runPanelTitle");
     title->setProperty("cardTitle", true);
     head->addWidget(title);
     head->addStretch();
@@ -988,7 +989,8 @@ void ExecutionPanel::runEnded() {
     const auto directory = run.plan().directory;
     const auto message =
         names.value(run.state(), "計算が終了しました") + ": " + QFileInfo(directory).fileName();
-    window->statusBar()->showMessage(message, 60000);
+    // The run status at the right of the status bar says how it ended; a message at the left only
+    // adds what the log says once it is read (showResultSummary).
     QApplication::alert(window); // Taskbar attention while MolForma is in the background.
     if (!window->isActiveWindow() && QSystemTrayIcon::isSystemTrayAvailable() &&
         QSystemTrayIcon::supportsMessages()) {

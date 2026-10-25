@@ -167,6 +167,13 @@ void MainWindow::buildEditPanel() {
     keepSelection->setToolTip("オフでは、編集を確定するたびに選択を解除します。");
     keepSelection->setChecked(settings.value("keepSelection", true).toBool());
     cardLayout->addWidget(keepSelection);
+    deleteTerminate = new QCheckBox("削除後に水素で終端化");
+    deleteTerminate->setObjectName("deleteTerminate");
+    deleteTerminate->setChecked(true);
+    deleteTerminate->setToolTip(
+        "すべての削除（Delete・ツールバー・削除ツール・右クリック）に適用します。削除した原子"
+        "だけに付いていた水素も一緒に削除します。");
+    cardLayout->addWidget(deleteTerminate);
     outer->addRow(card);
     auto *color = choices(outer, "色分け", {"元素", "残基"}, {"element", "residue"});
     color->setObjectName("moleculeColorMode");
@@ -192,7 +199,9 @@ void MainWindow::buildEditPanel() {
                                    edit("元素を変更", [=](Document &d) { replaceElement(d, ids, s, h); });
                                }),
                         1);
-    section(f, "座標（1原子）");
+    // The coordinate table, when shown, edits the same values.
+    positionCard = section(f, "座標（1原子）");
+    positionCard->setVisible(moleculeLayout->currentData() == "view");
     for (int i = 0; i < 3; ++i) {
         positionFields[i] = number(f, QString("XYZ")[i] + QString(" / Å"));
         positionFields[i]->setSpecialValueText("—");
@@ -214,17 +223,6 @@ void MainWindow::buildEditPanel() {
                                    view->keepInView();
                                }),
                         1, 1);
-    section(f, "平行移動（選択原子）");
-    for (int i = 0; i < 3; ++i)
-        translateFields[i] = number(f, QString("Δ") + QString("XYZ")[i] + " / Å");
-    enableWithSelection(button(f, "選択を平行移動",
-                               [this] {
-                                   auto ids = requireSelection();
-                                   Vec v = fields(translateFields);
-                                   edit("平行移動",
-                                        [=](Document &d) { transform(d, ids, Mat::Identity(), v); });
-                               }),
-                        1);
     section(f, "配置・結合");
     auto *depth = number(f, "配置平面の奥行き / Å");
     depth->setToolTip("空白をクリックして原子・部品を置く平面の、画面奥行き方向の位置です（0: 画面中心）。");
@@ -250,17 +248,19 @@ void MainWindow::buildEditPanel() {
     });
     side->setToolTip("2原子の結合で分子を切り分け、後に選んだ原子の側をすべて選択します。");
     enableWithSelection(side, 2, 2);
-    section(f, "削除");
-    deleteTerminate = new QCheckBox("削除後に水素で終端化");
-    deleteTerminate->setObjectName("deleteTerminate");
-    deleteTerminate->setChecked(true);
-    deleteTerminate->setToolTip(
-        "すべての削除（Delete・ツールバー・削除ツール・右クリック）に適用します。削除した原子"
-        "だけに付いていた水素も一緒に削除します。");
-    f->addRow(deleteTerminate);
-    enableWithSelection(
-        button(f, "選択原子を削除（候補）", [this] { deleteAtoms(requireSelection()); }, "deletePreview"), 1);
     f = panel("変形");
+    section(f, "平行移動（選択原子）");
+    for (int i = 0; i < 3; ++i)
+        translateFields[i] = number(f, QString("Δ") + QString("XYZ")[i] + " / Å");
+    enableWithSelection(button(
+                            f, "選択を平行移動",
+                            [this] {
+                                auto ids = requireSelection();
+                                Vec v = fields(translateFields);
+                                edit("平行移動", [=](Document &d) { transform(d, ids, Mat::Identity(), v); });
+                            },
+                            "translateSelection"),
+                        1);
     section(f, "回転");
     // Rotation axis and mirror plane pass through the selected atoms' center, or the origin.
     auto *pivot = choices(f, "回転・鏡映の中心", {"選択の中心", "原点"}, {"selection", "origin"});
@@ -304,13 +304,16 @@ void MainWindow::buildEditPanel() {
     if (!hasStereochemistryBackend())
         stereo->setToolTip("RDKitを含むビルドで使えます。");
     section(f, "向き・位置");
-    auto *orientation = button(f, "向きをそろえる（原点・+X・XY）", [this] {
-        auto ids = requireSelection();
-        edit("向きをそろえる", [=](Document &d) { orient(d, ids); });
-        view->keepInView();
-    });
-    orientation->setToolTip(
-        "選択順に、1番目を原点、2番目を+X軸上、3番目をXY平面上へ動かします（分子全体）。");
+    auto *orientation = button(
+        f, "向きをそろえる（原点・+X・XY）",
+        [this] {
+            auto ids = requireSelection();
+            edit("向きをそろえる", [=](Document &d) { orient(d, ids); });
+            view->keepInView();
+        },
+        "orientSelection");
+    orientation->setToolTip("選択順に、1番目を原点、2番目を+X軸上、3番目をXY平面上へ動かします（分子全体）。"
+                            "1原子ならその原子が原点に来るよう平行移動します。");
     enableWithSelection(orientation, 1, 3);
     button(f, "重心を原点へ", [this] {
         auto ids = selected;

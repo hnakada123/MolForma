@@ -1292,9 +1292,10 @@ void HistoryPanel::showEmptyPage() {
     const bool readable = info.isDir() && info.isReadable();
     emptyTitle->setText(readable ? "この保存先にはジョブがありません"
                                  : "この保存先は見つからないか、読めません");
-    emptyText->setText(readable ? QString("「3 実行設定」で計算を実行するか、入力一式を保存すると、ここに一覧"
-                                          "します。別の場所に保存したジョブは、保存先を切り替えて開けます。")
-                                : displayPath(root));
+    emptyText->setText(readable
+                           ? QString("「計算を実行」（F5）か「ジョブとして保存」でジョブを作ると、ここに一覧"
+                                     "します。別の場所に保存したジョブは、保存先を切り替えて開けます。")
+                           : displayPath(root));
     const auto other = executionRoot();
     const bool elsewhere = QDir::cleanPath(other) != QDir::cleanPath(root);
     emptyBack->setVisible(elsewhere);

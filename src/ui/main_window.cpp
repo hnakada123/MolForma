@@ -2159,6 +2159,10 @@ void MainWindow::applyMoleculeLayout() {
     // The hints are about the view.
     for (auto *hint : {static_cast<QWidget *>(mouseHint), findChild<QWidget *>("controlsHint")})
         hint->setVisible(layout != "table");
+    // The table edits the coordinates of "座標（1原子）", and measures once the view is hidden.
+    if (positionCard) // Built after the layout is first applied.
+        positionCard->setVisible(layout == "view");
+    coordinates->refreshSelection();
 }
 void MainWindow::showCoordinateTable() {
     workspaceTabs->setCurrentWidget(moleculePage);

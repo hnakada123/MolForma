@@ -122,8 +122,13 @@ class CoordinatesTest : public QObject {
         t->item(1, 4)->setText("-3");
         QCOMPARE(w.document().toJson(), d.toJson());
         QCOMPARE(w.history()->count(), 0);
+        // "原点へ" is "向きをそろえる" of "変形" with one atom, and refuses to move the fixed atom.
         w.setSelection({d.atoms[1].id});
-        button(w, "coordinateOrigin")->click();
+        QTimer::singleShot(0, [] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()))
+                box->accept();
+        });
+        button(w, "orientSelection")->click();
         QCOMPARE(w.document().toJson(), d.toJson());
         action(w, "coordinateClear")->trigger();
         QVERIFY(!w.hasCandidate());
@@ -132,7 +137,7 @@ class CoordinatesTest : public QObject {
         // Moving H1 to the origin translates the entire molecule rigidly.
         w.setSelection({d.atoms[1].id});
         const double distance = measure(w.document(), {d.atoms[0].id, d.atoms[1].id});
-        button(w, "coordinateOrigin")->click();
+        button(w, "orientSelection")->click();
         QVERIFY(w.document().atoms[1].position.isZero(1e-14));
         QCOMPARE(measure(w.document(), {d.atoms[0].id, d.atoms[1].id}), distance);
         w.history()->undo();
@@ -211,9 +216,9 @@ class CoordinatesTest : public QObject {
         QVERIFY(t->item(2, 0)->isSelected());
         QVERIFY(t->item(0, 0)->isSelected());
         QVERIFY(!t->item(1, 0)->isSelected());
-        // Deleting is that of "1 分子" (the Delete key is its own): a candidate to confirm.
+        // Deleting from the pages at the right is a candidate to confirm, shown in the table.
         w.setSelection({d.atoms[1].id});
-        button(w, "coordinateRemove")->click();
+        button(w, "deleteSelection")->click();
         QVERIFY(w.hasCandidate());
         QCOMPARE(w.document().atoms.size(), 3);
         QCOMPARE(t->rowCount(), 2);
@@ -225,7 +230,7 @@ class CoordinatesTest : public QObject {
         QVERIFY(!w.hasCandidate());
         QCOMPARE(t->rowCount(), 3);
         w.setSelection({d.atoms[1].id});
-        button(w, "coordinateRemove")->click();
+        button(w, "deleteSelection")->click();
         w.confirmCandidate();
         QCOMPARE(w.document().atoms.size(), 2);
         w.history()->undo();
@@ -337,28 +342,41 @@ class CoordinatesTest : public QObject {
         filter->setText("HOH");
         QVERIFY(!t->isRowHidden(0) && !t->isRowHidden(2));
         filter->clear();
-        // The selection bar measures and acts on the selection.
+        // The selection bar shows the selection, and measures it only while the 3D view (with its
+        // measurement panel) is hidden. Acting on the selection is for the pages at the right.
         w.setSelection({d.atoms[1].id, d.atoms[0].id});
         QCOMPARE(w.findChild<QLabel *>("coordinateSelectionTitle")->text(), QString("2 原子を選択"));
-        QCOMPARE(w.findChild<QLabel *>("coordinateMeasurement")->text(),
-                 QString("距離 %1 Å").arg(measure(d, {d.atoms[1].id, d.atoms[0].id}), 0, 'f', 4));
         QVERIFY(w.findChild<QLabel *>("coordinateSelectionAtom0")->text().contains("HOH 1 · HA"));
-        QVERIFY(button(w, "coordinateOrigin")->isHidden());
-        button(w, "coordinateFixSelection")->click();
+        auto *measurement = w.findChild<QLabel *>("coordinateMeasurement");
+        QVERIFY(measurement->isHidden());
+        button(w, "moleculeLayout_table")->click();
+        QVERIFY(!measurement->isHidden());
+        QCOMPARE(measurement->text(),
+                 QString("距離 %1 Å").arg(measure(d, {d.atoms[1].id, d.atoms[0].id}), 0, 'f', 4));
+        button(w, "moleculeLayout_both")->click();
+        QVERIFY(measurement->isHidden());
+        for (auto *name :
+             {"coordinateOrigin", "coordinateFixSelection", "coordinateGhostSelection", "coordinateRemove"})
+            QVERIFY(!button(w, name));
+        // The pages at the right fix and ghost the selection; the table shows it.
+        button(w, "fixSelectedAtoms")->click();
         QVERIFY(w.document().atoms[0].fixed && w.document().atoms[1].fixed && !w.document().atoms[2].fixed);
         QCOMPARE(w.history()->count(), 1);
-        QCOMPARE(button(w, "coordinateFixSelection")->text(), QString("固定を解除"));
         QVERIFY(t->item(0, 0)->data(Qt::UserRole + 1).toBool()); // The lock in the atom cell.
         QVERIFY(!(t->item(0, 1)->flags() & Qt::ItemIsEditable));
-        button(w, "coordinateGhostSelection")->click();
+        button(w, "ghostSelectedAtoms")->click();
         QVERIFY(w.document().atoms[0].ghost && w.document().atoms[1].ghost);
+        QCOMPARE(t->item(0, 5)->checkState(), Qt::Checked);
         action(w, "copyNwchemGeometry")->trigger();
         QVERIFY(QApplication::clipboard()->text().contains("bqO"));
-        button(w, "coordinateFixSelection")->click();
+        button(w, "unfixSelectedAtoms")->click();
         QVERIFY(!w.document().atoms[0].fixed && !w.document().atoms[1].fixed);
-        w.setSelection({d.atoms[1].id});
-        QVERIFY(!button(w, "coordinateOrigin")->isHidden());
-        QVERIFY(w.findChild<QLabel *>("coordinateMeasurement")->isHidden());
+        // "座標（1原子）" waits while the table shows the same values.
+        auto *position = w.findChild<QWidget *>("moleculeCard_座標（1原子）");
+        QVERIFY(position->isHidden());
+        button(w, "moleculeLayout_view")->click();
+        QVERIFY(!position->isHidden());
+        button(w, "moleculeLayout_both")->click();
         button(w, "coordinateDeselect")->click();
         QVERIFY(w.canvas()->selection().isEmpty());
         QVERIFY(!w.findChild<QLabel *>("coordinateSelectionHint")->isHidden());

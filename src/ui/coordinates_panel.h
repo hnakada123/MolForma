@@ -64,7 +64,7 @@ class CoordinatesPanel : public QWidget {
     QLabel *message, *selectionHint, *selectionTitle, *moreAtoms, *measurement, *compareNote, *count;
     QList<QLabel *> chips;
     QList<QWidget *> selectionItems, candidateItems; // Shown with a selection, or with a candidate.
-    QPushButton *originButton, *fixButton, *ghostButton, *attributes, *exportButton;
+    QPushButton *attributes, *exportButton;
     QList<QAction *> exportActions; // Copy and save of the NWChem fragment, then of the XYZ.
     QToolButton *showAll, *showChanged;
     QList<QWidget *> editControls;
@@ -83,7 +83,6 @@ class CoordinatesPanel : public QWidget {
     void refreshCount();
     void refreshSelectionBar();
     void refreshExport();
-    void setSelectionFlag(CoordinateColumn column);
     QIcon atomDot(const Atom &atom);
     void addAtom();
     void pasteXyz();

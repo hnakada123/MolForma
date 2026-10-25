@@ -242,7 +242,8 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     outlineList->setFrameShape(QFrame::NoFrame);
     outlineList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     outlineLayout->addWidget(outlineList, 1);
-    outlineLayout->addWidget(caption("番号はその行を設定するタブ、「詳」は「2 計算条件」の詳細設定です。押すとそこへ移ります。"));
+    outlineLayout->addWidget(
+        caption("番号はその行を設定するタブ、「詳」は「2 計算条件」の詳細設定です。押すとそこへ移ります。"));
     connect(outlineList, &QListWidget::currentRowChanged, this, [this](int row) {
         if (row < 0 || row >= outline.blocks.size())
             return;
