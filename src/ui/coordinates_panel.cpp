@@ -7,32 +7,22 @@
 #include <QtWidgets>
 
 namespace mf {
-namespace {
-// Coordinates read at a glance with six decimals, right aligned; editing a cell shows and keeps
-// the full value, so an unchanged cell never rounds the geometry.
-class CoordinateDelegate : public QStyledItemDelegate {
-  public:
-    using QStyledItemDelegate::QStyledItemDelegate;
-    QString displayText(const QVariant &value, const QLocale &locale) const override {
-        bool ok;
-        const double number = value.toString().toDouble(&ok);
-        return ok ? QString::number(number, 'f', 6) : QStyledItemDelegate::displayText(value, locale);
-    }
-
-  protected:
-    void initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const override {
-        QStyledItemDelegate::initStyleOption(option, index);
-        option->displayAlignment = Qt::AlignRight | Qt::AlignVCenter;
-    }
-};
-} // namespace
+QString CoordinateDelegate::displayText(const QVariant &value, const QLocale &locale) const {
+    bool ok;
+    const double number = value.toString().toDouble(&ok);
+    return ok ? QString::number(number, 'f', 6) : QStyledItemDelegate::displayText(value, locale);
+}
+void CoordinateDelegate::initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const {
+    QStyledItemDelegate::initStyleOption(option, index);
+    option->displayAlignment = Qt::AlignRight | Qt::AlignVCenter;
+}
 CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     setObjectName("coordinatesTab");
     auto *layout = new QVBoxLayout(this);
     auto *files = new QHBoxLayout;
     layout->addLayout(files);
     button(files, "構造を読込…", "coordinateImport", [this] { importFile(); }, true);
-    button(files, "XYZを貼り付け…", "coordinatePaste", [this] { pasteXyz(); }, true);
+    button(files, "XYZを貼り付けて置き換え…", "coordinatePaste", [this] { pasteXyz(); }, true);
     xyzCopy = button(files, "XYZをコピー", "coordinateCopyXyz", [this] { exportText(true, false); });
     xyzSave = button(files, "XYZを保存…", "coordinateSaveXyz", [this] { exportText(true, true); });
     files->addStretch();
@@ -57,7 +47,7 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
         auto ids = window->requireSelection();
         window->edit("座標表の選択原子を削除", [ids](Document &d) { d.remove(ids); }, true);
     };
-    button(edits, "選択を削除", "coordinateRemove", remove, true);
+    button(edits, "選択原子を削除", "coordinateRemove", remove, true);
     button(
         edits, "全原子を削除", "coordinateClear",
         [this] { window->edit("全原子を削除", [](Document &d) { d.remove(d.ids()); }, true); }, true);
@@ -74,7 +64,7 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
                 transform(d, d.ids(), Mat::Identity(), shift);
             });
             view->fit();
-            window->canvas()->fit();
+            window->canvas()->keepInView();
         },
         true);
     edits->addStretch();
@@ -434,7 +424,7 @@ void CoordinatesPanel::addAtom() {
     });
     window->setSelection({atom->id});
     table->scrollToItem(table->item(table->rowCount() - 1, 0));
-    window->canvas()->fit();
+    window->canvas()->keepInView();
 }
 void CoordinatesPanel::previewStructure(const Document &structure) {
     window->edit("座標から構造を読込", [&](Document &d) { replaceCoordinateStructure(d, structure); }, true);
@@ -443,7 +433,9 @@ void CoordinatesPanel::pasteXyz() {
     const auto base = window->document().toJson();
     bool ok;
     const QString text = QInputDialog::getMultiLineText(
-        this, "XYZを貼り付け", "原子数、コメント、元素 X Y Z（Å）", QApplication::clipboard()->text(), &ok);
+        this, "XYZを貼り付けて置き換え",
+        "原子数、コメント、元素 X Y Z（Å）。今の構造を置き換える候補を作ります。",
+        QApplication::clipboard()->text(), &ok);
     if (!ok)
         return;
     if (base != window->document().toJson())

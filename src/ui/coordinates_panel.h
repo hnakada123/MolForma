@@ -1,5 +1,6 @@
 #pragma once
 #include "editing/coordinates.h"
+#include <QStyledItemDelegate>
 #include <QWidget>
 #include <functional>
 class QComboBox;
@@ -12,6 +13,16 @@ class QHBoxLayout;
 namespace mf {
 class MainWindow;
 class MoleculeView;
+// Coordinates read at a glance with six decimals, right aligned; editing a cell shows and keeps
+// the full value, so an unchanged cell never rounds the geometry.
+class CoordinateDelegate : public QStyledItemDelegate {
+  public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    QString displayText(const QVariant &value, const QLocale &locale) const override;
+
+  protected:
+    void initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const override;
+};
 class CoordinatesPanel : public QWidget {
     Q_OBJECT
   public:

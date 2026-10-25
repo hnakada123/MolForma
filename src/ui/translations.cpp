@@ -36,6 +36,9 @@ class Fallback : public QTranslator {
             {"QPlatformTheme|Apply", "適用"},
             {"QPlatformTheme|Reset", "リセット"},
             {"QPlatformTheme|Restore Defaults", "既定に戻す"},
+            // Labels of Qt's own file dialog that Qt's translation leaves untranslated.
+            {"QFileDialog|&Look in:", "場所(&L):"},
+            {"QFileDialog|Files of &type:", "ファイルの種類(&T):"},
             {"QCommandLineParser|Displays help on commandline options.", "オプションの説明を表示する。"},
             {"QCommandLineParser|Displays help, including generic Qt options.",
              "Qtの共通オプションを含めて説明を表示する。"},

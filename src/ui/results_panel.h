@@ -79,7 +79,8 @@ class ResultsPanel : public QWidget {
     QDoubleSpinBox *broadening, *irWidth;
     QLabel *propertySummary, *energyNote;
     QCheckBox *arrows, *showRigid;
-    QPushButton *openMolden; // A log's orbitals: open the MOLDEN file of the same job.
+    QPushButton *openMolden;       // A log's orbitals: open the MOLDEN file of the same job.
+    QList<QWidget *> viewControls; // Camera, labels and measuring: only with a structure shown.
     // Shows the detail tabs that have data in the loaded file (概要 always).
     void updateTabs();
     QPushButton *energyReference, *saveModeImages, *saveModeTrajectory, *compareGeometry;

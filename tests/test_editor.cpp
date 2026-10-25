@@ -1,3 +1,4 @@
+#include "editing/coordination.h"
 #include "editing/library.h"
 #include "editing/operations.h"
 #include "model/geometry.h"
@@ -14,6 +15,7 @@
 #include <QDir>
 #include <QDoubleSpinBox>
 #include <QDropEvent>
+#include <QFileDialog>
 #include <QGridLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -971,8 +973,10 @@ class EditorTest : public QObject {
         watcher.start(20);
         w.edit("原子を追加",
                [](Document &d) { placeTemplate(d, findTemplate("skeleton:methane"), Vec::Zero()); });
+        w.canvas()->setAngles(40, 30, 10);
         w.findChild<QAction *>("newAction")->trigger();
-        QCOMPARE(questions, 1); // The unsaved methane.
+        QCOMPARE(questions, 1);                      // The unsaved methane.
+        QVERIFY(w.canvas()->angles().norm() < 1e-6); // A new molecule starts from the front.
         QVERIFY(w.document().atoms.isEmpty());
         QVERIFY(w.history()->isClean());
         QVERIFY(!w.windowTitle().contains('*'));
@@ -980,6 +984,160 @@ class EditorTest : public QObject {
         // A new, untouched project has nothing to save.
         w.findChild<QAction *>("newAction")->trigger();
         QCOMPARE(questions, 1);
+    }
+    void toolKeys() {
+        MainWindow w;
+        w.show();
+        QTest::qWait(20);
+        w.canvas()->setFocus();
+        QTest::keyClick(w.canvas(), Qt::Key_B);
+        QVERIFY(w.findChild<QToolButton *>("tool_bond")->isChecked());
+        QVERIFY(w.findChild<QToolButton *>("tool_bond")->toolTip().endsWith("（B）"));
+        QTest::keyClick(w.canvas(), Qt::Key_S);
+        QVERIFY(w.findChild<QToolButton *>("tool_select")->isChecked());
+        // In the search field the letters are typed, not tools chosen.
+        auto *search = w.findChild<QLineEdit *>("paletteSearch");
+        search->setFocus();
+        QTest::keyClick(search, Qt::Key_B);
+        QCOMPARE(search->text(), QString("b"));
+        QVERIFY(w.findChild<QToolButton *>("tool_select")->isChecked());
+    }
+    void bondToolChoosesKind() {
+        MainWindow w;
+        w.show();
+        Document d;
+        placeTemplate(d, findTemplate("skeleton:ethane"), Vec::Zero());
+        w.loadDocument(d);
+        auto *kind = w.findChild<QComboBox *>("toolBondKind");
+        QVERIFY(kind->isHidden());
+        w.findChild<QToolButton *>("tool_bond")->click();
+        QVERIFY(!kind->isHidden()); // Beside the tool, not only at the bottom of the edit panel.
+        kind->setCurrentIndex(kind->findData("double"));
+        QVERIFY(w.findChild<QLabel *>("toolHint")->text().startsWith("結合（二重結合）"));
+        Ids carbons;
+        for (const auto &a : w.document().atoms)
+            if (a.element == "C")
+                carbons << a.id;
+        emit w.canvas()->atomClicked(carbons[0], Qt::NoModifier);
+        emit w.canvas()->atomClicked(carbons[1], Qt::NoModifier);
+        QCOMPARE(w.document().bond(carbons[0], carbons[1])->kind, QString("double"));
+    }
+    void replaceToolKeepsWorking() {
+        MainWindow w;
+        Document d;
+        placeTemplate(d, findTemplate("skeleton:methane"), Vec::Zero());
+        w.loadDocument(d);
+        w.findChild<QToolButton *>("tool_replace")->click();
+        w.findChild<QToolButton *>("quickElement_O")->click();
+        // Choosing what to put in stays with the replace tool.
+        QVERIFY(w.findChild<QToolButton *>("tool_replace")->isChecked());
+        QVERIFY(w.findChild<QLabel *>("toolHint")->text().startsWith("置換（酸素）"));
+    }
+    void moveToolCarriesHydrogens() {
+        // The dragged atom moves with its own hydrogens, shown while dragging and applied on release.
+        MainWindow w;
+        w.resize(1300, 900);
+        w.show();
+        auto d = Document::fromXyz("6\nmethanol\nC 0 0 0\nO 1.43 0 0\nH 1.75 .9 0\nH -.36 1.03 0\n"
+                                   "H -.36 -.51 .89\nH -.36 -.51 -.89\n");
+        w.loadDocument(d);
+        QTest::qWait(40);
+        w.findChild<QToolButton *>("tool_move")->click();
+        auto *view = w.canvas();
+        const auto oxygen = w.document().atoms[1].id, hydroxyl = w.document().atoms[2].id,
+                   carbon = w.document().atoms[0].id;
+        const QPoint start = view->atomScreenPosition(oxygen).toPoint(), end = start + QPoint(0, -60);
+        QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(view, start + QPoint(0, -30));
+        QTest::mouseMove(view, end);
+        QVERIFY(view->documentRef().atom(oxygen).position.y() > 0.3); // Moving with the cursor.
+        QCOMPARE(w.document().atom(oxygen).position.y(), 0.0);        // Not applied yet.
+        QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, end);
+        const Vec shift = w.document().atom(oxygen).position - d.atoms[1].position;
+        QVERIFY(shift.norm() > 0.3);
+        QVERIFY((w.document().atom(hydroxyl).position - d.atoms[2].position - shift).norm() < 1e-9);
+        QCOMPARE(w.document().atom(carbon).position, d.atoms[0].position);
+
+        // A drag including a fixed atom is refused on release, so its preview does not move either.
+        w.edit("固定", [&](Document &x) { x.atom(carbon).fixed = true; });
+        const auto before = w.document().atom(oxygen).position;
+        const QPoint from = view->atomScreenPosition(carbon).toPoint();
+        QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(view, from + QPoint(0, -30));
+        QTest::mouseMove(view, from + QPoint(0, -60));
+        QCOMPARE(view->documentRef().atom(carbon).position, d.atoms[0].position);
+        QTimer::singleShot(0, &w, [] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()))
+                box->accept();
+        });
+        QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, from + QPoint(0, -60));
+        QCOMPARE(w.document().atom(carbon).position, d.atoms[0].position);
+        QCOMPARE(w.document().atom(oxygen).position, before);
+    }
+    void ligandsPlaceOneAfterAnother() {
+        // Clicking the next free site confirms the ligand placed before, without an error dialog.
+        MainWindow w;
+        w.loadDocument(Document());
+        w.edit("配位中心を配置", [](Document &d) { addCenter(d, "Zn", "tetrahedral", Vec::Zero(), 2.1, 2); });
+        const auto zinc = w.document().atoms.first().id;
+        auto *search = w.findChild<QLineEdit *>("paletteSearch");
+        auto *palette = w.findChild<QListWidget *>("templatePalette");
+        search->setText("アンミン");
+        palette->setCurrentRow(0);
+        emit palette->itemClicked(palette->item(0));
+        QVERIFY(w.findChild<QToolButton *>("tool_ligand")->isChecked());
+        emit w.canvas()->siteClicked(zinc, 0);
+        QVERIFY(w.hasCandidate());
+        emit w.canvas()->siteClicked(zinc, 1);
+        QVERIFY(w.hasCandidate());
+        QVERIFY(!QApplication::activeModalWidget());
+        QCOMPARE(w.document().formula(), QString("H3NZn")); // The first ligand is confirmed.
+        QCOMPARE(w.displayDocument().formula(), QString("H6N2Zn"));
+    }
+    void editsKeepTheCamera() {
+        // Edits leave the camera alone while the molecule stays in view, and a candidate does not
+        // resize the 3D view: atoms stay under the cursor for the next click.
+        MainWindow w;
+        w.resize(1300, 900);
+        w.show();
+        Document d;
+        placeTemplate(d, findTemplate("skeleton:ethane"), Vec::Zero());
+        w.loadDocument(d);
+        QTest::qWait(40);
+        auto *view = w.canvas();
+        const auto size = view->size();
+        const auto carbon = w.document().atoms.first().id;
+        const auto before = view->atomScreenPosition(carbon);
+        w.findChild<QToolButton *>("quickElement_O")->click();
+        QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, (before + QPointF(-120, 80)).toPoint());
+        QCOMPARE(w.document().atoms.size(), 8 + 3);
+        QCOMPARE(view->atomScreenPosition(carbon), before);
+        Ids hydrogens;
+        for (const auto &a : w.document().atoms)
+            if (a.element == "H")
+                hydrogens << a.id;
+        w.setSelection({hydrogens.first()});
+        w.findChild<QAction *>("deleteAction")->trigger();
+        QVERIFY(w.hasCandidate());
+        QTest::qWait(20);
+        QCOMPARE(view->size(), size);
+        QCOMPARE(view->atomScreenPosition(carbon), before);
+    }
+    void deleteHydrogenWithCapping() {
+        // Capping applies to bonds cut at heavy atoms: a deleted hydrogen is not put back.
+        MainWindow w;
+        Document d;
+        placeTemplate(d, findTemplate("skeleton:methane"), Vec::Zero());
+        w.loadDocument(d);
+        QVERIFY(w.findChild<QCheckBox *>("deleteTerminate")->isChecked());
+        Ids hydrogens;
+        for (const auto &a : w.document().atoms)
+            if (a.element == "H")
+                hydrogens << a.id;
+        w.setSelection({hydrogens[0]});
+        w.findChild<QAction *>("deleteAction")->trigger();
+        QVERIFY(w.hasCandidate());
+        QCOMPARE(w.displayDocument().formula(), QString("CH3"));
     }
     void selectionFieldsFollowSelection() {
         MainWindow w;
@@ -1033,26 +1191,59 @@ class EditorTest : public QObject {
         QCOMPARE(palette->item(0)->data(Qt::UserRole).toString(), QString("smiles:CCO"));
         search->setText("存在しない部品");
         QCOMPARE(palette->count(), 0);
+        // Without a search, "すべて" lists atoms, skeletons, … and metal centers under headings.
+        search->clear();
+        QStringList headings;
+        for (int i = 0; i < palette->count(); ++i)
+            if (palette->item(i)->data(TemplateDelegate::HeadingRole).toBool()) {
+                QVERIFY(!(palette->item(i)->flags() & Qt::ItemIsSelectable));
+                headings << palette->item(i)->text();
+            }
+        QCOMPARE(headings.size(), 6);
+        QVERIFY(headings[0].startsWith("原子") && headings[1] == "骨格" &&
+                headings[5].startsWith("配位中心"));
+        QVERIFY(palette->currentItem()->flags() & Qt::ItemIsSelectable);
     }
     void undoNamesTheChangedTab() {
         MainWindow w;
         Document d;
         placeTemplate(d, findTemplate("skeleton:water"), Vec::Zero());
         w.loadDocument(d);
+        // Nothing to undo, redo or confirm yet: the controls say so by being off.
+        auto *undoButton = w.findChild<QPushButton *>("editorUndo");
+        QVERIFY(!undoButton->isEnabled() && !w.findChild<QPushButton *>("editorRedo")->isEnabled());
+        QVERIFY(!w.findChild<QAction *>("undoAction")->isEnabled());
+        QVERIFY(!w.findChild<QAction *>("confirmAction")->isEnabled());
+        QVERIFY(!w.findChild<QAction *>("stopCalculationAction")->isEnabled());
         w.edit("NWChem計算条件を変更", [](Document &next) {
             auto s = next.data["nwchem"].toObject();
             s["basis"] = "6-31g*";
             next.data["nwchem"] = s;
         });
+        QVERIFY(undoButton->isEnabled());
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
         tabs->setCurrentIndex(0);
         w.history()->undo();
         QCOMPARE(nwchemSettings(w.document())["basis"].toString(), QString("sto-3g"));
+        QVERIFY(w.findChild<QPushButton *>("editorRedo")->isEnabled());
         QVERIFY(w.statusBar()->currentMessage().startsWith("元に戻しました: NWChem計算条件を変更"));
         QVERIFY(w.statusBar()->currentMessage().contains("「3 計算条件」"));
         tabs->setCurrentIndex(2);
         w.history()->redo();
         QCOMPARE(w.statusBar()->currentMessage(), QString("やり直しました: NWChem計算条件を変更"));
+    }
+    void readErrorsNameFileAndLine() {
+        QTemporaryDir dir;
+        const auto path = dir.filePath("broken.xyz");
+        writeFile(path, "2\nbroken\nO 0 0 0\nH 1 x 0\n");
+        MainWindow w;
+        try {
+            w.loadPath(path);
+            QFAIL("opened a broken file");
+        } catch (const std::exception &e) {
+            const auto message = QString::fromUtf8(e.what());
+            QVERIFY2(message.contains("broken.xyz") && message.contains("4行目"), qPrintable(message));
+        }
     }
     void qtDialogTextsInJapanese() {
         // Qt's standard buttons follow the Japanese interface, with or without Qt's translation.
@@ -1063,6 +1254,14 @@ class EditorTest : public QObject {
         QCOMPARE(box.button(QDialogButtonBox::Close)->text(), QString("閉じる"));
         QCOMPARE(box.button(QDialogButtonBox::Save)->text(), QString("保存"));
         QCOMPARE(box.button(QDialogButtonBox::Discard)->text(), QString("変更を破棄"));
+        // Qt's own file dialog (used while MCP drives the window) has Japanese labels too.
+        QFileDialog files;
+        files.setOption(QFileDialog::DontUseNativeDialog);
+        for (const auto *name : {"lookInLabel", "fileTypeLabel"}) {
+            auto *label = files.findChild<QLabel *>(name);
+            QVERIFY(label);
+            QVERIFY2(!label->text().contains(QRegularExpression("[A-Za-z]{3}")), qPrintable(label->text()));
+        }
     }
 };
 QTEST_MAIN(EditorTest)

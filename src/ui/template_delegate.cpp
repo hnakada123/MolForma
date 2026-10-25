@@ -2,6 +2,7 @@
 #include "ui/template_delegate.h"
 #include "model/document.h"
 #include <QApplication>
+#include <QFontMetrics>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -121,6 +122,22 @@ void TemplateDelegate::initStyleOption(QStyleOptionViewItem *option, const QMode
 
 void TemplateDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option,
                              const QModelIndex &index) const {
+    if (index.data(HeadingRole).toBool()) {
+        // A bold group title over a thin rule.
+        painter->save();
+        QFont font(option.font);
+        font.setBold(true);
+        painter->setFont(font);
+        painter->setPen(option.palette.color(QPalette::Active, QPalette::Text)); // Not greyed out.
+        const auto text = option.rect.adjusted(6, 4, -4, -2);
+        painter->drawText(
+            text, Qt::AlignLeft | Qt::AlignBottom,
+            QFontMetrics(font).elidedText(index.data().toString(), Qt::ElideRight, text.width()));
+        painter->setPen(option.palette.color(QPalette::Mid));
+        painter->drawLine(option.rect.bottomLeft() + QPoint(4, 0), option.rect.bottomRight() - QPoint(4, 0));
+        painter->restore();
+        return;
+    }
     const auto symbol = index.data(ElementRole).toString();
     if (symbol.isEmpty()) {
         QStyledItemDelegate::paint(painter, option, index);
@@ -167,6 +184,8 @@ void TemplateDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 }
 
 QSize TemplateDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const {
+    if (index.data(HeadingRole).toBool())
+        return {220, option.fontMetrics.height() + 10};
     if (!index.data(ElementRole).toString().isEmpty())
         return {220, std::max(48, 2 * option.fontMetrics.height() + 8)};
     // Parts and the other rows (such as "SMILES … から3Dで作成") share the thumbnail height.

@@ -5,6 +5,7 @@
 #include <QPointF>
 #include <QTimer>
 #include <QWidget>
+#include <optional>
 class QLabel;
 class QPainter;
 namespace mf {
@@ -63,6 +64,9 @@ class MoleculeView : public QWidget {
         return doc;
     }
     void fit();
+    // After an edit: fits only when part of the molecule left the picture, so the camera does not
+    // move atoms away from under the cursor.
+    void keepInView();
     void viewFrom(int axis);
     // Absolute orientation from the rotation sliders: Rz(roll)·Rx(pitch)·Ry(yaw), in degrees.
     void setAngles(double yaw, double pitch, double roll);
@@ -87,6 +91,10 @@ class MoleculeView : public QWidget {
     }
     void setTool(const QString &t) {
         tool = t;
+    }
+    // The atoms a drag with the move tool carries along (set when dragStarted is emitted).
+    void setDragAtoms(const Ids &ids) {
+        dragAtoms = QSet<QString>(ids.begin(), ids.end());
     }
     void setShowHydrogens(bool value) {
         showHydrogens = value;
@@ -122,6 +130,8 @@ class MoleculeView : public QWidget {
     void bondClicked(QString a, QString b);
     void siteClicked(QString center, int site);
     void terminusClicked(QString residue, bool nTerminal);
+    // Move tool: a drag starts on this atom (the receiver answers with setDragAtoms), then ends.
+    void dragStarted(QString id);
     void atomDragged(QString id, mf::Vec delta);
     void rectangleSelected(mf::Ids ids, bool append);
     void templateDropped(QString key, QString atom, mf::Vec position, QString center, int site,
@@ -160,6 +170,8 @@ class MoleculeView : public QWidget {
     QSet<QString> addedAtoms, movedAtoms;
     QPointF pan, press, last;
     QString pressedAtom;
+    QSet<QString> dragAtoms;
+    std::optional<Document> dragOrigin; // The document before a move-tool drag shown in progress.
     bool showHydrogens = true, showIndices = true, aminoHandles = false, dragging = false, boxing = false;
     Qt::MouseButton pressedButton = Qt::NoButton;
     Qt::KeyboardModifiers pressModifiers;

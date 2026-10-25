@@ -365,6 +365,8 @@ class ResultsTest : public QObject {
         QVERIFY(details->isTabVisible(0));
         for (int i = 1; i < details->count(); ++i)
             QVERIFY(!details->isTabVisible(i));
+        auto *pin = widget<QPushButton>(w, "resultsPinMeasurement");
+        QVERIFY(!pin->isEnabled() && !widget<QSlider>(w, "resultsYaw")->isEnabled()); // Nothing to view.
         QTemporaryDir job;
         const QString log = "NWChem\n" + geometry() +
                             "@ Step       Energy      Delta E   Gmax     Grms     Xrms     Xmax   Walltime\n"
@@ -388,6 +390,7 @@ class ResultsTest : public QObject {
         QSignalSpy done(panel, &ResultsPanel::loaded);
         panel->openDirectory(job.path());
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        QVERIFY(pin->isEnabled());
         // Only the tabs with data, and the outcome in one line.
         QVERIFY(details->isTabVisible(1) && details->isTabVisible(2) && details->isTabVisible(4));
         QVERIFY(!details->isTabVisible(3) && !details->isTabVisible(5) && !details->isTabVisible(8));

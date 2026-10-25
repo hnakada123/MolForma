@@ -23,6 +23,7 @@ class QTableWidget;
 class QMenu;
 class QTimer;
 class QButtonGroup;
+class QStackedWidget;
 namespace mf {
 class CoordinatesPanel;
 class CalculationPanel;
@@ -118,6 +119,8 @@ class MainWindow : public QMainWindow {
     HistoryPanel *calculationHistory = nullptr;
     QTabWidget *workspaceTabs = nullptr;
     QButtonGroup *toolGroup = nullptr; // The editing tools beside the 3D view of "1 分子".
+    QLabel *toolBondLabel = nullptr;
+    QComboBox *toolBondKind = nullptr; // Shown with the bond tool; mirrors bondKind.
     QComboBox *unitBox = nullptr, *category = nullptr, *elementBox = nullptr, *bondKind = nullptr;
     QLineEdit *search = nullptr;
     QListWidget *palette = nullptr, *residueList = nullptr, *pointList = nullptr;
@@ -129,9 +132,10 @@ class MainWindow : public QMainWindow {
     QCheckBox *includePointCharges = nullptr;
     QCheckBox *deleteTerminate = nullptr; // "削除後に水素で終端化" in the edit panel.
     QWidget *moleculePage = nullptr, *banner = nullptr;
+    QStackedWidget *topRow = nullptr; // Above the 3D view: sequence and tool hint, or the candidate.
     QLabel *bannerLabel = nullptr;
     QPushButton *undoButton = nullptr, *redoButton = nullptr;
-    QAction *undoAction = nullptr, *redoAction = nullptr;
+    QAction *undoAction = nullptr, *redoAction = nullptr, *confirmAction = nullptr, *stopAction = nullptr;
     QComboBox *labelModeBox = nullptr;
     QCheckBox *autoH = nullptr, *keepSelection = nullptr, *keepTool = nullptr, *showH = nullptr,
               *growth = nullptr;
@@ -192,6 +196,7 @@ class MainWindow : public QMainWindow {
     QList<int> sites() const;
     QJsonObject currentTemplate() const;
     void paletteChosen();
+    void selectFirstPart(); // The first palette row that is a part, not a group heading.
     // Chooses an element for the atom tool, as from the periodic table or the common-element buttons.
     void chooseElement(const QString &symbol);
     void place(const QString &atom, const Vec &position);

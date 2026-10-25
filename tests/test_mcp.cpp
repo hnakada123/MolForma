@@ -270,7 +270,7 @@ class McpTest : public QObject {
         QTRY_COMPARE(get()["state"].toString(), "done");
         QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 6);
         const auto original = w.document().project();
-        command = data(change(s, "ui_set_value", {{"target", "resultsYaw"}, {"value", 55}}));
+        command = data(change(s, "ui_set_value", {{"target", "editorYaw"}, {"value", 55}})); // View only.
         QTRY_COMPARE(get()["state"].toString(), "done");
         QCOMPARE(w.document().project(), original);
         QVERIFY(failed(change(s, "ui_select", {{"target", "workspaceTabs"}, {"index", -1}})));

@@ -548,6 +548,8 @@ void ExecutionPanel::updateRun() {
     openFolder->setEnabled(!saved.directory.isEmpty());
     viewResults->setEnabled(!saved.directory.isEmpty() && !resultFiles(saved.directory).isEmpty());
     stop->setEnabled(run.active() && run.state() != "stopping");
+    if (window->stopAction)
+        window->stopAction->setEnabled(stop->isEnabled());
     if (run.active()) {
         start->setEnabled(false);
         prepare->setEnabled(false);

@@ -9,6 +9,7 @@ class TemplateDelegate : public QStyledItemDelegate {
     static constexpr int TemplateRole = Qt::UserRole + 1;
     static constexpr int ElementRole = Qt::UserRole + 2;
     static constexpr int ElementDetailRole = Qt::UserRole + 3;
+    static constexpr int HeadingRole = Qt::UserRole + 4; // A group title in the palette, not a part.
     explicit TemplateDelegate(QObject *parent = nullptr);
     void paint(QPainter *painter, const QStyleOptionViewItem &option,
                const QModelIndex &index) const override;

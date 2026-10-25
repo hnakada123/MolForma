@@ -333,6 +333,21 @@ void MoleculeView::fit() {
     fitPending = !isVisible();
     scheduleRender();
 }
+void MoleculeView::keepInView() {
+    if (fitPending || !isVisible()) {
+        fit();
+        return;
+    }
+    const QRectF area = QRectF(rect()).adjusted(12, 12, -12, -12);
+    const auto outside = [&](const Vec &p) { return !area.contains(project(p)); };
+    bool fits = true;
+    for (const auto &a : doc.atoms)
+        fits &= !shown(a) || !outside(a.position);
+    for (const auto &v : doc.data["point_charges"].toArray())
+        fits &= !outside(vectorFromJson(v.toObject()["position"]));
+    if (!fits)
+        fit();
+}
 void MoleculeView::viewFrom(int axis) {
     setAngles(axis == 0 ? -90 : 0, axis == 1 ? 90 : 0, 0);
     fit();
@@ -794,6 +809,10 @@ void MoleculeView::mousePressEvent(QMouseEvent *e) {
     pressedAtom = hitAtom(press);
     dragging = false;
     boxing = false;
+    dragAtoms.clear();
+    if (tool == "move" && !pressedAtom.isEmpty() && pressedButton == Qt::LeftButton &&
+        !pressModifiers.testFlag(Qt::AltModifier))
+        emit dragStarted(pressedAtom);
 }
 void MoleculeView::mouseMoveEvent(QMouseEvent *e) {
     if (pressedButton == Qt::NoButton)
@@ -815,6 +834,21 @@ void MoleculeView::mouseMoveEvent(QMouseEvent *e) {
                 rotation(Vec::UnitY(), delta.x() * .6) * rotation(Vec::UnitX(), delta.y() * .6) * orientation;
             orientation = Eigen::Quaterniond(orientation).normalized().toRotationMatrix();
             emit orientationChanged();
+        } else if (pressedButton == Qt::LeftButton) {
+            // The atoms follow the cursor while dragging; the edit itself happens on release. A
+            // drag that includes a fixed atom is refused then, so nothing moves meanwhile either.
+            if (!dragOrigin)
+                dragOrigin = doc;
+            doc = *dragOrigin;
+            const auto moves = [&](const Atom &a) { return dragAtoms.contains(a.id) || a.id == pressedAtom; };
+            if (std::none_of(doc.atoms.begin(), doc.atoms.end(),
+                             [&](const Atom &a) { return a.fixed && moves(a); })) {
+                const Vec shift = worldPosition(e->position()) - worldPosition(press);
+                for (auto &a : doc.atoms)
+                    if (moves(a))
+                        a.position += shift;
+            }
+            moleculeDirty = true;
         }
     }
     last = e->position();
@@ -823,6 +857,12 @@ void MoleculeView::mouseMoveEvent(QMouseEvent *e) {
 void MoleculeView::mouseReleaseEvent(QMouseEvent *e) {
     auto button = pressedButton;
     pressedButton = Qt::NoButton;
+    if (dragOrigin) { // The edit replaces the preview (or the document stays as it was).
+        doc = *dragOrigin;
+        dragOrigin.reset();
+        moleculeDirty = true;
+        scheduleRender();
+    }
     if (dragging) {
         if (boxing) {
             Ids ids;

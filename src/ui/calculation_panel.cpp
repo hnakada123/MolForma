@@ -666,7 +666,7 @@ void CalculationPanel::refreshElementBases(const QJsonObject &s) {
             });
         }
         const QSignalBlocker comboBlocker(combo);
-        combo->setItemText(0, "共通（" + s["basis"].toString() + "）");
+        combo->setItemText(0, "共通（" + nwchemBasisLabel(QJsonObject{{"basis", s["basis"]}}) + "）");
         const int index = combo->findData(overrides[symbol].toString());
         combo->setCurrentIndex(std::max(0, index));
     }

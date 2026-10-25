@@ -198,12 +198,21 @@ const Bond *Document::bond(const QString &a, const QString &b) const {
 void Document::setBond(const QString &a, const QString &b, const QString &kind) {
     if (!contains(a) || !contains(b) || a == b)
         fail("異なる2原子を指定してください。");
-    bonds.erase(
-        std::remove_if(bonds.begin(), bonds.end(),
-                       [&](const Bond &x) { return (x.a == a && x.b == b) || (x.a == b && x.b == a); }),
-        bonds.end());
-    if (kind != "none")
-        bonds.append({a, b, kind, {}, "explicit"});
+    const auto same = [&](const Bond &x) { return (x.a == a && x.b == b) || (x.a == b && x.b == a); };
+    if (kind == "none") {
+        bonds.erase(std::remove_if(bonds.begin(), bonds.end(), same), bonds.end());
+        return;
+    }
+    // An existing bond keeps its place, so setting the kind it already has changes nothing.
+    if (auto it = std::find_if(bonds.begin(), bonds.end(), same); it != bonds.end()) {
+        if (it->kind != kind) {
+            it->kind = kind;
+            it->stereo.clear();
+            it->source = "explicit";
+        }
+        return;
+    }
+    bonds.append({a, b, kind, {}, "explicit"});
 }
 Ids Document::component(const QString &root, const QString &ca, const QString &cb) const {
     if (!contains(root))
@@ -700,11 +709,17 @@ Document Document::fromXyz(const QString &text) {
             a.isotope = a.element == "D" ? 2 : 3;
             a.element = "H";
         }
-        element(a.element);
+        try {
+            element(a.element);
+        } catch (const std::exception &e) {
+            fail(QString("XYZ %1行目: %2").arg(i + 3).arg(QString::fromUtf8(e.what())));
+        }
         for (int j = 0; j < 3; ++j) {
             a.position[j] = w[j + 1].toDouble(&ok);
             if (!ok || !std::isfinite(a.position[j]))
-                fail("XYZの座標は有限の数値にしてください。");
+                fail(QString("XYZ %1行目の座標は有限の数値にしてください: %2")
+                         .arg(i + 3)
+                         .arg(lines[i + 2].trimmed()));
         }
         if (w.size() == 5) {
             int mass = w[4].toInt(&ok);
@@ -713,7 +728,7 @@ Document Document::fromXyz(const QString &text) {
             else {
                 a.mass = w[4].toDouble(&ok);
                 if (!ok || a.mass <= 0 || !std::isfinite(a.mass))
-                    fail("質量が不正です。");
+                    fail(QString("XYZ %1行目の質量が不正です: %2").arg(i + 3).arg(lines[i + 2].trimmed()));
             }
         }
         d.atoms.append(a);

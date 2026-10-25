@@ -161,9 +161,11 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     visual->addLayout(camera);
     auto *fit = new QPushButton("表示を合わせる");
     camera->addWidget(fit);
+    viewControls << fit;
     for (int axis = 0; axis < 3; ++axis) {
         auto *b = new QPushButton(QString("+%1").arg("XYZ"[axis]));
         b->setToolTip(QString("%1軸の正の側から見ます。").arg("XYZ"[axis]));
+        viewControls << b;
         camera->addWidget(b);
         connect(b, &QPushButton::clicked, this, [this, axis] { view->viewFrom(axis); });
     }
@@ -176,6 +178,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
                                       {"ラベル: なし", "none"}})
         labelMode->addItem(label, mode);
     camera->addWidget(labelMode);
+    viewControls << labelMode;
     view = new MoleculeView;
     view->setObjectName("resultsView");
     view->setAcceptDrops(false);
@@ -207,6 +210,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         label->setBuddy(sliders[i]);
         control->addWidget(sliders[i]);
         angles->addLayout(control, 1);
+        viewControls << sliders[i];
     }
     for (int i = 0; i < 3; ++i)
         connect(sliders[i], &QSlider::valueChanged, this,
@@ -275,6 +279,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     clearMeasure->setObjectName("resultsClearMeasurement");
     measuring->addWidget(pin);
     measuring->addWidget(clearMeasure);
+    viewControls << pin << clearMeasure;
     connect(view, &MoleculeView::atomClicked, this, [this](const QString &id) { pickAtom(id); });
     connect(pin, &QPushButton::clicked, this, [this] {
         const auto &d = view->documentRef();
@@ -1001,6 +1006,8 @@ void ResultsPanel::cacheOrbital() {
 }
 void ResultsPanel::updateActions() {
     const bool ready = !loading() && !data.source.isEmpty();
+    for (auto *control : std::as_const(viewControls))
+        control->setEnabled(!data.frames.isEmpty());
     cancel->setEnabled(loading());
     reload->setEnabled(ready);
     saveXyz->setEnabled(ready && !data.frames.isEmpty());

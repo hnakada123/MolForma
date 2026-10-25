@@ -126,7 +126,7 @@ void MainWindow::buildEditPanel() {
                                [this] {
                                    auto ids = requireSelection(1);
                                    edit("原点へ移動", [=](Document &d) { orient(d, ids); });
-                                   view->fit();
+                                   view->keepInView();
                                }),
                         1, 1);
     section(f, "平行移動（選択原子）");
@@ -222,7 +222,7 @@ void MainWindow::buildEditPanel() {
     auto *orientation = button(f, "向きをそろえる（原点・+X・XY）", [this] {
         auto ids = requireSelection();
         edit("向きをそろえる", [=](Document &d) { orient(d, ids); });
-        view->fit();
+        view->keepInView();
     });
     orientation->setToolTip(
         "選択順に、1番目を原点、2番目を+X軸上、3番目をXY平面上へ動かします（分子全体）。");
@@ -230,12 +230,12 @@ void MainWindow::buildEditPanel() {
     button(f, "重心を原点へ", [this] {
         auto ids = selected;
         edit("重心を原点へ", [=](Document &d) { centerMass(d, ids, false); });
-        view->fit();
+        view->keepInView();
     });
     button(f, "主慣性軸へ整列", [this] {
         auto ids = selected;
         edit("主慣性軸へ整列", [=](Document &d) { centerMass(d, ids, true); });
-        view->fit();
+        view->keepInView();
     });
     section(f, "鏡映・複製");
     auto *plane = choices(f, "鏡映面", {"YZ", "XZ", "XY"}, {"0", "1", "2"});
@@ -256,7 +256,7 @@ void MainWindow::buildEditPanel() {
                 } else
                     mirror(d, ids, ax, around(d, ids));
             });
-            view->fit();
+            view->keepInView();
         },
         "mirrorSelection");
     enableWithSelection(mirrorButton, 1);
@@ -268,7 +268,7 @@ void MainWindow::buildEditPanel() {
             auto ids = requireSelection();
             Vec v = fields(duplicateFields);
             edit("複製", [=](Document &d) { duplicate(d, ids, v); });
-            view->fit();
+            view->keepInView();
         },
         "duplicateSelection");
     enableWithSelection(duplicateButton, 1);
@@ -549,7 +549,7 @@ void MainWindow::addAmino(const QString &rid, bool n) {
     });
     growthResidue = result;
     growthN = n;
-    view->fit();
+    view->keepInView();
 }
 void MainWindow::buildResiduePanel() {
     auto *f = panel("残基");
@@ -602,7 +602,7 @@ void MainWindow::buildResiduePanel() {
                         d.setJobValue("charge", d.formalCharge());
                 },
                 true);
-            view->fit();
+            view->keepInView();
         },
         "buildSequence");
     section(f, "残基の編集（パレットのアミノ酸を使用）");

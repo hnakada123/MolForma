@@ -169,6 +169,26 @@ class CoreTest : public QObject {
         QVERIFY_EXCEPTION_THROWN(Document::fromXyz("1\ninvalid\nC nan 0 0\n"), std::runtime_error);
         QVERIFY_EXCEPTION_THROWN(Document::fromXyz("2\nshort\nC 0 0 0\n"), std::runtime_error);
         QVERIFY_EXCEPTION_THROWN(Document::fromXyz("1\nunknown\nXx 0 0 0\n"), std::runtime_error);
+        // Errors name the line, so a broken file can be fixed.
+        try {
+            Document::fromXyz("2\nbroken\nO 0 0 0\nH 1 x 0\n");
+            QFAIL("accepted a broken coordinate");
+        } catch (const std::exception &e) {
+            QVERIFY(QString::fromUtf8(e.what()).contains("4行目"));
+        }
+    }
+    void bondKindChangesInPlace() {
+        // Setting the kind a bond already has changes nothing (no reordering, no history entry).
+        auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH .96 0 0\nH -.24 .93 0\n");
+        const auto before = d.toJson();
+        d.setBond(d.bonds[0].a, d.bonds[0].b, d.bonds[0].kind);
+        QCOMPARE(d.toJson(), before);
+        const auto a = d.bonds[0].a, b = d.bonds[0].b;
+        d.setBond(b, a, "double");
+        QCOMPARE(d.bonds[0].kind, QString("double"));
+        QCOMPARE(d.bonds[0].a, a);
+        d.setBond(a, b, "none");
+        QCOMPARE(d.bonds.size(), 1);
     }
     void xyzBondOrders() {
         // XYZ has no bond orders; perceived orders keep neutral organic templates saturated as drawn.
@@ -448,6 +468,14 @@ class CoreTest : public QObject {
         QVERIFY(structureReport(water).endsWith("問題は見つかりませんでした。"));
         water.setJobValue("multiplicity", 2);
         QVERIFY(!structureReport(water).contains("問題は見つかりませんでした"));
+        // Complexes: free coordination sites, and a charge that disagrees with the oxidation number.
+        Document zinc;
+        addCenter(zinc, "Zn", "tetrahedral", Vec::Zero(), 2.1, 2);
+        auto report = structureReport(zinc);
+        QVERIFY2(report.contains("Zn1: 配位サイト 4 のうち 4 が空いています"), qPrintable(report));
+        QVERIFY(report.contains("見込まれる全電荷は 2"));
+        zinc.setJobValue("charge", 2);
+        QVERIFY(!structureReport(zinc).contains("見込まれる全電荷"));
         // Without its N–H, pyrrole gets the hydrogen back on nitrogen rather than an sp3 carbon.
         for (const auto &[id, element] : {std::pair{"skeleton:pyrrole", "N"}, {"skeleton:imidazole", "N"}}) {
             Document d;

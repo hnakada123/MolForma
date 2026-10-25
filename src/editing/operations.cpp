@@ -908,6 +908,38 @@ QString structureReport(const Document &d) {
                          .arg(used)
                          .arg(expected);
     }
+    // Coordination centers: free sites, and the total charge their oxidation numbers suggest.
+    int expected = 0;
+    QSet<QString> centers;
+    for (const auto &v : d.data["centers"].toArray()) {
+        const auto c = v.toObject();
+        const auto id = c["atom"].toString();
+        if (!d.contains(id))
+            continue;
+        centers.insert(id);
+        expected += c["oxidation"].toInt();
+        const auto sites = c["sites"].toArray();
+        const auto open = std::count_if(sites.begin(), sites.end(), [](const QJsonValue &s) {
+            return s.toObject()["donor"].toString().isEmpty();
+        });
+        if (open)
+            lines << QString("%1%2: 配位サイト %3 のうち %4 "
+                             "が空いています（配位子を置くか、配位形状を変えてください）。")
+                         .arg(d.atom(id).element)
+                         .arg(d.index(id) + 1)
+                         .arg(sites.size())
+                         .arg(open);
+    }
+    if (!centers.isEmpty()) {
+        for (const auto &a : d.atoms)
+            if (!centers.contains(a.id))
+                expected += a.charge;
+        if (expected != d.job()["charge"].toInt())
+            lines << QString("配位中心の酸化数（補助）と配位子の形式電荷から見込まれる全電荷は %1 ですが、"
+                             "設定電荷は %2 です。")
+                         .arg(expected)
+                         .arg(d.job()["charge"].toInt());
+    }
     // Besides the summary line, every line is a finding.
     if (lines.size() == 1)
         lines << "問題は見つかりませんでした。";
