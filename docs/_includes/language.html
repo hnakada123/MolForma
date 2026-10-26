@@ -1,11 +1,25 @@
-{%- comment -%} The page's language, its home and the same page in the other language. {%- endcomment -%}
+{%- comment -%} The page's language, its home and the same page in the other language, as paths from the site's
+root. Links lead there through root (as "../"), so that the generated pages also work opened as files.
+{%- endcomment -%}
+{%- assign path = page.url | remove_first: '/' -%}
+{%- assign last = page.url | slice: -1 -%}
+{%- if last == '/' -%}{%- assign path = path | append: 'index.html' -%}{%- endif -%}
+{%- assign depth = path | split: '/' | size | minus: 1 -%}
+{%- capture root -%}{%- for level in (1..depth) -%}../{%- endfor -%}{%- endcapture -%}
 {%- if page.url contains '/en/' -%}
   {%- assign en = true -%}
-  {%- assign home = '/en/' -%}
-  {%- assign other = page.url | remove_first: '/en' -%}
+  {%- assign home = 'en/' -%}
+  {%- assign other = path | remove_first: 'en/' -%}
 {%- else -%}
   {%- assign en = false -%}
-  {%- assign home = '/' -%}
-  {%- assign other = page.url | prepend: '/en' -%}
+  {%- assign home = '' -%}
+  {%- assign other = path | prepend: 'en/' -%}
 {%- endif -%}
-{%- assign recipes = home | append: 'recipes' -%}
+{%- assign home_page = home | append: 'index.html' -%}
+{%- assign recipes = '/' | append: home | append: 'recipes' -%}
+{%- comment -%} The content's links from the site's root (made by relative_url and jekyll-relative-links) are
+turned into links from the page with these. {%- endcomment -%}
+{%- assign site_href = 'href="' | append: site.baseurl | append: '/' -%}
+{%- assign site_src = 'src="' | append: site.baseurl | append: '/' -%}
+{%- assign root_href = 'href="' | append: root -%}
+{%- assign root_src = 'src="' | append: root -%}

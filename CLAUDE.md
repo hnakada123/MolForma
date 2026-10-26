@@ -96,7 +96,9 @@ Key cross-cutting designs:
   touch `docs/`, `.github/workflows/pages.yml` generates the HTML with Jekyll (`docs/Gemfile` + `Gemfile.lock`, the
   `github-pages` gem) and publishes that HTML (Pages source: GitHub Actions). Preview locally with
   `bundle exec jekyll build` (HTML in `docs/_site`) or `jekyll serve` in `docs/`, after `bundle config set --local
-  path vendor/bundle && bundle install` (`.bundle/`, `vendor/` and `_site/` are ignored). The
+  path vendor/bundle && bundle install` (`.bundle/`, `vendor/` and `_site/` are ignored). Pages link relative to
+  themselves (`root` from `_includes/language.html`; the layouts also convert the content's root-absolute links), so
+  the generated HTML opens as files too. The
   site's sources: `_config.yml`, `_layouts/` (`default.html` for the manual pages, `home.html`), `_includes/` (head,
   header with navigation and language switch, footer), `assets/site.css`, and the home pages `index.html` / `en/index.html`
   (HTML with front matter, not in the app; their recipe cards come from `_data/recipes.yml`, kept in step with the

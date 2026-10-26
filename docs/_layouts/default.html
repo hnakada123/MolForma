@@ -8,7 +8,7 @@
 {% include header.html %}
 <main id="content" class="content">
 {%- comment -%} The practice files of the recipes are downloaded rather than shown. {%- endcomment -%}
-{{ content | replace: '.kgui.json">', '.kgui.json" download>' | replace: '.kpart.json">', '.kpart.json" download>' | replace: '.sdf">', '.sdf" download>' }}
+{{ content | replace: site_href, root_href | replace: site_src, root_src | replace: '.kgui.json">', '.kgui.json" download>' | replace: '.kpart.json">', '.kpart.json" download>' | replace: '.sdf">', '.sdf" download>' }}
 </main>
 {% include footer.html %}
 </body>

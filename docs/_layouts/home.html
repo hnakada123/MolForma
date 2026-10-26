@@ -7,7 +7,7 @@
 <body class="home">
 {% include header.html %}
 <main id="content">
-{{ content }}
+{{ content | replace: site_href, root_href | replace: site_src, root_src }}
 </main>
 {% include footer.html %}
 </body>
