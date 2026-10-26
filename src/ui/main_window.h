@@ -169,6 +169,7 @@ class MainWindow : public QMainWindow {
     SettingsCard *positionCard = nullptr;       // "座標（1原子）", hidden while the table is shown.
     QWidget *paletteColumn = nullptr;           // The palette of parts, folded with
     QToolButton *paletteToggle = nullptr;       // "パレット" at the bottom of the tool rail.
+    QWidget *myPartsBar = nullptr;              // Saving, reading and removing the user's parts.
     QHash<QString, QWidget *> toolOptionGroups; // Option bar groups by object name.
     QWidget *sequenceChip = nullptr, *measureCard = nullptr, *candidateCard = nullptr;
     QLabel *bannerLabel = nullptr;
@@ -283,6 +284,10 @@ class MainWindow : public QMainWindow {
     void contextMenu(const QPoint &p, const QString &id);
     void savePart();
     void loadPart();
+    void removePart(); // The user's part chosen in the palette, from its list.
+    // Sorts the atoms: "element", "residue" or "selected" (the selection first).
+    void sortAtoms(const QString &mode);
+    void showHeldSettings(); // Atom references and settings held on reading a project.
     void selectNumbers();
     void showReport();
     void showManual();

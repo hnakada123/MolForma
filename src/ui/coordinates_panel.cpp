@@ -127,7 +127,8 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     auto *structure = new QPushButton("構造");
     structure->setObjectName("coordinateStructure");
     structure->setIcon(lineIcon("import"));
-    structure->setToolTip("構造ファイル・XYZで今の構造を置き換える候補を作るか、全原子を削除します。");
+    structure->setToolTip("構造ファイル・XYZで今の構造を置き換える候補を作るか、原子を並べ替えるか、"
+                          "全原子を削除します。");
     auto *structureMenu = new QMenu(structure);
     structureMenu->setObjectName("coordinateStructureMenu");
     structureMenu->setToolTipsVisible(true);
@@ -144,6 +145,21 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
                     [this] { importFile(); });
     structureAction("XYZを貼り付けて置き換え…", "coordinatePaste", "paste",
                     "クリップボードのXYZ（Å）で今の構造を置き換える候補を作ります。", [this] { pasteXyz(); });
+    // The order of the atoms, as the table and the NWChem geometry list them.
+    auto *sortMenu = structureMenu->addMenu("原子を並べ替え");
+    sortMenu->setObjectName("coordinateSortMenu");
+    for (const auto &[text, mode] :
+         {std::pair{"元素順", "element"}, {"残基順", "residue"}, {"選択した原子を先頭へ", "selected"}}) {
+        auto *a = sortMenu->addAction(text);
+        a->setObjectName(QString("coordinateSort_") + mode);
+        connect(a, &QAction::triggered, this,
+                [this, mode = QString(mode)] { attempt([this, mode] { window->sortAtoms(mode); }); });
+        editActions << a;
+    }
+    connect(sortMenu, &QMenu::aboutToShow, this, [this] {
+        findChild<QAction *>("coordinateSort_selected")
+            ->setEnabled(editable() && !window->selected.isEmpty());
+    });
     structureMenu->addSeparator();
     structureAction("全原子を削除", "coordinateClear", "delete", "すべての原子を削除する候補を作ります。",
                     [this] { window->edit("全原子を削除", [](Document &d) { d.remove(d.ids()); }, true); });

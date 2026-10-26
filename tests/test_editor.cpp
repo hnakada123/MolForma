@@ -797,6 +797,42 @@ class EditorTest : public QObject {
         QCOMPARE(w.document().data["nwchem"].toObject()["basis"].toString(), QString("cc-pvdz"));
         QCOMPARE(w.document().envelope["result_reference"].toString(), QString("kept"));
     }
+    void attributePageHoldsAttributes() {
+        MainWindow w;
+        const auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");
+        w.loadDocument(d);
+        // "属性" has the attributes of atoms only; the rest is where it is used.
+        auto *page = w.findChild<QTabWidget *>("propertyTabs")->widget(2);
+        QStringList cards;
+        for (auto *card : page->findChildren<QWidget *>())
+            if (card->objectName().startsWith("moleculeCard_"))
+                cards << card->objectName().mid(QString("moleculeCard_").size());
+        QCOMPARE(cards, QStringList({"原子の属性", "ゴースト・固定"}));
+        // Sorting: the menu "構造" of the coordinate table.
+        w.findChild<QAction *>("coordinateSort_element")->trigger();
+        QCOMPARE(w.document().atoms.first().element, QString("H"));
+        w.history()->undo();
+        w.setSelection({d.atoms[2].id});
+        w.findChild<QAction *>("coordinateSort_selected")->trigger();
+        QCOMPARE(w.document().atoms.first().id, d.atoms[2].id);
+        w.history()->undo();
+        QCOMPARE(w.document().toJson(), d.toJson());
+        // The user's parts: a row of the palette's "マイ部品".
+        auto *myParts = w.findChild<QWidget *>("myPartsBar");
+        QVERIFY(myParts->isHidden());
+        w.findChild<QToolButton *>("paletteCategory_my")->click();
+        QVERIFY(!myParts->isHidden());
+        QVERIFY(w.findChild<QPushButton *>("savePart")->isEnabled());
+        w.findChild<QToolButton *>("paletteCategory_all")->click();
+        QVERIFY(myParts->isHidden());
+        // Refining the selection beside "全体整形"; regenerating and the held settings in the menus.
+        auto *local = w.findChild<QPushButton *>("refineSelectionButton");
+        QVERIFY(local->isEnabled());
+        w.setSelection({});
+        QVERIFY(!local->isEnabled());
+        QVERIFY(w.findChild<QAction *>("regenerateAction"));
+        QVERIFY(w.findChild<QAction *>("heldSettingsAction"));
+    }
     void nwchemMoleculeControls() {
         MainWindow w;
         auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");

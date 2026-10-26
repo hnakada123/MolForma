@@ -148,7 +148,7 @@ void MainWindow::buildEditPanel() {
     selectionList->setTextFormat(Qt::RichText);
     selectionList->setWordWrap(true);
     cardLayout->addWidget(selectionList);
-    auto *cardButtons = new QHBoxLayout;
+    auto *cardButtons = new FlowLayout(nullptr, 6, 6); // Wraps in a narrow column.
     auto *clearSelection = new QPushButton("選択解除");
     clearSelection->setObjectName("clearSelection");
     connect(clearSelection, &QPushButton::clicked, this, [this] { setSelection({}); });
@@ -161,7 +161,14 @@ void MainWindow::buildEditPanel() {
             [this] { safe([this] { deleteAtoms(requireSelection()); }); });
     enableWithSelection(deleteSelection, 1);
     cardButtons->addWidget(deleteSelection);
-    cardButtons->addStretch();
+    // Refining only the selection, as "全体整形" above the view refines the whole molecule.
+    auto *refineSelection = new QPushButton("局所整形");
+    refineSelection->setObjectName("refineSelectionButton");
+    refineSelection->setToolTip("力場で選択原子だけを動かして整え、候補として表示します。");
+    connect(refineSelection, &QPushButton::clicked, this,
+            [this] { safe([this] { runWorker("refine", {}, requireSelection()); }); });
+    enableWithSelection(refineSelection, 1);
+    cardButtons->addWidget(refineSelection);
     cardLayout->addLayout(cardButtons);
     keepSelection = new QCheckBox("編集後に選択維持");
     keepSelection->setToolTip("オフでは、編集を確定するたびに選択を解除します。");
@@ -439,65 +446,52 @@ void MainWindow::buildEditPanel() {
         b->setToolTip("編集時の移動・削除を防ぎ、NWChemの構造最適化でも座標を固定します。");
         enableWithSelection(b, 1);
     }
-    section(f, "並べ替え");
-    auto *order =
-        choices(f, "原子の並べ替え", {"元素順", "残基順", "選択を先頭"}, {"element", "residue", "selected"});
-    button(f, "原子を並べ替え", [this, order] {
-        auto mode = value(order);
-        auto ids = selected;
-        edit("原子を並べ替え", [=](Document &d) {
-            QMap<QString, int> ranks;
-            int n = 0;
-            for (auto v : d.data["residues"].toArray())
-                for (auto id : v.toObject()["atoms"].toObject())
-                    ranks[id.toString()] = n++;
-            std::stable_sort(d.atoms.begin(), d.atoms.end(), [&](const Atom &a, const Atom &b) {
-                if (mode == "element")
-                    return element(a.element).number < element(b.element).number;
-                if (mode == "residue")
-                    return ranks.value(a.id, 1000000) < ranks.value(b.id, 1000000);
-                return ids.contains(a.id) > ids.contains(b.id);
-            });
+    // Sorting is in the menu "構造" of the coordinate table, the user's parts in the palette, refining
+    // beside "全体整形" and the settings held on reading in the menu "ファイル": this page holds the
+    // attributes of atoms only.
+}
+void MainWindow::sortAtoms(const QString &mode) {
+    const auto ids = selected;
+    edit("原子を並べ替え", [=](Document &d) {
+        QMap<QString, int> ranks;
+        int n = 0;
+        for (auto v : d.data["residues"].toArray())
+            for (auto id : v.toObject()["atoms"].toObject())
+                ranks[id.toString()] = n++;
+        std::stable_sort(d.atoms.begin(), d.atoms.end(), [&](const Atom &a, const Atom &b) {
+            if (mode == "element")
+                return element(a.element).number < element(b.element).number;
+            if (mode == "residue")
+                return ranks.value(a.id, 1000000) < ranks.value(b.id, 1000000);
+            return ids.contains(a.id) > ids.contains(b.id);
         });
     });
-    section(f, "マイ部品");
-    enableWithSelection(button(f, "選択原子をマイ部品に保存…", [this] { savePart(); }), 1);
-    button(f, "マイ部品を読込…", [this] { loadPart(); });
-    button(f, "選択中のマイ部品を一覧から外す", [this] {
-        auto t = currentTemplate();
-        if (!t["id"].toString().startsWith("my:"))
-            fail("マイ部品をパレットで選択してください。");
-        for (int i = customParts.size() - 1; i >= 0; --i)
-            if (customParts[i].toObject()["id"] == t["id"])
-                customParts.removeAt(i);
-        settings.setValue("parts", customParts);
-        refreshPalette();
-    });
-    section(f, "整形");
-    auto *local =
-        button(f, "局所整形（選択原子だけ移動）", [this] { runWorker("refine", {}, requireSelection()); });
-    local->setToolTip("力場で選択原子だけを動かして整えます。結果は候補として表示します。");
-    enableWithSelection(local, 1);
-    button(f, "3Dを再生成", [this] {
-        runWorker("regenerate");
-    })->setToolTip("結合から3D座標を作り直し、力場で整えます。結果は候補として表示します。");
-    section(f, "読込時の保留", 0);
-    button(f, "読込時に保留した設定を確認…", [this] {
-        QDialog dialog(this);
-        dialog.setWindowTitle("原子参照と保留設定");
-        dialog.resize(680, 500);
-        auto *l = new QVBoxLayout(&dialog);
-        auto *text = new QPlainTextEdit(
-            QString::fromUtf8(QJsonDocument(QJsonObject{{"references", doc.data["references"]},
-                                                        {"invalid_settings", doc.data["invalid_settings"]}})
-                                  .toJson()));
-        text->setReadOnly(true);
-        l->addWidget(text);
-        auto *close = new QDialogButtonBox(QDialogButtonBox::Close);
-        l->addWidget(close);
-        connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-        dialog.exec();
-    });
+}
+void MainWindow::removePart() {
+    auto t = currentTemplate();
+    if (!t["id"].toString().startsWith("my:"))
+        fail("マイ部品をパレットで選択してください。");
+    for (int i = customParts.size() - 1; i >= 0; --i)
+        if (customParts[i].toObject()["id"] == t["id"])
+            customParts.removeAt(i);
+    settings.setValue("parts", customParts);
+    refreshPalette();
+}
+void MainWindow::showHeldSettings() {
+    QDialog dialog(this);
+    dialog.setWindowTitle("原子参照と保留設定");
+    dialog.resize(680, 500);
+    auto *l = new QVBoxLayout(&dialog);
+    auto *text = new QPlainTextEdit(
+        QString::fromUtf8(QJsonDocument(QJsonObject{{"references", doc.data["references"]},
+                                                    {"invalid_settings", doc.data["invalid_settings"]}})
+                              .toJson()));
+    text->setReadOnly(true);
+    l->addWidget(text);
+    auto *close = new QDialogButtonBox(QDialogButtonBox::Close);
+    l->addWidget(close);
+    connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    dialog.exec();
 }
 QString MainWindow::selectedResidue() const {
     for (auto id : selected) {

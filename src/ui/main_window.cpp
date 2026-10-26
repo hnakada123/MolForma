@@ -342,7 +342,7 @@ void MainWindow::buildUi() {
           {"配位中心", "center", "金属の配位中心です。"},
           {"配位子", "ligand", "配位中心の紫の番号（空きサイト）をクリックして付けます。"},
           {"アミノ酸", "amino", "アミノ酸と末端キャップです。"},
-          {"マイ部品", "my", "「選択原子をマイ部品に保存」で登録した部品です。"}}) {
+          {"マイ部品", "my", "選択した原子から保存した部品と、ファイルから読み込んだ部品です。"}}) {
         auto *chip = new QToolButton;
         chip->setObjectName(QString("paletteCategory_") + code);
         chip->setText(label);
@@ -387,6 +387,28 @@ void MainWindow::buildUi() {
     ll->addWidget(elements);
     growth = new QCheckBox("アミノ酸の連続追加");
     ll->addWidget(growth);
+    // The user's parts: saved from the selection or read from a file, with their category.
+    myPartsBar = new QWidget;
+    myPartsBar->setObjectName("myPartsBar");
+    auto *myParts = new FlowLayout(myPartsBar, 5, 5);
+    myParts->setContentsMargins(0, 0, 0, 0);
+    auto *savePartButton = new QPushButton("選択原子を保存…");
+    savePartButton->setObjectName("savePart");
+    savePartButton->setToolTip("選択した原子を部品としてマイ部品に登録します（接続点・種類を選びます）。");
+    enableWithSelection(savePartButton, 1);
+    auto *loadPartButton = new QPushButton("読込…");
+    loadPartButton->setObjectName("loadPart");
+    loadPartButton->setToolTip("部品ファイル（.kpart.json）をマイ部品に読み込みます。");
+    auto *removePartButton = new QPushButton("一覧から外す");
+    removePartButton->setObjectName("removePart");
+    removePartButton->setToolTip("パレットで選んだマイ部品を一覧から外します（ファイルは消しません）。");
+    for (auto *b : {savePartButton, loadPartButton, removePartButton})
+        myParts->addWidget(b);
+    connect(savePartButton, &QPushButton::clicked, this, [this] { safe([this] { savePart(); }); });
+    connect(loadPartButton, &QPushButton::clicked, this, [this] { safe([this] { loadPart(); }); });
+    connect(removePartButton, &QPushButton::clicked, this, [this] { safe([this] { removePart(); }); });
+    myPartsBar->hide();
+    ll->addWidget(myPartsBar);
     palette = new PaletteList;
     palette->setObjectName("templatePalette");
     auto *tiles = new TemplateDelegate(palette);
@@ -503,7 +525,8 @@ void MainWindow::buildUi() {
     auto *refineButton = new QPushButton("全体整形");
     refineButton->setObjectName("refineButton");
     refineButton->setToolTip("力場（MMFF94、使えない場合UFF）で分子全体の構造を整え、候補として表示します。"
-                             "金属錯体・ゴースト原子を含む分子には使えません。");
+                             "金属錯体・ゴースト原子を含む分子には使えません。選択原子だけを整えるときは"
+                             "「編集」の「局所整形」を使います。");
     connect(refineButton, &QPushButton::clicked, this, [this] { safe([this] { runWorker("refine"); }); });
     cancelWorkerButton = new QPushButton("整形を中止");
     cancelWorkerButton->hide();
@@ -1158,6 +1181,9 @@ void MainWindow::buildMenus() {
     auto *saveAction = action(file, "プロジェクトを保存", QKeySequence::Save, [this] { save(); });
     auto *saveAsAction = action(file, "名前を付けて保存…", QKeySequence::SaveAs, [this] { save(true); });
     action(file, "構造を書き出す…", {}, [this] { exportFile(); });
+    action(file, "読込時に保留した設定を確認…", {}, [this] {
+        showHeldSettings();
+    })->setObjectName("heldSettingsAction");
     action(file, "分子全体をXYZでコピー", {}, [this] {
         if (resolveCandidate())
             QApplication::clipboard()->setText(doc.xyz());
@@ -1284,6 +1310,9 @@ void MainWindow::buildMenus() {
         if (ok)
             runWorker("conformers", {}, {}, count);
     })->setObjectName("conformerAction");
+    auto *regenerate = action(toolsMenu, "3Dを再生成", {}, [this] { runWorker("regenerate"); });
+    regenerate->setObjectName("regenerateAction");
+    regenerate->setToolTip("結合から3D座標を作り直し、力場で整えます。結果は候補として表示します。");
     action(toolsMenu, "構造を比較・重ね合わせ…", {}, [this] {
         compareDialog();
     })->setObjectName("compareAction");
@@ -1456,6 +1485,7 @@ void MainWindow::refreshPalette() {
                                : cat == "center" ? "元素記号・名前・原子番号を検索"
                                                  : "名前・元素・SMILESを検索");
     growth->setVisible(cat == "amino");
+    myPartsBar->setVisible(cat == "my");
     if (cat != "all" && cat != "amino")
         growth->setChecked(false);
     QString old = palette->currentItem() ? palette->currentItem()->data(Qt::UserRole).toString() : "";
