@@ -1,4 +1,5 @@
-# GitHub Pages builds the site from this folder (main branch, /docs) with Jekyll.
+# The site is generated from this folder with Jekyll and published as HTML by
+# .github/workflows/pages.yml; "bundle exec jekyll build" here writes the same HTML to _site.
 # The manual pages are plain Markdown without front matter, as the in-app manual shows them
 # verbatim: the plugins below give them a layout, a title from their first heading and turn
 # links to .md files into links to the generated pages. Keep "{{" and "{%" out of the pages.
@@ -29,5 +30,10 @@ titles_from_headings:
   enabled: true
   strip_title: false
 
+# Setting exclude replaces Jekyll's defaults, so the Gemfile and the gems that bundle installs
+# in vendor/ (as the workflow does) are named again here.
 exclude:
   - manual.qrc
+  - Gemfile
+  - Gemfile.lock
+  - vendor

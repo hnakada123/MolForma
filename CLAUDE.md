@@ -92,9 +92,12 @@ Key cross-cutting designs:
   the recipes' practice files in `docs/recipes/samples/` are embedded too, so that their links open them
   (`MainWindow::useSample`; `test_core recipeSamples` checks their contents).
   `packaging/` holds the desktop entry, icon and MIME types installed by `cmake --install`.
-- `docs/` is also the GitHub Pages site https://hnakada123.github.io/MolForma/ (Jekyll, built by GitHub from main's
-  `/docs`): `_config.yml`, `_layouts/` (`default.html` for the manual pages, `home.html`), `_includes/` (head, header
-  with navigation and language switch, footer), `assets/site.css`, and the home pages `index.html` / `en/index.html`
+- `docs/` is also the source of the GitHub Pages site https://hnakada123.github.io/MolForma/: on pushes to main that
+  touch `docs/`, `.github/workflows/pages.yml` generates the HTML with Jekyll (`docs/Gemfile` + `Gemfile.lock`, the
+  `github-pages` gem) and publishes that HTML (Pages source: GitHub Actions). Preview locally with
+  `cd docs && bundle install && bundle exec jekyll build` (HTML in `docs/_site`, ignored) or `jekyll serve`. The
+  site's sources: `_config.yml`, `_layouts/` (`default.html` for the manual pages, `home.html`), `_includes/` (head,
+  header with navigation and language switch, footer), `assets/site.css`, and the home pages `index.html` / `en/index.html`
   (HTML with front matter, not in the app; their recipe cards come from `_data/recipes.yml`, kept in step with the
   tables of `recipes.md` / `en/recipes.md`). The manual pages stay plain Markdown without front matter,
   since the app shows them verbatim; Jekyll plugins give them the layout and turn `.md` links into `.html`. Keep `{{`

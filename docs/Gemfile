@@ -1,0 +1,5 @@
+# The site is built with the Jekyll and plugins of GitHub Pages: by .github/workflows/pages.yml,
+# and locally with "bundle exec jekyll build" (or "serve") in this folder.
+source "https://rubygems.org"
+
+gem "github-pages", group: :jekyll_plugins

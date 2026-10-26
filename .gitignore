@@ -3,3 +3,7 @@
 .env
 *.log
 /*.git.bundle
+/docs/_site/
+/docs/.jekyll-cache/
+/docs/.bundle/
+/docs/vendor/
