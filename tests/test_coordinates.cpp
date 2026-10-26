@@ -311,6 +311,24 @@ class CoordinatesTest : public QObject {
         w.setSelection({w.document().atoms[111].id}); // Already shown: the table stays.
         QCOMPARE(t->verticalScrollBar()->value(), scroll);
     }
+    void selectionShownWithTable() {
+        // Chosen before the table is first shown: the rows are in view once it has its size.
+        MainWindow w;
+        Document d;
+        for (int i = 0; i < 4; ++i)
+            placeTemplate(d, findTemplate("skeleton:water"), Vec(4.0 * i, 0, 0));
+        w.loadDocument(d);
+        w.resize(1380, 900);
+        w.show();
+        button(w, "moleculeLayout_view")->click();
+        QTest::qWait(30);
+        w.setSelection({w.document().atoms[11].id});
+        button(w, "moleculeLayout_both")->click();
+        QTest::qWait(30);
+        auto *t = table(w);
+        QVERIFY(t->viewport()->height() < 12 * t->rowHeight(0)); // The rows do not all fit.
+        QVERIFY(t->visualRect(t->model()->index(11, 0)).intersects(t->viewport()->rect()));
+    }
     void addAtomDialogAndClear() {
         MainWindow w;
         w.loadDocument(water());

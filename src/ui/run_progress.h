@@ -7,6 +7,8 @@ class QVBoxLayout;
 namespace mf {
 // "18:31", or "1:02:03" past an hour.
 QString elapsedClock(qint64 seconds);
+// A path with the home folder written as "~", as the panels show job folders.
+QString displayPath(const QString &path);
 
 // The tasks of a job with their state, and the four DRIVER criteria of a running optimization against
 // their thresholds, read from the job folder's input.nw and, as it grows, its output.out. "3 実行設定"

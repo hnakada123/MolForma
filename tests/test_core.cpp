@@ -943,9 +943,12 @@ class CoreTest : public QObject {
     void charges() {
         Document d;
         placeTemplate(d, findTemplate("skeleton:water"), Vec::Zero());
-        waterToCharges(d, d.ids());
+        auto ids = d.ids();
+        std::reverse(ids.begin(), ids.end());
+        waterToCharges(d, ids);
         QVERIFY(d.atoms.isEmpty());
         QCOMPARE(d.data["point_charges"].toArray().size(), 3);
+        QCOMPARE(d.data["point_charges"].toArray()[0].toObject()["charge"].toDouble(), -.834);
         double sum = 0;
         for (auto q : d.data["point_charges"].toArray())
             sum += q.toObject()["charge"].toDouble();

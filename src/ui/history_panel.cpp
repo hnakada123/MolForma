@@ -124,10 +124,6 @@ QString signedNumber(double value, int digits) {
         return text;
     return (value > 0 ? "+" : "−") + text;
 }
-QString displayPath(const QString &path) {
-    const auto home = QDir::homePath();
-    return path == home ? QString("~") : path.startsWith(home + '/') ? "~" + path.mid(home.size()) : path;
-}
 // The method in short (the functional names a DFT method), then the basis.
 QString levelText(const HistoryEntry &e) {
     if (e.method.isEmpty() && e.basis.isEmpty())

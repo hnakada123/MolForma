@@ -11,6 +11,10 @@ QString elapsedClock(qint64 seconds) {
                                  .arg(seconds % 60, 2, 10, QChar('0'))
                            : QString("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QChar('0'));
 }
+QString displayPath(const QString &path) {
+    const auto home = QDir::homePath();
+    return path == home ? QString("~") : path.startsWith(home + '/') ? "~" + path.mid(home.size()) : path;
+}
 
 RunProgress::RunProgress(const QString &prefix, int columns, QWidget *parent)
     : QWidget(parent), name(prefix) {

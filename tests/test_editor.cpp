@@ -9,6 +9,7 @@
 #include "ui/periodic_table.h"
 #include "ui/template_delegate.h"
 #include "ui/translations.h"
+#include <QAbstractTextDocumentLayout>
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
@@ -39,6 +40,7 @@
 #include <QTemporaryDir>
 #include <QTextBlock>
 #include <QTextBrowser>
+#include <QTextList>
 #include <QTimer>
 #include <QToolButton>
 #include <QWheelEvent>
@@ -85,6 +87,7 @@ class EditorTest : public QObject {
         QString text, recipes, recipe;
         bool back = false;
         double imageWidth = 0, pageWidth = 0;
+        int images = 0;
         QTimer::singleShot(0, &w, [&] {
             if (auto *dialog = w.findChild<QDialog *>("manualDialog")) {
                 auto *browser = dialog->findChild<QTextBrowser *>("manualText");
@@ -94,11 +97,21 @@ class EditorTest : public QObject {
                 recipes = browser->toPlainText();
                 browser->setSource(QUrl("recipes/atoms_and_bonds.md"));
                 recipe = browser->toPlainText();
-                // Its screenshot is drawn to the width of the page.
-                for (auto block = browser->document()->begin(); block.isValid(); block = block.next())
+                // Its screenshots, also those inside the numbered steps, are drawn within the page.
+                auto *document = browser->document();
+                for (auto block = document->begin(); block.isValid(); block = block.next())
                     for (auto it = block.begin(); !it.atEnd(); ++it)
-                        if (it.fragment().charFormat().isImageFormat())
-                            imageWidth = it.fragment().charFormat().toImageFormat().width();
+                        if (it.fragment().charFormat().isImageFormat()) {
+                            // Figures inside the steps are indented like Markdown continuation paragraphs.
+                            const auto format = block.blockFormat();
+                            double indent = format.leftMargin() + format.indent() * document->indentWidth();
+                            if (auto *list = block.textList())
+                                indent += list->format().indent() * document->indentWidth();
+                            ++images;
+                            imageWidth =
+                                std::max(imageWidth, document->documentMargin() + indent +
+                                                         it.fragment().charFormat().toImageFormat().width());
+                        }
                 pageWidth = browser->viewport()->width();
                 back = dialog->findChild<QPushButton *>("manualBack")->isEnabled();
                 dialog->reject();
@@ -109,6 +122,7 @@ class EditorTest : public QObject {
         QVERIFY(recipes.contains("題材の一覧"));
         QVERIFY(recipe.contains("題材1 原子と結合から組む"));
         QVERIFY(back);
+        QVERIFY(images > 10);
         QVERIFY2(imageWidth > 0 && imageWidth < pageWidth,
                  qPrintable(QString("%1 / %2").arg(imageWidth).arg(pageWidth)));
     }

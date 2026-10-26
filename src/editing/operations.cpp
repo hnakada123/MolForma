@@ -796,7 +796,12 @@ void waterToCharges(Document &d, const Ids &ids) {
     if (oxygen != 1 || hydrogen != 2 || d.component(oid).size() != 3)
         fail(tr("独立したH2O分子を選択してください。"));
     auto charges = d.data["point_charges"].toArray();
-    for (const auto &id : ids) {
+    // O first, as in TIP3P, whatever order the atoms were selected in.
+    Ids ordered{oid};
+    for (const auto &id : ids)
+        if (id != oid)
+            ordered.append(id);
+    for (const auto &id : ordered) {
         const auto &a = d.atom(id);
         charges.append(QJsonObject{{"id", newId()},
                                    {"position", vectorToJson(a.position)},

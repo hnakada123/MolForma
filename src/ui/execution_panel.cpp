@@ -913,7 +913,8 @@ void ExecutionPanel::updateRun() {
                                : tr("入力一式を保存しました（NWChemは起動していません）。");
     if (state->text() != stateText)
         state->setText(stateText);
-    location->setText(saved.directory);
+    location->setText(displayPath(saved.directory));
+    location->setToolTip(saved.directory);
     location->setVisible(!saved.directory.isEmpty());
     showRunLink->setVisible(!saved.directory.isEmpty());
     const QMap<QString, QString> pills{

@@ -4,6 +4,7 @@
 #include "ui/molecule_view.h"
 #include "ui/result_charts.h"
 #include "ui/results_panel.h"
+#include "ui/run_progress.h"
 #include <Eigen/LU>
 #include <QtTest>
 #include <QtWidgets>
@@ -948,8 +949,12 @@ class ResultsTest : public QObject {
         w.loadDocument(d);
         auto *execution = widget<ExecutionPanel>(w, "executionTab");
         execution->saveBundle();
-        const auto directory = widget<QLabel>(w, "executionLocation")->text();
+        // The label writes the home folder as "~"; its tooltip holds the whole path.
+        const auto directory = widget<QLabel>(w, "executionLocation")->toolTip();
         QVERIFY(!directory.isEmpty());
+        QCOMPARE(widget<QLabel>(w, "executionLocation")->text(), displayPath(directory));
+        QCOMPARE(displayPath(QDir::homePath() + "/MolForma/jobs/a"), QString("~/MolForma/jobs/a"));
+        QCOMPARE(displayPath(QDir::homePath() + "x"), QDir::homePath() + "x");
         const auto output = QDir(directory).filePath("output.out");
         writeFile(output, ("NWChem\n" + geometry() + "Total SCF energy = -74.9\n").toUtf8());
         execution->refresh();

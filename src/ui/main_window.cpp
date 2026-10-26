@@ -2343,14 +2343,16 @@ void MainWindow::applyMoleculeLayout() {
     moleculeSplit->widget(0)->setVisible(layout != "table");
     coordinates->setVisible(layout != "view");
     // Both shown: the border where it was dragged, else 3D:表 = 6:4 (the table keeps four rows).
-    // Queued after the splitter has taken in the table just shown, which would size it otherwise.
-    if (layout == "both")
+    // Queued after the splitter has taken in the table just shown, which would size it otherwise;
+    // the selected rows are brought into view once the table has that size.
+    if (layout != "view")
         QMetaObject::invokeMethod(
             this,
             [this] {
                 if (moleculeLayout->currentData() == "both" &&
                     !moleculeSplit->restoreState(settings.value("molecule/split").toByteArray()))
                     moleculeSplit->setSizes({600, 400});
+                coordinates->refreshSelection();
             },
             Qt::QueuedConnection);
     // The hints are about the view.
@@ -3296,7 +3298,13 @@ void MainWindow::showManual() {
         const int width = browser->viewport()->width() - 2 * int(document->documentMargin()) - 8;
         const double ratio = browser->devicePixelRatioF();
         QTextCursor cursor(document);
-        for (auto block = document->begin(); block.isValid(); block = block.next())
+        for (auto block = document->begin(); block.isValid(); block = block.next()) {
+            // Figures inside the steps of a list are indented (Markdown continuation paragraphs).
+            const auto format = block.blockFormat();
+            double indent = format.leftMargin() + format.indent() * document->indentWidth();
+            if (auto *list = block.textList())
+                indent += list->format().indent() * document->indentWidth();
+            const int fit = width - std::max(0, int(indent));
             for (auto it = block.begin(); !it.atEnd(); ++it) {
                 const auto fragment = it.fragment();
                 if (!fragment.charFormat().isImageFormat())
@@ -3304,20 +3312,21 @@ void MainWindow::showManual() {
                 auto image = fragment.charFormat().toImageFormat();
                 const auto url = document->baseUrl().resolved(QUrl(image.name()));
                 QImage original(url.scheme() == "qrc" ? ":" + url.path() : url.toLocalFile());
-                if (original.isNull() || original.width() <= width)
+                if (original.isNull() || original.width() <= fit)
                     continue;
-                auto fitted = original.scaledToWidth(int(width * ratio), Qt::SmoothTransformation);
+                auto fitted = original.scaledToWidth(int(fit * ratio), Qt::SmoothTransformation);
                 fitted.setDevicePixelRatio(ratio);
                 const QUrl name =
-                    document->baseUrl().resolved(QString("fitted/%1/%2").arg(width).arg(image.name()));
+                    document->baseUrl().resolved(QString("fitted/%1/%2").arg(fit).arg(image.name()));
                 document->addResource(QTextDocument::ImageResource, name, fitted);
                 image.setName(name.toString());
-                image.setWidth(width);
-                image.setHeight(original.height() * double(width) / original.width());
+                image.setWidth(fit);
+                image.setHeight(original.height() * double(fit) / original.width());
                 cursor.setPosition(fragment.position());
                 cursor.setPosition(fragment.position() + fragment.length(), QTextCursor::KeepAnchor);
                 cursor.setCharFormat(image);
             }
+        }
     };
     connect(browser, &QTextBrowser::sourceChanged, &dialog, fitImages);
     show();
