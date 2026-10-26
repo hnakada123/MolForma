@@ -8,7 +8,7 @@ A coordination center does not have to be a metal. Place sulfur as an octahedral
 | Features | Choosing the center element with the element buttons, periodic table or search under “Coordination center”, coordination geometries, the charge following oxidation numbers, fluoride ligands, rotational symmetry numbers |
 | Calculation | B3LYP/6-31G*, optimization → frequencies |
 | Run time | About 4 minutes for SF₆ and 2 minutes for PF₅ (8 MPI processes) |
-| Practice data | `docs/recipes/samples/sf6.kgui.json`, `pf5.kgui.json` |
+| Practice data | [`sf6.kgui.json`](../../recipes/samples/sf6.kgui.json), [`pf5.kgui.json`](../../recipes/samples/pf5.kgui.json) |
 
 ![SF6 with sulfur as an octahedral center](images/main_group.png)
 

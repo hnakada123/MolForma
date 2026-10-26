@@ -8,7 +8,7 @@ Na⁺のまわりに水を4つ配位させた [Na(H₂O)₄]⁺ を組み、最�
 | 使う機能 | 配位中心Na・四面体、アクア配位子、選択単位「部品」「分子」、指定間隔で複製、「電荷」ページの選択した水をTIP3P点電荷へ、点電荷の一覧、周囲の環境（外部点電荷をNWChem入力に含める）、点電荷をファイルに書き出す |
 | 計算 | B3LYP/6-31G*、構造最適化（点電荷なし）と一点エネルギー3通り |
 | 計算時間の目安 | 最適化 約1分、一点計算 各10〜20秒（MPI 8プロセス） |
-| 練習データ | `docs/recipes/samples/na_h2o4.kgui.json`（クラスター）、`na_h2o4_charges.kgui.json`（点電荷つき）、`na_h2o5.kgui.json`（外側の水も原子） |
+| 練習データ | [`na_h2o4.kgui.json`](samples/na_h2o4.kgui.json)（クラスター）、[`na_h2o4_charges.kgui.json`](samples/na_h2o4_charges.kgui.json)（点電荷つき）、[`na_h2o5.kgui.json`](samples/na_h2o5.kgui.json)（外側の水も原子） |
 
 ![外側の水をTIP3P点電荷に置き換えた水和Na+](images/hydrated_sodium.png)
 

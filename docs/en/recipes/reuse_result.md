@@ -8,7 +8,7 @@ Call up the p-nitroaniline optimized in [recipe 3](aromatic_substitution.md) fro
 | Features | History, Open in result viewer, Apply as candidate (RMSD, largest displacement), Compare, exporting results, Reuse molecule and settings, excited states (TDDFT), the absorption spectrum |
 | Calculation | CAM-B3LYP/6-31+G*, single point + TDDFT (10 singlet states) |
 | Run time | About 42 minutes (6 MPI processes) |
-| Practice data | `docs/recipes/samples/p_nitroaniline_tddft.kgui.json` (the imported structure and TDDFT settings) |
+| Practice data | [`p_nitroaniline_tddft.kgui.json`](../../recipes/samples/p_nitroaniline_tddft.kgui.json) (the imported structure and TDDFT settings) |
 
 ![The absorption spectrum in the Excited states tab](images/reuse_result.png)
 

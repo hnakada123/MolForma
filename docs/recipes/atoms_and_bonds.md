@@ -8,7 +8,7 @@
 | 使う機能 | 原子の配置と水素の置き換え、水素自動補完、全体整形、距離・角度の測定、削除、結合の種類、結合への原子の挿入 |
 | 計算 | B3LYP/6-31G*、最適化 → 振動数 |
 | 計算時間の目安 | 約2分（MPI 4プロセス） |
-| 練習データ | `docs/recipes/samples/ethanol.kgui.json`（整形後の初期構造と計算条件） |
+| 練習データ | [`ethanol.kgui.json`](samples/ethanol.kgui.json)（整形後の初期構造と計算条件） |
 
 ![組み立てたエタノールと距離の表示](images/atoms_and_bonds.png)
 

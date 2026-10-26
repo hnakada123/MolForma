@@ -8,7 +8,7 @@
 | 使う機能 | 「残基」ページの配列から構築・末端・側鎖状態、3D画面の配列、選択単位「残基」、選択残基を置換、主鎖・側鎖の二面角、周囲の環境（COSMO） |
 | 計算 | B3LYP/6-31G*、一点エネルギー、COSMO（水） |
 | 計算時間の目安 | 約14分（MPI 8プロセス、「DFT積分を毎回再計算」オン） |
-| 練習データ | `docs/recipes/samples/ace_ahe_nme.kgui.json` |
+| 練習データ | [`ace_ahe_nme.kgui.json`](samples/ace_ahe_nme.kgui.json) |
 
 ![配列から作ったACE–Ala–His–Glu–NMEと3D画面の配列](images/capped_peptide.png)
 

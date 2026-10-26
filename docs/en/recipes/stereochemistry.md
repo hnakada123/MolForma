@@ -8,7 +8,7 @@ In a structure assembled from templates, the configuration of a stereocenter or 
 | Features | Record stereo (R/S, E/Z), R/S and E/Z in the 3D view, Invert stereocenter, Switch E/Z, Save as |
 | Calculation | B3LYP/6-31G*, optimization → frequencies (E and Z 2-butene) |
 | Run time | About 35 minutes for E and 47 minutes for Z (2 MPI processes, alongside other runs) |
-| Practice data | `docs/recipes/samples/lactic_R.kgui.json`, `lactic_S.kgui.json`, `butene_E.kgui.json`, `butene_Z.kgui.json` |
+| Practice data | [`lactic_R.kgui.json`](../../recipes/samples/lactic_R.kgui.json), [`lactic_S.kgui.json`](../../recipes/samples/lactic_S.kgui.json), [`butene_E.kgui.json`](../../recipes/samples/butene_E.kgui.json), [`butene_Z.kgui.json`](../../recipes/samples/butene_Z.kgui.json) |
 
 ![Lactic acid with R/S on its stereocenter and 2-butene with E/Z](images/stereochemistry.png)
 

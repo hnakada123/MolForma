@@ -8,7 +8,7 @@ Build a three-residue peptide from its one-letter sequence and cap the N-terminu
 | Features | Build from sequence, termini and side-chain states on the “Residue” page, the sequence in the 3D view, selecting by residue, Mutate selected residue, backbone and side-chain dihedrals, Environment (COSMO) |
 | Calculation | B3LYP/6-31G*, single-point energy, COSMO (water) |
 | Run time | About 14 minutes (8 MPI processes, “Recompute DFT integrals each time” on) |
-| Practice data | `docs/recipes/samples/ace_ahe_nme.kgui.json` |
+| Practice data | [`ace_ahe_nme.kgui.json`](../../recipes/samples/ace_ahe_nme.kgui.json) |
 
 ![ACE–Ala–His–Glu–NME built from its sequence, with the sequence in the 3D view](images/capped_peptide.png)
 

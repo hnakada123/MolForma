@@ -9,7 +9,7 @@ Build a trimethylsilyl group –Si(CH₃)₃, which is not among the substituent
 | Features | Choosing elements with the periodic table or search, selection order and attachment point, saving my parts (name, kind, file), the my-parts list, Load and Remove from list, placing my parts |
 | Calculation | B3LYP/6-31G*, geometry optimization |
 | Run time | About 48 minutes (8 MPI processes, alongside other runs; 40 steps from the methyl rotations) |
-| Practice data | `docs/recipes/samples/trimethylsilyl.kpart.json` (the part), `tms_benzene.kgui.json` |
+| Practice data | [`trimethylsilyl.kpart.json`](../../recipes/samples/trimethylsilyl.kpart.json) (the part), [`tms_benzene.kgui.json`](../../recipes/samples/tms_benzene.kgui.json) |
 
 ![Benzene with the trimethylsilyl group from My parts](images/my_parts.png)
 

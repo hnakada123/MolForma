@@ -165,6 +165,39 @@
   <file>recipes/images/stereochemistry/04_butene_e.png</file>
   <file>recipes/images/stereochemistry/05_butene_z.png</file>
   <file>recipes/images/stereochemistry/06_history_compare.png</file>
+  <file>recipes/samples/ace_ae_nme.kgui.json</file>
+  <file>recipes/samples/ace_afe_nme.kgui.json</file>
+  <file>recipes/samples/ace_ahe_nme.kgui.json</file>
+  <file>recipes/samples/benzene_water.kgui.json</file>
+  <file>recipes/samples/butane_anti.kgui.json</file>
+  <file>recipes/samples/butane_gauche.kgui.json</file>
+  <file>recipes/samples/butane_scan.kgui.json</file>
+  <file>recipes/samples/butene_E.kgui.json</file>
+  <file>recipes/samples/butene_Z.kgui.json</file>
+  <file>recipes/samples/caffeine.kgui.json</file>
+  <file>recipes/samples/caffeine_2d.sdf</file>
+  <file>recipes/samples/co_en_complex.kgui.json</file>
+  <file>recipes/samples/ethanol.kgui.json</file>
+  <file>recipes/samples/ethanol_od.kgui.json</file>
+  <file>recipes/samples/ethanol_opt.kgui.json</file>
+  <file>recipes/samples/lactic_R.kgui.json</file>
+  <file>recipes/samples/lactic_S.kgui.json</file>
+  <file>recipes/samples/m_nitroaniline.kgui.json</file>
+  <file>recipes/samples/na_h2o4.kgui.json</file>
+  <file>recipes/samples/na_h2o4_charges.kgui.json</file>
+  <file>recipes/samples/na_h2o5.kgui.json</file>
+  <file>recipes/samples/o_nitroaniline.kgui.json</file>
+  <file>recipes/samples/p_nitroaniline.kgui.json</file>
+  <file>recipes/samples/p_nitroaniline_tddft.kgui.json</file>
+  <file>recipes/samples/pf5.kgui.json</file>
+  <file>recipes/samples/phenol.kgui.json</file>
+  <file>recipes/samples/phenolate.kgui.json</file>
+  <file>recipes/samples/phenoxyl.kgui.json</file>
+  <file>recipes/samples/sf6.kgui.json</file>
+  <file>recipes/samples/sn2_reactant.kgui.json</file>
+  <file>recipes/samples/sn2_ts_guess.kgui.json</file>
+  <file>recipes/samples/tms_benzene.kgui.json</file>
+  <file>recipes/samples/trimethylsilyl.kpart.json</file>
   <file>en/features.md</file>
   <file>en/mcp.md</file>
   <file>en/recipes.md</file>

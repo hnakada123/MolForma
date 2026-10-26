@@ -86,8 +86,8 @@ Tests must not write the user's settings or data: redirect
 Document limitations in `docs/features.md` (Japanese); MCP tool changes belong
 in `docs/mcp.md`. Keep the English manuals `docs/en/features.md` and
 `docs/en/mcp.md` in step with them. The recipes (`docs/recipes.md`,
-`docs/recipes/*.md`, screenshots in `docs/recipes/images/`, practice projects
-in `docs/recipes/samples/`) have English versions under `docs/en/`; update
+`docs/recipes/*.md`, screenshots in `docs/recipes/images/`, practice files
+in `docs/recipes/samples/`, embedded with the manual) have English versions under `docs/en/`; update
 both when a UI change alters a recipe's steps. `docs/` is also published as the
 GitHub Pages site https://hnakada123.github.io/MolForma/ (Jekyll from main's
 `/docs`: `_config.yml`, `_layouts/`, `_includes/`, `assets/site.css`, the HTML

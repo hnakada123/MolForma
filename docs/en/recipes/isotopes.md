@@ -8,7 +8,7 @@ Make the O–H hydrogen of optimized ethanol a deuterium and compute the frequen
 | Features | Isotope / mass on the “Attributes” page, the mass column and element cells (D, T) of the coordinate table, Sort atoms, a frequency-only calculation |
 | Calculation | B3LYP/6-31G*, frequencies (at the structure optimized in [recipe 1](atoms_and_bonds.md)) |
 | Run time | About 1 minute (8 MPI processes) |
-| Practice data | `docs/recipes/samples/ethanol_opt.kgui.json` (optimized structure), `ethanol_od.kgui.json` (O–D) |
+| Practice data | [`ethanol_opt.kgui.json`](../../recipes/samples/ethanol_opt.kgui.json) (optimized structure), [`ethanol_od.kgui.json`](../../recipes/samples/ethanol_od.kgui.json) (O–D) |
 
 ![Ethanol with deuterium on oxygen and the mass in the coordinate table](images/isotopes.png)
 

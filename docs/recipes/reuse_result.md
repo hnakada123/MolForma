@@ -8,7 +8,7 @@
 | 使う機能 | 履歴、結果ビューアで開く、分子へ候補として適用（RMSD・最大変位）、分子と比較、結果の書き出し、分子・条件を再利用、励起状態（TDDFT）、吸収スペクトルの表示 |
 | 計算 | CAM-B3LYP/6-31+G*、一点エネルギー＋TDDFT（10状態、一重項） |
 | 計算時間の目安 | 約42分（MPI 6プロセス） |
-| 練習データ | `docs/recipes/samples/p_nitroaniline_tddft.kgui.json`（取り込んだ構造とTDDFTの条件） |
+| 練習データ | [`p_nitroaniline_tddft.kgui.json`](samples/p_nitroaniline_tddft.kgui.json)（取り込んだ構造とTDDFTの条件） |
 
 ![励起状態タブの吸収スペクトル](images/reuse_result.png)
 

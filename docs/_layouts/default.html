@@ -7,7 +7,8 @@
 <body>
 {% include header.html %}
 <main id="content" class="content">
-{{ content }}
+{%- comment -%} The practice files of the recipes are downloaded rather than shown. {%- endcomment -%}
+{{ content | replace: '.kgui.json">', '.kgui.json" download>' | replace: '.kpart.json">', '.kpart.json" download>' | replace: '.sdf">', '.sdf" download>' }}
 </main>
 {% include footer.html %}
 </body>

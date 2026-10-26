@@ -89,7 +89,8 @@ Key cross-cutting designs:
   `AppLocalDataLocation/autosave` (with a `QLockFile` per session) and offer recovery at startup.
 - The manual (`docs/features.md`, `docs/mcp.md`, the recipes `docs/recipes.md` + `docs/recipes/*.md` with their
   screenshots in `docs/recipes/images/`) and the window icon are embedded via `docs/manual.qrc` in `molforma_ui`;
-  the recipes' practice projects in `docs/recipes/samples/` are not embedded (`test_core recipeSamples` checks them).
+  the recipes' practice files in `docs/recipes/samples/` are embedded too, so that their links open them
+  (`MainWindow::useSample`; `test_core recipeSamples` checks their contents).
   `packaging/` holds the desktop entry, icon and MIME types installed by `cmake --install`.
 - `docs/` is also the GitHub Pages site https://hnakada123.github.io/MolForma/ (Jekyll, built by GitHub from main's
   `/docs`): `_config.yml`, `_layouts/` (`default.html` for the manual pages, `home.html`), `_includes/` (head, header

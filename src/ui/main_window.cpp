@@ -2934,6 +2934,31 @@ void MainWindow::dropEvent(QDropEvent *e) {
     // Open after the drop finishes, so dialogs do not run inside the drag-and-drop loop.
     QTimer::singleShot(0, this, [this, file] { safe([&] { openDropped(file); }); });
 }
+bool MainWindow::useSample(const QString &resource, const QString &target) {
+    const auto name = QFileInfo(resource).fileName();
+    if (name.endsWith(".kpart.json")) {
+        loadPartFile(resource);
+        statusBar()->showMessage(tr("%1 をマイ部品に読み込みました。").arg(name), 5000);
+        return true;
+    }
+    if (!confirmDiscard())
+        return false;
+    // A copy where the user keeps it, so that it is saved and calculated like any project.
+    QString p = target;
+    if (p.isEmpty()) {
+        auto *parent = QApplication::activeModalWidget();
+        p = QFileDialog::getSaveFileName(
+            parent ? parent : this, tr("練習データを保存して開く"),
+            QDir(settings.value("directory", QDir::homePath()).toString()).filePath(name),
+            name.endsWith(".sdf") ? tr("構造ファイル (*.sdf)") : tr("MolFormaプロジェクト (*.kgui.json)"));
+        if (p.isEmpty())
+            return false;
+    }
+    checkMcpPath(p);
+    writeFile(p, readFile(resource));
+    loadPath(p);
+    return true;
+}
 void MainWindow::openDropped(const QString &file) {
     checkMcpPath(file);
     const auto suffix = QFileInfo(file).suffix().toLower();
@@ -3279,8 +3304,20 @@ void MainWindow::showManual() {
     bar->addWidget(find, 1);
     auto *browser = new QTextBrowser;
     browser->setObjectName("manualText");
-    browser->setOpenExternalLinks(true);
     layout->addWidget(browser, 1);
+    // Links are followed here: the practice files beside the recipes are used rather than shown.
+    browser->setOpenLinks(false);
+    connect(browser, &QTextBrowser::anchorClicked, &dialog, [this, browser, &dialog](const QUrl &url) {
+        if (url.scheme() != "qrc")
+            QDesktopServices::openUrl(url);
+        else if (!url.path().startsWith("/docs/recipes/samples/"))
+            browser->setSource(url);
+        else
+            safe([&] {
+                if (useSample(":" + url.path()))
+                    dialog.accept();
+            });
+    });
     // Pages are shown by their resource URL, so links between them and their images resolve.
     const auto show = [browser, pages] {
         const auto path = pages->currentData().toString();
@@ -3876,8 +3913,10 @@ void MainWindow::savePart() {
 void MainWindow::loadPart() {
     QString p =
         QFileDialog::getOpenFileName(this, tr("マイ部品を読み込む"), {}, tr("部品 (*.kpart.json *.json)"));
-    if (p.isEmpty())
-        return;
+    if (!p.isEmpty())
+        loadPartFile(p);
+}
+void MainWindow::loadPartFile(const QString &p) {
     auto t = parseJson(readFile(p));
     validateTemplate(t);
     if (!t["id"].toString().startsWith("my:"))

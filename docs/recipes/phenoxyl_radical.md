@@ -8,7 +8,7 @@
 | 使う機能 | 水素の削除、「属性」ページの形式電荷・不対電子、「電荷」ページ、多重度と参照波動関数（RKS・UKS）、回転対称数の確認事項 |
 | 計算 | B3LYP/6-31+G*、最適化 → 振動数（3分子）、水素原子の一点 |
 | 計算時間の目安 | フェノール 約26分、フェノキシラジカル 約58分、フェノラート 約19分（MPI 6プロセス、ほかの計算と並行）、水素原子 数秒 |
-| 練習データ | `docs/recipes/samples/phenol.kgui.json`、`phenoxyl.kgui.json`、`phenolate.kgui.json` |
+| 練習データ | [`phenol.kgui.json`](samples/phenol.kgui.json)、[`phenoxyl.kgui.json`](samples/phenoxyl.kgui.json)、[`phenolate.kgui.json`](samples/phenolate.kgui.json) |
 
 ![属性ページで酸素に不対電子を付けたフェノキシラジカル](images/phenoxyl_radical.png)
 

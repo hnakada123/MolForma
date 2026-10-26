@@ -8,7 +8,7 @@ Build a molecule with the element buttons and the “Place”, “Bond” and �
 | Features | Placing atoms and replacing hydrogens, auto-added hydrogens, cleanup, measuring distances and angles, deletion, bond types, inserting an atom into a bond |
 | Calculation | B3LYP/6-31G*, optimization → frequencies |
 | Run time | About 2 minutes (4 MPI processes) |
-| Practice data | `docs/recipes/samples/ethanol.kgui.json` (cleaned-up starting structure and settings) |
+| Practice data | [`ethanol.kgui.json`](../../recipes/samples/ethanol.kgui.json) (cleaned-up starting structure and settings) |
 
 ![Ethanol built from atoms, with a measured distance](images/atoms_and_bonds.png)
 

@@ -8,7 +8,7 @@
 | 使う機能 | 置換基の付ける位置、4原子の選択と二面角の測定、寸法の数値指定、名前を付けて保存、座標スキャン（緩和スキャン）、結果ビューアの「経路・スキャン」 |
 | 計算 | B3LYP/6-31G*、緩和スキャン（二面角 180°→0°、13点） |
 | 計算時間の目安 | 約92分（MPI 2プロセス、ほかの計算と並行。1点あたり約7分） |
-| 練習データ | `docs/recipes/samples/butane_anti.kgui.json`、`butane_gauche.kgui.json`、`butane_scan.kgui.json`（スキャンの設定つき） |
+| 練習データ | [`butane_anti.kgui.json`](samples/butane_anti.kgui.json)、[`butane_gauche.kgui.json`](samples/butane_gauche.kgui.json)、[`butane_scan.kgui.json`](samples/butane_scan.kgui.json)（スキャンの設定つき） |
 
 ![4原子を選んで二面角を表示したn-ブタン](images/butane_conformers.png)
 

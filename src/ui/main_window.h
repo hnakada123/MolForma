@@ -79,6 +79,9 @@ class MainWindow : public QMainWindow {
     void refreshStalePanels();
     // Shows the table of the coordinates under the 3D view of "1 分子" (or in its place).
     void showCoordinateTable();
+    // A practice file of the recipes, embedded with the manual: a part (.kpart.json) joins "マイ部品"; a
+    // molecule is saved as a copy (asked where when target is empty) and opened. Returns whether it was used.
+    bool useSample(const QString &resource, const QString &target = {});
 
   protected:
     void changeEvent(QEvent *) override;
@@ -288,6 +291,7 @@ class MainWindow : public QMainWindow {
     void contextMenu(const QPoint &p, const QString &id);
     void savePart();
     void loadPart();
+    void loadPartFile(const QString &path);
     void removePart(); // The user's part chosen in the palette, from its list.
     // Sorts the atoms: "element", "residue" or "selected" (the selection first).
     void sortAtoms(const QString &mode);

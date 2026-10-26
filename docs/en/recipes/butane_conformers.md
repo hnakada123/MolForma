@@ -8,7 +8,7 @@ Put two methyl groups on ethane to make n-butane, choose four atoms in order to 
 | Features | Where substituents go, choosing four atoms and measuring the dihedral, setting dimensions by value, Save as, coordinate scan (relaxed), “Path / scan” in the Result viewer |
 | Calculation | B3LYP/6-31G*, relaxed scan (dihedral 180° → 0°, 13 points) |
 | Run time | About 92 minutes (2 MPI processes, alongside other runs; about 7 minutes per point) |
-| Practice data | `docs/recipes/samples/butane_anti.kgui.json`, `butane_gauche.kgui.json`, `butane_scan.kgui.json` (with the scan settings) |
+| Practice data | [`butane_anti.kgui.json`](../../recipes/samples/butane_anti.kgui.json), [`butane_gauche.kgui.json`](../../recipes/samples/butane_gauche.kgui.json), [`butane_scan.kgui.json`](../../recipes/samples/butane_scan.kgui.json) (with the scan settings) |
 
 ![n-Butane with four atoms chosen and the dihedral shown](images/butane_conformers.png)
 

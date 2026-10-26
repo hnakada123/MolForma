@@ -126,6 +126,48 @@ class EditorTest : public QObject {
         QVERIFY2(imageWidth > 0 && imageWidth < pageWidth,
                  qPrintable(QString("%1 / %2").arg(imageWidth).arg(pageWidth)));
     }
+    void manualSamples() {
+        // The practice files of the recipes are embedded: a molecule is opened from a copy that can be
+        // saved, and a part joins "マイ部品" when its link in the manual is clicked.
+        MainWindow w;
+        QTemporaryDir dir;
+        const auto copy = dir.filePath("ethanol.kgui.json");
+        QVERIFY(w.useSample(":/docs/recipes/samples/ethanol.kgui.json", copy));
+        QCOMPARE(w.document().formula(), QString("C2H6O"));
+        QVERIFY(QFileInfo(copy).isWritable());
+        QCOMPARE(w.recentFiles().first(), copy);
+        bool clicked = false, closed = false;
+        QTimer::singleShot(0, &w, [&] {
+            auto *dialog = w.findChild<QDialog *>("manualDialog");
+            auto *browser = dialog->findChild<QTextBrowser *>("manualText");
+            browser->setSource(QUrl("qrc:/docs/recipes/my_parts.md"));
+            QTextCursor link;
+            for (auto block = browser->document()->begin(); block.isValid() && link.isNull();
+                 block = block.next())
+                for (auto it = block.begin(); !it.atEnd(); ++it)
+                    if (it.fragment().charFormat().anchorHref() == "samples/trimethylsilyl.kpart.json") {
+                        link = QTextCursor(browser->document());
+                        link.setPosition(it.fragment().position() + 1);
+                        break;
+                    }
+            if (!link.isNull()) {
+                clicked = true;
+                QTest::mouseClick(browser->viewport(), Qt::LeftButton, {},
+                                  browser->cursorRect(link).center());
+            }
+            closed = !dialog->isVisible();
+            if (!closed)
+                dialog->reject();
+        });
+        w.findChild<QAction *>("manualAction")->trigger();
+        QVERIFY(clicked);
+        QVERIFY(closed);
+        QStringList parts;
+        for (const auto &part : QSettings("MolForma", "MolForma").value("parts").toJsonArray())
+            parts << part.toObject()["id"].toString();
+        QVERIFY2(parts.contains("my:トリメチルシリル"), qPrintable(parts.join(' ')));
+        QSettings("MolForma", "MolForma").remove("parts"); // Later tests start without parts.
+    }
     void autosaveAndRecovery() {
         QDir(settingsHome.filePath("data")).removeRecursively();
         {

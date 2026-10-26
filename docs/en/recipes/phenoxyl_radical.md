@@ -8,7 +8,7 @@ Delete just the O–H hydrogen of phenol and make the phenoxyl radical (doublet)
 | Features | Deleting a hydrogen, formal charge and unpaired electrons on the “Attributes” page, the “Charge” page, multiplicity and reference (RKS, UKS), the rotational-symmetry note |
 | Calculation | B3LYP/6-31+G*, optimization → frequencies (three molecules), a hydrogen-atom single point |
 | Run time | About 26 minutes for phenol, 58 for the phenoxyl radical and 19 for phenolate (6 MPI processes, alongside other runs); seconds for the hydrogen atom |
-| Practice data | `docs/recipes/samples/phenol.kgui.json`, `phenoxyl.kgui.json`, `phenolate.kgui.json` |
+| Practice data | [`phenol.kgui.json`](../../recipes/samples/phenol.kgui.json), [`phenoxyl.kgui.json`](../../recipes/samples/phenoxyl.kgui.json), [`phenolate.kgui.json`](../../recipes/samples/phenolate.kgui.json) |
 
 ![The phenoxyl radical with an unpaired electron on oxygen set on the Attributes page](images/phenoxyl_radical.png)
 

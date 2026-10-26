@@ -8,7 +8,7 @@
 | 使う機能 | 配位中心、配位形状・中心–供与原子の距離・酸化数、配位サイトのクリック、二座配位子、配位子の連続配置、電荷の追従、構造の検査 |
 | 計算 | B3LYP/def2-SVP、構造最適化 |
 | 計算時間の目安 | 約40分（MPI 8プロセス、11ステップ） |
-| 練習データ | `docs/recipes/samples/co_en_complex.kgui.json` |
+| 練習データ | [`co_en_complex.kgui.json`](samples/co_en_complex.kgui.json) |
 
 ![配位サイトにenと塩化物を並べたtrans-[Co(en)2Cl2]+](images/cobalt_complex.png)
 

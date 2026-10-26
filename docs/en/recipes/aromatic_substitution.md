@@ -8,7 +8,7 @@ Put substituent templates on the benzene skeleton to make p-nitroaniline. A subs
 | Features | Skeleton and substituent templates, the tool after placing a part, atom numbers, cleanup |
 | Calculation | B3LYP/6-31G*, optimization → frequencies (optimization for the o- and m-isomers) |
 | Run time | About 35 minutes (6 MPI processes, mostly the analytic Hessian of the frequencies) |
-| Practice data | `docs/recipes/samples/p_nitroaniline.kgui.json`, `o_nitroaniline.kgui.json`, `m_nitroaniline.kgui.json` |
+| Practice data | [`p_nitroaniline.kgui.json`](../../recipes/samples/p_nitroaniline.kgui.json), [`o_nitroaniline.kgui.json`](../../recipes/samples/o_nitroaniline.kgui.json), [`m_nitroaniline.kgui.json`](../../recipes/samples/m_nitroaniline.kgui.json) |
 
 ![p-Nitroaniline: amino and nitro groups on benzene](images/aromatic_substitution.png)
 

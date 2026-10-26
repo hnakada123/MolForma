@@ -9,7 +9,7 @@
 | 使う機能 | 周期表・検索での元素の選択、選択順と接続点、マイ部品の保存（部品名・種類・ファイル）、マイ部品の一覧・読込・一覧から外す、マイ部品の配置 |
 | 計算 | B3LYP/6-31G*、構造最適化 |
 | 計算時間の目安 | 約48分（MPI 8プロセス、ほかの計算と並行。メチル基の回転で40ステップ） |
-| 練習データ | `docs/recipes/samples/trimethylsilyl.kpart.json`（部品）、`tms_benzene.kgui.json` |
+| 練習データ | [`trimethylsilyl.kpart.json`](samples/trimethylsilyl.kpart.json)（部品）、[`tms_benzene.kgui.json`](samples/tms_benzene.kgui.json) |
 
 ![マイ部品のトリメチルシリル基を付けたベンゼン](images/my_parts.png)
 

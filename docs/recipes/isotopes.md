@@ -8,7 +8,7 @@
 | 使う機能 | 「属性」ページの同位体 / 質量、座標の表の質量の列と元素のセル（D・T）、原子を並べ替え、振動数だけの計算 |
 | 計算 | B3LYP/6-31G*、振動数（[題材1](atoms_and_bonds.md)で最適化した構造） |
 | 計算時間の目安 | 約1分（MPI 8プロセス） |
-| 練習データ | `docs/recipes/samples/ethanol_opt.kgui.json`（最適化した構造）、`ethanol_od.kgui.json`（O–D） |
+| 練習データ | [`ethanol_opt.kgui.json`](samples/ethanol_opt.kgui.json)（最適化した構造）、[`ethanol_od.kgui.json`](samples/ethanol_od.kgui.json)（O–D） |
 
 ![O–Hの水素を重水素にしたエタノールと座標の表の質量](images/isotopes.png)
 

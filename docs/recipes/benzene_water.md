@@ -8,7 +8,7 @@
 | 使う機能 | 2つ目の分子を空白に置く、選択単位「分子」、主慣性軸へ整列、座標の表（3D＋表）のセルの編集、寸法による分子どうしの距離、BSSE補正（counterpoise） |
 | 計算 | MP2/6-31G*、一点エネルギー、BSSE補正 |
 | 計算時間の目安 | 約20秒（MPI 6プロセス） |
-| 練習データ | `docs/recipes/samples/benzene_water.kgui.json` |
+| 練習データ | [`benzene_water.kgui.json`](samples/benzene_water.kgui.json) |
 
 ![環の上に水を置いたベンゼン–水二量体（+X方向から）](images/benzene_water.png)
 
