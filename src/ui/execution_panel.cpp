@@ -439,7 +439,14 @@ void ExecutionPanel::buildRunPanel() {
     viewResults->setObjectName("executionResults");
     auto *history = new QPushButton("履歴で見る");
     history->setObjectName("executionHistory");
-    for (auto *b : {openFolder, viewResults, history})
+    // While it runs, the same stop as the header's (asking first).
+    stopRun = new QPushButton(lineIcon("stop"), "停止…");
+    stopRun->setObjectName("executionStopRun");
+    stopRun->setProperty("danger", true);
+    stopRun->setToolTip("実行中のNWChemを停止します（確認あり）。");
+    stopRun->hide();
+    connect(stopRun, &QPushButton::clicked, this, &ExecutionPanel::confirmStop);
+    for (auto *b : {openFolder, viewResults, history, stopRun})
         actions->addWidget(b);
     actions->addStretch();
     runCard->body()->addLayout(actions);
@@ -784,15 +791,20 @@ void ExecutionPanel::refresh() {
         if (!c.error.isEmpty())
             covered << c.error;
     }
+    // Under a field only what it does not say itself: where a name was found in PATH, or why it
+    // was not found. A path stays in the checks at the right.
     for (const auto &key : {"executable", "launcher"})
         for (const auto &c : report.checks)
             if (c.label == (QString(key) == "executable" ? "NWChem実行ファイル" : "MPIランチャー")) {
-                found[key]->setText(c.ok ? "✓ " + c.detail : c.detail);
+                const auto value = s[key].toString();
+                const bool named = !value.contains('/') && !value.contains('\\');
+                found[key]->setText(!c.ok ? c.detail : named ? "✓ PATHから: " + c.detail : QString());
                 found[key]->setProperty("good", c.ok);
                 found[key]->setProperty("bad", !c.ok);
                 repolish(found[key]);
             }
-    found["launcher"]->setVisible(s["mode"] == "mpi");
+    found["executable"]->setVisible(!found["executable"]->text().isEmpty());
+    found["launcher"]->setVisible(s["mode"] == "mpi" && !found["launcher"]->text().isEmpty());
     QStringList messages;
     if (!editable)
         messages << "候補を確定・取消し、整形の終了後に実行できます。";
@@ -892,6 +904,8 @@ void ExecutionPanel::updateRun() {
     openFolder->setEnabled(!saved.directory.isEmpty());
     viewResults->setEnabled(!saved.directory.isEmpty() && !resultFiles(saved.directory).isEmpty());
     const bool stoppable = run.active() && run.state() != "stopping";
+    stopRun->setVisible(run.active());
+    stopRun->setEnabled(stoppable);
     prepare->setVisible(!run.active());
     runningNote->setVisible(run.active());
     state->setVisible(!run.active());

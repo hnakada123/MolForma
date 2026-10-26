@@ -50,6 +50,14 @@ QString real(double value) {
 QString fixed(double value, int decimals) {
     return std::isfinite(value) ? QString::number(value, 'f', decimals) : "—";
 }
+// A value to read (the overview, the summary) with the minus sign of "履歴" and the run panel; the
+// cells of the tables keep "-", so that what is taken from them stays a number.
+QString shownReal(double value) {
+    return real(value).replace('-', "−");
+}
+QString shownFixed(double value, int decimals) {
+    return fixed(value, decimals).replace('-', "−");
+}
 constexpr double HartreeToKcal = 627.509474, HartreeToEv = 27.211386245988, EvNanometer = 1239.84198;
 QString sourceStamp(const QFileInfo &file) {
     if (!file.exists() || !file.isFile())
@@ -1859,13 +1867,13 @@ void ResultsPanel::showOverview() {
         QString caption;
         if (!data.energies.isEmpty() && data.energies.last().hartree != final["hartree"].toDouble())
             caption = QString("出力の最後の記録: %1 %2 Eh")
-                          .arg(data.energies.last().method, real(data.energies.last().hartree));
+                          .arg(data.energies.last().method, shownReal(data.energies.last().hartree));
         tile("resultsTileEnergy",
              QString("計算のエネルギー（%1 · %2）").arg(final["method"].toString(), source),
-             real(final["hartree"].toDouble()) + " Eh", caption, "neutral", 1, true);
+             shownReal(final["hartree"].toDouble()) + " Eh", caption, "neutral", 1, true);
     } else if (!data.energies.isEmpty())
         tile("resultsTileEnergy", QString("最後のエネルギー記録（%1）").arg(data.energies.last().method),
-             real(data.energies.last().hartree) + " Eh", "出力順の最後の値です。", "neutral", 1, true);
+             shownReal(data.energies.last().hartree) + " Eh", "出力順の最後の値です。", "neutral", 1, true);
     if (data.properties.contains("optimization") || !data.steps.isEmpty()) {
         const bool converged = data.properties.value("optimization") == "converged";
         QString caption;
@@ -1896,7 +1904,7 @@ void ResultsPanel::showOverview() {
                 continue;
             ++vibrations;
             if (data.modes[i].frequency < -10)
-                imaginary << fixed(data.modes[i].frequency, 1);
+                imaginary << shownFixed(data.modes[i].frequency, 1);
         }
         const int rigid = int(data.modes.size()) - vibrations;
         tile("resultsTileImaginary", "虚振動（−10 cm⁻¹未満）",
@@ -1917,17 +1925,18 @@ void ResultsPanel::showOverview() {
             continue;
         tile("resultsTileGap" + spin,
              spins.size() > 1 ? QString("HOMO–LUMOギャップ（%1）").arg(spin) : QString("HOMO–LUMOギャップ"),
-             fixed((data.orbitals[l].energy - data.orbitals[h].energy) * HartreeToEv, 2) + " eV",
+             shownFixed((data.orbitals[l].energy - data.orbitals[h].energy) * HartreeToEv, 2) + " eV",
              QString("HOMO %1 · LUMO %2 eV")
-                 .arg(fixed(data.orbitals[h].energy * HartreeToEv, 2),
-                      fixed(data.orbitals[l].energy * HartreeToEv, 2)),
+                 .arg(shownFixed(data.orbitals[h].energy * HartreeToEv, 2),
+                      shownFixed(data.orbitals[l].energy * HartreeToEv, 2)),
              "neutral", 2);
     }
     if (data.properties.contains("dipole")) {
         const auto d = data.properties.value("dipole").toObject();
         tile("resultsTileDipole", "双極子モーメント", fixed(d["debye"].toDouble(), 2) + " D",
              QString("x %1 · y %2 · z %3 a.u.")
-                 .arg(fixed(d["x"].toDouble(), 4), fixed(d["y"].toDouble(), 4), fixed(d["z"].toDouble(), 4)),
+                 .arg(shownFixed(d["x"].toDouble(), 4), shownFixed(d["y"].toDouble(), 4),
+                      shownFixed(d["z"].toDouble(), 4)),
              "neutral", 7);
     }
     if (!data.excitations.isEmpty()) {
@@ -1949,7 +1958,7 @@ void ResultsPanel::showOverview() {
                  .arg(data.grid[0])
                  .arg(data.grid[1])
                  .arg(data.grid[2])
-                 .arg(real(data.minimum), real(data.maximum))
+                 .arg(shownReal(data.minimum), shownReal(data.maximum))
                  .arg(data.surface.size()),
              "neutral", data.format == "CUBE" ? 8 : 2);
     if (data.frames.size() > 1)
@@ -1969,12 +1978,12 @@ void ResultsPanel::showOverview() {
         values->setHorizontalSpacing(16);
         values->setVerticalSpacing(4);
         const QList<std::pair<QString, QString>> rows{
-            {"ゼロ点補正", fixed(t["zpe_kcal"].toDouble(), 3) + " kcal/mol"},
-            {"熱補正（内部エネルギー）", fixed(t["energy_kcal"].toDouble(), 3) + " kcal/mol"},
-            {"熱補正（エンタルピー）", fixed(h, 3) + " kcal/mol"},
+            {"ゼロ点補正", shownFixed(t["zpe_kcal"].toDouble(), 3) + " kcal/mol"},
+            {"熱補正（内部エネルギー）", shownFixed(t["energy_kcal"].toDouble(), 3) + " kcal/mol"},
+            {"熱補正（エンタルピー）", shownFixed(h, 3) + " kcal/mol"},
             {"エントロピー", fixed(t["entropy_cal"].toDouble(), 3) + " cal/(mol·K)"},
             {"Gibbs補正 G = H − TS（算出値）",
-             QString("%1 kcal/mol（%2 Eh）").arg(fixed(g, 3), fixed(g / HartreeToKcal, 6))}};
+             QString("%1 kcal/mol（%2 Eh）").arg(shownFixed(g, 3), shownFixed(g / HartreeToKcal, 6))}};
         for (int r = 0; r < rows.size(); ++r) {
             auto *name = new QLabel(rows[r].first);
             auto *number = new QLabel(rows[r].second);
@@ -2125,8 +2134,8 @@ QString ResultsPanel::briefSummary() const {
                       ? QString("最適化: 収束")
                       : QString("最適化: 収束メッセージなし"));
     if (const auto final = data.properties["final_energy"].toObject(); !final.isEmpty())
-        parts
-            << QString("E = %1 Eh（%2）").arg(real(final["hartree"].toDouble()), final["method"].toString());
+        parts << QString("E = %1 Eh（%2）")
+                     .arg(shownReal(final["hartree"].toDouble()), final["method"].toString());
     if (!data.modes.isEmpty()) {
         const auto rigid = resultRigidModes(data);
         int imaginary = 0;

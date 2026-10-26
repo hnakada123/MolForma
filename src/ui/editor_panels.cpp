@@ -802,7 +802,7 @@ void MainWindow::buildChargePanel() {
     section(f, "分子の電荷");
     chargeState = new QLabel;
     chargeState->setObjectName("moleculeChargeState");
-    auto *chargeLink = linkButton("② 計算条件で変更", "moleculeChargeLink");
+    auto *chargeLink = linkButton("2 計算条件で変更", "moleculeChargeLink");
     connect(chargeLink, &QPushButton::clicked, this, [this] {
         workspaceTabs->setCurrentWidget(calculation);
         calculation->showField("charge");
@@ -829,13 +829,13 @@ void MainWindow::buildChargePanel() {
         [this] { edit("全電荷を合わせる", [](Document &d) { d.setJobValue("charge", d.formalCharge()); }); },
         "applyMoleculeFormalCharge")
         ->setToolTip("原子の形式電荷の合計を、計算の全電荷（「2 計算条件」）にします。");
-    auto *preview = linkButton("④ 入力プレビューで確認", "moleculeInputPreview");
+    auto *preview = linkButton("4 入力プレビューで確認", "moleculeInputPreview");
     connect(preview, &QPushButton::clicked, this, [this] { workspaceTabs->setCurrentWidget(inputPreview); });
     f->addRow(preview);
     section(f, "外部点電荷");
     pointChargeState = new QLabel;
     pointChargeState->setObjectName("moleculePointChargeState");
-    auto *pointLink = linkButton("② 計算条件で設定", "moleculePointChargeLink");
+    auto *pointLink = linkButton("2 計算条件で設定", "moleculePointChargeLink");
     pointLink->setToolTip("点電荷をNWChem入力に含めるかは「2 計算条件」の「周囲の環境」で設定します。");
     connect(pointLink, &QPushButton::clicked, this, [this] {
         workspaceTabs->setCurrentWidget(calculation);

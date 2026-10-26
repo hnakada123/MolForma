@@ -80,7 +80,7 @@ class ExecutionPanel : public QWidget {
     QVBoxLayout *checkList;
     RunProgress *progress;
     QPlainTextEdit *command, *log;
-    QPushButton *prepare, *openFolder, *viewResults, *removeEnvironment, *showRunLink;
+    QPushButton *prepare, *openFolder, *viewResults, *removeEnvironment, *showRunLink, *stopRun;
     QFrame *runPanel;
     QCheckBox *openResults; // Load the job folder into the result viewer when a run finishes.
     QCheckBox *follow;      // Keep the end of the log in view.

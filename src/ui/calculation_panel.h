@@ -113,7 +113,7 @@ class CalculationPanel : public QWidget {
     QFrame *banner;
     CalculationSummary *summaryCard;
     StatusCard *validationCard;
-    QLabel *message, *changeCount, *noChanges, *reference;
+    QLabel *message, *changeCount, *noChanges, *reference, *passed;
     DiagnosticsList *validation;
     QTreeWidget *changes;
     QPushButton *formalCharge;

@@ -297,6 +297,16 @@ class ExecutionTest : public QObject {
         QCOMPARE(nwchemSettings(w.document())["memory_mb"].toInt(), 256);
         w.history()->undo(); // Undo is the header's.
         QCOMPARE(w.document().toJson(), d.toJson());
+        // Under the field only where a name was found in PATH; a path is in the checks at the right.
+        auto *found = w.findChild<QLabel *>("executionFound_executable");
+        QVERIFY(found->isHidden());
+        if (!QStandardPaths::findExecutable("sh").isEmpty()) {
+            input(w, "executable", "sh");
+            QVERIFY(!found->isHidden());
+            QVERIFY(found->text().startsWith("✓ PATHから: "));
+            w.history()->undo();
+            QVERIFY(found->isHidden());
+        }
         // Runs start from the header (also F5); the checks of this tab say whether they can.
         auto *checks = w.findChild<QLabel *>("executionCheckStatus");
         input(w, "omp_stacksize", "bad");
@@ -442,8 +452,16 @@ class ExecutionTest : public QObject {
         QVERIFY(
             w.findChild<QLabel *>("executionCriterion0")->text().contains("達成")); // Gmax 0.0004 ≤ 0.00045
         QVERIFY(w.findChild<QLabel *>("executionCriterion2")->text().contains("未達")); // Xmax 0.009 > 0.0018
-        run->stop();
+        // The run panel stops it too, asking first like the header's "停止".
+        auto *stop = w.findChild<QPushButton *>("executionStopRun");
+        QVERIFY(stop->isVisibleTo(&w) && stop->isEnabled());
+        QTimer::singleShot(0, &w, [] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()))
+                box->button(QMessageBox::Yes)->click();
+        });
+        stop->click();
         QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 10000);
+        QVERIFY(!stop->isVisibleTo(&w));
         QVERIFY(!pill->isVisibleTo(&w));
         QVERIFY(w.findChild<QToolButton *>("runButton")->isVisibleTo(&w));
         QVERIFY(w.findChild<QLabel *>("executionStage0")->text().contains("未完了"));

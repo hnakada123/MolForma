@@ -218,10 +218,8 @@ class StatusCard : public SettingsCard {
     State current = Waiting;
 };
 
-// A link to another place ("③ 実行設定で変更"), with an arrow after the text.
+// A link to another place ("3 実行設定で変更", a tab named as in the text), with an arrow after it.
 QPushButton *linkButton(const QString &text, const QString &objectName = {});
-// "2 計算条件" as the steps of the header write it, with the number in a circle ("② 計算条件").
-QString tabName(int index);
 // Read-only text of a log or file: fixed-width, not wrapped, in the frame of the logs.
 QPlainTextEdit *logView(const QString &objectName);
 // A flat button with the copy icon.

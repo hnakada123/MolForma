@@ -459,11 +459,6 @@ QPushButton *linkButton(const QString &text, const QString &objectName) {
     b->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed); // As wide as its text, also in a form row.
     return b;
 }
-QString tabName(int index) {
-    static const QStringList names{"① 分子",           "② 計算条件",   "③ 実行設定",
-                                   "④ 入力プレビュー", "結果ビューア", "履歴"};
-    return names.value(index);
-}
 QPlainTextEdit *logView(const QString &objectName) {
     auto *text = new QPlainTextEdit;
     text->setObjectName(objectName);
@@ -1067,11 +1062,11 @@ void CalculationSummary::update(const Document &d) {
                         .arg(d.job()["charge"].toInt())
                         .arg(d.job()["multiplicity"].toInt(1))
                         .arg(reference.isEmpty() ? QString() : "（" + reference + "）"));
-    memory->setText(
-        QString("%1 MB / MPIプロセス · <a href=\"memory\" style=\"color:%2; text-decoration:none\">"
-                "③で変更</a>")
-            .arg(s["memory_mb"].toInt())
-            .arg(ChromeColors(palette()).accentText.name()));
+    // The link on a line of its own, never split.
+    memory->setText(QString("%1 MB / MPIプロセス<br><a href=\"memory\" style=\"color:%2; "
+                            "text-decoration:none\">3 実行設定で変更</a>")
+                        .arg(s["memory_mb"].toInt())
+                        .arg(ChromeColors(palette()).accentText.name()));
 }
 
 ViewControls::ViewControls(MoleculeView *view, const Names &names, bool rotate, bool menu, QWidget *parent)

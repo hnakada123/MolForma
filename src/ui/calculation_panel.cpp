@@ -361,7 +361,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     // The memory is set in "3 実行設定" with the processes it is multiplied by.
     memoryState = new QLabel;
     memoryState->setObjectName("calculationMemoryState");
-    auto *memoryLink = linkButton("③ 実行設定で変更", "calculationMemoryLink");
+    auto *memoryLink = linkButton("3 実行設定で変更", "calculationMemoryLink");
     connect(memoryLink, &QPushButton::clicked, this, [this] { showField("memory_mb"); });
     auto *memoryRow = readOnlyRow(memoryState, memoryLink);
     output->addRow("メモリ", memoryRow);
@@ -439,6 +439,11 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     validationCard->setObjectName("calculationCheck");
     validationCard->headline()->setObjectName("calculationStatus");
     auto *checkLayout = validationCard->body();
+    passed = new QLabel("分子・計算条件・詳細設定の検証を通過しました。");
+    passed->setObjectName("calculationChecksPassed");
+    passed->setProperty("muted", true);
+    passed->setWordWrap(true);
+    checkLayout->addWidget(passed);
     validation = new DiagnosticsList;
     validation->setObjectName("calculationValidation");
     validation->setFrameShape(QFrame::NoFrame);
@@ -557,8 +562,9 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     noChanges->setObjectName("calculationNoChanges");
     noChanges->setProperty("muted", true);
     changeCard->body()->addWidget(noChanges);
-    railLayout->addWidget(changeCard, 1);
-    auto *showPreview = linkButton("④ 入力プレビューで確認", "calculationShowPreview");
+    railLayout->addWidget(changeCard); // As tall as its rows; the link stays at the bottom.
+    railLayout->addStretch(1);
+    auto *showPreview = linkButton("4 入力プレビューで確認", "calculationShowPreview");
     showPreview->setToolTip("生成するNWChem入力の全文を「4 入力プレビュー」で表示します。");
     auto *previewRow = new QHBoxLayout;
     previewRow->addStretch();
@@ -1245,6 +1251,9 @@ void CalculationPanel::refreshChanges(const QJsonObject &s) {
             });
         }
     changeCount->setText(total ? QString("%1 項目").arg(total) : QString());
+    // Its rows (up to 12, then it scrolls), not the height of the rail.
+    const int row = std::max(changes->sizeHintForRow(0), 26);
+    changes->setFixedHeight(std::min(changes->topLevelItemCount(), 12) * row + 2 * changes->frameWidth());
     changes->setVisible(total);
     noChanges->setVisible(!total);
     changeFilters->button(1)->setText(QString("変更済み %1").arg(total));
@@ -1446,6 +1455,7 @@ void CalculationPanel::refresh() {
            : QString("入力を生成できません（エラー %1 件）").arg(check.errors.size()));
     validation->setMessages(check.errors, check.warnings, {}, fixes(check.errors));
     validation->setVisible(validation->count());
+    passed->setVisible(ok); // As the checks of "4 入力プレビュー" say it, above the warnings.
     if (auto *outputs = detailBoxes.value("orbitals").outputs) {
         const auto files = nwchemOutputFiles(d, check);
         outputs->setText(files.isEmpty() ? QString("CUBE・MOLDENの出力はオフです。")

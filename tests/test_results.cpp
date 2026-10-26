@@ -401,6 +401,8 @@ class ResultsTest : public QObject {
         QVERIFY(details->isTabVisible(1) && details->isTabVisible(2) && details->isTabVisible(4));
         QVERIFY(!details->isTabVisible(3) && !details->isTabVisible(5) && !details->isTabVisible(8));
         QVERIFY(panel->briefSummary().contains("最適化: 収束"));
+        // Values to read have the minus sign of "履歴"; table cells keep "-".
+        QVERIFY(panel->briefSummary().contains("E = −"));
         // Said once, in "概要": the message box under the details is for loading, errors and
         // comparisons, while the MCP results still read the outcome as the message.
         QVERIFY(widget<QPlainTextEdit>(w, "resultsStatus")->toPlainText().isEmpty());

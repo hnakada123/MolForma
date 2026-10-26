@@ -720,6 +720,11 @@ class CalculationTest : public QObject {
         QCOMPARE(changes(w).size(), fieldsChanged + 1);
         QCOMPARE(changes(w).last(), QString("波動関数の収束閾値: 1e-08"));
         auto *list = w.findChild<QTreeWidget *>("calculationChanges");
+        // The card is as tall as its rows, not the rail.
+        QCOMPARE(list->height(),
+                 list->topLevelItemCount() * std::max(list->sizeHintForRow(0), 26) + 2 * list->frameWidth());
+        // The checks say they passed, as in "4 入力プレビュー".
+        QVERIFY(!w.findChild<QLabel *>("calculationChecksPassed")->isHidden());
         emit list->itemClicked(list->topLevelItem(list->topLevelItemCount() - 1), 0);
         QVERIFY(w.findChild<QWidget *>("calculationDetailRow_scf_thresh")->isVisibleTo(tab));
         QCOMPARE(w.findChild<QLabel *>("calculationDetailCurrent")->text(), QString("1e-08"));
