@@ -304,6 +304,13 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
           static_cast<QWidget *>(divider), static_cast<QWidget *>(compareGeometry),
           static_cast<QWidget *>(applyGeometry), static_cast<QWidget *>(exportButton)})
         bar->addWidget(w);
+    // Narrow, the actions keep their icons and the bar its one row.
+    barFit = new ToolbarFit(resultBar, [this](bool compact) {
+        for (QAbstractButton *b :
+             {static_cast<QAbstractButton *>(compareGeometry), static_cast<QAbstractButton *>(applyGeometry),
+              static_cast<QAbstractButton *>(exportButton)})
+            setIconOnly(b, compact);
+    });
     layout->addWidget(resultBar);
     auto *body = new QWidget;
     auto *bodyLayout = new QVBoxLayout(body);
@@ -432,7 +439,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     });
 
     // Under the view: the controls for what it shows. Pages of one height, so the view keeps its size.
-    auto *dockFrame = new QFrame;
+    dockFrame = new QFrame;
     dockFrame->setObjectName("resultsDock");
     auto *dockLayout = new QVBoxLayout(dockFrame);
     dockLayout->setContentsMargins(10, 7, 10, 5);
@@ -595,7 +602,14 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     bannerRow->addWidget(bannerLog, 0, Qt::AlignTop);
     banner->hide();
     sideLayout->addWidget(banner);
-    // Messages of the viewer (how the calculation ended, comparisons, loading) above the details.
+    auto *tabs = details = new QTabWidget;
+    tabs->setObjectName("resultsDetails");
+    tabs->setProperty("tabs", "underline");
+    tabs->tabBar()->setDrawBase(false);
+    tabs->setUsesScrollButtons(true);
+    sideLayout->addWidget(tabs, 1);
+    // Messages of the viewer (loading, errors, comparisons) under the details, so that showing one
+    // moves nothing above it. How the calculation ended is in the bar, the banner and "概要".
     status = new QPlainTextEdit;
     status->setObjectName("resultsStatus");
     status->setAccessibleName("結果ビューアのメッセージ");
@@ -609,12 +623,6 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     connect(status, &QPlainTextEdit::textChanged, this,
             [this] { status->setVisible(!status->toPlainText().isEmpty()); });
     sideLayout->addWidget(status);
-    auto *tabs = details = new QTabWidget;
-    tabs->setObjectName("resultsDetails");
-    tabs->setProperty("tabs", "underline");
-    tabs->tabBar()->setDrawBase(false);
-    tabs->setUsesScrollButtons(true);
-    sideLayout->addWidget(tabs, 1);
     split->addWidget(side);
     overviewScroll = new QScrollArea;
     overviewScroll->setObjectName("resultsOverview");
@@ -1478,7 +1486,8 @@ void ResultsPanel::updateActions() {
     const bool shown = !data.source.isEmpty() || loading();
     for (QWidget *w : {static_cast<QWidget *>(reload), static_cast<QWidget *>(compareGeometry),
                        static_cast<QWidget *>(applyGeometry), static_cast<QWidget *>(exportButton),
-                       findChild<QWidget *>("resultsBarDivider")})
+                       findChild<QWidget *>("resultsBarDivider"), static_cast<QWidget *>(viewControlsFrame),
+                       static_cast<QWidget *>(dockFrame)})
         w->setVisible(shown);
     cancel->setVisible(loading());
     saveXyz->setEnabled(ready && !data.frames.isEmpty());
@@ -1520,9 +1529,8 @@ void ResultsPanel::updateActions() {
 }
 void ResultsPanel::display(bool orbitalOnly) {
     const auto brief = briefSummary();
-    status->setPlainText(data.source.isEmpty() ? QString()
-                         : brief.isEmpty()     ? data.status
-                                               : data.status + "\n" + brief);
+    summary = data.source.isEmpty() ? QString() : brief.isEmpty() ? data.status : data.status + "\n" + brief;
+    status->clear(); // The outcome is in "概要": no message left from loading.
     if (!orbitalOnly && !data.source.isEmpty()) {
         QString selectedFile = animationSources.value(data.source);
         for (int i = 0; selectedFile.isEmpty() && i < files->count(); ++i) {
@@ -1548,15 +1556,10 @@ void ResultsPanel::display(bool orbitalOnly) {
     jobLabel->setToolTip(QDir::toNativeSeparators(data.source));
     setChip(formatChip, open ? formatName(data.format) : QString(), "neutral");
     const auto outcome = resultOutcome(data);
-    setChip(outcomeChip,
-            outcome == "normal"       ? QString("正常終了")
-            : outcome == "incomplete" ? QString("正常終了の記録なし")
-            : outcome == "error"      ? QString("エラー")
-                                      : QString(),
-            outcome == "normal"       ? "good"
-            : outcome == "incomplete" ? "warn"
-                                      : "bad",
-            data.status);
+    // A run that did not end normally has the banner over the details instead.
+    setChip(outcomeChip, outcome == "normal" ? QString("正常終了") : QString(), "good", data.status);
+    if (!orbitalOnly)
+        barFit->refit(); // Another file: its names may fit now.
     if (!orbitalOnly) {
         log->setPlainText(data.log);
         logName->setText(QFileInfo(data.source).fileName() +
@@ -1991,8 +1994,13 @@ void ResultsPanel::showOverview() {
         section("ほかの結果");
         label(other, "");
     }
-    section("メッセージ");
-    label(data.status, "");
+    // The banner says how a run that did not end normally ended; the warnings stay here.
+    const auto outcome = resultOutcome(data);
+    const bool bannered = outcome == "incomplete" || outcome == "error";
+    if (!bannered || !data.warnings.isEmpty())
+        section("メッセージ");
+    if (!bannered)
+        label(data.status, "");
     if (!data.warnings.isEmpty())
         label(data.warnings.join("\n\n"), "muted");
     // The other files of the job, to open with one click.
@@ -2105,6 +2113,10 @@ void ResultsPanel::showContext() {
     contextDetail->setVisible(!detail.isEmpty());
     if (dock->currentIndex() != page)
         dock->setCurrentIndex(page);
+}
+QString ResultsPanel::message() const {
+    const auto shown = status->toPlainText();
+    return shown.isEmpty() ? summary : shown;
 }
 QString ResultsPanel::briefSummary() const {
     QStringList parts;

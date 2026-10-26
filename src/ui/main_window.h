@@ -167,6 +167,8 @@ class MainWindow : public QMainWindow {
     QSplitter *moleculeSplit = nullptr;         // The 3D view over the coordinate table.
     QComboBox *moleculeLayout = nullptr;        // "view", "both" or "table", behind the segments under them.
     SettingsCard *positionCard = nullptr;       // "座標（1原子）", hidden while the table is shown.
+    QWidget *paletteColumn = nullptr;           // The palette of parts, folded with
+    QToolButton *paletteToggle = nullptr;       // "パレット" at the bottom of the tool rail.
     QHash<QString, QWidget *> toolOptionGroups; // Option bar groups by object name.
     QWidget *sequenceChip = nullptr, *measureCard = nullptr, *candidateCard = nullptr;
     QLabel *bannerLabel = nullptr;
@@ -211,6 +213,8 @@ class MainWindow : public QMainWindow {
     QList<QWidget *> workspacePanels() const;
     // The 3D view and the table of the coordinates in "1 分子", from the segments under them.
     void applyMoleculeLayout();
+    // Shows or folds the palette of parts (remembered).
+    void showPalette(bool show);
     QSet<QWidget *> stalePanels;
     void refreshPanels();
     void refreshPanel(QWidget *panel, bool always = false);

@@ -612,11 +612,27 @@ class HistoryTest : public QObject {
         QTemporaryDir first, second;
         MainWindow w;
         w.loadDocument(water(first.path()));
+        w.resize(1440, 900);
         showHistory(w);
         auto *panel = widget<HistoryPanel>(w, "historyTab");
         QTRY_VERIFY(!panel->scanning());
         QCOMPARE(panel->rootDirectory(), first.path());
-        QVERIFY(widget<QToolButton>(w, "historyRootButton")->text().endsWith("（3 実行設定と同じ）"));
+        auto *rootButton = widget<QToolButton>(w, "historyRootButton");
+        // Wide enough, the toolbar shows everything in full on one row.
+        auto *bar = widget<QWidget>(w, "historyToolbar");
+        auto *compare = widget<QPushButton>(w, "historyCompare");
+        w.resize(2400, 900);
+        QTRY_COMPARE(compare->text(), QString("ΔEを比べる"));
+        QVERIFY(rootButton->text().endsWith("（3 実行設定と同じ）"));
+        // Narrow, it keeps one row: the note goes to the tooltip, "ΔEを比べる" to its icon.
+        w.resize(1100, 900);
+        QTRY_VERIFY(compare->text().isEmpty());
+        QVERIFY(!rootButton->text().endsWith("（3 実行設定と同じ）"));
+        QVERIFY(rootButton->toolTip().endsWith("（3 実行設定と同じ）"));
+        QCOMPARE(compare->accessibleName(), QString("ΔEを比べる"));
+        QTRY_COMPARE(bar->layout()->heightForWidth(bar->width()), bar->layout()->sizeHint().height());
+        w.resize(2400, 900);
+        QTRY_COMPARE(compare->text(), QString("ΔEを比べる"));
         widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(2);
         w.edit("NWChem実行設定を変更",
                [&](Document &d) { setExecutionSetting(d, "job_root", second.path()); });
@@ -630,13 +646,15 @@ class HistoryTest : public QObject {
         saveExecutionBundle(d, jobs.path());
         MainWindow w;
         w.loadDocument(d);
+        w.resize(1440, 900);
         showHistory(w);
         auto *panel = widget<HistoryPanel>(w, "historyTab");
         QTRY_VERIFY(!panel->scanning());
         QCOMPARE(widget<QStackedWidget>(w, "historyPages")->currentIndex(), 0);
         panel->setRoot(other.path());
         QTRY_VERIFY(!panel->scanning());
-        QVERIFY(widget<QToolButton>(w, "historyRootButton")->text().endsWith("（選んだ保存先）"));
+        auto *rootButton = widget<QToolButton>(w, "historyRootButton");
+        QVERIFY((rootButton->text() + rootButton->toolTip()).contains("（選んだ保存先）"));
         QCOMPARE(widget<QStackedWidget>(w, "historyPages")->currentIndex(), 1);
         QCOMPARE(widget<QLabel>(w, "historyEmptyTitle")->text(), "この保存先にはジョブがありません");
         QVERIFY(widget<QLabel>(w, "historyEmptyExecution")->text().endsWith("（1 件）"));

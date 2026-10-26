@@ -408,6 +408,15 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     cancel->setEnabled(false);
     cancel->hide();
     tools->addWidget(cancel);
+    // Narrow, the toolbar keeps one row: "ΔEを比べる" as its icon, a narrower search, no caption and
+    // the folder alone.
+    toolbarFit = new ToolbarFit(toolbar, [this, rootCaption](bool compact) {
+        compactToolbar = compact;
+        setIconOnly(compare, compact);
+        rootCaption->setVisible(!compact);
+        search->setFixedWidth(compact ? 200 : 280);
+        updateToolbar();
+    });
     // What is seldom needed, so the toolbar stays one row.
     auto *more = new QToolButton;
     more->setObjectName("historyMore");
@@ -515,10 +524,9 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
 
     filesCard = new SettingsCard("ファイル");
     filesCard->setObjectName("historyFilesCard");
-    filesToggle = new QToolButton;
+    // Folded like the other cards; setFilesOpen() also hands its height to the list.
+    filesToggle = filesCard->setCollapsible(filesOpen);
     filesToggle->setObjectName("historyFilesToggle");
-    filesToggle->setProperty("flat", true);
-    filesCard->header()->insertWidget(0, filesToggle);
     fileChoice = new QComboBox;
     fileChoice->setObjectName("historyFile");
     fileChoice->addItem("保存した入力（input.nw）", "input.nw");
@@ -847,6 +855,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
         cancel->setEnabled(false);
         cancel->hide();
         refreshButton->setEnabled(true);
+        toolbarFit->refit(); // Without "読込を中止", and with the folder it scanned.
         populate();
         if (!scan.message.isEmpty())
             status->setText(status->text() + "\n" + scan.message);
@@ -879,7 +888,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
         QApplication::clipboard()->setText(
             static_cast<QPlainTextEdit *>(fileStack->currentWidget())->toPlainText());
     });
-    connect(filesToggle, &QToolButton::clicked, this, [this] { setFilesOpen(!filesOpen); });
+    connect(filesToggle, &QToolButton::clicked, this, [this](bool on) { setFilesOpen(on); });
     connect(viewer, &QPushButton::clicked, this, [this] { window->safe([this] { openResult(); }); });
     connect(reuse, &QPushButton::clicked, this, [this] { window->safe([this] { reuseSelected(); }); });
     connect(folder, &QPushButton::clicked, this, [this] {
@@ -1268,9 +1277,10 @@ void HistoryPanel::updateToolbar() {
     const auto other = executionRoot();
     const bool same = QDir::cleanPath(other) == QDir::cleanPath(root);
     const auto path = root.isEmpty() ? QString("未設定") : displayPath(root);
-    rootButton->setText(fontMetrics().elidedText(path, Qt::ElideMiddle, 360) +
-                        (same ? "（3 実行設定と同じ）" : "（選んだ保存先）"));
-    rootButton->setToolTip(root);
+    const QString note = same ? "（3 実行設定と同じ）" : "（選んだ保存先）";
+    rootButton->setText(fontMetrics().elidedText(path, Qt::ElideMiddle, compactToolbar ? 200 : 360) +
+                        (compactToolbar ? QString() : note));
+    rootButton->setToolTip(root + (compactToolbar ? note : QString()));
     executionRootAction->setEnabled(!same || !followsExecution);
     // Jobs recorded as running by MolForma on this PC whose process has ended.
     QStringList orphans;
@@ -1344,10 +1354,9 @@ void HistoryPanel::setFilesOpen(bool open, bool remember) {
     filesOpen = open;
     if (remember)
         window->settings.setValue("history/files_open", open);
-    filesToggle->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
-    filesToggle->setToolTip(open ? "ファイルの表示を閉じる" : "ファイルを表示");
-    for (QWidget *w : {static_cast<QWidget *>(fileStack), static_cast<QWidget *>(fileName),
-                       static_cast<QWidget *>(follow), static_cast<QWidget *>(copyFile)})
+    filesCard->setOpen(open);
+    for (QWidget *w :
+         {static_cast<QWidget *>(fileName), static_cast<QWidget *>(follow), static_cast<QWidget *>(copyFile)})
         w->setVisible(open);
     const auto m = filesCard->layout()->contentsMargins();
     const int closed = m.top() + m.bottom() + filesCard->header()->sizeHint().height() + 2;

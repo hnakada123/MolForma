@@ -28,6 +28,8 @@ static void initManualResources() {
     Q_INIT_RESOURCE(manual);
 }
 namespace mf {
+// The ways to lay out "1 分子" ("view", "both", "table"): the segments under the view and "表示".
+static const QStringList moleculeLayoutNames{"3D", "3D＋表", "表"};
 class DocumentCommand : public QUndoCommand {
     MainWindow *window;
     Document before, after;
@@ -291,6 +293,15 @@ void MainWindow::buildUi() {
         toolGroup->addButton(b);
     }
     railLayout->addStretch();
+    // The palette folds away for a wider view and table; the tools that place from it open it.
+    paletteToggle = new ToolRailButton({});
+    paletteToggle->setObjectName("paletteToggle");
+    paletteToggle->setText("パレット");
+    paletteToggle->setIcon(lineIcon("layers"));
+    paletteToggle->setToolTip("部品パレットを表示・畳みます。畳むと3D画面と座標の表が広がります（「配置」"
+                              "「置き換え」を選ぶと開きます）。");
+    railLayout->addWidget(paletteToggle, 0, Qt::AlignHCenter);
+    connect(paletteToggle, &QToolButton::clicked, this, [this](bool on) { showPalette(on); });
     toolGroup->buttons().first()->setChecked(true);
     page->addWidget(rail);
     auto *splitter = new QSplitter;
@@ -298,7 +309,7 @@ void MainWindow::buildUi() {
     splitter->setChildrenCollapsible(false);
     page->addWidget(splitter, 1);
     // The palette: search, categories, the common elements and the parts as tiles.
-    auto *left = new QWidget;
+    auto *left = paletteColumn = new QWidget;
     left->setObjectName("paletteColumn");
     left->setAttribute(Qt::WA_StyledBackground);
     left->setMinimumWidth(230); // Three columns of tiles and the element buttons.
@@ -395,6 +406,10 @@ void MainWindow::buildUi() {
     palette->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn); // A fixed width keeps the columns.
     ll->addWidget(palette, 1);
     splitter->addWidget(left);
+    // Folded in an earlier session, it waits for the rail's "パレット" or a tool that uses it.
+    const bool paletteShown = settings.value("molecule/palette", true).toBool();
+    left->setVisible(paletteShown);
+    paletteToggle->setChecked(paletteShown);
     auto *middle = new QWidget;
     auto *ml = new QVBoxLayout(middle);
     ml->setContentsMargins(0, 0, 0, 0);
@@ -578,9 +593,10 @@ void MainWindow::buildUi() {
     moleculeSplit = new QSplitter(Qt::Vertical);
     moleculeSplit->setObjectName("moleculeSplit");
     moleculeSplit->setChildrenCollapsible(false);
+    // The view gives way to four rows of the table.
+    viewArea->setMinimumHeight(140);
     moleculeSplit->addWidget(viewArea);
     coordinates = new CoordinatesPanel(this);
-    coordinates->setMinimumHeight(180);
     moleculeSplit->addWidget(coordinates);
     moleculeSplit->setStretchFactor(0, 1);
     moleculeSplit->setSizes({460, 340});
@@ -614,7 +630,7 @@ void MainWindow::buildUi() {
     moleculeLayout->addItem("3D表示", "view");
     moleculeLayout->addItem("3D表示と座標の表", "both");
     moleculeLayout->addItem("座標の表", "table");
-    auto *layouts = new ChoiceButtons(moleculeLayout, ChoiceButtons::Segments, {"3D", "3D＋表", "表"});
+    auto *layouts = new ChoiceButtons(moleculeLayout, ChoiceButtons::Segments, moleculeLayoutNames);
     layouts->setObjectName("moleculeLayouts");
     layouts->setToolTip("3D表示と座標の表の並べ方です。表では座標・質量・ゴースト・固定を直接編集します。");
     hintRow->addWidget(layouts, 0, Qt::AlignVCenter);
@@ -809,6 +825,8 @@ void MainWindow::buildUi() {
             palette->clearSelection();
         else if ((currentTool() == "place" || currentTool() == "replace") && palette->currentItem())
             palette->currentItem()->setSelected(true);
+        if (currentTool() == "place" || currentTool() == "replace")
+            showPalette(true);
         refreshToolHint();
     });
     connect(elementBox, &QComboBox::currentIndexChanged, this, &MainWindow::refreshToolHint);
@@ -1240,7 +1258,7 @@ void MainWindow::buildMenus() {
     editMenu->addSeparator();
     action(editMenu, "番号で原子を選択…", {}, [this] { selectNumbers(); });
     auto *attributes =
-        action(editMenu, "座標と原子属性の一覧", {}, [this] { coordinates->showAttributes(); });
+        action(editMenu, "座標の表（属性の列つき）", {}, [this] { coordinates->showAttributes(); });
     attributes->setObjectName("coordinateAttributesAction");
     attributes->setToolTip("「1 分子」の座標の表に形式電荷・不対電子・原子名の列を表示します。");
     editMenu->addSeparator();
@@ -1364,6 +1382,24 @@ void MainWindow::buildMenus() {
     })->setObjectName("viewClearMonitors");
     viewMenu->addSeparator();
     local(viewMenu, "全体を表示", QKeySequence(Qt::Key_F), [this] { view->fit(); }, "fitAction");
+    // The segments under the 3D view of "1 分子", with the same names.
+    auto *layoutMenu = viewMenu->addMenu("1 分子の並べ方");
+    auto *layoutGroup = new QActionGroup(this);
+    for (int i = 0; i < moleculeLayout->count(); ++i) {
+        auto *a = layoutMenu->addAction(moleculeLayoutNames.value(i));
+        a->setObjectName("moleculeLayoutAction_" + moleculeLayout->itemData(i).toString());
+        a->setCheckable(true);
+        a->setChecked(moleculeLayout->currentIndex() == i);
+        a->setToolTip(moleculeLayout->itemText(i));
+        layoutGroup->addAction(a);
+        connect(a, &QAction::triggered, this, [this, i] {
+            workspaceTabs->setCurrentWidget(moleculePage);
+            moleculeLayout->setCurrentIndex(i);
+        });
+    }
+    layoutMenu->setToolTipsVisible(true);
+    connect(moleculeLayout, &QComboBox::currentIndexChanged, layoutMenu,
+            [layoutGroup](int i) { layoutGroup->actions().value(i)->setChecked(true); });
     auto *tabsMenu = viewMenu->addMenu("タブを表示");
     for (int i = 0; i < workspaceTabs->count(); ++i)
         action(tabsMenu, workspaceTabs->tabText(i), QKeySequence(QString("Ctrl+%1").arg(i + 1)), [this, i] {
@@ -1576,6 +1612,11 @@ void MainWindow::setPaletteCategory(const QString &code) {
     for (auto *b : categoryGroup->buttons())
         if (b->property("category") == code)
             b->setChecked(true);
+}
+void MainWindow::showPalette(bool show) {
+    paletteColumn->setVisible(show);
+    paletteToggle->setChecked(show);
+    settings.setValue("molecule/palette", show);
 }
 QString MainWindow::selectionUnit() const {
     return unitGroup->checkedButton() ? unitGroup->checkedButton()->property("unit").toString()
@@ -3612,6 +3653,7 @@ void MainWindow::loadPart() {
     customParts.append(t);
     settings.setValue("parts", customParts);
     setPaletteCategory("my");
+    showPalette(true);
     refreshPalette();
 }
 } // namespace mf

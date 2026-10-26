@@ -262,7 +262,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 
 ## GUIの操作と完了確認
 
-`get_ui` の `query` で表示文言・クラス名・`objectName` を検索できます。他のタブの部品を取得する場合は `includeHidden: true` を使います。「1 分子」の座標の表（`coordinateTable`）や閉じている詳細設定の欄（`advanced_<キー>`）のように非表示の部品も、`includeHidden: true` で取得して `ui_edit_cell` / `ui_set_value` で操作できます。座標の表の表示は `moleculeLayout`（`view` / `both` / `table`）を `ui_select` で切り替えます。`target` には返された `ui-N` または一意な `objectName` を指定します。ダイアログを閉じるとその部品のIDは失効します。名前が重複する場合は `ui-N` を使ってください。
+`get_ui` の `query` で表示文言・クラス名・`objectName` を検索できます。他のタブの部品を取得する場合は `includeHidden: true` を使います。「1 分子」の座標の表（`coordinateTable`）や閉じている詳細設定の欄（`advanced_<キー>`）のように非表示の部品も、`includeHidden: true` で取得して `ui_edit_cell` / `ui_set_value` で操作できます。座標の表の表示は `moleculeLayout`（`view` / `both` / `table`）を `ui_select` で切り替えます。部品パレットの開閉はツールの列の `paletteToggle` を `ui_activate` します。`target` には返された `ui-N` または一意な `objectName` を指定します。ダイアログを閉じるとその部品のIDは失効します。名前が重複する場合は `ui-N` を使ってください。
 
 GUI変更は `documentId` と `expectedRevision` を必要とし、`queued` の `commandId` を直ちに返します。**GUI変更には `preview` 引数はありません。** 対応する画面操作と同じタイミングで確定または候補化します。実行直前にも文書と候補の変更を検査します。
 

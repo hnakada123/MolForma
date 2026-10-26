@@ -401,7 +401,11 @@ class ResultsTest : public QObject {
         QVERIFY(details->isTabVisible(1) && details->isTabVisible(2) && details->isTabVisible(4));
         QVERIFY(!details->isTabVisible(3) && !details->isTabVisible(5) && !details->isTabVisible(8));
         QVERIFY(panel->briefSummary().contains("最適化: 収束"));
-        QVERIFY(widget<QPlainTextEdit>(w, "resultsStatus")->toPlainText().contains("最適化: 収束"));
+        // Said once, in "概要": the message box under the details is for loading, errors and
+        // comparisons, while the MCP results still read the outcome as the message.
+        QVERIFY(widget<QPlainTextEdit>(w, "resultsStatus")->toPlainText().isEmpty());
+        QVERIFY(widget<QPlainTextEdit>(w, "resultsStatus")->isHidden());
+        QVERIFY(panel->message().contains("最適化: 収束"));
         QCOMPARE(widget<QTableWidget>(w, "resultsOrbitals")->item(0, 0)->text(), QString("5"));
         // The log has orbital energies; the shapes are one click away in the job's MOLDEN file.
         auto *molden = widget<QPushButton>(w, "resultsOpenMolden");
@@ -459,13 +463,31 @@ class ResultsTest : public QObject {
         auto *dock = widget<QStackedWidget>(w, "resultsDockPages");
         QVERIFY(widget<QLabel>(w, "resultsOutcome")->isHidden() &&
                 widget<QFrame>(w, "resultsBanner")->isHidden());
+        // Nothing open: no camera controls or timeline to wait for a structure.
+        auto *controls = widget<QWidget>(w, "resultsViewControls");
+        QVERIFY(controls->isHidden() && widget<QWidget>(w, "resultsDock")->isHidden());
         QSignalSpy done(panel, &ResultsPanel::loaded);
         panel->openDirectory(job.path());
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
-        // How the run ended: in the bar and as a banner over the details.
+        QVERIFY(controls->isVisible() && widget<QWidget>(w, "resultsDock")->isVisible());
+        // Narrow, the actions keep their icons and the bar its one row; wide, their names come back.
+        auto *bar = widget<QWidget>(w, "resultBar");
+        auto *compare = widget<QPushButton>(w, "resultsCompare");
+        w.resize(2400, 900);
+        QTRY_COMPARE(compare->text(), QString("分子と比較"));
+        w.resize(900, 800); // The narrowest window, with a short job name here.
+        QTRY_VERIFY(compare->text().isEmpty());
+        QCOMPARE(compare->accessibleName(), QString("分子と比較"));
+        QVERIFY(compare->toolTip().startsWith("分子と比較："));
+        QTRY_COMPARE(bar->layout()->heightForWidth(bar->width()), bar->layout()->sizeHint().height());
+        w.resize(2400, 900);
+        QTRY_COMPARE(compare->text(), QString("分子と比較"));
+        // How the run ended: a banner over the details, not again in the bar or "概要".
         QCOMPARE(resultOutcome(panel->result()), QString("incomplete"));
-        QCOMPARE(widget<QLabel>(w, "resultsOutcome")->text(), QString("正常終了の記録なし"));
+        QVERIFY(widget<QLabel>(w, "resultsOutcome")->isHidden());
         QVERIFY(widget<QFrame>(w, "resultsBanner")->isVisible());
+        for (auto *label : widget<QScrollArea>(w, "resultsOverview")->widget()->findChildren<QLabel *>())
+            QVERIFY(label->text() != panel->result().status);
         QVERIFY(widget<QLabel>(w, "resultsBannerText")->text().contains("最適化は収束しています"));
         // Tab names count what they list; the summary cards open their tabs.
         QCOMPARE(details->tabText(3), QString("振動 2"));

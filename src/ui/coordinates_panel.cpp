@@ -300,6 +300,9 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     table->setFrameShape(QFrame::NoFrame);
     table->setMinimumWidth(360);
     table->verticalHeader()->setDefaultSectionSize(30);
+    // Four rows at least: the 3D view above it gives way first.
+    table->setMinimumHeight(table->horizontalHeader()->sizeHint().height() + 4 * 30 +
+                            table->horizontalScrollBar()->sizeHint().height());
     const QStringList titles{"原子", "X / Å",       "Y / Å", "Z / Å",    "質量",     "ゴースト",
                              "固定", "残基 · 名前", "変化",  "形式電荷", "不対電子", "原子名"};
     const QStringList tips{

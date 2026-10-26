@@ -24,6 +24,7 @@ namespace mf {
 class ChartView;
 class ElidedLabel;
 class ViewControls;
+class ToolbarFit;
 class FrameTimeline;
 class MainWindow;
 class MoleculeView;
@@ -48,6 +49,9 @@ class ResultsPanel : public QWidget {
     // One line with the outcome of the loaded log: optimization state, final energy, imaginary
     // frequencies and excited states (empty when the file has none of them).
     QString briefSummary() const;
+    // The viewer's message: loading, an error or a comparison, else how the loaded file ended with
+    // briefSummary() (shown in "概要"; the MCP results read it).
+    QString message() const;
     // Style sheets in the editor's chrome colors; again when the palette changes.
     void applyChromeStyle();
   signals:
@@ -90,6 +94,9 @@ class ResultsPanel : public QWidget {
     MoleculeView *view;
     QFrame *contextChip, *measureCard;
     ViewControls *viewControlsFrame;
+    QFrame *dockFrame; // Under the view: the structures, orbital or mode, and the hint.
+    QString summary;   // How the loaded file ended, for message().
+    ToolbarFit *barFit;
     QLabel *contextTitle, *contextDetail, *measurementLabel;
     QList<QWidget *> viewControls; // Camera, labels and measuring: only with a structure shown.
     // Under the view, for what it shows: the structure list, the orbitals or the vibration.

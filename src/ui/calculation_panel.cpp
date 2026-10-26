@@ -1143,7 +1143,7 @@ void CalculationPanel::filterRows() {
             changedSections.insert(it.key());
         for (const auto &group : std::as_const(box.groups))
             groupHeadings[group]->setVisible(shownGroups.contains(group));
-        box.toggle->setVisible(!only || changedHere);
+        box.disclosure->setVisible(!only || changedHere);
         box.body->setVisible(box.toggle->isChecked() || (only && changedHere));
         box.empty->setVisible(!shown);
         box.unused->setVisible(!only && unused);
@@ -1462,16 +1462,11 @@ void CalculationPanel::addDetails(const QString &key, const QStringList &groups,
             section = &each;
     DetailBox box;
     box.groups = groups;
-    box.toggle = new QToolButton;
+    box.disclosure = new Disclosure("詳細設定", open);
+    box.toggle = box.disclosure->button();
     box.toggle->setObjectName("calculationDetails_" + key);
-    box.toggle->setProperty("detailToggle", true);
-    box.toggle->setCheckable(true);
-    box.toggle->setChecked(open);
-    box.toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    box.toggle->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
-    box.toggle->setCursor(Qt::PointingHandCursor);
     box.toggle->setToolTip("NWChemの各ブロックへ直接指定する項目です。空欄の項目は既定値を使います。");
-    section->card->body()->addWidget(box.toggle, 0, Qt::AlignLeft);
+    section->card->body()->addWidget(box.disclosure, 0, Qt::AlignLeft);
     box.body = new QWidget;
     box.body->setObjectName("calculationDetailBody_" + key);
     auto *layout = new QVBoxLayout(box.body);
@@ -1594,10 +1589,7 @@ void CalculationPanel::addDetails(const QString &key, const QStringList &groups,
         layout->addWidget(box.outputs);
     }
     box.body->setVisible(open);
-    connect(box.toggle, &QToolButton::toggled, this, [this, key](bool on) {
-        detailBoxes[key].toggle->setArrowType(on ? Qt::DownArrow : Qt::RightArrow);
-        filterRows();
-    });
+    connect(box.toggle, &QToolButton::toggled, this, [this] { filterRows(); });
     connect(box.unused, &QPushButton::clicked, this, [this, key] {
         detailBoxes[key].showUnused = !detailBoxes[key].showUnused;
         filterRows();
@@ -1609,12 +1601,10 @@ void CalculationPanel::openDetails(const QString &key, bool unused) {
         return;
     auto &box = detailBoxes[key];
     box.showUnused |= unused;
-    {
-        const QSignalBlocker blocker(box.toggle);
-        box.toggle->setChecked(true);
-        box.toggle->setArrowType(Qt::DownArrow);
-    }
-    filterRows();
+    if (box.disclosure->isOpen())
+        filterRows();
+    else
+        box.disclosure->setOpen(true); // filterRows() follows.
     // The cards learn their new heights before the position of a row is taken.
     QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
     formWidget->layout()->activate();
@@ -1736,9 +1726,9 @@ void CalculationPanel::refreshDetails(const Document &d) {
     }
     for (auto it = detailBoxes.begin(); it != detailBoxes.end(); ++it) {
         const int changed = changedCounts.value(it.key());
-        it->toggle->setText(QString("詳細設定（%1 項目%2）")
-                                .arg(totals.value(it.key()))
-                                .arg(changed ? QString(" · 変更 %1").arg(changed) : QString()));
+        it->disclosure->setDetail(QString("%1 項目%2")
+                                      .arg(totals.value(it.key()))
+                                      .arg(changed ? QString(" · 変更 %1").arg(changed) : QString()));
     }
 }
 void CalculationPanel::selectDetail(const QString &key) {
@@ -1891,8 +1881,6 @@ void CalculationPanel::applyChromeStyle() {
         #calculationTab, #calculationRailScroll, #calculationRail { background: @window; }
         #calculationNav { background: @base; border: none; border-right: 1px solid @line; }
         QTreeWidget#calculationChanges, QListWidget#calculationValidation { background: transparent; }
-        QToolButton[detailToggle="true"] { border: none; background: transparent; color: @accentText;
-            font-weight: bold; padding: 6px 2px 2px 0; }
         QLabel[detailGroup="true"] { font-weight: bold; padding: 10px 0 3px 8px; }
         QWidget[detailRow="true"] { border-radius: 6px; }
         QWidget[detailRow="true"]:hover { background: @hover; }

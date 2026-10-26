@@ -22,6 +22,7 @@ class MainWindow;
 class CalculationSummary;
 class ChoiceButtons;
 class DiagnosticsList;
+class Disclosure;
 class NavList;
 class SettingsCard;
 class StatusCard;
@@ -75,7 +76,8 @@ class CalculationPanel : public QWidget {
     // The details of a section, opened under its fields; options the calculation does not use are
     // shown on request.
     struct DetailBox {
-        QToolButton *toggle = nullptr;
+        Disclosure *disclosure = nullptr; // "詳細設定" with its count of items, and
+        QToolButton *toggle = nullptr;    // its arrow.
         QWidget *body = nullptr;
         QPushButton *unused = nullptr;
         QLabel *empty = nullptr;

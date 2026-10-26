@@ -27,6 +27,7 @@ class ChoiceButtons;
 class ElidedLabel;
 class RunProgress;
 class SettingsCard;
+class ToolbarFit;
 // "履歴": the jobs of a job folder at the left, by day while sorted by their time, with the files of
 // the selected job below them; at the right the selected job (its energy, or the progress of the run
 // of this window, the facts of its record, a memo and the actions). Comparing adds a column of ΔE
@@ -78,6 +79,8 @@ class HistoryPanel : public QWidget {
     QHash<QString, std::optional<HistoryMolecule>> molecules;
     bool followsExecution = true, scanned = false, comparing = false, loadingMemo = false;
     bool filesOpen = true, filesOpenBeforeComparing = true, grouped = true;
+    bool compactToolbar = false; // Narrow: the folder without its note, icons without names.
+    ToolbarFit *toolbarFit;
     int sortColumn = 4;
     int filesHeight = 240;
     Qt::SortOrder sortOrder = Qt::DescendingOrder;

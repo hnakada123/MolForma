@@ -339,14 +339,14 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     diagnostics->setFrameShape(QFrame::NoFrame);
     checkCard->body()->addWidget(diagnostics);
     railLayout->addWidget(checkCard);
-    auto *pathCard = new SettingsCard({});
+    // How the paths of the input are written, folded with a summary (and remembered).
+    pathCard = new SettingsCard("書き出し後のパス");
     pathCard->setObjectName("inputPreviewPathCard");
-    pathsToggle = new QToolButton;
+    auto *pathsToggle =
+        pathCard->setCollapsible(window->settings.value("inputPreview/showPaths", true).toBool());
     pathsToggle->setObjectName("inputPreviewPathsToggle");
-    pathsToggle->setCheckable(true);
-    pathsToggle->setProperty("flat", true);
-    pathsToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    pathCard->header()->insertWidget(0, pathsToggle);
+    connect(pathsToggle, &QToolButton::clicked, this,
+            [this](bool on) { window->settings.setValue("inputPreview/showPaths", on); });
     paths = new QLabel;
     paths->setObjectName("inputPreviewPaths");
     paths->setWordWrap(true);
@@ -354,14 +354,6 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     pathCard->body()->addWidget(paths);
     railLayout->addWidget(pathCard);
     railLayout->addStretch();
-    pathsToggle->setChecked(window->settings.value("inputPreview/showPaths", true).toBool());
-    paths->setVisible(pathsToggle->isChecked());
-    pathsToggle->setArrowType(pathsToggle->isChecked() ? Qt::DownArrow : Qt::RightArrow);
-    connect(pathsToggle, &QToolButton::toggled, this, [this](bool on) {
-        paths->setVisible(on);
-        pathsToggle->setArrowType(on ? Qt::DownArrow : Qt::RightArrow);
-        window->settings.setValue("inputPreview/showPaths", on);
-    });
     const auto openLink = [this](const QString &link) {
         const QUrl url(link);
         bool ok = false;
@@ -572,7 +564,8 @@ void InputPreviewPanel::refresh() {
     // As tall as its messages, up to a limit.
     diagnostics->document()->setTextWidth(diagnostics->width() > 60 ? diagnostics->viewport()->width() : 280);
     diagnostics->setFixedHeight(std::min(300, int(diagnostics->document()->size().height()) + 4));
-    pathsToggle->setText(resolved ? "実行時のパス" : "書き出し後のパス");
+    pathCard->titleLabel()->setText(resolved ? "実行時のパス" : "書き出し後のパス");
+    pathCard->setSummary(resolved ? "ジョブフォルダー基準に解決" : "相対パスは変更せず出力");
     paths->setText(
         (resolved ? QString("入力movecsは参照基準から絶対パスへ変換します。"
                             "相対出力先・scratch・permanentは新しいジョブフォルダーを基準にします。"

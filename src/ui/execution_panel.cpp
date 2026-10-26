@@ -156,13 +156,8 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     pathField(paths, "参照ファイルの基準", "reference_directory", true);
     qobject_cast<QLineEdit *>(fields["reference_directory"])
         ->setPlaceholderText("空欄: プロジェクトの場所（未保存時は起動時の場所）");
-    auto *pathsHelp = new QToolButton;
-    pathsHelp->setObjectName("executionPathHelp");
-    pathsHelp->setText("パスの扱いについて");
-    pathsHelp->setCheckable(true);
-    pathsHelp->setProperty("flat", true);
-    pathsHelp->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    pathsHelp->setArrowType(Qt::RightArrow);
+    auto *pathsHelp = new Disclosure("パスの扱いについて");
+    pathsHelp->button()->setObjectName("executionPathHelp");
     files->body()->addWidget(pathsHelp, 0, Qt::AlignLeft);
     auto *pathHint =
         muted("実行ファイルは名前またはパスで指定します。MPIはmpirun/mpiexecの -np を使用します。"
@@ -171,10 +166,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
               "出力movecsを./で始めるとジョブ内、絶対パスなら指定先に保存します。");
     pathHint->hide();
     files->body()->addWidget(pathHint);
-    connect(pathsHelp, &QToolButton::toggled, this, [pathsHelp, pathHint](bool on) {
-        pathHint->setVisible(on);
-        pathsHelp->setArrowType(on ? Qt::DownArrow : Qt::RightArrow);
-    });
+    connect(pathsHelp->button(), &QToolButton::toggled, pathHint, &QWidget::setVisible);
 
     auto *parallel = new SettingsCard("計算資源");
     parallel->setObjectName("executionResourcesCard");

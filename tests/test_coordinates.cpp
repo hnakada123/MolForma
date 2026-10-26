@@ -176,6 +176,35 @@ class CoordinatesTest : public QObject {
         button(w, "moleculeLayout_table")->click();
         button(w, "moleculeLayout_both")->click();
         QCOMPARE(w.document().toJson(), before);
+        // "表示 → 1 分子の並べ方" is the same choice, from any tab, and follows the segments.
+        auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
+        auto *layout = w.findChild<QComboBox *>("moleculeLayout");
+        tabs->setCurrentIndex(1);
+        action(w, "moleculeLayoutAction_table")->trigger();
+        QCOMPARE(tabs->currentIndex(), 0);
+        QCOMPARE(layout->currentData().toString(), QString("table"));
+        button(w, "moleculeLayout_both")->click();
+        QVERIFY(action(w, "moleculeLayoutAction_both")->isChecked());
+        QVERIFY(!action(w, "moleculeLayoutAction_table")->isChecked());
+    }
+    void paletteFoldsForTheTable() {
+        MainWindow w;
+        w.loadDocument(water());
+        w.resize(1100, 720);
+        w.show();
+        auto *toggle = button(w, "paletteToggle");
+        auto *palette = w.findChild<QWidget *>("paletteColumn");
+        QVERIFY(toggle->isChecked() && palette->isVisible());
+        toggle->click();
+        QVERIFY(!palette->isVisible() && !toggle->isChecked());
+        // The tools that place from the palette open it again.
+        button(w, "tool_place")->click();
+        QVERIFY(palette->isVisible() && toggle->isChecked());
+        button(w, "tool_select")->click();
+        // Beside the 3D view, the table keeps four rows even in a small window.
+        button(w, "moleculeLayout_both")->click();
+        QTRY_VERIFY(table(w)->viewport()->height() >= 4 * table(w)->verticalHeader()->defaultSectionSize());
+        button(w, "moleculeLayout_view")->click();
     }
     void isotopesGhostAndOverlap() {
         MainWindow w;

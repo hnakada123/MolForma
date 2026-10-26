@@ -282,7 +282,10 @@ class AdvancedTest : public QObject {
         // The details of a section behind a toggle with their count; those of the files open.
         auto *toggle = w.findChild<QToolButton *>("calculationDetails_convergence");
         auto *body = w.findChild<QWidget *>("calculationDetailBody_convergence");
-        QCOMPARE(toggle->text(), QString("詳細設定（21 項目）"));
+        // The count after the name, in the disclosure's muted text.
+        const auto count = [toggle] { return toggle->parentWidget()->findChild<QLabel *>()->text(); };
+        QCOMPARE(toggle->text(), QString("詳細設定"));
+        QCOMPARE(count(), QString("21 項目"));
         QVERIFY(!body->isVisibleTo(&w));
         QVERIFY(w.findChild<QWidget *>("calculationDetailBody_orbitals")->isVisibleTo(&w));
         toggle->click();
@@ -292,7 +295,7 @@ class AdvancedTest : public QObject {
         input(w, "scf_thresh", "2d-8");
         QCOMPARE(nwchemAdvanced(w.document())["scf_thresh"].toDouble(), 2e-8);
         QCOMPARE(w.history()->count(), 1);
-        QCOMPARE(toggle->text(), QString("詳細設定（21 項目 · 変更 1）"));
+        QCOMPARE(count(), QString("21 項目 · 変更 1"));
         QCOMPARE(w.findChild<QLabel *>("calculationDetailState_scf_thresh")->text(), QString("適用"));
         auto *sections = static_cast<NavList *>(w.findChild<QListWidget *>("calculationSections"));
         QCOMPARE(sections->entry("convergence")->data(NavList::BadgeRole).toString(), QString("変更 1"));

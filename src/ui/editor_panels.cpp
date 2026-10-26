@@ -576,7 +576,10 @@ void MainWindow::buildCoordinationPanel() {
     siteInput->setToolTip("3D画面の紫の番号です。サイトをクリックしても入力されます。"
                           "二座配位子は2サイトをカンマで区切ります。");
     f->addRow("サイト番号", siteInput);
-    button(f, "配位子パレットを開く", [this] { setPaletteCategory("ligand"); });
+    button(f, "配位子パレットを開く", [this] {
+        setPaletteCategory("ligand");
+        showPalette(true);
+    });
     button(f, "選択サイトへ配置（候補）", [this] {
         QString c = selectedCenter();
         auto idx = sites();

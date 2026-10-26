@@ -10,6 +10,7 @@
 #include <QVector>
 #include <functional>
 #include <utility>
+class QAbstractButton;
 class QButtonGroup;
 class QComboBox;
 class QGridLayout;
@@ -78,6 +79,32 @@ class FlowLayout : public QLayout {
     bool uniform = false;
 };
 
+// Keeps a toolbar laid out by a FlowLayout on one row while it can: before the row would wrap,
+// apply(true) makes the bar compact (names of buttons left to their tooltips, narrower fields).
+// Widened or shown again, apply(false) tries the full bar, compact again if it still wraps.
+class ToolbarFit : public QObject {
+  public:
+    ToolbarFit(QWidget *bar, std::function<void(bool compact)> apply);
+    bool isCompact() const {
+        return compact;
+    }
+    // What the bar holds changed (a shorter name, a button hidden): the full bar again if it fits.
+    void refit();
+
+  protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
+  private:
+    QWidget *bar;
+    std::function<void(bool)> apply;
+    bool compact = false;
+    int narrowest = 0; // The width of the bar when it became compact.
+    void fit();
+};
+// A button of a compact toolbar: its icon alone, with its name kept in the tooltip and as its
+// accessible name; or back with its name.
+void setIconOnly(QAbstractButton *button, bool iconOnly);
+
 // Buttons for the items of a combo box: a segmented control, or chips that wrap. The combo box
 // stays the control that holds the value, hidden inside (so callers and MCP clients that set it
 // keep working): a click selects its item, and the buttons follow its current item. A value
@@ -133,14 +160,44 @@ class SettingsCard : public QFrame {
     QLabel *titleLabel() const {
         return heading;
     }
-    // An arrow before the title that shows and hides the contents (for what is seldom needed).
-    void setCollapsible(bool open);
+    // An arrow before the title that folds the whole card (for what is seldom needed); while it is
+    // folded, `summary` after the title says what is inside. Returns the arrow, for callers that
+    // remember the state (its clicked()) or rename it.
+    QToolButton *setCollapsible(bool open, const QString &summary = {});
+    // Opens or folds a collapsible card as its arrow would.
+    void setOpen(bool open);
+    void setSummary(const QString &summary);
 
   private:
     QHBoxLayout *head;
     QVBoxLayout *content;
     QWidget *contents;
-    QLabel *heading;
+    QLabel *heading, *folded = nullptr;
+    QToolButton *fold = nullptr;
+    void showOpen(bool open);
+};
+
+// An arrow and a name in the accent that open what is seldom needed inside a card ("詳細設定",
+// "パスの扱いについて"), with what it holds after them in muted text ("21 項目 · 変更 1"). button()
+// carries the state and the object name; the caller shows what it opens on its toggled().
+// SettingsCard::setCollapsible() folds a whole card instead.
+class Disclosure : public QWidget {
+  public:
+    explicit Disclosure(const QString &text, bool open = false, QWidget *parent = nullptr);
+    QToolButton *button() const {
+        return toggle;
+    }
+    bool isOpen() const;
+    // Opens or closes it as a click would (toggled() follows).
+    void setOpen(bool open);
+    void setDetail(const QString &detail);
+
+  protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
+  private:
+    QToolButton *toggle;
+    QLabel *detail;
 };
 
 // The outcome of a tab's checks, the same card in "2 計算条件" … "4 入力プレビュー": an icon and a

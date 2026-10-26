@@ -16,6 +16,7 @@ class MainWindow;
 class CalculationSummary;
 class ChoiceButtons;
 class InputEditor;
+class SettingsCard;
 class StatusCard;
 // Colors the comments, keywords and numbers of generated NWChem input, or a fragment of it.
 void highlightInput(QTextDocument *document);
@@ -48,7 +49,7 @@ class InputPreviewPanel : public QWidget {
     CalculationSummary *summaryCard;
     StatusCard *checkCard;
     QLabel *hint, *position, *stats, *searchStatus, *paths, *sourceTitle;
-    QToolButton *pathsToggle;
+    SettingsCard *pathCard; // "書き出し後のパス" or "実行時のパス", folded with a summary.
     QWidget *sourceLinks;
     QPushButton *copy, *save;
     QString contents;

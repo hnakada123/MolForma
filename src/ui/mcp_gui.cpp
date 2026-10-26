@@ -513,7 +513,7 @@ QJsonObject McpGui::state() const {
             {"results", QJsonObject{{"loading", r->loading()},
                                     {"source", r->data.source},
                                     {"pendingPath", r->pendingPath},
-                                    {"message", r->status->toPlainText()},
+                                    {"message", r->message()},
                                     {"playing", r->animation.isActive()},
                                     {"animation", r->animation.isActive()
                                                       ? (r->animation.interval() == 180 ? "frames" : "mode")

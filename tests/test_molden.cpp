@@ -382,12 +382,14 @@ class MoldenTest : public QObject {
             // message is checked deterministically even when the worker finishes quickly.
             QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
             QVector<QRect> rectangles;
-            for (const auto *name :
-                 {"resultsView", "resultsHint", "resultsOrbitalPosition", "resultsFiles",
-                  "resultsOrbitalFirst", "resultsOrbitalNext", "resultsDetails", "resultsStatus"}) {
+            for (const auto *name : {"resultsView", "resultsHint", "resultsOrbitalPosition", "resultsFiles",
+                                     "resultsOrbitalFirst", "resultsOrbitalNext"}) {
                 auto *control = widget<QWidget>(w, name);
                 rectangles << QRect(control->mapTo(panel, QPoint()), control->size());
             }
+            // The messages come and go under the details: only the details' bottom follows them.
+            auto *details = widget<QWidget>(w, "resultsDetails");
+            rectangles << QRect(details->mapTo(panel, QPoint()), QSize(details->width(), 1));
             return rectangles;
         };
         for (const auto &size : {QSize(1380, 900), QSize(1000, 760)}) {
@@ -397,13 +399,14 @@ class MoldenTest : public QObject {
             QTRY_COMPARE_WITH_TIMEOUT(done.count(), count + 1, 10000);
             const auto before = geometry();
             QVERIFY(status->isReadOnly());
-            // The messages are above the details, beside the 3D view: neither moves with them.
-            QVERIFY(before.last().bottom() < before[6].top());
-            QVERIFY(before.last().left() > before[0].right());
+            QVERIFY(status->isHidden()); // How the file ended is in "概要".
             next->click();
             QVERIFY(panel->loading());
             QVERIFY(status->toPlainText().contains("\n完了まで前の結果を表示します。"));
             QCOMPARE(geometry(), before);
+            // Under the details, beside the 3D view.
+            QVERIFY(status->mapTo(panel, QPoint()).y() > before.last().top());
+            QVERIFY(status->mapTo(panel, QPoint()).x() > before[0].right());
             QVERIFY(status->verticalScrollBar()->maximum() > 0); // Wrapped long path is accessible.
             panel->cancelLoad();
             QVERIFY(status->toPlainText().contains("中止"));

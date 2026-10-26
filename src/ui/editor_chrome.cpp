@@ -415,6 +415,11 @@ QString settingsRules() {
         QPushButton[link="true"]:hover { text-decoration: underline; }
         QPushButton[flat="true"] { border: none; background: transparent; padding: 3px; }
         QPushButton[flat="true"]:hover { background: @hover; }
+        QToolButton[fold="true"] { border: none; border-radius: 5px; padding: 3px; }
+        QToolButton[fold="true"]:hover { background: @hover; }
+        QToolButton[disclosure="true"] { border: none; background: transparent; color: @accentText;
+            font-weight: bold; padding: 6px 2px 2px 0; }
+        QLabel[disclosureDetail="true"] { color: @muted; padding-top: 4px; }
         QToolButton[flat="true"] { border: none; border-radius: 5px; padding: 3px 6px; color: @text; }
         QToolButton[flat="true"]:hover { background: @hover; }
         QToolButton[flat="true"]:checked { background: @tint; color: @accentText; font-weight: bold; }
@@ -547,6 +552,52 @@ Qt::Orientations FlowLayout::expandingDirections() const {
 }
 bool FlowLayout::hasHeightForWidth() const {
     return true;
+}
+ToolbarFit::ToolbarFit(QWidget *bar, std::function<void(bool)> apply)
+    : QObject(bar), bar(bar), apply(std::move(apply)) {
+    bar->installEventFilter(this);
+}
+bool ToolbarFit::eventFilter(QObject *watched, QEvent *event) {
+    if (watched != bar)
+        return QObject::eventFilter(watched, event);
+    const auto type = event->type();
+    // Wider, or shown again with what it holds changed meanwhile: the full bar, if it fits (the
+    // layout request that follows makes it compact again otherwise). Layout requests only make it
+    // compact, so the two never take turns.
+    if (compact && (type == QEvent::Show || (type == QEvent::Resize && bar->width() > narrowest)))
+        refit();
+    else if (type == QEvent::Resize || type == QEvent::LayoutRequest)
+        fit();
+    return QObject::eventFilter(watched, event);
+}
+void ToolbarFit::refit() {
+    if (!compact)
+        return;
+    compact = false;
+    apply(false); // Compact again at the layout request that follows, if it wraps.
+}
+void ToolbarFit::fit() {
+    const auto *layout = bar->layout();
+    // The layout's size hint is its one row: wider than the bar, the row wraps.
+    if (compact || !layout || bar->width() <= 0 || layout->sizeHint().width() <= bar->width())
+        return;
+    compact = true;
+    narrowest = bar->width();
+    apply(true);
+}
+void setIconOnly(QAbstractButton *button, bool iconOnly) {
+    if (!button->property("fullText").isValid()) {
+        button->setProperty("fullText", button->text());
+        button->setProperty("fullTip", button->toolTip());
+    }
+    const auto name = button->property("fullText").toString();
+    const auto tip = button->property("fullTip").toString();
+    if (auto *tool = qobject_cast<QToolButton *>(button))
+        tool->setToolButtonStyle(iconOnly ? Qt::ToolButtonIconOnly : Qt::ToolButtonTextBesideIcon);
+    else
+        button->setText(iconOnly ? QString() : name);
+    button->setToolTip(!iconOnly ? tip : tip.isEmpty() ? name : name + "：" + tip);
+    button->setAccessibleName(name);
 }
 int FlowLayout::heightForWidth(int width) const {
     return arrange(QRect(0, 0, width, 0), true);
@@ -846,22 +897,76 @@ SettingsCard::SettingsCard(const QString &title, QWidget *parent) : QFrame(paren
     layout->addWidget(contents);
     heading->setVisible(!title.isEmpty());
 }
-void SettingsCard::setCollapsible(bool open) {
-    auto *toggle = new QToolButton;
-    toggle->setObjectName(objectName().isEmpty() ? QString() : objectName() + "Toggle");
-    toggle->setProperty("flat", true);
+QToolButton *SettingsCard::setCollapsible(bool open, const QString &summary) {
+    fold = new QToolButton;
+    fold->setObjectName(objectName().isEmpty() ? QString() : objectName() + "Toggle");
+    fold->setProperty("fold", true);
+    fold->setCheckable(true);
+    fold->setChecked(open);
+    fold->setAccessibleName(heading->text());
+    head->insertWidget(0, fold);
+    folded = new ElidedLabel(summary); // Shortened in a narrow card, in full as a tooltip.
+    folded->setProperty("muted", true);
+    folded->setToolTip(summary);
+    head->insertWidget(2, folded, 1);
+    connect(fold, &QToolButton::toggled, this, [this](bool on) { showOpen(on); });
+    showOpen(open);
+    return fold;
+}
+void SettingsCard::setOpen(bool open) {
+    if (fold)
+        fold->setChecked(open);
+}
+void SettingsCard::setSummary(const QString &summary) {
+    if (!folded)
+        return;
+    folded->setText(summary);
+    folded->setToolTip(summary);
+    showOpen(fold->isChecked());
+}
+void SettingsCard::showOpen(bool open) {
+    contents->setVisible(open);
+    fold->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+    fold->setToolTip(open ? "閉じる" : "開く");
+    folded->setVisible(!open && !folded->text().isEmpty());
+}
+
+Disclosure::Disclosure(const QString &text, bool open, QWidget *parent) : QWidget(parent) {
+    auto *row = new QHBoxLayout(this);
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(8);
+    toggle = new QToolButton;
+    toggle->setText(text);
+    toggle->setProperty("disclosure", true);
     toggle->setCheckable(true);
     toggle->setChecked(open);
+    toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     toggle->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
-    toggle->setToolTip(open ? "閉じる" : "開く");
-    toggle->setAccessibleName(heading->text());
-    head->insertWidget(0, toggle);
-    contents->setVisible(open);
-    connect(toggle, &QToolButton::toggled, this, [this, toggle](bool on) {
-        contents->setVisible(on);
-        toggle->setArrowType(on ? Qt::DownArrow : Qt::RightArrow);
-        toggle->setToolTip(on ? "閉じる" : "開く");
-    });
+    toggle->setCursor(Qt::PointingHandCursor);
+    row->addWidget(toggle);
+    detail = new QLabel;
+    detail->setProperty("disclosureDetail", true);
+    detail->setCursor(Qt::PointingHandCursor);
+    detail->installEventFilter(this); // The count opens it too.
+    detail->hide();
+    row->addWidget(detail);
+    connect(toggle, &QToolButton::toggled, this,
+            [this](bool on) { toggle->setArrowType(on ? Qt::DownArrow : Qt::RightArrow); });
+}
+bool Disclosure::isOpen() const {
+    return toggle->isChecked();
+}
+void Disclosure::setOpen(bool open) {
+    toggle->setChecked(open);
+}
+void Disclosure::setDetail(const QString &text) {
+    detail->setText(text);
+    detail->setVisible(!text.isEmpty());
+}
+bool Disclosure::eventFilter(QObject *watched, QEvent *event) {
+    if (watched == detail && event->type() == QEvent::MouseButtonRelease)
+        toggle->click();
+    return QWidget::eventFilter(watched, event);
 }
 
 StatusCard::StatusCard(QWidget *parent) : SettingsCard({}, parent) {
