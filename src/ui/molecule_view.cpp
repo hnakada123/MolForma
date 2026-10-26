@@ -1,5 +1,6 @@
 #include "ui/molecule_view.h"
 #include "model/geometry.h"
+#include "ui/theme.h"
 #include <Eigen/Geometry>
 #include <QSettings>
 #include <openbabel/elements.h>
@@ -440,11 +441,18 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
     QLinearGradient bg(0, 0, 0, height());
     bg.setColorAt(0, QColor("#f8fafc"));
     bg.setColorAt(1, QColor("#e9eff4"));
-    if (!overlayOnly)
+    const bool empty =
+        doc.atoms.isEmpty() && surface.isEmpty() && doc.data["point_charges"].toArray().isEmpty();
+    // Structures keep the light background in either theme; with nothing to show, a dark theme
+    // has its own color here (over the VTK view too), not a bright box.
+    const bool dark = empty && darkPalette(palette());
+    if (dark)
+        p.fillRect(rect(), palette().color(QPalette::Base));
+    else if (!overlayOnly)
         p.fillRect(rect(), bg);
     markers.clear();
-    if (doc.atoms.isEmpty() && surface.isEmpty() && doc.data["point_charges"].toArray().isEmpty()) {
-        p.setPen(QColor("#617487"));
+    if (empty) {
+        p.setPen(dark ? palette().color(QPalette::PlaceholderText) : QColor("#617487"));
         QFont f = font();
         f.setPointSize(16);
         p.setFont(f);

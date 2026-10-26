@@ -310,6 +310,19 @@ class JobDelegate : public QStyledItemDelegate {
             p->setPen(index.data(KindRole) == "running" ? c.accentText : text == "—" ? c.muted : c.text);
             p->drawText(r, Qt::AlignRight | Qt::AlignVCenter, text);
             break;
+        case LevelColumn:
+            if (!detail.isEmpty()) { // Narrow: the task under the method, in place of its column.
+                const int line = QFontMetrics(font).height(), below = QFontMetrics(small).height();
+                p->setPen(c.text);
+                p->drawText(QRect(r.left(), r.center().y() - line, r.width(), line),
+                            Qt::AlignLeft | Qt::AlignVCenter, elided(font, text, r.width()));
+                p->setFont(small);
+                p->setPen(c.muted);
+                p->drawText(QRect(r.left(), r.center().y() + 1, r.width(), below),
+                            Qt::AlignLeft | Qt::AlignVCenter, elided(small, detail, r.width()));
+                break;
+            }
+            [[fallthrough]];
         default:
             p->setPen(index.column() == MemoColumn || text == "—" ? c.muted : c.text);
             p->drawText(r, Qt::AlignLeft | Qt::AlignVCenter, elided(font, text, r.width()));
@@ -947,9 +960,24 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     updateActions();
 }
 void HistoryPanel::fitDetail() {
-    // A narrow window gives the list the room of an empty detail column.
-    if (auto *scroll = findChild<QWidget *>("historyDetailScroll"))
-        scroll->setVisible(width() >= 1250 || selectedEntry());
+    // A narrow window gives the list the room of an empty detail column, a narrower detail column
+    // and one column less: the task goes under the method.
+    const bool narrow = width() < 1250;
+    if (auto *scroll = findChild<QWidget *>("historyDetailScroll")) {
+        scroll->setVisible(!narrow || selectedEntry());
+        scroll->setMinimumWidth(narrow ? 280 : 320);
+    }
+    if (narrow != narrowList) {
+        narrowList = narrow;
+        // The detail column keeps its width as the window changes: give it less, or back.
+        if (auto *split = findChild<QSplitter *>("historySplit"); split && split->width() > 0) {
+            const int detail = narrow ? 300 : 400;
+            split->setSizes({std::max(0, split->width() - detail), detail});
+        }
+        table->setColumnHidden(TaskColumn, narrow);
+        for (QTreeWidgetItemIterator it(table); *it; ++it)
+            (*it)->setData(LevelColumn, DetailRole, narrow ? (*it)->text(TaskColumn) : QString());
+    }
 }
 void HistoryPanel::resizeEvent(QResizeEvent *event) {
     QWidget::resizeEvent(event);
@@ -1243,6 +1271,7 @@ void HistoryPanel::fillRow(QTreeWidgetItem *item, const Row &r, bool grouped, do
     item->setData(NameColumn, DetailRole, e.formula.isEmpty() ? QString("組成不明") : e.formula);
     item->setText(LevelColumn, levelText(e));
     item->setText(TaskColumn, e.task.isEmpty() ? QString("—") : e.task);
+    item->setData(LevelColumn, DetailRole, narrowList ? item->text(TaskColumn) : QString());
     item->setText(CreatedColumn, e.created.isValid() ? listTime(e.created, grouped) : QString("—"));
     item->setText(DurationColumn, e.seconds < 0 ? QString("—") : elapsedClock(e.seconds));
     item->setData(DurationColumn, KindRole, r.owned ? "running" : "");

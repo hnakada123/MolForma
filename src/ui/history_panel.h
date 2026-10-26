@@ -80,6 +80,7 @@ class HistoryPanel : public QWidget {
     bool followsExecution = true, scanned = false, comparing = false, loadingMemo = false;
     bool filesOpen = true, filesOpenBeforeComparing = true, grouped = true;
     bool compactToolbar = false; // Narrow: the folder without its note, icons without names.
+    bool narrowList = false;     // Narrow: the task under the method, the detail column narrower.
     ToolbarFit *toolbarFit;
     int sortColumn = 4;
     int filesHeight = 240;

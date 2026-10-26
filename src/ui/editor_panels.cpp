@@ -182,10 +182,6 @@ void MainWindow::buildEditPanel() {
         "だけに付いていた水素も一緒に削除します。");
     cardLayout->addWidget(deleteTerminate);
     outer->addRow(card);
-    auto *color = choices(outer, "色分け", {"元素", "残基"}, {"element", "residue"});
-    color->setObjectName("moleculeColorMode");
-    connect(color, &QComboBox::currentIndexChanged, this,
-            [this, color] { view->setColorMode(value(color)); });
     // The atoms and bonds under the selection; transformations and attributes on pages of their own.
     auto *f = outer;
     QStringList symbols;
@@ -206,6 +202,11 @@ void MainWindow::buildEditPanel() {
                                    edit("元素を変更", [=](Document &d) { replaceElement(d, ids, s, h); });
                                }),
                         1);
+    // In a card like the rest of the page: how the 3D view colors the atoms.
+    auto *color = choices(f, "3D画面の色分け", {"元素", "残基"}, {"element", "residue"});
+    color->setObjectName("moleculeColorMode");
+    connect(color, &QComboBox::currentIndexChanged, this,
+            [this, color] { view->setColorMode(value(color)); });
     // The coordinate table, when shown, edits the same values.
     positionCard = section(f, "座標（1原子）");
     positionCard->setVisible(moleculeLayout->currentData() == "view");
@@ -535,12 +536,13 @@ QList<int> MainWindow::sites() const {
 }
 void MainWindow::buildCoordinationPanel() {
     auto *f = panel("配位");
+    // The notes in the cards, as on the other pages.
+    section(f, "配位形状");
     auto *intro = new QLabel("配位中心（金属）またはその配位子を3D画面で選んでから操作します。"
                              "空いているサイトは紫の番号で表示します。");
     intro->setWordWrap(true);
     intro->setProperty("caption", true);
     f->addRow(intro);
-    section(f, "配位形状");
     geometryBox = choices(f, "配位形状", geometryLabels(), geometryNames());
     geometryBox->setCurrentIndex(6);
     distance = number(f, "中心–供与原子 / Å", 2.1, .1, 20);
@@ -549,6 +551,11 @@ void MainWindow::buildCoordinationPanel() {
     oxidation->setValue(2);
     oxidation->setToolTip("構造準備の補助情報です。計算の全電荷・多重度は「2 計算条件」で設定します。");
     f->addRow("酸化数（補助）", oxidation);
+    auto *info =
+        new QLabel("酸化数は構造準備の補助情報です。計算の全電荷・多重度は「2 計算条件」で設定します。");
+    info->setWordWrap(true);
+    info->setProperty("caption", true);
+    f->addRow(info);
     button(f, "配位形状・距離を適用", [this] {
         auto id = selectedCenter(), g = value(geometryBox);
         double dist = distance->value();
@@ -610,11 +617,6 @@ void MainWindow::buildCoordinationPanel() {
             "配位サイトの方向を変更", [=](Document &d) { setSiteDirection(d, id, indices, dir, dist); },
             true);
     });
-    auto *info =
-        new QLabel("酸化数は構造準備の補助情報です。計算の全電荷・多重度は「2 計算条件」で設定します。");
-    info->setWordWrap(true);
-    info->setProperty("caption", true);
-    pageCards.value(f)->insertWidget(pageCards.value(f)->count() - 1, info);
 }
 void MainWindow::addAmino(const QString &rid, bool n) {
     auto t = currentTemplate();

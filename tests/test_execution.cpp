@@ -423,9 +423,17 @@ class ExecutionTest : public QObject {
         w.show();
         auto *panel = w.findChild<QWidget *>("runPanel");
         QVERIFY(!panel->isVisibleTo(&w));
+        // A message hides the summary of the molecule, also as the run status appears beside it.
+        auto *summary = w.findChild<QLabel *>("documentSummary");
+        w.statusBar()->showMessage("message", 60000);
+        QVERIFY(summary->isHidden());
         w.findChild<QToolButton *>("runButton")->click();
         auto *run = w.findChild<NwchemRun *>("nwchemRun");
         QVERIFY(run->active());
+        QTest::qWait(50); // The status bar lays out its widgets again.
+        QVERIFY(summary->isHidden());
+        w.statusBar()->clearMessage();
+        QVERIFY(!summary->isHidden());
         // The header shows the run and offers to stop it instead of starting another; the run panel
         // with its progress opens over the tabs.
         auto *pill = w.findChild<QToolButton *>("runStatePill");

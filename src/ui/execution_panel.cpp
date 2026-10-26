@@ -176,8 +176,13 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     grid->setVerticalSpacing(10);
     parallel->body()->addLayout(grid);
     grid->addWidget(integer("MPI起動プロセス数", "mpi_ranks", 1, 4096), 0, 0);
-    grid->addWidget(integer("OpenMPスレッド / プロセス", "omp_threads", 1, 1024), 0, 1);
-    grid->addWidget(integer("BLASスレッド / プロセス", "blas_threads", 1, 1024), 0, 2);
+    // Short names over the narrow columns; the full ones in their tooltips.
+    auto *omp = integer("OpenMP / プロセス", "omp_threads", 1, 1024);
+    omp->setToolTip("1プロセスあたりのOpenMPスレッド数（OMP_NUM_THREADS）");
+    grid->addWidget(omp, 0, 1);
+    auto *blas = integer("BLAS / プロセス", "blas_threads", 1, 1024);
+    blas->setToolTip("1プロセスあたりのBLASスレッド数（OPENBLAS_NUM_THREADS・MKL_NUM_THREADS など）");
+    grid->addWidget(blas, 0, 2);
     auto *stackCell = new QWidget;
     auto *stackLayout = new QVBoxLayout(stackCell);
     stackLayout->setContentsMargins(0, 0, 0, 0);
@@ -873,22 +878,25 @@ void ExecutionPanel::updateRun() {
     else if (!run.plan().directory.isEmpty() && saved.directory.isEmpty())
         saved = run.plan();
     const bool showingRun = saved.directory == run.plan().directory && !saved.directory.isEmpty();
-    const QMap<QString, QString> names{{"starting", "起動中"},
-                                       {"running", "実行中"},
-                                       {"stopping", "停止処理中"},
-                                       {"cancelled", "停止しました"},
-                                       {"timed_out", "制限時間で停止しました"},
-                                       {"failed", "実行に失敗しました"},
-                                       {"finished", "終了しました（終了コード0）"}};
-    const QString outcome = run.state() != "finished" ? QString()
-                            : !resultSummary.isEmpty()
-                                ? "\n結果: " + resultSummary + "（「結果ビューア」に読み込みました）"
-                                : QString("\n結果は「結果ビューアへ」で確認できます。");
-    const auto stateText =
-        showingRun
-            ? names.value(run.state()) + outcome + (run.message().isEmpty() ? "" : "\n" + run.message())
-        : saved.directory.isEmpty() ? QString("未実行")
-                                    : QString("入力一式を保存しました（NWChemは起動していません）。");
+    // The pill names the state: the text adds what it does not say.
+    const QMap<QString, QString> details{
+        {"cancelled", "途中までのログと出力は保存先に残っています。"},
+        {"timed_out", "制限時間に達しました。途中までのログと出力は保存先に残っています。"},
+        {"finished", "終了コード0"}};
+    QStringList lines;
+    if (showingRun) {
+        lines << details.value(run.state());
+        if (run.state() == "finished")
+            lines << (!resultSummary.isEmpty()
+                          ? "結果: " + resultSummary + "（「結果ビューア」に読み込みました）"
+                          : QString("結果は「結果ビューアへ」で確認できます。"));
+        lines << run.message();
+        lines.removeAll(QString());
+    }
+    const auto stateText = showingRun ? lines.join('\n')
+                           : saved.directory.isEmpty()
+                               ? QString("未実行")
+                               : QString("入力一式を保存しました（NWChemは起動していません）。");
     if (state->text() != stateText)
         state->setText(stateText);
     location->setText(saved.directory);
@@ -923,7 +931,7 @@ void ExecutionPanel::updateRun() {
     stopRun->setEnabled(stoppable);
     prepare->setVisible(!run.active());
     runningNote->setVisible(run.active());
-    state->setVisible(!run.active());
+    state->setVisible(!run.active() && !state->text().isEmpty());
     if (window->stopAction)
         window->stopAction->setEnabled(stoppable);
     if (run.active()) {

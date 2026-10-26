@@ -814,6 +814,10 @@ void MainWindow::buildUi() {
     summary = new QLabel;
     summary->setObjectName("documentSummary");
     statusBar()->addWidget(summary, 1);
+    // Hidden explicitly while a message is shown: the status bar alone shows its widgets again when
+    // it lays them out anew (as the run status at its right appears), under the message.
+    connect(statusBar(), &QStatusBar::messageChanged, summary,
+            [this](const QString &message) { summary->setVisible(message.isEmpty()); });
     connect(workspaceTabs, &QTabWidget::currentChanged, this, [this] {
         if (!refreshing)
             refreshSummary();
