@@ -817,11 +817,12 @@ class EditorTest : public QObject {
         QCOMPARE(w.document().atoms.first().id, d.atoms[2].id);
         w.history()->undo();
         QCOMPARE(w.document().toJson(), d.toJson());
-        // The user's parts: a row of the palette's "マイ部品".
+        // The user's parts: a row of the palette's "マイ部品", saying how to add one while none.
         auto *myParts = w.findChild<QWidget *>("myPartsBar");
         QVERIFY(myParts->isHidden());
         w.findChild<QToolButton *>("paletteCategory_my")->click();
         QVERIFY(!myParts->isHidden());
+        QVERIFY(!w.findChild<QLabel *>("myPartsEmpty")->isHidden());
         QVERIFY(w.findChild<QPushButton *>("savePart")->isEnabled());
         w.findChild<QToolButton *>("paletteCategory_all")->click();
         QVERIFY(myParts->isHidden());
@@ -832,6 +833,15 @@ class EditorTest : public QObject {
         QVERIFY(!local->isEnabled());
         QVERIFY(w.findChild<QAction *>("regenerateAction"));
         QVERIFY(w.findChild<QAction *>("heldSettingsAction"));
+        // Without point charges, their list says how to add one.
+        QVERIFY(w.findChild<QListWidget *>("pointChargeList")->isHidden());
+        QVERIFY(!w.findChild<QLabel *>("pointChargeEmpty")->isHidden());
+        w.edit("point", [](Document &next) {
+            next.data["point_charges"] =
+                QJsonArray{QJsonObject{{"id", "q1"}, {"charge", 0.5}, {"position", QJsonArray{3, 0, 0}}}};
+        });
+        QVERIFY(!w.findChild<QListWidget *>("pointChargeList")->isHidden());
+        QVERIFY(w.findChild<QLabel *>("pointChargeEmpty")->isHidden());
     }
     void nwchemMoleculeControls() {
         MainWindow w;

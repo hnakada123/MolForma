@@ -142,6 +142,7 @@ class MainWindow : public QMainWindow {
     QComboBox *elementBox = nullptr, *bondKind = nullptr;
     QLineEdit *search = nullptr;
     QListWidget *palette = nullptr, *residueList = nullptr, *pointList = nullptr;
+    QLabel *pointEmpty = nullptr, *myPartsEmpty = nullptr; // What to do while the lists are empty.
     // The pages at the right of "1 分子"; segments above them switch the hidden tab bar.
     QTabWidget *properties = nullptr;
     QButtonGroup *propertyGroup = nullptr;

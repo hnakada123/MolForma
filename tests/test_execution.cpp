@@ -442,6 +442,12 @@ class ExecutionTest : public QObject {
         QVERIFY(panel->isVisibleTo(&w));
         const QRect area(tabs->mapTo(&w, QPoint()), tabs->size());
         QVERIFY(area.contains(QRect(panel->mapTo(&w, QPoint()), panel->size())));
+        // Over "1 分子" it takes the place of the pages at the right: the view stays in sight.
+        const QRect view(w.canvas()->mapTo(&w, QPoint()), w.canvas()->size());
+        QVERIFY(!QRect(panel->mapTo(&w, QPoint()), panel->size()).intersects(view));
+        tabs->setCurrentIndex(2);
+        QVERIFY(panel->width() >= 420);
+        tabs->setCurrentIndex(0);
         // The tasks of the input, the current one with its last step, and the four criteria.
         QTRY_VERIFY(w.findChild<QLabel *>("executionStage0") &&
                     w.findChild<QLabel *>("executionStage0")->text().contains("ステップ 1 / 最大 100"));

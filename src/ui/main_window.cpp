@@ -396,7 +396,7 @@ void MainWindow::buildUi() {
     savePartButton->setObjectName("savePart");
     savePartButton->setToolTip("選択した原子を部品としてマイ部品に登録します（接続点・種類を選びます）。");
     enableWithSelection(savePartButton, 1);
-    auto *loadPartButton = new QPushButton("読込…");
+    auto *loadPartButton = new QPushButton("読み込む…");
     loadPartButton->setObjectName("loadPart");
     loadPartButton->setToolTip("部品ファイル（.kpart.json）をマイ部品に読み込みます。");
     auto *removePartButton = new QPushButton("一覧から外す");
@@ -404,11 +404,17 @@ void MainWindow::buildUi() {
     removePartButton->setToolTip("パレットで選んだマイ部品を一覧から外します（ファイルは消しません）。");
     for (auto *b : {savePartButton, loadPartButton, removePartButton})
         myParts->addWidget(b);
+    myPartsEmpty = new QLabel("マイ部品はまだありません。3D画面で原子を選んで「選択原子を保存…」を押すか、"
+                              "部品ファイルを「読み込む…」で追加します。");
+    myPartsEmpty->setObjectName("myPartsEmpty");
+    myPartsEmpty->setWordWrap(true);
+    myPartsEmpty->hide();
     connect(savePartButton, &QPushButton::clicked, this, [this] { safe([this] { savePart(); }); });
     connect(loadPartButton, &QPushButton::clicked, this, [this] { safe([this] { loadPart(); }); });
     connect(removePartButton, &QPushButton::clicked, this, [this] { safe([this] { removePart(); }); });
     myPartsBar->hide();
     ll->addWidget(myPartsBar);
+    ll->addWidget(myPartsEmpty);
     palette = new PaletteList;
     palette->setObjectName("templatePalette");
     auto *tiles = new TemplateDelegate(palette);
@@ -1486,6 +1492,7 @@ void MainWindow::refreshPalette() {
                                                  : "名前・元素・SMILESを検索");
     growth->setVisible(cat == "amino");
     myPartsBar->setVisible(cat == "my");
+    myPartsEmpty->setVisible(cat == "my" && customParts.isEmpty());
     if (cat != "all" && cat != "amino")
         growth->setChecked(false);
     QString old = palette->currentItem() ? palette->currentItem()->data(Qt::UserRole).toString() : "";
@@ -2034,6 +2041,8 @@ void MainWindow::refresh() {
         if (q["id"] == current)
             pointList->setCurrentItem(item);
     }
+    pointList->setVisible(index > 0);
+    pointEmpty->setVisible(index == 0);
     refreshChargePanel();
     refreshing = false;
     refreshSelection();
@@ -2138,6 +2147,7 @@ void MainWindow::applyChromeStyle() {
     )");
     style(findChild<QWidget *>("paletteColumn"), R"(
         #paletteColumn { background: @base; }
+        QLabel#myPartsEmpty { color: @muted; padding: 4px 2px; }
         #paletteCategories QToolButton { border: 1px solid @line; border-radius: 11px; padding: 2px 7px;
                                          background: @base; color: @text; }
         #paletteCategories QToolButton:hover { background: @hover; }
@@ -3681,7 +3691,7 @@ void MainWindow::savePart() {
     refreshPalette();
 }
 void MainWindow::loadPart() {
-    QString p = QFileDialog::getOpenFileName(this, "マイ部品を読込", {}, "部品 (*.kpart.json *.json)");
+    QString p = QFileDialog::getOpenFileName(this, "マイ部品を読み込む", {}, "部品 (*.kpart.json *.json)");
     if (p.isEmpty())
         return;
     auto t = parseJson(readFile(p));

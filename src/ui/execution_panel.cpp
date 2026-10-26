@@ -430,8 +430,7 @@ void ExecutionPanel::buildRunPanel() {
     runCard->body()->addWidget(state);
     progress = new RunProgress("execution", 2);
     runCard->body()->addWidget(progress);
-    auto *actions = new QHBoxLayout;
-    actions->setSpacing(8);
+    auto *actions = new FlowLayout(nullptr, 8, 6); // Wraps where the panel is narrow (over "1 分子").
     openFolder = new QPushButton("保存先を開く");
     openFolder->setObjectName("executionOpenFolder");
     openFolder->setIcon(lineIcon("folder"));
@@ -448,7 +447,6 @@ void ExecutionPanel::buildRunPanel() {
     connect(stopRun, &QPushButton::clicked, this, &ExecutionPanel::confirmStop);
     for (auto *b : {openFolder, viewResults, history, stopRun})
         actions->addWidget(b);
-    actions->addStretch();
     runCard->body()->addLayout(actions);
     connect(openFolder, &QPushButton::clicked, this,
             [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(saved.directory)); });
@@ -471,8 +469,9 @@ void ExecutionPanel::buildRunPanel() {
     logChannel->addItem("標準エラー（末尾128 KiB）", "stderr.err");
     auto *channels = new ChoiceButtons(logChannel, ChoiceButtons::Segments, {"標準出力", "標準エラー"});
     choices << channels;
-    logCard->header()->insertWidget(1, channels);
-    // As the files of "履歴": the file and how much of it, following its end, and copy.
+    // As the files of "履歴": the file and how much of it, following its end, and copy. The
+    // channels head the body, so that the narrow panel over "1 分子" keeps their names.
+    logCard->body()->addWidget(channels, 0, Qt::AlignLeft);
     logName = caption({});
     logName->setObjectName("executionLogName");
     logName->setWordWrap(false);
@@ -492,13 +491,19 @@ void ExecutionPanel::buildRunPanel() {
         if (on)
             log->verticalScrollBar()->setValue(log->verticalScrollBar()->maximum());
     });
-    log->setMinimumHeight(160);
+    // The log takes the height left; the state above keeps all of its lines and buttons, also in
+    // the narrow panel over "1 分子" of a small window.
+    log->setMinimumHeight(100);
     logCard->body()->addWidget(log, 1);
     connect(copyLog, &QToolButton::clicked, this,
             [this] { QApplication::clipboard()->setText(log->toPlainText()); });
     panel->addWidget(logCard, 1);
-    // The panel follows the area of the tabs.
+    // The panel follows the area of the tabs, and over "1 分子" the pages at its right.
     window->workspaceTabs->installEventFilter(this);
+    connect(window->workspaceTabs, &QTabWidget::currentChanged, this, [this] {
+        if (runPanel->isVisible())
+            placeRunPanel();
+    });
 }
 void ExecutionPanel::showRunPanel(bool show) {
     if (show) {
@@ -516,11 +521,21 @@ bool ExecutionPanel::runPanelShown() const {
 void ExecutionPanel::placeRunPanel() {
     auto *tabs = window->workspaceTabs;
     const QRect area(tabs->mapTo(window, QPoint()), tabs->size());
-    const int width = std::clamp(area.width() * 2 / 5, std::min(420, area.width()), 600);
-    runPanel->setGeometry(area.right() + 1 - width, area.top(), width, area.height());
+    int left = area.right() + 1 - std::clamp(area.width() * 2 / 5, std::min(420, area.width()), 600);
+    // Over "1 分子" it takes the place of the pages at the right: the view, its controls and the
+    // options above it stay in sight.
+    auto *column = window->findChild<QWidget *>("propertyColumn");
+    if (column && tabs->currentWidget() == window->moleculePage && column->isVisible()) {
+        if (!column->property("runPanelWatched").toBool()) { // Its width follows the splitter.
+            column->setProperty("runPanelWatched", true);
+            column->installEventFilter(this);
+        }
+        left = column->mapTo(window, QPoint()).x();
+    }
+    runPanel->setGeometry(left, area.top(), area.right() + 1 - left, area.height());
 }
 bool ExecutionPanel::eventFilter(QObject *watched, QEvent *event) {
-    if (watched == window->workspaceTabs &&
+    if ((watched == window->workspaceTabs || watched->objectName() == "propertyColumn") &&
         (event->type() == QEvent::Resize || event->type() == QEvent::Move) && runPanel->isVisible())
         placeRunPanel();
     return QWidget::eventFilter(watched, event);

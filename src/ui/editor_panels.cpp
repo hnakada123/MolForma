@@ -847,6 +847,12 @@ void MainWindow::buildChargePanel() {
     pointList->setObjectName("pointChargeList");
     pointList->setMaximumHeight(160);
     f->addRow(pointList);
+    pointEmpty = new QLabel("点電荷はまだありません。「点電荷」ツールで3D画面の空白をクリックするか、下の欄に"
+                            "位置と電荷を入れて「点電荷を追加」を押します。");
+    pointEmpty->setObjectName("pointChargeEmpty");
+    pointEmpty->setProperty("muted", true);
+    pointEmpty->setWordWrap(true);
+    f->addRow(pointEmpty);
     // The position and charge two by two, under their names.
     auto *fieldsBox = new QWidget;
     auto *fieldGrid = new QGridLayout(fieldsBox);

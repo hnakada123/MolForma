@@ -42,7 +42,7 @@ bool textColumn(int column) {
     return column <= MassColumn || column >= ChargeColumn;
 }
 constexpr int IdRole = Qt::UserRole, FixedRole = Qt::UserRole + 1;
-// The structure files that "構造を読込…" and a drop on the tab read as a replacement candidate.
+// The structure files that "構造を読み込む…" and a drop on the tab read as a replacement candidate.
 const QStringList structureSuffixes{"xyz", "mol", "sdf", "pdb", "ent"};
 // Takes the width left over in its row of a FlowLayout; hidden, it takes none.
 QWidget *gap() {
@@ -140,7 +140,7 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
         connect(a, &QAction::triggered, this, [this, action] { attempt(action); });
         editActions << a;
     };
-    structureAction("構造ファイルを読込…", "coordinateImport", "import",
+    structureAction("構造ファイルを読み込む…", "coordinateImport", "import",
                     "XYZ・MOL・SDF・PDBを読み込み、今の構造を置き換える候補を作ります。",
                     [this] { importFile(); });
     structureAction("XYZを貼り付けて置き換え…", "coordinatePaste", "paste",
@@ -215,11 +215,11 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
         return a;
     };
     exportAction("NWChem座標ブロックをコピー", "copyNwchemGeometry", false, false);
-    exportAction("NWChem座標ブロックを保存…", "saveNwchemGeometry", false, true);
+    exportAction("NWChem座標ブロックを書き出す…", "saveNwchemGeometry", false, true);
     exportMenu->addSeparator();
     exportAction("XYZ（Å）をコピー", "coordinateCopyXyz", true, false)
         ->setToolTip("ゴーストは@元素、質量は第5列で書き出します（MolFormaの拡張）。");
-    exportAction("XYZ（Å）を保存…", "coordinateSaveXyz", true, true);
+    exportAction("XYZ（Å）を書き出す…", "coordinateSaveXyz", true, true);
     for (auto *a : exportActions.mid(0, 2))
         a->setToolTip("geometryブロックと固定原子のconstraintsです。電荷・基底・手法・taskと点電荷は"
                       "含みません。入力全体は「入力プレビュー」で確かめます。");
@@ -411,7 +411,7 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     auto *emptyActions = new QHBoxLayout;
     emptyActions->addStretch();
     button(
-        emptyActions, "構造を読込…", "coordinateEmptyImport", "import", [this] { importFile(); }, true)
+        emptyActions, "構造を読み込む…", "coordinateEmptyImport", "import", [this] { importFile(); }, true)
         ->setProperty("primary", true);
     button(emptyActions, "XYZを貼り付け…", "coordinateEmptyPaste", "paste", [this] { pasteXyz(); }, true);
     button(emptyActions, "原子を追加…", "coordinateEmptyAdd", "plus", [this] { addAtom(); }, true);
@@ -594,7 +594,7 @@ void CoordinatesPanel::refreshExport() {
     }
     const auto unit = exportUnit() == CoordinateUnit::Bohr ? "Bohr" : "Å";
     exportActions[0]->setText(QString("NWChem座標ブロックをコピー（%1）").arg(unit));
-    exportActions[1]->setText(QString("NWChem座標ブロックを保存…（%1）").arg(unit));
+    exportActions[1]->setText(QString("NWChem座標ブロックを書き出す…（%1）").arg(unit));
     for (int i = 0; i < exportActions.size(); ++i)
         exportActions[i]->setEnabled((i < 2 ? valid : !d.atoms.isEmpty()) && editable());
     exportButton->setEnabled(!d.atoms.isEmpty());
