@@ -37,6 +37,7 @@
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTemporaryDir>
+#include <QTextBlock>
 #include <QTextBrowser>
 #include <QTimer>
 #include <QToolButton>
@@ -81,15 +82,35 @@ class EditorTest : public QObject {
         QTRY_COMPARE(w.document().formula(), QString("Ne"));
         QCOMPARE(w.recentFiles().size(), 2);
         // The manual is embedded in the program.
-        QString text;
+        QString text, recipes, recipe;
+        bool back = false;
+        double imageWidth = 0, pageWidth = 0;
         QTimer::singleShot(0, &w, [&] {
             if (auto *dialog = w.findChild<QDialog *>("manualDialog")) {
-                text = dialog->findChild<QTextBrowser *>("manualText")->toPlainText();
+                auto *browser = dialog->findChild<QTextBrowser *>("manualText");
+                text = browser->toPlainText();
+                // The recipes page, and a link from it to one recipe, which "戻る" leaves again.
+                dialog->findChild<QComboBox *>("manualPage")->setCurrentIndex(1);
+                recipes = browser->toPlainText();
+                browser->setSource(QUrl("recipes/atoms_and_bonds.md"));
+                recipe = browser->toPlainText();
+                // Its screenshot is drawn to the width of the page.
+                for (auto block = browser->document()->begin(); block.isValid(); block = block.next())
+                    for (auto it = block.begin(); !it.atEnd(); ++it)
+                        if (it.fragment().charFormat().isImageFormat())
+                            imageWidth = it.fragment().charFormat().toImageFormat().width();
+                pageWidth = browser->viewport()->width();
+                back = dialog->findChild<QPushButton *>("manualBack")->isEnabled();
                 dialog->reject();
             }
         });
         w.findChild<QAction *>("manualAction")->trigger();
         QVERIFY(text.contains("MolForma") && text.size() > 1000);
+        QVERIFY(recipes.contains("題材の一覧"));
+        QVERIFY(recipe.contains("題材1 原子と結合から組む"));
+        QVERIFY(back);
+        QVERIFY2(imageWidth > 0 && imageWidth < pageWidth,
+                 qPrintable(QString("%1 / %2").arg(imageWidth).arg(pageWidth)));
     }
     void autosaveAndRecovery() {
         QDir(settingsHome.filePath("data")).removeRecursively();
@@ -797,6 +818,34 @@ class EditorTest : public QObject {
         QCOMPARE(w.document().data["nwchem"].toObject()["basis"].toString(), QString("cc-pvdz"));
         QCOMPARE(w.document().envelope["result_reference"].toString(), QString("kept"));
     }
+    void residueReplacementTakesPaletteState() {
+        // "選択残基を置換" puts in the state chosen in the palette (HIP), and the total charge follows.
+        MainWindow w;
+        Document d;
+        buildPeptide(d, parseSequence("AHE"), "ACE", "NME", "L", "default");
+        d.setJobValue("charge", d.formalCharge());
+        w.loadDocument(d);
+        w.show();
+        QCOMPARE(w.document().job()["charge"].toInt(), -1);
+        QString his;
+        for (auto v : w.document().data["residues"].toArray())
+            if (v.toObject()["code"] == "HIS")
+                his = v.toObject()["atoms"].toObject()["CA"].toString();
+        w.setSelection({his});
+        w.findChild<QToolButton *>("paletteCategory_amino")->click();
+        auto *palette = w.findChild<QListWidget *>("templatePalette");
+        for (int i = 0; i < palette->count(); ++i)
+            if (palette->item(i)->data(Qt::UserRole) == "amino:HIS:HIP")
+                palette->setCurrentRow(i);
+        QCOMPARE(palette->currentItem()->data(Qt::UserRole).toString(), QString("amino:HIS:HIP"));
+        for (auto *b : w.findChildren<QPushButton *>())
+            if (b->text() == "選択残基を置換")
+                b->click();
+        QVERIFY(w.hasCandidate());
+        w.findChild<QPushButton *>("confirmCandidate")->click();
+        QCOMPARE(w.document().formula(), QString("C17H26N6O6"));
+        QCOMPARE(w.document().job()["charge"].toInt(), 0);
+    }
     void attributePageHoldsAttributes() {
         MainWindow w;
         const auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");
@@ -1154,6 +1203,38 @@ class EditorTest : public QObject {
         emit w.canvas()->atomClicked(carbons[1], Qt::NoModifier);
         QCOMPARE(w.document().bond(carbons[0], carbons[1])->kind, QString("double"));
     }
+    void paletteElementsAndCenters() {
+        // What the palette highlights is what a click places: element buttons leave a part category
+        // for "原子" and choose the center element under "配位中心", and a category change places the
+        // highlighted center rather than the element chosen before.
+        MainWindow w;
+        w.show();
+        w.loadDocument(Document());
+        const auto click = [&](const char *name) { w.findChild<QToolButton *>(name)->click(); };
+        auto *palette = w.findChild<QListWidget *>("templatePalette");
+        const auto current = [&] { return palette->currentItem()->data(Qt::UserRole).toString(); };
+        click("paletteCategory_substituent");
+        click("quickElement_F");
+        QVERIFY(w.findChild<QToolButton *>("paletteCategory_atom")->isChecked());
+        QCOMPARE(current(), QString("atom:F"));
+        emit w.canvas()->blankClicked(Vec::Zero());
+        QCOMPARE(w.document().atoms[0].element, QString("F"));
+        click("quickElement_O");
+        click("paletteCategory_center");
+        QCOMPARE(current(), QString("center:Li"));
+        QVERIFY(w.findChild<QLabel *>("toolHint")->text().contains("配位中心 Li"));
+        emit w.canvas()->blankClicked(Vec(5, 0, 0));
+        QCOMPARE(w.document().atoms.last().element, QString("Li"));
+        click("quickElement_S");
+        QCOMPARE(current(), QString("center:S"));
+        QVERIFY(w.findChild<QToolButton *>("quickElement_S")->isChecked());
+        emit w.canvas()->blankClicked(Vec(10, 0, 0));
+        QCOMPARE(w.document().atoms.last().element, QString("S"));
+        QCOMPARE(w.document().data["centers"].toArray().size(), 2);
+        // The search under "配位中心" finds any element as a center.
+        w.findChild<QLineEdit *>("paletteSearch")->setText("Xe");
+        QCOMPARE(palette->item(0)->data(Qt::UserRole).toString(), QString("center:Xe"));
+    }
     void replaceToolKeepsWorking() {
         MainWindow w;
         Document d;
@@ -1317,6 +1398,27 @@ class EditorTest : public QObject {
         w.findChild<QAction *>("deleteAction")->trigger();
         QVERIFY(w.hasCandidate());
         QCOMPARE(w.displayDocument().formula(), QString("CH3"));
+    }
+    void deletionFollowsCharge() {
+        // Deleting a center takes its oxidation number out of the total charge when the two matched;
+        // a charge set by hand stays.
+        MainWindow w;
+        Document d;
+        const auto sodium = addCenter(d, "Na", "tetrahedral", Vec::Zero(), 2.4, 1);
+        placeTemplate(d, findTemplate("skeleton:water"), Vec(5, 0, 0));
+        w.loadDocument(d);
+        QCOMPARE(w.document().job()["charge"].toInt(), 1);
+        w.setSelection({sodium});
+        w.findChild<QAction *>("deleteAction")->trigger();
+        w.confirmCandidate();
+        QCOMPARE(w.document().formula(), QString("H2O"));
+        QCOMPARE(w.document().job()["charge"].toInt(), 0);
+        w.history()->undo();
+        w.edit("全電荷", [](Document &d) { d.setJobValue("charge", 2); });
+        w.setSelection({sodium});
+        w.findChild<QAction *>("deleteAction")->trigger();
+        w.confirmCandidate();
+        QCOMPARE(w.document().job()["charge"].toInt(), 2);
     }
     void selectionFieldsFollowSelection() {
         MainWindow w;

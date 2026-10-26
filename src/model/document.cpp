@@ -6,6 +6,7 @@
 #include <QJsonParseError>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QSet>
 #include <QUuid>
 #include <algorithm>
 #include <cmath>
@@ -492,6 +493,26 @@ int Document::formalCharge() const {
     int n = 0;
     for (const auto &a : atoms)
         if (!a.ghost)
+            n += a.charge;
+    return n;
+}
+bool Document::hasCenters() const {
+    const auto list = data["centers"].toArray();
+    return std::any_of(list.begin(), list.end(),
+                       [this](const QJsonValue &c) { return contains(c.toObject()["atom"].toString()); });
+}
+int Document::expectedCharge() const {
+    int n = 0;
+    QSet<QString> centers;
+    for (const auto &v : data["centers"].toArray()) {
+        const auto c = v.toObject();
+        if (contains(c["atom"].toString()) && !centers.contains(c["atom"].toString())) {
+            centers.insert(c["atom"].toString());
+            n += c["oxidation"].toInt();
+        }
+    }
+    for (const auto &a : atoms)
+        if (!a.ghost && !centers.contains(a.id))
             n += a.charge;
     return n;
 }

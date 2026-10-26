@@ -97,6 +97,10 @@ QString resultPropertyLines(const ResultData &data) {
         text += tr("BSSE（counterpoise）補正: %1 kcal/mol、補正後 %2 Eh（補正前 %3 Eh）\n")
                     .arg(fixed(b["error"].toDouble() * HartreeToKcal, 3), real(b["corrected"].toDouble()),
                          real(b["supermolecular"].toDouble()));
+        if (b.contains("interaction"))
+            text += tr("相互作用エネルギー（単量体の和との差）: 補正後 %1 kcal/mol（補正前 %2 kcal/mol）\n")
+                        .arg(fixed(b["interaction"].toDouble() * HartreeToKcal, 3),
+                             fixed(b["interaction_uncorrected"].toDouble() * HartreeToKcal, 3));
     }
     if (const auto s = solvationText(data.properties.value("solvation").toObject()); !s.isEmpty())
         text += s + '\n';
@@ -112,9 +116,15 @@ QString resultPropertyLines(const ResultData &data) {
                    int(data.properties.value("scan").toArray().size()));
     if (data.properties.contains("irc")) {
         const auto irc = data.properties.value("irc").toObject();
+        const auto directions = irc["directions"].toArray();
+        const bool both = directions.size() != 1;
+        const bool forward = !both && directions[0] == "forward";
         text += tr("IRC: %n点%1（「経路・スキャン」に表示）\n", nullptr, int(irc["points"].toArray().size()))
-                    .arg(irc["complete"].toBool() ? tr("、両方向とも収束")
-                                                  : tr("、収束メッセージは両方向にありません"));
+                    .arg(irc["complete"].toBool() ? (both      ? tr("、両方向とも収束")
+                                                     : forward ? tr("、前進方向で収束")
+                                                               : tr("、後退方向で収束"))
+                                                  : (both ? tr("、収束メッセージは両方向にありません")
+                                                          : tr("、収束メッセージがありません")));
     }
     return text;
 }
@@ -858,8 +868,11 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     tabs->addTab(optimizationPage, tr("最適化"));
     auto *excitedPage = new QWidget;
     auto *el = new QVBoxLayout(excitedPage);
-    excitations = table({tr("状態"), tr("スピン"), tr("対称"), tr("励起エネルギー / eV"), tr("波長 / nm"),
-                         tr("振動子強度"), "<S²>"},
+    // Short headers where a language needs them, so that the oscillator strengths stay in view.
+    excitations = table({tr("状態"), tr("スピン"), tr("対称", "an excited-state column"),
+                         tr("励起エネルギー / eV", "an excited-state column"),
+                         tr("波長 / nm", "an excited-state column"),
+                         tr("振動子強度", "an excited-state column"), "<S²>"},
                         "resultsExcitations");
     el->addWidget(excitations, 1);
     auto *spectrumRow = new QHBoxLayout;

@@ -88,11 +88,21 @@ void updateCenter(Document &d, const QJsonObject &c) {
     rows.append(c);
     d.data["centers"] = rows;
 }
+// Coordination edits keep the total charge in step with the charge the centers and ligands suggest
+// when the two matched before, as residue and fragment edits do with the formal charges.
+static bool chargeFollows(const Document &d) {
+    return d.job()["charge"].toInt() == d.expectedCharge();
+}
+static void followCharge(Document &d, bool follows) {
+    if (follows)
+        d.setJobValue("charge", d.expectedCharge());
+}
 QString addCenter(Document &d, const QString &symbol, const QString &geometry, const Vec &position,
                   double distance, int oxidation) {
     if (distance <= 0)
         fail(tr("配位距離は正の値にしてください。"));
     element(symbol);
+    const bool follows = chargeFollows(d);
     Atom a;
     a.element = symbol;
     a.position = d.atoms.isEmpty() ? Vec::Zero() : position;
@@ -101,6 +111,7 @@ QString addCenter(Document &d, const QString &symbol, const QString &geometry, c
     for (auto direction : siteVectors(geometry))
         sites.append(QJsonObject{{"direction", vectorToJson(direction)}, {"distance", distance}});
     updateCenter(d, {{"atom", a.id}, {"geometry", geometry}, {"sites", sites}, {"oxidation", oxidation}});
+    followCharge(d, follows);
     d.invalidateAssignments();
     return a.id;
 }
@@ -108,6 +119,7 @@ PlacedPart placeLigand(Document &d, const QString &id, const QList<int> &indices
                        double twist) {
     auto c = center(d, id);
     auto sites = c["sites"].toArray(), connections = t["connections"].toArray();
+    const bool follows = chargeFollows(d);
     if (indices.size() != connections.size() || indices.isEmpty() || indices.size() > 2)
         fail(tr("配位子の供与原子数に合う1〜2サイトを選択してください。"));
     QSet<int> distinct;
@@ -226,6 +238,7 @@ PlacedPart placeLigand(Document &d, const QString &id, const QList<int> &indices
     }
     c["sites"] = sites;
     updateCenter(d, c);
+    followCharge(d, follows);
     return p;
 }
 static void refitCenter(Document &d, const QString &id) {
@@ -288,6 +301,7 @@ static void refitCenter(Document &d, const QString &id) {
 }
 void adjustCenter(Document &d, const QString &id, const QString &geometry, double distance, int oxidation) {
     auto old = center(d, id);
+    const bool follows = chargeFollows(d);
     auto directions = siteVectors(geometry);
     QJsonArray sites;
     for (auto v : directions)
@@ -300,6 +314,7 @@ void adjustCenter(Document &d, const QString &id, const QString &geometry, doubl
     c["oxidation"] = oxidation;
     updateCenter(d, c);
     refitCenter(d, id);
+    followCharge(d, follows);
 }
 
 void moveLigand(Document &d, const QString &partId, const QList<int> &sites, const QJsonObject &replacement,
@@ -353,8 +368,10 @@ void moveLigand(Document &d, const QString &partId, const QList<int> &sites, con
         if (t.isEmpty())
             t = meta["template_data"].isObject() ? meta["template_data"].toObject()
                                                  : findTemplate(p["template"].toString());
+        const bool follows = chargeFollows(d);
         d.remove(idsFromJson(p["atoms"]));
         placeLigand(d, id, sites, t, twist);
+        followCharge(d, follows);
         return;
     }
     fail(tr("配位子を選択してください。"));

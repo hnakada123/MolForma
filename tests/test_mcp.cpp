@@ -1,3 +1,4 @@
+#include "editing/coordination.h"
 #include "editing/library.h"
 #include "mcp/headless.h"
 #include "mcp/server.h"
@@ -205,6 +206,26 @@ class McpTest : public QObject {
         McpServer direct;
         QVERIFY(!direct.receive(message("tools/list")).contains("error"));
     }
+    void settingsBeforeMolecule() {
+        // Errors already there (no atoms yet) do not block settings; errors a change adds do.
+        McpServer s;
+        QVERIFY(!failed(
+            change(s, "set_execution", {{"settings", QJsonObject{{"mpi_ranks", 3}}}, {"preview", false}})));
+        QVERIFY(!failed(
+            change(s, "set_nwchem",
+                   {{"settings", QJsonObject{{"method", "dft"}, {"basis", "6-31g*"}}}, {"preview", false}})));
+        QVERIFY(!failed(change(s, "set_advanced",
+                               {{"settings", QJsonObject{{"freq_animate", true}}}, {"preview", false}})));
+        QCOMPARE(executionSettings(committed(s))["mpi_ranks"].toInt(), 3);
+        QCOMPARE(nwchemSettings(committed(s))["basis"].toString(), QString("6-31g*"));
+        const auto before = s.snapshot();
+        QVERIFY(failed(change(
+            s, "set_nwchem",
+            {{"settings", QJsonObject{{"method", "ccsd"}, {"task", "optimize"}}}, {"preview", false}})));
+        QVERIFY(failed(
+            change(s, "set_execution", {{"settings", QJsonObject{{"mpi_ranks", 0}}}, {"preview", false}})));
+        QCOMPARE(s.snapshot(), before);
+    }
     void advancedAndExecutionSettings() {
         McpServer s;
         QVERIFY(!failed(change(
@@ -334,6 +355,54 @@ class McpTest : public QObject {
                                {"y", 20}}));
         QTRY_VERIFY2(get()["state"] == "done", qPrintable(QString::fromUtf8(QJsonDocument(get()).toJson())));
         QCOMPARE(w.document().atoms.size(), atoms + 5);
+    }
+    void viewPositionsAndChainedLigands() {
+        // get_ui_item lists the atoms and site markers of the 3D view where ui_input clicks them, and
+        // MCP clicks on the next site continue a ligand placement as a person's clicks do.
+        MainWindow w;
+        Document d;
+        addCenter(d, "S", "octahedral", Vec::Zero(), 1.56, 6);
+        w.loadDocument(d);
+        w.resize(1380, 900);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        McpGui gui(w);
+        McpServer s(gui.editor());
+        const auto view = [&] {
+            return data(call(s, "get_ui_item", scoped(s, {{"target", "moleculeView"}})));
+        };
+        QTRY_COMPARE(view()["markers"].toArray().size(), 6);
+        auto listed = view();
+        QCOMPARE(listed["rows"].toInt(), 1);
+        QCOMPARE(listed["items"].toArray()[0].toObject()["label"].toString(), QString("S1"));
+        QVERIFY(listed["items"].toArray()[0].toObject()["visible"].toBool());
+        const auto site = [&](int n) {
+            for (const auto &m : view()["markers"].toArray())
+                if (m.toObject()["site"].toInt() == n)
+                    return m.toObject();
+            return QJsonObject();
+        };
+        QCOMPARE(site(1)["center"].toString(), w.document().atoms[0].id);
+        QJsonObject command;
+        const auto get = [&] {
+            return data(call(s, "get_ui_command", scoped(s, {{"commandId", command["commandId"]}})));
+        };
+        command = data(change(s, "ui_input",
+                              {{"target", "moleculeView"},
+                               {"action", "drop_template"},
+                               {"templateId", "ligand:fluoride"},
+                               {"x", site(1)["x"]},
+                               {"y", site(1)["y"]}}));
+        QTRY_COMPARE(get()["state"].toString(), "done");
+        QVERIFY(data(call(s, "get_app_state", scoped(s)))["candidate"].toBool());
+        QCOMPARE(w.document().atoms.size(), 1);
+        const auto second = site(2);
+        command = data(change(
+            s, "ui_input",
+            {{"target", "moleculeView"}, {"action", "click"}, {"x", second["x"]}, {"y", second["y"]}}));
+        QTRY_COMPARE(get()["state"].toString(), "done");
+        QCOMPARE(w.document().formula(), QString("FS")); // The first fluoride was confirmed.
+        QVERIFY(data(call(s, "get_app_state", scoped(s)))["candidate"].toBool());
     }
     void paginatedUiDoesNotOverflowTransport() {
         MainWindow w;
@@ -740,6 +809,21 @@ class McpTest : public QObject {
         QVERIFY(!failed(change(server, "set_atom_properties",
                                {{"ids", QJsonArray{h2}}, {"ghost", true}, {"preview", false}})));
         QVERIFY(committed(server).atom(h2).ghost);
+    }
+    void deletionFollowsCharge() {
+        // Deleting a center takes its oxidation number out of the total charge, as in the GUI.
+        McpServer server;
+        Document d;
+        const auto sodium = addCenter(d, "Na", "tetrahedral", Vec::Zero(), 2.4, 1);
+        placeTemplate(d, findTemplate("skeleton:water"), Vec(5, 0, 0));
+        QCOMPARE(d.job()["charge"].toInt(), 1);
+        QVERIFY(!failed(change(server, "import_document",
+                               {{"format", "project"},
+                                {"text", QString::fromUtf8(QJsonDocument(d.project()).toJson())},
+                                {"preview", false}})));
+        QVERIFY(!failed(change(server, "delete_atoms", {{"ids", QJsonArray{sodium}}, {"preview", false}})));
+        QCOMPARE(committed(server).formula(), QString("H2O"));
+        QCOMPARE(committed(server).job()["charge"].toInt(), 0);
     }
     void atomicEditsAndFixedAtoms() {
         McpServer server;

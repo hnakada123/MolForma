@@ -131,8 +131,13 @@ HistoryEntry readHistoryEntry(const QString &directory) {
                 defaults[i.key()] = i.value();
             calculation = defaults;
         }
-        const auto name = calculation["start"].toString();
-        if (!name.isEmpty())
+        // The calculation name; under the default name, a title of the user's tells the jobs apart.
+        const auto name = calculation["start"].toString(), title = calculation["title"].toString().trimmed();
+        const auto defaults = nwchemDefaults();
+        if (!title.isEmpty() && title != defaults["title"].toString() &&
+            (name.isEmpty() || name == defaults["start"].toString()))
+            e.name = title;
+        else if (!name.isEmpty())
             e.name = name;
         e.method = historyChoice("method", calculation["method"].toString());
         if (calculation["method"] == "dft")

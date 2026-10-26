@@ -25,7 +25,8 @@ class MoleculeView : public QWidget {
         arrows = list;
         scheduleRender();
     }
-    // Renders pending changes at once (VTK), so the widget can be grabbed as an image.
+    // Renders pending changes at once, so the widget can be grabbed as an image and the markers
+    // match the molecule.
     void renderNow();
     // "ball_and_stick" (default), "stick", "spacefill" or "wireframe".
     void setStyle(const QString &style);
@@ -119,6 +120,17 @@ class MoleculeView : public QWidget {
     }
     QPointF atomScreenPosition(const QString &id) const;
     Vec worldPosition(const QPointF &p) const;
+    // Clickable markers from the last paint: coordination sites (site >= 0) and peptide terminus
+    // handles (site < 0, owner = residue ID).
+    struct Marker {
+        QPointF point;
+        QString owner;
+        int site = -1;
+        bool n = false;
+    };
+    const QVector<Marker> &markerList() const {
+        return markers;
+    }
     QSize minimumSizeHint() const override {
         return {280, 240};
     }
@@ -152,12 +164,6 @@ class MoleculeView : public QWidget {
     void dropEvent(QDropEvent *) override;
 
   private:
-    struct Marker {
-        QPointF point;
-        QString owner;
-        int site = -1;
-        bool n = false;
-    };
     Document doc;
     Ids selected;
     QSet<QString> selectedIds; // The same atoms, for lookups while drawing.

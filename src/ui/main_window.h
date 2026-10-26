@@ -183,6 +183,9 @@ class MainWindow : public QMainWindow {
     QPushButton *cancelWorkerButton = nullptr, *periodicTableButton = nullptr;
     bool stylingChrome = false;
     QString paletteElement = "C";
+    // A center element chosen outside the listed metals (S, P, Xe, ...) with the element buttons,
+    // the periodic table or the search; listed first under "配位中心".
+    QString centerElement;
     QDoubleSpinBox *dimension = nullptr;
     QJsonArray customParts;
     QDoubleSpinBox *positionFields[3]{}, *translateFields[3]{}, *duplicateFields[3]{}, *chargeFields[3]{};

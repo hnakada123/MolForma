@@ -377,7 +377,8 @@ void MainWindow::buildUi() {
           {tr("原子"), "atom", tr("よく使う元素です。ほかの元素は周期表（H〜Og）から選びます。")},
           {tr("骨格"), "skeleton", ""},
           {tr("置換基"), "substituent", tr("置き換える水素をクリックして付けます。")},
-          {tr("配位中心"), "center", tr("金属の配位中心です。")},
+          {tr("配位中心"), "center",
+           tr("配位中心です。金属以外（S・P・Xeなど）は元素ボタン・周期表・検索で選びます。")},
           {tr("配位子"), "ligand", tr("配位中心の紫の番号（空きサイト）をクリックして付けます。")},
           {tr("アミノ酸"), "amino", tr("アミノ酸と末端キャップです。")},
           {tr("マイ部品"), "my", tr("選択した原子から保存した部品と、ファイルから読み込んだ部品です。")}}) {
@@ -418,7 +419,9 @@ void MainWindow::buildUi() {
     for (int c = 0; c < 6; ++c)
         quick->setColumnStretch(c, 1);
     connect(periodicTableButton, &QPushButton::clicked, this, [this] {
-        PeriodicTableDialog dialog(paletteElement, search->text(), this);
+        PeriodicTableDialog dialog(paletteCategory() == "center" && !centerElement.isEmpty() ? centerElement
+                                                                                             : paletteElement,
+                                   search->text(), this);
         if (dialog.exec() == QDialog::Accepted)
             safe([&] { chooseElement(dialog.selectedElement()); });
     });
@@ -946,18 +949,8 @@ void MainWindow::buildUi() {
     connect(view, &MoleculeView::bondClicked, this, [this](auto a, auto b) {
         safe([this, a, b] {
             if (currentTool() == "place" && placementKind() == "atom") {
-                edit(tr("結合間に原子を挿入"), [=, this](Document &d) {
-                    Vec p = (d.atom(a).position + d.atom(b).position) * .5;
-                    d.setBond(a, b, "none");
-                    Atom x;
-                    x.element = value(elementBox);
-                    x.position = p;
-                    d.atoms << x;
-                    d.setBond(a, x.id, "single");
-                    d.setBond(x.id, b, "single");
-                    if (autoH->isChecked())
-                        completeHydrogens(d, {a, b, x.id});
-                });
+                edit(tr("結合間に原子を挿入"),
+                     [=, this](Document &d) { insertAtom(d, a, b, value(elementBox), autoH->isChecked()); });
             } else
                 setSelection({a, b});
         });
@@ -978,8 +971,10 @@ void MainWindow::buildUi() {
                     text << QString::number(i + 1);
                 siteInput->setText(text.join(','));
                 if (indices.size() == t["connections"].toArray().size()) {
-                    // The next site continues the placement: the ligand placed before is confirmed.
-                    const bool chained = candidate && candidateName == tr("配位子を配置") && !candidateRemote;
+                    // The next site continues the placement: the ligand placed before is confirmed. A
+                    // person's click never confirms an MCP candidate, but MCP may continue its own.
+                    const bool chained = candidate && candidateName == tr("配位子を配置") &&
+                                         (!candidateRemote || mcp.depth > 0);
                     if (chained)
                         confirmCandidate();
                     edit(tr("配位子を配置"), [=](Document &d) { placeLigand(d, c, indices, t); }, true);
@@ -1533,10 +1528,11 @@ void MainWindow::showProperties(const QString &title) {
 }
 void MainWindow::refreshPalette() {
     QString cat = paletteCategory(), needle = search->text().trimmed();
-    periodicTableButton->setVisible(cat == "all" || cat == "atom");
-    // The element the atom tool places is marked among the common ones.
+    periodicTableButton->setVisible(cat == "all" || cat == "atom" || cat == "center");
+    // The element the atom tool places (under "配位中心", the center element) is marked among the
+    // common ones.
     for (auto *b : findChild<QWidget *>("quickElements")->findChildren<QToolButton *>())
-        b->setChecked(b->text() == paletteElement);
+        b->setChecked(b->text() == (cat == "center" ? centerElement : paletteElement));
     search->setPlaceholderText(cat == "atom"     ? tr("周期表で元素記号・名前・番号を検索")
                                : cat == "center" ? tr("元素記号・名前・原子番号を検索")
                                                  : tr("名前・元素・SMILESを検索"));
@@ -1551,8 +1547,10 @@ void MainWindow::refreshPalette() {
     // find the names in either language.
     auto add = [&](const QString &label, const QString &id, const QString &searchText,
                    const QJsonObject &t = QJsonObject(), const QString &tip = QString()) {
-        // Atoms are chosen below by symbol, name or number; the other parts by their text.
-        if (!id.startsWith("atom:") && !id.startsWith("smiles:") && !needle.isEmpty() &&
+        // Atoms (and centers under "配位中心") are chosen below by symbol, name or number; the other
+        // parts by their text.
+        if (!id.startsWith("atom:") && !id.startsWith("smiles:") &&
+            !(cat == "center" && id.startsWith("center:")) && !needle.isEmpty() &&
             !searchText.contains(needle, Qt::CaseInsensitive))
             return;
         auto *item = new QListWidgetItem(label, palette);
@@ -1582,9 +1580,23 @@ void MainWindow::refreshPalette() {
         item->setFlags(Qt::NoItemFlags);
         item->setData(TemplateDelegate::HeadingRole, true);
     };
+    // The element with the searched symbol or number first, then those whose name contains it.
+    const auto matching = [&](int limit) {
+        QStringList symbols;
+        bool numeric = false;
+        const int number = needle.toInt(&numeric);
+        for (const auto &e : elements())
+            if (numeric ? e.number == number : e.symbol.compare(needle, Qt::CaseInsensitive) == 0)
+                symbols << e.symbol;
+        for (const auto &e : elements())
+            if (!numeric && !symbols.contains(e.symbol) &&
+                (e.nameJa.contains(needle) ||
+                 (needle.size() > 2 && e.nameEn.contains(needle, Qt::CaseInsensitive))))
+                symbols << e.symbol;
+        return symbols.mid(0, limit);
+    };
     if (cat == "all" || cat == "atom") {
-        // Without a search: the chosen element ("原子" also lists the common ones). With one: the
-        // element with that symbol or number first, then those whose name contains it.
+        // Without a search: the chosen element ("原子" also lists the common ones).
         QStringList symbols;
         if (needle.isEmpty()) {
             symbols << paletteElement;
@@ -1592,19 +1604,8 @@ void MainWindow::refreshPalette() {
                 for (const auto *common : {"H", "C", "N", "O", "F", "P", "S", "Cl", "Br", "I"})
                     if (!symbols.contains(common))
                         symbols << common;
-        } else {
-            bool numeric = false;
-            const int number = needle.toInt(&numeric);
-            for (const auto &e : elements())
-                if (numeric ? e.number == number : e.symbol.compare(needle, Qt::CaseInsensitive) == 0)
-                    symbols << e.symbol;
-            for (const auto &e : elements())
-                if (!numeric && !symbols.contains(e.symbol) &&
-                    (e.nameJa.contains(needle) ||
-                     (needle.size() > 2 && e.nameEn.contains(needle, Qt::CaseInsensitive))))
-                    symbols << e.symbol;
-            symbols = symbols.mid(0, cat == "atom" ? 40 : 6);
-        }
+        } else
+            symbols = matching(cat == "atom" ? 40 : 6);
         heading(tr("原子（元素はH〜Iのボタン・周期表で変更）"));
         for (const auto &symbol : std::as_const(symbols)) {
             const auto &e = element(symbol);
@@ -1672,12 +1673,22 @@ void MainWindow::refreshPalette() {
                 title);
     if (cat == "all" || cat == "center") {
         heading(tr("配位中心（金属）"));
-        for (auto s :
-             QStringList{"Li", "Na", "Mg", "Al", "K",  "Ca", "Ti", "V",  "Cr", "Mn", "Fe", "Co", "Ni",
-                         "Cu", "Zn", "Ru", "Rh", "Pd", "Ag", "Cd", "Pt", "Au", "La", "Ce", "Gd"}) {
+        const QStringList metals{"Li", "Na", "Mg", "Al", "K",  "Ca", "Ti", "V",  "Cr", "Mn", "Fe", "Co", "Ni",
+                                 "Cu", "Zn", "Ru", "Rh", "Pd", "Ag", "Cd", "Pt", "Au", "La", "Ce", "Gd"};
+        // "配位中心" also takes any element as the center: the one chosen with the element buttons or
+        // the periodic table first, and with a search every element it names.
+        QStringList symbols = metals;
+        if (cat == "center" && !needle.isEmpty())
+            symbols = matching(40);
+        else if (cat == "center" && !centerElement.isEmpty() && !metals.contains(centerElement))
+            symbols.prepend(centerElement);
+        for (const auto &s : std::as_const(symbols)) {
             const auto &e = element(s);
             const auto names = english() ? e.nameEn : QString("%1  %2").arg(e.nameJa, e.nameEn);
-            const auto text = tr("%1  %2\n金属 配位中心 · 原子番号 %3").arg(e.symbol, names).arg(e.number);
+            const auto text =
+                metals.contains(s)
+                    ? tr("%1  %2\n金属 配位中心 · 原子番号 %3").arg(e.symbol, names).arg(e.number)
+                    : tr("%1  %2\n配位中心 · 原子番号 %3").arg(e.symbol, names).arg(e.number);
             add(e.name(), "center:" + s, english() ? text + "\n" + e.nameJa : text, {}, text);
         }
     }
@@ -1691,6 +1702,12 @@ void MainWindow::refreshPalette() {
             tr("SMILESとして読み込み、今の分子の横に置く候補を作ります。"));
     if (!palette->currentItem())
         selectFirstPart();
+    // The highlighted atom or center is the element a click places, also after a category change.
+    if (const auto *item = palette->currentItem(); item && elementBox) {
+        const auto key = item->data(Qt::UserRole).toString();
+        if (key.startsWith("atom:") || key.startsWith("center:"))
+            elementBox->setCurrentIndex(elementBox->findData(key.section(':', 1)));
+    }
 }
 void MainWindow::selectFirstPart() {
     for (int i = 0; i < palette->count(); ++i)
@@ -1718,11 +1735,16 @@ QString MainWindow::selectionUnit() const {
                                       : QString("atom");
 }
 void MainWindow::chooseElement(const QString &symbol) {
-    paletteElement = element(symbol).symbol;
+    // Under "配位中心" the element buttons and the periodic table choose the center element; from the
+    // other part categories they go to "原子", whose list holds the element.
+    if (!QStringList{"all", "atom", "center"}.contains(paletteCategory()))
+        setPaletteCategory("atom");
+    const bool center = paletteCategory() == "center";
+    (center ? centerElement : paletteElement) = element(symbol).symbol;
     search->clear();
     refreshPalette();
     for (int i = 0; i < palette->count(); ++i)
-        if (palette->item(i)->data(Qt::UserRole) == "atom:" + paletteElement)
+        if (palette->item(i)->data(Qt::UserRole) == (center ? "center:" : "atom:") + element(symbol).symbol)
             palette->setCurrentRow(i);
     paletteChosen();
 }
@@ -1749,6 +1771,7 @@ void MainWindow::paletteChosen() {
         paletteElement = id.mid(5);
         elementBox->setCurrentIndex(elementBox->findData(id.mid(5)));
     } else if (id.startsWith("center:")) {
+        centerElement = id.mid(7);
         elementBox->setCurrentIndex(elementBox->findData(id.mid(7)));
         showProperties(tr("配位"));
     } else if (currentTemplate()["category"] == "amino") {
@@ -2060,20 +2083,41 @@ void MainWindow::refresh() {
     residueList->clear();
     // Residue links colored in the markup, in the accent rather than the theme's link color.
     const auto link = ChromeColors(QMainWindow::palette()).accentText.name();
+    // N → C by chain and number: caps added after the chain was built (ACE 0, NME n+1) take their place.
+    QVector<QJsonObject> residues;
+    QStringList chainOrder;
     for (auto v : d.data["residues"].toArray()) {
-        auto r = v.toObject();
+        residues << v.toObject();
+        if (!chainOrder.contains(residues.last()["chain"].toString()))
+            chainOrder << residues.last()["chain"].toString();
+    }
+    std::stable_sort(residues.begin(), residues.end(), [&](const QJsonObject &a, const QJsonObject &b) {
+        const auto ca = chainOrder.indexOf(a["chain"].toString()),
+                   cb = chainOrder.indexOf(b["chain"].toString());
+        return ca != cb ? ca < cb : a["number"].toInt() < b["number"].toInt();
+    });
+    for (const auto &r : std::as_const(residues)) {
         QString label = r["code"].toString() + " " + QString::number(r["number"].toInt());
         seq << QString("<a href=\"%1\"><span style=\"color:%3\">%2</span></a>")
                    .arg(r["id"].toString(), label.toHtmlEscaped(), link);
         plain << label;
-        auto *item = new QListWidgetItem(
-            label + "  " + r["n_terminal"].toString() + " / " + r["c_terminal"].toString(), residueList);
+        // The free ends of the chain, in the words of the "N末端" and "C末端" choices of this page.
+        QStringList ends;
+        const auto n = r["n_terminal"].toString(), c = r["c_terminal"].toString();
+        if (n == "charged" || n == "neutral" || n == "ACE")
+            ends << tr("N末端 %1").arg(n == "charged" ? tr("プロトン化") : n == "neutral" ? tr("非荷電") : n);
+        if (c == "charged" || c == "neutral" || c == "NME")
+            ends << tr("C末端 %1")
+                        .arg(c == "charged"   ? QString("COO−")
+                             : c == "neutral" ? QString("COOH")
+                                              : c);
+        auto *item =
+            new QListWidgetItem(ends.isEmpty() ? label : label + " · " + ends.join(" · "), residueList);
         item->setData(Qt::UserRole, r["id"].toString());
     }
     // Long chains show their first residues; the "残基" tab lists them all.
-    const int residues = seq.size();
-    if (residues > 24) {
-        seq = seq.mid(0, 24) << tr("…（全 %1 残基）").arg(residues);
+    if (const int count = seq.size(); count > 24) {
+        seq = seq.mid(0, 24) << tr("…（全 %1 残基）").arg(count);
         plain = plain.mid(0, 24) << seq.last();
     }
     sequenceLabel->setText(seq.isEmpty() ? QString() : tr("配列 N → C　%1").arg(seq.join(" · ")));
@@ -2758,9 +2802,10 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
                         next.envelope = doc.envelope;
                     }
                     candidate = next;
-                    candidateName = mode == "smiles"     ? tr("SMILESから分子を作成")
-                                    : mode == "fragment" ? tr("SMILESから断片を追加")
-                                                         : tr("構造を整形");
+                    candidateName = mode == "smiles"       ? tr("SMILESから分子を作成")
+                                    : mode == "fragment"   ? tr("SMILESから断片を追加")
+                                    : mode == "regenerate" ? tr("3Dを再生成")
+                                                           : tr("構造を整形");
                     candidateRemote = workerRemote;
                 }
             } catch (const std::exception &e) {
@@ -3024,10 +3069,14 @@ void MainWindow::deleteAtoms(const Ids &chosen) {
                     for (const auto &n : d.neighbors(id))
                         if (!ids.contains(n) && !cut.contains(n))
                             cut << n;
+            // The total charge follows the formal charges and oxidation numbers when they matched.
+            const bool follows = d.job()["charge"].toInt() == d.expectedCharge();
             d.remove(ids);
             // Only heavy atoms leave cut bonds to cap; an empty list would mean the whole molecule.
             if (terminate && !cut.isEmpty())
                 completeHydrogens(d, cut);
+            if (follows)
+                d.setJobValue("charge", d.expectedCharge());
         },
         true);
 }
@@ -3098,8 +3147,8 @@ void MainWindow::refreshToolHint() {
         {"select",
          tr("クリック: 選択 · Shift／Ctrl＋クリック: 追加・解除（順番を保持） · Shiftドラッグ: 範囲選択")},
         {"place", places.value(placementKind())},
-        {"bond",
-         tr("結合（%1）: 2原子を順にクリック · 種類は左の「結合の種類」で選択").arg(bondKind->currentText())},
+        {"bond", tr("結合（%1）: 2原子を順にクリック · 種類は3D画面の上の「結合の種類」で選択")
+                     .arg(bondKind->currentText())},
         {"move",
          tr("移動: 原子をドラッグ（付いている水素と、選択中なら選択全体も動く） · Altドラッグ: 回転")},
         {"replace",
@@ -3214,7 +3263,12 @@ void MainWindow::showManual() {
     // The English manual beside the Japanese one.
     const QString docs = english() ? ":/docs/en/" : ":/docs/";
     pages->addItem(tr("機能と操作（はじめに・各タブの説明）"), docs + "features.md");
+    pages->addItem(tr("題材から選ぶ実習（分子を組んで計算するまで）"), docs + "recipes.md");
     pages->addItem(tr("MCPサーバー（AIクライアントからの操作）"), docs + "mcp.md");
+    auto *back = new QPushButton(tr("戻る"));
+    back->setObjectName("manualBack");
+    back->setEnabled(false);
+    bar->addWidget(back);
     bar->addWidget(pages);
     auto *find = new QLineEdit;
     find->setObjectName("manualSearch");
@@ -3225,11 +3279,47 @@ void MainWindow::showManual() {
     browser->setObjectName("manualText");
     browser->setOpenExternalLinks(true);
     layout->addWidget(browser, 1);
+    // Pages are shown by their resource URL, so links between them and their images resolve.
     const auto show = [browser, pages] {
-        QFile file(pages->currentData().toString());
-        browser->setMarkdown(file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll())
-                                                            : tr("マニュアルを読み込めません。"));
+        const auto path = pages->currentData().toString();
+        if (QFile::exists(path))
+            browser->setSource(QUrl("qrc" + path), QTextDocument::MarkdownResource);
+        else
+            browser->setPlainText(tr("マニュアルを読み込めません。"));
     };
+    connect(back, &QPushButton::clicked, browser, &QTextBrowser::backward);
+    connect(browser, &QTextBrowser::backwardAvailable, back, &QPushButton::setEnabled);
+    // Screenshots in the recipes are wider than the page: they are shown smoothly scaled to its width
+    // (the document itself would scale them pixel by pixel).
+    const auto fitImages = [browser] {
+        auto *document = browser->document();
+        const int width = browser->viewport()->width() - 2 * int(document->documentMargin()) - 8;
+        const double ratio = browser->devicePixelRatioF();
+        QTextCursor cursor(document);
+        for (auto block = document->begin(); block.isValid(); block = block.next())
+            for (auto it = block.begin(); !it.atEnd(); ++it) {
+                const auto fragment = it.fragment();
+                if (!fragment.charFormat().isImageFormat())
+                    continue;
+                auto image = fragment.charFormat().toImageFormat();
+                const auto url = document->baseUrl().resolved(QUrl(image.name()));
+                QImage original(url.scheme() == "qrc" ? ":" + url.path() : url.toLocalFile());
+                if (original.isNull() || original.width() <= width)
+                    continue;
+                auto fitted = original.scaledToWidth(int(width * ratio), Qt::SmoothTransformation);
+                fitted.setDevicePixelRatio(ratio);
+                const QUrl name =
+                    document->baseUrl().resolved(QString("fitted/%1/%2").arg(width).arg(image.name()));
+                document->addResource(QTextDocument::ImageResource, name, fitted);
+                image.setName(name.toString());
+                image.setWidth(width);
+                image.setHeight(original.height() * double(width) / original.width());
+                cursor.setPosition(fragment.position());
+                cursor.setPosition(fragment.position() + fragment.length(), QTextCursor::KeepAnchor);
+                cursor.setCharFormat(image);
+            }
+    };
+    connect(browser, &QTextBrowser::sourceChanged, &dialog, fitImages);
     show();
     connect(pages, &QComboBox::currentIndexChanged, &dialog, show);
     connect(find, &QLineEdit::returnPressed, &dialog, [browser, find] {

@@ -6,6 +6,8 @@ Vec freeDirection(const Document &d, const QString &id);
 void completeHydrogens(Document &d, const Ids &selection = {});
 QString addAtom(Document &d, const QString &symbol, const Vec &position, const QString &anchor = {},
                 const QString &kind = "single", bool hydrogen = true);
+// Inserts a new atom into the bond a–b at covalent bond lengths, moving the smaller side outward.
+QString insertAtom(Document &d, QString a, QString b, const QString &symbol, bool hydrogen = true);
 void replaceElement(Document &d, const Ids &ids, const QString &symbol, bool hydrogen);
 PlacedPart attachPart(Document &d, const QString &anchor, const QJsonObject &t, double twist = 0);
 PlacedPart replacePart(Document &d, Ids ids, const QJsonObject &t, double twist = 0);

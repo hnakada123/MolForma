@@ -4,6 +4,7 @@
 #include "ui/theme.h"
 #include <Eigen/Geometry>
 #include <QSettings>
+#include <limits>
 #include <openbabel/elements.h>
 #ifdef MOLFORMA_HAS_VTK
 #include "ui/vtk_molecule_renderer.h"
@@ -117,9 +118,11 @@ void MoleculeView::scheduleRender() {
 }
 void MoleculeView::renderNow() {
     renderTimer.stop();
-    if (renderer)
+    if (renderer) {
         renderScene();
-    else
+        if (overlay)
+            overlay->repaint(); // The labels and markers drawn over the scene.
+    } else
         repaint();
 }
 void MoleculeView::setStyle(const QString &style) {
@@ -590,6 +593,8 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
                 label += QString::number(item.index + 1);
             if (a.charge)
                 label += QString("(%1%2)").arg(a.charge > 0 ? "+" : "").arg(a.charge);
+            if (a.stereo == "R" || a.stereo == "S") // The recorded configuration of a stereocenter.
+                label += " (" + a.stereo + ")";
             const bool chosen = selectedIds.contains(a.id);
             if (labelMode != "none" && (labelMode == "all" || chosen || (labelMode == "heavy" && !hydrogen)))
                 // Placed after all atoms, so labels stay readable in front of the drawing.
@@ -601,6 +606,21 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             }
         }
     }
+    // The recorded E/Z of double bonds, at the middle of the bond (after the atom labels).
+    if (labelMode != "none")
+        for (const auto &b : doc.bonds) {
+            const int ai = atomIndices.value(b.a, -1), bi = atomIndices.value(b.b, -1);
+            if ((b.stereo == "E" || b.stereo == "Z") && ai >= 0 && bi >= 0 && shown(doc.atoms[ai]) &&
+                shown(doc.atoms[bi]))
+                labels << Label{project((doc.atoms[ai].position + doc.atoms[bi].position) / 2),
+                                2,
+                                "(" + b.stereo + ")",
+                                -std::numeric_limits<double>::infinity(),
+                                false,
+                                false,
+                                false,
+                                -1};
+        }
     // Labels: selected atoms first, then coordination centers and other heavy atoms, front to back.
     // Each tries the four corners beside its atom and takes the first that covers neither another
     // label nor another atom; one that only covers atoms is the fallback, and one that would

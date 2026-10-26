@@ -424,6 +424,17 @@ class CalculationTest : public QObject {
         QVERIFY(text.contains("\nmepgs\n  maxmep 12\n  maxiter 100\n  stride 0.05\nend\n"));
         QVERIFY(text.contains("\ntask scf mepgs\n"));
         QVERIFY(!text.contains("\ndriver\n"));
+        // One direction only: NWChem judges a path converged only beyond 1 amu½·Bohr, so a short side
+        // can stop the run before the other is traced.
+        set(d, "irc_direction", "backward");
+        text = nwchemInput(d);
+        QVERIFY(text.contains("\nmepgs\n  maxmep 12\n  maxiter 100\n  stride 0.05\n  backward\nend\n"));
+        QVERIFY(validateNwchem(d).warnings.join('\n').contains("指定した方向だけ"));
+        QCOMPARE(importNwchemInput(text).document.data["nwchem"].toObject()["irc_direction"].toString(),
+                 QString("backward"));
+        set(d, "irc_direction", "sideways");
+        QVERIFY(validateNwchem(d).errors.join('\n').contains("irc_direction"));
+        set(d, "irc_direction", "both");
         // ZCOORD constraints switch AUTOZ on; distances follow the GEOMETRY units.
         set(d, "task", "optimize");
         set(d, "constraints",

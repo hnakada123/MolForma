@@ -4,6 +4,7 @@
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
 #include "model/geometry.h"
+#include "nwchem/nwchem.h"
 #include <QJsonDocument>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -65,6 +66,45 @@ class CoreTest : public QObject {
             codes << v.toObject()["code"].toString();
         QCOMPARE(codes, QStringList({"ALA", "GLY", "SER"}));
         QVERIFY(d.validate().isEmpty());
+        // From XYZ, which has neither charges nor residues: the caps, the charges the hydrogens imply
+        // and the side-chain states come back.
+        const auto fromXyz = [](const QString &sequence, const QString &n, const QString &c,
+                                const QString &state) {
+            Document built;
+            buildPeptide(built, parseSequence(sequence), n, c, "L", state);
+            auto read = xyzStructure(built.xyz());
+            recognizeResidues(read);
+            return std::pair{built, read};
+        };
+        const auto states = [](const Document &doc) {
+            QStringList out;
+            QMap<int, QString> byNumber;
+            for (auto v : doc.data["residues"].toArray())
+                byNumber[v.toObject()["number"].toInt()] =
+                    v.toObject()["code"].toString() + ":" + v.toObject()["state"].toString() + ":" +
+                    v.toObject()["n_terminal"].toString() + "/" + v.toObject()["c_terminal"].toString();
+            return byNumber.values();
+        };
+        auto [built, read] = fromXyz("AHE", "ACE", "NME", "default");
+        QCOMPARE(read.formalCharge(), built.formalCharge());
+        QCOMPARE(read.formalCharge(), -1);
+        QCOMPARE(states(read), QStringList({"ACE:default:internal/internal", "ALA:default:ACE/internal",
+                                            "HIS:HIE:internal/internal", "GLU:default:internal/NME",
+                                            "NME:default:internal/internal"}));
+        QCOMPARE(read.data["chains"].toObject().begin()->toArray().size(), 5);
+        // HIP: an imidazolium ring, whose bond orders from XYZ differ from the template's.
+        for (const auto &[n, c] : {std::pair{"ACE", "NME"}, {"charged", "charged"}}) {
+            Document hip;
+            buildPeptide(hip, parseSequence("H"), n, c, "L", "HIP");
+            auto again = xyzStructure(hip.xyz());
+            recognizeResidues(again);
+            QCOMPARE(again.formalCharge(), hip.formalCharge());
+            QVERIFY(states(again).join(' ').contains("HIS:HIP:"));
+        }
+        std::tie(built, read) = fromXyz("KDE", "neutral", "neutral", "default");
+        QCOMPARE(read.formalCharge(), built.formalCharge());
+        QCOMPARE(states(read), QStringList({"LYS:default:neutral/internal", "ASP:default:internal/internal",
+                                            "GLU:default:internal/neutral"}));
     }
     void missingSidechainRepair() {
         Document d;
@@ -116,6 +156,41 @@ class CoreTest : public QObject {
         QCOMPARE(d.formula(), QString("C2H5NO2"));
         QCOMPARE(d.formalCharge(), 0);
         QVERIFY2(d.validate().isEmpty(), qPrintable(d.validate().join(';')));
+        // A replaced residue inside a chain keeps its amide hydrogen in the peptide plane, away from
+        // the previous carbonyl carbon (the template's free amino group once put it 0.66 Å from it).
+        for (const auto *code : {"ALA", "ARG", "ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE", "LEU",
+                                 "LYS", "MET", "PHE", "SER", "THR", "TRP", "TYR", "VAL"}) {
+            Document p;
+            buildPeptide(p, parseSequence("AHE"), "ACE", "NME");
+            QString his;
+            for (auto value : p.data["residues"].toArray())
+                if (value.toObject()["code"] == "HIS")
+                    his = value.toObject()["id"].toString();
+            mutateResidue(p, his, code, "default", "L");
+            const auto r = residue(p, his);
+            const auto n = r["atoms"].toObject()["N"].toString();
+            QString previous;
+            for (const auto &neighbor : p.neighbors(n))
+                if (p.atom(neighbor).element == "C" && residueForAtom(p, neighbor) != his)
+                    previous = neighbor;
+            QVERIFY(!previous.isEmpty());
+            for (const auto &h : p.neighbors(n))
+                if (p.atom(h).element == "H")
+                    QVERIFY2((p.atom(h).position - p.atom(previous).position).norm() > 1.8, code);
+            // Every amide N–H of the chain, the one next to the ACE cap included.
+            for (auto value : p.data["residues"].toArray()) {
+                const auto atoms = value.toObject()["atoms"].toObject();
+                if (!atoms.contains("N") || !atoms.contains("CA"))
+                    continue;
+                const auto nitrogen = atoms["N"].toString();
+                for (const auto &c : p.neighbors(nitrogen))
+                    if (p.atom(c).element == "C" && c != atoms["CA"].toString())
+                        for (const auto &h : p.neighbors(nitrogen))
+                            if (p.atom(h).element == "H")
+                                QVERIFY2((p.atom(h).position - p.atom(c).position).norm() > 1.8,
+                                         qPrintable(value.toObject()["code"].toString()));
+            }
+        }
     }
     void optionalJobSections() {
         Document d;
@@ -144,6 +219,73 @@ class CoreTest : public QObject {
                      qPrintable(v.toObject()["id"].toString() + d.validate().join(';')));
             QCOMPARE(Document::fromProject(d.project()).atoms.size(), d.atoms.size());
         }
+    }
+    // The practice data of the recipes (docs/recipes): what the pages say they are, and inputs that
+    // generate.
+    void recipeSamples() {
+        struct Sample {
+            const char *name, *formula;
+            int atoms, charge, multiplicity;
+            const char *input;
+        };
+        const Sample samples[]{{"ethanol", "C2H6O", 9, 0, 1, "task dft frequencies"},
+                               {"ethanol_opt", "C2H6O", 9, 0, 1, "task dft"},
+                               {"ethanol_od", "C2H6O", 9, 0, 1, "mass 2.014101778"},
+                               {"co_en_complex", "C4H16Cl2CoN4", 27, 1, 1, "library \"def2-svp\""},
+                               {"p_nitroaniline", "C6H6N2O2", 16, 0, 1, "task dft frequencies"},
+                               {"o_nitroaniline", "C6H6N2O2", 16, 0, 1, "task dft optimize"},
+                               {"m_nitroaniline", "C6H6N2O2", 16, 0, 1, "task dft optimize"},
+                               {"p_nitroaniline_tddft", "C6H6N2O2", 16, 0, 1, "task tddft energy"},
+                               {"caffeine", "C8H10N4O2", 24, 0, 1, "task dft optimize"},
+                               {"butane_anti", "C4H10", 14, 0, 1, "geometry"},
+                               {"butane_gauche", "C4H10", 14, 0, 1, "geometry"},
+                               {"butane_scan", "C4H10", 14, 0, 1, "MolForma scan 13/13"},
+                               {"lactic_R", "C3H6O3", 12, 0, 1, "geometry"},
+                               {"lactic_S", "C3H6O3", 12, 0, 1, "geometry"},
+                               {"butene_E", "C4H8", 12, 0, 1, "task dft frequencies"},
+                               {"butene_Z", "C4H8", 12, 0, 1, "task dft frequencies"},
+                               {"ace_ahe_nme", "C17H25N6O6", 54, -1, 1, "cosmo"},
+                               {"ace_afe_nme", "C20H27N4O6", 57, -1, 1, "cosmo"},
+                               {"ace_ae_nme", "C11H18N3O5", 37, -1, 1, "geometry"},
+                               {"benzene_water", "C6H8O", 15, 0, 1, "mon m2 13 14 15"},
+                               {"phenol", "C6H6O", 13, 0, 1, "task dft frequencies"},
+                               {"phenoxyl", "C6H5O", 12, 0, 2, "mult 2"},
+                               {"phenolate", "C6H5O", 12, -1, 1, "charge -1"},
+                               {"sf6", "F6S", 7, 0, 1, "task dft frequencies"},
+                               {"pf5", "F5P", 6, 0, 1, "task dft frequencies"},
+                               {"na_h2o4", "H8NaO4", 13, 1, 1, "charge 1"},
+                               {"na_h2o4_charges", "H8NaO4", 13, 1, 1, "bq units angstrom"},
+                               {"na_h2o5", "H10NaO5", 16, 1, 1, "charge 1"},
+                               {"sn2_ts_guess", "CH3ClF", 6, -1, 1, "saddle"},
+                               {"sn2_reactant", "CH3ClF", 6, -1, 1, "task dft optimize"},
+                               {"tms_benzene", "C9H14Si", 24, 0, 1, "task dft optimize"}};
+        for (const auto &s : samples) {
+            const auto d = Document::load(QString(RECIPES_DIR) + "/" + s.name + ".kgui.json");
+            QVERIFY2(d.formula() == s.formula, s.name);
+            QVERIFY2(d.atoms.size() == s.atoms, s.name);
+            QVERIFY2(d.job()["charge"].toInt() == s.charge, s.name);
+            QVERIFY2(d.job()["multiplicity"].toInt() == s.multiplicity, s.name);
+            QVERIFY2(validateNwchem(d).errors.isEmpty(),
+                     qPrintable(QString(s.name) + ": " + validateNwchem(d).errors.join(';')));
+            QVERIFY2(nwchemInput(d).contains(s.input), s.name);
+            QVERIFY2(!d.data.contains("nwchem_execution"), s.name); // No local run settings or paths.
+        }
+        QCOMPARE(Document::load(RECIPES_DIR "/lactic_R.kgui.json").atoms[0].stereo, QString("R"));
+        QCOMPARE(Document::load(RECIPES_DIR "/lactic_S.kgui.json").atoms[0].stereo, QString("S"));
+        // The part of recipe 16 replaces a hydrogen of benzene; the 2D file of recipe 4 has no hydrogens.
+        QFile file(RECIPES_DIR "/trimethylsilyl.kpart.json");
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const auto part = QJsonDocument::fromJson(file.readAll()).object();
+        QCOMPARE(part["category"].toString(), QString("substituent"));
+        Document benzene;
+        placeTemplate(benzene, findTemplate("skeleton:benzene"), Vec::Zero());
+        QString hydrogen;
+        for (const auto &a : benzene.atoms)
+            if (a.element == "H")
+                hydrogen = a.id;
+        attachPart(benzene, hydrogen, part);
+        QCOMPARE(benzene.formula(), QString("C9H14Si"));
+        QCOMPARE(importStructure(RECIPES_DIR "/caffeine_2d.sdf").formula(), QString("C8N4O2"));
     }
     void projectRoundTrip() {
         for (auto name : {"benzoic_acid", "co_en", "ala_gly_ser", "water_dimer_counterpoise"}) {
@@ -447,6 +589,54 @@ class CoreTest : public QObject {
         completeHydrogens(d);
         QCOMPARE(d.atoms.size(), saved.atoms.size());
     }
+    void atomIntoBond() {
+        const auto angle = [](const Document &d, const QString &a, const QString &b, const QString &c) {
+            const Vec u = d.atom(a).position - d.atom(b).position,
+                      v = d.atom(c).position - d.atom(b).position;
+            return std::acos(u.dot(v) / u.norm() / v.norm()) * 180 / M_PI;
+        };
+        // Ethane → dimethyl ether: covalent bond lengths and a bent C–O–C, not O on the C–C midpoint
+        // (a straight 180° angle the force field cannot open).
+        Document d;
+        auto c1 = addAtom(d, "C", Vec::Zero());
+        auto c2 = addAtom(d, "C", Vec::Zero(), d.neighbors(c1).first());
+        auto o = insertAtom(d, c1, c2, "O");
+        QCOMPARE(d.formula(), QString("C2H6O"));
+        QVERIFY(!d.bond(c1, c2) && d.bond(c1, o) && d.bond(o, c2));
+        QVERIFY(std::abs((d.atom(o).position - d.atom(c1).position).norm() - 1.42) < .05);
+        QVERIFY(std::abs((d.atom(o).position - d.atom(c2).position).norm() - 1.42) < .05);
+        QVERIFY(std::abs(angle(d, c1, o, c2) - 109.47) < .5);
+        QCOMPARE(refine(d).formula(), QString("C2H6O"));
+        // A carbon becomes CH2 (propane), and fixed atoms on one side keep that side in place.
+        Document fixed;
+        auto a = addAtom(fixed, "C", Vec::Zero());
+        auto b = addAtom(fixed, "C", Vec::Zero(), fixed.neighbors(a).first());
+        for (const auto &id : fixed.component(a, a, b))
+            fixed.atom(id).fixed = true;
+        const auto before = fixed;
+        auto c = insertAtom(fixed, a, b, "C");
+        QCOMPARE(fixed.formula(), QString("C3H8"));
+        for (const auto &atom : before.atoms)
+            if (atom.fixed)
+                QVERIFY((fixed.atom(atom.id).position - atom.position).norm() < 1e-12);
+        QVERIFY(std::abs(angle(fixed, a, c, b) - 109.47) < .5);
+        // In a ring nothing else moves, and the new atom is off the bond line.
+        auto ring = fromSmiles("C1CCCCC1");
+        QString r1, r2;
+        for (const auto &bond : ring.bonds)
+            if (ring.atom(bond.a).element == "C" && ring.atom(bond.b).element == "C") {
+                r1 = bond.a;
+                r2 = bond.b;
+                break;
+            }
+        const auto old = ring;
+        auto n = insertAtom(ring, r1, r2, "N");
+        QCOMPARE(ring.formula(), QString("C6H13N"));
+        for (const auto &atom : old.atoms)
+            QVERIFY((ring.atom(atom.id).position - atom.position).norm() < 1e-12);
+        QVERIFY(angle(ring, r1, n, r2) < 170);
+        QVERIFY_EXCEPTION_THROWN(insertAtom(ring, r1, r2, "O"), std::runtime_error); // No bond any more.
+    }
     void aromaticHydrogens() {
         // Aromatic rings count by their Kekulé form, so completion keeps every template intact.
         for (auto v : templates()) {
@@ -471,9 +661,12 @@ class CoreTest : public QObject {
         // Complexes: free coordination sites, and a charge that disagrees with the oxidation number.
         Document zinc;
         addCenter(zinc, "Zn", "tetrahedral", Vec::Zero(), 2.1, 2);
+        QCOMPARE(zinc.job()["charge"].toInt(), 2); // The total charge followed the oxidation number.
+        zinc.setJobValue("charge", 0);
         auto report = structureReport(zinc);
         QVERIFY2(report.contains("Zn1: 配位サイト 4 のうち 4 が空いています"), qPrintable(report));
         QVERIFY(report.contains("見込まれる全電荷は 2"));
+        QVERIFY(!report.contains("形式電荷の合計と設定電荷が異なります")); // The center line says it.
         zinc.setJobValue("charge", 2);
         QVERIFY(!structureReport(zinc).contains("見込まれる全電荷"));
         // Without its N–H, pyrrole gets the hydrogen back on nitrogen rather than an sp3 carbon.
@@ -659,6 +852,31 @@ class CoreTest : public QObject {
         for (auto b : d.bonds)
             QVERIFY(std::abs((d.atom(b.a).position - d.atom(zinc).position).norm() - 2.5) < 1e-8);
         QVERIFY(d.validate().isEmpty());
+        // [ZnCl4]2−: the total charge followed Zn(II) and the chlorides; it keeps a chosen value.
+        QCOMPARE(d.job()["charge"].toInt(), -2);
+        QCOMPARE(d.expectedCharge(), -2);
+        QCOMPARE(d.formalCharge(), -4);
+        adjustCenter(d, zinc, "tetrahedral", 2.5, 3);
+        QCOMPARE(d.job()["charge"].toInt(), -1);
+        d.setJobValue("charge", 5);
+        adjustCenter(d, zinc, "tetrahedral", 2.5, 2);
+        QCOMPARE(d.job()["charge"].toInt(), 5);
+        // trans-[Co(en)2Cl2]+ and SF6 (a main-group center).
+        Document co;
+        auto cobalt = addCenter(co, "Co", "octahedral", Vec::Zero(), 2.0, 3);
+        placeLigand(co, cobalt, {0, 1}, findTemplate("ligand:en"));
+        placeLigand(co, cobalt, {2, 3}, findTemplate("ligand:en"));
+        placeLigand(co, cobalt, {4}, findTemplate("ligand:chloride"));
+        placeLigand(co, cobalt, {5}, findTemplate("ligand:chloride"));
+        QCOMPARE(co.formula(), QString("C4H16Cl2CoN4"));
+        QCOMPARE(co.job()["charge"].toInt(), 1);
+        QVERIFY(validateNwchem(co).warnings.filter("見込まれる").isEmpty());
+        Document sf6;
+        auto sulfur = addCenter(sf6, "S", "octahedral", Vec::Zero(), 1.56, 6);
+        for (int i = 0; i < 6; ++i)
+            placeLigand(sf6, sulfur, {i}, findTemplate("ligand:fluoride"));
+        QCOMPARE(sf6.formula(), QString("F6S"));
+        QCOMPARE(sf6.job()["charge"].toInt(), 0);
     }
     void coordinationSiteEdits() {
         Document d;

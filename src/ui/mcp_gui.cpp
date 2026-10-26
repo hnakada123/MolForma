@@ -178,12 +178,16 @@ McpEditor McpGui::editor() {
             fail("Handle the active modal dialog before editing the document.");
         QScopedValueRollback depth(window.mcp.depth, window.mcp.depth + 1);
         window.edit(name, operation, preview);
+        // Like the GUI's edits: the view follows only when part of the molecule left the picture
+        // (an opened project, added fragments).
+        window.canvas()->keepInView();
     };
     e.history = [this](const QString &action) {
         if (QApplication::activeModalWidget())
             fail("Handle the active modal dialog before changing editing history.");
         QScopedValueRollback depth(window.mcp.depth, window.mcp.depth + 1);
         window.remoteHistory(action);
+        window.canvas()->keepInView();
     };
     e.additionalTools = [this] { return tools(); };
     e.callAdditionalTool = [this](const QString &name, const QJsonObject &args) { return call(name, args); };
@@ -229,7 +233,9 @@ QJsonArray McpGui::tools() const {
          {"query", type("string")}});
     add("get_ui_item",
         "Read a control's text, choices or table/tree rows. offset/limit page text characters or model rows. "
-        "parentRows addresses a tree parent. Does not change selection.",
+        "parentRows addresses a tree parent. For the 3D views (moleculeView, resultsView) rows are atoms "
+        "with their widget x/y for ui_input clicks, plus coordination-site and terminus markers. Does not "
+        "change selection.",
         {{"target", target},
          {"offset", integer(0, 10000000)},
          {"limit", integer(1, 65536)},
@@ -794,6 +800,35 @@ QJsonObject McpGui::call(const QString &name, const QJsonObject &args) {
                     break;
             }
             out["viewport"] = handle(v->viewport());
+        }
+        // The 3D views list their atoms with the widget positions ui_input clicks on, plus the
+        // coordination-site and terminus markers.
+        if (auto *view = qobject_cast<MoleculeView *>(o)) {
+            view->renderNow(); // The markers come from painting.
+            const auto &atoms = view->documentRef().atoms;
+            out["rows"] = int(atoms.size());
+            for (int i = offset; i < std::min(int(atoms.size()), offset + std::min(limit, 1000)); ++i) {
+                const auto p = view->atomScreenPosition(atoms[i].id);
+                if (!appendPage(items,
+                                QJsonObject{{"row", i},
+                                            {"id", atoms[i].id},
+                                            {"label", atoms[i].element + QString::number(i + 1)},
+                                            {"x", std::round(p.x() * 10) / 10},
+                                            {"y", std::round(p.y() * 10) / 10},
+                                            {"visible", view->rect().contains(p.toPoint()) &&
+                                                            !view->hiddenAtoms().contains(atoms[i].id)}},
+                                bytes))
+                    break;
+            }
+            QJsonArray markers;
+            for (const auto &m : view->markerList())
+                markers.append(
+                    QJsonObject{{"x", std::round(m.point.x() * 10) / 10},
+                                {"y", std::round(m.point.y() * 10) / 10},
+                                {m.site >= 0 ? "center" : "residue", m.owner},
+                                {m.site >= 0 ? "site" : "terminus",
+                                 m.site >= 0 ? QJsonValue(m.site + 1) : QJsonValue(m.n ? "N" : "C")}});
+            out["markers"] = markers;
         }
         out["items"] = items;
         out["offset"] = offset;

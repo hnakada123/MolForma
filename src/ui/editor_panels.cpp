@@ -215,6 +215,7 @@ void MainWindow::buildEditPanel() {
     positionCard->setVisible(moleculeLayout->currentData() == "view");
     for (int i = 0; i < 3; ++i) {
         positionFields[i] = number(f, QString("XYZ")[i] + QString(" / Å"));
+        positionFields[i]->setObjectName(QString("atomPosition") + QString("XYZ")[i]);
         positionFields[i]->setSpecialValueText("—");
         enableWithSelection(positionFields[i], 1, 1);
     }
@@ -263,8 +264,10 @@ void MainWindow::buildEditPanel() {
     enableWithSelection(side, 2, 2);
     f = panel(tr("変形"));
     section(f, QT_TR_NOOP("平行移動（選択原子）"));
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 3; ++i) {
         translateFields[i] = number(f, QString("Δ") + QString("XYZ")[i] + " / Å");
+        translateFields[i]->setObjectName(QString("translate") + QString("XYZ")[i]);
+    }
     enableWithSelection(button(
                             f, tr("選択を平行移動"),
                             [this] {
@@ -312,8 +315,25 @@ void MainWindow::buildEditPanel() {
                                    edit(tr("E/Zを切替"), [=](Document &d) { switchEZ(d, ids); });
                                }),
                         2, 2);
-    auto *stereo = button(f, tr("立体を記録（R/S・E/Z）"),
-                          [this] { edit(tr("立体配置を記録"), [](Document &d) { recordStereo(d); }); });
+    auto *stereo = button(f, tr("立体を記録（R/S・E/Z）"), [this] {
+        edit(tr("立体配置を記録"), [](Document &d) { recordStereo(d); });
+        // The 3D view labels them too: "C1 (S)", "(E)" on the double bond.
+        QStringList found;
+        for (int i = 0; i < doc.atoms.size(); ++i)
+            if (!doc.atoms[i].stereo.isEmpty())
+                found << QString("%1%2: %3").arg(doc.atoms[i].element).arg(i + 1).arg(doc.atoms[i].stereo);
+        for (const auto &b : doc.bonds)
+            if (!b.stereo.isEmpty())
+                found << QString("%1%2=%3%4: %5")
+                             .arg(doc.atom(b.a).element)
+                             .arg(doc.index(b.a) + 1)
+                             .arg(doc.atom(b.b).element)
+                             .arg(doc.index(b.b) + 1)
+                             .arg(b.stereo);
+        statusBar()->showMessage(found.isEmpty() ? tr("記録する不斉中心・E/Zの二重結合はありません。")
+                                                 : tr("立体配置を記録しました: %1").arg(found.join(", ")),
+                                 10000);
+    });
     stereo->setEnabled(hasStereochemistryBackend());
     if (!hasStereochemistryBackend())
         stereo->setToolTip(tr("RDKitを含むビルドで使えます。"));
@@ -363,8 +383,10 @@ void MainWindow::buildEditPanel() {
         },
         "mirrorSelection");
     enableWithSelection(mirrorButton, 1);
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 3; ++i) {
         duplicateFields[i] = number(f, tr("複製 %1 / Å").arg(QString("XYZ")[i]), i == 0 ? 3 : 0);
+        duplicateFields[i]->setObjectName(QString("duplicate") + QString("XYZ")[i]);
+    }
     auto *duplicateButton = button(
         f, tr("指定間隔で複製"),
         [this] {
@@ -378,16 +400,19 @@ void MainWindow::buildEditPanel() {
     f = panel(tr("属性"));
     section(f, QT_TR_NOOP("原子の属性"));
     formal = new QSpinBox;
+    formal->setObjectName("atomFormalCharge");
     formal->setRange(-99, 20);
     formal->setSpecialValueText(tr("変更なし"));
     f->addRow(tr("形式電荷"), formal);
     radical = new QSpinBox;
+    radical->setObjectName("atomRadical");
     radical->setRange(-1, 8);
     radical->setSpecialValueText(tr("変更なし"));
     f->addRow(tr("不対電子"), radical);
     formal->setToolTip(tr("水素補完などの構造準備に使用します。計算の全電荷は「2 計算条件」で設定します。"));
     radical->setToolTip(tr("原子のラジカル属性です。計算のスピン多重度は「2 計算条件」で設定します。"));
     mass = new QLineEdit;
+    mass->setObjectName("atomMass");
     mass->setPlaceholderText(tr("整数: 質量数 / 小数: amu"));
     f->addRow(tr("同位体 / 質量"), mass);
     for (QWidget *field : std::initializer_list<QWidget *>{formal, radical, mass})
@@ -422,6 +447,7 @@ void MainWindow::buildEditPanel() {
             d.invalidateAssignments();
         });
     });
+    attributes->setObjectName("applyAtomAttributes");
     enableWithSelection(attributes, 1);
     section(f, QT_TR_NOOP("ゴースト・固定"));
     // The names of the coordinate table and the 3D view's menu, for the same edits.
@@ -546,15 +572,18 @@ void MainWindow::buildCoordinationPanel() {
     auto *f = panel(tr("配位"));
     // The notes in the cards, as on the other pages.
     section(f, QT_TR_NOOP("配位形状"));
-    auto *intro = new QLabel(tr("配位中心（金属）またはその配位子を3D画面で選んでから操作します。"
+    auto *intro = new QLabel(tr("配位中心またはその配位子を3D画面で選んでから操作します。"
                                 "空いているサイトは紫の番号で表示します。"));
     intro->setWordWrap(true);
     intro->setProperty("caption", true);
     f->addRow(intro);
     geometryBox = choices(f, tr("配位形状"), geometryLabels(), geometryNames());
     geometryBox->setCurrentIndex(6);
+    geometryBox->setObjectName("coordinationGeometry");
     distance = number(f, tr("中心–供与原子 / Å"), 2.1, .1, 20);
+    distance->setObjectName("coordinationDistance");
     oxidation = new QSpinBox;
+    oxidation->setObjectName("coordinationOxidation");
     oxidation->setRange(-8, 12);
     oxidation->setValue(2);
     oxidation->setToolTip(tr("構造準備の補助情報です。計算の全電荷・多重度は「2 計算条件」で設定します。"));
@@ -574,13 +603,17 @@ void MainWindow::buildCoordinationPanel() {
         auto id = selectedCenter();
         int ox = oxidation->value();
         edit(tr("酸化数を変更"), [=](Document &d) {
+            const bool follows = d.job()["charge"].toInt() == d.expectedCharge();
             auto c = center(d, id);
             c["oxidation"] = ox;
             updateCenter(d, c);
+            if (follows)
+                d.setJobValue("charge", d.expectedCharge());
         });
     });
     section(f, QT_TR_NOOP("配位子の配置"));
     siteInput = new QLineEdit("1");
+    siteInput->setObjectName("ligandSites");
     siteInput->setPlaceholderText(tr("例: 1 または 1,2"));
     siteInput->setToolTip(tr("3D画面の紫の番号です。サイトをクリックしても入力されます。"
                              "二座配位子は2サイトをカンマで区切ります。"));
@@ -653,7 +686,16 @@ void MainWindow::buildResiduePanel() {
     button(f, tr("PDBの診断・修復…"), [this] { pdbPreparation(); }, "preparePdb");
     button(f, tr("構造を検査…"), [this] { showReport(); });
     button(f, tr("結合グラフから残基を認識"), [this] {
-        edit(tr("残基を認識"), [](Document &d) { recognizeResidues(d); }, true);
+        // Charges read from the hydrogens (an XYZ file has none) carry the total charge along.
+        edit(
+            tr("残基を認識"),
+            [](Document &d) {
+                const int before = d.expectedCharge();
+                recognizeResidues(d);
+                if (d.job()["charge"].toInt() == before)
+                    d.setJobValue("charge", d.expectedCharge());
+            },
+            true);
     })->setEnabled(hasStereochemistryBackend());
     button(f, tr("選択残基の欠損原子を補完"), [this] {
         auto rid = selectedResidue();
@@ -665,9 +707,19 @@ void MainWindow::buildResiduePanel() {
     sequenceInput->setPlaceholderText("AGS / ALA-GLY-SER");
     f->addRow(tr("N → C 配列"), sequenceInput);
     chiralityBox = choices(f, tr("立体"), {"L", "D"});
-    aminoState = choices(f, tr("側鎖状態"), {"default", "neutral", "anion", "HID", "HIE", "HIP"});
+    chiralityBox->setObjectName("peptideChirality");
+    // The states of the charged side chains; the others have only their default.
+    aminoState =
+        choices(f, tr("側鎖状態"), {tr("既定（中性pH）"), tr("中性"), tr("陰イオン"), "HID", "HIE", "HIP"},
+                {"default", "neutral", "anion", "HID", "HIE", "HIP"});
+    aminoState->setObjectName("peptideSideChain");
+    aminoState->setToolTip(
+        tr("既定: Asp・Glu −1、Lys・Arg +1、His は HIE。中性: Asp・Glu・Lys・Arg の電荷を外します。"
+           "陰イオン: Cys・Tyr を −1 にします。HID・HIE・HIP（+1）は His のプロトン化状態です。"));
     nTerm = choices(f, tr("N末端"), {tr("プロトン化"), tr("非荷電"), "ACE"}, {"charged", "neutral", "ACE"});
+    nTerm->setObjectName("peptideNTerminus");
     cTerm = choices(f, tr("C末端"), {"COO−", "COOH", "NME"}, {"charged", "neutral", "NME"});
+    cTerm->setObjectName("peptideCTerminus");
     auto *replace = new QCheckBox(tr("既存の分子を置き換える"));
     f->addRow(replace);
     button(
@@ -709,8 +761,18 @@ void MainWindow::buildResiduePanel() {
         auto t = currentTemplate();
         if (t["category"] != "amino")
             fail(tr("アミノ酸を選択してください。"));
-        QString code = t["code"].toString(), state = value(aminoState), ch = value(chiralityBox);
-        edit(tr("残基を置換"), [=](Document &d) { mutateResidue(d, rid, code, state, ch); }, true);
+        // The state of the amino acid chosen in the palette (HIP, neutral Glu, ...), as when adding it at an
+        // end; the total charge follows the formal charges as there.
+        QString code = t["code"].toString(), state = t["state"].toString("default"), ch = value(chiralityBox);
+        edit(
+            tr("残基を置換"),
+            [=](Document &d) {
+                const int before = d.expectedCharge();
+                mutateResidue(d, rid, code, state, ch);
+                if (d.job()["charge"].toInt() == before)
+                    d.setJobValue("charge", d.expectedCharge());
+            },
+            true);
     });
     button(f, tr("選択した鎖の両末端へ適用"), [this] {
         auto rid = selectedResidue();
@@ -747,12 +809,17 @@ void MainWindow::buildResiduePanel() {
     });
     section(f, QT_TR_NOOP("主鎖・側鎖の二面角"));
     auto *torsion = choices(f, tr("二面角"), {"phi", "psi", "omega", "chi1", "chi2", "chi3", "chi4", "chi5"});
+    torsion->setObjectName("residueTorsion");
     auto *angle = number(f, tr("角度 / °"), 180, -360, 360);
-    button(f, tr("二面角を適用"), [this, torsion, angle] {
-        auto rid = selectedResidue(), kind = value(torsion);
-        double a = angle->value();
-        edit(tr("残基二面角を変更"), [=](Document &d) { setResidueTorsion(d, rid, kind, a); });
-    });
+    angle->setObjectName("residueTorsionAngle");
+    button(
+        f, tr("二面角を適用"),
+        [this, torsion, angle] {
+            auto rid = selectedResidue(), kind = value(torsion);
+            double a = angle->value();
+            edit(tr("残基二面角を変更"), [=](Document &d) { setResidueTorsion(d, rid, kind, a); });
+        },
+        "applyResidueTorsion");
     section(f, QT_TR_NOOP("残基の一覧"));
     residueList = new QListWidget;
     residueList->setMaximumHeight(200);
@@ -830,13 +897,15 @@ void MainWindow::buildChargePanel() {
     inputState->setObjectName("moleculeInputState");
     inputState->setWordWrap(true);
     f->addRow(inputState);
+    // With coordination centers, their oxidation numbers take the place of the centers' formal charges.
     button(
         f, tr("形式電荷の合計を全電荷に適用"),
         [this] {
-            edit(tr("全電荷を合わせる"), [](Document &d) { d.setJobValue("charge", d.formalCharge()); });
+            edit(tr("全電荷を合わせる"), [](Document &d) { d.setJobValue("charge", d.expectedCharge()); });
         },
         "applyMoleculeFormalCharge")
-        ->setToolTip(tr("原子の形式電荷の合計を、計算の全電荷（「2 計算条件」）にします。"));
+        ->setToolTip(
+            tr("原子の形式電荷の合計（配位中心は酸化数）を、計算の全電荷（「2 計算条件」）にします。"));
     auto *preview = linkButton(tr("4 入力プレビューで確認"), "moleculeInputPreview");
     connect(preview, &QPushButton::clicked, this, [this] { workspaceTabs->setCurrentWidget(inputPreview); });
     f->addRow(preview);
@@ -991,6 +1060,10 @@ void MainWindow::refreshChargePanel() {
                                   ? tr("NWChem入力に含める")
                                   : tr("NWChem入力に含めない"));
     chargeEditor->setEnabled(!candidate && !worker);
+    if (auto *apply = findChild<QPushButton *>("applyMoleculeFormalCharge"))
+        apply->setText(d.hasCenters()
+                           ? tr("酸化数と形式電荷の合計（%1）を全電荷に適用").arg(d.expectedCharge())
+                           : tr("形式電荷の合計を全電荷に適用"));
     const auto check = validateNwchem(d);
     QStringList text{(check.ecpElectrons ? tr("形式電荷の合計 %1 · 電子数 %2（ECP適用後）")
                                          : tr("形式電荷の合計 %1 · 電子数 %2"))

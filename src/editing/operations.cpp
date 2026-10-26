@@ -254,6 +254,60 @@ QString addAtom(Document &d, const QString &symbol, const Vec &position, const Q
     d.invalidateAssignments();
     return a.id;
 }
+QString insertAtom(Document &d, QString a, QString b, const QString &symbol, bool hydrogen) {
+    element(symbol);
+    if (!d.bond(a, b))
+        fail(tr("結合の両端を選択してください。"));
+    Ids sideA = d.component(a, a, b), sideB = d.component(b, a, b);
+    const bool ring = sideB.contains(a);
+    const auto movable = [&](const Ids &side) {
+        return !ring &&
+               std::none_of(side.begin(), side.end(), [&](const QString &id) { return d.atom(id).fixed; });
+    };
+    // The smaller side moves out to make room.
+    if (movable(sideA) && (!movable(sideB) || sideA.size() < sideB.size())) {
+        std::swap(a, b);
+        std::swap(sideA, sideB);
+    }
+    const Vec pa = d.atom(a).position, pb = d.atom(b).position, u = unit(pb - pa);
+    // The new atom bends away from the other neighbors of both ends.
+    Vec away = Vec::Zero();
+    for (const auto &end : {a, b})
+        for (const auto &n : d.neighbors(end, false))
+            if (n != a && n != b)
+                away -= unit(d.atom(n).position - d.atom(end).position);
+    Vec w = away - u * away.dot(u);
+    if (w.norm() < 1e-6)
+        w = u.cross(std::abs(u.z()) < .9 ? Vec::UnitZ() : Vec::UnitX());
+    w.normalize();
+    const double ra = element(symbol).radius + element(d.atom(a).element).radius,
+                 rb = element(symbol).radius + element(d.atom(b).element).radius;
+    Vec x;
+    if (movable(sideB)) {
+        // Bond lengths from the covalent radii and a tetrahedral angle at the new atom.
+        const double tilt = (180 - 109.47) / 2 * M_PI / 180;
+        x = pa + ra * (std::cos(tilt) * u + std::sin(tilt) * w);
+        const Vec shift = x + rb * (std::cos(tilt) * u - std::sin(tilt) * w) - pb;
+        for (const auto &id : sideB)
+            d.atom(id).position += shift;
+    } else {
+        // A ring bond, or fixed atoms on both sides: nothing else moves, and the new atom sits off
+        // the bond line (on it the force field cannot open the 180° angle).
+        const double half = (pb - pa).norm() / 2, r = (ra + rb) / 2;
+        x = (pa + pb) / 2 + w * std::max(.5, std::sqrt(std::max(0., r * r - half * half)));
+    }
+    d.setBond(a, b, "none");
+    Atom atom;
+    atom.element = symbol;
+    atom.position = x;
+    d.atoms << atom;
+    d.setBond(a, atom.id, "single");
+    d.setBond(atom.id, b, "single");
+    if (hydrogen)
+        completeHydrogens(d, {a, b, atom.id});
+    d.invalidateAssignments();
+    return atom.id;
+}
 void replaceElement(Document &d, const Ids &ids, const QString &symbol, bool hydrogen) {
     element(symbol);
     if (ids.isEmpty())
@@ -893,7 +947,7 @@ QString structureReport(const Document &d) {
                  .arg(mult);
     if (electrons < 0 || mult < 1 || mult > electrons + 1 || (electrons + mult) % 2 != 1)
         lines << tr("電子数と多重度の組合せを確認してください。");
-    if (d.formalCharge() != d.job()["charge"].toInt())
+    if (!d.hasCenters() && d.formalCharge() != d.job()["charge"].toInt())
         lines << tr("形式電荷の合計と設定電荷が異なります。");
     if (!d.data["invalid_settings"].toArray().isEmpty())
         lines << tr("削除された原子を参照する保留設定があります。");
@@ -912,15 +966,11 @@ QString structureReport(const Document &d) {
                          .arg(expected);
     }
     // Coordination centers: free sites, and the total charge their oxidation numbers suggest.
-    int expected = 0;
-    QSet<QString> centers;
     for (const auto &v : d.data["centers"].toArray()) {
         const auto c = v.toObject();
         const auto id = c["atom"].toString();
         if (!d.contains(id))
             continue;
-        centers.insert(id);
-        expected += c["oxidation"].toInt();
         const auto sites = c["sites"].toArray();
         const auto open = std::count_if(sites.begin(), sites.end(), [](const QJsonValue &s) {
             return s.toObject()["donor"].toString().isEmpty();
@@ -933,16 +983,11 @@ QString structureReport(const Document &d) {
                          .arg(d.index(id) + 1)
                          .arg(sites.size());
     }
-    if (!centers.isEmpty()) {
-        for (const auto &a : d.atoms)
-            if (!centers.contains(a.id))
-                expected += a.charge;
-        if (expected != d.job()["charge"].toInt())
-            lines << tr("配位中心の酸化数（補助）と配位子の形式電荷から見込まれる全電荷は %1 ですが、"
-                        "設定電荷は %2 です。")
-                         .arg(expected)
-                         .arg(d.job()["charge"].toInt());
-    }
+    if (d.hasCenters() && d.expectedCharge() != d.job()["charge"].toInt())
+        lines << tr("配位中心の酸化数（補助）と配位子の形式電荷から見込まれる全電荷は %1 ですが、"
+                    "設定電荷は %2 です。")
+                     .arg(d.expectedCharge())
+                     .arg(d.job()["charge"].toInt());
     // Besides the summary line, every line is a finding.
     if (lines.size() == 1)
         lines << tr("問題は見つかりませんでした。");

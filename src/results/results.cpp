@@ -116,13 +116,17 @@ void xyz(ResultData &r, const QStringList &lines) {
 } // namespace
 bool NwchemEnergySummary::relevant(QByteArrayView line) {
     return line.contains("energy") || line.contains("NWChem Input Module") ||
-           line.contains("Frequency Analysis") || line.contains("Total times");
+           line.contains("Frequency Analysis") || line.contains("Total times") ||
+           line.contains("number of monomers") || line.contains("BSSE error");
 }
 void NwchemEnergySummary::add(const QString &line) {
     static const QRegularExpression total(
         R"(^\s*Total\s+(SCF|DFT|MP2|CCSD(?:\(T\))?)\s+energy\s*[:=]?\s*([-+0-9.eEdD]+)\s*$)",
         QRegularExpression::CaseInsensitiveOption);
     static const QRegularExpression corrected(R"(^\s*Corrected energy\s*=\s*([-+0-9.eEdD]+)\s*$)");
+    static const QRegularExpression supermolecular(R"(^\s*Supermolecular energy\s*=\s*([-+0-9.eEdD]+)\s*$)");
+    static const QRegularExpression bsseError(R"(^\s*BSSE error\s*=\s*([-+0-9.eEdD]+)\s*$)");
+    static const QRegularExpression monomers(R"(^\s*number of monomers\s*=\s*(\d+)\s*$)");
     const auto read = [](QString text, double &value) {
         bool ok;
         value = text.replace('D', 'E', Qt::CaseInsensitive).toDouble(&ok);
@@ -137,6 +141,10 @@ void NwchemEnergySummary::add(const QString &line) {
         task.frequency = true;
     else if (line.contains("Total times  cpu:"))
         ended = true;
+    else if (const auto n = monomers.match(line); n.hasMatch())
+        task.monomers = std::min(n.captured(1).toInt(), 1000);
+    else if (const auto e = bsseError.match(line); e.hasMatch() && read(e.captured(1), value))
+        task.nwchemError = value;
     else if (!line.contains("energy"))
         return;
     else if (const auto m = total.match(line); m.hasMatch() && read(m.captured(2), value)) {
@@ -147,9 +155,35 @@ void NwchemEnergySummary::add(const QString &line) {
         task.last = value;
         task.lastMethod = m.captured(1).toUpper();
         task.energy = true;
-    } else if (const auto c = corrected.match(line); c.hasMatch() && read(c.captured(1), value)) {
+        if (task.monomers && task.since.size() < 20000)
+            task.since << qMakePair(task.lastMethod, value);
+    } else if (const auto s = supermolecular.match(line); s.hasMatch() && read(s.captured(1), value))
+        task.supermolecular = value;
+    else if (const auto c = corrected.match(line); c.hasMatch() && read(c.captured(1), value)) {
         task.corrected = value;
+        task.error = task.nwchemError;
         task.bsse = true;
+        // NWChem 7.3.1 adds the errors of only the first half of the monomers (task_bsse.F sums
+        // "do j = 1, nmon, 2" over the 2·nmon monomer energies). After the supermolecule's energy
+        // come those of each monomer in its own basis and in the full one, in the same method.
+        const auto start = std::find_if(task.since.begin(), task.since.end(), [&](const auto &e) {
+            return std::abs(e.second - task.supermolecular) < 1e-9;
+        });
+        QVector<double> monomer;
+        if (start != task.since.end())
+            for (auto it = start + 1; it != task.since.end(); ++it)
+                if (it->first == start->first)
+                    monomer << it->second;
+        task.monomerSum = qQNaN();
+        if (task.monomers > 0 && monomer.size() == 2 * task.monomers) {
+            task.error = task.monomerSum = 0;
+            for (int k = 0; k < task.monomers; ++k) {
+                task.error += monomer[2 * k] - monomer[2 * k + 1];
+                task.monomerSum += monomer[2 * k];
+            }
+            task.corrected = task.supermolecular + task.error;
+        }
+        task.since.clear();
     }
 }
 QJsonObject NwchemEnergySummary::energy() const {
@@ -161,6 +195,22 @@ QJsonObject NwchemEnergySummary::energy() const {
         if (it->frequency)
             return {{"hartree", it->first}, {"method", it->firstMethod}, {"source", "frequency_reference"}};
         return {{"hartree", it->last}, {"method", it->lastMethod}, {"source", "final"}};
+    }
+    return {};
+}
+QJsonObject NwchemEnergySummary::bsse() const {
+    for (auto it = tasks.crbegin(); it != tasks.crend(); ++it) {
+        if (!it->bsse)
+            continue;
+        QJsonObject o{
+            {"error", it->error}, {"supermolecular", it->supermolecular}, {"corrected", it->corrected}};
+        if (std::abs(it->error - it->nwchemError) > 1e-9)
+            o["nwchem_error"] = it->nwchemError;
+        if (std::isfinite(it->monomerSum)) {
+            o["interaction"] = it->corrected - it->monomerSum;
+            o["interaction_uncorrected"] = it->supermolecular - it->monomerSum;
+        }
+        return o;
     }
     return {};
 }
@@ -485,15 +535,17 @@ void nwchem(ResultData &r, const QStringList &lines) {
                 }
                 ++j;
             }
-            // Only accept a terminated table, never a partial last row at EOF.
-            if (!d.atoms.isEmpty() && j < lines.size() && lines[j].trimmed().isEmpty() &&
+            // Only accept a terminated table, never a partial last row at EOF. A complete table of
+            // another size is another geometry, such as a monomer of a counterpoise correction.
+            const bool complete = !d.atoms.isEmpty() && j < lines.size() && lines[j].trimmed().isEmpty();
+            if (complete &&
                 (r.frames.isEmpty() || r.frames.first().molecule.atoms.size() == d.atoms.size())) {
                 addFrame(r, d,
                          scanPoint > 0 ? tr("スキャン %1・ログ 行 %2").arg(scanPoint).arg(i + 1)
                                        : tr("ログ 行 %1").arg(i + 1));
                 if (scanPoint > 0 && scan.contains(scanPoint))
                     scan[scanPoint]["frame"] = r.frames.size() - 1;
-            } else
+            } else if (!complete)
                 r.warnings << tr("行 %1の不完全な座標表を読み飛ばしました。").arg(i + 1);
         }
         if (line.contains("(Projected Frequencies expressed")) {
@@ -553,9 +605,16 @@ void nwchem(ResultData &r, const QStringList &lines) {
     }
     if (!ircPoints.isEmpty()) {
         irc["points"] = ircPoints;
+        // Complete when each direction traced (both, or the one chosen) printed its convergence.
+        QJsonArray directions;
+        for (const auto *direction : {"forward", "backward"})
+            if (std::any_of(ircPoints.begin(), ircPoints.end(),
+                            [&](const QJsonValue &p) { return p.toObject()["direction"] == direction; }))
+                directions << direction;
+        irc["directions"] = directions;
         irc["complete"] = std::count_if(lines.begin(), lines.end(), [](const auto &l) {
                               return l.contains("IRC Optimization converged");
-                          }) >= 2;
+                          }) >= directions.size();
         r.properties["irc"] = irc;
     }
     if (!shielding.isEmpty())
@@ -572,6 +631,14 @@ void nwchem(ResultData &r, const QStringList &lines) {
         r.status = tr(NormalStatus);
     if (const auto energy = summary.energy(); !energy.isEmpty())
         r.properties["final_energy"] = energy;
+    if (const auto bsse = summary.bsse(); !bsse.isEmpty()) {
+        r.properties["bsse"] = bsse;
+        if (bsse.contains("nwchem_error"))
+            r.warnings << tr("NWChemが出力したBSSE補正量 %1 Eh は一部の単量体の和なので、"
+                             "すべての単量体のエネルギーから求めた %2 Eh を使います。")
+                              .arg(bsse["nwchem_error"].toDouble(), 0, 'f', 9)
+                              .arg(bsse["error"].toDouble(), 0, 'f', 9);
+    }
     r.warnings.removeDuplicates();
 }
 void mesh(ResultData &r, const QVector<double> &values, const Vec &origin, const Mat &axes);

@@ -1,0 +1,474 @@
+{
+    "atoms": [
+        {
+            "mass": "",
+            "symbol": "P",
+            "x": 0,
+            "y": 0,
+            "z": 0
+        },
+        {
+            "mass": "",
+            "symbol": "F",
+            "x": 1.58,
+            "y": 0,
+            "z": 0
+        },
+        {
+            "mass": "",
+            "symbol": "F",
+            "x": -0.7900000000000003,
+            "y": 1.3683201379794132,
+            "z": 0
+        },
+        {
+            "mass": "",
+            "symbol": "F",
+            "x": -0.7900000000000003,
+            "y": -1.3683201379794132,
+            "z": 0
+        },
+        {
+            "mass": "",
+            "symbol": "F",
+            "x": 0,
+            "y": 0,
+            "z": 1.58
+        },
+        {
+            "mass": "",
+            "symbol": "F",
+            "x": 0,
+            "y": 0,
+            "z": -1.58
+        }
+    ],
+    "coordinate_units": "angstrom",
+    "document": {
+        "assignments": {},
+        "atoms": [
+            {
+                "auto_hydrogen": false,
+                "element": "P",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "a7f3be8e015a4963be83314f7594a58d",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    0,
+                    0,
+                    0
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "F",
+                "fixed": false,
+                "formal_charge": -1,
+                "ghost": false,
+                "id": "4264a4b6b8bf48189f318594124ec1a6",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {
+                    "chiral_tag": 0
+                },
+                "name": "",
+                "position": [
+                    1.58,
+                    0,
+                    0
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "F",
+                "fixed": false,
+                "formal_charge": -1,
+                "ghost": false,
+                "id": "4ff7041912524e83a29ff22fbc2d6612",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {
+                    "chiral_tag": 0
+                },
+                "name": "",
+                "position": [
+                    -0.7900000000000003,
+                    1.3683201379794132,
+                    0
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "F",
+                "fixed": false,
+                "formal_charge": -1,
+                "ghost": false,
+                "id": "791c8354c93b47ce83d47d49c463094a",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {
+                    "chiral_tag": 0
+                },
+                "name": "",
+                "position": [
+                    -0.7900000000000003,
+                    -1.3683201379794132,
+                    0
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "F",
+                "fixed": false,
+                "formal_charge": -1,
+                "ghost": false,
+                "id": "9252517fa898402fbdf4d624a11e0599",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {
+                    "chiral_tag": 0
+                },
+                "name": "",
+                "position": [
+                    0,
+                    0,
+                    1.58
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "F",
+                "fixed": false,
+                "formal_charge": -1,
+                "ghost": false,
+                "id": "3e3f3bc064bd48cf87136a1e26cad551",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {
+                    "chiral_tag": 0
+                },
+                "name": "",
+                "position": [
+                    0,
+                    0,
+                    -1.58
+                ],
+                "radical": 0,
+                "stereo": ""
+            }
+        ],
+        "bonds": [
+            {
+                "a": "4264a4b6b8bf48189f318594124ec1a6",
+                "b": "a7f3be8e015a4963be83314f7594a58d",
+                "kind": "dative",
+                "source": "explicit",
+                "stereo": ""
+            },
+            {
+                "a": "4ff7041912524e83a29ff22fbc2d6612",
+                "b": "a7f3be8e015a4963be83314f7594a58d",
+                "kind": "dative",
+                "source": "explicit",
+                "stereo": ""
+            },
+            {
+                "a": "791c8354c93b47ce83d47d49c463094a",
+                "b": "a7f3be8e015a4963be83314f7594a58d",
+                "kind": "dative",
+                "source": "explicit",
+                "stereo": ""
+            },
+            {
+                "a": "9252517fa898402fbdf4d624a11e0599",
+                "b": "a7f3be8e015a4963be83314f7594a58d",
+                "kind": "dative",
+                "source": "explicit",
+                "stereo": ""
+            },
+            {
+                "a": "3e3f3bc064bd48cf87136a1e26cad551",
+                "b": "a7f3be8e015a4963be83314f7594a58d",
+                "kind": "dative",
+                "source": "explicit",
+                "stereo": ""
+            }
+        ],
+        "centers": [
+            {
+                "atom": "a7f3be8e015a4963be83314f7594a58d",
+                "geometry": "trigonal_bipyramidal",
+                "oxidation": 5,
+                "sites": [
+                    {
+                        "direction": [
+                            1,
+                            0,
+                            0
+                        ],
+                        "distance": 1.58,
+                        "donor": "4264a4b6b8bf48189f318594124ec1a6",
+                        "part": "050c87b1b7f2463581a6f4da6ec15e77"
+                    },
+                    {
+                        "direction": [
+                            -0.5000000000000001,
+                            0.8660254037844387,
+                            0
+                        ],
+                        "distance": 1.58,
+                        "donor": "4ff7041912524e83a29ff22fbc2d6612",
+                        "part": "3fc98d75f80647b4a785821d7ea362eb"
+                    },
+                    {
+                        "direction": [
+                            -0.5000000000000001,
+                            -0.8660254037844387,
+                            0
+                        ],
+                        "distance": 1.58,
+                        "donor": "791c8354c93b47ce83d47d49c463094a",
+                        "part": "f42cfe40cbaa458e94b802a661c0d3b0"
+                    },
+                    {
+                        "direction": [
+                            0,
+                            0,
+                            1
+                        ],
+                        "distance": 1.58,
+                        "donor": "9252517fa898402fbdf4d624a11e0599",
+                        "part": "d1d79613f67f45b48578e7c5eb75c586"
+                    },
+                    {
+                        "direction": [
+                            0,
+                            0,
+                            -1
+                        ],
+                        "distance": 1.58,
+                        "donor": "3e3f3bc064bd48cf87136a1e26cad551",
+                        "part": "588096b559b84b3b9f5e7f8808f462c9"
+                    }
+                ]
+            }
+        ],
+        "chains": {},
+        "id": "4d80b4cc0ea94727a71ab7acdf3fd74d",
+        "invalid_settings": [],
+        "job": {
+            "alpha_occupations": "",
+            "basis": "STO-3G",
+            "beta_occupations": "",
+            "bohr": false,
+            "charge": 0,
+            "dispersion": "none",
+            "fractional_occupations": false,
+            "functional": "",
+            "method": "hf",
+            "multiplicity": 1,
+            "relativistic": "none",
+            "runtype": "energy",
+            "scftype": "RHF",
+            "sections": {},
+            "spherical": true
+        },
+        "metadata": {},
+        "nwchem": {
+            "basis": "6-31g*",
+            "basis_functions": "auto",
+            "basis_overrides": {},
+            "bsse": false,
+            "cc_maxiter": 50,
+            "constraints": [],
+            "dielectric": 78.4,
+            "dispersion": "none",
+            "extra_input": "",
+            "extra_tasks": "",
+            "followup": false,
+            "followup_basis": "def2-tzvp",
+            "followup_dispersion": "none",
+            "followup_functional": "b3lyp",
+            "followup_method": "dft",
+            "freeze_core": false,
+            "functional": "b3lyp",
+            "geometry_units": "angstrom",
+            "grid": "fine",
+            "include_point_charges": false,
+            "irc_points": 30,
+            "irc_stride": 0.1,
+            "memory_mb": 1024,
+            "method": "dft",
+            "numerical_frequencies": false,
+            "opt_convergence": "default",
+            "opt_maxiter": 100,
+            "prop_esp": false,
+            "prop_mulliken": false,
+            "prop_nmr": false,
+            "prop_polarizability": false,
+            "reference": "auto",
+            "relativistic": "none",
+            "ri_j": false,
+            "scan_atoms": [],
+            "scan_end": 2,
+            "scan_relaxed": true,
+            "scan_start": 1,
+            "scan_steps": 6,
+            "scf_convergence": "tight",
+            "scf_maxiter": 100,
+            "solvent": "none",
+            "solvent_name": "dielectric",
+            "start": "molforma",
+            "task": "optimize_frequencies",
+            "tddft": false,
+            "tddft_roots": 10,
+            "tddft_tda": false,
+            "tddft_triplets": false,
+            "title": "PF5",
+            "xc_custom": ""
+        },
+        "parts": [
+            {
+                "atoms": [
+                    "4264a4b6b8bf48189f318594124ec1a6"
+                ],
+                "connections": [
+                    "4264a4b6b8bf48189f318594124ec1a6"
+                ],
+                "id": "050c87b1b7f2463581a6f4da6ec15e77",
+                "metadata": {
+                    "category": "ligand",
+                    "coordination_center": "a7f3be8e015a4963be83314f7594a58d",
+                    "name_en": "Fluoride F−",
+                    "name_ja": "フッ化物 F−",
+                    "sites": [
+                        0
+                    ],
+                    "twist": 0
+                },
+                "template": "ligand:fluoride"
+            },
+            {
+                "atoms": [
+                    "4ff7041912524e83a29ff22fbc2d6612"
+                ],
+                "connections": [
+                    "4ff7041912524e83a29ff22fbc2d6612"
+                ],
+                "id": "3fc98d75f80647b4a785821d7ea362eb",
+                "metadata": {
+                    "category": "ligand",
+                    "coordination_center": "a7f3be8e015a4963be83314f7594a58d",
+                    "name_en": "Fluoride F−",
+                    "name_ja": "フッ化物 F−",
+                    "sites": [
+                        1
+                    ],
+                    "twist": 0
+                },
+                "template": "ligand:fluoride"
+            },
+            {
+                "atoms": [
+                    "791c8354c93b47ce83d47d49c463094a"
+                ],
+                "connections": [
+                    "791c8354c93b47ce83d47d49c463094a"
+                ],
+                "id": "f42cfe40cbaa458e94b802a661c0d3b0",
+                "metadata": {
+                    "category": "ligand",
+                    "coordination_center": "a7f3be8e015a4963be83314f7594a58d",
+                    "name_en": "Fluoride F−",
+                    "name_ja": "フッ化物 F−",
+                    "sites": [
+                        2
+                    ],
+                    "twist": 0
+                },
+                "template": "ligand:fluoride"
+            },
+            {
+                "atoms": [
+                    "9252517fa898402fbdf4d624a11e0599"
+                ],
+                "connections": [
+                    "9252517fa898402fbdf4d624a11e0599"
+                ],
+                "id": "d1d79613f67f45b48578e7c5eb75c586",
+                "metadata": {
+                    "category": "ligand",
+                    "coordination_center": "a7f3be8e015a4963be83314f7594a58d",
+                    "name_en": "Fluoride F−",
+                    "name_ja": "フッ化物 F−",
+                    "sites": [
+                        3
+                    ],
+                    "twist": 0
+                },
+                "template": "ligand:fluoride"
+            },
+            {
+                "atoms": [
+                    "3e3f3bc064bd48cf87136a1e26cad551"
+                ],
+                "connections": [
+                    "3e3f3bc064bd48cf87136a1e26cad551"
+                ],
+                "id": "588096b559b84b3b9f5e7f8808f462c9",
+                "metadata": {
+                    "category": "ligand",
+                    "coordination_center": "a7f3be8e015a4963be83314f7594a58d",
+                    "name_en": "Fluoride F−",
+                    "name_ja": "フッ化物 F−",
+                    "sites": [
+                        4
+                    ],
+                    "twist": 0
+                },
+                "template": "ligand:fluoride"
+            }
+        ],
+        "point_charges": [],
+        "references": [],
+        "residues": [],
+        "revision": 0,
+        "units": "angstrom"
+    },
+    "execution": null,
+    "format": "kagami-gui-project",
+    "job": {
+        "alpha_occupations": "",
+        "basis": "STO-3G",
+        "beta_occupations": "",
+        "bohr": false,
+        "charge": 0,
+        "dispersion": "none",
+        "fractional_occupations": false,
+        "functional": "",
+        "method": "hf",
+        "multiplicity": 1,
+        "relativistic": "none",
+        "runtype": "energy",
+        "scftype": "RHF",
+        "sections": {},
+        "spherical": true
+    },
+    "result_reference": null,
+    "version": 2
+}

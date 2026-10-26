@@ -289,6 +289,28 @@ class CoordinatesTest : public QObject {
         QCOMPARE(w.document().atom(d.atoms[2].id).position.z(), 2.5);
         QCOMPARE(w.document().atom(d.atoms[0].id).position.z(), 0.0);
     }
+    void selectionScrollsIntoTable() {
+        // Atoms chosen in the 3D view bring their rows into view when none of them is shown.
+        MainWindow w;
+        Document d;
+        for (int i = 0; i < 40; ++i)
+            placeTemplate(d, findTemplate("skeleton:water"), Vec(4.0 * i, 0, 0));
+        w.loadDocument(d);
+        w.resize(1380, 900);
+        w.show();
+        button(w, "moleculeLayout_both")->click();
+        QTest::qWait(30);
+        auto *t = table(w);
+        const auto shown = [&](int row) {
+            return t->visualRect(t->model()->index(row, 0)).intersects(t->viewport()->rect());
+        };
+        QVERIFY(shown(0) && !shown(110));
+        w.setSelection({w.document().atoms[110].id, w.document().atoms[111].id});
+        QVERIFY(shown(110));
+        const int scroll = t->verticalScrollBar()->value();
+        w.setSelection({w.document().atoms[111].id}); // Already shown: the table stays.
+        QCOMPARE(t->verticalScrollBar()->value(), scroll);
+    }
     void addAtomDialogAndClear() {
         MainWindow w;
         w.loadDocument(water());

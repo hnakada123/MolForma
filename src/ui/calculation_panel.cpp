@@ -245,7 +245,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     electronic->addRow(QString(), formalCharge);
     rowKeys[formalCharge] = "charge";
     connect(formalCharge, &QPushButton::clicked, this,
-            [this] { change("charge", window->document().formalCharge()); });
+            [this] { change("charge", window->document().expectedCharge()); });
 
     auto *convergence = group("convergence", tr("SCF・電子相関"));
     integer(convergence, tr("SCF最大反復"), "scf_maxiter", 1, 10000);
@@ -266,6 +266,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     auto *path = group("path", tr("IRC・座標スキャン"));
     integer(path, tr("IRCの点数（各方向）"), "irc_points", 1, 500);
     real(path, tr("IRCの刻み幅 / amu½·Bohr"), "irc_stride", 0.01, 1, 3);
+    choice(path, tr("IRCの方向"), "irc_direction");
     scanCoordinate = new QLabel;
     scanCoordinate->setObjectName("calculationScanCoordinate");
     auto *scanAtoms = new QPushButton(tr("選択中の原子を設定"));
@@ -283,8 +284,11 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     real(path, tr("終了値（Å・°）"), "scan_end", -180, 180, 4);
     integer(path, tr("点の数"), "scan_steps", 2, 50);
     flag(path, tr("各点で他の座標を最適化（緩和スキャン）"), "scan_relaxed");
-    help(path, tr("IRCは遷移状態の構造から両方向へ反応経路を追跡します。結果は「結果ビューア」"
-                  "の「経路・スキャン」に表示します。"));
+    help(path, tr("IRCは遷移状態の構造から反応経路を追跡します（既定は両方向）。NWChemは経路の長さが"
+                  "1 amu½·Bohrを超えるまで極小に着いたと判定しないため、短い側は点の数の上限で"
+                  "「mepgs: could not optimize」となって止まり、残りの方向は計算されません。そのときは"
+                  "「IRCの方向」で残りの方向だけを計算します。結果は「結果ビューア」の「経路・スキャン」"
+                  "に表示します。"));
 
     auto *constrained = group("constraints", tr("内部座標の拘束"));
     constraints = new QTableWidget(0, 2);
@@ -1434,7 +1438,7 @@ void CalculationPanel::refresh() {
     for (const auto &key : {"functional", "dispersion", "grid", "ri_j"})
         fields[key]->setEnabled(method == "dft");
     fields["relativistic"]->setEnabled(method == "hf" || method == "dft" || s["relativistic"] != "none");
-    for (const auto &key : {"irc_points", "irc_stride"})
+    for (const auto &key : {"irc_points", "irc_stride", "irc_direction"})
         fields[key]->setEnabled(task == "irc");
     for (const auto &key : {"scan_start", "scan_end", "scan_steps", "scan_relaxed"})
         fields[key]->setEnabled(task == "scan");
@@ -1474,7 +1478,9 @@ void CalculationPanel::refresh() {
         s["reference"] == "auto" && !referenceName.isEmpty()
             ? (check.reference == "rhf" ? tr("→ %1（閉殻）") : tr("→ %1（開殻）")).arg(referenceName)
             : QString());
-    formalCharge->setText(tr("原子の形式電荷の合計（%1）を適用").arg(d.formalCharge()));
+    formalCharge->setText(d.hasCenters()
+                              ? tr("配位中心の酸化数と形式電荷の合計（%1）を適用").arg(d.expectedCharge())
+                              : tr("原子の形式電荷の合計（%1）を適用").arg(d.formalCharge()));
     summaryCard->update(d);
     // Whether the input can be generated, and why not.
     const bool ok = check.errors.isEmpty();

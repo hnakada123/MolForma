@@ -82,12 +82,26 @@ class HistoryTest : public QObject {
         QCOMPARE(entry.status, "prepared");
         QCOMPARE(entry.method, "Hartree–Fock");
         QCOMPARE(entry.basis, "STO-3G");
+        QCOMPARE(entry.name, QString("molforma"));
         QVERIFY(historyIntegrity(entry).contains("入力・プロジェクトのSHA-256一致"));
+        // Under the default calculation name, the job is listed by the user's title; a chosen name wins.
+        {
+            auto titled = d;
+            auto s = nwchemSettings(titled);
+            s["title"] = "water HF";
+            titled.data["nwchem"] = s;
+            QCOMPARE(readHistoryEntry(saveExecutionBundle(titled, tmp.path()).directory).name,
+                     QString("water HF"));
+            s["start"] = "water_hf";
+            titled.data["nwchem"] = s;
+            QCOMPARE(readHistoryEntry(saveExecutionBundle(titled, tmp.path()).directory).name,
+                     QString("water_hf"));
+        }
         const auto molecule = historyMolecule(p.directory);
         QCOMPARE(molecule.atoms, 3);
         QCOMPARE(molecule.charge, 0);
         QCOMPARE(molecule.multiplicity, 1);
-        QCOMPARE(historyJobCount(tmp.filePath("jobs")), 1);
+        QCOMPARE(historyJobCount(tmp.filePath("jobs")), 3);
         QCOMPARE(historyJobCount(tmp.filePath("missing")), -1);
         const auto before = readFile(p.directory + "/project.kgui.json");
         auto next = historyDocument(p.directory);

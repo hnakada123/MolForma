@@ -421,6 +421,7 @@ QJsonObject nwchemDefaults() {
             {"scan_relaxed", true},
             {"irc_points", 30},
             {"irc_stride", 0.1},
+            {"irc_direction", "both"},
             {"bsse", false},
             {"followup", false},
             {"followup_method", "dft"},
@@ -457,6 +458,10 @@ QVector<ChoiceSource> choiceSources(const QString &key) {
                 {"saddle_frequencies", QT_TR_NOOP("遷移状態探索 → 振動数")},
                 {"irc", QT_TR_NOOP("IRC（遷移状態からの反応経路）")},
                 {"scan", QT_TR_NOOP("座標スキャン")}};
+    if (key == "irc_direction")
+        return {{"both", QT_TR_NOOP("両方向")},
+                {"forward", QT_TR_NOOP("前進のみ")},
+                {"backward", QT_TR_NOOP("後退のみ")}};
     if (key == "reference")
         return {{"auto", QT_TR_NOOP("自動（多重度・手法から選択）")},
                 {"rhf", QT_TR_NOOP("RHF / RKS（制限）")},
@@ -846,9 +851,13 @@ NwchemValidation validateNwchem(const Document &d) {
             errors << tr("IRCは固定原子・ゴーストを含む構造に対応しません。");
         if (realAtoms < 3)
             errors << tr("IRCには3個以上の実原子が必要です。");
-        warnings << tr(
-            "IRCは遷移状態の構造から始めてください（遷移状態探索と振動数で虚振動が1つであることを確認）。"
-            "初めに遷移状態のHessianを計算し、両方向へ経路を追跡します。");
+        warnings << (str("irc_direction") == "both"
+                         ? tr("IRCは遷移状態の構造から始めてください（遷移状態探索と振動数で虚振動が1つである"
+                              "ことを確認）。"
+                              "初めに遷移状態のHessianを計算し、両方向へ経路を追跡します。")
+                         : tr("IRCは遷移状態の構造から始めてください（遷移状態探索と振動数で虚振動が1つである"
+                              "ことを確認）。"
+                              "初めに遷移状態のHessianを計算し、指定した方向だけ経路を追跡します。"));
     }
     integer(s, "irc_points", 1, 500);
     const double stride = s["irc_stride"].toDouble();
@@ -982,7 +991,12 @@ NwchemValidation validateNwchem(const Document &d) {
                             .arg(sigma)
                             .arg(1.987204 * std::log(sigma), 0, 'f', 3)
                             .arg(0.0019872043 * 298.15 * std::log(sigma), 0, 'f', 3);
-    if (charge != d.formalCharge())
+    if (d.hasCenters() && charge != d.expectedCharge())
+        warnings
+            << tr("全電荷 %1 は配位中心の酸化数（補助）と配位子の形式電荷から見込まれる %2 と異なります。")
+                   .arg(charge)
+                   .arg(d.expectedCharge());
+    else if (!d.hasCenters() && charge != d.formalCharge())
         warnings
             << tr("全電荷 %1 は原子の形式電荷の合計 %2 と異なります。").arg(charge).arg(d.formalCharge());
     if (points && !s["include_point_charges"].toBool())
@@ -1205,10 +1219,14 @@ QString nwchemInput(const Document &d) {
         if (!check.numericalFrequencies && advanced.contains("hessian_thresh"))
             text += "\nhessian\n  thresh " + nwchemAdvancedNumber(d, "hessian_thresh", "1e-6") + "\nend\n";
     }
-    if (task == "irc")
-        // Gonzalez–Schlegel steps along the transition vector, forward and backward from the start.
+    if (task == "irc") {
+        // Gonzalez–Schlegel steps along the transition vector, forward and backward from the start
+        // unless one direction is chosen.
+        const auto direction = s["irc_direction"].toString();
         text += "\nmepgs\n  maxmep " + integer("irc_points") + "\n  maxiter " + integer("opt_maxiter") +
-                "\n  stride " + shortest(s["irc_stride"].toDouble()) + "\nend\n";
+                "\n  stride " + shortest(s["irc_stride"].toDouble()) +
+                (direction == "both" ? QString() : "\n  " + direction) + "\nend\n";
+    }
     if (s["bsse"].toBool()) {
         text += "\nbsse\n";
         const auto monomers = bsseMonomers(d);

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+#include "editing/coordination.h"
 #include "editing/library.h"
 #include "model/i18n.h"
 #include "ui/main_window.h"
@@ -10,6 +11,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QRegularExpression>
+#include <QScrollArea>
 #include <QSettings>
 #include <QTabWidget>
 #include <QTemporaryDir>
@@ -283,12 +285,32 @@ class TranslationsTest : public QObject {
     // The English manuals, shown by the English interface, follow the Japanese ones section by section.
     void englishManual() {
         initManual();
-        for (const QString name : {"features.md", "mcp.md"}) {
-            QVERIFY(QFile::exists(":/docs/en/" + name));
+        QStringList names{"features.md", "mcp.md", "recipes.md"};
+        for (const auto &recipe : QDir(":/docs/recipes").entryList({"*.md"}))
+            names << "recipes/" + recipe;
+        QCOMPARE(names.size(), 3 + 16);
+        for (const auto &name : std::as_const(names)) {
+            QVERIFY2(QFile::exists(":/docs/en/" + name), qPrintable(name));
             const auto japaneseLevels = headingLevels(":/docs/" + name);
             QVERIFY(!japaneseLevels.isEmpty());
             QCOMPARE(headingLevels(":/docs/en/" + name), japaneseLevels);
         }
+        // Every page links and shows only what is embedded: other pages and the images beside them.
+        static const QRegularExpression link(R"(\]\(([^)#]+)(#[^)]*)?\))");
+        for (const auto &language : {QString(":/docs/"), QString(":/docs/en/")})
+            for (const auto &name : std::as_const(names)) {
+                QFile file(language + name);
+                QVERIFY(file.open(QIODevice::ReadOnly));
+                const auto text = QString::fromUtf8(file.readAll());
+                for (auto it = link.globalMatch(text); it.hasNext();) {
+                    const auto target = it.next().captured(1);
+                    if (target.startsWith("http"))
+                        continue;
+                    const auto path = QFileInfo(language + name).dir().filePath(target);
+                    QVERIFY2(QFile::exists(QDir::cleanPath(path)),
+                             qPrintable(language + name + ": " + target));
+                }
+            }
     }
     // Built in English, every tab and page shows no Japanese: catches texts that are marked but
     // not passed through tr()/translated() where shown, and Japanese names of elements or parts.
@@ -351,6 +373,22 @@ class TranslationsTest : public QObject {
         }
         found.removeDuplicates();
         QVERIFY2(found.isEmpty(), qPrintable("Japanese in the English window:\n" + found.join('\n')));
+        // Longer English text must not widen the right-hand pages beyond their column (the page would be
+        // cut off at the right, as there is no horizontal scroll bar); a center brings the longest labels.
+        w.edit("配位中心を配置",
+               [](Document &d) { addCenter(d, "Na", "tetrahedral", Vec(8, 0, 0), 2.4, 1); });
+        w.setSelection({w.document().atoms.last().id});
+        for (int i = 0; i < pages->count(); ++i) {
+            pages->setCurrentIndex(i);
+            QTest::qWait(20);
+            auto *scroll = qobject_cast<QScrollArea *>(pages->widget(i));
+            QVERIFY(scroll && scroll->widget());
+            QVERIFY2(scroll->widget()->minimumSizeHint().width() <= scroll->viewport()->width(),
+                     qPrintable(QString("page %1 needs %2 px of %3")
+                                    .arg(i)
+                                    .arg(scroll->widget()->minimumSizeHint().width())
+                                    .arg(scroll->viewport()->width())));
+        }
     }
 };
 QTEST_MAIN(TranslationsTest)

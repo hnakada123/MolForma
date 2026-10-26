@@ -284,6 +284,7 @@ void setTerminals(Document &d, const QString &rid, const QString &n, const QStri
         updateResidue(d, r);
     }
 }
+static void orientAmideH(Document &d, const QString &rid, const QString &carbon);
 void addCap(Document &d, const QString &rid, const QString &kind) {
     auto r = residue(d, rid);
     bool ace = kind == "ACE";
@@ -347,7 +348,8 @@ void addCap(Document &d, const QString &rid, const QString &kind) {
         for (auto id : hydrogens(d, connection))
             d.atom(id).position =
                 n + 1.01 * unit(-unit(d.atom(parent).position - n) - unit(d.atom(methyl).position - n));
-    }
+    } else
+        orientAmideH(d, rid, connection); // The N–H left of the amino group, into the new amide plane.
     QString capId = newId();
     QJsonObject cap{{"id", capId},
                     {"code", kind},
@@ -531,6 +533,14 @@ void mutateResidue(Document &d, const QString &rid, const QString &code, const Q
         parts[i] = p;
     }
     d.data["parts"] = parts;
+    // Inside a chain the amide hydrogen goes into the peptide plane, as when a residue is added: the
+    // template's is one of a free amino group and may point at the previous residue's carbonyl.
+    const auto nitrogen = named(residue(d, rid), "N");
+    for (const auto &neighbor : d.neighbors(nitrogen))
+        if (d.atom(neighbor).element == "C" && residueForAtom(d, neighbor) != rid) {
+            orientAmideH(d, rid, neighbor);
+            break;
+        }
 }
 void deleteResidue(Document &d, const QString &rid) {
     auto r = residue(d, rid);
@@ -644,7 +654,9 @@ void reconnectResidues(Document &d, const QString &left, const QString &right) {
         fail(tr("異なる鎖の空いたC末端、N末端を選んでください。"));
     double distance = (d.atom(named(a, "C")).position - d.atom(named(b, "N")).position).norm();
     if (distance < 1.1 || distance > 1.7)
-        fail(tr("C–N距離を1.1〜1.7 Åに整えてから連結してください。"));
+        fail(tr("C–N距離が %1 Å です。1.1〜1.7 Åに整えてから連結してください（C末端のCとN末端のNを順に選び、"
+                "距離に 1.33 を入れて「寸法を適用」すると、別々の鎖なので後に選んだ側の鎖が動きます）。")
+                 .arg(distance, 0, 'f', 2));
     setTerminals(d, left, {}, "internal");
     setTerminals(d, right, "internal", {});
     d.setBond(named(a, "C"), named(b, "N"), "single");

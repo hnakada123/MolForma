@@ -178,7 +178,7 @@ Moving fixed atoms, invalid references, duplicate coordinates, invalid arguments
 | `list_templates` / `place_template` | Search and place built-in parts |
 | `add_atom` | Add an atom by element and coordinates in Å, with an optional bond partner and hydrogen completion |
 | `set_positions` / `translate` | Set coordinates or translate by stable ID |
-| `set_bond` / `delete_atoms` | Change or remove bonds; delete atoms and update references |
+| `set_bond` / `delete_atoms` | Change or remove bonds; delete atoms and update references (the total charge follows the sum of formal charges and oxidation numbers when they matched) |
 | `measure` | Distance, angle or dihedral of 2/3/4 atoms |
 | `set_dimension` | Set the distance (Å), angle or dihedral (degrees) of 2/3/4 atoms. As in the GUI, moves the side of the later atom (for separate, unbonded molecules, the whole molecule of the later atom) |
 | `set_atom_properties` | Change the element (adjust hydrogens with `hydrogens`), formal charge, unpaired electrons, isotope (mass number, 0 to clear) or mass (amu), fixed, ghost and atom name of atoms by stable ID |
@@ -186,9 +186,9 @@ Moving fixed atoms, invalid references, duplicate coordinates, invalid arguments
 | `open_file` | Import local XYZ/MOL/SDF/Mol2/CML/PDB/MolForma project files and NWChem or Gaussian input. `frame` selects the frame of multi-frame XYZ |
 | `export_document` | XYZ of the confirmed document, MolForma project JSON, validated NWChem input string |
 | `save_file` | Save the confirmed document as a MolForma project (`.kgui.json`). An existing file needs `overwrite: true` or the user's approval to overwrite |
-| `get_nwchem` / `set_nwchem` | Get calculation settings, defaults, options (`choices`) and validation results, and change settings. Includes solvent (SMD, solvent name), relativistic effects, RI-J, properties, transition state search, IRC, constraints (`constraints`, atoms by stable ID), scans (`scan_atoms` etc.), BSSE and the follow-up single point. The additional input (`extra_input` / `extra_tasks`) cannot be changed |
+| `get_nwchem` / `set_nwchem` | Get calculation settings, defaults, options (`choices`) and validation results, and change settings. Includes solvent (SMD, solvent name), relativistic effects, RI-J, properties, transition state search, IRC, constraints (`constraints`, atoms by stable ID), scans (`scan_atoms` etc.), BSSE and the follow-up single point. The additional input (`extra_input` / `extra_tasks`) cannot be changed. Only errors the change brings in refuse it; errors already there (no atoms yet, a multiplicity still to be set) do not block other settings |
 | `get_advanced` / `set_advanced` | Get and change the types, options, applicability conditions and values of the advanced and visualization output settings. `null` resets an individual setting |
-| `get_execution` / `set_execution` | Get and change the executable, MPI, number of threads, working locations, environment variables and time limit |
+| `get_execution` / `set_execution` | Get and change the executable, MPI, number of threads, working locations, environment variables and time limit (errors in the calculation settings do not block execution settings; `set_advanced` likewise refuses only errors its change brings in) |
 | `history` | Confirm or discard the candidate, undo/redo |
 
 The following 4 tools are added with `--mcp`. `--mcp-gui` has tools of the same names, which handle the same calculations and results as the GUI window.
@@ -207,7 +207,7 @@ The following tools are added with `--mcp-gui`.
 | Tool | Purpose |
 | --- | --- |
 | `get_app_state` | State of the selection, candidate, cleanup, calculation, result loading and playback, and history scan |
-| `get_ui` / `get_ui_item` | List widgets, menus, shortcuts and dialogs; get input values, options, tables, trees and logs |
+| `get_ui` / `get_ui_item` | List widgets, menus, shortcuts and dialogs; get input values, options, tables, trees and logs. For the 3D views (`moleculeView`, `resultsView`) it returns each atom's stable ID, label (`C1` and so on), the position inside the widget for `ui_input` clicks and whether it is in view (`visible`), and the positions of coordination sites (`center`, `site`) and terminus handles (`residue`, `terminus`) |
 | `get_ui_command` | Get the progress and failure reason of GUI operations |
 | `ui_activate` | Trigger buttons, menu items and shortcuts |
 | `ui_set_value` | Change text, numbers, checkboxes and sliders. Text is committed as edited, as if typed, so it also works for fields that apply only when changed (such as the job folder). `commit: false` skips committing the input |
@@ -266,7 +266,7 @@ Prompts are instructions to the LLM. They do not change MolForma's state.
 
 `query` of `get_ui` searches displayed text, class names and `objectName`. To get widgets on other tabs, use `includeHidden: true`. Hidden widgets, such as the coordinate table (`coordinateTable`) of “1 Molecule” or the fields of closed advanced settings (`advanced_<key>`), can also be fetched with `includeHidden: true` and operated with `ui_edit_cell` / `ui_set_value`. Switch the coordinate table display with `ui_select` on `moleculeLayout` (`view` / `both` / `table`). To open or fold the parts palette, `ui_activate` `paletteToggle` in the tool rail. For `target`, give a returned `ui-N` or a unique `objectName`. Closing a dialog invalidates the IDs of its widgets. If names are duplicated, use `ui-N`.
 
-GUI changes require `documentId` and `expectedRevision` and immediately return a `commandId` in the `queued` state. **GUI changes have no `preview` argument.** They confirm or create a candidate at the same point as the corresponding GUI operation. Changes to the document and candidate are also checked right before execution.
+GUI changes require `documentId` and `expectedRevision` and immediately return a `commandId` in the `queued` state. **GUI changes have no `preview` argument.** They confirm or create a candidate at the same point as the corresponding GUI operation. Changes to the document and candidate are also checked right before execution. Clicking the next open site with the “Place” tool and a ligand confirms the previous ligand's candidate and makes the next one, as in the GUI (a person's click never confirms a candidate MCP made). After edits made with the document tools, the view fits the whole molecule again when it left the picture, as after GUI edits.
 
 1. Call `get_ui_command(commandId)` and check for `queued` / `running` / `done` / `failed`.
 2. If it stays `running`, inspect `activeModal` of `get_ui`. Read the text of the confirmation dialog and press the appropriate button explicitly with a separate `ui_activate`.

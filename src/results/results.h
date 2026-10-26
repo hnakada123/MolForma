@@ -75,15 +75,23 @@ class NwchemEnergySummary {
     void add(const QString &line);
     // {"hartree", "method", "source": final|frequency_reference|bsse_corrected}; empty without one.
     QJsonObject energy() const;
+    // The last counterpoise correction: {"error", "supermolecular", "corrected"} summed over all the
+    // monomers, with "nwchem_error" when NWChem printed another error and, when the monomer energies
+    // were found, "interaction" and "interaction_uncorrected" (Hartree); empty without one.
+    QJsonObject bsse() const;
     bool normalTermination() const {
         return ended;
     }
 
   private:
     struct Task {
-        double first = 0, last = 0, corrected = 0;
+        double first = 0, last = 0, corrected = 0, supermolecular = 0, error = 0, nwchemError = 0,
+               monomerSum = qQNaN(); // The monomers in their own bases.
         QString firstMethod, lastMethod;
         bool energy = false, frequency = false, bsse = false;
+        // The energies since the monomers were listed (or since the last correction), for the sum.
+        int monomers = 0;
+        QVector<QPair<QString, double>> since;
     };
     QVector<Task> tasks{Task{}};
     bool ended = false;

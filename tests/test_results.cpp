@@ -637,6 +637,25 @@ class ResultsTest : public QObject {
         QCOMPARE(path["points"][1].toObject()["direction"].toString(), QString("backward"));
         QCOMPARE(path["points"][1].toObject()["s"].toDouble(), 0.14062);
         QCOMPARE(path["points"][1].toObject()["frame"].toInt(), 2);
+        // One direction ("backward" in MEPGS) is complete with its own convergence.
+        const auto backward =
+            readResult(save("irc-backward.out", "NWChem\n" + geometry() +
+                                                    "         Total SCF energy =    -92.79195\n"
+                                                    "          Backward IRC optimization\n" +
+                                                    geometry() +
+                                                    "&    0     -92.79334658  0.14062  0.14062  "
+                                                    "0.00693  0.01296   -1.29D-03\n"
+                                                    "      IRC Optimization converged\n"))
+                .properties["irc"]
+                .toObject();
+        QVERIFY(backward["complete"].toBool());
+        QCOMPARE(backward["directions"].toArray(), QJsonArray{"backward"});
+        // A side that stops before converging leaves the path incomplete.
+        QVERIFY(!readResult(
+                     save("irc-stopped.out", QString(irc).section("      IRC Optimization converged", 0, 0)))
+                     .properties["irc"]
+                     .toObject()["complete"]
+                     .toBool());
         // Properties, BSSE and solvation in the layout of NWChem 7.3.1.
         const QString properties =
             "NWChem\n" + geometry() +
@@ -667,6 +686,45 @@ class ResultsTest : public QObject {
             "kcal/mol)\n"
             "    total free energy in solvent including G(SMD-CDS) =       -76.422081467149\n";
         r = readResult(save("properties.out", properties));
+        // The monomer geometries a counterpoise correction prints are not frames, and not incomplete.
+        r = readResult(save("monomers.out", "NWChem\n" + geometry() +
+                                                " Output coordinates in angstroms\n\n No. Tag\n ---- ----\n"
+                                                " 1 O 8.0 0.0 0.0 3.4\n\n" +
+                                                properties.mid(QString("NWChem\n").size())));
+        QCOMPARE(r.frames.size(), 2);
+        QVERIFY2(std::none_of(r.warnings.begin(), r.warnings.end(),
+                              [](const QString &w) { return w.contains("座標表"); }),
+                 qPrintable(r.warnings.join('\n')));
+        // NWChem 7.3.1 sums the errors of only the first half of the monomers; the monomer energies
+        // (own basis, then the full one) give the error over all of them.
+        const auto counterpoise =
+            readResult(save("bsse.out", "NWChem\n" + geometry() +
+                                            "             number of monomers =    2\n"
+                                            "         Total DFT energy =     -152.829244137478\n"
+                                            "         Total DFT energy =      -76.400000000000\n"
+                                            "         Total DFT energy =      -76.400300000000\n"
+                                            "         Total DFT energy =      -76.410000000000\n"
+                                            "         Total DFT energy =      -76.410200000000\n"
+                                            "             BSSE error =       0.000300000000\n"
+                                            "  Supermolecular energy =    -152.829244137478\n"
+                                            "       Corrected energy =    -152.828944137478\n"
+                                            " Total times  cpu:        1.0s     wall:        1.0s\n"));
+        const auto bsse = counterpoise.properties["bsse"].toObject();
+        QVERIFY(std::abs(bsse["error"].toDouble() - 0.0005) < 1e-12);
+        QCOMPARE(bsse["nwchem_error"].toDouble(), 0.0003);
+        QVERIFY(std::abs(bsse["corrected"].toDouble() + 152.828744137478) < 1e-9);
+        QVERIFY(std::abs(counterpoise.properties["final_energy"].toObject()["hartree"].toDouble() +
+                         152.828744137478) < 1e-9);
+        QVERIFY(counterpoise.warnings.join('\n').contains("一部の単量体"));
+        // The interaction energy against the monomers in their own bases, with and without the correction.
+        QVERIFY(std::abs(bsse["interaction"].toDouble() - (-152.828744137478 + 152.81)) < 1e-9);
+        QVERIFY(std::abs(bsse["interaction_uncorrected"].toDouble() - (-152.829244137478 + 152.81)) < 1e-9);
+        MainWindow w;
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        QSignalSpy done(panel, &ResultsPanel::loaded);
+        panel->openFile(files.filePath("bsse.out"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        QVERIFY(widget<QLabel>(w, "resultsPropertySummary")->text().contains("相互作用エネルギー"));
         const auto mulliken = r.properties["mulliken"].toArray();
         QCOMPARE(mulliken.size(), 3);
         QVERIFY(std::abs(mulliken[0].toDouble() + 0.77813) < 1e-9);

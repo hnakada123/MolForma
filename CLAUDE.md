@@ -87,15 +87,19 @@ Key cross-cutting designs:
 - Persistence: UI prefs and user presets go to `QSettings("MolForma", "MolForma")`; molecule, calculation and
   execution settings go into the project file. Interactive sessions autosave unsaved work to
   `AppLocalDataLocation/autosave` (with a `QLockFile` per session) and offer recovery at startup.
-- The manual (`docs/features.md`, `docs/mcp.md`) and the window icon are embedded via `docs/manual.qrc` in
-  `molforma_ui`; `packaging/` holds the desktop entry, icon and MIME types installed by `cmake --install`.
+- The manual (`docs/features.md`, `docs/mcp.md`, the recipes `docs/recipes.md` + `docs/recipes/*.md` with their
+  screenshots in `docs/recipes/images/`) and the window icon are embedded via `docs/manual.qrc` in `molforma_ui`;
+  the recipes' practice projects in `docs/recipes/samples/` are not embedded (`test_core recipeSamples` checks them).
+  `packaging/` holds the desktop entry, icon and MIME types installed by `cmake --install`.
 
 ## Conventions
 
 - Add deterministic regression tests, especially for file compatibility, connectivity, geometry, undo and
   candidates. Preserve project envelope fields in `.kgui.json`.
 - Document feature limitations in `docs/features.md` (Japanese); MCP tool changes belong in `docs/mcp.md`. Keep the
-  English manuals `docs/en/features.md` / `docs/en/mcp.md` (shown by the English UI) in step.
+  English manuals `docs/en/features.md` / `docs/en/mcp.md` and the recipes `docs/en/recipes*` (shown by the English
+  UI) in step; `test_translations` compares their headings and checks that every embedded page's links and images
+  exist. When a UI change alters a recipe's steps, update the recipe pages (and their screenshots) too.
 - **Interface language**: Japanese is the source language; English comes from `assets/translations/en.json`
   (`src/model/i18n.h`). Write user-visible text as `tr("日本語")` (QObject::tr in QObject classes, `mf::tr`
   elsewhere — same catalog), `QT_TR_NOOP("…")` in tables shown via `translated()`, `%1` templates rather than

@@ -395,6 +395,8 @@ NwchemImport importNwchemInput(const QString &text) {
                     settings["irc_points"] = row.value(1).toInt();
                 else if (row.value(0).toLower() == "stride" && number(row.value(1), value))
                     settings["irc_stride"] = value;
+                else if (row.value(0).toLower() == "forward" || row.value(0).toLower() == "backward")
+                    settings["irc_direction"] = row.value(0).toLower();
             }
         } else if (keyword == "task") {
             tasks << w.mid(1).join(' ').toLower();

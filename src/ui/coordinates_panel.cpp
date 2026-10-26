@@ -77,8 +77,11 @@ QString CoordinateDelegate::displayText(const QVariant &value, const QLocale &lo
     if (kind == CoordinateCell) {
         bool ok;
         const double number = value.toString().toDouble(&ok);
-        if (ok)
-            return QString::number(number, 'f', 6);
+        if (ok) {
+            // A value that rounds to zero reads 0.000000, not -0.000000.
+            const auto text = QString::number(number, 'f', 6);
+            return text == "-0.000000" ? text.mid(1) : text;
+        }
     }
     return QStyledItemDelegate::displayText(value, locale);
 }
@@ -656,6 +659,19 @@ void CoordinatesPanel::refreshSelection() {
             rows.select(table->model()->index(row, 0), table->model()->index(row, last));
     }
     table->selectionModel()->select(rows, QItemSelectionModel::ClearAndSelect);
+    // Atoms chosen in the 3D view: bring their rows into the table when none of them shows.
+    const auto viewport = table->viewport()->rect();
+    int first = -1;
+    bool visible = false;
+    for (const auto &range : std::as_const(rows))
+        for (int row = range.top(); !visible && row <= range.bottom(); ++row)
+            if (!table->isRowHidden(row)) {
+                if (first < 0)
+                    first = row;
+                visible = table->visualRect(table->model()->index(row, 0)).intersects(viewport);
+            }
+    if (!visible && first >= 0)
+        table->scrollTo(table->model()->index(first, 0), QAbstractItemView::PositionAtTop);
     refreshSelectionBar();
 }
 void CoordinatesPanel::refreshSelectionBar() {

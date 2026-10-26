@@ -178,7 +178,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `list_templates` / `place_template` | 組み込み部品の検索と配置 |
 | `add_atom` | 元素・Å座標による追加。任意の結合先と水素補完を指定 |
 | `set_positions` / `translate` | 安定IDによる座標変更・平行移動 |
-| `set_bond` / `delete_atoms` | 結合の変更・除去、原子削除と参照更新 |
+| `set_bond` / `delete_atoms` | 結合の変更・除去、原子削除と参照更新（全電荷が形式電荷・酸化数の合計と一致していれば削除後の合計に追従） |
 | `measure` | 2/3/4原子の距離・角度・二面角 |
 | `set_dimension` | 2/3/4原子の距離（Å）・角度・二面角（度）の設定。GUIと同じく後の原子の側（結合していない別々の分子では後の原子の分子全体）を動かす |
 | `set_atom_properties` | 安定IDの原子の元素（`hydrogens` で水素の調整）、形式電荷、不対電子、同位体（質量数、0で解除）または質量（amu）、固定、ゴースト、原子名の変更 |
@@ -186,9 +186,9 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `open_file` | ローカルXYZ/MOL/SDF/Mol2/CML/PDB/MolFormaプロジェクト、NWChem・Gaussian入力の取込。複数フレームのXYZは `frame` で選択 |
 | `export_document` | 確定文書のXYZ、MolFormaプロジェクトのJSON、検証済みNWChem入力文字列 |
 | `save_file` | 確定文書をMolFormaプロジェクト（`.kgui.json`）として保存。既存ファイルは `overwrite: true` か、利用者の上書き承認が必要 |
-| `get_nwchem` / `set_nwchem` | 計算条件・既定値・選択肢（`choices`）・検証結果の取得と条件変更。溶媒（SMD・溶媒名）、相対論、RI-J、物性、遷移状態探索・IRC・拘束（`constraints`、原子は安定ID）・スキャン（`scan_atoms` 等）、BSSE、後続の一点計算を含む。追加入力（`extra_input` / `extra_tasks`）は変更不可 |
+| `get_nwchem` / `set_nwchem` | 計算条件・既定値・選択肢（`choices`）・検証結果の取得と条件変更。溶媒（SMD・溶媒名）、相対論、RI-J、物性、遷移状態探索・IRC・拘束（`constraints`、原子は安定ID）・スキャン（`scan_atoms` 等）、BSSE、後続の一点計算を含む。追加入力（`extra_input` / `extra_tasks`）は変更不可。変更で新たに生じたエラーだけで拒否し、変更前からあるエラー（原子がまだない、多重度が未設定など）はほかの条件の変更を妨げない |
 | `get_advanced` / `set_advanced` | 詳細・可視化出力設定の型、選択肢、適用条件、値を取得・変更。`null` で個別リセット |
-| `get_execution` / `set_execution` | 実行ファイル、MPI、スレッド数、作業場所、環境変数、時間制限の取得・変更 |
+| `get_execution` / `set_execution` | 実行ファイル、MPI、スレッド数、作業場所、環境変数、時間制限の取得・変更（計算条件のエラーは実行設定の変更を妨げない。`set_advanced` も同じく、変更で新たに生じたエラーだけで拒否） |
 | `history` | 候補の確定・取消、Undo/Redo |
 
 次の4ツールは `--mcp` で追加されます。`--mcp-gui` にも同名のツールがあり、GUIの画面と同じ計算・結果を扱います。
@@ -207,7 +207,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | ツール | 用途 |
 | --- | --- |
 | `get_app_state` | 選択、候補、整形、計算、結果読込・再生、履歴走査の状態 |
-| `get_ui` / `get_ui_item` | ウィジェット・メニュー・ショートカット・ダイアログの一覧、入力値、選択肢、表・ツリー・ログの取得 |
+| `get_ui` / `get_ui_item` | ウィジェット・メニュー・ショートカット・ダイアログの一覧、入力値、選択肢、表・ツリー・ログの取得。3D画面（`moleculeView`・`resultsView`）では原子ごとの安定ID・ラベル（`C1` など）と、`ui_input` でクリックする部品内の座標、表示範囲内か（`visible`）、配位サイト（`center`・`site`）と末端の追加ハンドル（`residue`・`terminus`）の位置を返す |
 | `get_ui_command` | GUI操作の進行状態と失敗理由の取得 |
 | `ui_activate` | ボタン、メニュー項目、ショートカットの実行 |
 | `ui_set_value` | テキスト・数値・チェック・スライダーの変更。テキストは入力した場合と同じく変更済みとして確定するため、変更時だけ反映する欄（ジョブ保存先など）にも効きます。`commit: false` は入力確定を省略 |
@@ -266,7 +266,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 
 `get_ui` の `query` で表示文言・クラス名・`objectName` を検索できます。他のタブの部品を取得する場合は `includeHidden: true` を使います。「1 分子」の座標の表（`coordinateTable`）や閉じている詳細設定の欄（`advanced_<キー>`）のように非表示の部品も、`includeHidden: true` で取得して `ui_edit_cell` / `ui_set_value` で操作できます。座標の表の表示は `moleculeLayout`（`view` / `both` / `table`）を `ui_select` で切り替えます。部品パレットの開閉はツールの列の `paletteToggle` を `ui_activate` します。`target` には返された `ui-N` または一意な `objectName` を指定します。ダイアログを閉じるとその部品のIDは失効します。名前が重複する場合は `ui-N` を使ってください。
 
-GUI変更は `documentId` と `expectedRevision` を必要とし、`queued` の `commandId` を直ちに返します。**GUI変更には `preview` 引数はありません。** 対応する画面操作と同じタイミングで確定または候補化します。実行直前にも文書と候補の変更を検査します。
+GUI変更は `documentId` と `expectedRevision` を必要とし、`queued` の `commandId` を直ちに返します。**GUI変更には `preview` 引数はありません。** 対応する画面操作と同じタイミングで確定または候補化します。実行直前にも文書と候補の変更を検査します。配位子を選んだ「配置」ツールで次の空きサイトをクリックすると、画面操作と同じく前の配位子の候補を確定して次を候補にします（MCPが作った候補を利用者のクリックが確定することはありません）。文書ツールによる編集でも、分子が3D画面からはみ出たときは画面操作と同じく全体を表示し直します。
 
 1. `get_ui_command(commandId)` を呼び、`queued` / `running` / `done` / `failed` を確認します。
 2. `running` が続く場合は `get_ui` の `activeModal` を調べます。確認ダイアログの文言を読み、該当ボタンを別の `ui_activate` で明示的に操作します。

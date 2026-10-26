@@ -65,6 +65,10 @@ struct Document {
     QStringList validate() const;
     QString formula() const;
     int formalCharge() const;
+    // The total charge the structure suggests: the formal charges, with the oxidation numbers of the
+    // coordination centers in place of the centers' own formal charges.
+    int expectedCharge() const;
+    bool hasCenters() const;
     QJsonObject toJson() const;
     static Document fromJson(const QJsonObject &o);
     QJsonObject project() const;

@@ -32,6 +32,17 @@ QJsonObject capabilities(bool tasks = false) {
         c["extensions"] = QJsonObject{{McpTasksExtension, QJsonObject{}}};
     return c;
 }
+// Settings tools refuse only the errors their change brings in. Problems already there (an empty
+// molecule, a multiplicity still to be chosen) are listed by get_nwchem/get_execution and keep other
+// settings editable, as in the GUI.
+void failOnAddedErrors(const QStringList &before, const QStringList &after) {
+    QStringList added;
+    for (const auto &error : after)
+        if (!before.contains(error))
+            added << error;
+    if (!added.isEmpty())
+        fail(added.join('\n'));
+}
 // Thrown by a tool that needs client input first (multi round-trip request).
 struct InputRequired {
     QJsonObject inputRequests;
@@ -989,9 +1000,12 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                     if (name == "translate" && a.fixed)
                         fail("Fixed atoms cannot move.");
                 }
-                if (name == "delete_atoms")
+                if (name == "delete_atoms") {
+                    const bool follows = next.job()["charge"].toInt() == next.expectedCharge();
                     next.remove(ids);
-                else
+                    if (follows)
+                        next.setJobValue("charge", next.expectedCharge());
+                } else
                     transform(next, ids, Mat::Identity(), vectorFromJson(args["offset"]));
             } else if (name == "import_document") {
                 if (args["append"].toBool() && args["format"] != "xyz")
@@ -1034,6 +1048,7 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                 }
             } else if (name == "set_advanced") {
                 const auto settings = args["settings"].toObject();
+                const auto before = validateNwchem(next).errors;
                 for (auto it = settings.begin(); it != settings.end(); ++it) {
                     if (std::none_of(nwchemAdvancedOptions().cbegin(), nwchemAdvancedOptions().cend(),
                                      [&](const auto &o) { return o.key == it.key(); }))
@@ -1051,13 +1066,12 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                     setNwchemAdvanced(next, it.key(),
                                       it.value().isNull() ? QJsonValue(QJsonValue::Undefined) : it.value());
                 }
-                const auto report = validateNwchem(next);
-                if (!report.errors.isEmpty())
-                    fail(report.errors.join('\n'));
+                failOnAddedErrors(before, validateNwchem(next).errors);
             } else if (name == "set_execution") {
                 const auto settings = args["settings"].toObject();
                 const auto current = executionSettings(next);
                 const auto base = editor.baseDirectory ? editor.baseDirectory() : QDir::currentPath();
+                const auto before = validateExecution(next, base, false).errors;
                 for (auto it = settings.begin(); it != settings.end(); ++it) {
                     if (!executionDefaults().contains(it.key()))
                         fail("Unknown execution setting: " + it.key());
@@ -1071,11 +1085,10 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                         policy.checkPath(it.value().toString(), base);
                     setExecutionSetting(next, it.key(), it.value());
                 }
-                const auto report = validateExecution(next, base, false);
-                if (!report.errors.isEmpty())
-                    fail(report.errors.join('\n'));
+                failOnAddedErrors(before, validateExecution(next, base, false).errors);
             } else if (name == "set_nwchem") {
                 auto settings = nwchemSettings(next), defaults = nwchemDefaults();
+                const auto before = validateNwchem(next).errors;
                 const auto requested = args["settings"].toObject();
                 for (auto it = requested.begin(); it != requested.end(); ++it) {
                     if (!defaults.contains(it.key()) || defaults[it.key()].type() != it.value().type())
@@ -1091,9 +1104,7 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                 for (const auto &key : {"charge", "multiplicity"})
                     if (args.contains(key))
                         next.setJobValue(key, args[key]);
-                const auto validation = validateNwchem(next);
-                if (!validation.errors.isEmpty())
-                    fail(validation.errors.join('\n'));
+                failOnAddedErrors(before, validateNwchem(next).errors);
             }
         },
         args["preview"].toBool(true));
