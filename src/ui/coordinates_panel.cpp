@@ -385,6 +385,8 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     });
     auto *empty = new QWidget;
     empty->setObjectName("coordinateEmpty");
+    // Not counted in the panel's minimum height (that of the table): the view above keeps its room.
+    empty->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Ignored);
     auto *emptyLayout = new QGridLayout(empty);
     emptyLayout->setContentsMargins(24, 24, 24, 24);
     auto *card = new QFrame;

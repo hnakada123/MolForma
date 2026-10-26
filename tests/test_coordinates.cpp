@@ -206,6 +206,20 @@ class CoordinatesTest : public QObject {
         QTRY_VERIFY(table(w)->viewport()->height() >= 4 * table(w)->verticalHeader()->defaultSectionSize());
         button(w, "moleculeLayout_view")->click();
     }
+    void viewKeepsRoomBesideTheTable() {
+        // The table keeps four rows, and no more than its share: the page shown without atoms
+        // is not part of its minimum height.
+        MainWindow w;
+        w.loadDocument(water());
+        w.resize(1380, 900);
+        w.show();
+        button(w, "moleculeLayout_both")->click();
+        auto *split = w.findChild<QSplitter *>("moleculeSplit");
+        QTRY_VERIFY(split->sizes().value(0) > split->sizes().value(1));
+        QVERIFY(w.findChild<QWidget *>("coordinatesTab")->minimumSizeHint().height() < 300);
+        QVERIFY(table(w)->viewport()->height() >= 4 * table(w)->verticalHeader()->defaultSectionSize());
+        button(w, "moleculeLayout_view")->click();
+    }
     void isotopesGhostAndOverlap() {
         MainWindow w;
         auto d = water();

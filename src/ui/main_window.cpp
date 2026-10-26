@@ -621,9 +621,9 @@ void MainWindow::buildUi() {
     moleculeSplit->addWidget(viewArea);
     coordinates = new CoordinatesPanel(this);
     moleculeSplit->addWidget(coordinates);
-    moleculeSplit->setStretchFactor(0, 1);
-    moleculeSplit->setSizes({460, 340});
-    moleculeSplit->restoreState(settings.value("molecule/split").toByteArray());
+    // 3D:表 = 6:4 until the border is dragged (applyMoleculeLayout() restores the drag). Without
+    // stretch factors the sizes are shares, kept as the window is resized.
+    moleculeSplit->setSizes({600, 400});
     connect(moleculeSplit, &QSplitter::splitterMoved, this,
             [this] { settings.setValue("molecule/split", moleculeSplit->saveState()); });
     ml->addWidget(moleculeSplit, 1);
@@ -2227,6 +2227,17 @@ void MainWindow::applyMoleculeLayout() {
     const auto layout = moleculeLayout->currentData().toString();
     moleculeSplit->widget(0)->setVisible(layout != "table");
     coordinates->setVisible(layout != "view");
+    // Both shown: the border where it was dragged, else 3D:表 = 6:4 (the table keeps four rows).
+    // Queued after the splitter has taken in the table just shown, which would size it otherwise.
+    if (layout == "both")
+        QMetaObject::invokeMethod(
+            this,
+            [this] {
+                if (moleculeLayout->currentData() == "both" &&
+                    !moleculeSplit->restoreState(settings.value("molecule/split").toByteArray()))
+                    moleculeSplit->setSizes({600, 400});
+            },
+            Qt::QueuedConnection);
     // The hints are about the view.
     for (auto *hint : {static_cast<QWidget *>(mouseHint), findChild<QWidget *>("controlsHint")})
         hint->setVisible(layout != "table");
