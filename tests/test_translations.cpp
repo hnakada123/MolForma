@@ -302,6 +302,8 @@ class TranslationsTest : public QObject {
                 QFile file(language + name);
                 QVERIFY(file.open(QIODevice::ReadOnly));
                 const auto text = QString::fromUtf8(file.readAll());
+                // The pages are also the Jekyll site of GitHub Pages, where these start Liquid tags.
+                QVERIFY2(!text.contains("{{") && !text.contains("{%"), qPrintable(language + name));
                 for (auto it = link.globalMatch(text); it.hasNext();) {
                     const auto target = it.next().captured(1);
                     if (target.startsWith("http"))

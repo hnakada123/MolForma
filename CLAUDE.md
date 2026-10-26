@@ -91,6 +91,11 @@ Key cross-cutting designs:
   screenshots in `docs/recipes/images/`) and the window icon are embedded via `docs/manual.qrc` in `molforma_ui`;
   the recipes' practice projects in `docs/recipes/samples/` are not embedded (`test_core recipeSamples` checks them).
   `packaging/` holds the desktop entry, icon and MIME types installed by `cmake --install`.
+- `docs/` is also the GitHub Pages site https://hnakada123.github.io/MolForma/ (Jekyll, built by GitHub from main's
+  `/docs`): `_config.yml`, `_layouts/default.html` (header, navigation, language switch), `assets/site.css`, and the
+  home pages `index.md` / `en/index.md` (not in the app). The manual pages stay plain Markdown without front matter,
+  since the app shows them verbatim; Jekyll plugins give them the layout and turn `.md` links into `.html`. Keep `{{`
+  and `{%` out of `docs/` (`test_translations` checks the embedded pages).
 
 ## Conventions
 

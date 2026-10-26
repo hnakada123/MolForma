@@ -1,0 +1,33 @@
+# GitHub Pages builds the site from this folder (main branch, /docs) with Jekyll.
+# The manual pages are plain Markdown without front matter, as the in-app manual shows them
+# verbatim: the plugins below give them a layout, a title from their first heading and turn
+# links to .md files into links to the generated pages. Keep "{{" and "{%" out of the pages.
+title: MolForma
+description: NWChemのための分子エディタ・計算入力作成・結果表示アプリ
+description_en: A molecular editor, input builder and result viewer for NWChem
+baseurl: /MolForma
+repository_url: https://github.com/hnakada123/MolForma
+lang: ja
+
+markdown: kramdown
+kramdown:
+  input: GFM
+  hard_wrap: false
+
+plugins:
+  - jekyll-relative-links
+  - jekyll-optional-front-matter
+  - jekyll-default-layout
+  - jekyll-titles-from-headings
+
+relative_links:
+  enabled: true
+  collections: false
+optional_front_matter:
+  remove_originals: true
+titles_from_headings:
+  enabled: true
+  strip_title: false
+
+exclude:
+  - manual.qrc
