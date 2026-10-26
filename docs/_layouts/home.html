@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+{%- include language.html -%}
+<html lang="{% if en %}en{% else %}ja{% endif %}">
+<head>
+{% include head.html %}
+</head>
+<body class="home">
+{% include header.html %}
+<main id="content">
+{{ content }}
+</main>
+{% include footer.html %}
+</body>
+</html>

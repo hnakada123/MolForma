@@ -1,43 +1,14 @@
 <!DOCTYPE html>
-{%- if page.url contains '/en/' -%}
-  {%- assign en = true -%}
-  {%- assign home = '/en/' -%}
-  {%- assign other = page.url | remove_first: '/en' -%}
-{%- else -%}
-  {%- assign en = false -%}
-  {%- assign home = '/' -%}
-  {%- assign other = page.url | prepend: '/en' -%}
-{%- endif -%}
-{%- assign recipes = home | append: 'recipes' -%}
+{%- include language.html -%}
 <html lang="{% if en %}en{% else %}ja{% endif %}">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<title>{% if page.url == home %}MolForma{% else %}{{ page.title | strip_html }} | MolForma{% endif %}</title>
-<meta name="description" content="{% if en %}{{ site.description_en }}{% else %}{{ site.description }}{% endif %}">
-<link rel="icon" href="{{ '/assets/molforma.svg' | relative_url }}" type="image/svg+xml">
-<link rel="stylesheet" href="{{ '/assets/site.css' | relative_url }}">
+{% include head.html %}
 </head>
 <body>
-<a class="skip" href="#content">{% if en %}Skip to content{% else %}本文へ移動{% endif %}</a>
-<header class="site">
-  <div class="bar">
-    <a class="brand" href="{{ home | relative_url }}"><img src="{{ '/assets/molforma.svg' | relative_url }}" alt="" width="28" height="28">MolForma</a>
-    <nav aria-label="{% if en %}Site{% else %}サイト{% endif %}">
-      <a href="{{ home | append: 'features.html' | relative_url }}"{% if page.url contains 'features' %} aria-current="page"{% endif %}>{% if en %}Features{% else %}機能と操作{% endif %}</a>
-      <a href="{{ home | append: 'recipes.html' | relative_url }}"{% if page.url contains recipes %} aria-current="page"{% endif %}>{% if en %}Recipes{% else %}題材から選ぶ実習{% endif %}</a>
-      <a href="{{ home | append: 'mcp.html' | relative_url }}"{% if page.url contains 'mcp' %} aria-current="page"{% endif %}>{% if en %}MCP server{% else %}MCPサーバー{% endif %}</a>
-      <a href="{{ site.repository_url }}">GitHub</a>
-      <a class="lang" href="{{ other | relative_url }}" hreflang="{% if en %}ja{% else %}en{% endif %}" lang="{% if en %}ja{% else %}en{% endif %}">{% if en %}日本語{% else %}English{% endif %}</a>
-    </nav>
-  </div>
-</header>
+{% include header.html %}
 <main id="content" class="content">
 {{ content }}
 </main>
-<footer class="site">
-  <p>MolForma · GPL-2.0-or-later · <a href="{{ site.repository_url }}">GitHub</a> · <a href="{{ site.repository_url }}/blob/main/docs/{{ page.path }}">{% if en %}Source of this page{% else %}このページの原稿{% endif %}</a></p>
-</footer>
+{% include footer.html %}
 </body>
 </html>

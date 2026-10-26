@@ -92,8 +92,10 @@ Key cross-cutting designs:
   the recipes' practice projects in `docs/recipes/samples/` are not embedded (`test_core recipeSamples` checks them).
   `packaging/` holds the desktop entry, icon and MIME types installed by `cmake --install`.
 - `docs/` is also the GitHub Pages site https://hnakada123.github.io/MolForma/ (Jekyll, built by GitHub from main's
-  `/docs`): `_config.yml`, `_layouts/default.html` (header, navigation, language switch), `assets/site.css`, and the
-  home pages `index.md` / `en/index.md` (not in the app). The manual pages stay plain Markdown without front matter,
+  `/docs`): `_config.yml`, `_layouts/` (`default.html` for the manual pages, `home.html`), `_includes/` (head, header
+  with navigation and language switch, footer), `assets/site.css`, and the home pages `index.html` / `en/index.html`
+  (HTML with front matter, not in the app; their recipe cards come from `_data/recipes.yml`, kept in step with the
+  tables of `recipes.md` / `en/recipes.md`). The manual pages stay plain Markdown without front matter,
   since the app shows them verbatim; Jekyll plugins give them the layout and turn `.md` links into `.html`. Keep `{{`
   and `{%` out of `docs/` (`test_translations` checks the embedded pages).
 

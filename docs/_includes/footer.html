@@ -1,0 +1,14 @@
+<footer class="site">
+  <div class="bar">
+    <span class="brand small"><img src="{{ '/assets/molforma.svg' | relative_url }}" alt="" width="22" height="22">MolForma</span>
+    <span>GPL-2.0-or-later</span>
+    <nav aria-label="{% if en %}Footer{% else %}フッター{% endif %}">
+      <a href="{{ home | append: 'features.html' | relative_url }}">{% if en %}Features{% else %}機能と操作{% endif %}</a>
+      <a href="{{ home | append: 'recipes.html' | relative_url }}">{% if en %}Recipes{% else %}題材から選ぶ実習{% endif %}</a>
+      <a href="{{ home | append: 'mcp.html' | relative_url }}">{% if en %}MCP server{% else %}MCPサーバー{% endif %}</a>
+      <a href="{{ site.repository_url }}">GitHub</a>
+      <a href="{{ site.repository_url }}/blob/main/docs/{{ page.path }}">{% if en %}Source of this page{% else %}このページの原稿{% endif %}</a>
+      <a href="{{ other | relative_url }}" hreflang="{% if en %}ja{% else %}en{% endif %}" lang="{% if en %}ja{% else %}en{% endif %}">{% if en %}日本語{% else %}English{% endif %}</a>
+    </nav>
+  </div>
+</footer>

@@ -90,8 +90,9 @@ in `docs/mcp.md`. Keep the English manuals `docs/en/features.md` and
 in `docs/recipes/samples/`) have English versions under `docs/en/`; update
 both when a UI change alters a recipe's steps. `docs/` is also published as the
 GitHub Pages site https://hnakada123.github.io/MolForma/ (Jekyll from main's
-`/docs`: `_config.yml`, `_layouts/default.html`, `assets/site.css`, home pages
-`index.md` / `en/index.md`). Keep the manual pages plain Markdown without front
+`/docs`: `_config.yml`, `_layouts/`, `_includes/`, `assets/site.css`, the HTML
+home pages `index.html` / `en/index.html` with recipe cards from
+`_data/recipes.yml`, which follows the tables of `recipes.md` / `en/recipes.md`). Keep the manual pages plain Markdown without front
 matter (the app shows them verbatim) and keep `{{` and `{%` out of them.
 
 The interface is Japanese or English (`src/model/i18n.h`). Write user-visible

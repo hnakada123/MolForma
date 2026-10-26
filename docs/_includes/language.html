@@ -1,0 +1,11 @@
+{%- comment -%} The page's language, its home and the same page in the other language. {%- endcomment -%}
+{%- if page.url contains '/en/' -%}
+  {%- assign en = true -%}
+  {%- assign home = '/en/' -%}
+  {%- assign other = page.url | remove_first: '/en' -%}
+{%- else -%}
+  {%- assign en = false -%}
+  {%- assign home = '/' -%}
+  {%- assign other = page.url | prepend: '/en' -%}
+{%- endif -%}
+{%- assign recipes = home | append: 'recipes' -%}

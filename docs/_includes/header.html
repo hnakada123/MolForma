@@ -1,0 +1,13 @@
+<a class="skip" href="#content">{% if en %}Skip to content{% else %}本文へ移動{% endif %}</a>
+<header class="site">
+  <div class="bar">
+    <a class="brand" href="{{ home | relative_url }}"><img src="{{ '/assets/molforma.svg' | relative_url }}" alt="" width="32" height="32">MolForma</a>
+    <nav aria-label="{% if en %}Site{% else %}サイト{% endif %}">
+      <a href="{{ home | append: 'features.html' | relative_url }}"{% if page.url contains 'features' %} aria-current="page"{% endif %}>{% if en %}Features{% else %}機能と操作{% endif %}</a>
+      <a href="{{ home | append: 'recipes.html' | relative_url }}"{% if page.url contains recipes %} aria-current="page"{% endif %}>{% if en %}Recipes{% else %}題材から選ぶ実習{% endif %}</a>
+      <a href="{{ home | append: 'mcp.html' | relative_url }}"{% if page.url contains 'mcp' %} aria-current="page"{% endif %}>{% if en %}MCP server{% else %}MCPサーバー{% endif %}</a>
+      <a href="{{ site.repository_url }}">GitHub</a>
+      <a class="lang" href="{{ other | relative_url }}" hreflang="{% if en %}ja{% else %}en{% endif %}" lang="{% if en %}ja{% else %}en{% endif %}">{% if en %}日本語{% else %}English{% endif %}</a>
+    </nav>
+  </div>
+</header>

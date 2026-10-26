@@ -1,0 +1,50 @@
+# The recipe cards of the home pages (index.html, en/index.html). The titles follow the tables of
+# recipes.md and en/recipes.md; keep them in step when a recipe is added or renamed.
+- page: atoms_and_bonds
+  ja: {title: 原子と結合から組む, molecule: エタノール、アセトアルデヒド、ジメチルエーテル, calc: B3LYP/6-31G* 最適化 → 振動数}
+  en: {title: Building from atoms and bonds, molecule: "Ethanol, acetaldehyde, dimethyl ether", calc: B3LYP/6-31G* optimization → frequencies}
+- page: cobalt_complex
+  ja: {title: 配位化合物・金属錯体, molecule: "trans-[Co(en)₂Cl₂]⁺（電荷 +1）", calc: B3LYP/def2-SVP 構造最適化}
+  en: {title: Coordination compounds, molecule: "trans-[Co(en)₂Cl₂]⁺ (charge +1)", calc: B3LYP/def2-SVP optimization}
+- page: aromatic_substitution
+  ja: {title: 芳香族の置換体, molecule: p-ニトロアニリンとo体・m体, calc: B3LYP/6-31G* 最適化 → 振動数}
+  en: {title: Substituted aromatics, molecule: "p-Nitroaniline and its o and m isomers", calc: B3LYP/6-31G* optimization → frequencies}
+- page: caffeine_smiles
+  ja: {title: 複素環をSMILES・構造式ファイルから作る, molecule: カフェイン, calc: B3LYP/6-31G* 構造最適化}
+  en: {title: Heterocycles from SMILES and structure files, molecule: Caffeine, calc: B3LYP/6-31G* optimization}
+- page: butane_conformers
+  ja: {title: 鎖状分子と配座, molecule: n-ブタンのanti・gauche, calc: B3LYP/6-31G* 緩和スキャン}
+  en: {title: Chains and conformers, molecule: Anti and gauche n-butane, calc: B3LYP/6-31G* relaxed scan}
+- page: stereochemistry
+  ja: {title: 立体化学, molecule: 乳酸のR/S、2-ブテンのE/Z, calc: B3LYP/6-31G* 最適化 → 振動数}
+  en: {title: Stereochemistry, molecule: "R/S lactic acid, E/Z 2-butene", calc: B3LYP/6-31G* optimization → frequencies}
+- page: capped_peptide
+  ja: {title: ペプチド, molecule: "ACE–Ala–His–Glu–NME（電荷 −1）", calc: "B3LYP/6-31G* 一点（COSMO・水）"}
+  en: {title: Peptides, molecule: "ACE–Ala–His–Glu–NME (charge −1)", calc: "B3LYP/6-31G* single point (COSMO, water)"}
+- page: residue_mutation
+  ja: {title: 残基の置換と鎖の編集, molecule: His→Pheの変異体、鎖の分割と再連結, calc: "B3LYP/6-31G* 一点（COSMO・水）"}
+  en: {title: Mutating residues and editing chains, molecule: "His→Phe mutant, splitting and relinking chains", calc: "B3LYP/6-31G* single point (COSMO, water)"}
+- page: benzene_water
+  ja: {title: 分子間錯体とBSSE補正, molecule: ベンゼン–水の二量体, calc: MP2/6-31G* 一点・BSSE補正}
+  en: {title: Complexes of molecules and BSSE, molecule: Benzene–water dimer, calc: "MP2/6-31G* single point, BSSE corrected"}
+- page: phenoxyl_radical
+  ja: {title: イオンとラジカル, molecule: フェノール、フェノキシラジカル、フェノラート, calc: B3LYP/6-31+G* 最適化 → 振動数}
+  en: {title: Ions and radicals, molecule: "Phenol, phenoxyl radical, phenolate", calc: B3LYP/6-31+G* optimization → frequencies}
+- page: main_group
+  ja: {title: 主族元素の分子, molecule: "SF₆（八面体）、PF₅（三方両錐）", calc: B3LYP/6-31G* 最適化 → 振動数}
+  en: {title: Main-group molecules, molecule: "SF₆ (octahedral), PF₅ (trigonal bipyramidal)", calc: B3LYP/6-31G* optimization → frequencies}
+- page: hydrated_sodium
+  ja: {title: 溶媒和クラスターと点電荷, molecule: "[Na(H₂O)₄]⁺ とTIP3P点電荷", calc: B3LYP/6-31G* 最適化と一点}
+  en: {title: Solvated clusters and point charges, molecule: "[Na(H₂O)₄]⁺ and TIP3P point charges", calc: B3LYP/6-31G* optimization and single points}
+- page: sn2_transition_state
+  ja: {title: 遷移状態と反応経路, molecule: F⁻ + CH₃Cl の遷移状態, calc: M06-2X 遷移状態探索・IRC}
+  en: {title: Transition states and reaction paths, molecule: Transition state of F⁻ + CH₃Cl, calc: "M06-2X TS search, IRC"}
+- page: reuse_result
+  ja: {title: 計算結果から次の計算へ, molecule: 最適化したp-ニトロアニリン, calc: CAM-B3LYP/6-31+G* TDDFT}
+  en: {title: From a result to the next calculation, molecule: Optimized p-nitroaniline, calc: CAM-B3LYP/6-31+G* TDDFT}
+- page: isotopes
+  ja: {title: 同位体と原子の並び順, molecule: エタノール-OD, calc: B3LYP/6-31G* 振動数}
+  en: {title: Isotopes and atom order, molecule: Ethanol-OD, calc: B3LYP/6-31G* frequencies}
+- page: my_parts
+  ja: {title: 自作の部品（マイ部品）, molecule: トリメチルシリルベンゼン, calc: B3LYP/6-31G* 構造最適化}
+  en: {title: Your own parts (My parts), molecule: Trimethylsilylbenzene, calc: B3LYP/6-31G* optimization}
