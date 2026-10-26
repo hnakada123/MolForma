@@ -963,6 +963,25 @@ class EditorTest : public QObject {
         w.findChild<QPushButton *>("moleculeInputPreview")->click();
         QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 3);
     }
+    void chargeLinksFitTheColumn() {
+        // The links to "2 計算条件" go under their values where the column is narrow, never cut at its edge.
+        MainWindow w;
+        w.loadDocument(Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n"));
+        w.show();
+        auto *tabs = w.findChild<QTabWidget *>("propertyTabs");
+        tabs->setCurrentIndex(5);
+        auto *scroll = qobject_cast<QScrollArea *>(tabs->currentWidget());
+        QVERIFY(scroll);
+        for (const auto size : {QSize(1380, 900), QSize(1100, 720)}) {
+            w.resize(size);
+            for (const auto *name : {"moleculeChargeLink", "moleculePointChargeLink"}) {
+                auto *link = w.findChild<QPushButton *>(name);
+                QTRY_VERIFY(link->isVisible() && link->width() >= link->sizeHint().width() &&
+                            link->mapTo(scroll->viewport(), QPoint(link->width(), 0)).x() <=
+                                scroll->viewport()->width());
+            }
+        }
+    }
     void moleculePointChargesAndCompatibility() {
         MainWindow w;
         auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");

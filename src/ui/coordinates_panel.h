@@ -48,11 +48,14 @@ class CoordinatesPanel : public QWidget {
     // Reads a structure file into a replacement candidate, asking for the PDB MODEL and ALTLOC.
     void importPath(const QString &path);
     void applyChromeStyle();
+    // At least the height the bars need as wrapped at the current width, over a table of four rows.
+    QSize minimumSizeHint() const override;
 
   protected:
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
     void showEvent(QShowEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
   private:
     MainWindow *window;

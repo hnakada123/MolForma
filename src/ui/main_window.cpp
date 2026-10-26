@@ -508,14 +508,14 @@ void MainWindow::buildUi() {
     toolDeleteTerminate = new QCheckBox("削除後に水素で終端化");
     toolDeleteTerminate->setObjectName("toolDeleteTerminate");
     toolDeleteTerminate->setChecked(true);
-    toolDeleteTerminate->setToolTip("すべての削除に適用します（「編集」タブの同じ項目と共通）。");
+    toolDeleteTerminate->setToolTip("すべての削除に適用します（「編集」ページの同じ項目と共通）。");
     optionGroup("deleteOption", {toolDeleteTerminate});
     auto *chargeLabel = new QLabel("置く点電荷 / e");
     toolChargeValue = new QDoubleSpinBox;
     toolChargeValue->setObjectName("toolChargeValue");
     toolChargeValue->setDecimals(5);
     toolChargeValue->setRange(-10000, 10000);
-    toolChargeValue->setToolTip("「電荷」タブの「電荷 / e」と共通です。");
+    toolChargeValue->setToolTip("「電荷」ページの「電荷 / e」と共通です。");
     chargeLabel->setBuddy(toolChargeValue);
     optionGroup("chargeOption", {chargeLabel, toolChargeValue});
     // The structure commands stay at the right end, after the options of the tool.
@@ -622,8 +622,8 @@ void MainWindow::buildUi() {
     moleculeSplit = new QSplitter(Qt::Vertical);
     moleculeSplit->setObjectName("moleculeSplit");
     moleculeSplit->setChildrenCollapsible(false);
-    // The view gives way to four rows of the table.
-    viewArea->setMinimumHeight(140);
+    // The view gives way to four rows of the table, under its bars wrapped where the window is narrow.
+    viewArea->setMinimumHeight(120);
     moleculeSplit->addWidget(viewArea);
     coordinates = new CoordinatesPanel(this);
     moleculeSplit->addWidget(coordinates);
@@ -3028,7 +3028,8 @@ void MainWindow::refreshToolHint() {
                      .arg(symbol)},
         {"part", QString("配置（%1）: 空白をクリックで配置 · 原子・水素をクリックで接続").arg(part)},
         {"substituent", QString("配置（%1）: 置き換える水素をクリック（ドロップも可）").arg(part)},
-        {"center", QString("配置（配位中心 %1）: 空白をクリックで配置 · 配位形状は「配位」タブ").arg(symbol)},
+        {"center",
+         QString("配置（配位中心 %1）: 空白をクリックで配置 · 配位形状は「配位」ページ").arg(symbol)},
         {"ligand",
          QString("配置（%1）: 配位中心の紫の番号（空きサイト）をクリック · 空白なら単独で配置").arg(part)},
         {"smiles", QString("配置: パレットの「%1」をクリックすると3D構造を作ります").arg(part)}};
@@ -3042,7 +3043,7 @@ void MainWindow::refreshToolHint() {
         {"replace",
          QString("置き換え（%1）: 置き換える原子をクリック").arg(palette->currentItem() ? part : symbol)},
         {"delete", "削除: 原子をクリックすると削除の候補を作ります"},
-        {"charge", "点電荷: 空白をクリックで配置 · 電荷の値は「電荷」タブ"}};
+        {"charge", "点電荷: 空白をクリックで配置 · 電荷の値は「電荷」ページ"}};
     // Delete and replace act on the selection unit too, which is set with the select tool.
     auto hint = hints.value(mode);
     if ((mode == "delete" || mode == "replace") && selectionUnit() != "atom")

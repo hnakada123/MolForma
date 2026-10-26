@@ -1003,6 +1003,19 @@ void CoordinatesPanel::dropEvent(QDropEvent *event) {
     // Read after the drop finishes, so the PDB dialogs do not run inside the drag-and-drop loop.
     QTimer::singleShot(0, this, [this, path] { attempt([&] { importPath(path); }); });
 }
+QSize CoordinatesPanel::minimumSizeHint() const {
+    // The toolbar and the selection bar wrap where the panel is narrow. The splitter beside the 3D view
+    // reads the minimum, not the height for width, and would otherwise squeeze the table under them.
+    auto size = QWidget::minimumSizeHint();
+    if (layout()->hasHeightForWidth())
+        size.setHeight(std::max(size.height(), layout()->totalMinimumHeightForWidth(width())));
+    return size;
+}
+void CoordinatesPanel::resizeEvent(QResizeEvent *event) {
+    QWidget::resizeEvent(event);
+    if (event->size().width() != event->oldSize().width())
+        updateGeometry(); // The bars may wrap differently: the minimum height follows.
+}
 void CoordinatesPanel::showEvent(QShowEvent *event) {
     QWidget::showEvent(event);
     // Shown with "1 分子" or by its layout: catch up with what changed while hidden.

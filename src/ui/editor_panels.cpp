@@ -803,13 +803,12 @@ void MainWindow::buildChargePanel() {
         workspaceTabs->setCurrentWidget(calculation);
         calculation->showField("charge");
     });
+    // The value and the link wrap: the link goes under the value where the column is narrow.
     auto *chargeRow = new QWidget;
-    auto *chargeRowLayout = new QHBoxLayout(chargeRow);
+    auto *chargeRowLayout = new FlowLayout(chargeRow, 10, 4);
     chargeRowLayout->setContentsMargins(0, 0, 0, 0);
-    chargeRowLayout->setSpacing(10);
     chargeRowLayout->addWidget(chargeState);
     chargeRowLayout->addWidget(chargeLink);
-    chargeRowLayout->addStretch();
     f->addRow("全電荷・多重度", chargeRow);
     chargeSummary = new QLabel;
     chargeSummary->setObjectName("moleculeChargeSummary");
@@ -838,12 +837,10 @@ void MainWindow::buildChargePanel() {
         calculation->showField("include_point_charges");
     });
     auto *pointRow = new QWidget;
-    auto *pointRowLayout = new QHBoxLayout(pointRow);
+    auto *pointRowLayout = new FlowLayout(pointRow, 10, 4);
     pointRowLayout->setContentsMargins(0, 0, 0, 0);
-    pointRowLayout->setSpacing(10);
     pointRowLayout->addWidget(pointChargeState);
     pointRowLayout->addWidget(pointLink);
-    pointRowLayout->addStretch();
     f->addRow(pointRow);
     pointList = new QListWidget;
     pointList->setObjectName("pointChargeList");

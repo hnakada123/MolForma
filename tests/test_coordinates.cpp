@@ -201,9 +201,15 @@ class CoordinatesTest : public QObject {
         button(w, "tool_place")->click();
         QVERIFY(palette->isVisible() && toggle->isChecked());
         button(w, "tool_select")->click();
-        // Beside the 3D view, the table keeps four rows even in a small window.
+        // Beside the 3D view, the table keeps four rows even in a small window, where the bars above it
+        // wrap: none of it is cut off.
         button(w, "moleculeLayout_both")->click();
-        QTRY_VERIFY(table(w)->viewport()->height() >= 4 * table(w)->verticalHeader()->defaultSectionSize());
+        auto *split = w.findChild<QSplitter *>("moleculeSplit");
+        auto *t = table(w);
+        auto *toolbar = w.findChild<QWidget *>("coordinateToolbar");
+        QTRY_VERIFY(split->sizes().value(1) > 0 && toolbar->height() > toolbar->minimumSizeHint().height());
+        QTRY_VERIFY(t->parentWidget()->height() >= t->height());
+        QVERIFY(t->viewport()->height() >= 4 * t->verticalHeader()->defaultSectionSize());
         button(w, "moleculeLayout_view")->click();
     }
     void viewKeepsRoomBesideTheTable() {
