@@ -95,7 +95,8 @@ Key cross-cutting designs:
 - `docs/` is also the source of the GitHub Pages site https://hnakada123.github.io/MolForma/: on pushes to main that
   touch `docs/`, `.github/workflows/pages.yml` generates the HTML with Jekyll (`docs/Gemfile` + `Gemfile.lock`, the
   `github-pages` gem) and publishes that HTML (Pages source: GitHub Actions). Preview locally with
-  `cd docs && bundle install && bundle exec jekyll build` (HTML in `docs/_site`, ignored) or `jekyll serve`. The
+  `bundle exec jekyll build` (HTML in `docs/_site`) or `jekyll serve` in `docs/`, after `bundle config set --local
+  path vendor/bundle && bundle install` (`.bundle/`, `vendor/` and `_site/` are ignored). The
   site's sources: `_config.yml`, `_layouts/` (`default.html` for the manual pages, `home.html`), `_includes/` (head,
   header with navigation and language switch, footer), `assets/site.css`, and the home pages `index.html` / `en/index.html`
   (HTML with front matter, not in the app; their recipe cards come from `_data/recipes.yml`, kept in step with the

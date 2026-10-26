@@ -92,7 +92,8 @@ both when a UI change alters a recipe's steps. `docs/` is also published as the
 GitHub Pages site https://hnakada123.github.io/MolForma/: on pushes to main,
 `.github/workflows/pages.yml` generates the HTML with Jekyll (`docs/Gemfile`,
 `docs/Gemfile.lock`) and publishes it; preview with `bundle exec jekyll build`
-or `serve` in `docs/` (output in the ignored `docs/_site`). The site's sources are
+or `serve` in `docs/` (output in the ignored `docs/_site`), after
+`bundle config set --local path vendor/bundle && bundle install` there. The site's sources are
 `_config.yml`, `_layouts/`, `_includes/`, `assets/site.css`, the HTML
 home pages `index.html` / `en/index.html` with recipe cards from
 `_data/recipes.yml`, which follows the tables of `recipes.md` / `en/recipes.md`). Keep the manual pages plain Markdown without front
