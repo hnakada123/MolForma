@@ -82,6 +82,7 @@ class ExecutionPanel : public QWidget {
     QPlainTextEdit *command, *log;
     QPushButton *prepare, *openFolder, *viewResults, *removeEnvironment, *showRunLink, *stopRun;
     QFrame *runPanel;
+    QFrame *toolbar;        // The calculation, "終了したら結果ビューアに読み込む" and "ジョブとして保存".
     QCheckBox *openResults; // Load the job folder into the result viewer when a run finishes.
     QCheckBox *follow;      // Keep the end of the log in view.
     SettingsCard *runCard, *commandCard;

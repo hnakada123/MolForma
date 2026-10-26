@@ -71,7 +71,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     outer->setSpacing(0);
     // The calculation, saving it as a job and what to do when a run ends. Runs start from the
     // header's "計算を実行" (F5) and stop from its "停止", whatever the tab.
-    auto *toolbar = new QFrame;
+    toolbar = new QFrame;
     toolbar->setObjectName("executionToolbar");
     toolbar->setProperty("toolbar", true);
     auto *tools = new FlowLayout(toolbar, 10, 6);
@@ -503,8 +503,10 @@ void ExecutionPanel::buildRunPanel() {
     connect(copyLog, &QToolButton::clicked, this,
             [this] { QApplication::clipboard()->setText(log->toPlainText()); });
     panel->addWidget(logCard, 1);
-    // The panel follows the area of the tabs, and over "1 分子" the pages at its right.
+    // The panel follows the area of the tabs, over "1 分子" the pages at its right and over this tab
+    // the settings below its bar (whose height changes as it wraps).
     window->workspaceTabs->installEventFilter(this);
+    toolbar->installEventFilter(this);
     connect(window->workspaceTabs, &QTabWidget::currentChanged, this, [this] {
         if (runPanel->isVisible())
             placeRunPanel();
@@ -537,10 +539,16 @@ void ExecutionPanel::placeRunPanel() {
         }
         left = column->mapTo(window, QPoint()).x();
     }
-    runPanel->setGeometry(left, area.top(), area.right() + 1 - left, area.height());
+    // Over "3 実行設定" it starts below the bar: the calculation, "終了したら結果ビューアに読み込む"
+    // and "ジョブとして保存" stay in sight.
+    int top = area.top();
+    if (tabs->currentWidget() == this)
+        top = toolbar->mapTo(window, QPoint(0, toolbar->height())).y();
+    runPanel->setGeometry(left, top, area.right() + 1 - left, area.bottom() + 1 - top);
 }
 bool ExecutionPanel::eventFilter(QObject *watched, QEvent *event) {
-    if ((watched == window->workspaceTabs || watched->objectName() == "propertyColumn") &&
+    if ((watched == window->workspaceTabs || watched == toolbar ||
+         watched->objectName() == "propertyColumn") &&
         (event->type() == QEvent::Resize || event->type() == QEvent::Move) && runPanel->isVisible())
         placeRunPanel();
     return QWidget::eventFilter(watched, event);

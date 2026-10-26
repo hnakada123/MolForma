@@ -455,7 +455,27 @@ class ExecutionTest : public QObject {
         QVERIFY(!QRect(panel->mapTo(&w, QPoint()), panel->size()).intersects(view));
         tabs->setCurrentIndex(2);
         QVERIFY(panel->width() >= 420);
+        // Over "3 実行設定" it starts below the bar, so what to do when a run ends stays in sight,
+        // also as a long calculation wraps the bar.
+        auto *toolbar = w.findChild<QWidget *>("executionToolbar");
+        const auto below = [&] {
+            const QRect bar(toolbar->mapTo(&w, QPoint()), toolbar->size());
+            const QRect over(panel->mapTo(&w, QPoint()), panel->size());
+            return !over.intersects(bar) && over.top() == bar.bottom() + 1 && over.bottom() == area.bottom();
+        };
+        QTRY_VERIFY(below());
+        QVERIFY(w.findChild<QCheckBox *>("executionOpenResults")->isVisibleTo(&w));
+        const int barHeight = toolbar->height();
+        auto *context = w.findChild<QLabel *>("executionContext");
+        const auto calculation = context->text();
+        context->setText(calculation.repeated(12));
+        QTRY_VERIFY(toolbar->height() > barHeight);
+        QTRY_VERIFY(below());
+        context->setText(calculation);
+        QTRY_COMPARE(toolbar->height(), barHeight);
+        QTRY_VERIFY(below());
         tabs->setCurrentIndex(0);
+        QTRY_COMPARE(panel->mapTo(&w, QPoint()).y(), tabs->mapTo(&w, QPoint()).y());
         // The tasks of the input, the current one with its last step, and the four criteria.
         QTRY_VERIFY(w.findChild<QLabel *>("executionStage0") &&
                     w.findChild<QLabel *>("executionStage0")->text().contains("ステップ 1 / 最大 100"));
