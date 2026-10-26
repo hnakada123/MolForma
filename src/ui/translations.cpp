@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/translations.h"
+#include "model/i18n.h"
 #include <QCoreApplication>
 #include <QHash>
 #include <QLibraryInfo>
 #include <QLocale>
+#include <QSettings>
 #include <QTranslator>
 
 namespace mf {
@@ -17,6 +19,7 @@ class Fallback : public QTranslator {
         return false;
     }
     QString translate(const char *context, const char *source, const char *, int) const override {
+        // i18n-exempt-begin: Japanese translations of Qt's own texts.
         static const QHash<QString, QString> texts{
             {"QPlatformTheme|OK", "OK"},
             {"QPlatformTheme|Save", "保存"},
@@ -43,11 +46,22 @@ class Fallback : public QTranslator {
             {"QCommandLineParser|Displays help, including generic Qt options.",
              "Qtの共通オプションを含めて説明を表示する。"},
             {"QCommandLineParser|Displays version information.", "バージョン情報を表示する。"}};
+        // i18n-exempt-end
         return texts.value(QString::fromUtf8(context) + '|' + QString::fromUtf8(source));
     }
 };
 } // namespace
 void installTranslations(QCoreApplication &app) {
+    auto language = qEnvironmentVariable("MOLFORMA_LANGUAGE");
+    if (language != "ja" && language != "en")
+        language = QSettings("MolForma", "MolForma").value("ui/language").toString();
+    if (language != "ja" && language != "en")
+        language = QLocale::system().uiLanguages().value(0).startsWith("ja") ? "ja" : "en";
+    qputenv("MOLFORMA_LANGUAGE", language.toUtf8());
+    if (language == "en") {
+        setEnglish(true); // Qt's own texts are English already.
+        return;
+    }
     // Qt asks the last installed translator first: Qt's own translation, then the fallback.
     app.installTranslator(new Fallback(&app));
     auto *qt = new QTranslator(&app);
@@ -56,5 +70,8 @@ void installTranslations(QCoreApplication &app) {
         app.installTranslator(qt);
     else
         delete qt;
+}
+void inheritTranslations() {
+    setEnglish(qgetenv("MOLFORMA_LANGUAGE") == "en");
 }
 } // namespace mf

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordinates.h"
 #include "model/geometry.h"
+#include "model/i18n.h"
 #include <QRegularExpression>
 #include <cmath>
 #include <openbabel/elements.h>
@@ -15,7 +16,7 @@ static double finiteNumber(QString text) {
     bool ok;
     double value = text.trimmed().toDouble(&ok);
     if (!ok || !std::isfinite(value))
-        fail("有限の数値を入力してください。小数点は . を使用します。");
+        fail(tr("有限の数値を入力してください。小数点は . を使用します。"));
     return value;
 }
 static void setSymbol(Atom &atom, QString text) {
@@ -47,12 +48,12 @@ static void setMass(Atom &atom, const QString &text) {
         int number = entry.toInt(&ok);
         if (!ok || number < element(atom.element).number ||
             OpenBabel::OBElements::GetExactMass(element(atom.element).number, number) <= 0)
-            fail("この元素の同位体質量数を確認してください。任意の質量は小数で入力します。");
+            fail(tr("この元素の同位体質量数を確認してください。任意の質量は小数で入力します。"));
         atom.isotope = number;
     } else {
         atom.mass = finiteNumber(entry);
         if (atom.mass <= 0)
-            fail("質量は正の値（amu）を入力してください。");
+            fail(tr("質量は正の値（amu）を入力してください。"));
     }
 }
 QString coordinateText(const Atom &atom, CoordinateColumn column, CoordinateUnit unit) {
@@ -107,9 +108,9 @@ void setCoordinateCell(Document &document, const QString &id, CoordinateColumn c
             return;
         const double value = finiteNumber(text) * coordinateScale(unit);
         if (!std::isfinite(value))
-            fail("座標が大きすぎます。");
+            fail(tr("座標が大きすぎます。"));
         if (atom.fixed && value != atom.position[axis])
-            fail("固定原子の座標は変更できません。先に固定を解除してください。");
+            fail(tr("固定原子の座標は変更できません。先に固定を解除してください。"));
         atom.position[axis] = value;
     } else if (column == CoordinateColumn::Mass)
         setMass(atom, text);
@@ -122,12 +123,12 @@ void setCoordinateCell(Document &document, const QString &id, CoordinateColumn c
         bool ok;
         const int value = text.trimmed().toInt(&ok);
         if (!ok)
-            fail(column == CoordinateColumn::Charge ? "形式電荷は整数で入力してください。"
-                                                    : "不対電子の数は整数で入力してください。");
+            fail(column == CoordinateColumn::Charge ? tr("形式電荷は整数で入力してください。")
+                                                    : tr("不対電子の数は整数で入力してください。"));
         if (column == CoordinateColumn::Radical && (value < 0 || value > 8))
-            fail("不対電子の数は0〜8で入力してください。");
+            fail(tr("不対電子の数は0〜8で入力してください。"));
         if (column == CoordinateColumn::Charge && (value < -99 || value > 20))
-            fail("形式電荷は−99〜20で入力してください。");
+            fail(tr("形式電荷は−99〜20で入力してください。"));
         (column == CoordinateColumn::Charge ? atom.charge : atom.radical) = value;
         document.invalidateAssignments();
     } else if (column == CoordinateColumn::Name)
@@ -136,13 +137,13 @@ void setCoordinateCell(Document &document, const QString &id, CoordinateColumn c
 Atom coordinateAtom(const QString &symbol, const QStringList &xyz, const QString &mass, CoordinateUnit unit,
                     bool ghost, bool fixed) {
     if (xyz.size() != 3)
-        fail("X・Y・Zを入力してください。");
+        fail(tr("X・Y・Zを入力してください。"));
     Atom atom;
     setSymbol(atom, symbol);
     for (int i = 0; i < 3; ++i) {
         atom.position[i] = finiteNumber(xyz[i]) * coordinateScale(unit);
         if (!std::isfinite(atom.position[i]))
-            fail("座標が大きすぎます。");
+            fail(tr("座標が大きすぎます。"));
     }
     if (!mass.trimmed().isEmpty())
         setMass(atom, mass);
@@ -199,24 +200,23 @@ AtomChanges atomChanges(const Document &before, const Document &after) {
 }
 std::pair<double, double> applyResultGeometry(Document &document, const Document &result) {
     if (result.atoms.size() != document.atoms.size())
-        fail(QString("結果の原子数（%1）が編集中の分子（%2）と異なります。")
+        fail(tr("結果の原子数（%1）が編集中の分子（%2）と異なります。")
                  .arg(result.atoms.size())
                  .arg(document.atoms.size()));
     double squares = 0, largest = 0;
     for (int i = 0; i < document.atoms.size(); ++i) {
         const auto &from = document.atoms[i], &to = result.atoms[i];
         if (from.element != to.element || from.ghost != to.ghost)
-            fail(
-                QString("原子%1の元素（%2%3 / 結果 %4%5）が一致しません。原子の順番が同じ計算結果を選んでくだ"
-                        "さい。")
-                    .arg(i + 1)
-                    .arg(from.ghost ? "@" : "", from.element, to.ghost ? "@" : "", to.element));
+            fail(tr("原子%1の元素（%2%3 / 結果 %4%5）が一致しません。原子の順番が同じ計算結果を選んでくだ"
+                    "さい。")
+                     .arg(i + 1)
+                     .arg(from.ghost ? "@" : "", from.element, to.ghost ? "@" : "", to.element));
         const double moved = (to.position - from.position).norm();
         if (!std::isfinite(moved))
-            fail("結果の座標が有限ではありません。");
+            fail(tr("結果の座標が有限ではありません。"));
         // NWChem prints coordinates with eight decimals; anything larger means a different frame.
         if (from.fixed && moved > 1e-3)
-            fail(QString("固定原子%1の位置が結果と %2 Å 異なります。同じ座標系の計算結果か確認してください。")
+            fail(tr("固定原子%1の位置が結果と %2 Å 異なります。同じ座標系の計算結果か確認してください。")
                      .arg(i + 1)
                      .arg(moved, 0, 'f', 4));
         squares += moved * moved;
@@ -233,7 +233,7 @@ QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragm
     if (!errors.isEmpty())
         fail(errors.join('\n'));
     if (document.atoms.isEmpty())
-        fail("原子を追加するとNWChem座標を表示します。");
+        fail(tr("原子を追加するとNWChem座標を表示します。"));
     // The shortest text that reads back as the same double: 0.758, not 0.75800000000000001.
     auto number = [](double value) { return QString::number(value, 'g', QLocale::FloatingPointShortest); };
     QString text = fragmentComments
@@ -258,7 +258,7 @@ QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragm
         if (atom.isotope) {
             mass = OpenBabel::OBElements::GetExactMass(element(atom.element).number, atom.isotope);
             if (!std::isfinite(mass) || mass <= 0)
-                fail(QString("原子%1: 同位体の質量が不明です。amuを小数で指定してください。").arg(i + 1));
+                fail(tr("原子%1: 同位体の質量が不明です。amuを小数で指定してください。").arg(i + 1));
         }
         if (mass > 0)
             text += " mass " + number(mass);

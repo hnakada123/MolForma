@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "model/document.h"
+#include "model/i18n.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -22,10 +23,10 @@ void fail(const QString &s) {
 Vec vectorFromJson(const QJsonValue &v) {
     const auto a = v.toArray();
     if (a.size() != 3 || !a[0].isDouble() || !a[1].isDouble() || !a[2].isDouble())
-        fail("座標は3個の数値で指定してください。");
+        fail(tr("座標は3個の数値で指定してください。"));
     Vec p(a[0].toDouble(), a[1].toDouble(), a[2].toDouble());
     if (!p.allFinite())
-        fail("座標に有限でない値があります。");
+        fail(tr("座標に有限でない値があります。"));
     return p;
 }
 QJsonArray vectorToJson(const Vec &p) {
@@ -55,7 +56,7 @@ QJsonObject parseJson(const QByteArray &b) {
     QJsonParseError error;
     auto d = QJsonDocument::fromJson(b, &error);
     if (error.error != QJsonParseError::NoError || !d.isObject())
-        fail("JSONを読めません: " + error.errorString());
+        fail(tr("JSONを読めません: %1").arg(error.errorString()));
     return d.object();
 }
 const QVector<Element> &elements() {
@@ -72,11 +73,14 @@ const QVector<Element> &elements() {
     }();
     return values;
 }
+QString Element::name() const {
+    return english() ? nameEn : nameJa;
+}
 const Element &element(const QString &s) {
     for (const auto &e : elements())
         if (e.symbol == s)
             return e;
-    fail("未知の元素: " + s);
+    fail(tr("未知の元素: %1").arg(s));
 }
 QJsonObject Atom::toJson() const {
     auto o = extra;
@@ -163,13 +167,13 @@ bool Document::contains(const QString &id) const {
 Atom &Document::atom(const QString &id) {
     int i = index(id);
     if (i < 0)
-        fail("原子が見つかりません: " + id);
+        fail(tr("原子が見つかりません: %1").arg(id));
     return atoms[i];
 }
 const Atom &Document::atom(const QString &id) const {
     int i = index(id);
     if (i < 0)
-        fail("原子が見つかりません: " + id);
+        fail(tr("原子が見つかりません: %1").arg(id));
     return atoms[i];
 }
 Ids Document::ids() const {
@@ -197,7 +201,7 @@ const Bond *Document::bond(const QString &a, const QString &b) const {
 }
 void Document::setBond(const QString &a, const QString &b, const QString &kind) {
     if (!contains(a) || !contains(b) || a == b)
-        fail("異なる2原子を指定してください。");
+        fail(tr("異なる2原子を指定してください。"));
     const auto same = [&](const Bond &x) { return (x.a == a && x.b == b) || (x.a == b && x.b == a); };
     if (kind == "none") {
         bonds.erase(std::remove_if(bonds.begin(), bonds.end(), same), bonds.end());
@@ -216,7 +220,7 @@ void Document::setBond(const QString &a, const QString &b, const QString &kind) 
 }
 Ids Document::component(const QString &root, const QString &ca, const QString &cb) const {
     if (!contains(root))
-        fail("原子を選択してください。");
+        fail(tr("原子を選択してください。"));
     Ids todo{root}, seen;
     while (!todo.isEmpty()) {
         auto id = todo.takeFirst();
@@ -231,10 +235,10 @@ Ids Document::component(const QString &root, const QString &ca, const QString &c
 }
 Ids Document::bondSide(const QString &a, const QString &b) const {
     if (!bond(a, b))
-        fail("結合の両端を選択してください。");
+        fail(tr("結合の両端を選択してください。"));
     auto side = component(b, a, b);
     if (side.contains(a))
-        fail("環内の結合は片側だけ動かせません。全体を回転・移動するか、整形を使用してください。");
+        fail(tr("環内の結合は片側だけ動かせません。全体を回転・移動するか、整形を使用してください。"));
     return side;
 }
 void Document::invalidateAssignments() {
@@ -242,8 +246,9 @@ void Document::invalidateAssignments() {
     for (auto it = assignments.begin(); it != assignments.end(); ++it) {
         auto a = it.value().toObject();
         a["status"] = "candidate";
-        a["issues"] =
-            QJsonArray{"原子構成が変更されたため、旧形式の断片割当は無効です（NWChem入力には使いません）。"};
+        // Saved in Japanese with the project; structureReport() translates it when shown.
+        a["issues"] = QJsonArray{
+            QT_TR_NOOP("原子構成が変更されたため、旧形式の断片割当は無効です（NWChem入力には使いません）。")};
         it.value() = a;
     }
     data["assignments"] = assignments;
@@ -252,7 +257,7 @@ void Document::remove(const Ids &removed) {
     QSet<QString> gone(removed.begin(), removed.end());
     for (const auto &a : atoms)
         if (gone.contains(a.id) && a.fixed)
-            fail("固定原子を削除できません。");
+            fail(tr("固定原子を削除できません。"));
     atoms.erase(
         std::remove_if(atoms.begin(), atoms.end(), [&](const Atom &a) { return gone.contains(a.id); }),
         atoms.end());
@@ -398,70 +403,70 @@ QStringList Document::validate() const {
     QSet<QString> positions;
     for (const auto &a : atoms) {
         if (a.id.isEmpty() || seen.contains(a.id))
-            errors << "原子IDが空または重複しています。";
+            errors << tr("原子IDが空または重複しています。");
         seen.insert(a.id);
         if (!a.position.allFinite() || !std::isfinite(a.mass) || a.mass < 0 || a.isotope < 0 || a.radical < 0)
-            errors << "原子の座標・属性が不正です。";
+            errors << tr("原子の座標・属性が不正です。");
         QString pos = QString("%1,%2,%3")
                           .arg(a.position.x(), 0, 'f', 10)
                           .arg(a.position.y(), 0, 'f', 10)
                           .arg(a.position.z(), 0, 'f', 10);
         if (positions.contains(pos))
-            errors << "2つの原子が同じ位置に重なっています。";
+            errors << tr("2つの原子が同じ位置に重なっています。");
         positions.insert(pos);
         if (a.isotope && (a.isotope < element(a.element).number || a.mass > 0))
-            errors << "同位体の指定が不正です。";
+            errors << tr("同位体の指定が不正です。");
     }
     for (auto v : data["parts"].toArray()) {
         auto part = v.toObject();
         auto ids = idsFromJson(part["atoms"]);
         for (auto id : ids)
             if (!seen.contains(id))
-                errors << "部品の原子参照が不正です。";
+                errors << tr("部品の原子参照が不正です。");
         for (auto id : idsFromJson(part["connections"]))
             if (!ids.contains(id))
-                errors << "部品の接続点が不正です。";
+                errors << tr("部品の接続点が不正です。");
     }
     for (auto v : data["residues"].toArray())
         for (auto id : v.toObject()["atoms"].toObject())
             if (!seen.contains(id.toString()))
-                errors << "残基の原子参照が不正です。";
+                errors << tr("残基の原子参照が不正です。");
     for (auto v : data["centers"].toArray()) {
         auto c = v.toObject();
         if (!seen.contains(c["atom"].toString()))
-            errors << "配位中心の参照が不正です。";
+            errors << tr("配位中心の参照が不正です。");
         for (auto x : c["sites"].toArray()) {
             auto site = x.toObject();
             if (!site["donor"].toString().isEmpty() && !seen.contains(site["donor"].toString()))
-                errors << "配位サイトの参照が不正です。";
+                errors << tr("配位サイトの参照が不正です。");
             try {
                 if (vectorFromJson(site["direction"]).norm() < 1e-8 || site["distance"].toDouble() <= 0)
-                    errors << "配位サイトの方向・距離が不正です。";
+                    errors << tr("配位サイトの方向・距離が不正です。");
             } catch (...) {
-                errors << "配位サイトの座標が不正です。";
+                errors << tr("配位サイトの座標が不正です。");
             }
         }
     }
     QSet<QString> pairs;
     for (const auto &b : bonds) {
         if (!seen.contains(b.a) || !seen.contains(b.b) || b.a == b.b)
-            errors << "結合の参照が不正です。";
+            errors << tr("結合の参照が不正です。");
         QString pair = b.a < b.b ? b.a + b.b : b.b + b.a;
         if (pairs.contains(pair))
-            errors << "結合が重複しています。";
+            errors << tr("結合が重複しています。");
         pairs.insert(pair);
         if (!QStringList{"single", "double", "triple", "aromatic", "dative"}.contains(b.kind))
-            errors << "結合種類が不正です。";
+            errors << tr("結合種類が不正です。");
     }
     for (auto v : data["point_charges"].toArray()) {
         auto p = v.toObject();
         try {
             vectorFromJson(p["position"]);
         } catch (...) {
-            errors << "点電荷の座標が不正です。";
+            errors << tr("点電荷の座標が不正です。");
         }
         if (!p["charge"].isDouble() || !std::isfinite(p["charge"].toDouble()))
-            errors << "点電荷が不正です。";
+            errors << tr("点電荷が不正です。");
     }
     return errors;
 }
@@ -615,7 +620,7 @@ QJsonObject Document::toJson() const {
 }
 Document Document::fromJson(const QJsonObject &o) {
     if (o["units"] != "angstrom")
-        fail("プロジェクトの座標単位はangstromである必要があります。");
+        fail(tr("プロジェクトの座標単位はangstromである必要があります。"));
     Document d;
     d.data = o;
     d.data.remove("atoms");
@@ -660,7 +665,7 @@ QJsonObject Document::project() const {
 Document Document::fromProject(const QJsonObject &o) {
     if (o["format"] != "kagami-gui-project" || o["version"].toInt() != 2 ||
         o["coordinate_units"] != "angstrom")
-        fail("MolFormaプロジェクト（.kgui.json、version 2）を指定してください。");
+        fail(tr("MolFormaプロジェクト（.kgui.json、version 2）を指定してください。"));
     Document d = fromJson(o["document"].toObject());
     d.envelope = o;
     return d;
@@ -690,16 +695,16 @@ QString Document::xyz() const {
 Document Document::fromXyz(const QString &text) {
     auto lines = text.split('\n');
     if (lines.size() < 2)
-        fail("XYZには原子数とコメント行が必要です。");
+        fail(tr("XYZには原子数とコメント行が必要です。"));
     bool ok = false;
     int n = lines[0].trimmed().toInt(&ok);
     if (!ok || n < 0 || n > 100000 || lines.size() < n + 2)
-        fail("XYZの原子数が不正です。");
+        fail(tr("XYZの原子数が不正です。"));
     Document d;
     for (int i = 0; i < n; ++i) {
         auto w = lines[i + 2].simplified().split(' ');
         if (w.size() < 4 || w.size() > 5)
-            fail(QString("XYZ %1行目の形式が不正です。").arg(i + 3));
+            fail(tr("XYZ %1行目の形式が不正です。").arg(i + 3));
         Atom a;
         a.element = w[0];
         a.ghost = a.element.startsWith('@');
@@ -712,14 +717,13 @@ Document Document::fromXyz(const QString &text) {
         try {
             element(a.element);
         } catch (const std::exception &e) {
-            fail(QString("XYZ %1行目: %2").arg(i + 3).arg(QString::fromUtf8(e.what())));
+            fail(tr("XYZ %1行目: %2").arg(QString::number(i + 3), QString::fromUtf8(e.what())));
         }
         for (int j = 0; j < 3; ++j) {
             a.position[j] = w[j + 1].toDouble(&ok);
             if (!ok || !std::isfinite(a.position[j]))
-                fail(QString("XYZ %1行目の座標は有限の数値にしてください: %2")
-                         .arg(i + 3)
-                         .arg(lines[i + 2].trimmed()));
+                fail(tr("XYZ %1行目の座標は有限の数値にしてください: %2")
+                         .arg(QString::number(i + 3), lines[i + 2].trimmed()));
         }
         if (w.size() == 5) {
             int mass = w[4].toInt(&ok);
@@ -728,14 +732,15 @@ Document Document::fromXyz(const QString &text) {
             else {
                 a.mass = w[4].toDouble(&ok);
                 if (!ok || a.mass <= 0 || !std::isfinite(a.mass))
-                    fail(QString("XYZ %1行目の質量が不正です: %2").arg(i + 3).arg(lines[i + 2].trimmed()));
+                    fail(tr("XYZ %1行目の質量が不正です: %2")
+                             .arg(QString::number(i + 3), lines[i + 2].trimmed()));
             }
         }
         d.atoms.append(a);
     }
     for (int i = n + 2; i < lines.size(); ++i)
         if (!lines[i].trimmed().isEmpty())
-            fail("複数フレームのXYZです。1フレームのファイルを指定してください。");
+            fail(tr("複数フレームのXYZです。1フレームのファイルを指定してください。"));
     d.inferBonds();
     return d;
 }

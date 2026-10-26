@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/template_delegate.h"
 #include "model/document.h"
+#include "model/i18n.h"
 #include "ui/editor_chrome.h"
 #include <QApplication>
 #include <QFontMetrics>
@@ -161,12 +162,25 @@ void TemplateDelegate::paintTile(QPainter *painter, const QStyleOptionViewItem &
                      thumbnailSize.width(), thumbnailSize.height());
     styled.icon.paint(painter, icon);
     // The name in up to two lines under the thumbnail, shortened with "…" when longer.
-    const QFont font = smaller(styled.font, .9);
-    const QFontMetrics metrics(font);
+    QFont font = smaller(styled.font, .9);
     const QRect text(styled.rect.left() + 4, icon.bottom() + 3, styled.rect.width() - 8,
-                     2 * metrics.height());
-    const int flags = Qt::AlignHCenter | Qt::AlignTop | Qt::TextWrapAnywhere;
+                     2 * QFontMetrics(font).height());
+    int flags = Qt::AlignHCenter | Qt::AlignTop | Qt::TextWrapAnywhere;
     auto name = index.data().toString();
+    // English names break between words; a word wider than the tile gets a smaller font first.
+    if (english()) {
+        const auto words = name.split(' ', Qt::SkipEmptyParts);
+        const auto fits = [&](const QFont &f) {
+            return std::ranges::all_of(words, [&](const QString &w) {
+                return QFontMetrics(f).horizontalAdvance(w) <= text.width();
+            });
+        };
+        for (double factor = .85; !fits(font) && factor > .7; factor -= .05)
+            font = smaller(styled.font, factor);
+        if (fits(font))
+            flags = Qt::AlignHCenter | Qt::AlignTop | Qt::TextWordWrap;
+    }
+    const QFontMetrics metrics(font);
     while (name.size() > 1 && metrics.boundingRect(text, flags, name).height() > text.height())
         name = name.left(name.size() - 2) + "…";
     painter->setFont(font);
@@ -212,7 +226,7 @@ void TemplateDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     const auto &e = element(symbol);
     auto detail = index.data(ElementDetailRole).toString();
     if (detail.isEmpty())
-        detail = QString("原子番号 %1").arg(e.number);
+        detail = tr("原子番号 %1").arg(e.number);
     QFont detailFont(styled.font);
     if (detailFont.pointSizeF() > 0)
         detailFont.setPointSizeF(detailFont.pointSizeF() * .8);
@@ -231,7 +245,7 @@ void TemplateDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     painter->setPen(styled.palette.color(group, selected ? QPalette::HighlightedText : QPalette::Text));
     painter->drawText(QRect(textRect.left(), top, textRect.width(), styled.fontMetrics.height()),
                       Qt::AlignLeft | Qt::AlignVCenter,
-                      styled.fontMetrics.elidedText(e.nameJa, Qt::ElideRight, textRect.width()));
+                      styled.fontMetrics.elidedText(e.name(), Qt::ElideRight, textRect.width()));
     painter->setFont(detailFont);
     painter->setPen(
         styled.palette.color(group, selected ? QPalette::HighlightedText : QPalette::PlaceholderText));

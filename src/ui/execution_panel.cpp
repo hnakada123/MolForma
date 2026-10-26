@@ -80,7 +80,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     auto *target = new QWidget;
     auto *targetLayout = new QHBoxLayout(target);
     targetLayout->setContentsMargins(0, 0, 0, 0);
-    targetLayout->addWidget(caption("対象の計算"));
+    targetLayout->addWidget(caption(tr("対象の計算")));
     context = new QLabel;
     context->setObjectName("executionContext");
     context->setTextFormat(Qt::PlainText);
@@ -89,20 +89,20 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     auto *toolGap = new QWidget;
     toolGap->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     tools->addWidget(toolGap);
-    openResults = new QCheckBox("終了したら結果ビューアに読み込む");
+    openResults = new QCheckBox(tr("終了したら結果ビューアに読み込む"));
     openResults->setObjectName("executionOpenResults");
     openResults->setToolTip(
-        "計算が終わると、ジョブフォルダーを「結果ビューア」に読み込みます（タブは切り替えません）。"
-        "終了はステータスバーとデスクトップ通知でも知らせます。");
+        tr("計算が終わると、ジョブフォルダーを「結果ビューア」に読み込みます（タブは切り替えません）。"
+           "終了はステータスバーとデスクトップ通知でも知らせます。"));
     openResults->setChecked(window->settings.value("execution/open_results", true).toBool());
     connect(openResults, &QCheckBox::toggled, this,
             [this](bool on) { window->settings.setValue("execution/open_results", on); });
     tools->addWidget(openResults);
-    prepare = new QPushButton("ジョブとして保存");
+    prepare = new QPushButton(tr("ジョブとして保存"));
     prepare->setObjectName("executionPrepare");
     prepare->setIcon(lineIcon("apply"));
-    prepare->setToolTip("NWChemを起動せず、入力とプロジェクトを新しいジョブフォルダーに保存します"
-                        "（別のPCで実行するときなど）。");
+    prepare->setToolTip(tr("NWChemを起動せず、入力とプロジェクトを新しいジョブフォルダーに保存します"
+                           "（別のPCで実行するときなど）。"));
     tools->addWidget(prepare);
     connect(prepare, &QPushButton::clicked, this, [this] { window->safe([this] { saveBundle(); }); });
     auto *split = new QSplitter;
@@ -122,76 +122,78 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     auto *forms = new QVBoxLayout(form);
     forms->setContentsMargins(16, 16, 8, 16);
     forms->setSpacing(12);
-    runningNote = new QLabel("計算の実行中も分子や条件を編集できます。起動済みの計算には反映されません。");
+    runningNote =
+        new QLabel(tr("計算の実行中も分子や条件を編集できます。起動済みの計算には反映されません。"));
     runningNote->setObjectName("executionRunningNote");
     runningNote->setWordWrap(true);
     runningNote->hide();
     forms->addWidget(runningNote);
-    auto *files = new SettingsCard("実行ファイル・保存先");
+    auto *files = new SettingsCard(tr("実行ファイル・保存先"));
     files->setObjectName("executionFiles");
-    files->header()->insertWidget(1, note("実行ごとに専用のジョブフォルダーを作ります"), 1);
+    files->header()->insertWidget(1, note(tr("実行ごとに専用のジョブフォルダーを作ります")), 1);
     forms->addWidget(files);
     auto *paths = new QGridLayout;
     paths->setHorizontalSpacing(12);
     paths->setVerticalSpacing(6);
     paths->setColumnStretch(1, 1);
     files->body()->addLayout(paths);
-    pathField(paths, "NWChem実行ファイル", "executable", false);
+    pathField(paths, tr("NWChem実行ファイル"), "executable", false);
     mode = new QComboBox;
     mode->setObjectName("execution_mode");
-    mode->addItem("MPIで起動", "mpi");
-    mode->addItem("直接実行（対応する逐次版等）", "direct");
+    mode->addItem(tr("MPIで起動"), "mpi");
+    mode->addItem(tr("直接実行（対応する逐次版等）"), "direct");
     fields["mode"] = mode;
-    auto *modes = new ChoiceButtons(mode, ChoiceButtons::Segments, {"MPIで起動", "直接実行（逐次版など）"});
+    auto *modes =
+        new ChoiceButtons(mode, ChoiceButtons::Segments, {tr("MPIで起動"), tr("直接実行（逐次版など）")});
     choices << modes;
     {
         const int row = paths->rowCount();
-        paths->addWidget(new QLabel("起動方式"), row, 0);
+        paths->addWidget(new QLabel(tr("起動方式")), row, 0);
         paths->addWidget(modes, row, 1, 1, 2, Qt::AlignLeft);
     }
     connect(mode, &QComboBox::currentIndexChanged, this,
             [this] { change("mode", mode->currentData().toString()); });
-    pathField(paths, "MPIランチャー", "launcher", false);
-    pathField(paths, "ジョブ保存先", "job_root", true);
-    pathField(paths, "参照ファイルの基準", "reference_directory", true);
+    pathField(paths, tr("MPIランチャー"), "launcher", false);
+    pathField(paths, tr("ジョブ保存先"), "job_root", true);
+    pathField(paths, tr("参照ファイルの基準"), "reference_directory", true);
     qobject_cast<QLineEdit *>(fields["reference_directory"])
-        ->setPlaceholderText("空欄: プロジェクトの場所（未保存時は起動時の場所）");
-    auto *pathsHelp = new Disclosure("パスの扱いについて");
+        ->setPlaceholderText(tr("空欄: プロジェクトの場所（未保存時は起動時の場所）"));
+    auto *pathsHelp = new Disclosure(tr("パスの扱いについて"));
     pathsHelp->button()->setObjectName("executionPathHelp");
     files->body()->addWidget(pathsHelp, 0, Qt::AlignLeft);
     auto *pathHint =
-        muted("実行ファイルは名前またはパスで指定します。MPIはmpirun/mpiexecの -np を使用します。"
-              "入力movecsの相対パスは参照基準から解決します。scratch・permanentは新しいジョブ"
-              "フォルダーが基準です。出力movecs・CUBE・MOLDENはpermanent（未指定ならジョブ）に保存します。"
-              "出力movecsを./で始めるとジョブ内、絶対パスなら指定先に保存します。");
+        muted(tr("実行ファイルは名前またはパスで指定します。MPIはmpirun/mpiexecの -np を使用します。"
+                 "入力movecsの相対パスは参照基準から解決します。scratch・permanentは新しいジョブ"
+                 "フォルダーが基準です。出力movecs・CUBE・MOLDENはpermanent（未指定ならジョブ）に保存します。"
+                 "出力movecsを./で始めるとジョブ内、絶対パスなら指定先に保存します。"));
     pathHint->hide();
     files->body()->addWidget(pathHint);
     connect(pathsHelp->button(), &QToolButton::toggled, pathHint, &QWidget::setVisible);
 
-    auto *parallel = new SettingsCard("計算資源");
+    auto *parallel = new SettingsCard(tr("計算資源"));
     parallel->setObjectName("executionResourcesCard");
     forms->addWidget(parallel);
     auto *grid = new QGridLayout;
     grid->setHorizontalSpacing(12);
     grid->setVerticalSpacing(10);
     parallel->body()->addLayout(grid);
-    grid->addWidget(integer("MPI起動プロセス数", "mpi_ranks", 1, 4096), 0, 0);
+    grid->addWidget(integer(tr("MPI起動プロセス数"), "mpi_ranks", 1, 4096), 0, 0);
     // Short names over the narrow columns; the full ones in their tooltips.
-    auto *omp = integer("OpenMP / プロセス", "omp_threads", 1, 1024);
-    omp->setToolTip("1プロセスあたりのOpenMPスレッド数（OMP_NUM_THREADS）");
+    auto *omp = integer(tr("OpenMP / プロセス"), "omp_threads", 1, 1024);
+    omp->setToolTip(tr("1プロセスあたりのOpenMPスレッド数（OMP_NUM_THREADS）"));
     grid->addWidget(omp, 0, 1);
-    auto *blas = integer("BLAS / プロセス", "blas_threads", 1, 1024);
-    blas->setToolTip("1プロセスあたりのBLASスレッド数（OPENBLAS_NUM_THREADS・MKL_NUM_THREADS など）");
+    auto *blas = integer(tr("BLAS / プロセス"), "blas_threads", 1, 1024);
+    blas->setToolTip(tr("1プロセスあたりのBLASスレッド数（OPENBLAS_NUM_THREADS・MKL_NUM_THREADS など）"));
     grid->addWidget(blas, 0, 2);
     auto *stackCell = new QWidget;
     auto *stackLayout = new QVBoxLayout(stackCell);
     stackLayout->setContentsMargins(0, 0, 0, 0);
     stackLayout->setSpacing(4);
-    stackLayout->addWidget(caption("OpenMPスタック"));
+    stackLayout->addWidget(caption(tr("OpenMPスタック")));
     auto *stack = new QLineEdit;
     fields["omp_stacksize"] = stack;
     stack->setObjectName("execution_omp_stacksize");
-    stack->setPlaceholderText("空欄: 継承（例: 64M）");
+    stack->setPlaceholderText(tr("空欄: 継承（例: 64M）"));
     stackLayout->addWidget(stack);
     grid->addWidget(stackCell, 1, 0);
     connect(stack, &QLineEdit::editingFinished, this, [this, stack] {
@@ -203,28 +205,28 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     auto *memoryLayout = new QVBoxLayout(memoryCell);
     memoryLayout->setContentsMargins(0, 0, 0, 0);
     memoryLayout->setSpacing(4);
-    memoryLayout->addWidget(caption("メモリ / MPIプロセス"));
+    memoryLayout->addWidget(caption(tr("メモリ / MPIプロセス")));
     memory = new QSpinBox;
     memory->setObjectName("execution_memory");
     memory->setRange(64, 1048576);
     memory->setSuffix(" MB");
     memory->setKeyboardTracking(false);
-    memory->setToolTip("NWChemの memory 指定です（「2 計算条件」と「4 入力プレビュー」の要約にも表示）。"
-                       "実際の使用量の上限ではありません。");
+    memory->setToolTip(tr("NWChemの memory 指定です（「2 計算条件」と「4 入力プレビュー」の要約にも表示）。"
+                          "実際の使用量の上限ではありません。"));
     memoryLayout->addWidget(memory);
     grid->addWidget(memoryCell, 1, 1);
     connect(memory, &QSpinBox::valueChanged, this, [this](int n) {
         if (busy || window->hasCandidate() || window->worker)
             return;
         window->safe([&] {
-            window->edit("NWChemメモリを変更", [&](Document &d) {
+            window->edit(tr("NWChemメモリを変更"), [&](Document &d) {
                 auto s = d.data.value("nwchem").toObject();
                 s["memory_mb"] = n;
                 d.data["nwchem"] = s;
             });
         });
     });
-    grid->addWidget(integer("制限時間（0: なし）", "timeout_seconds", 0, 604800, " 秒"), 1, 2);
+    grid->addWidget(integer(tr("制限時間（0: なし）"), "timeout_seconds", 0, 604800, tr(" 秒")), 1, 2);
     for (int column = 0; column < 3; ++column)
         grid->setColumnStretch(column, 1);
     // What the run takes of this PC.
@@ -246,15 +248,15 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     memoryTotal->setWordWrap(true);
     usageLayout->addWidget(memoryTotal);
     parallel->body()->addWidget(usage);
-    parallel->body()->addWidget(caption("MPI-PR版では補助プロセスが必要です（1計算プロセスでも起動数2）。"
-                                        "起動数は自動補正しません。OpenMP/BLASの既定は各1です。"));
+    parallel->body()->addWidget(caption(tr("MPI-PR版では補助プロセスが必要です（1計算プロセスでも起動数2）。"
+                                           "起動数は自動補正しません。OpenMP/BLASの既定は各1です。")));
 
-    auto *environmentCard = new SettingsCard("追加の環境変数");
+    auto *environmentCard = new SettingsCard(tr("追加の環境変数"));
     environmentCard->setObjectName("executionEnvironmentCard");
     forms->addWidget(environmentCard);
-    auto *add = new QPushButton("追加");
+    auto *add = new QPushButton(tr("追加"));
     add->setIcon(lineIcon("plus"));
-    removeEnvironment = new QPushButton("選択行を削除");
+    removeEnvironment = new QPushButton(tr("選択行を削除"));
     add->setObjectName("executionAddEnvironment");
     removeEnvironment->setObjectName("executionRemoveEnvironment");
     add->setProperty("mcpExecutionSetting", true);
@@ -264,7 +266,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     environment = new QTableWidget(0, 3);
     environment->setObjectName("executionEnvironment");
     environment->setProperty("mcpExecutionSetting", true);
-    environment->setHorizontalHeaderLabels({"有効", "名前", "値"});
+    environment->setHorizontalHeaderLabels({tr("有効"), tr("名前"), tr("値")});
     environment->verticalHeader()->hide();
     environment->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     environment->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
@@ -272,11 +274,11 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     environment->setMinimumHeight(110);
     environment->setMaximumHeight(200);
     environmentCard->body()->addWidget(environment);
-    environmentEmpty = muted("なし。有効な行だけを起動環境へ上書きします（例: NWCHEM_BASIS_LIBRARY）。");
+    environmentEmpty = muted(tr("なし。有効な行だけを起動環境へ上書きします（例: NWCHEM_BASIS_LIBRARY）。"));
     environmentEmpty->setObjectName("executionEnvironmentEmpty");
     environmentCard->body()->addWidget(environmentEmpty);
     environmentCard->body()->addWidget(
-        caption("スレッド数は「計算資源」で指定してください。値の環境変数展開は行いません。"));
+        caption(tr("スレッド数は「計算資源」で指定してください。値の環境変数展開は行いません。")));
     connect(add, &QPushButton::clicked, this, [this] {
         auto rows = executionSettings(window->document())["environment"].toArray();
         rows.append(QJsonObject{{"enabled", false}, {"name", ""}, {"value", ""}});
@@ -316,7 +318,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     checkCard = new StatusCard;
     checkCard->setObjectName("executionCheckCard");
     checkCard->headline()->setObjectName("executionCheckStatus");
-    auto *check = checkCard->addRecheck("executionCheck", "実行ファイル・保存先などを確認し直します。");
+    auto *check = checkCard->addRecheck("executionCheck", tr("実行ファイル・保存先などを確認し直します。"));
     connect(check, &QPushButton::clicked, this, &ExecutionPanel::refresh);
     checkList = new QVBoxLayout;
     checkList->setSpacing(4);
@@ -327,16 +329,16 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     diagnostics->setWordWrap(true);
     diagnostics->setTextInteractionFlags(Qt::TextSelectableByMouse);
     checkCard->body()->addWidget(diagnostics);
-    startHint = caption("ヘッダーの「計算を実行」（F5）で、入力一式を新しいジョブフォルダーに保存して"
-                        "NWChemを起動します。");
+    startHint = caption(tr("ヘッダーの「計算を実行」（F5）で、入力一式を新しいジョブフォルダーに保存して"
+                           "NWChemを起動します。"));
     startHint->setObjectName("executionStartHint");
     checkCard->body()->addWidget(startHint);
     output->addWidget(checkCard);
 
-    commandCard = new SettingsCard("起動コマンド");
+    commandCard = new SettingsCard(tr("起動コマンド"));
     commandCard->setObjectName("executionCommandCard");
-    commandCard->header()->insertWidget(1, note("ジョブ名の日時・IDは保存時に決まります"), 1);
-    auto *copyCommand = copyButton("executionCopyCommand", "起動コマンドをコピー");
+    commandCard->header()->insertWidget(1, note(tr("ジョブ名の日時・IDは保存時に決まります")), 1);
+    auto *copyCommand = copyButton("executionCopyCommand", tr("起動コマンドをコピー"));
     commandCard->header()->addWidget(copyCommand);
     command = logView("executionCommand");
     command->setLineWrapMode(QPlainTextEdit::WidgetWidth);
@@ -344,7 +346,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     commandCard->body()->addWidget(command);
     connect(copyCommand, &QToolButton::clicked, this, [this] {
         QApplication::clipboard()->setText(command->toPlainText());
-        window->statusBar()->showMessage("起動コマンドをコピーしました。", 5000);
+        window->statusBar()->showMessage(tr("起動コマンドをコピーしました。"), 5000);
     });
     output->addWidget(commandCard);
     // As tall as their contents; the room left is below them.
@@ -352,8 +354,8 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
         card->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
 
     // The current or last run is in the run panel, which any tab can open.
-    showRunLink = linkButton("実行状況とログを表示", "executionShowRun");
-    showRunLink->setToolTip("最後に保存・実行したジョブの状態・進み具合・ログを表示します。");
+    showRunLink = linkButton(tr("実行状況とログを表示"), "executionShowRun");
+    showRunLink->setToolTip(tr("最後に保存・実行したジョブの状態・進み具合・ログを表示します。"));
     connect(showRunLink, &QPushButton::clicked, this, [this] { showRunPanel(); });
     auto *showRunRow = new QHBoxLayout;
     showRunRow->addStretch();
@@ -369,7 +371,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     runStatus = new QToolButton;
     runStatus->setObjectName("runStatusButton");
     runStatus->setAutoRaise(true);
-    runStatus->setToolTip("実行状況とログを表示します。");
+    runStatus->setToolTip(tr("実行状況とログを表示します。"));
     runStatus->hide();
     window->statusBar()->addPermanentWidget(runStatus);
     connect(runStatus, &QToolButton::clicked, this, [this] { showRunPanel(); });
@@ -397,7 +399,7 @@ void ExecutionPanel::buildRunPanel() {
     panel->setContentsMargins(14, 12, 14, 14);
     panel->setSpacing(12);
     auto *head = new QHBoxLayout;
-    auto *title = new QLabel("実行状況とログ"); // The name of every way to open it.
+    auto *title = new QLabel(tr("実行状況とログ")); // The name of every way to open it.
     title->setObjectName("runPanelTitle");
     title->setProperty("cardTitle", true);
     head->addWidget(title);
@@ -406,12 +408,12 @@ void ExecutionPanel::buildRunPanel() {
     close->setObjectName("runPanelClose");
     close->setIcon(lineIcon("close"));
     close->setProperty("flat", true);
-    close->setToolTip("閉じる（実行は続きます）");
-    close->setAccessibleName("実行状況を閉じる");
+    close->setToolTip(tr("閉じる（実行は続きます）"));
+    close->setAccessibleName(tr("実行状況を閉じる"));
     head->addWidget(close);
     panel->addLayout(head);
     connect(close, &QToolButton::clicked, this, [this] { showRunPanel(false); });
-    runCard = new SettingsCard("実行状況");
+    runCard = new SettingsCard(tr("実行状況"));
     runCard->setObjectName("executionRunCard");
     statePill = new QLabel;
     statePill->setObjectName("executionStatePill");
@@ -436,18 +438,18 @@ void ExecutionPanel::buildRunPanel() {
     progress = new RunProgress("execution", 2);
     runCard->body()->addWidget(progress);
     auto *actions = new FlowLayout(nullptr, 8, 6); // Wraps where the panel is narrow (over "1 分子").
-    openFolder = new QPushButton("保存先を開く");
+    openFolder = new QPushButton(tr("保存先を開く"));
     openFolder->setObjectName("executionOpenFolder");
     openFolder->setIcon(lineIcon("folder"));
-    viewResults = new QPushButton("結果ビューアへ");
+    viewResults = new QPushButton(tr("結果ビューアへ"));
     viewResults->setObjectName("executionResults");
-    auto *history = new QPushButton("履歴で見る");
+    auto *history = new QPushButton(tr("履歴で見る"));
     history->setObjectName("executionHistory");
     // While it runs, the same stop as the header's (asking first).
-    stopRun = new QPushButton(lineIcon("stop"), "停止…");
+    stopRun = new QPushButton(lineIcon("stop"), tr("停止…"));
     stopRun->setObjectName("executionStopRun");
     stopRun->setProperty("danger", true);
-    stopRun->setToolTip("実行中のNWChemを停止します（確認あり）。");
+    stopRun->setToolTip(tr("実行中のNWChemを停止します（確認あり）。"));
     stopRun->hide();
     connect(stopRun, &QPushButton::clicked, this, &ExecutionPanel::confirmStop);
     for (auto *b : {openFolder, viewResults, history, stopRun})
@@ -466,13 +468,14 @@ void ExecutionPanel::buildRunPanel() {
     });
     panel->addWidget(runCard);
 
-    auto *logCard = new SettingsCard("ログ");
+    auto *logCard = new SettingsCard(tr("ログ"));
     logCard->setObjectName("executionLogCard");
     logChannel = new QComboBox;
     logChannel->setObjectName("executionLogChannel");
-    logChannel->addItem("標準出力（末尾128 KiB）", "output.out");
-    logChannel->addItem("標準エラー（末尾128 KiB）", "stderr.err");
-    auto *channels = new ChoiceButtons(logChannel, ChoiceButtons::Segments, {"標準出力", "標準エラー"});
+    logChannel->addItem(tr("標準出力（末尾128 KiB）"), "output.out");
+    logChannel->addItem(tr("標準エラー（末尾128 KiB）"), "stderr.err");
+    auto *channels =
+        new ChoiceButtons(logChannel, ChoiceButtons::Segments, {tr("標準出力"), tr("標準エラー")});
     choices << channels;
     // As the files of "履歴": the file and how much of it, following its end, and copy. The
     // channels head the body, so that the narrow panel over "1 分子" keeps their names.
@@ -482,16 +485,16 @@ void ExecutionPanel::buildRunPanel() {
     logName->setWordWrap(false);
     logName->setProperty("mono", true);
     logCard->body()->addWidget(logName);
-    follow = new QCheckBox("追尾");
+    follow = new QCheckBox(tr("追尾"));
     follow->setObjectName("executionFollow");
     follow->setChecked(true);
-    follow->setToolTip("ログが増えるたびに最後の行を表示します。");
+    follow->setToolTip(tr("ログが増えるたびに最後の行を表示します。"));
     logCard->header()->addWidget(follow);
-    auto *copyLog = copyButton("executionCopyLog", "表示中のログをコピー");
+    auto *copyLog = copyButton("executionCopyLog", tr("表示中のログをコピー"));
     logCard->header()->addWidget(copyLog);
     connect(logChannel, &QComboBox::currentIndexChanged, this, &ExecutionPanel::updateRun);
     log = logView("executionLog");
-    log->setPlaceholderText("まだ実行していません。計算を実行すると、ここにNWChemの出力を表示します。");
+    log->setPlaceholderText(tr("まだ実行していません。計算を実行すると、ここにNWChemの出力を表示します。"));
     connect(follow, &QCheckBox::toggled, this, [this](bool on) {
         if (on)
             log->verticalScrollBar()->setValue(log->verticalScrollBar()->maximum());
@@ -561,7 +564,7 @@ void ExecutionPanel::pathField(QGridLayout *grid, const QString &label, const QS
     auto *line = new QLineEdit;
     line->setObjectName("execution_" + key);
     fields[key] = line;
-    auto *browse = new QPushButton("参照…");
+    auto *browse = new QPushButton(tr("参照…"));
     browse->setObjectName("executionBrowse_" + key);
     // The program to run is chosen by a person; McpGui refuses to operate these controls.
     if (isProtectedExecutionKey(key)) {
@@ -587,8 +590,9 @@ void ExecutionPanel::pathField(QGridLayout *grid, const QString &label, const QS
         line->setModified(false);
     });
     connect(browse, &QPushButton::clicked, this, [this, line, key, directory] {
-        const auto path = directory ? QFileDialog::getExistingDirectory(this, "ディレクトリ", line->text())
-                                    : QFileDialog::getOpenFileName(this, "実行ファイル", line->text());
+        const auto path = directory
+                              ? QFileDialog::getExistingDirectory(this, tr("ディレクトリ"), line->text())
+                              : QFileDialog::getOpenFileName(this, tr("実行ファイル"), line->text());
         if (!path.isEmpty())
             change(key, path);
     });
@@ -615,7 +619,7 @@ void ExecutionPanel::change(const QString &key, const QJsonValue &value) {
         executionSettings(window->document()).value(key) == value)
         return;
     window->safe([&] {
-        window->edit("NWChem実行設定を変更", [&](Document &d) { setExecutionSetting(d, key, value); });
+        window->edit(tr("NWChem実行設定を変更"), [&](Document &d) { setExecutionSetting(d, key, value); });
     });
 }
 void ExecutionPanel::editEnvironment() {
@@ -643,7 +647,7 @@ void ExecutionPanel::commitPendingEdits() {
 }
 void ExecutionPanel::saveBundle() {
     if (window->hasCandidate() || window->worker || run.active())
-        fail("候補・整形・実行中は入力一式を保存できません。");
+        fail(tr("候補・整形・実行中は入力一式を保存できません。"));
     commitPendingEdits();
     if (window->mcp.policy && window->mcp.depth > 0)
         window->mcp.policy->checkRun(window->document(), baseDirectory());
@@ -653,7 +657,7 @@ void ExecutionPanel::saveBundle() {
 }
 void ExecutionPanel::startCalculation() {
     if (window->hasCandidate() || window->worker || run.active())
-        fail("候補・整形・実行中は新しい計算を開始できません。");
+        fail(tr("候補・整形・実行中は新しい計算を開始できません。"));
     commitPendingEdits();
     auto &mcp = window->mcp;
     if (mcp.policy) {
@@ -663,27 +667,28 @@ void ExecutionPanel::startCalculation() {
         const auto settings = protectedExecution(window->document());
         if (!mcp.policy->allowExecutionSettings && settings != mcp.trustedExecution) {
             if (remote)
-                fail("NWChem実行ファイル・MPIランチャー・追加の環境変数・NWChemの追加入力が、"
-                     "MolForma上で最後に設定した値と異なります（MCP経由の変更や"
-                     "プロジェクトの読込による）。MCPからはこの設定で実行できません。"
-                     "利用者が「2 計算条件」「3 実行設定」タブで設定を確認してください。");
+                fail(tr("NWChem実行ファイル・MPIランチャー・追加の環境変数・NWChemの追加入力が、"
+                        "MolForma上で最後に設定した値と異なります（MCP経由の変更や"
+                        "プロジェクトの読込による）。MCPからはこの設定で実行できません。"
+                        "利用者が「2 計算条件」「3 実行設定」タブで設定を確認してください。"));
             // A person started the run: confirm in a dialog that MCP cannot see or press.
             QStringList environment;
             for (const auto &row : settings["environment"].toArray())
                 if (row.toObject()["enabled"].toBool())
                     environment << row.toObject()["name"].toString() + "=" +
                                        row.toObject()["value"].toString();
-            QMessageBox box(QMessageBox::Warning, "実行設定の確認",
-                            "実行ファイル・ランチャー・環境変数・NWChemの追加入力が、MCP接続中に画面の外から"
-                            "変更されています。この設定で実行しますか？",
-                            QMessageBox::Yes | QMessageBox::No, window);
+            QMessageBox box(
+                QMessageBox::Warning, tr("実行設定の確認"),
+                tr("実行ファイル・ランチャー・環境変数・NWChemの追加入力が、MCP接続中に画面の外から"
+                   "変更されています。この設定で実行しますか？"),
+                QMessageBox::Yes | QMessageBox::No, window);
             const bool extra = !settings["extra_input"].toString().trimmed().isEmpty() ||
                                !settings["extra_tasks"].toString().trimmed().isEmpty();
-            box.setInformativeText("実行ファイル: " + settings["executable"].toString() +
-                                   "\nランチャー: " + settings["launcher"].toString() + "\n環境変数: " +
-                                   (environment.isEmpty() ? QString("なし") : environment.join(", ")) +
-                                   "\nNWChemの追加入力: " +
-                                   (extra ? QString("あり（「4 入力プレビュー」で確認）") : QString("なし")));
+            box.setInformativeText(tr("実行ファイル: %1\nランチャー: %2\n環境変数: %3\nNWChemの追加入力: %4")
+                                       .arg(settings["executable"].toString(),
+                                            settings["launcher"].toString(),
+                                            environment.isEmpty() ? tr("なし") : environment.join(", "),
+                                            extra ? tr("あり（「4 入力プレビュー」で確認）") : tr("なし")));
             box.setDefaultButton(QMessageBox::No);
             box.setProperty("mcpProtected", true);
             if (box.exec() != QMessageBox::Yes)
@@ -696,11 +701,11 @@ void ExecutionPanel::startCalculation() {
 }
 void ExecutionPanel::confirmStop() {
     if (!run.active()) {
-        window->statusBar()->showMessage("実行中の計算はありません。", 5000);
+        window->statusBar()->showMessage(tr("実行中の計算はありません。"), 5000);
         return;
     }
-    if (QMessageBox::question(this, "計算の停止",
-                              "実行中のNWChemを停止しますか？途中までのログと出力は保存先に残ります。",
+    if (QMessageBox::question(this, tr("計算の停止"),
+                              tr("実行中のNWChemを停止しますか？途中までのログと出力は保存先に残ります。"),
                               QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
         run.stop();
 }
@@ -709,8 +714,8 @@ void ExecutionPanel::startFromMenu() {
     if (!startable) {
         window->workspaceTabs->setCurrentWidget(this);
         window->statusBar()->showMessage(
-            run.active() ? QString("計算を実行中です。")
-                         : QString("計算を開始できません。「3 実行設定」の「実行前の確認」を見てください。"),
+            run.active() ? tr("計算を実行中です。")
+                         : tr("計算を開始できません。「3 実行設定」の「実行前の確認」を見てください。"),
             10000);
         return;
     }
@@ -734,7 +739,7 @@ void ExecutionPanel::refresh() {
                 combo->removeItem(2);
             int index = combo->findData(s[it.key()].toString());
             if (index < 0) {
-                combo->addItem("未対応: " + s[it.key()].toVariant().toString(), s[it.key()]);
+                combo->addItem(tr("未対応: %1").arg(s[it.key()].toVariant().toString()), s[it.key()]);
                 index = 2;
             }
             combo->setCurrentIndex(index);
@@ -779,7 +784,7 @@ void ExecutionPanel::refresh() {
     const int cpus = QThread::idealThreadCount();
     static_cast<CpuMeter *>(cpuMeter)->used = ranks * threads;
     cpuMeter->update();
-    resources->setText(QString("CPU  %1 / %2 論理CPU（起動数 %3 × OpenMP %4 / BLAS %5）")
+    resources->setText(tr("CPU  %1 / %2 論理CPU（起動数 %3 × OpenMP %4 / BLAS %5）")
                            .arg(ranks * threads)
                            .arg(cpus)
                            .arg(ranks)
@@ -787,7 +792,7 @@ void ExecutionPanel::refresh() {
                            .arg(s["blas_threads"].toInt()));
     resources->setProperty("bad", ranks * threads > cpus);
     repolish(resources);
-    memoryTotal->setText(QString("NWChemメモリ合計の目安  %1 MB（%2 × %3 MB）")
+    memoryTotal->setText(tr("NWChemメモリ合計の目安  %1 MB（%2 × %3 MB）")
                              .arg(qint64(ranks) * memory->value())
                              .arg(ranks)
                              .arg(memory->value()));
@@ -823,10 +828,12 @@ void ExecutionPanel::refresh() {
     // was not found. A path stays in the checks at the right.
     for (const auto &key : {"executable", "launcher"})
         for (const auto &c : report.checks)
-            if (c.label == (QString(key) == "executable" ? "NWChem実行ファイル" : "MPIランチャー")) {
+            if (c.label == (QString(key) == "executable" ? tr("NWChem実行ファイル") : tr("MPIランチャー"))) {
                 const auto value = s[key].toString();
                 const bool named = !value.contains('/') && !value.contains('\\');
-                found[key]->setText(!c.ok ? c.detail : named ? "✓ PATHから: " + c.detail : QString());
+                found[key]->setText(!c.ok   ? c.detail
+                                    : named ? tr("✓ PATHから: %1").arg(c.detail)
+                                            : QString());
                 found[key]->setProperty("good", c.ok);
                 found[key]->setProperty("bad", !c.ok);
                 repolish(found[key]);
@@ -835,12 +842,12 @@ void ExecutionPanel::refresh() {
     found["launcher"]->setVisible(s["mode"] == "mpi" && !found["launcher"]->text().isEmpty());
     QStringList messages;
     if (!editable)
-        messages << "候補を確定・取消し、整形の終了後に実行できます。";
+        messages << tr("候補を確定・取消し、整形の終了後に実行できます。");
     for (const auto &e : report.errors)
         if (!covered.contains(e))
-            messages << "エラー: " + e;
+            messages << tr("エラー: %1").arg(e);
     for (const auto &w : report.warnings)
-        messages << "確認: " + w;
+        messages << tr("確認: %1").arg(w);
     bool portable = false;
     bool runnable = report.errors.isEmpty();
     try {
@@ -851,12 +858,12 @@ void ExecutionPanel::refresh() {
             try {
                 executionPreviewPlan(d, baseDirectory(), true);
             } catch (const std::exception &e) {
-                messages << "実行前の確認: " + QString::fromUtf8(e.what());
+                messages << tr("実行前の確認: %1").arg(QString::fromUtf8(e.what()));
                 runnable = false;
             }
         }
     } catch (const std::exception &e) {
-        command->setPlainText("起動設定を作成できません:\n" + QString::fromUtf8(e.what()));
+        command->setPlainText(tr("起動設定を作成できません:\n%1").arg(QString::fromUtf8(e.what())));
     }
     diagnostics->setText(messages.join('\n'));
     diagnostics->setVisible(!messages.isEmpty());
@@ -869,13 +876,12 @@ void ExecutionPanel::refresh() {
                         : startable  ? (report.warnings.isEmpty() ? StatusCard::Ok : StatusCard::Warning)
                         : !editable  ? StatusCard::Waiting
                                      : StatusCard::Error,
-                        run.active() ? QString("実行中です")
-                        : startable
-                            ? (report.warnings.isEmpty()
-                                   ? QString("実行できます")
-                                   : QString("実行できます（確認 %1 件）").arg(report.warnings.size()))
-                        : !editable ? QString("候補・整形の完了待ち")
-                                    : QString("実行できません（%1 件）").arg(std::max(1, problems)));
+                        run.active() ? tr("実行中です")
+                        : startable  ? (report.warnings.isEmpty() ? tr("実行できます")
+                                                                  : tr("実行できます（確認 %n 件）", nullptr,
+                                                                       int(report.warnings.size())))
+                        : !editable  ? tr("候補・整形の完了待ち")
+                                     : tr("実行できません（%n 件）", nullptr, std::max(1, problems)));
     startHint->setVisible(startable);
     context->setText(calculationBrief(d));
     updateRun();
@@ -888,38 +894,40 @@ void ExecutionPanel::updateRun() {
     const bool showingRun = saved.directory == run.plan().directory && !saved.directory.isEmpty();
     // The pill names the state: the text adds what it does not say.
     const QMap<QString, QString> details{
-        {"cancelled", "途中までのログと出力は保存先に残っています。"},
-        {"timed_out", "制限時間に達しました。途中までのログと出力は保存先に残っています。"},
-        {"finished", "終了コード0"}};
+        {"cancelled", tr("途中までのログと出力は保存先に残っています。")},
+        {"timed_out", tr("制限時間に達しました。途中までのログと出力は保存先に残っています。")},
+        {"finished", tr("終了コード0")}};
     QStringList lines;
     if (showingRun) {
         lines << details.value(run.state());
         if (run.state() == "finished")
             lines << (!resultSummary.isEmpty()
-                          ? "結果: " + resultSummary + "（「結果ビューア」に読み込みました）"
-                          : QString("結果は「結果ビューアへ」で確認できます。"));
+                          ? tr("結果: %1（「結果ビューア」に読み込みました）").arg(resultSummary)
+                          : tr("結果は「結果ビューアへ」で確認できます。"));
         lines << run.message();
         lines.removeAll(QString());
     }
     const auto stateText = showingRun ? lines.join('\n')
                            : saved.directory.isEmpty()
-                               ? QString("未実行")
-                               : QString("入力一式を保存しました（NWChemは起動していません）。");
+                               ? tr("未実行")
+                               : tr("入力一式を保存しました（NWChemは起動していません）。");
     if (state->text() != stateText)
         state->setText(stateText);
     location->setText(saved.directory);
     location->setVisible(!saved.directory.isEmpty());
     showRunLink->setVisible(!saved.directory.isEmpty());
     const QMap<QString, QString> pills{
-        {"starting", "起動中"},    {"running", "実行中"}, {"stopping", "停止処理中"}, {"cancelled", "停止"},
-        {"timed_out", "時間制限"}, {"failed", "失敗"},    {"finished", "終了"}};
+        {"starting", tr("起動中")},           {"running", tr("実行中")},
+        {"stopping", tr("停止処理中")},       {"cancelled", tr("停止", "run state")},
+        {"timed_out", tr("時間制限")},        {"failed", tr("失敗")},
+        {"finished", tr("終了", "run state")}};
     const auto kind = !showingRun                 ? QString("saved")
                       : run.active()              ? QString("running")
                       : run.state() == "finished" ? QString("finished")
                                                   : QString("failed");
     statePill->setText(showingRun                  ? pills.value(run.state(), run.state())
                        : saved.directory.isEmpty() ? QString()
-                                                   : QString("保存のみ"));
+                                                   : tr("保存のみ", "run state"));
     statePill->setVisible(!statePill->text().isEmpty());
     if (statePill->property("state").toString() != kind) {
         statePill->setProperty("state", kind);
@@ -928,10 +936,10 @@ void ExecutionPanel::updateRun() {
     const qint64 seconds = run.elapsedSeconds();
     timing->setText(!showingRun ? QString()
                     : run.active()
-                        ? QString("経過 %1 · %2 開始")
+                        ? tr("経過 %1 · %2 開始")
                               .arg(elapsedClock(seconds))
                               .arg(QDateTime::currentDateTime().addSecs(-seconds).toString("HH:mm"))
-                        : QString("所要 %1").arg(elapsedClock(seconds)));
+                        : tr("所要 %1").arg(elapsedClock(seconds)));
     openFolder->setEnabled(!saved.directory.isEmpty());
     viewResults->setEnabled(!saved.directory.isEmpty() && !resultFiles(saved.directory).isEmpty());
     const bool stoppable = run.active() && run.state() != "stopping";
@@ -946,16 +954,16 @@ void ExecutionPanel::updateRun() {
         startable = false;
         prepare->setEnabled(false);
     }
-    window->showRun(run.active(), "実行中 " + elapsedClock(seconds), stoppable);
+    window->showRun(run.active(), tr("実行中 %1").arg(elapsedClock(seconds)), stoppable);
     // Always visible in the status bar, whatever the tab.
     if (!run.plan().directory.isEmpty()) {
-        const QMap<QString, QString> brief{{"starting", "NWChemを起動中"},
-                                           {"running", "NWChem実行中"},
-                                           {"stopping", "NWChemを停止中"},
-                                           {"cancelled", "最後の計算: 停止"},
-                                           {"timed_out", "最後の計算: 時間制限"},
-                                           {"failed", "最後の計算: 失敗"},
-                                           {"finished", "最後の計算: 終了（コード0）"}};
+        const QMap<QString, QString> brief{{"starting", tr("NWChemを起動中")},
+                                           {"running", tr("NWChem実行中")},
+                                           {"stopping", tr("NWChemを停止中")},
+                                           {"cancelled", tr("最後の計算: 停止")},
+                                           {"timed_out", tr("最後の計算: 時間制限")},
+                                           {"failed", tr("最後の計算: 失敗")},
+                                           {"finished", tr("最後の計算: 終了（コード0）")}};
         runStatus->setText(
             QString("%1%2 · %3")
                 .arg(run.active() ? "▶ " : "", brief.value(run.state(), run.state()))
@@ -973,8 +981,9 @@ void ExecutionPanel::appendLog() {
     const QString path = saved.directory.isEmpty()
                              ? QString()
                              : QDir(saved.directory).filePath(logChannel->currentData().toString());
-    logName->setText(saved.directory.isEmpty() ? QString()
-                                               : logChannel->currentData().toString() + " · 末尾 128 KiB");
+    logName->setText(saved.directory.isEmpty()
+                         ? QString()
+                         : tr("%1 · 末尾 128 KiB").arg(logChannel->currentData().toString()));
     QFile file(path);
     const bool readable = !path.isEmpty() && file.open(QIODevice::ReadOnly);
     if (path != logPath || !readable || file.size() < logOffset) {
@@ -993,7 +1002,7 @@ void ExecutionPanel::appendLog() {
         const bool truncated = file.size() > tail;
         if (truncated)
             file.seek(file.size() - tail);
-        added = (truncated ? "…ログの末尾を表示しています。全文は保存先にあります。\n" : "") +
+        added = (truncated ? tr("…ログの末尾を表示しています。全文は保存先にあります。\n") : QString()) +
                 QString(logDecoder.decode(file.read(tail)));
         logOffset = file.size();
     } else if (file.size() > logOffset) {
@@ -1019,13 +1028,13 @@ void ExecutionPanel::appendLog() {
         bar->setValue(bar->maximum());
 }
 void ExecutionPanel::runEnded() {
-    const QMap<QString, QString> names{{"finished", "計算が終了しました（終了コード0）"},
-                                       {"failed", "計算が失敗しました"},
-                                       {"cancelled", "計算を停止しました"},
-                                       {"timed_out", "計算が制限時間で停止しました"}};
+    const QMap<QString, QString> names{{"finished", tr("計算が終了しました（終了コード0）")},
+                                       {"failed", tr("計算が失敗しました")},
+                                       {"cancelled", tr("計算を停止しました")},
+                                       {"timed_out", tr("計算が制限時間で停止しました")}};
     const auto directory = run.plan().directory;
-    const auto message =
-        names.value(run.state(), "計算が終了しました") + ": " + QFileInfo(directory).fileName();
+    const auto message = QString("%1: %2").arg(names.value(run.state(), tr("計算が終了しました")),
+                                               QFileInfo(directory).fileName());
     // The run status at the right of the status bar says how it ended; a message at the left only
     // adds what the log says once it is read (showResultSummary).
     QApplication::alert(window); // Taskbar attention while MolForma is in the background.
@@ -1064,7 +1073,7 @@ void ExecutionPanel::showResultSummary() {
     resultSummary = window->results->briefSummary();
     updateRun();
     if (!resultSummary.isEmpty())
-        window->statusBar()->showMessage("計算が終了しました: " + resultSummary, 60000);
+        window->statusBar()->showMessage(tr("計算が終了しました: %1").arg(resultSummary), 60000);
 }
 void ExecutionPanel::stopEditing() {
     busy = true;

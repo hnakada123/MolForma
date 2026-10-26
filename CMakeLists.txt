@@ -16,6 +16,7 @@ find_package(rdkit CONFIG QUIET)
 add_library(molforma_core STATIC
     src/model/document.cpp
     src/model/geometry.cpp
+    src/model/i18n.cpp
     src/editing/chemistry.cpp
     src/editing/coordinates.cpp
     src/editing/coordination.cpp
@@ -162,15 +163,21 @@ if(BUILD_TESTING)
     target_link_libraries(test_output PRIVATE molforma_ui Qt6::Test)
     add_dependencies(test_output fake_nwchem)
     add_test(NAME output COMMAND test_output)
+    add_executable(test_translations tests/test_translations.cpp)
+    target_link_libraries(test_translations PRIVATE molforma_ui Qt6::Test)
+    target_compile_definitions(test_translations PRIVATE SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+    add_test(NAME translations COMMAND test_translations)
     add_executable(test_molden tests/test_molden.cpp)
     target_link_libraries(test_molden PRIVATE molforma_ui Qt6::Test)
     add_test(NAME molden COMMAND test_molden)
-    set_tests_properties(core editor coordinates calculation advanced execution input_preview results history output molden PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-    set_tests_properties(core editor coordinates calculation advanced execution input_preview results history output molden PROPERTIES TIMEOUT 120)
+    set_tests_properties(core editor coordinates calculation advanced execution input_preview results history output molden translations PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    set_tests_properties(core editor coordinates calculation advanced execution input_preview results history output molden translations PROPERTIES TIMEOUT 120)
 endif()
 install(TARGETS molforma RUNTIME DESTINATION bin)
 install(FILES LICENSE NOTICE README.md DESTINATION share/molforma)
 install(FILES docs/features.md docs/mcp.md DESTINATION share/molforma/docs)
+install(FILES docs/en/features.md docs/en/mcp.md DESTINATION share/molforma/docs/en)
 # Desktop integration (freedesktop.org): launcher, icon and file types.
 install(FILES packaging/molforma.desktop DESTINATION share/applications)
 install(FILES packaging/molforma.svg DESTINATION share/icons/hicolor/scalable/apps)

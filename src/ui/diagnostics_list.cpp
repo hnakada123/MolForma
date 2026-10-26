@@ -1,4 +1,5 @@
 #include "ui/diagnostics_list.h"
+#include "model/i18n.h"
 #include <QResizeEvent>
 #include <QStyle>
 
@@ -28,16 +29,16 @@ void DiagnosticsList::setMessages(const QStringList &errors, const QStringList &
         item->setData(ErrorRole, error);
         if (fixes.contains(message)) {
             item->setData(FixRole, fixes[message]);
-            item->setText(text + "\n　→ ダブルクリックで修正: " + fixes[message]);
+            item->setText(tr("%1\n　→ ダブルクリックで修正: %2").arg(text, fixes[message]));
         }
-        item->setToolTip(message.isEmpty() ? text : "クリックで該当する設定へ移動します。");
+        item->setToolTip(message.isEmpty() ? text : tr("クリックで該当する設定へ移動します。"));
     };
     if (errors.isEmpty() && !ok.isEmpty())
         add(ok, QStyle::SP_DialogApplyButton, {}, false);
     for (const auto &e : errors)
-        add("エラー: " + e, QStyle::SP_MessageBoxCritical, e, true);
+        add(tr("エラー: %1").arg(e), QStyle::SP_MessageBoxCritical, e, true);
     for (const auto &w : warnings)
-        add("確認: " + w, QStyle::SP_MessageBoxWarning, w, false);
+        add(tr("確認: %1").arg(w), QStyle::SP_MessageBoxWarning, w, false);
     if (fit)
         updateGeometry();
 }

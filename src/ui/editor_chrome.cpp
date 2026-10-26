@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/editor_chrome.h"
+#include "model/i18n.h"
 #include "nwchem/nwchem.h"
 #include "ui/molecule_view.h"
 #include "ui/theme.h"
@@ -482,7 +483,7 @@ void repolish(QWidget *widget) {
     widget->style()->polish(widget);
 }
 QString viewControlsHint() {
-    return "左ドラッグ: 回転 · 右ドラッグ: 平行移動 · ホイール: 拡大縮小";
+    return tr("左ドラッグ: 回転 · 右ドラッグ: 平行移動 · ホイール: 拡大縮小");
 }
 QString calculationBrief(const Document &d) {
     const auto s = nwchemSettings(d);
@@ -491,12 +492,14 @@ QString calculationBrief(const Document &d) {
         if (c.value == task)
             task = c.label;
     if (s["solvent"] != "none") {
+        // The names without their notes in parentheses (" (" in English).
+        const auto opening = tr("（");
         for (const auto &c : nwchemChoices("solvent"))
             if (c.value == s["solvent"].toString())
-                solvent = " · " + c.label.section("（", 0, 0);
+                solvent = " · " + c.label.section(opening, 0, 0);
         for (const auto &c : nwchemChoices("solvent_name"))
             if (c.value == s["solvent_name"].toString() && s["solvent_name"] != "dielectric")
-                solvent += "（" + c.label.section("（", 0, 0) + "）";
+                solvent = tr("%1（%2）").arg(solvent, c.label.section(opening, 0, 0));
     }
     return (s["method"] == "dft" ? nwchemFunctionalLabel(s) : s["method"].toString().toUpper()) + " / " +
            nwchemBasisLabel(s) + " · " + task + solvent;
@@ -591,7 +594,7 @@ void setIconOnly(QAbstractButton *button, bool iconOnly) {
         tool->setToolButtonStyle(iconOnly ? Qt::ToolButtonIconOnly : Qt::ToolButtonTextBesideIcon);
     else
         button->setText(iconOnly ? QString() : name);
-    button->setToolTip(!iconOnly ? tip : tip.isEmpty() ? name : name + "：" + tip);
+    button->setToolTip(!iconOnly ? tip : tip.isEmpty() ? name : tr("%1：%2").arg(name, tip));
     button->setAccessibleName(name);
 }
 int FlowLayout::heightForWidth(int width) const {
@@ -922,7 +925,7 @@ void SettingsCard::setSummary(const QString &summary) {
 void SettingsCard::showOpen(bool open) {
     contents->setVisible(open);
     fold->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
-    fold->setToolTip(open ? "閉じる" : "開く");
+    fold->setToolTip(open ? tr("閉じる", "fold") : tr("開く", "fold"));
     folded->setVisible(!open && !folded->text().isEmpty());
 }
 
@@ -997,7 +1000,7 @@ void StatusCard::setState(State state, const QString &headline) {
     }
 }
 QPushButton *StatusCard::addRecheck(const QString &objectName, const QString &toolTip) {
-    auto *b = new QPushButton("再検査");
+    auto *b = new QPushButton(tr("再検査"));
     b->setObjectName(objectName);
     b->setIcon(lineIcon("refresh"));
     b->setToolTip(toolTip);
@@ -1026,14 +1029,14 @@ CalculationSummary::CalculationSummary(const QString &prefix, const QString &cap
     facts->setContentsMargins(0, 6, 0, 0);
     facts->setHorizontalSpacing(14);
     facts->setVerticalSpacing(3);
-    for (const auto &[name, label, key] : {std::tuple{"組成", &formula, "Formula"},
-                                           {"電子数", &electrons, "Electrons"},
-                                           {"電荷・多重度", &charge, "Charge"},
-                                           {"メモリ", &memory, "Memory"}}) {
+    for (const auto &[name, label, key] : {std::tuple{QT_TR_NOOP("組成"), &formula, "Formula"},
+                                           {QT_TR_NOOP("電子数"), &electrons, "Electrons"},
+                                           {QT_TR_NOOP("電荷・多重度"), &charge, "Charge"},
+                                           {QT_TR_NOOP("メモリ"), &memory, "Memory"}}) {
         *label = new QLabel;
         (*label)->setObjectName(prefix + "Summary" + key);
         (*label)->setWordWrap(true);
-        auto *term = new QLabel(name);
+        auto *term = new QLabel(tr(name));
         term->setProperty("muted", true);
         facts->addRow(term, *label);
     }
@@ -1051,20 +1054,19 @@ void CalculationSummary::update(const Document &d) {
     const QString reference = method == "dft" && check.reference != "rohf"
                                   ? (check.reference == "rhf" ? "RKS" : "UKS")
                                   : check.reference.toUpper();
-    formula->setText(d.atoms.isEmpty() ? QString("原子なし")
-                                       : QString("%1 · %2 原子").arg(d.formula()).arg(d.atoms.size()));
-    electrons->setText(QString("%1（α %2 / β %3）%4")
+    formula->setText(d.atoms.isEmpty() ? tr("原子なし")
+                                       : tr("%1 · %n 原子", nullptr, int(d.atoms.size())).arg(d.formula()));
+    electrons->setText((check.ecpElectrons ? tr("%1（α %2 / β %3）ECP適用後") : tr("%1（α %2 / β %3）"))
                            .arg(check.electrons)
                            .arg(check.alpha)
-                           .arg(check.beta)
-                           .arg(check.ecpElectrons ? "ECP適用後" : ""));
-    charge->setText(QString("%1 · %2%3")
-                        .arg(d.job()["charge"].toInt())
-                        .arg(d.job()["multiplicity"].toInt(1))
-                        .arg(reference.isEmpty() ? QString() : "（" + reference + "）"));
+                           .arg(check.beta));
+    const auto charges = QString::number(d.job()["charge"].toInt()),
+               multiplicity = QString::number(d.job()["multiplicity"].toInt(1));
+    charge->setText(reference.isEmpty() ? QString("%1 · %2").arg(charges, multiplicity)
+                                        : tr("%1 · %2（%3）").arg(charges, multiplicity, reference));
     // The link on a line of its own, never split.
-    memory->setText(QString("%1 MB / MPIプロセス<br><a href=\"memory\" style=\"color:%2; "
-                            "text-decoration:none\">3 実行設定で変更</a>")
+    memory->setText(tr("%1 MB / MPIプロセス<br><a href=\"memory\" style=\"color:%2; "
+                       "text-decoration:none\">3 実行設定で変更</a>")
                         .arg(s["memory_mb"].toInt())
                         .arg(ChromeColors(palette()).accentText.name()));
 }
@@ -1080,7 +1082,7 @@ ViewControls::ViewControls(MoleculeView *view, const Names &names, bool rotate, 
         auto *b = new QToolButton;
         b->setObjectName(names.axes[i]);
         b->setText(QString("+") + QString("XYZ")[i]);
-        b->setToolTip(QString("%1軸の正の側から見て、分子全体を表示します。").arg(QString("XYZ")[i]));
+        b->setToolTip(tr("%1軸の正の側から見て、分子全体を表示します。").arg(QString("XYZ")[i]));
         row->addWidget(b);
         parts << b;
         connect(b, &QToolButton::clicked, this, [view, i] { view->viewFrom(i); });
@@ -1099,12 +1101,12 @@ ViewControls::ViewControls(MoleculeView *view, const Names &names, bool rotate, 
         parts << b;
         return b;
     };
-    fit = button("全体を表示", "fit", names.fit);
-    fit->setToolTip("向きを変えずに、分子全体が収まるように表示します。");
+    fit = button(tr("全体を表示"), "fit", names.fit);
+    fit->setToolTip(tr("向きを変えずに、分子全体が収まるように表示します。"));
     connect(fit, &QToolButton::clicked, view, &MoleculeView::fit);
     if (rotate) {
-        rotation = button("回転", "rotate", names.rotate);
-        rotation->setToolTip("左右・上下・画面内の回転角をスライダーで指定します。");
+        rotation = button(tr("回転"), "rotate", names.rotate);
+        rotation->setToolTip(tr("左右・上下・画面内の回転角をスライダーで指定します。"));
         // The angles as sliders in a popup under "回転"; the mouse rotation moves them too.
         popup = new QFrame(this, Qt::Popup);
         popup->setObjectName(names.popup);
@@ -1118,7 +1120,7 @@ ViewControls::ViewControls(MoleculeView *view, const Names &names, bool rotate, 
             sliders[i]->setRange(-180, 180);
             sliders[i]->setValue(qRound(start[i]));
             sliders[i]->setMinimumWidth(200);
-            angles->addRow(QStringList{"左右回転", "上下回転", "画面内回転"}[i], sliders[i]);
+            angles->addRow(QStringList{tr("左右回転"), tr("上下回転"), tr("画面内回転")}[i], sliders[i]);
             parts << sliders[i];
         }
         connect(rotation, &QToolButton::clicked, this, [this] {
@@ -1143,8 +1145,8 @@ ViewControls::ViewControls(MoleculeView *view, const Names &names, bool rotate, 
                 });
     }
     if (menu) {
-        display = button("表示", "eye", names.menu);
-        display->setToolTip("ラベル・水素・表示スタイルなどの表示を切り替えます。");
+        display = button(tr("表示"), "eye", names.menu);
+        display->setToolTip(tr("ラベル・水素・表示スタイルなどの表示を切り替えます。"));
         display->setPopupMode(QToolButton::InstantPopup);
     }
 }

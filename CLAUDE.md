@@ -3,8 +3,8 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 MolForma is a native Qt6 Widgets / C++20 molecular editor and NWChem input/run/result front end.
-The UI text and user docs (`README.md`, `docs/`) are Japanese. `AGENTS.md` has the same
-repository guidelines in a per-file form.
+The UI text and user docs (`README.md`, `docs/`) are Japanese, with an English UI and manual (`docs/en/`).
+`AGENTS.md` has the same repository guidelines in a per-file form.
 
 ## Build and test
 
@@ -23,7 +23,7 @@ QT_QPA_PLATFORM=offscreen ./build/test_editor someTestFunction   # one Qt Test s
   (`-DCMAKE_CXX_FLAGS='-fsanitize=address -fno-omit-frame-pointer'`). Check rendering changes against the
   QPainter path too.
 - Each `tests/test_*.cpp` is its own executable/CTest test (`core`, `editor`, `coordinates`, `calculation`,
-  `advanced`, `execution`, `input_preview`, `results`, `history`, `output`, `molden`, `rendering`, `mcp`).
+  `advanced`, `execution`, `input_preview`, `results`, `history`, `output`, `molden`, `rendering`, `translations`, `mcp`).
   All run with `QT_QPA_PLATFORM=offscreen` and need no network, credentials or NWChem install:
   `tests/fake_nwchem.cpp` builds a stand-in NWChem used by execution/history/output/mcp tests.
   `test_mcp` launches the built `molforma` binary. Fixtures live in `tests/fixtures/` (`FIXTURE_DIR` in `test_core`).
@@ -94,7 +94,18 @@ Key cross-cutting designs:
 
 - Add deterministic regression tests, especially for file compatibility, connectivity, geometry, undo and
   candidates. Preserve project envelope fields in `.kgui.json`.
-- Document feature limitations in `docs/features.md` (Japanese); MCP tool changes belong in `docs/mcp.md`.
+- Document feature limitations in `docs/features.md` (Japanese); MCP tool changes belong in `docs/mcp.md`. Keep the
+  English manuals `docs/en/features.md` / `docs/en/mcp.md` (shown by the English UI) in step.
+- **Interface language**: Japanese is the source language; English comes from `assets/translations/en.json`
+  (`src/model/i18n.h`). Write user-visible text as `tr("日本語")` (QObject::tr in QObject classes, `mf::tr`
+  elsewhere — same catalog), `QT_TR_NOOP("…")` in tables shown via `translated()`, `%1` templates rather than
+  concatenation, and `tr("…%n…", nullptr, n)` with a `["one", "other"]` entry for counts. Core functions return
+  translated text; don't cache translated text in statics (or keep one copy per `english()`). Element and
+  palette names: `Element::name()`, `templateName()`. `test_translations` fails on unmarked Japanese literals in
+  `src/` (`// i18n-exempt` for deliberate ones), missing/unused catalog entries and placeholder mismatches. Never
+  translate NWChem input, identifiers or text that is persisted and read back. The language is chosen at startup
+  (`MOLFORMA_LANGUAGE`, else Preferences `ui/language`, else the system locale; `ui/translations.*`) and passed to
+  workers; tests install no translator, so they keep comparing Japanese.
 - MolForma is GPL-2.0-or-later (Open Babel, which it links, is GPL-2.0-only; keep new dependencies
   GPLv2-compatible). New source files start with `// SPDX-License-Identifier: GPL-2.0-or-later`. Keep `LICENSE` and
   `NOTICE` current. Do not add runtime dependence on Python.

@@ -1,4 +1,5 @@
 #include "nwchem/nwchem_execution.h"
+#include "model/i18n.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
@@ -59,7 +60,7 @@ void writeManifest(const ExecutionPlan &plan) {
     QSaveFile file(QDir(plan.directory).filePath("run.json"));
     const auto bytes = QJsonDocument(plan.manifest).toJson();
     if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
-        fail("実行記録を保存できません: " + file.errorString());
+        fail(tr("実行記録を保存できません: %1").arg(file.errorString()));
 }
 QString bootId() {
     QFile f("/proc/sys/kernel/random/boot_id");
@@ -136,35 +137,35 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
     r.errors = calculation.errors;
     r.warnings = calculation.warnings;
     if (d.data.contains("nwchem_execution") && !d.data["nwchem_execution"].isObject())
-        r.errors << "NWChem実行設定はオブジェクトである必要があります。";
+        r.errors << tr("NWChem実行設定はオブジェクトである必要があります。");
     const auto defaults = executionDefaults();
     for (auto it = defaults.begin(); it != defaults.end(); ++it) {
         const auto v = s[it.key()];
         if (v.type() != it.value().type())
-            r.errors << "実行設定の型が不正です: " + it.key();
+            r.errors << tr("実行設定の型が不正です: %1").arg(it.key());
         else if (v.isString() && (controls(v.toString()) || v.toString().size() > 4096))
-            r.errors << "実行設定に制御文字または長すぎる文字列があります: " + it.key();
+            r.errors << tr("実行設定に制御文字または長すぎる文字列があります: %1").arg(it.key());
     }
     auto integer = [&](const QString &key, int lo, int hi) {
         const double n = s[key].toDouble(-1);
         if (!s[key].isDouble() || !std::isfinite(n) || std::floor(n) != n || n < lo || n > hi)
-            r.errors << QString("%1 は %2〜%3 の整数で指定してください。").arg(key).arg(lo).arg(hi);
+            r.errors << tr("%1 は %2〜%3 の整数で指定してください。").arg(key).arg(lo).arg(hi);
     };
     const bool mpi = s["mode"] == "mpi";
     if (!mpi && s["mode"] != "direct")
-        r.errors << "起動方式はMPIまたは直接実行を選んでください。";
+        r.errors << tr("起動方式はMPIまたは直接実行を選んでください。");
     integer("mpi_ranks", 1, 4096);
     integer("omp_threads", 1, 1024);
     integer("blas_threads", 1, 1024);
     integer("timeout_seconds", 0, 604800);
     for (const auto &key : {"executable", "job_root"})
         if (s[key].toString().trimmed().isEmpty())
-            r.errors << QString("%1 を指定してください。").arg(key);
+            r.errors << tr("%1 を指定してください。").arg(key);
     if (mpi && s["launcher"].toString().trimmed().isEmpty())
-        r.errors << "MPIランチャーを指定してください。";
+        r.errors << tr("MPIランチャーを指定してください。");
     const auto stack = s["omp_stacksize"].toString();
     if (!stack.isEmpty() && !QRegularExpression("^[1-9][0-9]{0,8}[BKMGbkmg]?$").match(stack).hasMatch())
-        r.errors << "OpenMPスタックは64M・1G等の正の整数と単位B/K/M/Gで指定してください。";
+        r.errors << tr("OpenMPスタックは64M・1G等の正の整数と単位B/K/M/Gで指定してください。");
     r.environment = {{"OMP_NUM_THREADS", QString::number(s["omp_threads"].toInt())},
                      {"OMP_DYNAMIC", "FALSE"},
                      {"MKL_DYNAMIC", "FALSE"}};
@@ -177,7 +178,7 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
     for (const auto &entry : s["environment"].toArray()) {
         const auto row = entry.toObject();
         if (!entry.isObject() || !row["enabled"].isBool()) {
-            r.errors << "環境変数の行に有効・無効の指定がありません。";
+            r.errors << tr("環境変数の行に有効・無効の指定がありません。");
             continue;
         }
         if (!row["enabled"].toBool())
@@ -186,11 +187,11 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
         if (!row["name"].isString() ||
             !QRegularExpression("^[A-Za-z_][A-Za-z0-9_]*$").match(name).hasMatch() ||
             !row["value"].isString() || controls(value) || value.size() > 8192) {
-            r.errors << "有効な環境変数の名前・値を確認してください。";
+            r.errors << tr("有効な環境変数の名前・値を確認してください。");
             continue;
         }
         if (seen.contains(name) || managedEnvironment.contains(name)) {
-            r.errors << "環境変数が重複、または専用の資源設定と重複しています: " + name;
+            r.errors << tr("環境変数が重複、または専用の資源設定と重複しています: %1").arg(name);
             continue;
         }
         seen.insert(name);
@@ -213,44 +214,46 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
             if (!ok)
                 r.errors << error;
         };
-        const auto program = [&](const QString &path, const QString &label) {
+        const auto program = [&](const QString &path, const QString &label, const QString &error) {
             const QFileInfo f(path);
-            check(label, !path.isEmpty() && f.isFile() && f.isExecutable(), path,
-                  label + "が見つからないか、実行権限がありません。");
+            check(label, !path.isEmpty() && f.isFile() && f.isExecutable(), path, error);
         };
-        program(r.executable, "NWChem実行ファイル");
+        program(r.executable, tr("NWChem実行ファイル"),
+                tr("NWChem実行ファイルが見つからないか、実行権限がありません。"));
         if (mpi)
-            program(r.launcher, "MPIランチャー");
-        check("参照ファイルの基準", QFileInfo(r.referenceDirectory).isDir(), r.referenceDirectory,
-              "参照ファイルの基準ディレクトリがありません。");
+            program(r.launcher, tr("MPIランチャー"),
+                    tr("MPIランチャーが見つからないか、実行権限がありません。"));
+        check(tr("参照ファイルの基準"), QFileInfo(r.referenceDirectory).isDir(), r.referenceDirectory,
+              tr("参照ファイルの基準ディレクトリがありません。"));
         const auto root = executionRoot(s, base);
-        check("ジョブ保存先", writableDirectory(root, true), root,
-              "ジョブ保存先にディレクトリを作成できません。");
+        check(tr("ジョブ保存先"), writableDirectory(root, true), root,
+              tr("ジョブ保存先にディレクトリを作成できません。"));
         const auto basis = r.environment.value("NWCHEM_BASIS_LIBRARY");
         if (!basis.isEmpty())
             check("NWCHEM_BASIS_LIBRARY", QFileInfo(basis).isDir(), basis,
-                  "NWCHEM_BASIS_LIBRARYのディレクトリがありません。");
+                  tr("NWCHEM_BASIS_LIBRARYのディレクトリがありません。"));
         // The input's own errors stay in the list; the check only counts them.
-        r.checks << ExecutionCheck{
-            "NWChem入力",
-            calculation.errors.isEmpty()
-                ? QString("生成できます")
-                : QString("生成できません（エラー %1 件）").arg(calculation.errors.size()),
-            {},
-            calculation.errors.isEmpty()};
+        r.checks << ExecutionCheck{tr("NWChem入力"),
+                                   calculation.errors.isEmpty() ? tr("生成できます")
+                                                                : tr("生成できません（エラー %n 件）",
+                                                                     nullptr, int(calculation.errors.size())),
+                                   {},
+                                   calculation.errors.isEmpty()};
     }
     const int ranks = mpi ? s["mpi_ranks"].toInt() : 1;
     if (mpi && ranks == 1)
-        r.warnings << "MPI-PR版NWChemは補助プロセスを必要とします。1計算プロセスでもMPI起動数2が必要です。";
+        r.warnings << tr(
+            "MPI-PR版NWChemは補助プロセスを必要とします。1計算プロセスでもMPI起動数2が必要です。");
     if (!mpi)
-        r.warnings << "直接実行は対応する逐次版等に使用してください。MPI版はMPIランチャーを選んでください。";
+        r.warnings << tr(
+            "直接実行は対応する逐次版等に使用してください。MPI版はMPIランチャーを選んでください。");
     if (ranks * std::max(s["omp_threads"].toInt(), s["blas_threads"].toInt()) > QThread::idealThreadCount())
-        r.warnings << "指定した並列度が、このPCの論理CPU数を超えています。";
+        r.warnings << tr("指定した並列度が、このPCの論理CPU数を超えています。");
     if (s["omp_threads"].toInt() > 1 && s["blas_threads"].toInt() > 1)
-        r.warnings << "OpenMPとBLASの多重並列により、想定より多くのスレッドを使う場合があります。";
+        r.warnings << tr("OpenMPとBLASの多重並列により、想定より多くのスレッドを使う場合があります。");
     for (auto it = s.begin(); it != s.end(); ++it)
         if (!defaults.contains(it.key()))
-            r.warnings << "未対応の実行設定を保持しています: " + it.key();
+            r.warnings << tr("未対応の実行設定を保持しています: %1").arg(it.key());
     r.errors.removeDuplicates();
     return r;
 }
@@ -275,7 +278,7 @@ ExecutionPlan executionPlan(const Document &d, const QString &base, const QStrin
     if (advanced["vectors_guess"] == "file") {
         const auto input = absolutePath(advanced["vectors_input"].toString(), report.referenceDirectory);
         if (local && (!QFileInfo(input).isFile() || !QFileInfo(input).isReadable()))
-            fail("入力movecsを読めません: " + input);
+            fail(tr("入力movecsを読めません: %1").arg(input));
         setNwchemAdvanced(resolved, "vectors_input", input);
     }
     for (const auto &key : {"scratch_dir", "permanent_dir", "vectors_output"}) {
@@ -285,37 +288,38 @@ ExecutionPlan executionPlan(const Document &d, const QString &base, const QStrin
         const bool absolute = QDir::isAbsolutePath(value);
         const auto clean = QDir::cleanPath(value);
         if (!absolute && (clean == ".." || clean.startsWith("../")))
-            fail(QString("%1 の相対パスはジョブフォルダー内を指定してください。").arg(key));
+            fail(tr("%1 の相対パスはジョブフォルダー内を指定してください。").arg(key));
         const auto actual = QString(key) == "vectors_output" ? nwchemPermanentFile(d, value) : value;
         const auto target = absolutePath(actual, directory);
         if (QString(key) == "vectors_output") {
             if (!absolute && bundleFiles.contains(clean))
-                fail("出力movecsにはジョブ保存用ファイルと異なる名前を指定してください。");
+                fail(tr("出力movecsにはジョブ保存用ファイルと異なる名前を指定してください。"));
             if (local && (QFileInfo::exists(target) || QFileInfo(target).isSymLink()))
-                fail("出力movecsは既に存在します。別の名前を指定してください: " + target);
+                fail(tr("出力movecsは既に存在します。別の名前を指定してください: %1").arg(target));
             if (local && QDir::isAbsolutePath(actual) &&
                 !writableDirectory(QFileInfo(target).absolutePath(), false))
-                fail("出力movecsの保存先がないか、書込みできません: " + target);
+                fail(tr("出力movecsの保存先がないか、書込みできません: %1").arg(target));
         } else if (local && absolute) {
             if (!writableDirectory(target, false))
-                fail("指定されたNWChemディレクトリがないか、書込みできません: " + target);
+                fail(tr("指定されたNWChemディレクトリがないか、書込みできません: %1").arg(target));
             const auto prefix = nwchemSettings(d)["start"].toString();
             if (!QDir(target)
                      .entryList({prefix + ".*", prefix + "_opt*", prefix + "_vib*"},
                                 QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot)
                      .isEmpty())
-                fail("同じ計算名のファイルが指定ディレクトリにあります。計算名か保存先を変更してください: " +
-                     target);
+                fail(tr("同じ計算名のファイルが指定ディレクトリにあります。計算名か保存先を変更してください: "
+                        "%1")
+                         .arg(target));
         }
     }
     const auto outputs = nwchemOutputFiles(d, validateNwchem(d));
     for (const auto &file : outputs) {
         const auto target = absolutePath(file, directory);
         if (local && (QFileInfo::exists(target) || QFileInfo(target).isSymLink()))
-            fail("可視化ファイルは既に存在します。別の計算名・出力名を指定してください: " + target);
+            fail(tr("可視化ファイルは既に存在します。別の計算名・出力名を指定してください: %1").arg(target));
         if (advanced["vectors_guess"] == "file" &&
             target == resolved.data["nwchem"].toObject()["advanced"].toObject()["vectors_input"].toString())
-            fail("可視化ファイルと入力movecsには別の保存先を指定してください。");
+            fail(tr("可視化ファイルと入力movecsには別の保存先を指定してください。"));
     }
     p.input = nwchemInput(resolved);
     QJsonObject overrides;
@@ -365,13 +369,13 @@ ExecutionPlan saveExecutionBundle(const Document &d, const QString &base, bool f
         fail(report.errors.join('\n'));
     const auto root = executionRoot(executionSettings(d), base);
     if (!QDir().mkpath(root))
-        fail("ジョブ保存先を作成できません: " + root);
+        fail(tr("ジョブ保存先を作成できません: %1").arg(root));
     // The folder name shows the local time the user sees in the history; the records stay in UTC.
     QTemporaryDir directory(QDir(root).filePath(nwchemSettings(d)["start"].toString() + '-' +
                                                 QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") +
                                                 "-XXXXXX"));
     if (!directory.isValid())
-        fail("ジョブフォルダーを作成できません: " + directory.errorString());
+        fail(tr("ジョブフォルダーを作成できません: %1").arg(directory.errorString()));
     auto plan = executionPlan(d, base, directory.path(), forRun);
     const auto advanced = nwchemAdvanced(d);
     for (const auto &key : {"scratch_dir", "permanent_dir", "vectors_output"}) {
@@ -385,7 +389,7 @@ ExecutionPlan saveExecutionBundle(const Document &d, const QString &base, bool f
         if (QString(key) == "vectors_output")
             path = QFileInfo(path).path();
         if (!QDir(directory.path()).mkpath(path))
-            fail("ジョブ内の出力ディレクトリを作成できません: " + path);
+            fail(tr("ジョブ内の出力ディレクトリを作成できません: %1").arg(path));
     }
     writeFile(directory.filePath("input.nw"), plan.input.toUtf8());
     const auto errors = d.validate();
@@ -473,7 +477,7 @@ qint64 NwchemRun::elapsedSeconds() const {
 }
 void NwchemRun::start(const Document &d, const QString &base) {
     if (running)
-        fail("計算は既に実行中です。");
+        fail(tr("計算は既に実行中です。"));
     current = saveExecutionBundle(d, base, true);
     status = "starting";
     detail.clear();

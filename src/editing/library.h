@@ -3,6 +3,7 @@
 namespace mf {
 const QJsonArray &templates();
 QJsonObject findTemplate(const QString &id);
+QString templateName(const QJsonObject &t); // name_ja or name_en, in the interface language.
 struct PlacedPart {
     QString id;
     Ids atoms, connections;

@@ -2,6 +2,7 @@
 #include "mcp/headless.h"
 #include "mcp/server.h"
 #include "mcp/stdio_transport.h"
+#include "model/i18n.h"
 #include "ui/main_window.h"
 #include "ui/mcp_gui.h"
 #include "ui/translations.h"
@@ -16,10 +17,10 @@
 #include <cstdio>
 namespace {
 void addMcpOptions(QCommandLineParser &parser) {
-    parser.addOption(
-        {"mcp-allow-dir", "MCPのファイル操作をこのディレクトリに限定する（複数指定可）", "directory"});
+    parser.addOption({"mcp-allow-dir", mf::tr("MCPのファイル操作をこのディレクトリに限定する（複数指定可）"),
+                      "directory"});
     parser.addOption({"mcp-allow-execution-settings",
-                      "MCPクライアントにNWChem実行ファイル・ランチャー・環境変数の変更を許可する"});
+                      mf::tr("MCPクライアントにNWChem実行ファイル・ランチャー・環境変数の変更を許可する")});
 }
 // MCP restrictions come only from the command line that the user configured in the client.
 mf::McpPolicy mcpPolicy(const QCommandLineParser &parser) {
@@ -48,8 +49,8 @@ int main(int argc, char **argv) {
         QCommandLineParser parser;
         parser.addHelpOption();
         parser.addVersionOption();
-        parser.addOption({"mcp", "画面なしのMCPサーバーを標準入出力で起動する"});
-        parser.addOption({"mcp-gui", "編集画面つきでMCPサーバーを起動する"});
+        parser.addOption({"mcp", mf::tr("画面なしのMCPサーバーを標準入出力で起動する")});
+        parser.addOption({"mcp-gui", mf::tr("編集画面つきでMCPサーバーを起動する")});
         addMcpOptions(parser);
         parser.process(app);
         if (guiMcp || !parser.positionalArguments().isEmpty()) {
@@ -76,11 +77,13 @@ int main(int argc, char **argv) {
     }
     if (argc == 4 && QString::fromLocal8Bit(argv[1]) == "--result-worker") {
         QCoreApplication app(argc, argv);
+        mf::inheritTranslations();
         return mf::resultWorker(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]));
     }
     // The same native executable acts as a cancellable chemistry worker; no Python runtime.
     if (argc == 4 && QString::fromLocal8Bit(argv[1]) == "--worker") {
         QCoreApplication app(argc, argv);
+        mf::inheritTranslations();
         QString input = QString::fromLocal8Bit(argv[2]), output = QString::fromLocal8Bit(argv[3]);
         try {
             auto request = mf::parseJson(mf::readFile(input));
@@ -132,14 +135,15 @@ int main(int argc, char **argv) {
     QApplication::setWindowIcon(QIcon(":/icons/molforma.png"));
     QGuiApplication::setDesktopFileName("molforma"); // Matches packaging/molforma.desktop.
     QCommandLineParser parser;
-    parser.setApplicationDescription("分子の作成・編集と、NWChemの入力作成・実行・結果表示（Qt6 / C++）");
+    parser.setApplicationDescription(
+        mf::tr("分子の作成・編集と、NWChemの入力作成・実行・結果表示（Qt6 / C++）"));
     parser.addHelpOption();
     parser.addVersionOption();
-    parser.addPositionalArgument("file",
-                                 "開くファイル（XYZ・MOL・SDF・PDB・MolFormaプロジェクト .kgui.json など）");
-    parser.addOption({"screenshot", "画面をPNGで保存して終了する", "path"});
-    parser.addOption({"mcp", "画面なしのMCPサーバーを標準入出力で起動する"});
-    parser.addOption({"mcp-gui", "編集画面つきでMCPサーバーを起動する"});
+    parser.addPositionalArgument(
+        "file", mf::tr("開くファイル（XYZ・MOL・SDF・PDB・MolFormaプロジェクト .kgui.json など）"));
+    parser.addOption({"screenshot", mf::tr("画面をPNGで保存して終了する"), "path"});
+    parser.addOption({"mcp", mf::tr("画面なしのMCPサーバーを標準入出力で起動する")});
+    parser.addOption({"mcp-gui", mf::tr("編集画面つきでMCPサーバーを起動する")});
     addMcpOptions(parser);
     parser.process(app);
     try {
@@ -169,7 +173,7 @@ int main(int argc, char **argv) {
             QObject::connect(transport.get(), &mf::McpStdioTransport::finished, &app,
                              &QCoreApplication::exit);
             transport->start();
-            window.statusBar()->addPermanentWidget(new QLabel("MCP stdio 接続中", &window));
+            window.statusBar()->addPermanentWidget(new QLabel(mf::tr("MCP stdio 接続中"), &window));
             // PDB MODEL/ALTLOC and load-error dialogs must already be reachable over MCP.
             if (!parser.positionalArguments().isEmpty()) {
                 const auto path = parser.positionalArguments().first();

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordination.h"
+#include "model/i18n.h"
 #include <cmath>
 namespace mf {
 QStringList geometryNames() {
@@ -17,8 +18,9 @@ QStringList geometryNames() {
             "capped_square_antiprismatic"};
 }
 QStringList geometryLabels() {
-    return {"直線",   "三角平面", "四面体",         "平面四角形", "三方両錐",   "四角錐",
-            "八面体", "五方両錐", "四方逆プリズム", "十二面体",   "三冠三角柱", "一冠四方逆プリズム"};
+    return {tr("直線"),           tr("三角平面"), tr("四面体"),     tr("平面四角形"),
+            tr("三方両錐"),       tr("四角錐"),   tr("八面体"),     tr("五方両錐"),
+            tr("四方逆プリズム"), tr("十二面体"), tr("三冠三角柱"), tr("一冠四方逆プリズム")};
 }
 QVector<Vec> siteVectors(const QString &g) {
     auto sph = [](double t, double p) {
@@ -64,7 +66,7 @@ QVector<Vec> siteVectors(const QString &g) {
         for (int k = 0; k < 3; ++k)
             out << sph(90, 120 * k + 60);
     } else
-        fail("未知の配位形状です。");
+        fail(tr("未知の配位形状です。"));
     for (auto &v : out)
         v.normalize();
     return out;
@@ -73,7 +75,7 @@ QJsonObject center(const Document &d, const QString &id) {
     for (auto v : d.data["centers"].toArray())
         if (v.toObject()["atom"] == id)
             return v.toObject();
-    fail("配位中心を選択してください。");
+    fail(tr("配位中心を選択してください。"));
 }
 void updateCenter(Document &d, const QJsonObject &c) {
     auto rows = d.data["centers"].toArray();
@@ -89,7 +91,7 @@ void updateCenter(Document &d, const QJsonObject &c) {
 QString addCenter(Document &d, const QString &symbol, const QString &geometry, const Vec &position,
                   double distance, int oxidation) {
     if (distance <= 0)
-        fail("配位距離は正の値にしてください。");
+        fail(tr("配位距離は正の値にしてください。"));
     element(symbol);
     Atom a;
     a.element = symbol;
@@ -107,14 +109,14 @@ PlacedPart placeLigand(Document &d, const QString &id, const QList<int> &indices
     auto c = center(d, id);
     auto sites = c["sites"].toArray(), connections = t["connections"].toArray();
     if (indices.size() != connections.size() || indices.isEmpty() || indices.size() > 2)
-        fail("配位子の供与原子数に合う1〜2サイトを選択してください。");
+        fail(tr("配位子の供与原子数に合う1〜2サイトを選択してください。"));
     QSet<int> distinct;
     QVector<Vec> targets, points, anchors;
     Vec origin = d.atom(id).position;
     for (int i : indices) {
         if (i < 0 || i >= sites.size() || distinct.contains(i) ||
             !sites[i].toObject()["donor"].toString().isEmpty())
-            fail("サイトが占有済み、重複、または範囲外です。");
+            fail(tr("サイトが占有済み、重複、または範囲外です。"));
         distinct.insert(i);
         auto s = sites[i].toObject();
         targets << origin + vectorFromJson(s["direction"]) * s["distance"].toDouble();
@@ -138,9 +140,9 @@ PlacedPart placeLigand(Document &d, const QString &id, const QList<int> &indices
         shift = targets[0] - r * anchors[0];
     } else {
         if (unit(targets[0] - origin).dot(unit(targets[1] - origin)) < -.9)
-            fail("二座配位子には隣接するシスサイトを指定してください。");
+            fail(tr("二座配位子には隣接するシスサイトを指定してください。"));
         if (std::abs((anchors[1] - anchors[0]).norm() - (targets[1] - targets[0]).norm()) > .18)
-            fail("供与原子間隔とサイト間隔が合いません。配位距離を調整してください。");
+            fail(tr("供与原子間隔とサイト間隔が合いません。配位距離を調整してください。"));
         auto rt = fitPoints(anchors, targets);
         r = rt.first;
         shift = rt.second;
@@ -201,7 +203,7 @@ PlacedPart placeLigand(Document &d, const QString &id, const QList<int> &indices
         if (!donors.contains(i) && (points[i] - origin).norm() <
                                        element(d.atom(id).element).radius +
                                            element(templateAtoms[i].toObject()["element"].toString()).radius)
-            fail("供与原子以外の原子が配位中心に近すぎます。サイト・距離・回転角を変更してください。");
+            fail(tr("供与原子以外の原子が配位中心に近すぎます。サイト・距離・回転角を変更してください。"));
     auto p = instantiate(d, t, points);
     auto parts = d.data["parts"].toArray();
     auto last = parts.last().toObject(), meta = last["metadata"].toObject();
@@ -238,7 +240,7 @@ static void refitCenter(Document &d, const QString &id) {
         for (auto s : meta["sites"].toArray()) {
             int i = s.toInt();
             if (i >= sites.size())
-                fail("占有サイトより少ない配位数には変更できません。");
+                fail(tr("占有サイトより少ない配位数には変更できません。"));
             idx << i;
         }
         auto oldIds = idsFromJson(p["atoms"]);
@@ -269,7 +271,7 @@ static void refitCenter(Document &d, const QString &id) {
         for (int i = 0; i < oldIds.size(); ++i) {
             Vec target = temp.atom(placed.atoms[i]).position;
             if (d.atom(oldIds[i]).fixed && (target - d.atom(oldIds[i]).position).norm() > 1e-7)
-                fail("固定原子を動かせません。");
+                fail(tr("固定原子を動かせません。"));
             d.atom(oldIds[i]).position = target;
         }
         c = center(d, id);
@@ -291,7 +293,7 @@ void adjustCenter(Document &d, const QString &id, const QString &geometry, doubl
     for (auto v : directions)
         sites.append(QJsonObject{{"direction", vectorToJson(v)}, {"distance", distance}});
     if (distance <= 0)
-        fail("配位距離は正の値にしてください。");
+        fail(tr("配位距離は正の値にしてください。"));
     auto c = old;
     c["geometry"] = geometry;
     c["sites"] = sites;
@@ -309,21 +311,21 @@ void moveLigand(Document &d, const QString &partId, const QList<int> &sites, con
         auto meta = p["metadata"].toObject();
         auto id = meta["coordination_center"].toString();
         if (id.isEmpty())
-            fail("配位子を選択してください。");
+            fail(tr("配位子を選択してください。"));
         QJsonObject t = replacement;
         if (t.isEmpty()) {
             auto c = center(d, id);
             auto current = c["sites"].toArray();
             if (sites.size() != p["connections"].toArray().size())
-                fail("供与原子数と同じサイト数を指定してください。");
+                fail(tr("供与原子数と同じサイト数を指定してください。"));
             QSet<int> unique;
             for (int i : sites) {
                 if (i < 0 || i >= current.size() || unique.contains(i))
-                    fail("サイト番号が不正です。");
+                    fail(tr("サイト番号が不正です。"));
                 unique.insert(i);
                 auto s = current[i].toObject();
                 if (!s["part"].toString().isEmpty() && s["part"] != partId)
-                    fail("移動先サイトは占有されています。");
+                    fail(tr("移動先サイトは占有されています。"));
             }
             for (int i = 0; i < current.size(); ++i) {
                 auto s = current[i].toObject();
@@ -355,18 +357,18 @@ void moveLigand(Document &d, const QString &partId, const QList<int> &sites, con
         placeLigand(d, id, sites, t, twist);
         return;
     }
-    fail("配位子を選択してください。");
+    fail(tr("配位子を選択してください。"));
 }
 void setSiteDirection(Document &d, const QString &id, const QList<int> &indices, const Vec &direction,
                       double distance) {
     if (indices.isEmpty() || distance <= 0)
-        fail("サイト番号と正の距離を指定してください。");
+        fail(tr("サイト番号と正の距離を指定してください。"));
     Vec dir = unit(direction);
     auto c = center(d, id);
     auto sites = c["sites"].toArray();
     for (int i : indices) {
         if (i < 0 || i >= sites.size())
-            fail("サイト番号が範囲外です。");
+            fail(tr("サイト番号が範囲外です。"));
         auto s = sites[i].toObject();
         s["direction"] = vectorToJson(dir);
         s["distance"] = distance;
@@ -380,10 +382,10 @@ void swapLigands(Document &d, const QString &id, int first, int second) {
     auto c = center(d, id);
     auto sites = c["sites"].toArray();
     if (first < 0 || second < 0 || first >= sites.size() || second >= sites.size() || first == second)
-        fail("異なる2サイトを指定してください。");
+        fail(tr("異なる2サイトを指定してください。"));
     QString a = sites[first].toObject()["part"].toString(), b = sites[second].toObject()["part"].toString();
     if (a.isEmpty() || b.isEmpty() || a == b)
-        fail("異なる配位子で占有された2サイトが必要です。");
+        fail(tr("異なる配位子で占有された2サイトが必要です。"));
     auto parts = d.data["parts"].toArray();
     for (int i = 0; i < parts.size(); ++i) {
         auto p = parts[i].toObject();
@@ -391,7 +393,7 @@ void swapLigands(Document &d, const QString &id, int first, int second) {
             continue;
         auto meta = p["metadata"].toObject();
         if (meta["sites"].toArray().size() != 1)
-            fail("サイト交換は2つの単座配位子で行ってください。");
+            fail(tr("サイト交換は2つの単座配位子で行ってください。"));
         meta["sites"] = QJsonArray{p["id"] == a ? second : first};
         p["metadata"] = meta;
         parts[i] = p;

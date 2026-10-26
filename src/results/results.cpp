@@ -1,6 +1,7 @@
 #include "results/results.h"
 #include "editing/coordinates.h"
 #include "model/geometry.h"
+#include "model/i18n.h"
 #include "results/molden_orbitals.h"
 #include <Eigen/Geometry>
 #include <QDataStream>
@@ -27,28 +28,28 @@ double number(QString text) {
     bool ok;
     const double n = text.toDouble(&ok);
     if (!ok || !std::isfinite(n))
-        fail("結果ファイルの数値が不正です: " + text.left(80));
+        fail(tr("結果ファイルの数値が不正です: %1").arg(text.left(80)));
     return n;
 }
 int integer(const QString &text, int lo, int hi) {
     const double n = number(text);
     if (n < lo || n > hi || n != std::floor(n))
-        fail("結果ファイルの整数・個数が範囲外です: " + text.left(80));
+        fail(tr("結果ファイルの整数・個数が範囲外です: %1").arg(text.left(80)));
     return int(n);
 }
 Vec point(const QStringList &w, int start, double scale = 1) {
     if (w.size() < start + 3)
-        fail("結果ファイルの座標が不足しています。");
+        fail(tr("結果ファイルの座標が不足しています。"));
     const Vec p(number(w[start]), number(w[start + 1]), number(w[start + 2]));
     if (p.cwiseAbs().maxCoeff() > 1e6)
-        fail("結果ファイルの座標が範囲外です。");
+        fail(tr("結果ファイルの座標が範囲外です。"));
     return p * scale;
 }
 QString symbol(int z) {
     for (const auto &e : elements())
         if (e.number == z)
             return e.symbol;
-    fail("このビューアで扱えない原子番号です: " + QString::number(z));
+    fail(tr("このビューアで扱えない原子番号です: %1").arg(z));
 }
 Atom atom(QString tag, const Vec &p) {
     Atom a;
@@ -62,7 +63,7 @@ Atom atom(QString tag, const Vec &p) {
     }
     const auto match = QRegularExpression("^([A-Za-z]{1,2})[0-9_]*$").match(tag);
     if (!match.hasMatch())
-        fail("未対応の原子タグです: " + tag.left(80));
+        fail(tr("未対応の原子タグです: %1").arg(tag.left(80)));
     tag = match.captured(1).toLower();
     tag[0] = tag[0].toUpper();
     a.element = element(tag).symbol;
@@ -71,12 +72,12 @@ Atom atom(QString tag, const Vec &p) {
 }
 void addFrame(ResultData &r, Document d, const QString &label) {
     if (d.atoms.isEmpty() || d.atoms.size() > maxAtoms || r.frames.size() >= maxFrames)
-        fail("構造数または原子数が対応範囲外です（2000構造・2000原子まで）。");
+        fail(tr("構造数または原子数が対応範囲外です（2000構造・2000原子まで）。"));
     qsizetype total = d.atoms.size();
     for (const auto &frame : r.frames)
         total += frame.molecule.atoms.size();
     if (total > 200000)
-        fail("構造列が大きすぎます（合計20万原子まで）。");
+        fail(tr("構造列が大きすぎます（合計20万原子まで）。"));
     d.inferBonds();
     r.frames.append({std::move(d), label});
 }
@@ -85,10 +86,10 @@ QByteArray boundedRead(const QString &path) {
     if (!f.open(QIODevice::ReadOnly))
         fail(f.errorString());
     if (f.size() > maxBytes)
-        fail("結果ファイルは128 MiBまで読み込めます。ログを分割するか格子を小さくしてください。");
+        fail(tr("結果ファイルは128 MiBまで読み込めます。ログを分割するか格子を小さくしてください。"));
     auto data = f.read(maxBytes + 1);
     if (data.size() > maxBytes)
-        fail("読込中に結果ファイルが128 MiBを超えました。");
+        fail(tr("読込中に結果ファイルが128 MiBを超えました。"));
     return data;
 }
 void xyz(ResultData &r, const QStringList &lines) {
@@ -100,13 +101,13 @@ void xyz(ResultData &r, const QStringList &lines) {
         }
         const int count = integer(lines[i++].trimmed(), 1, maxAtoms);
         if (i + count >= lines.size())
-            fail("XYZの構造が途中で切れています。");
+            fail(tr("XYZの構造が途中で切れています。"));
         const QString title = lines[i++];
         Document d;
         for (int n = 0; n < count; ++n) {
             const auto row = words(lines[i++]);
             if (row.size() != 4)
-                fail("結果XYZは元素・X・Y・Zの4列で指定してください。");
+                fail(tr("結果XYZは元素・X・Y・Zの4列で指定してください。"));
             d.atoms << atom(row[0], point(row, 1));
         }
         addFrame(r, d, title);
@@ -164,10 +165,12 @@ QJsonObject NwchemEnergySummary::energy() const {
     return {};
 }
 namespace {
-// The status lines of an NWChem log; resultOutcome() tells them apart.
-const QString IncompleteStatus = "正常終了マーカーなし（実行中・中断・不完全なログの可能性）",
-              ErrorStatus = "NWChemエラー: ", MessageStatus = "エラー・未収束メッセージあり（ログを確認）",
-              NormalStatus = "正常終了マーカーあり（各taskの結果は「概要」とログで確認）";
+// The status lines of an NWChem log, translated where they are set; resultOutcome() tells them apart.
+const char *const IncompleteStatus = QT_TR_NOOP("正常終了マーカーなし（実行中・中断・不完全なログの可能性）"),
+                  *const ErrorStatus = QT_TR_NOOP("NWChemエラー: %1"),
+                  *const MessageStatus = QT_TR_NOOP("エラー・未収束メッセージあり（ログを確認）"),
+                  *const NormalStatus =
+                      QT_TR_NOOP("正常終了マーカーあり（各taskの結果は「概要」とログで確認）");
 // A DRIVER step ("@ 3 -76.02 -1.2D-05 0.0003 ..."), and the thresholds printed before the steps.
 const QRegularExpression &stepLine() {
     static const QRegularExpression pattern(R"(^@\s+(\d+)((?:\s+\S+){7})\s*$)");
@@ -189,7 +192,7 @@ ResultStep resultStep(const QRegularExpressionMatch &m) {
             logNumber(columns[3]), logNumber(columns[4]), logNumber(columns[5]), logNumber(columns[6])};
 }
 void nwchem(ResultData &r, const QStringList &lines) {
-    r.status = IncompleteStatus;
+    r.status = tr(IncompleteStatus);
     bool fatal = false, ended = false, recognized = false;
     static const QRegularExpression energy(
         R"(\bTotal\s+(SCF|DFT|MP2|CCSD(?:\(T\))?)\s+energy\s*[:=]?\s*([-+0-9.eEdD]+))",
@@ -243,14 +246,14 @@ void nwchem(ResultData &r, const QStringList &lines) {
                     continue;
                 abort = QString(text).remove(code).left(200);
                 fatal = true;
-                r.warnings << QString("行 %1: NWChemエラー: %2").arg(j + 1).arg(abort);
+                r.warnings << tr("行 %1: NWChemエラー: %2").arg(j + 1).arg(abort);
                 break;
             }
         }
         if (error.match(line).hasMatch()) {
             fatal = true;
             if (r.warnings.size() < 30)
-                r.warnings << QString("行 %1: %2").arg(i + 1).arg(line.trimmed().left(250));
+                r.warnings << tr("行 %1: %2").arg(i + 1).arg(line.trimmed().left(250));
         }
         ended |= line.contains("Total times  cpu:");
         if (auto m = scanMark.match(line); m.hasMatch() && m.captured(1).toInt() > scanPoint) {
@@ -447,11 +450,11 @@ void nwchem(ResultData &r, const QStringList &lines) {
                 thermochemistry << t;
         }
         if (line.contains("Optimization converged"))
-            r.warnings << "最適化の収束メッセージを検出しました。";
+            r.warnings << tr("最適化の収束メッセージを検出しました。");
         auto match = energy.match(line);
         if (match.hasMatch()) {
             if (r.energies.size() >= 20000)
-                fail("エネルギーの記録数が2万件を超えています。");
+                fail(tr("エネルギーの記録数が2万件を超えています。"));
             r.energies << ResultEnergy{match.captured(1).toUpper(), number(match.captured(2)), i + 1};
             if (scanPoint > 0 && scan.contains(scanPoint))
                 scan[scanPoint]["energy"] = r.energies.last().hartree;
@@ -459,7 +462,7 @@ void nwchem(ResultData &r, const QStringList &lines) {
         if (line.contains("Output coordinates in ")) {
             const double scale = line.contains("angstroms") ? 1 : line.contains("a.u.") ? BohrToAngstrom : 0;
             if (!scale) {
-                r.warnings << "未対応の座標単位を読み飛ばしました。";
+                r.warnings << tr("未対応の座標単位を読み飛ばしました。");
                 continue;
             }
             Document d;
@@ -486,12 +489,12 @@ void nwchem(ResultData &r, const QStringList &lines) {
             if (!d.atoms.isEmpty() && j < lines.size() && lines[j].trimmed().isEmpty() &&
                 (r.frames.isEmpty() || r.frames.first().molecule.atoms.size() == d.atoms.size())) {
                 addFrame(r, d,
-                         scanPoint > 0 ? QString("スキャン %1・ログ 行 %2").arg(scanPoint).arg(i + 1)
-                                       : QString("ログ 行 %1").arg(i + 1));
+                         scanPoint > 0 ? tr("スキャン %1・ログ 行 %2").arg(scanPoint).arg(i + 1)
+                                       : tr("ログ 行 %1").arg(i + 1));
                 if (scanPoint > 0 && scan.contains(scanPoint))
                     scan[scanPoint]["frame"] = r.frames.size() - 1;
             } else
-                r.warnings << QString("行 %1の不完全な座標表を読み飛ばしました。").arg(i + 1);
+                r.warnings << tr("行 %1の不完全な座標表を読み飛ばしました。").arg(i + 1);
         }
         if (line.contains("(Projected Frequencies expressed")) {
             r.modes.clear();
@@ -518,7 +521,7 @@ void nwchem(ResultData &r, const QStringList &lines) {
             if (rowCount == 3 * r.vibrationGeometry.atoms.size())
                 r.modes += modes;
             else
-                r.warnings << "未完の振動モード表を読み飛ばしました。";
+                r.warnings << tr("未完の振動モード表を読み飛ばしました。");
         }
         if (line.contains("Projected Infra Red Intensities")) {
             for (int j = i + 1; j < lines.size(); ++j) {
@@ -534,7 +537,7 @@ void nwchem(ResultData &r, const QStringList &lines) {
         }
     }
     if (!recognized)
-        fail("NWChemの出力ログを認識できません。");
+        fail(tr("NWChemの出力ログを認識できません。"));
     if (r.orbitals.isEmpty())
         r.orbitals = logOrbitals; // Energies only: shapes need MOLDEN (or a CUBE) for the basis.
     if (!thermochemistry.isEmpty())
@@ -562,11 +565,11 @@ void nwchem(ResultData &r, const QStringList &lines) {
     if (!r.steps.isEmpty() && !r.properties.contains("optimization"))
         r.properties["optimization"] = "not_converged";
     if (!abort.isEmpty())
-        r.status = ErrorStatus + abort;
+        r.status = tr(ErrorStatus).arg(abort);
     else if (fatal)
-        r.status = MessageStatus;
+        r.status = tr(MessageStatus);
     else if (ended)
-        r.status = NormalStatus;
+        r.status = tr(NormalStatus);
     if (const auto energy = summary.energy(); !energy.isEmpty())
         r.properties["final_energy"] = energy;
     r.warnings.removeDuplicates();
@@ -582,32 +585,32 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
         if (match.hasMatch()) {
             current = match.captured(1).trimmed().toUpper();
             if (blocks.contains(current))
-                fail("MOLDENのセクションが重複しています: " + current);
+                fail(tr("MOLDENのセクションが重複しています: %1").arg(current));
             blocks[current] = {};
             headers[current] = match.captured(2).trimmed().toUpper();
         } else if (!current.isEmpty() && !line.trimmed().isEmpty())
             blocks[current] << line;
     }
     if (!blocks.contains("MOLDEN FORMAT"))
-        fail("MOLDENヘッダーがありません。");
+        fail(tr("MOLDENヘッダーがありません。"));
     if (blocks.contains("ATOMS")) {
         const auto units = headers["ATOMS"];
         if (units != "ANGS" && units != "AU" && units != "(ANGS)" && units != "(AU)")
-            fail("MOLDEN [Atoms] の単位はAngsまたはAUを指定してください。");
+            fail(tr("MOLDEN [Atoms] の単位はAngsまたはAUを指定してください。"));
         const double scale = units.contains("ANGS") ? 1 : BohrToAngstrom;
         Document d;
         for (const auto &line : blocks["ATOMS"]) {
             auto row = words(line);
             if (row.size() != 6 || integer(row[1], 1, maxAtoms) != d.atoms.size() + 1)
-                fail("MOLDEN原子表の形式・番号が不正です。");
+                fail(tr("MOLDEN原子表の形式・番号が不正です。"));
             d.atoms << atom(symbol(integer(row[2], 1, elements().last().number)), point(row, 3, scale));
         }
-        addFrame(r, d, "MOLDEN原子座標");
+        addFrame(r, d, tr("MOLDEN原子座標"));
         r.orbitalFrame = 0;
     }
     if (blocks.contains("GEOMETRIES")) {
         if (headers["GEOMETRIES"] != "XYZ")
-            fail("MOLDENの構造列はXYZ形式に対応します。");
+            fail(tr("MOLDENの構造列はXYZ形式に対応します。"));
         // XYZ titles may be blank; use original lines to preserve them.
         QStringList geometry;
         bool active = false;
@@ -632,17 +635,17 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
         if (fields.isEmpty())
             return;
         if (!fields.contains("ENE") || !fields.contains("OCCUP") || !fields.contains("SPIN"))
-            fail("MOLDENの軌道情報が不足しています。");
+            fail(tr("MOLDENの軌道情報が不足しています。"));
         if (orbital.occupation < 0 || orbital.occupation > 2 ||
             (orbital.spin != "Alpha" && orbital.spin != "Beta"))
-            fail("MOLDENの軌道占有数・スピンが不正です。");
+            fail(tr("MOLDENの軌道占有数・スピンが不正です。"));
         if (r.orbitals.size() >= 20000)
-            fail("MOLDENの軌道は2万件まで読み込めます。");
+            fail(tr("MOLDENの軌道は2万件まで読み込めます。"));
         orbital.number = ++perSpin[orbital.spin];
         r.orbitals << orbital;
         totalCoefficients += mo.size();
         if (totalCoefficients > 4000000)
-            fail("MOLDENのMO係数は400万個までです。");
+            fail(tr("MOLDENのMO係数は400万個までです。"));
         coefficients << mo;
         mo.clear();
         seenCoefficients.clear();
@@ -654,10 +657,10 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
         if (pair.size() != 2) {
             const auto row = words(line);
             if (row.size() != 2 || fields.isEmpty())
-                fail("MOLDENのMO係数の行が不正です。");
+                fail(tr("MOLDENのMO係数の行が不正です。"));
             const int ao = integer(row[0], 1, 4000) - 1;
             if (seenCoefficients.contains(ao))
-                fail("MOLDENのMO係数番号が重複しています。");
+                fail(tr("MOLDENのMO係数番号が重複しています。"));
             seenCoefficients.insert(ao);
             if (mo.size() <= ao)
                 mo.resize(ao + 1);
@@ -682,7 +685,7 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
         r.orbitalBasis = blocks.contains("GTO") && r.orbitalFrame >= 0;
         try {
             if (!r.orbitalBasis)
-                fail("軌道の形状表示には[Atoms]・[GTO]・[MO]が必要です。");
+                fail(tr("軌道の形状表示には[Atoms]・[GTO]・[MO]が必要です。"));
             const auto &atoms = r.frames[r.orbitalFrame].molecule;
             const auto wavefunction = moldenWavefunction(blocks, atoms, coefficients, r.normalizationRequest);
             int selected = requestedOrbital;
@@ -710,16 +713,16 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
             r.selectedOrbital = selected;
             r.orbitalNormalization = wavefunction.normalization;
             if (r.surface.isEmpty())
-                r.warnings << "指定した等値の面がありません。「軌道」の等値を小さくしてください。";
-            r.warnings
-                << "MOLDENの分子軌道を表示しています。赤が正、青が負です。全体の位相の符号は任意です。";
+                r.warnings << tr("指定した等値の面がありません。「軌道」の等値を小さくしてください。");
+            r.warnings << tr(
+                "MOLDENの分子軌道を表示しています。赤が正、青が負です。全体の位相の符号は任意です。");
         } catch (const std::exception &e) {
             r.surface.clear();
             r.grid = {};
             if (requestedOrbital >= 0)
                 throw;
             r.orbitalError = QString::fromUtf8(e.what());
-            r.warnings << "軌道形状を表示できません: " + r.orbitalError;
+            r.warnings << tr("軌道形状を表示できません: %1").arg(r.orbitalError);
         }
     }
     if (blocks.contains("FR-COORD")) {
@@ -727,15 +730,15 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
         for (const auto &line : blocks["FR-COORD"]) {
             auto row = words(line);
             if (row.size() != 4)
-                fail("MOLDENの振動基準座標が不正です。");
+                fail(tr("MOLDENの振動基準座標が不正です。"));
             d.atoms << atom(row[0], point(row, 1, BohrToAngstrom));
         }
-        addFrame(r, d, "MOLDEN振動基準座標");
+        addFrame(r, d, tr("MOLDEN振動基準座標"));
         r.vibrationGeometry = r.frames.last().molecule;
     }
     for (const auto &line : blocks["FREQ"]) {
         if (r.modes.size() >= 6000)
-            fail("振動モード数が大きすぎます。");
+            fail(tr("振動モード数が大きすぎます。"));
         r.modes.append({number(line.trimmed()), std::numeric_limits<double>::quiet_NaN(), {}});
     }
     const auto norm = blocks["FR-NORM-COORD"];
@@ -743,20 +746,20 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
     for (int i = 0; i < norm.size();) {
         auto row = words(norm[i++]);
         if (row.size() != 2 || row[0].toLower() != "vibration" || r.vibrationGeometry.atoms.isEmpty())
-            fail("MOLDEN振動モードのヘッダー・基準座標が不正です。");
+            fail(tr("MOLDEN振動モードのヘッダー・基準座標が不正です。"));
         const int mode = integer(row[1], 1, r.modes.size()) - 1;
         if (seen.contains(mode))
-            fail("振動モードの番号が重複しています。");
+            fail(tr("振動モードの番号が重複しています。"));
         seen.insert(mode);
         for (int a = 0; a < r.vibrationGeometry.atoms.size(); ++a) {
             if (i >= norm.size())
-                fail("MOLDEN振動モードが途中で切れています。");
+                fail(tr("MOLDEN振動モードが途中で切れています。"));
             r.modes[mode].displacement << point(words(norm[i++]), 0, BohrToAngstrom);
         }
     }
     const auto intensities = blocks["INT"];
     if (!intensities.isEmpty() && intensities.size() != r.modes.size())
-        fail("MOLDENの振動数とIR強度の件数が一致しません。");
+        fail(tr("MOLDENの振動数とIR強度の件数が一致しません。"));
     for (int i = 0; i < intensities.size(); ++i)
         r.modes[i].intensity = number(words(intensities[i]).first());
     bool energy = false;
@@ -884,8 +887,9 @@ void mesh(ResultData &r, const QVector<double> &values, const Vec &origin, const
                             if ((b - a).cross(c - a).squaredNorm() < 1e-24)
                                 continue;
                             if (r.surface.size() >= maxTriangles)
-                                fail("等値面が50万三角形を超えました。等値を大きくするか格子を小さくしてくだ"
-                                     "さい。");
+                                fail(tr(
+                                    "等値面が50万三角形を超えました。等値を大きくするか格子を小さくしてくだ"
+                                    "さい。"));
                             r.surface.append({a, b, c, positive, normals[loop[0]], normals[loop[i + 1]],
                                               normals[loop[i]]});
                         }
@@ -899,43 +903,43 @@ void cube(ResultData &r, QString text) {
     stream.readLine();
     auto row = words(stream.readLine());
     if (row.size() < 4 || row.size() > 5)
-        fail("CUBEヘッダーが不正です。");
+        fail(tr("CUBEヘッダーが不正です。"));
     const int count = integer(row[0], -maxAtoms, maxAtoms);
     if (count == 0)
-        fail("原子を含まないCUBEは未対応です。");
+        fail(tr("原子を含まないCUBEは未対応です。"));
     int channels = row.size() == 5 ? integer(row[4], 1, 256) : 1;
     if (count < 0 && channels != 1)
-        fail("CUBEの軌道数指定が不正です。");
+        fail(tr("CUBEの軌道数指定が不正です。"));
     const Vec origin = point(row, 1, BohrToAngstrom);
     Mat axes;
     qint64 size = 1;
     for (int i = 0; i < 3; ++i) {
         row = words(stream.readLine());
         if (row.size() != 4)
-            fail("CUBEの格子軸が不正です。");
+            fail(tr("CUBEの格子軸が不正です。"));
         // NWChem Gaussian CUBE stores coordinates in Bohr. Reject ambiguous signed counts.
         r.grid[i] = integer(row[0], 2, maxPoints);
         size *= r.grid[i];
         if (size > maxPoints)
-            fail("CUBE格子は200万点まで読み込めます。");
+            fail(tr("CUBE格子は200万点まで読み込めます。"));
         axes.col(i) = point(row, 1, BohrToAngstrom);
     }
     if (std::abs(axes.determinant()) < 1e-15)
-        fail("CUBE格子の軸が独立ではありません。");
+        fail(tr("CUBE格子の軸が独立ではありません。"));
     Document d;
     for (int i = 0; i < std::abs(count); ++i) {
         row = words(stream.readLine());
         if (row.size() != 5)
-            fail("CUBE原子表が不正です。");
+            fail(tr("CUBE原子表が不正です。"));
         d.atoms << atom(symbol(integer(row[0], 1, elements().last().number)), point(row, 2, BohrToAngstrom));
         number(row[1]); // Nuclear charge may differ from Z when an ECP is used.
     }
-    addFrame(r, d, "CUBE原子座標");
+    addFrame(r, d, tr("CUBE原子座標"));
     auto token = [&] {
         QString value;
         stream >> value;
         if (value.isEmpty())
-            fail("CUBEデータが途中で切れています。");
+            fail(tr("CUBEデータが途中で切れています。"));
         return value;
     };
     if (count < 0) {
@@ -943,14 +947,14 @@ void cube(ResultData &r, QString text) {
         for (int i = 0; i < channels; ++i)
             r.datasets << integer(token(), 1, 1000000);
         if (QSet<int>(r.datasets.begin(), r.datasets.end()).size() != channels)
-            fail("CUBEデータ番号が重複しています。");
+            fail(tr("CUBEデータ番号が重複しています。"));
     } else
         for (int i = 0; i < channels; ++i)
             r.datasets << i + 1;
     if (size * channels > 4000000)
-        fail("CUBE全データは400万値まで読み込めます。");
+        fail(tr("CUBE全データは400万値まで読み込めます。"));
     if (r.dataset < 0 || r.dataset >= channels)
-        fail("CUBEのデータ番号が範囲外です。");
+        fail(tr("CUBEのデータ番号が範囲外です。"));
     QVector<double> values;
     values.reserve(size);
     for (qint64 i = 0; i < size; ++i)
@@ -960,15 +964,16 @@ void cube(ResultData &r, QString text) {
                 values << value;
         }
     if (!stream.readAll().trimmed().isEmpty())
-        fail("CUBE格子数とデータ数が一致しません。");
+        fail(tr("CUBE格子数とデータ数が一致しません。"));
     auto bounds = std::minmax_element(values.begin(), values.end());
     r.minimum = *bounds.first;
     r.maximum = *bounds.second;
     mesh(r, values, origin, axes);
     if (r.surface.isEmpty())
-        r.warnings << "指定した等値の面がありません。等値とデータ範囲を確認してください。";
-    r.warnings << "CUBEの値はファイルの単位を使用します。赤が正、青が負です。密度と軌道の区別はタイトル・生成"
-                  "条件を確認してください。";
+        r.warnings << tr("指定した等値の面がありません。等値とデータ範囲を確認してください。");
+    r.warnings << tr(
+        "CUBEの値はファイルの単位を使用します。赤が正、青が負です。密度と軌道の区別はタイトル・生成"
+        "条件を確認してください。");
 }
 } // namespace
 void NwchemProgress::add(const QString &line) {
@@ -1017,15 +1022,20 @@ int NwchemProgress::driverSteps(const QString &input) {
     return 0;
 }
 QStringList NwchemProgress::tasks(const QString &input) {
-    static const QHash<QString, QString> names{{"energy", "一点エネルギー"},
-                                               {"gradient", "勾配"},
-                                               {"optimize", "構造最適化"},
-                                               {"saddle", "遷移状態探索"},
-                                               {"frequencies", "振動数"},
-                                               {"freq", "振動数"},
-                                               {"mepgs", "IRC"},
-                                               {"property", "物性"},
-                                               {"dplot", "CUBE出力"}};
+    static const QHash<QString, const char *> names{{"energy", QT_TR_NOOP("一点エネルギー")},
+                                                    {"gradient", QT_TR_NOOP("勾配")},
+                                                    {"optimize", QT_TR_NOOP("構造最適化")},
+                                                    {"saddle", QT_TR_NOOP("遷移状態探索")},
+                                                    {"frequencies", QT_TR_NOOP("振動数")},
+                                                    {"freq", QT_TR_NOOP("振動数")},
+                                                    {"mepgs", "IRC"},
+                                                    {"property", QT_TR_NOOP("物性")},
+                                                    {"dplot", QT_TR_NOOP("CUBE出力")}};
+    // An operation without a name stays as written in the input.
+    const auto name = [](const QString &operation) {
+        const char *text = names.value(operation);
+        return text ? tr(text) : operation;
+    };
     QStringList result;
     for (const auto &line : input.split('\n')) {
         if (!line.startsWith("task "))
@@ -1034,20 +1044,20 @@ QStringList NwchemProgress::tasks(const QString &input) {
         // "task dft optimize", "task esp", "task dplot", "task tddft energy".
         const auto theory = words.value(1).toLower(), operation = words.value(2).toLower();
         if (theory == "tddft")
-            result << "励起状態（TDDFT）";
+            result << tr("励起状態（TDDFT）");
         else if (theory == "esp")
-            result << "ESP電荷";
+            result << tr("ESP電荷");
         else if (theory == "dplot")
-            result << names["dplot"];
+            result << name("dplot");
         else
-            result << names.value(operation.isEmpty() ? "energy" : operation, operation);
+            result << name(operation.isEmpty() ? "energy" : operation);
     }
     return result;
 }
 ResultData readResult(const QString &path, double iso, int dataset, int orbital, const QString &normalization,
                       int orbitalDivisions) {
     if (!std::isfinite(iso) || iso <= 0 || iso > 1e6)
-        fail("等値は0より大きい有限の値で指定してください。");
+        fail(tr("等値は0より大きい有限の値で指定してください。"));
     const auto bytes = boundedRead(path);
     const auto text = QString::fromUtf8(bytes);
     ResultData r;
@@ -1055,18 +1065,18 @@ ResultData readResult(const QString &path, double iso, int dataset, int orbital,
     r.isovalue = iso;
     r.dataset = dataset;
     if (orbitalDivisions < 16 || orbitalDivisions > 100)
-        fail("MOLDENの格子分割数は16〜100を指定してください。");
+        fail(tr("MOLDENの格子分割数は16〜100を指定してください。"));
     r.orbitalDivisions = orbitalDivisions;
     r.normalizationRequest = normalization;
     r.log = QString::fromUtf8(bytes.right(128 * 1024));
     if (bytes.size() > 128 * 1024)
-        r.log.prepend("…末尾128 KiBを表示しています。\n");
+        r.log.prepend(tr("…末尾128 KiBを表示しています。\n"));
     auto lines = text.split('\n');
     for (auto &line : lines)
         if (line.endsWith('\r'))
             line.chop(1);
     const auto suffix = QFileInfo(path).suffix().toLower();
-    r.status = "ファイルを読み込みました（計算の成否は判定しません）";
+    r.status = tr("ファイルを読み込みました（計算の成否は判定しません）");
     if (suffix == "cube" || suffix == "cub") {
         r.format = "CUBE";
         cube(r, text);
@@ -1081,17 +1091,17 @@ ResultData readResult(const QString &path, double iso, int dataset, int orbital,
         nwchem(r, lines);
     }
     if (r.format != "NWChem" && r.frames.isEmpty())
-        fail("表示可能な原子座標がありません。");
+        fail(tr("表示可能な原子座標がありません。"));
     return r;
 }
 Document resultModeGeometry(const ResultData &r, int mode, double phase, double amplitude) {
     if (mode < 0 || mode >= r.modes.size() || !std::isfinite(phase) || !std::isfinite(amplitude) ||
         amplitude < 0 || amplitude > 2)
-        fail("振動モード・表示振幅が不正です。");
+        fail(tr("振動モード・表示振幅が不正です。"));
     const auto &v = r.modes[mode].displacement;
     auto d = r.vibrationGeometry;
     if (v.size() != d.atoms.size() || v.isEmpty())
-        fail("この振動モードには変位データがありません。");
+        fail(tr("この振動モードには変位データがありません。"));
     double scale = 0;
     for (const auto &p : v)
         scale = std::max(scale, p.norm());
@@ -1147,7 +1157,7 @@ void saveResultData(const QString &path, const ResultData &r) {
         s << qint32(t.step) << t.energy << t.deltaE << t.gmax << t.grms << t.xrms << t.xmax << t.seconds;
     s << QJsonDocument(r.properties).toJson(QJsonDocument::Compact);
     if (s.status() != QDataStream::Ok)
-        fail("結果の転送データを保存できません。");
+        fail(tr("結果の転送データを保存できません。"));
     writeFile(path, bytes);
 }
 ResultData loadResultData(const QString &path) {
@@ -1157,7 +1167,7 @@ ResultData loadResultData(const QString &path) {
     QString magic;
     s >> magic;
     if (magic != "MolFormaResult5")
-        fail("結果の転送形式が不正です。");
+        fail(tr("結果の転送形式が不正です。"));
     ResultData r;
     s >> r.source >> r.format >> r.status >> r.log >> r.warnings;
     qint32 orbital, orbitalFrame, divisions;
@@ -1170,7 +1180,7 @@ ResultData loadResultData(const QString &path) {
         qint32 n;
         s >> n;
         if (s.status() != QDataStream::Ok || n < 0 || n > max)
-            fail("結果の転送件数が不正です。");
+            fail(tr("結果の転送件数が不正です。"));
         return n;
     };
     auto doc = [&] {
@@ -1252,7 +1262,7 @@ ResultData loadResultData(const QString &path) {
     s >> properties;
     r.properties = QJsonDocument::fromJson(properties).object();
     if (s.status() != QDataStream::Ok || !s.atEnd())
-        fail("結果の転送データが不完全です。");
+        fail(tr("結果の転送データが不完全です。"));
     return r;
 }
 int resultWorker(const QString &request, const QString &response) {
@@ -1274,11 +1284,18 @@ int resultWorker(const QString &request, const QString &response) {
 QString resultOutcome(const ResultData &data) {
     if (data.format != "NWChem")
         return {};
-    if (data.status == NormalStatus)
+    // The status as read: in the interface language, or in the source language (a result read
+    // before the language changed).
+    const auto is = [&](const char *status) {
+        return data.status == tr(status) || data.status == QString::fromUtf8(status);
+    };
+    if (is(NormalStatus))
         return "normal";
-    if (data.status == IncompleteStatus)
+    if (is(IncompleteStatus))
         return "incomplete";
-    return data.status.startsWith(ErrorStatus) || data.status == MessageStatus ? "error" : QString();
+    const bool error = data.status.startsWith(tr(ErrorStatus).arg(QString())) ||
+                       data.status.startsWith(QString::fromUtf8(ErrorStatus).arg(QString()));
+    return error || is(MessageStatus) ? "error" : QString();
 }
 QStringList resultFiles(const QString &directory) {
     auto files = QDir(directory).entryList(

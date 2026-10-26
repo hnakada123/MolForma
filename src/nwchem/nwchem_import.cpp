@@ -1,6 +1,7 @@
 #include "nwchem/nwchem_import.h"
 #include "editing/chemistry.h"
 #include "editing/coordinates.h"
+#include "model/i18n.h"
 #include "nwchem/nwchem.h"
 #include <QRegularExpression>
 #include <cmath>
@@ -122,7 +123,7 @@ NwchemImport importNwchemInput(const QString &text) {
         if (!tasks.isEmpty() &&
             QStringList{"basis", "ecp", "scf", "dft", "mp2", "ccsd", "cosmo", "relativistic", "tddft"}
                 .contains(keyword)) {
-            notes << "最初のtaskより後の計算条件（後続の計算）は取り込みません。";
+            notes << tr("最初のtaskより後の計算条件（後続の計算）は取り込みません。");
             continue;
         }
         if (keyword == "start" || keyword == "restart") {
@@ -155,7 +156,7 @@ NwchemImport importNwchemInput(const QString &text) {
                 settings["memory_mb"] = int(std::round(total > 0 ? total : parts));
         } else if (keyword == "geometry") {
             if (haveGeometry) {
-                notes << "2番目以降のGEOMETRYは取り込みません。";
+                notes << tr("2番目以降のGEOMETRYは取り込みません。");
                 continue;
             }
             haveGeometry = true;
@@ -175,8 +176,9 @@ NwchemImport importNwchemInput(const QString &text) {
                 const auto first = row.value(0).toLower();
                 if (first == "zmatrix" || first == "zcoord" || first == "system") {
                     if (first == "zmatrix")
-                        fail("Z-matrix形式のGEOMETRYは取り込めません。Cartesian座標の入力を使ってください。");
-                    notes << QString("GEOMETRYの%1は取り込みません。").arg(first);
+                        fail(tr(
+                            "Z-matrix形式のGEOMETRYは取り込めません。Cartesian座標の入力を使ってください。"));
+                    notes << tr("GEOMETRYの%1は取り込みません。").arg(first);
                     ++depth;
                     continue;
                 }
@@ -193,7 +195,7 @@ NwchemImport importNwchemInput(const QString &text) {
                 const auto symbol = tagElement(row[0], ghost);
                 ++centers;
                 if (symbol.isEmpty()) {
-                    notes << "元素を判定できない中心を取り込みません: " + row[0];
+                    notes << tr("元素を判定できない中心を取り込みません: %1").arg(row[0]);
                     continue;
                 }
                 atomOfCenter[centers] = d.atoms.size();
@@ -219,7 +221,7 @@ NwchemImport importNwchemInput(const QString &text) {
                 if (name == "cd basis")
                     settings["ri_j"] = true;
                 else
-                    notes << "名前付きの基底「" + name + "」は取り込みません。";
+                    notes << tr("名前付きの基底「%1」は取り込みません。").arg(name);
                 continue;
             }
             for (const auto &option : w.mid(1))
@@ -239,7 +241,7 @@ NwchemImport importNwchemInput(const QString &text) {
                 if (row[0].startsWith("bq", Qt::CaseInsensitive))
                     continue; // Ghost entries follow the element's basis.
                 if (!known(library)) {
-                    notes << QString("基底「%1」（%2）はMolFormaの一覧にないため取り込みません。")
+                    notes << tr("基底「%1」（%2）はMolFormaの一覧にないため取り込みません。")
                                  .arg(library, row[0]);
                     continue;
                 }
@@ -300,7 +302,8 @@ NwchemImport importNwchemInput(const QString &text) {
             }
             if (settings["functional"] == "cam-b3lyp" &&
                 !body.join('\n').contains("cam", Qt::CaseInsensitive))
-                notes << "CAM-B3LYPの交換項に対応するcamパラメータがありません。汎関数を確認してください。";
+                notes << tr(
+                    "CAM-B3LYPの交換項に対応するcamパラメータがありません。汎関数を確認してください。");
         } else if (keyword == "mp2" || keyword == "ccsd") {
             // "freeze atomic" (or "freeze core atomic") is the frozen-core choice; "freeze 0" is none.
             for (const auto &line : body) {
@@ -311,8 +314,8 @@ NwchemImport importNwchemInput(const QString &text) {
                 if (row.mid(1).join(' ').toLower().contains("atomic"))
                     settings["freeze_core"] = true;
                 else if (number(row.last(), n) && n > 0)
-                    notes << QString("凍結軌道数（freeze %1）は取り込みません。「2 計算条件」の詳細設定"
-                                     "（凍結する占有軌道数）で指定してください。")
+                    notes << tr("凍結軌道数（freeze %1）は取り込みません。「2 計算条件」の詳細設定"
+                                "（凍結する占有軌道数）で指定してください。")
                                  .arg(n);
             }
         } else if (keyword == "tddft") {
@@ -379,11 +382,11 @@ NwchemImport importNwchemInput(const QString &text) {
                             fixedAtoms.insert(n);
                     }
                 } else if (!QStringList{"clear", ""}.contains(row.value(0).toLower()))
-                    notes << "constraintsの指示を取り込みません: " + line.left(60);
+                    notes << tr("constraintsの指示を取り込みません: %1").arg(line.left(60));
             }
         } else if (keyword == "bsse") {
             settings["bsse"] = true;
-            notes << "BSSEの単量体はMolFormaが結合から決め直します。";
+            notes << tr("BSSEの単量体はMolFormaが結合から決め直します。");
         } else if (keyword == "mepgs") {
             for (const auto &line : body) {
                 const auto row = words(line);
@@ -398,12 +401,12 @@ NwchemImport importNwchemInput(const QString &text) {
         } else if (keyword == "ecp") {
             // MolForma chooses the ECP that belongs to the library basis.
         } else if (blockNames.contains(keyword))
-            notes << QString("%1ブロックは取り込みません。").arg(keyword);
+            notes << tr("%1ブロックは取り込みません。").arg(keyword);
         else if (!QStringList{"echo", "print", "noprint", "scratch_dir", "permanent_dir"}.contains(keyword))
-            notes << "取り込まない指示: " + lines[i].left(80);
+            notes << tr("取り込まない指示: %1").arg(lines[i].left(80));
     }
     if (d.atoms.isEmpty())
-        fail("NWChem入力にCartesian座標のGEOMETRYがありません。");
+        fail(tr("NWChem入力にCartesian座標のGEOMETRYがありません。"));
     // Tasks: theory and operation; optimization followed by frequencies becomes one choice.
     QStringList operations;
     QString theory;
@@ -420,13 +423,13 @@ NwchemImport importNwchemInput(const QString &text) {
             continue;
         }
         if (!QStringList{"scf", "dft", "mp2", "ccsd", "ccsd(t)"}.contains(first)) {
-            notes << "取り込まないtask: " + task;
+            notes << tr("取り込まないtask: %1").arg(task);
             continue;
         }
         if (theory.isEmpty())
             theory = first;
         else if (theory != first && operation != "property")
-            notes << QString("手法の異なるtask（%1）は取り込みません。").arg(task);
+            notes << tr("手法の異なるtask（%1）は取り込みません。").arg(task);
         if (operation != "property")
             operations << (operation.startsWith("freq") ? "frequencies" : operation);
     }

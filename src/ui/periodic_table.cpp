@@ -1,10 +1,16 @@
 #include "ui/periodic_table.h"
 #include "model/document.h"
+#include "model/i18n.h"
 #include <QtWidgets>
 #include <algorithm>
 
 namespace mf {
 namespace {
+// Japanese shows both names ("水素 / Hydrogen"), English only the English one.
+QString names(const Element &e) {
+    return english() ? e.nameEn : QString("%1 / %2").arg(e.nameJa, e.nameEn);
+}
+
 class ElementButton : public QAbstractButton {
   public:
     explicit ElementButton(const Element &element, QWidget *parent) : QAbstractButton(parent), e(element) {
@@ -15,8 +21,7 @@ class ElementButton : public QAbstractButton {
         setCursor(Qt::PointingHandCursor);
         setMinimumSize(34, 46); // 18 groups fit beside each other in a 760-pixel dialog.
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-        const auto description =
-            QString("%1 · %2 / %3\n原子番号 %4").arg(e.symbol, e.nameJa, e.nameEn).arg(e.number);
+        const auto description = tr("%1 · %2\n原子番号 %3").arg(e.symbol, names(e)).arg(e.number);
         setToolTip(description);
         setAccessibleName(description);
     }
@@ -86,13 +91,13 @@ QPair<int, int> position(int z) {
 PeriodicTableDialog::PeriodicTableDialog(const QString &current, const QString &query, QWidget *parent)
     : QDialog(parent), selected(current) {
     setObjectName("periodicTableDialog");
-    setWindowTitle("周期表から原子を選択 — H〜Og");
+    setWindowTitle(tr("周期表から原子を選択 — H〜Og"));
     auto *layout = new QVBoxLayout(this);
-    auto *heading = new QLabel("元素をクリックして選択し、分子画面に配置します。", this);
+    auto *heading = new QLabel(tr("元素をクリックして選択し、分子画面に配置します。"), this);
     layout->addWidget(heading);
     search = new QLineEdit(this);
     search->setObjectName("periodicTableSearch");
-    search->setPlaceholderText("元素記号・日本語名・英語名・原子番号で検索");
+    search->setPlaceholderText(tr("元素記号・日本語名・英語名・原子番号で検索"));
     search->setClearButtonEnabled(true);
     layout->addWidget(search);
     auto *scroll = new QScrollArea(this);
@@ -116,8 +121,8 @@ PeriodicTableDialog::PeriodicTableDialog(const QString &current, const QString &
         label(QString::number(period), period, 0);
     label("57–71\n↓", 6, 3);
     label("89–103\n↓", 7, 3);
-    label("ランタノイド", 9, 0, 3);
-    label("アクチノイド", 10, 0, 3);
+    label(tr("ランタノイド"), 9, 0, 3);
+    label(tr("アクチノイド"), 10, 0, 3);
     grid->setRowMinimumHeight(8, 12);
     for (const auto &e : elements()) {
         auto *button = new ElementButton(e, table);
@@ -145,7 +150,7 @@ PeriodicTableDialog::PeriodicTableDialog(const QString &current, const QString &
     footer->addWidget(matches);
     footer->addStretch();
     auto *close = new QDialogButtonBox(QDialogButtonBox::Cancel, this);
-    close->button(QDialogButtonBox::Cancel)->setText("キャンセル");
+    close->button(QDialogButtonBox::Cancel)->setText(tr("キャンセル"));
     close->button(QDialogButtonBox::Cancel)->setAutoDefault(false);
     connect(close, &QDialogButtonBox::rejected, this, &QDialog::reject);
     footer->addWidget(close);
@@ -175,7 +180,7 @@ PeriodicTableDialog::PeriodicTableDialog(const QString &current, const QString &
 
 void PeriodicTableDialog::describe(const QString &symbol) {
     const auto &e = element(symbol);
-    details->setText(QString("%1  %2 / %3\n原子番号 %4").arg(e.symbol, e.nameJa, e.nameEn).arg(e.number));
+    details->setText(tr("%1  %2\n原子番号 %3").arg(e.symbol, names(e)).arg(e.number));
 }
 
 void PeriodicTableDialog::filter() {
@@ -201,7 +206,7 @@ void PeriodicTableDialog::filter() {
         if (match)
             last = symbol;
     }
-    matches->setText(query.isEmpty() ? "118 元素 · H〜Og" : QString("%1 / 118 元素が一致").arg(count));
+    matches->setText(query.isEmpty() ? tr("118 元素 · H〜Og") : tr("%1 / 118 元素が一致").arg(count));
     // The details follow the search when it names one element (Enter chooses it).
     describe(count == 1 ? last : selected);
 }

@@ -109,21 +109,21 @@ void RunProgress::showRun(const QString &path, const QString &state, bool active
     for (int i = 0; i < tasks.size(); ++i) {
         const bool done = finished || i < current || (i == current && progress.convergedTask == i && !active);
         const bool now = active && i == current;
-        const QString status = done ? "完了" : now ? "実行中" : active ? "待機" : "未完了";
+        const QString status = done ? tr("完了") : now ? tr("実行中") : active ? tr("待機") : tr("未完了");
         const QColor color = done ? c.good : now ? c.accentText : c.muted;
         QString detail;
         if (progress.stepTask == i && !progress.steps.isEmpty()) {
             const auto &last = progress.steps.last();
-            detail = QString("ステップ %1%2 · E = %3 Eh · ΔE %4")
+            detail = tr("ステップ %1%2 · E = %3 Eh · ΔE %4")
                          .arg(last.step)
-                         .arg(maxSteps ? QString(" / 最大 %1").arg(maxSteps) : QString())
+                         .arg(maxSteps ? tr(" / 最大 %1").arg(maxSteps) : QString())
                          .arg(number(last.energy, 6))
                          .arg(QString::number(last.deltaE, 'e', 1).replace('-', "−"));
             if (progress.convergedTask == i)
-                detail += " · 収束";
+                detail = tr("%1 · 収束").arg(detail);
         } else if (now && std::isfinite(progress.energy))
             detail = QString("E = %1 Eh").arg(number(progress.energy, 6));
-        stages << QString("<b>%1　%2</b>　<span style=\"color:%3\">%4</span>%5")
+        stages << tr("<b>%1　%2</b>　<span style=\"color:%3\">%4</span>%5")
                       .arg(i + 1)
                       .arg(tasks[i].toHtmlEscaped(), color.name(), status)
                       .arg(detail.isEmpty() ? QString()
@@ -148,13 +148,13 @@ void RunProgress::showRun(const QString &path, const QString &state, bool active
         // At step 0 the displacements are not measured yet.
         const bool measured = key.startsWith('g') || last.step > 0;
         const bool met = measured && value <= target;
-        criterionLabels[i]->setText(QString("<b>%1</b>　<span style=\"color:%2\">%3</span><br><span "
-                                            "style=\"font-family:monospace\">%4</span>"
-                                            "<br><span style=\"color:%5\">目標 %6</span>")
+        criterionLabels[i]->setText(tr("<b>%1</b>　<span style=\"color:%2\">%3</span><br><span "
+                                       "style=\"font-family:monospace\">%4</span>"
+                                       "<br><span style=\"color:%5\">目標 %6</span>")
                                         .arg(label, met ? c.good.name() : c.muted.name(),
-                                             met        ? "達成"
-                                             : measured ? "未達"
-                                                        : "—")
+                                             met        ? tr("達成")
+                                             : measured ? tr("未達")
+                                                        : QString("—"))
                                         .arg(measured ? QString::number(value, 'f', 5) : QString("—"),
                                              c.muted.name(), QString::number(target, 'f', 5)));
     }

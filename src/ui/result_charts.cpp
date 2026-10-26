@@ -135,7 +135,7 @@ void ChartView::paintEvent(QPaintEvent *) {
         }
     p.setPen(text);
     if (!std::isfinite(x0) || !std::isfinite(y0)) {
-        p.drawText(rect(), Qt::AlignCenter, "表示するデータがありません");
+        p.drawText(rect(), Qt::AlignCenter, tr("表示するデータがありません"));
         return;
     }
     if (x1 - x0 < 1e-12) {
@@ -258,7 +258,7 @@ void ChartView::paintEvent(QPaintEvent *) {
 FrameTimeline::FrameTimeline(QWidget *parent) : QWidget(parent) {
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setFocusPolicy(Qt::StrongFocus);
-    setAccessibleName("構造列のタイムライン");
+    setAccessibleName(tr("構造列のタイムライン"));
 }
 void FrameTimeline::setFrames(int n, const QVector<double> &values) {
     count = std::max(0, n);
@@ -383,7 +383,7 @@ void FrameTimeline::paintEvent(QPaintEvent *) {
 OrbitalLevels::OrbitalLevels(QWidget *parent) : QWidget(parent) {
     setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
     setMouseTracking(false);
-    setAccessibleName("軌道エネルギー準位図");
+    setAccessibleName(tr("軌道エネルギー準位図"));
 }
 void OrbitalLevels::setOrbitals(const QVector<ResultOrbital> &list, int index) {
     orbitals = list;
@@ -459,7 +459,7 @@ bool OrbitalLevels::event(QEvent *event) {
         }
         const auto &o = orbitals[index];
         QToolTip::showText(help->globalPos(),
-                           QString("%1 %2番 %3\n%4 eV（%5 Eh）、占有数 %6")
+                           tr("%1 %2番 %3\n%4 eV（%5 Eh）、占有数 %6")
                                .arg(o.spin)
                                .arg(o.number > 0 ? o.number : index + 1)
                                .arg(frontierName(orbitals, index))
@@ -480,7 +480,7 @@ void OrbitalLevels::paintEvent(QPaintEvent *) {
     const auto metrics = fontMetrics();
     if (shown.isEmpty()) {
         p.setPen(c.muted);
-        p.drawText(rect(), Qt::AlignCenter | Qt::TextWordWrap, "軌道がありません");
+        p.drawText(rect(), Qt::AlignCenter | Qt::TextWordWrap, tr("軌道がありません"));
         return;
     }
     double lo = INFINITY, hi = -INFINITY;
@@ -515,10 +515,10 @@ void OrbitalLevels::paintEvent(QPaintEvent *) {
     p.drawText(QRectF(0, 0, area.left() - 6, line * 1.4), Qt::AlignRight | Qt::AlignVCenter, "eV");
     if (above)
         p.drawText(QRectF(area.left(), 0, area.width(), line * 1.4), Qt::AlignLeft | Qt::AlignVCenter,
-                   QString("▲ ほか %1 個").arg(above));
+                   tr("▲ ほか %n 個", nullptr, above));
     if (below)
         p.drawText(QRectF(area.left(), height() - line * 1.6, area.width(), line * 1.4),
-                   Qt::AlignLeft | Qt::AlignVCenter, QString("▼ ほか %1 個").arg(below));
+                   Qt::AlignLeft | Qt::AlignVCenter, tr("▼ ほか %n 個", nullptr, below));
     const double column = area.width() / spins.size();
     const bool labelled = spins.size() == 1; // Names and energies beside the levels of one spin.
     const double barWidth = std::min(64., column * (labelled ? .42 : .7));
@@ -616,7 +616,7 @@ void OrbitalLevels::paintEvent(QPaintEvent *) {
                 p.setPen(c.text);
                 const double gap = (orbitals[lumo].energy - orbitals[homo].energy) * HartreeToEv;
                 p.drawText(QRectF(x + 6, (top + bottom) / 2 - line / 2, area.right() - x - 6, line),
-                           Qt::AlignLeft | Qt::AlignVCenter, QString("ギャップ %1 eV").arg(gap, 0, 'f', 2));
+                           Qt::AlignLeft | Qt::AlignVCenter, tr("ギャップ %1 eV").arg(gap, 0, 'f', 2));
             }
         }
     }

@@ -1,6 +1,7 @@
 #include "editing/stereochemistry.h"
 #include "editing/library.h"
 #include "editing/peptide.h"
+#include "model/i18n.h"
 #include <memory>
 #ifdef MOLFORMA_HAS_RDKIT
 #include <GraphMol/Atom.h>
@@ -26,7 +27,7 @@ static std::unique_ptr<RDKit::RWMol> rdMol(const Document &d) {
     QMap<QString, unsigned int> indices;
     for (const auto &a : d.atoms) {
         if (a.ghost)
-            fail("ゴースト原子を含む構造の立体判定には対応していません。");
+            fail(tr("ゴースト原子を含む構造の立体判定には対応していません。"));
         auto *atom = new RDKit::Atom(element(a.element).number);
         atom->setFormalCharge(a.charge);
         atom->setNumRadicalElectrons(a.radical);
@@ -82,7 +83,7 @@ void recordStereo(Document &d) {
     }
 #else
     Q_UNUSED(d);
-    fail("立体判定にはRDKit C++ライブラリを有効にしてビルドしてください。");
+    fail(tr("立体判定にはRDKit C++ライブラリを有効にしてビルドしてください。"));
 #endif
 }
 void recognizeResidues(Document &d) {
@@ -177,7 +178,7 @@ void recognizeResidues(Document &d) {
         }
     }
     if (residues.isEmpty())
-        fail("標準アミノ酸の結合構造を認識できません。結合次数を確認してください。");
+        fail(tr("標準アミノ酸の結合構造を認識できません。結合次数を確認してください。"));
     QMap<QString, int> byN, byC;
     for (int i = 0; i < residues.size(); ++i) {
         auto names = residues[i].toObject()["atoms"].toObject();
@@ -226,7 +227,7 @@ void recognizeResidues(Document &d) {
     d.invalidateAssignments();
 #else
     Q_UNUSED(d);
-    fail("グラフからの残基認識にはRDKit C++ライブラリが必要です。");
+    fail(tr("グラフからの残基認識にはRDKit C++ライブラリが必要です。"));
 #endif
 }
 } // namespace mf

@@ -1,3 +1,3 @@
 <RCC><qresource prefix="/data">
-  <file>library.json</file><file>elements.json</file>
+  <file>library.json</file><file>elements.json</file><file>translations/en.json</file>
 </qresource></RCC>

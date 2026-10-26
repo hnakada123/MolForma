@@ -40,6 +40,7 @@ struct Element {
     double mass, radius;
     QColor color;
     QString nameJa, nameEn;
+    QString name() const; // In the interface language.
 };
 const QVector<Element> &elements();
 const Element &element(const QString &symbol);

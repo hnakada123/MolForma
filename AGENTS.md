@@ -84,7 +84,18 @@ Tests must not write the user's settings or data: redirect
 `QSettings::NativeFormat` (MolForma's `QSettings("MolForma", "MolForma")`) and
 `XDG_CONFIG_HOME` / `XDG_DATA_HOME` (autosave) to temporary directories.
 Document limitations in `docs/features.md` (Japanese); MCP tool changes belong
-in `docs/mcp.md`.
+in `docs/mcp.md`. Keep the English manuals `docs/en/features.md` and
+`docs/en/mcp.md` in step with them.
+
+The interface is Japanese or English (`src/model/i18n.h`). Write user-visible
+text in Japanese inside `tr("…")` (`QT_TR_NOOP("…")` in tables, shown through
+`translated()`), with `%1` templates instead of concatenated fragments and
+`tr("…%n…", nullptr, n)` for counts; core functions return translated text.
+Add the English text to `assets/translations/en.json` (`["one", "other"]` for
+`%n` plurals). The `translations` test fails on unmarked Japanese literals in
+`src/` (exempt one with `// i18n-exempt`), missing or unused entries and
+placeholder mismatches. Never translate NWChem input, identifiers or text that
+is saved and read back. Tests run without a translator, so they see Japanese.
 
 ## Changes and security
 

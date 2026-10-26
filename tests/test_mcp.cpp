@@ -119,6 +119,7 @@ void startProcess(QProcess &process, const QString &mode) {
     env.remove("WAYLAND_DISPLAY");
     env.insert("QT_QPA_PLATFORM", mode == "--mcp" ? "nonexistent-platform-plugin" : "offscreen");
     env.insert("MOLFORMA_RENDERER", "painter");
+    env.insert("MOLFORMA_LANGUAGE", "ja"); // The messages checked here are Japanese.
     process.setProcessEnvironment(env);
     process.start(QCoreApplication::applicationDirPath() + "/molforma", {mode});
 }

@@ -2,6 +2,7 @@
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
 #include "model/geometry.h"
+#include "model/i18n.h"
 #include "nwchem/nwchem_import.h"
 #include <QFileInfo>
 #include <QRegularExpression>
@@ -23,7 +24,7 @@ static OBMol toOB(const Document &d) {
     QMap<QString, int> indices;
     for (const auto &a : d.atoms) {
         if (a.ghost)
-            fail("ゴースト原子はこの形式・力場では扱えません。プロジェクトまたはXYZを使用してください。");
+            fail(tr("ゴースト原子はこの形式・力場では扱えません。プロジェクトまたはXYZを使用してください。"));
         auto *o = mol.NewAtom();
         o->SetAtomicNum(element(a.element).number);
         o->SetFormalCharge(a.charge);
@@ -35,7 +36,7 @@ static OBMol toOB(const Document &d) {
     }
     for (const auto &b : d.bonds) {
         if (b.kind == "dative")
-            fail("配位結合を含む分子はプロジェクトまたはXYZで保存してください。力場整形の対象外です。");
+            fail(tr("配位結合を含む分子はプロジェクトまたはXYZで保存してください。力場整形の対象外です。"));
         int order = b.kind == "aromatic" ? 5 : int(b.order());
         mol.AddBond(indices[b.a], indices[b.b], order);
         if (b.kind == "aromatic") {
@@ -80,7 +81,7 @@ static Document fromOB(OBMol &mol, bool readResidues = false) {
     for (unsigned int i = 1; i <= mol.NumAtoms(); ++i) {
         auto *o = mol.GetAtom(i);
         if (o->GetAtomicNum() == 0)
-            fail("ダミー原子または未認識の元素があります。");
+            fail(tr("ダミー原子または未認識の元素があります。"));
         Atom a;
         a.element = OBElements::GetSymbol(o->GetAtomicNum());
         element(a.element);
@@ -112,7 +113,7 @@ static Document fromOB(OBMol &mol, bool readResidues = false) {
             auto rr = residues[r];
             auto names = rr["atoms"].toObject();
             if (names.contains(a.name))
-                fail("PDBに原子名の重複があります。MODELとALTLOCを選び直してください。");
+                fail(tr("PDBに原子名の重複があります。MODELとALTLOCを選び直してください。"));
             names[a.name] = a.id;
             rr["atoms"] = names;
             residues[r] = rr;
@@ -278,14 +279,14 @@ QStringList xyzFrames(const QString &text) {
         bool ok;
         const int count = lines[i].trimmed().toInt(&ok);
         if (!ok || count < 0 || count > 100000 || i + count + 2 > lines.size())
-            fail(QString("XYZの%1行目の原子数が不正です。").arg(i + 1));
+            fail(tr("XYZの%1行目の原子数が不正です。").arg(i + 1));
         frames << lines.mid(i, count + 2).join('\n') + '\n';
         i += count + 2;
         if (frames.size() > 100000)
-            fail("XYZのフレームが多すぎます。");
+            fail(tr("XYZのフレームが多すぎます。"));
     }
     if (frames.isEmpty())
-        fail("XYZに構造がありません。");
+        fail(tr("XYZに構造がありません。"));
     return frames;
 }
 Document gaussianStructure(const QString &text) {
@@ -296,17 +297,17 @@ Document gaussianStructure(const QString &text) {
     while (i < lines.size() && (lines[i].isEmpty() || lines[i].startsWith('%')))
         ++i;
     if (i >= lines.size() || !lines[i].startsWith('#'))
-        fail("Gaussian入力のルート行（#で始まる行）がありません。");
+        fail(tr("Gaussian入力のルート行（#で始まる行）がありません。"));
     for (int blank = 0; i < lines.size() && blank < 2; ++i)
         blank += lines[i].isEmpty(); // Route section, then the title section.
     if (i >= lines.size())
-        fail("Gaussian入力の電荷・多重度の行がありません。");
+        fail(tr("Gaussian入力の電荷・多重度の行がありません。"));
     const auto header = lines[i++].split(QRegularExpression("[\\s,]+"), Qt::SkipEmptyParts);
     bool chargeOk, multiplicityOk;
     const int charge = header.value(0).toInt(&chargeOk),
               multiplicity = header.value(1).toInt(&multiplicityOk);
     if (!chargeOk || !multiplicityOk || multiplicity < 1)
-        fail("Gaussian入力の電荷・多重度の行が不正です。");
+        fail(tr("Gaussian入力の電荷・多重度の行が不正です。"));
     QString xyz;
     int count = 0;
     for (; i < lines.size() && !lines[i].isEmpty(); ++i) {
@@ -331,13 +332,14 @@ Document gaussianStructure(const QString &text) {
         row.value(2).toDouble(&y);
         row.value(3).toDouble(&w);
         if (row.size() < 4 || !x || !y || !w)
-            fail("Z-"
-                 "matrix形式・変数を使うGaussian入力は取り込めません。Cartesian座標の入力を使ってください。");
+            fail(tr(
+                "Z-"
+                "matrix形式・変数を使うGaussian入力は取り込めません。Cartesian座標の入力を使ってください。"));
         xyz += QString("%1 %2 %3 %4\n").arg(tag, row[1], row[2], row[3]);
         ++count;
     }
     if (!count)
-        fail("Gaussian入力に原子がありません。");
+        fail(tr("Gaussian入力に原子がありません。"));
     auto d = xyzStructure(QString("%1\nGaussian input\n").arg(count) + xyz);
     d.setJobValue("charge", charge);
     d.setJobValue("multiplicity", multiplicity);
@@ -351,7 +353,7 @@ Document importStructure(const QString &path, int model, const QString &altloc, 
     if (ext == "xyz") {
         const auto frames = xyzFrames(QString::fromUtf8(bytes));
         if (frames.size() > 1 && (xyzFrame < 0 || xyzFrame >= frames.size()))
-            fail(QString("%1フレームのXYZです。読み込むフレーム（0〜%2）を指定してください。")
+            fail(tr("%1フレームのXYZです。読み込むフレーム（0〜%2）を指定してください。")
                      .arg(frames.size())
                      .arg(frames.size() - 1));
         return xyzStructure(frames.value(std::max(0, xyzFrame)));
@@ -370,10 +372,10 @@ Document importStructure(const QString &path, int model, const QString &altloc, 
         bytes = preparePdb(QString::fromUtf8(bytes), model, altloc).toUtf8();
     OBConversion conversion;
     if (!conversion.SetInFormat(ext.toLatin1().constData()))
-        fail("対応していない形式です: " + ext);
+        fail(tr("対応していない形式です: %1").arg(ext));
     OBMol mol;
     if (!conversion.ReadString(&mol, bytes.toStdString()) || !mol.NumAtoms())
-        fail("構造ファイルを読み込めません。");
+        fail(tr("構造ファイルを読み込めません。"));
     Document d = fromOB(mol, ext == "pdb");
     auto meta = d.data["metadata"].toObject();
     meta["source_file"] = path;
@@ -399,49 +401,49 @@ void exportStructure(const Document &d, const QString &path) {
     OpenBabel::StereoFrom3D(&mol);
     OBConversion conversion;
     if (!conversion.SetOutFormat(ext.toLatin1().constData()))
-        fail("対応していない出力形式です。");
+        fail(tr("対応していない出力形式です。"));
     auto result = conversion.WriteString(&mol);
     if (result.empty())
-        fail("構造を書き出せません。");
+        fail(tr("構造を書き出せません。"));
     writeFile(path, QByteArray::fromStdString(result));
 }
 Document fromSmiles(const QString &smiles) {
     if (smiles.trimmed().isEmpty() || smiles.contains('\n'))
-        fail("SMILESを1行で入力してください。");
+        fail(tr("SMILESを1行で入力してください。"));
     OBConversion conv;
     conv.SetInFormat("smi");
     OBMol mol;
     if (!conv.ReadString(&mol, smiles.toStdString()) || !mol.NumAtoms())
-        fail("SMILESを解析できません。");
+        fail(tr("SMILESを解析できません。"));
     mol.AddHydrogens();
     OBBuilder builder;
     if (!builder.Build(mol))
-        fail("3D座標を生成できません。");
+        fail(tr("3D座標を生成できません。"));
     Document d = fromOB(mol);
     return refine(d);
 }
 Document refine(const Document &d, bool regenerate, const Ids &moving) {
     if (d.atoms.isEmpty())
-        fail("分子が空です。");
+        fail(tr("分子が空です。"));
     for (const auto &a : d.atoms)
         if (a.ghost)
-            fail("金属・ゴースト原子を含む分子は力場整形の対象外です。");
+            fail(tr("金属・ゴースト原子を含む分子は力場整形の対象外です。"));
     for (const auto &b : d.bonds)
         if (b.kind == "dative")
-            fail("配位結合を含む分子（金属錯体など）は力場整形の対象外です。");
+            fail(tr("配位結合を含む分子（金属錯体など）は力場整形の対象外です。"));
     auto mol = toOB(d);
     // Heavy main-group elements (Br, I, Se, Te, ...) are left to the force-field setup below.
     for (unsigned int i = 1; i <= mol.NumAtoms(); ++i)
         if (mol.GetAtom(i)->IsMetal())
-            fail("金属・ゴースト原子を含む分子は力場整形の対象外です。");
+            fail(tr("金属・ゴースト原子を含む分子は力場整形の対象外です。"));
     OpenBabel::StereoFrom3D(&mol);
     if (regenerate) {
         for (const auto &a : d.atoms)
             if (a.fixed)
-                fail("固定原子があるため3D再生成できません。");
+                fail(tr("固定原子があるため3D再生成できません。"));
         OBBuilder builder;
         if (!builder.Build(mol))
-            fail("3D座標の再生成に失敗しました。");
+            fail(tr("3D座標の再生成に失敗しました。"));
     }
     OBFFConstraints constraints;
     for (int i = 0; i < d.atoms.size(); ++i)
@@ -464,7 +466,7 @@ Document refine(const Document &d, bool regenerate, const Ids &moving) {
         }
     }
     if (!ff)
-        fail("この構造に使える力場パラメータがありません。結合次数・形式電荷を確認してください。");
+        fail(tr("この構造に使える力場パラメータがありません。結合次数・形式電荷を確認してください。"));
     ff->ConjugateGradients(600, 1e-7);
     ff->GetCoordinates(mol);
     Document out = d;
@@ -472,7 +474,7 @@ Document refine(const Document &d, bool regenerate, const Ids &moving) {
         auto *a = mol.GetAtom(i + 1);
         Vec p(a->GetX(), a->GetY(), a->GetZ());
         if (!p.allFinite())
-            fail("整形で非有限座標が発生しました。");
+            fail(tr("整形で非有限座標が発生しました。"));
         if (!d.atoms[i].fixed && (moving.isEmpty() || moving.contains(d.atoms[i].id)))
             out.atoms[i].position = p;
     }
@@ -486,28 +488,28 @@ Document refine(const Document &d, bool regenerate, const Ids &moving) {
         recordStereo(labeled);
         for (int i = 0; i < d.atoms.size(); ++i)
             if (!d.atoms[i].stereo.isEmpty() && labeled.atoms[i].stereo != d.atoms[i].stereo)
-                fail("整形結果が記録済みの立体配置と異なります。元の構造を保持しました。");
+                fail(tr("整形結果が記録済みの立体配置と異なります。元の構造を保持しました。"));
         for (int i = 0; i < d.bonds.size(); ++i)
             if (!d.bonds[i].stereo.isEmpty() && labeled.bonds[i].stereo != d.bonds[i].stereo)
-                fail("整形結果が記録済みのE/Z配置と異なります。元の構造を保持しました。");
+                fail(tr("整形結果が記録済みのE/Z配置と異なります。元の構造を保持しました。"));
     }
     return out;
 }
 QVector<Conformer> searchConformers(const Document &d, int count) {
     if (d.atoms.isEmpty())
-        fail("分子が空です。");
+        fail(tr("分子が空です。"));
     if (count < 1 || count > 100)
-        fail("配座の数は1〜100で指定してください。");
+        fail(tr("配座の数は1〜100で指定してください。"));
     for (const auto &a : d.atoms) {
         if (a.ghost)
-            fail("金属・ゴースト原子を含む分子は配座探索の対象外です。");
+            fail(tr("金属・ゴースト原子を含む分子は配座探索の対象外です。"));
         if (a.fixed)
-            fail("固定原子があるため配座探索できません。固定を解除してください。");
+            fail(tr("固定原子があるため配座探索できません。固定を解除してください。"));
     }
     auto mol = toOB(d);
     for (unsigned int i = 1; i <= mol.NumAtoms(); ++i)
         if (mol.GetAtom(i)->IsMetal())
-            fail("金属・ゴースト原子を含む分子は配座探索の対象外です。");
+            fail(tr("金属・ゴースト原子を含む分子は配座探索の対象外です。"));
     OBForceField *ff = nullptr;
     for (auto name : {"MMFF94", "UFF"})
         if (auto *candidate = OBForceField::FindForceField(name)) {
@@ -518,7 +520,7 @@ QVector<Conformer> searchConformers(const Document &d, int count) {
             }
         }
     if (!ff)
-        fail("この構造に使える力場パラメータがありません。結合次数・形式電荷を確認してください。");
+        fail(tr("この構造に使える力場パラメータがありません。結合次数・形式電荷を確認してください。"));
     const double toKcal = QString::fromStdString(ff->GetUnit()).contains("kJ") ? 1 / 4.184 : 1.;
     struct Found {
         QVector<Vec> positions;
@@ -563,7 +565,7 @@ QVector<Conformer> searchConformers(const Document &d, int count) {
             recordStereo(labeled);
             for (int i = 0; i < d.atoms.size(); ++i)
                 if (!d.atoms[i].stereo.isEmpty() && labeled.atoms[i].stereo != d.atoms[i].stereo)
-                    fail("配座探索の結果が記録済みの立体配置と異なります。");
+                    fail(tr("配座探索の結果が記録済みの立体配置と異なります。"));
         }
     return result;
 }

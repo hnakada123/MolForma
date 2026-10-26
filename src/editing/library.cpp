@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/library.h"
+#include "model/i18n.h"
 namespace mf {
 const QJsonArray &templates() {
     elements();
@@ -10,15 +11,19 @@ QJsonObject findTemplate(const QString &id) {
     for (auto v : templates())
         if (v.toObject()["id"] == id)
             return v.toObject();
-    fail("部品が見つかりません: " + id);
+    fail(tr("部品が見つかりません: %1").arg(id));
+}
+QString templateName(const QJsonObject &t) {
+    const auto name = t[english() ? "name_en" : "name_ja"].toString();
+    return name.isEmpty() ? t["name_ja"].toString() : name;
 }
 void validateTemplate(const QJsonObject &t) {
     auto aa = t["atoms"].toArray();
     if (aa.isEmpty() || t["id"].toString().isEmpty())
-        fail("部品に原子と名前が必要です。");
+        fail(tr("部品に原子と名前が必要です。"));
     auto check = [&](QJsonValue v) {
         if (!v.isDouble() || v.toDouble() != v.toInt() || v.toInt() < 0 || v.toInt() >= aa.size())
-            fail("部品の原子参照が不正です。");
+            fail(tr("部品の原子参照が不正です。"));
     };
     for (auto a : aa)
         Atom::fromJson(a.toObject());
@@ -37,7 +42,7 @@ PlacedPart instantiate(Document &d, const QJsonObject &t, const QVector<Vec> &po
     validateTemplate(t);
     auto aa = t["atoms"].toArray();
     if (!positions.isEmpty() && positions.size() != aa.size())
-        fail("部品の座標数が不正です。");
+        fail(tr("部品の座標数が不正です。"));
     PlacedPart p;
     p.id = newId();
     for (int i = 0; i < aa.size(); ++i)
@@ -83,7 +88,7 @@ PlacedPart placeTemplate(Document &d, const QJsonObject &t, const Vec &position)
         center += pp.last();
     }
     if (pp.isEmpty())
-        fail("空の部品です。");
+        fail(tr("空の部品です。"));
     center /= pp.size();
     for (auto &p : pp)
         p += position - center;
@@ -92,21 +97,22 @@ PlacedPart placeTemplate(Document &d, const QJsonObject &t, const Vec &position)
 QJsonObject makePart(const Document &d, const Ids &ids, const QString &name, const QString &category) {
     const bool ligand = category == "ligand", skeleton = category == "skeleton";
     if (!ligand && !skeleton && category != "substituent")
-        fail("部品の種類が不正です。");
+        fail(tr("部品の種類が不正です。"));
     if (ids.isEmpty() || name.trimmed().isEmpty())
-        fail("原子を接続点から順に選び、部品名を入力してください。");
+        fail(tr("原子を接続点から順に選び、部品名を入力してください。"));
     QSet<QString> selected(ids.begin(), ids.end());
     int boundary = 0;
     for (const auto &b : d.bonds)
         if (selected.contains(b.a) != selected.contains(b.b)) {
             ++boundary;
             if (skeleton)
-                fail("骨格は他の原子と結合していない分子全体を選択してください（選択単位「連結分子」）。");
+                fail(
+                    tr("骨格は他の原子と結合していない分子全体を選択してください（選択単位「連結分子」）。"));
             if ((selected.contains(b.a) ? b.a : b.b) != ids.first())
-                fail("最初に接続点の原子を選択してください。");
+                fail(tr("最初に接続点の原子を選択してください。"));
         }
     if (!skeleton && (boundary > 1 || (!ligand && boundary != 1)))
-        fail("置換基の外部結合は1本、配位子は0または1本にしてください。");
+        fail(tr("置換基の外部結合は1本、配位子は0または1本にしてください。"));
     Document sub;
     for (const auto &id : ids)
         sub.atoms << d.atom(id);
@@ -118,7 +124,7 @@ QJsonObject makePart(const Document &d, const Ids &ids, const QString &name, con
                 {"a", ids.indexOf(b.a)}, {"b", ids.indexOf(b.b)}, {"kind", b.kind}, {"stereo", b.stereo}});
         }
     if (!skeleton && sub.component(ids.first()).size() != ids.size())
-        fail("部品の原子は互いに結合している必要があります。");
+        fail(tr("部品の原子は互いに結合している必要があります。"));
     for (const auto &id : ids) {
         auto a = d.atom(id).toJson();
         a.remove("id");

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/input_preview_panel.h"
 #include "editing/coordinates.h"
+#include "model/i18n.h"
 #include "nwchem/nwchem_advanced.h"
 #include "ui/calculation_panel.h"
 #include "ui/editor_chrome.h"
@@ -57,7 +58,12 @@ QLabel *caption(const QString &text) {
 QString sourceLink(const QString &target, const QString &text) {
     return QString("<a href=\"%1\">%2</a>").arg(target.toHtmlEscaped(), text.toHtmlEscaped());
 }
-const QStringList tabNames{"", "1 分子", "2 計算条件", "3 実行設定"};
+// The titles of the tabs that set a block, by number (from 1).
+QString tabName(int tab) {
+    static const char *const names[]{QT_TR_NOOP("1 分子"), QT_TR_NOOP("2 計算条件"),
+                                     QT_TR_NOOP("3 実行設定")};
+    return tab >= 1 && tab <= 3 ? tr(names[tab - 1]) : QString();
+}
 } // namespace
 
 // The input, read only, with line numbers in a gutter (so copied or saved input never contains
@@ -163,12 +169,12 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     auto *modeBox = new QWidget;
     auto *modeRow = new QHBoxLayout(modeBox);
     modeRow->setContentsMargins(0, 0, 0, 0);
-    modeRow->addWidget(caption("表示する入力"));
+    modeRow->addWidget(caption(tr("表示する入力")));
     mode = new QComboBox;
     mode->setObjectName("inputPreviewMode");
-    mode->addItem("書出し用入力（設定どおりのパス）", "input");
-    mode->addItem("実行時の入力（入力パスを解決）", "execution");
-    modes = new ChoiceButtons(mode, ChoiceButtons::Segments, {"書出し用", "実行時（パスを解決）"});
+    mode->addItem(tr("書出し用入力（設定どおりのパス）"), "input");
+    mode->addItem(tr("実行時の入力（入力パスを解決）"), "execution");
+    modes = new ChoiceButtons(mode, ChoiceButtons::Segments, {tr("書出し用"), tr("実行時（パスを解決）")});
     modes->setObjectName("inputPreviewModes");
     modeRow->addWidget(modes);
     tools->addWidget(modeBox);
@@ -182,7 +188,7 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     search = new QLineEdit;
     search->setObjectName("inputPreviewSearch");
     search->setProperty("search", true);
-    search->setPlaceholderText("入力内を検索（Ctrl+F）");
+    search->setPlaceholderText(tr("入力内を検索（Ctrl+F）"));
     search->setClearButtonEnabled(true);
     search->addAction(lineIcon("search"), QLineEdit::LeadingPosition);
     search->setFixedWidth(280);
@@ -191,15 +197,15 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
         auto *button = new QPushButton;
         button->setObjectName(backwards ? "inputPreviewPrevious" : "inputPreviewNext");
         button->setIcon(lineIcon(backwards ? "previous" : "next"));
-        button->setToolTip(backwards ? "前を検索" : "次を検索");
+        button->setToolTip(backwards ? tr("前を検索") : tr("次を検索"));
         findRow->addWidget(button);
         connect(button, &QPushButton::clicked, this, [this, backwards] { findText(backwards); });
     }
     find->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed); // As wide as its parts.
     search->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     tools->addWidget(find);
-    copy = new QPushButton("全文をコピー");
-    save = new QPushButton("入力ファイルを書き出す…");
+    copy = new QPushButton(tr("全文をコピー"));
+    save = new QPushButton(tr("入力ファイルを書き出す…"));
     copy->setObjectName("inputPreviewCopy");
     save->setObjectName("inputPreviewSave");
     copy->setIcon(lineIcon("copy"));
@@ -232,9 +238,9 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     outlineLayout->setSpacing(6);
     auto *outlineHead = new QHBoxLayout;
     outlineHead->setContentsMargins(8, 0, 8, 0);
-    outlineHead->addWidget(caption("入力の構成"));
+    outlineHead->addWidget(caption(tr("入力の構成")));
     outlineHead->addStretch();
-    outlineHead->addWidget(caption("編集元"));
+    outlineHead->addWidget(caption(tr("編集元")));
     outlineLayout->addLayout(outlineHead);
     outlineList = new QListWidget;
     outlineList->setObjectName("inputPreviewOutline");
@@ -242,8 +248,8 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     outlineList->setFrameShape(QFrame::NoFrame);
     outlineList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     outlineLayout->addWidget(outlineList, 1);
-    outlineLayout->addWidget(
-        caption("番号はその行を設定するタブ、「詳」は「2 計算条件」の詳細設定です。押すとそこへ移ります。"));
+    outlineLayout->addWidget(caption(
+        tr("番号はその行を設定するタブ、「詳」は「2 計算条件」の詳細設定です。押すとそこへ移ります。")));
     connect(outlineList, &QListWidget::currentRowChanged, this, [this](int row) {
         if (row < 0 || row >= outline.blocks.size())
             return;
@@ -266,7 +272,7 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     codeLayout->setSpacing(0);
     input = new InputEditor;
     input->setObjectName("inputPreviewText");
-    input->setPlaceholderText("分子と計算条件を設定すると、NWChem入力を自動表示します。");
+    input->setPlaceholderText(tr("分子と計算条件を設定すると、NWChem入力を自動表示します。"));
     auto *host = new OverlayHost(input);
     codeLayout->addWidget(host, 1);
     sourceChip = new QFrame;
@@ -299,14 +305,14 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     searchStatus->setObjectName("inputPreviewSearchStatus");
     footerRow->addWidget(searchStatus, 1);
     // The legend of the marks: a short bar in the color of each.
-    for (const auto &[name, text] : {std::pair{"inputPreviewLegendAdvanced", "詳細設定から"},
-                                     {"inputPreviewLegendExtra", "追加入力から"}}) {
+    for (const auto &[name, text] : {std::pair{"inputPreviewLegendAdvanced", QT_TR_NOOP("詳細設定から")},
+                                     {"inputPreviewLegendExtra", QT_TR_NOOP("追加入力から")}}) {
         auto *swatch = new QLabel;
         swatch->setObjectName(name);
         swatch->setFixedSize(4, 13);
         footerRow->addWidget(swatch);
         footerRow->addSpacing(-8);
-        footerRow->addWidget(new QLabel(text));
+        footerRow->addWidget(new QLabel(tr(text)));
     }
     codeLayout->addWidget(footer);
     centerLayout->addWidget(code, 1);
@@ -321,7 +327,7 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     railLayout->setContentsMargins(0, 16, 16, 16);
     railLayout->setSpacing(12);
     body->addWidget(rail);
-    summaryCard = new CalculationSummary("inputPreview", "この入力", [this](const QString &link) {
+    summaryCard = new CalculationSummary("inputPreview", tr("この入力"), [this](const QString &link) {
         if (link == "memory")
             window->calculation->showField("memory_mb");
     });
@@ -330,8 +336,8 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     checkCard->setObjectName("inputPreviewCheck");
     checkCard->headline()->setObjectName("inputPreviewStatus");
     auto *reload = checkCard->addRecheck("inputPreviewRefresh",
-                                         "表示は編集に追従します。参照ファイル・保存先など、MolFormaの外で"
-                                         "変わったものを確認し直すときに使います。");
+                                         tr("表示は編集に追従します。参照ファイル・保存先など、MolFormaの外で"
+                                            "変わったものを確認し直すときに使います。"));
     diagnostics = new QTextBrowser;
     diagnostics->setObjectName("inputPreviewDiagnostics");
     diagnostics->setOpenLinks(false);
@@ -340,7 +346,7 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     checkCard->body()->addWidget(diagnostics);
     railLayout->addWidget(checkCard);
     // How the paths of the input are written, folded with a summary (and remembered).
-    pathCard = new SettingsCard("書き出し後のパス");
+    pathCard = new SettingsCard(tr("書き出し後のパス"));
     pathCard->setObjectName("inputPreviewPathCard");
     auto *pathsToggle =
         pathCard->setCollapsible(window->settings.value("inputPreview/showPaths", true).toBool());
@@ -440,13 +446,15 @@ void InputPreviewPanel::rebuildOutline() {
                                      .arg(b.line + 1)
                                      .arg(source.tab)
                                      .arg(details ? "_details" : ""));
-            badge->setText(details ? QString("詳") : QString::number(source.tab));
+            badge->setText(details ? tr("詳") : QString::number(source.tab));
             badge->setProperty("source", details                           ? "advanced"
                                          : source.setting == "extra_input" ? "extra"
                                                                            : "tab");
-            const auto where = tabNames.value(source.tab) + (details ? "」の詳細設定" : "」");
-            badge->setToolTip("「" + where + "で編集");
-            badge->setAccessibleName(QString(where).remove("」") + "で編集");
+            const auto where = tabName(source.tab);
+            badge->setToolTip(details ? tr("「%1」の詳細設定で編集").arg(where)
+                                      : tr("「%1」で編集").arg(where));
+            badge->setAccessibleName(details ? tr("%1の詳細設定で編集").arg(where)
+                                             : tr("%1で編集").arg(where));
             badge->setFixedSize(22, 22);
             layout->addWidget(badge);
             connect(badge, &QToolButton::clicked, this,
@@ -459,7 +467,7 @@ void InputPreviewPanel::rebuildOutline() {
 void InputPreviewPanel::followCursor() {
     const auto cursor = input->textCursor();
     const int line = cursor.blockNumber();
-    position->setText(QString("行 %1 / 列 %2").arg(line + 1).arg(cursor.positionInBlock() + 1));
+    position->setText(tr("行 %1 / 列 %2").arg(line + 1).arg(cursor.positionInBlock() + 1));
     int found = -1;
     for (int i = 0; i < outline.blocks.size(); ++i)
         if (line >= outline.blocks[i].line && line < outline.blocks[i].line + outline.blocks[i].lines)
@@ -476,20 +484,20 @@ void InputPreviewPanel::followCursor() {
     const auto &b = outline.blocks[found];
     input->markBlock(b.line, b.lines);
     // Where this block is set, as links to the tabs.
-    sourceTitle->setText(b.keyword + " ブロックの編集元");
+    sourceTitle->setText(tr("%1 ブロックの編集元").arg(b.keyword));
     while (auto *item = sourceLinks->layout()->takeAt(0)) {
         delete item->widget();
         delete item;
     }
     for (const auto &source : sources(b)) {
-        QString text = tabNames.value(source.tab);
+        QString text = tabName(source.tab);
         if (!source.group.isEmpty()) {
             for (const auto &g : nwchemAdvancedGroups())
                 if (g.value == source.group)
-                    text += " › 詳細設定（" +
-                            (g.value == "visualization" ? QString("CUBE / MOLDEN") : g.label) + "）";
+                    text = tr("%1 › 詳細設定（%2）")
+                               .arg(text, g.value == "visualization" ? QString("CUBE / MOLDEN") : g.label);
         } else if (source.setting == "extra_input")
-            text += " › 追加入力";
+            text = tr("%1 › 追加入力").arg(text);
         else if (source.tab == 2 && !source.setting.isEmpty())
             if (const auto section = window->calculation->sectionTitle(source.setting); !section.isEmpty())
                 text += " › " + section;
@@ -530,7 +538,8 @@ void InputPreviewPanel::refresh() {
     };
     const ChromeColors c(palette());
     for (const auto &error : report.errors)
-        append("エラー:", error, geometryErrors.contains(error) ? QString("tab:0") : target(error), c.bad);
+        append(tr("エラー:"), error, geometryErrors.contains(error) ? QString("tab:0") : target(error),
+               c.bad);
     QString text;
     try {
         if (resolved) {
@@ -543,20 +552,20 @@ void InputPreviewPanel::refresh() {
         for (const auto &error : QString::fromUtf8(e.what()).split('\n'))
             if (!errors.contains(error)) {
                 errors << error;
-                append("エラー:", error, "tab:2", c.bad);
+                append(tr("エラー:"), error, "tab:2", c.bad);
             }
     }
     for (const auto &warning : report.warnings) {
         // The line a check is about, when the input names it ("frequencies numerical").
         QString where;
-        if (warning.contains("数値Hessian"))
+        if (warning.contains(tr("数値Hessian"), Qt::CaseInsensitive))
             for (const auto &line : text.split('\n'))
                 if (line.contains("frequencies numerical"))
-                    where = QString("（%1 行目）").arg(text.left(text.indexOf(line)).count('\n') + 1);
-        append("確認:", warning + where, target(warning), c.muted);
+                    where = tr("（%1 行目）").arg(text.left(text.indexOf(line)).count('\n') + 1);
+        append(tr("確認:"), warning + where, target(warning), c.muted);
     }
     if (errors.isEmpty())
-        html.prepend(QString("<p style=\"color:%1\">分子・計算条件・詳細設定の検証を通過しました。</p>")
+        html.prepend(tr("<p style=\"color:%1\">分子・計算条件・詳細設定の検証を通過しました。</p>")
                          .arg(c.muted.name()));
     diagnostics->document()->setDefaultStyleSheet(
         QString("a { color: %1; text-decoration: none; }").arg(c.accentText.name()));
@@ -564,38 +573,38 @@ void InputPreviewPanel::refresh() {
     // As tall as its messages, up to a limit.
     diagnostics->document()->setTextWidth(diagnostics->width() > 60 ? diagnostics->viewport()->width() : 280);
     diagnostics->setFixedHeight(std::min(300, int(diagnostics->document()->size().height()) + 4));
-    pathCard->titleLabel()->setText(resolved ? "実行時のパス" : "書き出し後のパス");
-    pathCard->setSummary(resolved ? "ジョブフォルダー基準に解決" : "相対パスは変更せず出力");
-    paths->setText(
-        (resolved ? QString("入力movecsは参照基準から絶対パスへ変換します。"
-                            "相対出力先・scratch・permanentは新しいジョブフォルダーを基準にします。"
-                            "この画面を開いてもフォルダーは作成しません。")
-                  : QString("相対パスは変更せず出力します。外部で実行するときは、"
-                            "NWChemの作業ディレクトリを基準に必要なファイル・保存先を用意してください。")) +
-        "<br><br>実行ファイル・MPI・基底ライブラリ・参照ファイルの存在と書込み権限は " +
-        QString("<a href=\"tab:2\" style=\"color:%1\">「3 実行設定」</a>").arg(c.accentText.name()) +
-        " で確認してください。ここではNWChemを起動しません。");
+    pathCard->titleLabel()->setText(resolved ? tr("実行時のパス") : tr("書き出し後のパス"));
+    pathCard->setSummary(resolved ? tr("ジョブフォルダー基準に解決") : tr("相対パスは変更せず出力"));
+    paths->setText((resolved
+                        ? tr("入力movecsは参照基準から絶対パスへ変換します。"
+                             "相対出力先・scratch・permanentは新しいジョブフォルダーを基準にします。"
+                             "この画面を開いてもフォルダーは作成しません。")
+                        : tr("相対パスは変更せず出力します。外部で実行するときは、"
+                             "NWChemの作業ディレクトリを基準に必要なファイル・保存先を用意してください。")) +
+                   tr("<br><br>実行ファイル・MPI・基底ライブラリ・参照ファイルの存在と書込み権限は "
+                      "<a href=\"tab:2\" style=\"color:%1\">「3 実行設定」</a>"
+                      " で確認してください。ここではNWChemを起動しません。")
+                       .arg(c.accentText.name()));
     summaryCard->update(d);
     const bool pending = window->hasCandidate() || window->worker;
     hint->setText(window->hasCandidate()
-                      ? "未確定の分子候補を表示しています。確定または取消後にコピー・保存できます。"
-                  : window->worker ? "分子の整形中です。終了後にコピー・保存できます。"
+                      ? tr("未確定の分子候補を表示しています。確定または取消後にコピー・保存できます。")
+                  : window->worker ? tr("分子の整形中です。終了後にコピー・保存できます。")
                                    : QString());
     banner->setVisible(pending);
     if (pending)
-        checkCard->setState(StatusCard::Waiting, "候補・整形の完了待ち（出力不可）");
+        checkCard->setState(StatusCard::Waiting, tr("候補・整形の完了待ち（出力不可）"));
     else if (!errors.isEmpty())
         checkCard->setState(StatusCard::Error,
-                            QString("入力を生成できません（エラー %1 件）").arg(errors.size()));
+                            tr("入力を生成できません（エラー %n 件）", nullptr, int(errors.size())));
     else
-        checkCard->setState(StatusCard::Ok,
-                            report.warnings.isEmpty()
-                                ? QString("入力を生成できます")
-                                : QString("入力を生成できます（確認 %1 件）").arg(report.warnings.size()));
+        checkCard->setState(StatusCard::Ok, report.warnings.isEmpty()
+                                                ? tr("入力を生成できます")
+                                                : tr("入力を生成できます（確認 %n 件）", nullptr,
+                                                     int(report.warnings.size())));
     contents = errors.isEmpty() ? text : QString();
     stats->setText(contents.isEmpty() ? QString()
-                                      : QString("%1 行 · UTF-8 · %2 バイト")
-                                            .arg(contents.count('\n'))
+                                      : tr("%n 行 · UTF-8 · %1 バイト", nullptr, int(contents.count('\n')))
                                             .arg(QLocale().toString(contents.toUtf8().size())));
     if (input->toPlainText() != contents) {
         const int scroll = input->verticalScrollBar()->value();
@@ -623,8 +632,8 @@ void InputPreviewPanel::refreshBadge() {
     const auto &d = window->displayDocument();
     const auto errors = validateNwchem(d).errors;
     setBadge(!d.atoms.isEmpty() && !errors.isEmpty(),
-             errors.isEmpty() ? QString("入力を生成できます")
-                              : QString("入力を生成できません（エラー %1 件）").arg(errors.size()));
+             errors.isEmpty() ? tr("入力を生成できます")
+                              : tr("入力を生成できません（エラー %n 件）", nullptr, int(errors.size())));
 }
 void InputPreviewPanel::setBadge(bool failed, const QString &tip) {
     const int index = window->workspaceTabs->indexOf(this);
@@ -639,10 +648,10 @@ QString InputPreviewPanel::prepareExport() {
     if (auto *focused = QApplication::focusWidget())
         focused->clearFocus();
     if (window->hasCandidate() || window->worker)
-        fail("分子候補の確定・取消、または整形の終了後に出力してください。");
+        fail(tr("分子候補の確定・取消、または整形の終了後に出力してください。"));
     refresh();
     if (contents.isEmpty())
-        fail("入力を生成できません。検証結果のエラーを修正してください。");
+        fail(tr("入力を生成できません。検証結果のエラーを修正してください。"));
     return contents;
 }
 void InputPreviewPanel::saveInput(const QString &path) {
@@ -654,7 +663,7 @@ void InputPreviewPanel::exportInput(bool toFile) {
         const auto text = prepareExport();
         if (toFile) {
             auto path = QFileDialog::getSaveFileName(
-                this, "NWChem入力ファイルを書き出す",
+                this, tr("NWChem入力ファイルを書き出す"),
                 nwchemSettings(window->document())["start"].toString() + ".nw", "NWChem (*.nw)");
             if (path.isEmpty())
                 return;
@@ -664,7 +673,7 @@ void InputPreviewPanel::exportInput(bool toFile) {
         } else
             QApplication::clipboard()->setText(text);
         window->statusBar()->showMessage(
-            toFile ? "NWChem入力を書き出しました。" : "NWChem入力をコピーしました。", 5000);
+            toFile ? tr("NWChem入力を書き出しました。") : tr("NWChem入力をコピーしました。"), 5000);
     });
 }
 void InputPreviewPanel::findText(bool backwards) {
@@ -679,7 +688,7 @@ void InputPreviewPanel::findText(bool backwards) {
     }
     if (!found)
         input->setTextCursor(original);
-    searchStatus->setText(found ? "一致する文字列を選択しました。" : "一致する文字列はありません。");
+    searchStatus->setText(found ? tr("一致する文字列を選択しました。") : tr("一致する文字列はありません。"));
 }
 void InputPreviewPanel::applyChromeStyle() {
     const auto pal = static_cast<QWidget *>(window)->palette();

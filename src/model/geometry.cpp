@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "model/geometry.h"
+#include "model/i18n.h"
 #include <Eigen/Eigenvalues>
 #include <Eigen/SVD>
 #include <cmath>
@@ -9,7 +10,7 @@ namespace mf {
 static constexpr double rad = 3.14159265358979323846 / 180;
 Vec unit(const Vec &v) {
     if (v.norm() < 1e-10)
-        fail("方向を決められません（重なった原子または直線配置）。");
+        fail(tr("方向を決められません（重なった原子または直線配置）。"));
     return v.normalized();
 }
 Mat rotation(const Vec &a, double d) {
@@ -20,7 +21,7 @@ Mat alignVectors(const Vec &a, const Vec &b) {
 }
 std::pair<Mat, Vec> fitPoints(const QVector<Vec> &p, const QVector<Vec> &q) {
     if (p.isEmpty() || p.size() != q.size())
-        fail("対応する接続点が必要です。");
+        fail(tr("対応する接続点が必要です。"));
     Vec cp = Vec::Zero(), cq = Vec::Zero();
     for (int i = 0; i < p.size(); ++i) {
         cp += p[i];
@@ -47,7 +48,7 @@ void transform(Document &d, const Ids &ids, const Mat &r, const Vec &shift, cons
         const auto &a = d.atom(id);
         Vec p = origin + r * (a.position - origin) + shift;
         if (a.fixed && (p - a.position).norm() > 1e-7)
-            fail("固定原子を動かす操作です。固定を解除してください。");
+            fail(tr("固定原子を動かす操作です。固定を解除してください。"));
     }
     for (const auto &id : ids) {
         auto &a = d.atom(id);
@@ -66,7 +67,7 @@ UniformGrid uniformGrid(const Vec &low, const Vec &high, int divisions) {
 }
 Vec centroid(const Document &d, const Ids &ids) {
     if (ids.isEmpty())
-        fail("原子を選択してください。");
+        fail(tr("原子を選択してください。"));
     Vec sum = Vec::Zero();
     for (const auto &id : ids)
         sum += d.atom(id).position;
@@ -89,7 +90,7 @@ double measure(const Document &d, const Ids &ids) {
         double angle = std::atan2(axis.cross(a).dot(b), a.dot(b)) / rad;
         return angle <= -180 + 1e-9 ? 180 : angle;
     }
-    fail("2〜4原子を順番に選択してください。");
+    fail(tr("2〜4原子を順番に選択してください。"));
 }
 // Atoms that move when a measurement changes at `moving`: the far side of the bond, or for
 // atoms that are not bonded, the whole molecule containing `moving` (e.g. the second monomer
@@ -99,22 +100,23 @@ static Ids movingSide(const Document &d, const QString &fixed, const QString &mo
         return d.bondSide(fixed, moving);
     auto side = d.component(moving);
     if (side.contains(fixed))
-        fail("同じ分子内で結合していない原子間の寸法は変更できません。結合した原子か、別々の分子の原子を選択"
-             "してください。");
+        fail(tr(
+            "同じ分子内で結合していない原子間の寸法は変更できません。結合した原子か、別々の分子の原子を選択"
+            "してください。"));
     return side;
 }
 void setDimension(Document &d, const Ids &ids, double value) {
     if (!std::isfinite(value))
-        fail("寸法は有限値を指定してください。");
+        fail(tr("寸法は有限値を指定してください。"));
     double current = measure(d, ids);
     if (ids.size() == 2) {
         if (value <= 0)
-            fail("距離は正の値にしてください。");
+            fail(tr("距離は正の値にしてください。"));
         transform(d, movingSide(d, ids[0], ids[1]), Mat::Identity(),
                   unit(d.atom(ids[1]).position - d.atom(ids[0]).position) * (value - current));
     } else if (ids.size() == 3) {
         if (value <= 0 || value >= 180)
-            fail("角度は0°より大きく180°未満にしてください。");
+            fail(tr("角度は0°より大きく180°未満にしてください。"));
         Vec o = d.atom(ids[1]).position;
         transform(d, movingSide(d, ids[1], ids[2]),
                   rotation((d.atom(ids[2]).position - o).cross(d.atom(ids[0]).position - o), current - value),
@@ -122,14 +124,14 @@ void setDimension(Document &d, const Ids &ids, double value) {
     } else {
         const auto side = movingSide(d, ids[1], ids[2]);
         if (!side.contains(ids[3]))
-            fail("4番目の原子が3番目の原子と同じ分子にないため、二面角を変更できません。");
+            fail(tr("4番目の原子が3番目の原子と同じ分子にないため、二面角を変更できません。"));
         Vec a = d.atom(ids[1]).position, b = d.atom(ids[2]).position;
         transform(d, side, rotation(b - a, value - current), Vec::Zero(), b);
     }
 }
 void orient(Document &d, const Ids &ids) {
     if (ids.isEmpty() || ids.size() > 3)
-        fail("原点・+X・XY面の順に1〜3原子を選択してください。");
+        fail(tr("原点・+X・XY面の順に1〜3原子を選択してください。"));
     Vec o = d.atom(ids[0]).position;
     Mat r = Mat::Identity();
     if (ids.size() > 1)
@@ -137,7 +139,7 @@ void orient(Document &d, const Ids &ids) {
     if (ids.size() == 3) {
         Vec p = r * (d.atom(ids[2]).position - o);
         if (std::hypot(p.y(), p.z()) < 1e-9)
-            fail("3原子が直線上にあります。");
+            fail(tr("3原子が直線上にあります。"));
         r = rotation(Vec::UnitX(), -std::atan2(p.z(), p.y()) / rad) * r;
     }
     transform(d, d.ids(), r, -r * o);
@@ -152,7 +154,7 @@ void orient(Document &d, const Ids &ids) {
 void centerMass(Document &d, const Ids &selection, bool principal) {
     auto ids = selection.isEmpty() ? d.ids() : selection;
     if (ids.isEmpty())
-        fail("分子が空です。");
+        fail(tr("分子が空です。"));
     Vec center = Vec::Zero();
     double total = 0;
     for (const auto &id : ids) {
@@ -173,7 +175,7 @@ void centerMass(Document &d, const Ids &selection, bool principal) {
         }
         Eigen::SelfAdjointEigenSolver<Mat> e(inertia);
         if (e.info() != Eigen::Success)
-            fail("慣性軸を計算できません。");
+            fail(tr("慣性軸を計算できません。"));
         r = e.eigenvectors().transpose();
         if (r.determinant() < 0)
             r.row(2) *= -1;
@@ -273,13 +275,13 @@ int rotationalSymmetryNumber(const Document &d) {
 }
 Superposition superpose(const Document &moving, const Document &reference) {
     if (moving.atoms.size() != reference.atoms.size() || moving.atoms.isEmpty())
-        fail(QString("原子数が異なります（%1 / %2）。同じ原子を同じ順番で含む構造を比較してください。")
+        fail(tr("原子数が異なります（%1 / %2）。同じ原子を同じ順番で含む構造を比較してください。")
                  .arg(moving.atoms.size())
                  .arg(reference.atoms.size()));
     QVector<Vec> from, to;
     for (int i = 0; i < moving.atoms.size(); ++i) {
         if (moving.atoms[i].element != reference.atoms[i].element)
-            fail(QString("原子%1の元素が異なります（%2 / %3）。原子の順番が同じ構造を比較してください。")
+            fail(tr("原子%1の元素が異なります（%2 / %3）。原子の順番が同じ構造を比較してください。")
                      .arg(i + 1)
                      .arg(moving.atoms[i].element, reference.atoms[i].element));
         from << moving.atoms[i].position;
@@ -531,13 +533,13 @@ PointGroup pointGroup(const Document &d, double tolerance) {
 }
 double symmetrize(Document &d, const PointGroup &group) {
     if (group.name.isEmpty() || group.operations.isEmpty())
-        fail("点群が決まっていません。");
+        fail(tr("点群が決まっていません。"));
     const int n = d.atoms.size();
     QVector<Vec> next(n, Vec::Zero());
     for (int i = 0; i < n; ++i) {
         for (const auto &op : group.operations) {
             if (op.image.size() != n)
-                fail("点群の判定後に分子が変わりました。もう一度判定してください。");
+                fail(tr("点群の判定後に分子が変わりました。もう一度判定してください。"));
             next[i] += op.matrix.transpose() * (d.atoms[op.image[i]].position - group.center);
         }
         next[i] /= group.operations.size();
@@ -549,7 +551,7 @@ double symmetrize(Document &d, const PointGroup &group) {
     for (int i = 0; i < n; ++i) {
         const double distance = (next[i] - d.atoms[i].position).norm();
         if (d.atoms[i].fixed && distance > 1e-7)
-            fail(QString("固定原子%1が動くため対称化できません。固定を解除してください。").arg(i + 1));
+            fail(tr("固定原子%1が動くため対称化できません。固定を解除してください。").arg(i + 1));
         moved = std::max(moved, distance);
     }
     for (int i = 0; i < n; ++i)

@@ -2,6 +2,7 @@
 #include "ui/results_panel.h"
 #include "editing/coordinates.h"
 #include "model/geometry.h"
+#include "model/i18n.h"
 #include "results/molden_orbitals.h"
 #include "ui/editor_chrome.h"
 #include "ui/main_window.h"
@@ -73,16 +74,18 @@ QString sourceStamp(const QFileInfo &file) {
 // "bond 1 2" (MolForma's scan title) in the words of the calculation tab.
 QString coordinateText(const QString &coordinate) {
     const auto words = coordinate.split(' ', Qt::SkipEmptyParts);
-    const QString kind = words.value(0) == "bond" ? "距離" : words.value(0) == "angle" ? "角度" : "二面角";
-    return kind + ' ' + words.mid(1).join("–");
+    const auto atoms = words.mid(1).join("–");
+    return words.value(0) == "bond"    ? tr("距離 %1").arg(atoms)
+           : words.value(0) == "angle" ? tr("角度 %1").arg(atoms)
+                                       : tr("二面角 %1").arg(atoms);
 }
 QString solvationText(const QJsonObject &s) {
     QStringList lines;
     if (s.contains("smd_dg"))
-        lines << QString("SMD溶媒和自由エネルギー（1 M基準）: %1 kcal/mol、溶液中の全自由エネルギー %2 Eh")
+        lines << tr("SMD溶媒和自由エネルギー（1 M基準）: %1 kcal/mol、溶液中の全自由エネルギー %2 Eh")
                      .arg(fixed(s["smd_dg"].toDouble() * HartreeToKcal, 2), real(s["smd_total"].toDouble()));
     else if (s.contains("gas") && s.contains("solution"))
-        lines << QString("COSMO溶媒和エネルギー（静電項、溶液 − 気相）: %1 kcal/mol")
+        lines << tr("COSMO溶媒和エネルギー（静電項、溶液 − 気相）: %1 kcal/mol")
                      .arg(fixed((s["solution"].toDouble() - s["gas"].toDouble()) * HartreeToKcal, 2));
     return lines.join('\n');
 }
@@ -91,7 +94,7 @@ QString resultPropertyLines(const ResultData &data) {
     QString text;
     if (data.properties.contains("bsse")) {
         const auto b = data.properties.value("bsse").toObject();
-        text += QString("BSSE（counterpoise）補正: %1 kcal/mol、補正後 %2 Eh（補正前 %3 Eh）\n")
+        text += tr("BSSE（counterpoise）補正: %1 kcal/mol、補正後 %2 Eh（補正前 %3 Eh）\n")
                     .arg(fixed(b["error"].toDouble() * HartreeToKcal, 3), real(b["corrected"].toDouble()),
                          real(b["supermolecular"].toDouble()));
     }
@@ -100,19 +103,18 @@ QString resultPropertyLines(const ResultData &data) {
     if (data.properties.contains("polarizability")) {
         const auto p = data.properties.value("polarizability").toObject();
         constexpr double BohrCubed = 0.1481847; // Å³ per a.u. of polarizability volume.
-        text += QString("静的分極率: 等方 %1 a.u.（%2 Å³）、異方性 %3 a.u.\n")
+        text += tr("静的分極率: 等方 %1 a.u.（%2 Å³）、異方性 %3 a.u.\n")
                     .arg(fixed(p["isotropic"].toDouble(), 4), fixed(p["isotropic"].toDouble() * BohrCubed, 4),
                          fixed(p["anisotropy"].toDouble(), 4));
     }
     if (data.properties.contains("scan"))
-        text += QString("座標スキャン: %1点（「経路・スキャン」に表示）\n")
-                    .arg(data.properties.value("scan").toArray().size());
+        text += tr("座標スキャン: %n点（「経路・スキャン」に表示）\n", nullptr,
+                   int(data.properties.value("scan").toArray().size()));
     if (data.properties.contains("irc")) {
         const auto irc = data.properties.value("irc").toObject();
-        text +=
-            QString("IRC: %1点%2（「経路・スキャン」に表示）\n")
-                .arg(irc["points"].toArray().size())
-                .arg(irc["complete"].toBool() ? "、両方向とも収束" : "、収束メッセージは両方向にありません");
+        text += tr("IRC: %n点%1（「経路・スキャン」に表示）\n", nullptr, int(irc["points"].toArray().size()))
+                    .arg(irc["complete"].toBool() ? tr("、両方向とも収束")
+                                                  : tr("、収束メッセージは両方向にありません"));
     }
     return text;
 }
@@ -121,7 +123,7 @@ QString orbitalKey(int orbital, double iso, const QString &normalization, int di
         QJsonDocument(QJsonArray{orbital, iso, normalization, divisions}).toJson(QJsonDocument::Compact));
 }
 QString formatName(const QString &format) {
-    return format == "NWChem" ? QString("NWChem 出力") : format;
+    return format == "NWChem" ? tr("NWChem 出力") : format;
 }
 // "C6H12O6" with the counts as subscripts.
 QString formulaHtml(const QString &formula) {
@@ -247,15 +249,15 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     jobLabel->setMaximumWidth(300);
     files = new QComboBox;
     files->setObjectName("resultsFiles");
-    files->setAccessibleName("結果ファイル");
-    files->setToolTip("ジョブフォルダーの結果ファイル。選ぶとすぐに読み込みます。");
+    files->setAccessibleName(tr("結果ファイル"));
+    files->setToolTip(tr("ジョブフォルダーの結果ファイル。選ぶとすぐに読み込みます。"));
     files->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     files->setMinimumContentsLength(20);
     formatChip = new QLabel;
     formatChip->setObjectName("resultsFormat");
     outcomeChip = new QLabel;
     outcomeChip->setObjectName("resultsOutcome");
-    emptyHint = new QLabel("結果ファイルまたはジョブフォルダーを開いてください。");
+    emptyHint = new QLabel(tr("結果ファイルまたはジョブフォルダーを開いてください。"));
     emptyHint->setObjectName("resultsEmptyHint");
     for (QWidget *w : {static_cast<QWidget *>(jobIcon), static_cast<QWidget *>(jobLabel),
                        static_cast<QWidget *>(files), static_cast<QWidget *>(formatChip),
@@ -264,47 +266,49 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     bar->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum));
     openButton = new QToolButton;
     openButton->setObjectName("resultsOpen");
-    openButton->setText("開く…");
+    openButton->setText(tr("開く…"));
     openButton->setIcon(lineIcon("folder"));
     openButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     openButton->setPopupMode(QToolButton::MenuButtonPopup);
-    openButton->setToolTip("結果ファイル（NWChem出力・XYZ・CUBE・MOLDEN）を開きます。▾ からジョブフォルダーも"
-                           "開けます。");
+    openButton->setToolTip(
+        tr("結果ファイル（NWChem出力・XYZ・CUBE・MOLDEN）を開きます。▾ からジョブフォルダーも"
+           "開けます。"));
     auto *openMenu = new QMenu(openButton);
-    auto *openFileAction = openMenu->addAction("結果ファイルを開く…");
-    auto *openDirectoryAction = openMenu->addAction("ジョブフォルダーを開く…");
+    auto *openFileAction = openMenu->addAction(tr("結果ファイルを開く…"));
+    auto *openDirectoryAction = openMenu->addAction(tr("ジョブフォルダーを開く…"));
     openDirectoryAction->setObjectName("resultsDirectory");
     openButton->setMenu(openMenu);
     reload = new QPushButton(lineIcon("refresh"), QString());
     reload->setObjectName("resultsReload");
-    reload->setToolTip("再読込（実行途中のログを更新）");
-    reload->setAccessibleName("再読込");
-    cancel = new QPushButton(lineIcon("close"), "中止");
+    reload->setToolTip(tr("再読込（実行途中のログを更新）"));
+    reload->setAccessibleName(tr("再読込"));
+    cancel = new QPushButton(lineIcon("close"), tr("中止"));
     cancel->setObjectName("resultsCancel");
-    cancel->setToolTip("読込を中止");
+    cancel->setToolTip(tr("読込を中止"));
     auto *divider = new QFrame;
     divider->setObjectName("resultsBarDivider");
     divider->setFrameShape(QFrame::VLine);
     divider->setFrameShadow(QFrame::Sunken);
     divider->setFixedHeight(22);
-    compareGeometry = new QPushButton(lineIcon("compare"), "分子と比較");
+    compareGeometry = new QPushButton(lineIcon("compare"), tr("分子と比較"));
     compareGeometry->setObjectName("resultsCompare");
     compareGeometry->setToolTip(
-        "表示中の構造と「1 分子」の分子を重ね合わせ、RMSDを表示します（同じ原子・同じ順番）。");
-    applyGeometry = new QPushButton(lineIcon("apply"), "分子へ候補として適用");
+        tr("表示中の構造と「1 分子」の分子を重ね合わせ、RMSDを表示します（同じ原子・同じ順番）。"));
+    applyGeometry = new QPushButton(lineIcon("apply"), tr("分子へ候補として適用"));
     applyGeometry->setObjectName("resultsApplyStructure");
-    applyGeometry->setToolTip("表示中の構造の座標を「1 分子」の分子へ候補として適用します。原子の数と順番が同"
-                              "じ計算結果に使えます。結合・設定は変わりません。");
+    applyGeometry->setToolTip(
+        tr("表示中の構造の座標を「1 分子」の分子へ候補として適用します。原子の数と順番が同"
+           "じ計算結果に使えます。結合・設定は変わりません。"));
     exportButton = new QToolButton;
     exportButton->setObjectName("resultsExport");
-    exportButton->setText("書き出し");
+    exportButton->setText(tr("書き出し"));
     exportButton->setIcon(lineIcon("export"));
     exportButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     exportButton->setPopupMode(QToolButton::InstantPopup);
     auto *exportMenu = new QMenu(exportButton);
-    saveXyz = exportMenu->addAction("表示中の構造をXYZで書き出す…");
+    saveXyz = exportMenu->addAction(tr("表示中の構造をXYZで書き出す…"));
     saveXyz->setObjectName("resultsSaveXyz");
-    savePng = exportMenu->addAction("3D表示をPNG画像で書き出す…");
+    savePng = exportMenu->addAction(tr("3D表示をPNG画像で書き出す…"));
     savePng->setObjectName("resultsSavePng");
     exportButton->setMenu(exportMenu);
     for (QWidget *w :
@@ -339,7 +343,8 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     view->setObjectName("resultsView");
     view->setAcceptDrops(false);
     view->setAngles(-25, 25, 0);
-    view->setEmptyMessage("NWChem出力・XYZ・CUBE・MOLDENを開いて\n構造・軌道の等値面・振動を確認できます。");
+    view->setEmptyMessage(
+        tr("NWChem出力・XYZ・CUBE・MOLDENを開いて\n構造・軌道の等値面・振動を確認できます。"));
     auto *viewArea = new OverlayHost(view);
     viewArea->setObjectName("resultsViewArea");
     card->addWidget(viewArea, 1);
@@ -369,16 +374,16 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     viewControls << viewControlsFrame->controls();
     // What the view shows: the labels, as in the "表示" menu of "1 分子".
     auto *labelMenu = new QMenu(viewControlsFrame->menuButton());
-    labelMenu->addSection("ラベル");
+    labelMenu->addSection(tr("ラベル"));
     auto *labelGroup = new QActionGroup(labelMenu);
     auto savedLabels = window->settings.value("results/labels", "all").toString();
     if (!QStringList{"all", "heavy", "selection", "none"}.contains(savedLabels))
         savedLabels = "all";
-    for (const auto &[label, mode] : {std::pair{"すべて", "all"},
-                                      {"水素以外", "heavy"},
-                                      {"選択した原子", "selection"},
-                                      {"なし", "none"}}) {
-        auto *a = labelMenu->addAction(label);
+    for (const auto &[label, mode] : {std::pair{QT_TR_NOOP("すべて"), "all"},
+                                      {QT_TR_NOOP("水素以外"), "heavy"},
+                                      {QT_TR_NOOP("選択した原子"), "selection"},
+                                      {QT_TR_NOOP("なし"), "none"}}) {
+        auto *a = labelMenu->addAction(tr(label));
         a->setObjectName(QString("resultsLabel_") + mode);
         a->setCheckable(true);
         a->setData(mode);
@@ -386,7 +391,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         labelGroup->addAction(a);
     }
     viewControlsFrame->menuButton()->setMenu(labelMenu);
-    viewControlsFrame->menuButton()->setToolTip("元素記号・番号を表示する原子を選びます。");
+    viewControlsFrame->menuButton()->setToolTip(tr("元素記号・番号を表示する原子を選びます。"));
     view->setLabelMode(savedLabels);
     connect(labelGroup, &QActionGroup::triggered, this, [this](QAction *a) {
         view->setLabelMode(a->data().toString());
@@ -400,19 +405,19 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     auto *measuring = new QVBoxLayout(measureCard);
     measuring->setContentsMargins(12, 8, 12, 9);
     measuring->setSpacing(6);
-    measurementLabel = new QLabel("原子をクリックすると距離・角度・二面角を測定します（2〜4原子）。");
+    measurementLabel = new QLabel(tr("原子をクリックすると距離・角度・二面角を測定します（2〜4原子）。"));
     measurementLabel->setObjectName("resultsMeasurement");
     measurementLabel->setWordWrap(true);
     measurementLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     measuring->addWidget(measurementLabel);
     auto *measureActions = new QHBoxLayout;
     measureActions->setSpacing(4);
-    auto *pin = new QPushButton("画面に表示");
+    auto *pin = new QPushButton(tr("画面に表示"));
     pin->setObjectName("resultsPinMeasurement");
-    pin->setToolTip("選んだ原子の計測を3D表示に残します。");
-    auto *clearMeasure = new QPushButton("消去");
+    pin->setToolTip(tr("選んだ原子の計測を3D表示に残します。"));
+    auto *clearMeasure = new QPushButton(tr("消去"));
     clearMeasure->setObjectName("resultsClearMeasurement");
-    clearMeasure->setToolTip("選択と、画面に表示中の計測をすべて消去します。");
+    clearMeasure->setToolTip(tr("選択と、画面に表示中の計測をすべて消去します。"));
     measureActions->addWidget(pin);
     measureActions->addWidget(clearMeasure);
     measureActions->addStretch();
@@ -430,7 +435,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         bool valid = false;
         window->safe([&] {
             if (picked.size() < 2 || ids.size() != picked.size())
-                fail("2〜4原子をクリックしてから表示してください。");
+                fail(tr("2〜4原子をクリックしてから表示してください。"));
             measure(d, ids); // Rejects coincident or collinear atoms before pinning.
             valid = true;
         });
@@ -475,11 +480,11 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     auto *framesPage = new QWidget;
     auto *framesRow = new FlowLayout(framesPage, 10, 4);
     framesRow->setContentsMargins(0, 0, 0, 0);
-    firstFrame = iconButton("first", "resultsFirstFrame", "最初の構造");
-    playFrames = iconButton("play", "resultsPlayFrames", "構造列を再生");
+    firstFrame = iconButton("first", "resultsFirstFrame", tr("最初の構造"));
+    playFrames = iconButton("play", "resultsPlayFrames", tr("構造列を再生"));
     playFrames->setProperty("primary", true);
-    lastFrame = iconButton("last", "resultsLastFrame", "最後の構造");
-    auto *frameLabel = new QLabel("構造");
+    lastFrame = iconButton("last", "resultsLastFrame", tr("最後の構造"));
+    auto *frameLabel = new QLabel(tr("構造"));
     frame = new QSpinBox;
     frame->setObjectName("resultsFrame");
     frameLabel->setBuddy(frame);
@@ -500,13 +505,15 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     orbitalRow->setContentsMargins(0, 0, 0, 0);
     const QStringList navigationNames{"First", "Back10", "Previous", "Next", "Forward10", "Last"};
     const QStringList navigationIcons{"first", "back10", "previous", "next", "forward10", "last"};
-    const QStringList navigationTips{"最初の軌道へ", "10軌道戻る", "1軌道戻る",
-                                     "1軌道進む",    "10軌道進む", "最後の軌道へ"};
+    const QStringList navigationTips{tr("最初の軌道へ"), tr("10軌道戻る"), tr("1軌道戻る"),
+                                     tr("1軌道進む"),    tr("10軌道進む"), tr("最後の軌道へ")};
     orbitalPosition = new QLabel;
     orbitalPosition->setObjectName("resultsOrbitalPosition");
     orbitalPosition->setAlignment(Qt::AlignCenter);
     // A fixed width, so that the buttons after it stay put while the number changes.
-    orbitalPosition->setFixedWidth(orbitalPosition->fontMetrics().horizontalAdvance("Alpha 99999番") + 12);
+    orbitalPosition->setFixedWidth(orbitalPosition->fontMetrics().horizontalAdvance(
+                                       tr("%1 %2番").arg(QString("Alpha"), QString("99999"))) +
+                                   12);
     for (int i = 0; i < 6; ++i) {
         orbitalNavigation[i] =
             iconButton(navigationIcons[i], "resultsOrbital" + navigationNames[i], navigationTips[i]);
@@ -524,8 +531,8 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     lumo = new QPushButton("LUMO");
     homo->setObjectName("resultsHomo");
     lumo->setObjectName("resultsLumo");
-    homo->setToolTip("選択中のスピンのHOMOを表示します。");
-    lumo->setToolTip("選択中のスピンのLUMOを表示します。");
+    homo->setToolTip(tr("選択中のスピンのHOMOを表示します。"));
+    lumo->setToolTip(tr("選択中のスピンのLUMOを表示します。"));
     orbitalRow->addWidget(
         group({orbitalNavigation[0], orbitalNavigation[1], orbitalNavigation[2], orbitalPosition,
                orbitalNavigation[3], orbitalNavigation[4], orbitalNavigation[5]}));
@@ -534,43 +541,43 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     auto *modePage = new QWidget;
     auto *modeRow = new FlowLayout(modePage, 10, 4);
     modeRow->setContentsMargins(0, 0, 0, 0);
-    playMode = iconButton("play", "resultsPlayMode", "選択したモードを再生");
+    playMode = iconButton("play", "resultsPlayMode", tr("選択したモードを再生"));
     playMode->setProperty("primary", true);
     modeLabel = new QLabel;
     modeLabel->setObjectName("resultsModeLabel");
-    auto *amplitudeLabel = new QLabel("振幅");
+    auto *amplitudeLabel = new QLabel(tr("振幅"));
     amplitude = new QDoubleSpinBox;
     amplitude->setObjectName("resultsAmplitude");
     amplitude->setRange(.01, 2);
     amplitude->setSingleStep(.05);
     amplitude->setValue(.3);
     amplitude->setSuffix(" Å");
-    amplitude->setToolTip("表示用に規格化した最大変位です。");
+    amplitude->setToolTip(tr("表示用に規格化した最大変位です。"));
     amplitudeLabel->setBuddy(amplitude);
-    arrows = new QCheckBox("矢印");
+    arrows = new QCheckBox(tr("矢印"));
     arrows->setObjectName("resultsModeArrows");
-    arrows->setToolTip("選択したモードの変位を基準構造に矢印で重ねます（最大の矢印は振幅の3倍）。");
+    arrows->setToolTip(tr("選択したモードの変位を基準構造に矢印で重ねます（最大の矢印は振幅の3倍）。"));
     modeExport = new QToolButton;
     modeExport->setObjectName("resultsModeExport");
-    modeExport->setText("書き出し");
+    modeExport->setText(tr("書き出し"));
     modeExport->setIcon(lineIcon("export"));
     modeExport->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     modeExport->setPopupMode(QToolButton::InstantPopup);
     auto *modeMenu = new QMenu(modeExport);
-    saveModeImages = modeMenu->addAction("振動の連番画像を書き出す…");
+    saveModeImages = modeMenu->addAction(tr("振動の連番画像を書き出す…"));
     saveModeImages->setObjectName("resultsSaveModeImages");
-    saveModeTrajectory = modeMenu->addAction("振動をXYZ（複数構造）で書き出す…");
+    saveModeTrajectory = modeMenu->addAction(tr("振動をXYZ（複数構造）で書き出す…"));
     saveModeTrajectory->setObjectName("resultsSaveModeXyz");
     modeExport->setMenu(modeMenu);
-    closeMode = iconButton("close", "resultsCloseMode", "振動の表示を終えて構造列に戻る");
+    closeMode = iconButton("close", "resultsCloseMode", tr("振動の表示を終えて構造列に戻る"));
     modeRow->addWidget(group({playMode, modeLabel}, 8));
     modeRow->addWidget(group({amplitudeLabel, amplitude}, 6));
     modeRow->addWidget(arrows);
     modeRow->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum));
     modeRow->addWidget(group({modeExport, closeMode}));
     dock->addWidget(modePage);
-    auto *hint = new ElidedLabel("原子をクリック: 計測（2〜4原子） · " + viewControlsHint() +
-                                 " · 結果は編集中の分子から独立");
+    auto *hint = new ElidedLabel(
+        tr("原子をクリック: 計測（2〜4原子） · %1 · 結果は編集中の分子から独立").arg(viewControlsHint()));
     hint->setObjectName("resultsHint");
     hint->setToolTip(hint->text());
     auto hintFont = hint->font();
@@ -605,7 +612,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     bannerTexts->addWidget(bannerTitle);
     bannerTexts->addWidget(bannerText);
     bannerRow->addLayout(bannerTexts, 1);
-    auto *bannerLog = new QPushButton("ログの末尾を表示");
+    auto *bannerLog = new QPushButton(tr("ログの末尾を表示"));
     bannerLog->setObjectName("resultsBannerLog");
     bannerRow->addWidget(bannerLog, 0, Qt::AlignTop);
     banner->hide();
@@ -620,7 +627,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     // moves nothing above it. How the calculation ended is in the bar, the banner and "概要".
     status = new QPlainTextEdit;
     status->setObjectName("resultsStatus");
-    status->setAccessibleName("結果ビューアのメッセージ");
+    status->setAccessibleName(tr("結果ビューアのメッセージ"));
     status->setReadOnly(true);
     status->setTabChangesFocus(true);
     status->setFrameShape(QFrame::NoFrame);
@@ -636,7 +643,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     overviewScroll->setObjectName("resultsOverview");
     overviewScroll->setWidgetResizable(true);
     overviewScroll->setFrameShape(QFrame::NoFrame);
-    tabs->addTab(overviewScroll, "概要");
+    tabs->addTab(overviewScroll, tr("概要"));
     auto *energyPage = new QWidget;
     auto *enl = new QVBoxLayout(energyPage);
     auto *energyRow = new QHBoxLayout;
@@ -650,17 +657,17 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
                                       {"ΔE: cm⁻¹", "wavenumber"}})
         energyUnit->addItem(label, unit);
     energyRow->addWidget(energyUnit);
-    energyReference = new QPushButton("選択行をΔEの基準にする");
+    energyReference = new QPushButton(tr("選択行をΔEの基準にする"));
     energyReference->setObjectName("resultsEnergyReference");
     energyRow->addWidget(energyReference);
     energyRow->addStretch();
-    energy = table({"手法", "全エネルギー / Eh", "ΔE", "ログ行"}, "resultsEnergy");
+    energy = table({tr("手法"), tr("全エネルギー / Eh"), "ΔE", tr("ログ行")}, "resultsEnergy");
     enl->addWidget(energy, 1);
     energyNote = new QLabel;
     energyNote->setObjectName("resultsEnergyNote");
     energyNote->setWordWrap(true);
     enl->addWidget(energyNote);
-    tabs->addTab(energyPage, "エネルギー");
+    tabs->addTab(energyPage, tr("エネルギー"));
     connect(energyUnit, &QComboBox::currentIndexChanged, this, &ResultsPanel::showEnergies);
     connect(energyReference, &QPushButton::clicked, this, [this] {
         if (energy->currentRow() >= 0 && energy->currentRow() < data.energies.size()) {
@@ -676,7 +683,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     orbitalSource->setWordWrap(true);
     orbitalSource->setTextFormat(Qt::PlainText);
     sourceRow->addWidget(orbitalSource, 1);
-    openMolden = new QPushButton("形を表示");
+    openMolden = new QPushButton(tr("形を表示"));
     openMolden->setObjectName("resultsOpenMolden");
     openMolden->hide();
     sourceRow->addWidget(openMolden, 0, Qt::AlignTop);
@@ -685,11 +692,13 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     levels = new OrbitalLevels;
     levels->setObjectName("resultsOrbitalLevels");
     orbitalViews->addWidget(levels);
-    orbitals = table({"番号", "軌道", "対称性", "スピン", "エネルギー / Eh", "占有数"}, "resultsOrbitals");
+    orbitals = table({tr("番号"), tr("軌道", "orbital table column"), tr("対称性"), tr("スピン"),
+                      tr("エネルギー / Eh"), tr("占有数")},
+                     "resultsOrbitals");
     orbitals->verticalHeader()->hide();
     orbitalViews->addWidget(orbitals, 1);
     ol->addLayout(orbitalViews, 1);
-    orbitalOptions = new QGroupBox("等値面の設定");
+    orbitalOptions = new QGroupBox(tr("等値面の設定"));
     auto *optionGrid = new QGridLayout(orbitalOptions);
     optionGrid->setVerticalSpacing(3);
     orbitalIso = new QLineEdit("0.03");
@@ -698,15 +707,15 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     orbitalGrid->setObjectName("resultsOrbitalGrid");
     orbitalGrid->setRange(16, 100);
     orbitalGrid->setValue(40);
-    orbitalGrid->setToolTip("最も長い辺の分割数です。格子間隔は全軸で同じです。");
+    orbitalGrid->setToolTip(tr("最も長い辺の分割数です。格子間隔は全軸で同じです。"));
     orbitalNorm = new QComboBox;
     orbitalNorm->setObjectName("resultsOrbitalNorm");
-    orbitalNorm->addItem("自動判定", "auto");
-    orbitalNorm->addItem("標準MOLDEN（NWChemのNONE / JANPA）", "standard");
-    orbitalNorm->addItem("NWChem（正規化因子を含む係数）", "nwchem");
-    const QList<std::pair<QString, QWidget *>> optionFields{{"等値 / bohr⁻³ᐟ²（±）", orbitalIso},
-                                                            {"格子分割数（最長辺）", orbitalGrid},
-                                                            {"基底係数の正規化", orbitalNorm}};
+    orbitalNorm->addItem(tr("自動判定"), "auto");
+    orbitalNorm->addItem(tr("標準MOLDEN（NWChemのNONE / JANPA）"), "standard");
+    orbitalNorm->addItem(tr("NWChem（正規化因子を含む係数）"), "nwchem");
+    const QList<std::pair<QString, QWidget *>> optionFields{{tr("等値 / bohr⁻³ᐟ²（±）"), orbitalIso},
+                                                            {tr("格子分割数（最長辺）"), orbitalGrid},
+                                                            {tr("基底係数の正規化"), orbitalNorm}};
     for (int i = 0; i < optionFields.size(); ++i) {
         auto *label = new QLabel(optionFields[i].first);
         label->setBuddy(optionFields[i].second);
@@ -720,7 +729,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     orbitalStatus->setTextFormat(Qt::PlainText);
     orbitalStatus->setWordWrap(true);
     ol->addWidget(orbitalStatus);
-    tabs->addTab(orbitalTab, "軌道");
+    tabs->addTab(orbitalTab, tr("軌道"));
     connect(openMolden, &QPushButton::clicked, this, [this] { openOrbitalShape(orbitals->currentRow()); });
     connect(orbitals, &QTableWidget::cellDoubleClicked, this, [this](int row) {
         if (data.format == "NWChem" && !jobMolden().isEmpty())
@@ -772,13 +781,13 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     vl->addWidget(modeSummary);
     auto *irRow = new QHBoxLayout;
     vl->addLayout(irRow);
-    auto *irTitle = new QLabel("IRスペクトル（棒をクリックするとそのモードを表示）");
+    auto *irTitle = new QLabel(tr("IRスペクトル（棒をクリックするとそのモードを表示）"));
     irRow->addWidget(irTitle, 1);
     irWidth = new QDoubleSpinBox;
     irWidth->setObjectName("resultsIrWidth");
     irWidth->setRange(1, 200);
     irWidth->setValue(20);
-    irWidth->setPrefix("半値全幅 ");
+    irWidth->setPrefix(tr("半値全幅 "));
     irWidth->setSuffix(" cm⁻¹");
     irRow->addWidget(irWidth);
     irSpectrum = new ChartView;
@@ -786,25 +795,25 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     irSpectrum->setReversedX(true);
     irSpectrum->setCursor(Qt::PointingHandCursor);
     vl->addWidget(irSpectrum, 1);
-    modes = table({"振動数 / cm⁻¹", "IR強度 / km mol⁻¹", "種類"}, "resultsModes");
+    modes = table({tr("振動数 / cm⁻¹"), tr("IR強度 / km mol⁻¹"), tr("種類")}, "resultsModes");
     modes->setItemDelegateForColumn(1, new IntensityDelegate(modes));
     vl->addWidget(modes, 1);
-    showRigid = new QCheckBox("並進・回転のモードも表示");
+    showRigid = new QCheckBox(tr("並進・回転のモードも表示"));
     showRigid->setObjectName("resultsShowRigid");
-    showRigid->setToolTip("振動数がほぼ0の並進・回転（3N−6個以外）は既定で一覧から省きます。");
+    showRigid->setToolTip(tr("振動数がほぼ0の並進・回転（3N−6個以外）は既定で一覧から省きます。"));
     vl->addWidget(showRigid);
     connect(showRigid, &QCheckBox::toggled, this, [this](bool on) {
         for (int i = 0; i < modes->rowCount(); ++i)
             modes->setRowHidden(i, !on && rigidMotion.value(i));
     });
-    auto *modeHint = new QLabel(
+    auto *modeHint = new QLabel(tr(
         "モードを選ぶと3Dビューに基準構造を表示し、下の操作で再生・書き出しできます。負の振動数は虚振動です。"
         "振幅は表示用に規格化した最大変位で、アニメーションの速さは実際の振動数を表しません。振動数の絶対値が"
         "最も小さい3N−6個以外（直線分子は3N−5個以外）を並進・回転とみなし、IRスペクトル（ローレンツ関数で表示"
-        "用に広げた曲線）から除きます。");
+        "用に広げた曲線）から除きます。"));
     modeHint->setWordWrap(true);
     vl->addWidget(modeHint);
-    tabs->addTab(vibrations, "振動");
+    tabs->addTab(vibrations, tr("振動"));
     connect(irWidth, &QDoubleSpinBox::valueChanged, this, &ResultsPanel::showIrSpectrum);
     connect(irSpectrum, &ChartView::stickClicked, this, [this](int series, int index) {
         if (series == 1 && index >= 0 && index < irModes.size())
@@ -836,33 +845,36 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     gradientChart->setObjectName("resultsGradientChart");
     charts->addWidget(gradientChart, 1);
     opl->addLayout(charts, 1);
-    steps = table({"ステップ", "エネルギー / Eh", "ΔE / Eh", "Gmax", "Grms", "Xrms", "Xmax", "経過 / s"},
-                  "resultsSteps");
+    steps = table(
+        {tr("ステップ"), tr("エネルギー / Eh"), "ΔE / Eh", "Gmax", "Grms", "Xrms", "Xmax", tr("経過 / s")},
+        "resultsSteps");
     steps->verticalHeader()->hide();
     opl->addWidget(steps, 1);
-    auto *stepHint = new QLabel("NWChem DRIVERの「@」行です。勾配はHartree/Bohr、変位はBohr。破線は収束閾値、"
-                                "表の色付きの値は閾値を満たした値です。");
+    auto *stepHint =
+        new QLabel(tr("NWChem DRIVERの「@」行です。勾配はHartree/Bohr、変位はBohr。破線は収束閾値、"
+                      "表の色付きの値は閾値を満たした値です。"));
     stepHint->setWordWrap(true);
     opl->addWidget(stepHint);
-    tabs->addTab(optimizationPage, "最適化");
+    tabs->addTab(optimizationPage, tr("最適化"));
     auto *excitedPage = new QWidget;
     auto *el = new QVBoxLayout(excitedPage);
-    excitations = table({"状態", "スピン", "対称", "励起エネルギー / eV", "波長 / nm", "振動子強度", "<S²>"},
+    excitations = table({tr("状態"), tr("スピン"), tr("対称"), tr("励起エネルギー / eV"), tr("波長 / nm"),
+                         tr("振動子強度"), "<S²>"},
                         "resultsExcitations");
     el->addWidget(excitations, 1);
     auto *spectrumRow = new QHBoxLayout;
     el->addLayout(spectrumRow);
     spectrumAxis = new QComboBox;
     spectrumAxis->setObjectName("resultsSpectrumAxis");
-    spectrumAxis->addItem("横軸: 波長 / nm", "nm");
-    spectrumAxis->addItem("横軸: 励起エネルギー / eV", "ev");
+    spectrumAxis->addItem(tr("横軸: 波長 / nm"), "nm");
+    spectrumAxis->addItem(tr("横軸: 励起エネルギー / eV"), "ev");
     spectrumRow->addWidget(spectrumAxis);
     broadening = new QDoubleSpinBox;
     broadening->setObjectName("resultsBroadening");
     broadening->setRange(.05, 2);
     broadening->setSingleStep(.05);
     broadening->setValue(.3);
-    broadening->setPrefix("半値全幅 ");
+    broadening->setPrefix(tr("半値全幅 "));
     broadening->setSuffix(" eV");
     spectrumRow->addWidget(broadening);
     spectrumRow->addStretch();
@@ -870,27 +882,28 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     spectrum->setObjectName("resultsSpectrum");
     el->addWidget(spectrum, 1);
     auto *spectrumHint =
-        new QLabel("各状態の振動子強度（棒）に、エネルギー軸で指定した半値全幅のガウス関数を掛けて重ね"
-                   "た表示用の曲線です。三重項など振動子強度0の状態は棒に現れません。");
+        new QLabel(tr("各状態の振動子強度（棒）に、エネルギー軸で指定した半値全幅のガウス関数を掛けて重ね"
+                      "た表示用の曲線です。三重項など振動子強度0の状態は棒に現れません。"));
     spectrumHint->setWordWrap(true);
     el->addWidget(spectrumHint);
-    tabs->addTab(excitedPage, "励起状態");
+    tabs->addTab(excitedPage, tr("励起状態"));
     connect(spectrumAxis, &QComboBox::currentIndexChanged, this, &ResultsPanel::showSpectrum);
     connect(broadening, &QDoubleSpinBox::valueChanged, this, &ResultsPanel::showSpectrum);
     auto *pathPage = new QWidget;
     auto *pl = new QVBoxLayout(pathPage);
-    path = table({"点", "座標・方向", "値", "エネルギー / Eh", "ΔE / kcal mol⁻¹"}, "resultsPath");
+    path = table({tr("点"), tr("座標・方向"), tr("値"), tr("エネルギー / Eh"), "ΔE / kcal mol⁻¹"},
+                 "resultsPath");
     pl->addWidget(path, 1);
     pathChart = new ChartView;
     pathChart->setObjectName("resultsPathChart");
     pl->addWidget(pathChart, 1);
     auto *pathHint =
-        new QLabel("座標スキャン: 各点の最後のエネルギー（緩和スキャンは最適化後）で、ΔEは最小値基準です。"
-                   "IRC: 遷移状態を0とし、前進方向を正・後退方向を負の反応座標（amu½·Bohr）で表示し、"
-                   "ΔEは遷移状態基準です。行を選ぶとその構造を表示します。");
+        new QLabel(tr("座標スキャン: 各点の最後のエネルギー（緩和スキャンは最適化後）で、ΔEは最小値基準です。"
+                      "IRC: 遷移状態を0とし、前進方向を正・後退方向を負の反応座標（amu½·Bohr）で表示し、"
+                      "ΔEは遷移状態基準です。行を選ぶとその構造を表示します。"));
     pathHint->setWordWrap(true);
     pl->addWidget(pathHint);
-    tabs->addTab(pathPage, "経路・スキャン");
+    tabs->addTab(pathPage, tr("経路・スキャン"));
     connect(path, &QTableWidget::currentCellChanged, this, [this](int row) {
         if (row < 0 || !path->item(row, 0))
             return;
@@ -909,25 +922,25 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     propertySummary->setWordWrap(true);
     propertySummary->setTextInteractionFlags(Qt::TextSelectableByMouse);
     ppl->addWidget(propertySummary);
-    atomProperties =
-        table({"番号", "元素", "Mulliken電荷", "ESP電荷", "RESP電荷", "NMR遮蔽 / ppm", "異方性 / ppm"},
-              "resultsAtomProperties");
+    atomProperties = table({tr("番号"), tr("元素"), tr("Mulliken電荷"), tr("ESP電荷"), tr("RESP電荷"),
+                            tr("NMR遮蔽 / ppm"), tr("異方性 / ppm")},
+                           "resultsAtomProperties");
     atomProperties->verticalHeader()->hide();
     ppl->addWidget(atomProperties, 1);
-    tabs->addTab(propertyPage, "物性");
+    tabs->addTab(propertyPage, tr("物性"));
     auto *surfaces = new QWidget;
     auto *sf = new QFormLayout(surfaces);
     isovalue = new QLineEdit("0.03");
     isovalue->setObjectName("resultsIsovalue");
-    sf->addRow("等値（ファイルの単位）", isovalue);
+    sf->addRow(tr("等値（ファイルの単位）"), isovalue);
     dataset = new QComboBox;
     dataset->setObjectName("resultsDataset");
-    sf->addRow("CUBEデータ", dataset);
-    applyIso = new QPushButton("等値面を再生成");
+    sf->addRow(tr("CUBEデータ"), dataset);
+    applyIso = new QPushButton(tr("等値面を再生成"));
     applyIso->setObjectName("resultsApplyIso");
     sf->addRow(applyIso);
-    auto *positive = new QCheckBox("正の面（赤）");
-    auto *negative = new QCheckBox("負の面（青）");
+    auto *positive = new QCheckBox(tr("正の面（赤）"));
+    auto *negative = new QCheckBox(tr("負の面（青）"));
     positive->setChecked(true);
     negative->setChecked(true);
     sf->addRow(positive);
@@ -935,18 +948,18 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     auto *opacity = new QSlider(Qt::Horizontal);
     opacity->setRange(20, 255);
     opacity->setValue(150);
-    sf->addRow("不透明度", opacity);
+    sf->addRow(tr("不透明度"), opacity);
     auto style = [this, positive, negative, opacity] {
         view->setSurfaceStyle(positive->isChecked(), negative->isChecked(), opacity->value());
     };
     connect(positive, &QCheckBox::toggled, this, style);
     connect(negative, &QCheckBox::toggled, this, style);
     connect(opacity, &QSlider::valueChanged, this, style);
-    auto *surfaceHint = new QLabel("CUBEとMOLDEN軌道の正負・不透明度を変更できます。CUBEの値の意味は生成"
-                                   "条件で確認してください。MOLDENの軌道と等値は「軌道」で選択します。");
+    auto *surfaceHint = new QLabel(tr("CUBEとMOLDEN軌道の正負・不透明度を変更できます。CUBEの値の意味は生成"
+                                      "条件で確認してください。MOLDENの軌道と等値は「軌道」で選択します。"));
     surfaceHint->setWordWrap(true);
     sf->addRow(surfaceHint);
-    tabs->addTab(surfaces, "CUBE / 等値面");
+    tabs->addTab(surfaces, tr("CUBE / 等値面"));
     // The file as in "3 実行設定" and "履歴": its name and how much of it, copy, and the text.
     auto *logPage = new QWidget;
     auto *logLayout = new QVBoxLayout(logPage);
@@ -958,12 +971,12 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     logName->setProperty("mono", true);
     logName->setProperty("muted", true);
     logHead->addWidget(logName, 1);
-    auto *copyLog = copyButton("resultsCopyLog", "表示中のファイルをコピー");
+    auto *copyLog = copyButton("resultsCopyLog", tr("表示中のファイルをコピー"));
     logHead->addWidget(copyLog);
     logLayout->addLayout(logHead);
     log = logView("resultsLog");
     logLayout->addWidget(log, 1);
-    tabs->addTab(logPage, "元ファイル");
+    tabs->addTab(logPage, tr("元ファイル"));
     connect(copyLog, &QToolButton::clicked, this,
             [this] { QApplication::clipboard()->setText(log->toPlainText()); });
     split->setStretchFactor(0, 3);
@@ -977,15 +990,15 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
 
     const auto openResultFile = [this] {
         const auto p = QFileDialog::getOpenFileName(
-            this, "結果ファイルを開く", folder,
-            "NWChem・可視化 (*.out *.log *.xyz *.cube *.cub *.molden *.mld *.molde);;すべて (*)");
+            this, tr("結果ファイルを開く"), folder,
+            tr("NWChem・可視化 (*.out *.log *.xyz *.cube *.cub *.molden *.mld *.molde);;すべて (*)"));
         if (!p.isEmpty())
             openFile(p);
     };
     connect(openButton, &QToolButton::clicked, this, openResultFile);
     connect(openFileAction, &QAction::triggered, this, openResultFile);
     connect(openDirectoryAction, &QAction::triggered, this, [this] {
-        const auto p = QFileDialog::getExistingDirectory(this, "ジョブフォルダーを開く", folder);
+        const auto p = QFileDialog::getExistingDirectory(this, tr("ジョブフォルダーを開く"), folder);
         if (!p.isEmpty())
             openDirectory(p);
     });
@@ -1024,7 +1037,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
             phase = 0;
             animation.setInterval(180);
             animation.start();
-            setPlaying(playFrames, "再生を停止");
+            setPlaying(playFrames, tr("再生を停止"));
         }
     });
     connect(playMode, &QPushButton::clicked, this, [this, setPlaying] {
@@ -1035,7 +1048,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
             phase = 0;
             animation.setInterval(40);
             animation.start();
-            setPlaying(playMode, "再生を停止");
+            setPlaying(playMode, tr("再生を停止"));
             view->setArrows({}); // Arrows belong to the reference structure, not the moving one.
             showMode();
         }
@@ -1077,7 +1090,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         bool ok;
         const double n = isovalue->text().toDouble(&ok);
         if (!ok || !std::isfinite(n) || n <= 0 || n > 1e6) {
-            error("等値は0より大きい有限の数で指定してください。");
+            error(tr("等値は0より大きい有限の数で指定してください。"));
             return;
         }
         startLoad(data.source, n, dataset->currentIndex());
@@ -1088,8 +1101,8 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         window->safe([this] {
             const auto fit = superpose(displayedGeometry(), window->document());
             status->setPlainText(
-                QString("編集中の分子との比較: RMSD（座標そのまま）%1 Å、重ね合わせ後 %2 Å（水素以外 "
-                        "%3 Å）、最大のずれ %4 Å")
+                tr("編集中の分子との比較: RMSD（座標そのまま）%1 Å、重ね合わせ後 %2 Å（水素以外 "
+                   "%3 Å）、最大のずれ %4 Å")
                     .arg(fit.raw, 0, 'f', 4)
                     .arg(fit.rmsd, 0, 'f', 4)
                     .arg(fit.heavyRmsd, 0, 'f', 4)
@@ -1099,20 +1112,20 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     connect(saveXyz, &QAction::triggered, this, [this] {
         window->safe([&] {
             const auto p =
-                QFileDialog::getSaveFileName(this, "表示中の基準構造を保存", "result.xyz", "XYZ (*.xyz)");
+                QFileDialog::getSaveFileName(this, tr("表示中の基準構造を保存"), "result.xyz", "XYZ (*.xyz)");
             if (!p.isEmpty())
                 saveGeometry(p.endsWith(".xyz", Qt::CaseInsensitive) ? p : p + ".xyz");
         });
     });
     connect(savePng, &QAction::triggered, this, [this] {
         window->safe([&] {
-            auto p = QFileDialog::getSaveFileName(this, "結果画像を保存", "result.png", "PNG (*.png)");
+            auto p = QFileDialog::getSaveFileName(this, tr("結果画像を保存"), "result.png", "PNG (*.png)");
             if (p.isEmpty())
                 return;
             if (!p.endsWith(".png", Qt::CaseInsensitive))
                 p += ".png";
             if (!view->grab().save(p))
-                fail("画像を保存できません。");
+                fail(tr("画像を保存できません。"));
         });
     });
     display(true);
@@ -1170,8 +1183,8 @@ void ResultsPanel::applyChromeStyle() {
     // Icons drawn in fixed colors follow the palette here.
     const ChromeColors c(pal);
     for (auto *b : {playFrames, playMode})
-        b->setIcon(
-            lineIcon(animation.isActive() && b->toolTip() == "再生を停止" ? "pause" : "play", c.onAccent));
+        b->setIcon(lineIcon(animation.isActive() && b->toolTip() == tr("再生を停止") ? "pause" : "play",
+                            c.onAccent));
     showOutcome();
     showOptimization();
 }
@@ -1179,15 +1192,15 @@ void ResultsPanel::stopAnimation() {
     animation.stop();
     const auto onAccent = ChromeColors(palette()).onAccent;
     playFrames->setIcon(lineIcon("play", onAccent));
-    playFrames->setToolTip("構造列を再生");
-    playFrames->setAccessibleName("構造列を再生");
+    playFrames->setToolTip(tr("構造列を再生"));
+    playFrames->setAccessibleName(tr("構造列を再生"));
     playMode->setIcon(lineIcon("play", onAccent));
-    playMode->setToolTip("選択したモードを再生");
-    playMode->setAccessibleName("選択したモードを再生");
+    playMode->setToolTip(tr("選択したモードを再生"));
+    playMode->setAccessibleName(tr("選択したモードを再生"));
     showContext();
 }
 void ResultsPanel::error(const QString &message) {
-    status->setPlainText("読込・表示エラー: " + message + "\n前の結果は保持しています。");
+    status->setPlainText(tr("読込・表示エラー: %1\n前の結果は保持しています。").arg(message));
     emit loadFailed(message);
 }
 void ResultsPanel::cancelLoad() {
@@ -1201,7 +1214,7 @@ void ResultsPanel::cancelLoad() {
     p->deleteLater();
     work.reset();
     pendingPath.clear();
-    status->setPlainText("読込を中止しました。前の結果を保持しています。");
+    status->setPlainText(tr("読込を中止しました。前の結果を保持しています。"));
     updateActions();
 }
 void ResultsPanel::openFile(const QString &path) {
@@ -1210,7 +1223,7 @@ void ResultsPanel::openFile(const QString &path) {
     const auto suffix = QFileInfo(path).suffix().toLower();
     const double iso = suffix == "cube" || suffix == "cub" ? isovalue->text().toDouble(&ok) : .03;
     if (!ok || !std::isfinite(iso) || iso <= 0 || iso > 1e6) {
-        error("CUBEの等値は0より大きい有限の数で指定してください。");
+        error(tr("CUBEの等値は0より大きい有限の数で指定してください。"));
         return;
     }
     startLoad(path, iso, 0);
@@ -1219,13 +1232,13 @@ void ResultsPanel::openDirectory(const QString &path) {
     cancelLoad();
     QDir dir(path);
     if (!dir.exists()) {
-        error("フォルダーが見つかりません。");
+        error(tr("フォルダーが見つかりません。"));
         return;
     }
     folder = dir.absolutePath();
     fillFiles("output.out");
     if (files->currentIndex() < 0) {
-        error("対応する結果ファイルがありません。");
+        error(tr("対応する結果ファイルがありません。"));
         return;
     }
     window->safe([&] { openEntry(files->currentData().toString()); });
@@ -1268,10 +1281,9 @@ void ResultsPanel::fillFiles(const QString &selected) {
         });
         const auto key = QString("animation:%1:%2").arg(it.key().first).arg(it.key().second);
         animationFrames[key] = list;
-        files->addItem(QString("振動アニメーション %1: モード %2（%3枚）")
-                           .arg(QFileInfo(it.key().first).fileName())
-                           .arg(it.key().second)
-                           .arg(list.size()),
+        files->addItem(tr("振動アニメーション %1: モード %2（%3枚）")
+                           .arg(QFileInfo(it.key().first).fileName(), QString::number(it.key().second),
+                                QString::number(list.size())),
                        key);
     }
     int index = files->findData(selected);
@@ -1292,14 +1304,14 @@ void ResultsPanel::openEntry(const QString &entry) {
     // Join the steps of one mode into a multi-frame XYZ in a private temporary folder.
     const auto list = animationFrames.value(entry);
     if (list.isEmpty() || !animationDir.isValid())
-        fail("振動アニメーションのファイルが見つかりません。");
+        fail(tr("振動アニメーションのファイルが見つかりません。"));
     QByteArray joined;
     for (const auto &name : list) {
         joined += readFile(QDir(folder).filePath(name));
         if (!joined.endsWith('\n'))
             joined += '\n';
         if (joined.size() > 64 * 1024 * 1024)
-            fail("振動アニメーションのファイルが大きすぎます。");
+            fail(tr("振動アニメーションのファイルが大きすぎます。"));
     }
     const auto path = animationDir.filePath(QString("animation-%1.xyz").arg(animationSources.size() + 1));
     writeFile(path, joined);
@@ -1336,7 +1348,7 @@ void ResultsPanel::renderOrbital(int orbital) {
     bool ok;
     const double iso = orbitalIso->text().toDouble(&ok);
     if (!ok || !std::isfinite(iso) || iso <= 0 || iso > 1e6) {
-        error("軌道の等値は0より大きい有限の数で指定してください。");
+        error(tr("軌道の等値は0より大きい有限の数で指定してください。"));
         return;
     }
     startLoad(data.source, iso, 0, orbital, orbitalNorm->currentData().toString(), orbitalGrid->value(),
@@ -1375,7 +1387,7 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
     }
     work = std::make_unique<QTemporaryDir>();
     if (!work->isValid()) {
-        error("一時フォルダーを作成できません。");
+        error(tr("一時フォルダーを作成できません。"));
         return;
     }
     pendingPath = before.absoluteFilePath();
@@ -1424,12 +1436,12 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
                 if (code != 0 || state != QProcess::NormalExit) {
                     const QString e = QFileInfo::exists(response + ".error")
                                           ? QString::fromUtf8(readFile(response + ".error"))
-                                          : "結果の読込プロセスが失敗しました。";
+                                          : tr("結果の読込プロセスが失敗しました。");
                     fail(e);
                 }
                 const QFileInfo after(before.absoluteFilePath());
                 if (stamp.isEmpty() || sourceStamp(after) != stamp)
-                    fail("読込中にファイルが更新されました。再読込してください。");
+                    fail(tr("読込中にファイルが更新されました。再読込してください。"));
                 auto next = loadResultData(response);
                 const bool newSource = data.source != next.source;
                 data = std::move(next);
@@ -1466,7 +1478,7 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
             if (follow >= 0)
                 orbitals->setCurrentCell(follow, 0); // Renders it like a choice in the list.
         });
-    status->setPlainText("読込中: " + pendingPath + "\n完了まで前の結果を表示します。");
+    status->setPlainText(tr("読込中: %1\n完了まで前の結果を表示します。").arg(pendingPath));
     updateActions();
     p->start();
 }
@@ -1531,8 +1543,8 @@ void ResultsPanel::updateActions() {
             orbitalReady && data.selectedOrbital >= 0 &&
             (i < 3 ? data.selectedOrbital > 0 : data.selectedOrbital < data.orbitals.size() - 1));
     orbitalPosition->setText(data.selectedOrbital >= 0
-                                 ? QString("%1 %2番").arg(data.orbitals[data.selectedOrbital].spin,
-                                                          orbitals->item(data.selectedOrbital, 0)->text())
+                                 ? tr("%1 %2番").arg(data.orbitals[data.selectedOrbital].spin,
+                                                     orbitals->item(data.selectedOrbital, 0)->text())
                                  : QString());
 }
 void ResultsPanel::display(bool orbitalOnly) {
@@ -1565,13 +1577,13 @@ void ResultsPanel::display(bool orbitalOnly) {
     setChip(formatChip, open ? formatName(data.format) : QString(), "neutral");
     const auto outcome = resultOutcome(data);
     // A run that did not end normally has the banner over the details instead.
-    setChip(outcomeChip, outcome == "normal" ? QString("正常終了") : QString(), "good", data.status);
+    setChip(outcomeChip, outcome == "normal" ? tr("正常終了") : QString(), "good", data.status);
     if (!orbitalOnly)
         barFit->refit(); // Another file: its names may fit now.
     if (!orbitalOnly) {
         log->setPlainText(data.log);
         logName->setText(QFileInfo(data.source).fileName() +
-                         (data.log.startsWith("…") ? QString(" · 末尾 128 KiB") : QString()));
+                         (data.log.startsWith("…") ? tr(" · 末尾 128 KiB") : QString()));
         referenceEnergy = -1;
         picked.clear();
         pinned.clear();
@@ -1624,33 +1636,33 @@ void ResultsPanel::display(bool orbitalOnly) {
     // A log has energies only; the shapes come from a MOLDEN file, if the job wrote one.
     const auto molden = jobMolden();
     openMolden->setVisible(!molden.isEmpty());
-    openMolden->setText("形を表示: " + molden);
+    openMolden->setText(tr("形を表示: %1").arg(molden));
     openMolden->setToolTip(
-        QString("選択中の軌道（未選択ならHOMO）を、同じジョブの %1 から表示します。").arg(molden));
+        tr("選択中の軌道（未選択ならHOMO）を、同じジョブの %1 から表示します。").arg(molden));
     orbitalSource->setText(
         data.format == "NWChem" && !data.orbitals.isEmpty()
             ? (molden.isEmpty()
-                   ? QString("ログの軌道エネルギーです。軌道の形を表示するには、「2 計算条件」で"
-                             "「計算後に分子軌道をMOLDENファイルに出力」をオンにして計算してください。")
-                   : QString("ログの軌道エネルギーです。行をダブルクリックするか「形を表示」で、"
-                             "同じジョブの %1 からその軌道の形を表示します。")
+                   ? tr("ログの軌道エネルギーです。軌道の形を表示するには、「2 計算条件」で"
+                        "「計算後に分子軌道をMOLDENファイルに出力」をオンにして計算してください。")
+                   : tr("ログの軌道エネルギーです。行をダブルクリックするか「形を表示」で、"
+                        "同じジョブの %1 からその軌道の形を表示します。")
                          .arg(molden))
-        : data.format == "MOLDEN" ? QString("エネルギーと形: %1").arg(QFileInfo(data.source).fileName())
+        : data.format == "MOLDEN" ? tr("エネルギーと形: %1").arg(QFileInfo(data.source).fileName())
                                   : QString());
     orbitalSource->setVisible(!orbitalSource->text().isEmpty());
     orbitalOptions->setVisible(data.format == "MOLDEN");
     orbitalStatus->setText(
         data.format == "NWChem" && !data.orbitals.isEmpty()
-            ? QString("番号はNWChemの軌道番号です（ログに一部の軌道しかなくてもMOLDENと同じ番号）。")
-        : data.format != "MOLDEN"      ? "MOLDENファイルを開くと分子軌道を表示します。"
+            ? tr("番号はNWChemの軌道番号です（ログに一部の軌道しかなくてもMOLDENと同じ番号）。")
+        : data.format != "MOLDEN"      ? tr("MOLDENファイルを開くと分子軌道を表示します。")
         : !data.orbitalError.isEmpty() ? data.orbitalError
         : data.selectedOrbital >= 0
-            ? QString("表示中: %1 %2番 / 等値 ±%3 / 正規化: "
-                      "%4\n準位図か一覧で軌道を選ぶと表示を切り替えます。赤: 正 / 青: 負。")
+            ? tr("表示中: %1 %2番 / 等値 ±%3 / 正規化: "
+                 "%4\n準位図か一覧で軌道を選ぶと表示を切り替えます。赤: 正 / 青: 負。")
                   .arg(data.orbitals[data.selectedOrbital].spin,
                        orbitals->item(data.selectedOrbital, 0)->text(), real(data.isovalue),
-                       data.orbitalNormalization == "nwchem" ? "NWChem" : "標準MOLDEN")
-            : "このファイルには表示可能な分子軌道がありません。");
+                       data.orbitalNormalization == "nwchem" ? QString("NWChem") : tr("標準MOLDEN"))
+            : tr("このファイルには表示可能な分子軌道がありません。"));
     if (!orbitalOnly) {
         const QSignalBlocker guard(modes);
         modes->setRowCount(data.modes.size());
@@ -1668,9 +1680,9 @@ void ResultsPanel::display(bool orbitalOnly) {
             // Translations and rotations are no vibrations: hidden by default, without an IR intensity.
             row(modes, i,
                 {real(m.frequency), rigid ? QString("—") : real(m.intensity),
-                 rigid             ? "並進・回転"
-                 : m.frequency < 0 ? "虚振動"
-                                   : "振動"});
+                 rigid             ? tr("並進・回転")
+                 : m.frequency < 0 ? tr("虚振動")
+                                   : tr("振動", "mode type")});
             if (!rigid && strongest > 0 && std::isfinite(m.intensity))
                 modes->item(i, 1)->setData(Qt::UserRole, std::clamp(m.intensity / strongest, 0., 1.));
             if (!rigid && m.frequency < -10)
@@ -1679,13 +1691,12 @@ void ResultsPanel::display(bool orbitalOnly) {
         }
         modes->clearSelection();
         modes->setCurrentCell(-1, -1);
-        QStringList parts{QString("振動 %1").arg(vibrationCount),
-                          imaginary ? QString("虚振動 %1個").arg(imaginary) : QString("虚振動なし")};
+        QStringList parts{tr("振動 %n", nullptr, vibrationCount),
+                          imaginary ? tr("虚振動 %n個", nullptr, imaginary) : tr("虚振動なし")};
         if (const auto thermo = data.properties.value("thermochemistry").toArray(); !thermo.isEmpty())
-            parts << QString("ゼロ点補正 %1 kcal/mol")
-                         .arg(fixed(thermo[0].toObject()["zpe_kcal"].toDouble(), 3));
+            parts << tr("ゼロ点補正 %1 kcal/mol").arg(fixed(thermo[0].toObject()["zpe_kcal"].toDouble(), 3));
         if (data.modes.size() > vibrationCount)
-            parts << QString("並進・回転 %1").arg(data.modes.size() - vibrationCount);
+            parts << tr("並進・回転 %1").arg(data.modes.size() - vibrationCount);
         modeSummary->setText(parts.join(" · "));
         showIrSpectrum();
         showPath();
@@ -1696,9 +1707,9 @@ void ResultsPanel::display(bool orbitalOnly) {
             const auto &x = data.excitations[i];
             row(excitations, i,
                 {QString::number(x.root),
-                 x.spin.isEmpty()      ? "非制限"
-                 : x.spin == "singlet" ? "一重項"
-                                       : "三重項",
+                 x.spin.isEmpty()      ? tr("非制限")
+                 : x.spin == "singlet" ? tr("一重項")
+                                       : tr("三重項"),
                  x.symmetry, fixed(x.ev, 4), fixed(EvNanometer / x.ev, 1), fixed(x.oscillator, 5),
                  std::isfinite(x.s2) ? fixed(x.s2, 4) : "—"});
         }
@@ -1771,8 +1782,9 @@ void ResultsPanel::updateTabs() {
                        0,
                        0,
                        0};
-    const QStringList names{"概要",     "エネルギー",     "軌道", "振動",          "最適化",
-                            "励起状態", "経路・スキャン", "物性", "CUBE / 等値面", "元ファイル"};
+    const QStringList names{tr("概要"),          tr("エネルギー"), tr("軌道"),           tr("振動"),
+                            tr("最適化"),        tr("励起状態"),   tr("経路・スキャン"), tr("物性"),
+                            tr("CUBE / 等値面"), tr("元ファイル")};
     for (int i = 0; i < details->count() && i < int(std::size(visible)); ++i) {
         details->setTabVisible(i, visible[i]);
         details->setTabText(i, counts[i] > 0 ? QString("%1 %2").arg(names[i]).arg(counts[i]) : names[i]);
@@ -1807,13 +1819,14 @@ void ResultsPanel::showOverview() {
         l->setFont(font);
     };
     if (data.source.isEmpty()) {
-        label(
-            "結果ファイル（NWChem出力・MOLDEN・CUBE・XYZ）またはジョブフォルダーを開くと、ここに結果の要点を"
-            "表"
-            "示し、データのあるタブ（エネルギー・軌道・振動など）が現れます。\n\n「計算を実行」（F5）で計算す"
-            "ると、"
-            "終了後に自動で読み込みます。過去の計算は「履歴」から開けます。",
-            "");
+        label(tr("結果ファイル（NWChem出力・MOLDEN・CUBE・XYZ）またはジョブフォルダーを開くと、ここに結果の要"
+                 "点を"
+                 "表"
+                 "示し、データのあるタブ（エネルギー・軌道・振動など）が現れます。\n\n「計算を実行」（F5）で"
+                 "計算す"
+                 "ると、"
+                 "終了後に自動で読み込みます。過去の計算は「履歴」から開けます。"),
+              "");
         layout->addStretch();
         setOverview(page);
         return;
@@ -1829,8 +1842,7 @@ void ResultsPanel::showOverview() {
         font.setBold(true);
         formula->setFont(font);
         layout->addWidget(formula);
-        label(QString("%1原子 · %2 · %3")
-                  .arg(molecule.atoms.size())
+        label(tr("%n原子 · %1 · %2", nullptr, int(molecule.atoms.size()))
                   .arg(formatName(data.format), QFileInfo(data.source).fileName()),
               "muted");
     } else
@@ -1847,7 +1859,7 @@ void ResultsPanel::showOverview() {
         auto *t = summaryTile(title, value, caption, tone, button);
         t->setObjectName(name);
         if (button) {
-            t->setToolTip(QString("「%1」を表示").arg(details->tabText(tab)));
+            t->setToolTip(tr("「%1」を表示").arg(details->tabText(tab)));
             connect(static_cast<QPushButton *>(t), &QPushButton::clicked, this,
                     [this, tab] { details->setCurrentIndex(tab); });
         }
@@ -1861,24 +1873,24 @@ void ResultsPanel::showOverview() {
         }
     };
     if (const auto final = data.properties["final_energy"].toObject(); !final.isEmpty()) {
-        const auto source = final["source"] == "frequency_reference" ? QString("振動数の参照構造")
-                            : final["source"] == "bsse_corrected"    ? QString("BSSE補正後")
-                                                                     : QString("最後のtask");
+        const auto source = final["source"] == "frequency_reference" ? tr("振動数の参照構造")
+                            : final["source"] == "bsse_corrected"    ? tr("BSSE補正後")
+                                                                     : tr("最後のtask");
         QString caption;
         if (!data.energies.isEmpty() && data.energies.last().hartree != final["hartree"].toDouble())
-            caption = QString("出力の最後の記録: %1 %2 Eh")
+            caption = tr("出力の最後の記録: %1 %2 Eh")
                           .arg(data.energies.last().method, shownReal(data.energies.last().hartree));
-        tile("resultsTileEnergy",
-             QString("計算のエネルギー（%1 · %2）").arg(final["method"].toString(), source),
+        tile("resultsTileEnergy", tr("計算のエネルギー（%1 · %2）").arg(final["method"].toString(), source),
              shownReal(final["hartree"].toDouble()) + " Eh", caption, "neutral", 1, true);
     } else if (!data.energies.isEmpty())
-        tile("resultsTileEnergy", QString("最後のエネルギー記録（%1）").arg(data.energies.last().method),
-             shownReal(data.energies.last().hartree) + " Eh", "出力順の最後の値です。", "neutral", 1, true);
+        tile("resultsTileEnergy", tr("最後のエネルギー記録（%1）").arg(data.energies.last().method),
+             shownReal(data.energies.last().hartree) + " Eh", tr("出力順の最後の値です。"), "neutral", 1,
+             true);
     if (data.properties.contains("optimization") || !data.steps.isEmpty()) {
         const bool converged = data.properties.value("optimization") == "converged";
         QString caption;
         if (!data.steps.isEmpty()) {
-            caption = QString("%1ステップ").arg(data.steps.last().step);
+            caption = tr("%nステップ", nullptr, data.steps.last().step);
             const auto t = data.properties.value("thresholds").toObject();
             const auto &last = data.steps.last();
             int met = 0, judged = 0;
@@ -1891,9 +1903,10 @@ void ResultsPanel::showOverview() {
                     met += value <= t[key].toDouble();
                 }
             if (judged)
-                caption += QString(" · 最終ステップは判定 %1/%2 を満たす").arg(met).arg(judged);
+                caption += tr(" · 最終ステップは判定 %1/%2 を満たす").arg(met).arg(judged);
         }
-        tile("resultsTileOptimization", "構造最適化", converged ? "収束" : "収束メッセージなし", caption,
+        tile("resultsTileOptimization", tr("構造最適化"),
+             converged ? tr("収束", "optimization state") : tr("収束メッセージなし"), caption,
              converged ? "good" : "warn", 4);
     }
     if (!data.modes.isEmpty()) {
@@ -1907,11 +1920,10 @@ void ResultsPanel::showOverview() {
                 imaginary << shownFixed(data.modes[i].frequency, 1);
         }
         const int rigid = int(data.modes.size()) - vibrations;
-        tile("resultsTileImaginary", "虚振動（−10 cm⁻¹未満）",
-             imaginary.isEmpty() ? QString("なし") : QString("%1個").arg(imaginary.size()),
-             imaginary.isEmpty() ? QString("振動 %1%2")
-                                       .arg(vibrations)
-                                       .arg(rigid ? QString(" · 並進・回転 %1 は除外").arg(rigid) : QString())
+        tile("resultsTileImaginary", tr("虚振動（−10 cm⁻¹未満）"),
+             imaginary.isEmpty() ? tr("なし") : tr("%n個", "imaginary frequencies", int(imaginary.size())),
+             imaginary.isEmpty() ? tr("振動 %n%1", nullptr, vibrations)
+                                       .arg(rigid ? tr(" · 並進・回転 %1 は除外").arg(rigid) : QString())
                                  : imaginary.join(", ") + " cm⁻¹",
              imaginary.isEmpty() ? "good" : "warn", 3);
     }
@@ -1924,7 +1936,7 @@ void ResultsPanel::showOverview() {
         if (h < 0 || l < 0)
             continue;
         tile("resultsTileGap" + spin,
-             spins.size() > 1 ? QString("HOMO–LUMOギャップ（%1）").arg(spin) : QString("HOMO–LUMOギャップ"),
+             spins.size() > 1 ? tr("HOMO–LUMOギャップ（%1）").arg(spin) : tr("HOMO–LUMOギャップ"),
              shownFixed((data.orbitals[l].energy - data.orbitals[h].energy) * HartreeToEv, 2) + " eV",
              QString("HOMO %1 · LUMO %2 eV")
                  .arg(shownFixed(data.orbitals[h].energy * HartreeToEv, 2),
@@ -1933,7 +1945,7 @@ void ResultsPanel::showOverview() {
     }
     if (data.properties.contains("dipole")) {
         const auto d = data.properties.value("dipole").toObject();
-        tile("resultsTileDipole", "双極子モーメント", fixed(d["debye"].toDouble(), 2) + " D",
+        tile("resultsTileDipole", tr("双極子モーメント"), fixed(d["debye"].toDouble(), 2) + " D",
              QString("x %1 · y %2 · z %3 a.u.")
                  .arg(shownFixed(d["x"].toDouble(), 4), shownFixed(d["y"].toDouble(), 4),
                       shownFixed(d["z"].toDouble(), 4)),
@@ -1943,18 +1955,19 @@ void ResultsPanel::showOverview() {
         const auto strongest =
             std::max_element(data.excitations.begin(), data.excitations.end(),
                              [](const auto &a, const auto &b) { return a.oscillator < b.oscillator; });
-        tile("resultsTileExcitations", "励起状態", QString("%1件").arg(data.excitations.size()),
-             QString("最大の振動子強度 %1（%2 eV / %3 nm）")
+        tile("resultsTileExcitations", tr("励起状態"),
+             tr("%n件", "excited states", int(data.excitations.size())),
+             tr("最大の振動子強度 %1（%2 eV / %3 nm）")
                  .arg(fixed(strongest->oscillator, 4), fixed(strongest->ev, 3),
                       fixed(EvNanometer / strongest->ev, 1)),
              "neutral", 5);
     }
     if (path->rowCount())
-        tile("resultsTilePath", data.properties.contains("scan") ? "座標スキャン" : "IRC",
-             QString("%1点").arg(path->rowCount()), "行を選ぶとその点の構造を表示します。", "neutral", 6);
+        tile("resultsTilePath", data.properties.contains("scan") ? tr("座標スキャン") : QString("IRC"),
+             tr("%n点", nullptr, path->rowCount()), tr("行を選ぶとその点の構造を表示します。"), "neutral", 6);
     if (data.format == "CUBE" || data.selectedOrbital >= 0)
-        tile("resultsTileSurface", "等値面", "±" + real(data.isovalue),
-             QString("格子 %1 × %2 × %3 · 値 %4 ～ %5 · 三角形 %6")
+        tile("resultsTileSurface", tr("等値面"), "±" + real(data.isovalue),
+             tr("格子 %1 × %2 × %3 · 値 %4 ～ %5 · 三角形 %6")
                  .arg(data.grid[0])
                  .arg(data.grid[1])
                  .arg(data.grid[2])
@@ -1962,8 +1975,8 @@ void ResultsPanel::showOverview() {
                  .arg(data.surface.size()),
              "neutral", data.format == "CUBE" ? 8 : 2);
     if (data.frames.size() > 1)
-        tile("resultsTileFrames", "構造列", QString("%1構造").arg(data.frames.size()),
-             "3Dビューの下のタイムラインで切り替えます。", "neutral", -1);
+        tile("resultsTileFrames", tr("構造列"), tr("%n構造", nullptr, int(data.frames.size())),
+             tr("3Dビューの下のタイムラインで切り替えます。"), "neutral", -1);
     if (cell)
         layout->addLayout(grid);
     else
@@ -1973,17 +1986,17 @@ void ResultsPanel::showOverview() {
         const auto t = value.toObject();
         const double temperature = t["temperature"].toDouble(), h = t["enthalpy_kcal"].toDouble(),
                      g = h - temperature * t["entropy_cal"].toDouble() / 1000;
-        section(QString("熱化学（%1 K）").arg(fixed(temperature, 2)));
+        section(tr("熱化学（%1 K）").arg(fixed(temperature, 2)));
         auto *values = new QGridLayout;
         values->setHorizontalSpacing(16);
         values->setVerticalSpacing(4);
         const QList<std::pair<QString, QString>> rows{
-            {"ゼロ点補正", shownFixed(t["zpe_kcal"].toDouble(), 3) + " kcal/mol"},
-            {"熱補正（内部エネルギー）", shownFixed(t["energy_kcal"].toDouble(), 3) + " kcal/mol"},
-            {"熱補正（エンタルピー）", shownFixed(h, 3) + " kcal/mol"},
-            {"エントロピー", fixed(t["entropy_cal"].toDouble(), 3) + " cal/(mol·K)"},
-            {"Gibbs補正 G = H − TS（算出値）",
-             QString("%1 kcal/mol（%2 Eh）").arg(shownFixed(g, 3), shownFixed(g / HartreeToKcal, 6))}};
+            {tr("ゼロ点補正"), shownFixed(t["zpe_kcal"].toDouble(), 3) + " kcal/mol"},
+            {tr("熱補正（内部エネルギー）"), shownFixed(t["energy_kcal"].toDouble(), 3) + " kcal/mol"},
+            {tr("熱補正（エンタルピー）"), shownFixed(h, 3) + " kcal/mol"},
+            {tr("エントロピー"), fixed(t["entropy_cal"].toDouble(), 3) + " cal/(mol·K)"},
+            {tr("Gibbs補正 G = H − TS（算出値）"),
+             tr("%1 kcal/mol（%2 Eh）").arg(shownFixed(g, 3), shownFixed(g / HartreeToKcal, 6))}};
         for (int r = 0; r < rows.size(); ++r) {
             auto *name = new QLabel(rows[r].first);
             auto *number = new QLabel(rows[r].second);
@@ -1994,20 +2007,19 @@ void ResultsPanel::showOverview() {
         }
         values->setColumnStretch(0, 1);
         layout->addLayout(values);
-        label(QString(
-                  "補正は電子エネルギーに加えて使います。対称数 %1 はNWChemの値です（MolFormaの入力では1）。")
+        label(tr("補正は電子エネルギーに加えて使います。対称数 %1 はNWChemの値です（MolFormaの入力では1）。")
                   .arg(real(t["symmetry_number"].toDouble())),
               "muted");
     }
     if (const auto other = resultPropertyLines(data).trimmed(); !other.isEmpty()) {
-        section("ほかの結果");
+        section(tr("ほかの結果"));
         label(other, "");
     }
     // The banner says how a run that did not end normally ended; the warnings stay here.
     const auto outcome = resultOutcome(data);
     const bool bannered = outcome == "incomplete" || outcome == "error";
     if (!bannered || !data.warnings.isEmpty())
-        section("メッセージ");
+        section(tr("メッセージ"));
     if (!bannered)
         label(data.status, "");
     if (!data.warnings.isEmpty())
@@ -2018,7 +2030,7 @@ void ResultsPanel::showOverview() {
         if (!files->itemData(i).toString().isEmpty())
             entries << i;
     if (entries.size() > 1) {
-        section("このフォルダーの結果ファイル");
+        section(tr("このフォルダーの結果ファイル"));
         for (int k = 0; k < entries.size() && k < 12; ++k) {
             const int i = entries[k];
             auto *line = new QHBoxLayout;
@@ -2028,13 +2040,13 @@ void ResultsPanel::showOverview() {
             name->setTextFormat(Qt::PlainText);
             line->addWidget(name, 1);
             if (i == files->currentIndex()) {
-                auto *current = new QLabel("表示中");
+                auto *current = new QLabel(tr("表示中"));
                 current->setProperty("chip", "current");
                 line->addWidget(current);
             } else {
-                auto *openIt = new QPushButton("開く");
+                auto *openIt = new QPushButton(tr("開く"));
                 openIt->setProperty("role", "open");
-                openIt->setAccessibleName(files->itemText(i) + " を開く");
+                openIt->setAccessibleName(tr("%1 を開く").arg(files->itemText(i)));
                 connect(openIt, &QPushButton::clicked, this, [this, entry = files->itemData(i).toString()] {
                     if (const int index = files->findData(entry); index >= 0)
                         files->setCurrentIndex(index);
@@ -2044,7 +2056,8 @@ void ResultsPanel::showOverview() {
             layout->addLayout(line);
         }
         if (entries.size() > 12)
-            label(QString("ほか %1 件はバーのファイル一覧から選べます。").arg(entries.size() - 12), "muted");
+            label(tr("ほか %n 件はバーのファイル一覧から選べます。", nullptr, int(entries.size()) - 12),
+                  "muted");
     }
     layout->addStretch();
     setOverview(page);
@@ -2061,13 +2074,15 @@ void ResultsPanel::showOutcome() {
     }
     const ChromeColors c(static_cast<QWidget *>(window)->palette());
     bannerIcon->setPixmap(lineIcon("warning", failed ? c.bad : c.candidateText).pixmap(QSize(20, 20)));
-    bannerTitle->setText(failed ? "NWChemのエラーを検出しました" : "NWChemの正常終了の記録がありません");
-    bannerText->setText(
-        failed ? data.status + "。詳細は「概要」のメッセージとログで確認してください。"
-               : QString("実行中・中断・途中までのログの可能性があります。%1実行中なら「再読込」で"
-                         "更新します。")
-                     .arg(data.properties.value("optimization") == "converged" ? "最適化は収束しています。"
-                                                                               : ""));
+    bannerTitle->setText(failed ? tr("NWChemのエラーを検出しました")
+                                : tr("NWChemの正常終了の記録がありません"));
+    bannerText->setText(failed
+                            ? tr("%1。詳細は「概要」のメッセージとログで確認してください。").arg(data.status)
+                            : tr("実行中・中断・途中までのログの可能性があります。%1実行中なら「再読込」で"
+                                 "更新します。")
+                                  .arg(data.properties.value("optimization") == "converged"
+                                           ? tr("最適化は収束しています。")
+                                           : QString()));
 }
 void ResultsPanel::showContext() {
     const int i = frame->value() - 1, mode = modes->currentRow();
@@ -2076,42 +2091,42 @@ void ResultsPanel::showContext() {
     if (modeDisplayed && mode >= 0 && mode < data.modes.size()) {
         page = 2;
         const auto &m = data.modes[mode];
-        title = QString("モード %1 · %2 cm⁻¹").arg(mode + 1).arg(fixed(m.frequency, 1));
-        detail = animation.isActive() ? QString("再生中 · 振幅 %1 Å").arg(fixed(amplitude->value(), 2))
-                                      : QString("基準構造");
+        title = tr("モード %1 · %2 cm⁻¹").arg(mode + 1).arg(fixed(m.frequency, 1));
+        detail = animation.isActive() ? tr("再生中 · 振幅 %1 Å").arg(fixed(amplitude->value(), 2))
+                                      : tr("基準構造");
         if (rigidMotion.value(mode))
-            detail += " · 並進・回転";
+            detail += tr(" · 並進・回転");
         else if (m.frequency < -10)
-            detail += " · 虚振動";
+            detail += tr(" · 虚振動");
         modeLabel->setText(title);
     } else if (data.format == "MOLDEN" && data.orbitalBasis && !data.orbitals.isEmpty() &&
                (data.frames.size() <= 1 || i == data.orbitalFrame)) {
         page = 1;
         if (data.selectedOrbital >= 0 && i == data.orbitalFrame) {
             const auto &o = data.orbitals[data.selectedOrbital];
-            title = QString("%1 · %2 %3番")
+            title = tr("%1 · %2 %3番")
                         .arg(frontierName(data.orbitals, data.selectedOrbital), o.spin,
                              orbitals->item(data.selectedOrbital, 0)->text());
-            detail = QString("%1 eV · 等値 ±%2").arg(fixed(o.energy * HartreeToEv, 3), real(data.isovalue));
+            detail = tr("%1 eV · 等値 ±%2").arg(fixed(o.energy * HartreeToEv, 3), real(data.isovalue));
         } else {
-            title = "分子軌道";
-            detail = data.orbitalError.isEmpty() ? QString("軌道を選ぶと等値面を表示します")
+            title = tr("分子軌道");
+            detail = data.orbitalError.isEmpty() ? tr("軌道を選ぶと等値面を表示します")
                                                  : data.orbitalError.section('\n', 0, 0).left(80);
         }
     } else if (data.format == "CUBE" && !data.frames.isEmpty()) {
         title = data.datasets.isEmpty() ? QString("CUBE")
-                                        : QString("CUBE · データ %1").arg(data.datasets.value(data.dataset));
-        detail = QString("等値 ±%1 · 格子 %2 × %3 × %4")
+                                        : tr("CUBE · データ %1").arg(data.datasets.value(data.dataset));
+        detail = tr("等値 ±%1 · 格子 %2 × %3 × %4")
                      .arg(real(data.isovalue))
                      .arg(data.grid[0])
                      .arg(data.grid[1])
                      .arg(data.grid[2]);
     } else if (i >= 0 && i < data.frames.size()) {
-        title = data.frames.size() > 1 ? QString("構造 %1 / %2%3")
+        title = data.frames.size() > 1 ? tr("構造 %1 / %2%3")
                                              .arg(i + 1)
                                              .arg(data.frames.size())
-                                             .arg(i == data.frames.size() - 1 ? "（最後）" : "")
-                                       : QString("構造");
+                                             .arg(i == data.frames.size() - 1 ? tr("（最後）") : QString())
+                                       : tr("構造");
         detail = data.frames[i].label;
     }
     contextChip->setVisible(!title.isEmpty());
@@ -2130,21 +2145,20 @@ QString ResultsPanel::message() const {
 QString ResultsPanel::briefSummary() const {
     QStringList parts;
     if (data.properties.contains("optimization"))
-        parts << (data.properties.value("optimization") == "converged"
-                      ? QString("最適化: 収束")
-                      : QString("最適化: 収束メッセージなし"));
+        parts << (data.properties.value("optimization") == "converged" ? tr("最適化: 収束")
+                                                                       : tr("最適化: 収束メッセージなし"));
     if (const auto final = data.properties["final_energy"].toObject(); !final.isEmpty())
-        parts << QString("E = %1 Eh（%2）")
-                     .arg(shownReal(final["hartree"].toDouble()), final["method"].toString());
+        parts
+            << tr("E = %1 Eh（%2）").arg(shownReal(final["hartree"].toDouble()), final["method"].toString());
     if (!data.modes.isEmpty()) {
         const auto rigid = resultRigidModes(data);
         int imaginary = 0;
         for (int i = 0; i < data.modes.size(); ++i)
             imaginary += !rigid.value(i) && data.modes[i].frequency < -10;
-        parts << QString("虚振動 %1個").arg(imaginary);
+        parts << tr("虚振動 %n個", nullptr, imaginary);
     }
     if (!data.excitations.isEmpty())
-        parts << QString("励起状態 %1件").arg(data.excitations.size());
+        parts << tr("励起状態 %n件", nullptr, int(data.excitations.size()));
     return parts.join(" · ");
 }
 void ResultsPanel::showSpectrum() {
@@ -2172,8 +2186,9 @@ void ResultsPanel::showSpectrum() {
             y += x.oscillator * std::exp(-.5 * std::pow((e - x.ev) / sigma, 2));
         curve << QPointF(nm ? EvNanometer / e : e, y);
     }
-    spectrum->setChart("吸収スペクトル（表示用）", nm ? "波長 / nm" : "励起エネルギー / eV", "振動子強度",
-                       {{"広がり", curve, QColor("#2f6db5")}, {"各状態", sticks, QColor("#c0392b"), true}});
+    spectrum->setChart(
+        tr("吸収スペクトル（表示用）"), nm ? tr("波長 / nm") : tr("励起エネルギー / eV"), tr("振動子強度"),
+        {{tr("広がり"), curve, QColor("#2f6db5")}, {tr("各状態"), sticks, QColor("#c0392b"), true}});
 }
 void ResultsPanel::showEnergies() {
     const auto unit = energyUnit->currentData().toString();
@@ -2206,9 +2221,9 @@ void ResultsPanel::showEnergies() {
     energyNote->setText(
         data.energies.isEmpty()
             ? QString()
-            : QString("ΔEは %1 行目（太字）を基準にした差です。手法の異なる行どうしの差には意味がありま"
-                      "せん。エネルギーは出力順で、最適化ステップとの1対1対応ではありません。"
-                      "1 Eh = 627.509 kcal/mol = 2625.50 kJ/mol = 27.2114 eV。")
+            : tr("ΔEは %1 行目（太字）を基準にした差です。手法の異なる行どうしの差には意味がありま"
+                 "せん。エネルギーは出力順で、最適化ステップとの1対1対応ではありません。"
+                 "1 Eh = 627.509 kcal/mol = 2625.50 kJ/mol = 27.2114 eV。")
                   .arg(reference + 1));
 }
 void ResultsPanel::showPath() {
@@ -2226,7 +2241,7 @@ void ResultsPanel::showPath() {
     double reference = INFINITY;
     if (!scan.isEmpty()) {
         const auto coordinate = scan[0].toObject()["coordinate"].toString();
-        xLabel = coordinate.startsWith("bond") ? "距離 / Å" : "角度 / °";
+        xLabel = coordinate.startsWith("bond") ? tr("距離 / Å") : tr("角度 / °");
         for (const auto &value : scan) {
             const auto p = value.toObject();
             points << Point{QString::number(p["point"].toInt()), coordinateText(p["coordinate"].toString()),
@@ -2234,21 +2249,21 @@ void ResultsPanel::showPath() {
             reference = std::min(reference, p["energy"].toDouble());
         }
     } else if (!irc.isEmpty()) {
-        xLabel = "反応座標 s / amu½·Bohr";
+        xLabel = tr("反応座標 s / amu½·Bohr");
         QVector<Point> backward, forward;
         for (const auto &value : irc["points"].toArray()) {
             const auto p = value.toObject();
             const bool ahead = p["direction"] == "forward";
             (ahead ? forward : backward)
-                << Point{QString("%1 %2").arg(ahead ? "前進" : "後退").arg(p["point"].toInt()),
-                         ahead ? "前進" : "後退", (ahead ? 1 : -1) * p["s"].toDouble(),
+                << Point{(ahead ? tr("前進 %1") : tr("後退 %1")).arg(p["point"].toInt()),
+                         ahead ? tr("前進") : tr("後退"), (ahead ? 1 : -1) * p["s"].toDouble(),
                          p["energy"].toDouble(), p["frame"].toInt(-1)};
         }
         std::reverse(backward.begin(), backward.end());
         points = backward;
         if (irc.contains("ts_energy")) {
             reference = irc["ts_energy"].toDouble();
-            points << Point{"TS", "遷移状態", 0, reference, irc["ts_frame"].toInt(-1)};
+            points << Point{"TS", tr("遷移状態"), 0, reference, irc["ts_frame"].toInt(-1)};
         }
         points += forward;
         if (!std::isfinite(reference) && !points.isEmpty())
@@ -2266,8 +2281,8 @@ void ResultsPanel::showPath() {
     if (curve.isEmpty())
         pathChart->clear();
     else
-        pathChart->setChart(scan.isEmpty() ? "IRC（遷移状態基準）" : "座標スキャン（最小値基準）", xLabel,
-                            "ΔE / kcal mol⁻¹", {{"エネルギー", curve, QColor("#2f6db5")}});
+        pathChart->setChart(scan.isEmpty() ? tr("IRC（遷移状態基準）") : tr("座標スキャン（最小値基準）"),
+                            xLabel, "ΔE / kcal mol⁻¹", {{tr("エネルギー"), curve, QColor("#2f6db5")}});
 }
 void ResultsPanel::showProperties() {
     const auto mulliken = data.properties.value("mulliken").toArray(),
@@ -2291,7 +2306,7 @@ void ResultsPanel::showProperties() {
     auto text = resultPropertyLines(data);
     if (data.properties.contains("dipole")) {
         const auto d = data.properties.value("dipole").toObject();
-        text += QString("双極子モーメント: %1 D（x %2 / y %3 / z %4 a.u.）\n")
+        text += tr("双極子モーメント: %1 D（x %2 / y %3 / z %4 a.u.）\n")
                     .arg(fixed(d["debye"].toDouble(), 4), real(d["x"].toDouble()), real(d["y"].toDouble()),
                          real(d["z"].toDouble()));
     }
@@ -2302,12 +2317,14 @@ void ResultsPanel::showProperties() {
             rows << QString("%1 %2 %3")
                         .arg(fixed(t[3 * r].toDouble(), 4), fixed(t[3 * r + 1].toDouble(), 4),
                              fixed(t[3 * r + 2].toDouble(), 4));
-        text += "分極率テンソル / a.u.: [" + rows.join(" / ") + "]\n";
+        text += tr("分極率テンソル / a.u.: [%1]\n").arg(rows.join(" / "));
     }
     if (!shielding.isEmpty())
-        text += "NMRは絶対遮蔽定数です。化学シフトは同じ条件で計算した基準物質（TMS等）の値との差です。\n";
+        text +=
+            tr("NMRは絶対遮蔽定数です。化学シフトは同じ条件で計算した基準物質（TMS等）の値との差です。\n");
     if (text.isEmpty())
-        text = "このログには物性の結果がありません。「2 計算条件」の「物性」・溶媒・BSSE補正で計算できます。";
+        text = tr(
+            "このログには物性の結果がありません。「2 計算条件」の「物性」・溶媒・BSSE補正で計算できます。");
     propertySummary->setText(text.trimmed());
 }
 void ResultsPanel::showIrSpectrum() {
@@ -2337,8 +2354,8 @@ void ResultsPanel::showIrSpectrum() {
         curve << QPointF(x, y);
     }
     const ChromeColors c(palette());
-    irSpectrum->setChart("IRスペクトル（表示用）", "波数 / cm⁻¹", "IR強度 / km mol⁻¹",
-                         {{"広がり", curve, c.muted}, {"各モード", sticks, c.text, true}});
+    irSpectrum->setChart(tr("IRスペクトル（表示用）"), tr("波数 / cm⁻¹"), tr("IR強度 / km mol⁻¹"),
+                         {{tr("広がり"), curve, c.muted}, {tr("各モード"), sticks, c.text, true}});
     irSpectrum->setSelectedStick(1, irModes.indexOf(modes->currentRow()));
 }
 void ResultsPanel::showOptimization() {
@@ -2360,7 +2377,7 @@ void ResultsPanel::showOptimization() {
     criteria->setVisible(!data.steps.isEmpty());
     if (!data.steps.isEmpty()) {
         const auto &last = data.steps.last();
-        auto *title = new QLabel(QString("収束判定（最終ステップ %1）").arg(last.step));
+        auto *title = new QLabel(tr("収束判定（最終ステップ %1）").arg(last.step));
         auto font = title->font();
         font.setBold(true);
         title->setFont(font);
@@ -2374,13 +2391,13 @@ void ResultsPanel::showOptimization() {
             const bool judged = thresholds.contains(key);
             const bool met = judged && value <= thresholds[key].toDouble();
             // Five decimals, as NWChem prints them.
-            auto *chip = summaryTile(judged ? QString("%1 %2").arg(name, met ? "✓" : "✗") : QString(name),
-                                     fixed(value, 5),
-                                     judged ? "閾値 " + fixed(thresholds[key].toDouble(), 5) : QString(),
-                                     !judged ? "neutral"
-                                     : met   ? "good"
-                                             : "warn",
-                                     false);
+            auto *chip = summaryTile(
+                judged ? QString("%1 %2").arg(name, met ? "✓" : "✗") : QString(name), fixed(value, 5),
+                judged ? tr("閾値 %1").arg(fixed(thresholds[key].toDouble(), 5)) : QString(),
+                !judged ? "neutral"
+                : met   ? "good"
+                        : "warn",
+                false);
             chip->setObjectName(QString("resultsCriterion") + name);
             row->addWidget(chip, 1);
         }
@@ -2408,14 +2425,14 @@ void ResultsPanel::showOptimization() {
         gradientChart->clear();
         return;
     }
-    energyChart->setChart("エネルギー（最終ステップ基準）", "ステップ", "ΔE / kcal mol⁻¹",
-                          {{"エネルギー", relative, c.accent}});
+    energyChart->setChart(tr("エネルギー（最終ステップ基準）"), tr("ステップ"), "ΔE / kcal mol⁻¹",
+                          {{tr("エネルギー"), relative, c.accent}});
     QVector<QPair<QString, double>> levels;
     if (thresholds.contains("gmax"))
-        levels.append({"Gmax閾値", thresholds["gmax"].toDouble()});
+        levels.append({tr("Gmax閾値"), thresholds["gmax"].toDouble()});
     if (thresholds.contains("grms"))
-        levels.append({"Grms閾値", thresholds["grms"].toDouble()});
-    gradientChart->setChart("勾配", "ステップ", "Hartree / Bohr",
+        levels.append({tr("Grms閾値"), thresholds["grms"].toDouble()});
+    gradientChart->setChart(tr("勾配"), tr("ステップ"), "Hartree / Bohr",
                             {{"Gmax", gmax, c.accent}, {"Grms", grms, orange}}, true, levels);
 }
 void ResultsPanel::showArrows() {
@@ -2439,12 +2456,12 @@ void ResultsPanel::showArrows() {
 void ResultsPanel::exportMode(bool images) {
     const int n = modes->currentRow();
     if (loading() || n < 0 || n >= data.modes.size() || data.modes[n].displacement.isEmpty())
-        fail("振動モードを選択してください。");
+        fail(tr("振動モードを選択してください。"));
     stopAnimation();
     constexpr int steps = 24; // One period.
     const auto name = QString("mode%1_%2cm").arg(n + 1).arg(qRound(data.modes[n].frequency));
     if (images) {
-        const auto directory = QFileDialog::getExistingDirectory(this, "連番画像の保存先", folder);
+        const auto directory = QFileDialog::getExistingDirectory(this, tr("連番画像の保存先"), folder);
         if (directory.isEmpty())
             return;
         window->checkMcpPath(directory);
@@ -2456,14 +2473,14 @@ void ResultsPanel::exportMode(bool images) {
             const auto file =
                 QDir(directory).filePath(QString("%1_%2.png").arg(name).arg(k, 2, 10, QChar('0')));
             if (!view->grab().save(file))
-                fail("画像を保存できません: " + file);
+                fail(tr("画像を保存できません: %1").arg(file));
         }
         setViewDocument(data.vibrationGeometry);
-        window->statusBar()->showMessage(QString("%1枚の画像を保存しました: %2").arg(steps).arg(directory),
+        window->statusBar()->showMessage(tr("%n枚の画像を保存しました: %1", nullptr, steps).arg(directory),
                                          8000);
         return;
     }
-    auto file = QFileDialog::getSaveFileName(this, "振動をXYZで保存", name + ".xyz", "XYZ (*.xyz)");
+    auto file = QFileDialog::getSaveFileName(this, tr("振動をXYZで保存"), name + ".xyz", "XYZ (*.xyz)");
     if (file.isEmpty())
         return;
     if (!file.endsWith(".xyz", Qt::CaseInsensitive))
@@ -2497,24 +2514,22 @@ void ResultsPanel::setViewDocument(const Document &d) {
     view->setDocument(d);
     view->setSelection(ids(picked));
     view->setMonitors(monitors);
-    QString text =
-        pinned.isEmpty()
-            ? QString("原子をクリックすると距離・角度・二面角を測定します（2〜4原子）。")
-            : QString("画面に表示中の計測: %1件。原子をクリックすると続けて測定します。").arg(pinned.size());
+    QString text = pinned.isEmpty() ? tr("原子をクリックすると距離・角度・二面角を測定します（2〜4原子）。")
+                                    : tr("画面に表示中の計測: %n件。原子をクリックすると続けて測定します。",
+                                         nullptr, int(pinned.size()));
     if (!picked.isEmpty()) {
         QStringList labels;
         for (int n : picked)
             labels << (n < d.atoms.size() ? d.atoms[n].element : QString("?")) + QString::number(n + 1);
-        text = "選択: " + labels.join(" → ");
+        text = tr("選択: %1").arg(labels.join(" → "));
         if (picked.size() >= 2 && !ids(picked).isEmpty())
             try {
                 const double value = measure(d, ids(picked));
-                text += picked.size() == 2 ? QString("　距離 %1 Å").arg(value, 0, 'f', 4)
-                                           : QString("　%1 %2°")
-                                                 .arg(picked.size() == 3 ? "角度" : "二面角")
-                                                 .arg(value, 0, 'f', 2);
+                text += picked.size() == 2   ? tr("　距離 %1 Å").arg(value, 0, 'f', 4)
+                        : picked.size() == 3 ? tr("　角度 %1°").arg(value, 0, 'f', 2)
+                                             : tr("　二面角 %1°").arg(value, 0, 'f', 2);
             } catch (const std::exception &e) {
-                text += "　" + QString::fromUtf8(e.what());
+                text = tr("選択: %1　%2").arg(labels.join(" → "), QString::fromUtf8(e.what()));
             }
     }
     measurementLabel->setText(text);
@@ -2560,10 +2575,10 @@ void ResultsPanel::showMode() {
 }
 const Document &ResultsPanel::displayedGeometry() const {
     if (loading())
-        fail("読込完了後に操作してください。");
+        fail(tr("読込完了後に操作してください。"));
     const int i = frame->value() - 1;
     if (i < 0 || i >= data.frames.size())
-        fail("表示する構造がありません。");
+        fail(tr("表示する構造がありません。"));
     // During a vibration the reference structure, not a displaced snapshot.
     return modeDisplayed && modes->currentRow() >= 0 ? data.vibrationGeometry : data.frames[i].molecule;
 }
@@ -2573,13 +2588,14 @@ void ResultsPanel::saveGeometry(const QString &path) const {
 void ResultsPanel::applyStructure() {
     const auto result = displayedGeometry();
     std::pair<double, double> moved;
-    window->edit("計算結果の構造を適用", [&](Document &d) { moved = applyResultGeometry(d, result); }, true);
+    window->edit(
+        tr("計算結果の構造を適用"), [&](Document &d) { moved = applyResultGeometry(d, result); }, true);
     if (!window->hasCandidate())
-        fail("編集中の分子と結果の座標は同じです。");
+        fail(tr("編集中の分子と結果の座標は同じです。"));
     window->workspaceTabs->setCurrentIndex(0);
     window->statusBar()->showMessage(
-        QString("結果の構造を候補にしました（RMSD %1 Å、最大変位 %2 Å）。「変更を確定」"
-                "で適用します。")
+        tr("結果の構造を候補にしました（RMSD %1 Å、最大変位 %2 Å）。「変更を確定」"
+           "で適用します。")
             .arg(moved.first, 0, 'f', 4)
             .arg(moved.second, 0, 'f', 4),
         15000);

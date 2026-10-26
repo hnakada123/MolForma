@@ -1,5 +1,6 @@
 #include "results/molden_orbitals.h"
 #include "editing/coordinates.h"
+#include "model/i18n.h"
 #include <QRegularExpression>
 #include <algorithm>
 #include <cmath>
@@ -14,13 +15,13 @@ double real(QString text) {
     bool ok;
     const double value = text.toDouble(&ok);
     if (!ok || !std::isfinite(value))
-        fail("MOLDEN基底の数値が不正です。");
+        fail(tr("MOLDEN基底の数値が不正です。"));
     return value;
 }
 int count(const QString &text, int maximum) {
     const double n = real(text);
     if (n < 1 || n > maximum || n != std::floor(n))
-        fail("MOLDEN基底の原子番号・個数が範囲外です。");
+        fail(tr("MOLDEN基底の原子番号・個数が範囲外です。"));
     return int(n);
 }
 double factorial(int n) {
@@ -123,7 +124,7 @@ double shellNorm(const MoldenShell &s, bool primitiveNormalized) {
 }
 QVector<QVector<MoldenTerm>> orbitalPolynomials(const MoldenWavefunction &w, int orbital) {
     if (orbital < 0 || orbital >= w.coefficients.size())
-        fail("MOLDENの軌道番号が範囲外です。");
+        fail(tr("MOLDENの軌道番号が範囲外です。"));
     QVector<QVector<MoldenTerm>> result;
     int ao = 0;
     for (const auto &shell : w.shells) {
@@ -166,14 +167,14 @@ double evaluate(const MoldenWavefunction &w, const QVector<QVector<MoldenTerm>> 
         value += radial * angular;
     }
     if (!std::isfinite(value))
-        fail("MOLDENの軌道評価が有限値になりません。");
+        fail(tr("MOLDENの軌道評価が有限値になりません。"));
     return value;
 }
 } // namespace
 MoldenWavefunction moldenWavefunction(const QMap<QString, QStringList> &blocks, const Document &atoms,
                                       const QVector<QVector<double>> &coefficients, const QString &mode) {
     if (atoms.atoms.isEmpty() || !blocks.contains("GTO") || coefficients.isEmpty())
-        fail("軌道の形状表示にはMOLDENの[Atoms]・[GTO]・[MO]が必要です。");
+        fail(tr("軌道の形状表示にはMOLDENの[Atoms]・[GTO]・[MO]が必要です。"));
     MoldenWavefunction w;
     QMap<QChar, int> angular;
     const QRegularExpression angularHeader("^(?:[0-9]+[DFG])+$"), angularToken("([0-9]+)([DFG])");
@@ -188,7 +189,7 @@ MoldenWavefunction moldenWavefunction(const QMap<QString, QStringList> &blocks, 
             const int l = QString("spDFG").indexOf(type);
             if ((n != 2 * l + 1 && n != (l + 1) * (l + 2) / 2) ||
                 (angular.contains(type) && angular[type] != n))
-                fail("MOLDENの球面／Cartesian指定が不正または矛盾しています。");
+                fail(tr("MOLDENの球面／Cartesian指定が不正または矛盾しています。"));
             angular[type] = n;
         }
     }
@@ -205,14 +206,14 @@ MoldenWavefunction moldenWavefunction(const QMap<QString, QStringList> &blocks, 
         if (row[0][0].isDigit()) {
             atom = count(row[0], atoms.atoms.size()) - 1;
             if (row.size() > 2 || (row.size() == 2 && real(row[1]) != 0) || centers.contains(atom))
-                fail("MOLDEN基底の中心指定が不正または重複しています。");
+                fail(tr("MOLDEN基底の中心指定が不正または重複しています。"));
             centers.insert(atom);
             continue;
         }
         const auto label = row[0].toLower();
         const int l = QString("spdfg").indexOf(label);
         if (atom < 0 || row.size() < 2 || row.size() > 3 || (label != "sp" && (label.size() != 1 || l < 0)))
-            fail("MOLDEN基底はs・p・sp・d・f・gに対応します。中心番号・シェル指定を確認してください。");
+            fail(tr("MOLDEN基底はs・p・sp・d・f・gに対応します。中心番号・シェル指定を確認してください。"));
         const int n = count(row[1], 100);
         if (row.size() == 3)
             real(row[2]); // Obsolete scale field; NWChem writes 0, standard writers use 1.
@@ -223,13 +224,13 @@ MoldenWavefunction moldenWavefunction(const QMap<QString, QStringList> &blocks, 
         p.angularMomentum = 1;
         for (int j = 0; j < n; ++j) {
             if (i >= lines.size())
-                fail("MOLDEN基底のプリミティブが不足しています。");
+                fail(tr("MOLDEN基底のプリミティブが不足しています。"));
             const auto primitive = lines[i++].split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
             if (primitive.size() != (label == "sp" ? 3 : 2))
-                fail("MOLDEN基底の指数・収縮係数が不足しています。");
+                fail(tr("MOLDEN基底の指数・収縮係数が不足しています。"));
             const double exponent = real(primitive[0]);
             if (exponent < 1e-12 || exponent > 1e12)
-                fail("MOLDEN基底の指数が範囲外です。");
+                fail(tr("MOLDEN基底の指数が範囲外です。"));
             s.primitives.append({exponent, real(primitive[1])});
             if (label == "sp")
                 p.primitives.append({exponent, real(primitive[2])});
@@ -240,7 +241,7 @@ MoldenWavefunction moldenWavefunction(const QMap<QString, QStringList> &blocks, 
             basisCount += shell.functions.size();
             primitiveCount += shell.primitives.size();
             if (basisCount > 4000 || primitiveCount > 10000)
-                fail("MOLDENの軌道表示は4000基底・10000プリミティブまでです。");
+                fail(tr("MOLDENの軌道表示は4000基底・10000プリミティブまでです。"));
             w.shells << shell;
         };
         add(s);
@@ -248,13 +249,13 @@ MoldenWavefunction moldenWavefunction(const QMap<QString, QStringList> &blocks, 
             add(p);
     }
     if (w.shells.isEmpty())
-        fail("MOLDENの[GTO]に基底がありません。");
+        fail(tr("MOLDENの[GTO]に基底がありません。"));
     if (qint64(basisCount) * coefficients.size() > 4000000)
-        fail("MOLDENのMO係数はゼロ成分を含めて400万個までです。");
+        fail(tr("MOLDENのMO係数はゼロ成分を含めて400万個までです。"));
     w.coefficients = coefficients;
     for (auto &orbital : w.coefficients) {
         if (orbital.size() > basisCount || orbital.isEmpty())
-            fail("MOLDENの基底数とMO係数の番号が一致しません。");
+            fail(tr("MOLDENの基底数とMO係数の番号が一致しません。"));
         orbital.resize(basisCount); // Omitted AO entries in sparse files are zero.
     }
     QString normalization = mode;
@@ -268,11 +269,11 @@ MoldenWavefunction moldenWavefunction(const QMap<QString, QStringList> &blocks, 
         embedded /= w.shells.size();
         if (std::min(standard, embedded) > .05 ||
             (std::max(standard, embedded) > .001 && std::abs(standard - embedded) < .02))
-            fail("基底係数の正規化規約を判定できません。「軌道」の正規化を明示して再表示してください。");
+            fail(tr("基底係数の正規化規約を判定できません。「軌道」の正規化を明示して再表示してください。"));
         normalization = embedded < standard ? "nwchem" : "standard";
     }
     if (normalization != "standard" && normalization != "nwchem")
-        fail("MOLDENの正規化規約が不正です。");
+        fail(tr("MOLDENの正規化規約が不正です。"));
     w.normalization = normalization;
     for (auto &s : w.shells) {
         if (normalization == "standard")
@@ -280,7 +281,7 @@ MoldenWavefunction moldenWavefunction(const QMap<QString, QStringList> &blocks, 
                 p.coefficient *= primitiveNorm(p.exponent, s.angularMomentum);
         const double norm = shellNorm(s, false);
         if (!std::isfinite(norm) || norm < 1e-100)
-            fail("MOLDENの収縮基底を正規化できません。");
+            fail(tr("MOLDENの収縮基底を正規化できません。"));
         for (auto &p : s.primitives)
             p.coefficient /= std::sqrt(norm);
     }
@@ -294,14 +295,14 @@ QVector<double> moldenOrbitalGrid(const MoldenWavefunction &w, int orbital, cons
     qint64 points = 1, primitives = 0;
     for (int n : grid) {
         if (n < 2 || n > 101)
-            fail("MOLDENの格子点数が範囲外です。");
+            fail(tr("MOLDENの格子点数が範囲外です。"));
         points *= n;
     }
     for (const auto &s : w.shells)
         primitives += s.primitives.size();
     // The separable evaluation takes about 1 ns per point and primitive: 1–2 s at this bound.
     if (points * primitives > 1000000000)
-        fail("軌道表示の計算量が大きすぎます。格子の分割数を小さくしてください。");
+        fail(tr("軌道表示の計算量が大きすぎます。格子の分割数を小さくしてください。"));
     const auto polynomials = orbitalPolynomials(w, orbital);
     // On an axis-aligned grid exp(-a*r^2) separates into three 1D tables per primitive, and the
     // coordinate powers into three per shell; they are built once and shared by the threads.
@@ -372,7 +373,7 @@ QVector<double> moldenOrbitalGrid(const MoldenWavefunction &w, int orbital, cons
     }
     for (double value : values)
         if (!std::isfinite(value))
-            fail("MOLDENの軌道評価が有限値になりません。");
+            fail(tr("MOLDENの軌道評価が有限値になりません。"));
     return values;
 }
 int frontierOrbital(const QVector<ResultOrbital> &orbitals, const QString &spin, bool lumo) {

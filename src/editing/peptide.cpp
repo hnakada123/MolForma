@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/peptide.h"
+#include "model/i18n.h"
 #include <QRegularExpression>
 #include <cmath>
 namespace mf {
@@ -16,25 +17,25 @@ QStringList parseSequence(const QString &text) {
     if (three) {
         for (auto c : s.split(QRegularExpression("[-\\s]+"), Qt::SkipEmptyParts)) {
             if (!codes.values().contains(c))
-                fail("未知の3文字残基コード: " + c);
+                fail(tr("未知の3文字残基コード: %1").arg(c));
             result << c;
         }
     } else
         for (auto c : s) {
             QString key(c);
             if (!codes.contains(key))
-                fail("未知の1文字残基コード: " + key);
+                fail(tr("未知の1文字残基コード: %1").arg(key));
             result << codes[key];
         }
     if (result.isEmpty())
-        fail("配列を入力してください（AGS または Ala-Gly-Ser）。");
+        fail(tr("配列を入力してください（AGS または Ala-Gly-Ser）。"));
     return result;
 }
 QJsonObject residue(const Document &d, const QString &id) {
     for (auto v : d.data["residues"].toArray())
         if (v.toObject()["id"] == id)
             return v.toObject();
-    fail("残基を選択してください。");
+    fail(tr("残基を選択してください。"));
 }
 QString residueForAtom(const Document &d, const QString &id) {
     for (auto v : d.data["residues"].toArray()) {
@@ -82,7 +83,7 @@ void updateResidue(Document &d, const QJsonObject &r) {
 static QString named(const QJsonObject &r, const QString &name) {
     auto id = r["atoms"].toObject()[name].toString();
     if (id.isEmpty())
-        fail("残基に原子 " + name + " がありません。");
+        fail(tr("残基に原子 %1 がありません。").arg(name));
     return id;
 }
 static Ids hydrogens(const Document &d, const QString &id) {
@@ -239,7 +240,7 @@ void setTerminals(Document &d, const QString &rid, const QString &n, const QStri
     }
     if (!n.isEmpty()) {
         if (!QStringList{"neutral", "charged", "internal"}.contains(n))
-            fail("N末端状態が不正です。");
+            fail(tr("N末端状態が不正です。"));
         QString id = named(r, "N");
         int count = n == "charged" ? 3 : n == "neutral" ? 2 : 1;
         if (r["code"] == "PRO")
@@ -256,7 +257,7 @@ void setTerminals(Document &d, const QString &rid, const QString &n, const QStri
     }
     if (!c.isEmpty()) {
         if (!QStringList{"neutral", "charged", "internal"}.contains(c))
-            fail("C末端状態が不正です。");
+            fail(tr("C末端状態が不正です。"));
         r = residue(d, rid);
         QString carbon = named(r, "C"), oxt = r["atoms"].toObject()["OXT"].toString();
         if (c == "internal") {
@@ -287,23 +288,23 @@ void addCap(Document &d, const QString &rid, const QString &kind) {
     auto r = residue(d, rid);
     bool ace = kind == "ACE";
     if (!ace && kind != "NME")
-        fail("対応するキャップはACEとNMEです。");
+        fail(tr("対応するキャップはACEとNMEです。"));
     auto state = r[ace ? "n_terminal" : "c_terminal"].toString();
     if (state == kind)
         return;
     if (state != "neutral" && state != "charged")
-        fail("空いている末端へキャップを付けてください。");
+        fail(tr("空いている末端へキャップを付けてください。"));
     QString parent = named(r, ace ? "N" : "C"), leaving;
     if (ace) {
         setTerminals(d, rid, "neutral", {});
         auto hs = hydrogens(d, parent);
         if (hs.isEmpty())
-            fail("N末端に置換可能なHがありません。");
+            fail(tr("N末端に置換可能なHがありません。"));
         leaving = hs.last();
         Vec c = d.atom(named(r, "C")).position, ca = d.atom(named(r, "CA")).position,
             n = d.atom(parent).position;
         if (d.atom(leaving).fixed)
-            fail("固定水素にキャップを付けられません。");
+            fail(tr("固定水素にキャップを付けられません。"));
         d.atom(leaving).position = internalPoint(c, ca, n, 1.01, 121, r["chirality"] == "D" ? 135 : -135);
     } else {
         setTerminals(d, rid, {}, "neutral");
@@ -379,7 +380,7 @@ static void orientAmideH(Document &d, const QString &rid, const QString &carbon)
     Vec dir = -unit(d.atom(named(r, "CA")).position - n) - unit(d.atom(carbon).position - n);
     for (auto id : hydrogens(d, nitrogen)) {
         if (d.atom(id).fixed)
-            fail("固定水素を動かせません。");
+            fail(tr("固定水素を動かせません。"));
         d.atom(id).position = n + 1.01 * unit(dir);
     }
 }
@@ -401,7 +402,7 @@ QString appendResidue(Document &d, const QString &code, const QString &previous,
     }
     auto prev = residue(d, previous);
     if (!QStringList{"neutral", "charged"}.contains(prev["c_terminal"].toString()))
-        fail("空いているC末端を選択してください。");
+        fail(tr("空いているC末端を選択してください。"));
     Vec ca = d.atom(named(prev, "CA")).position, c = d.atom(named(prev, "C")).position,
         o = d.atom(named(prev, "O")).position;
     Vec nn = c + unit(-unit(ca - c) - unit(o - c)) * 1.33, nca = internalPoint(ca, c, nn, 1.46, 121, 180),
@@ -420,7 +421,7 @@ QString prependResidue(Document &d, const QString &code, const QString &followin
                        const QString &chirality, const QString &nstate) {
     auto next = residue(d, following);
     if (!QStringList{"neutral", "charged"}.contains(next["n_terminal"].toString()))
-        fail("空いているN末端を選択してください。");
+        fail(tr("空いているN末端を選択してください。"));
     Vec n = d.atom(named(next, "N")).position, ca = d.atom(named(next, "CA")).position,
         c = d.atom(named(next, "C")).position;
     double sign = chirality == "D" ? -1 : 1;
@@ -444,7 +445,7 @@ QString prependResidue(Document &d, const QString &code, const QString &followin
 void buildPeptide(Document &d, const QStringList &codes, const QString &n, const QString &c,
                   const QString &chirality, const QString &state) {
     if (codes.isEmpty() || codes.size() > 1000)
-        fail("配列長は1〜1000残基にしてください。");
+        fail(tr("配列長は1〜1000残基にしてください。"));
     QString prev, first;
     QString nt = n == "ACE" ? "neutral" : n, ct = c == "NME" ? "neutral" : c;
     for (const auto &code : codes) {
@@ -499,7 +500,7 @@ void mutateResidue(Document &d, const QString &rid, const QString &code, const Q
             if (d.contains(b.a) && d.contains(b.b))
                 d.setBond(b.a, b.b, b.kind);
             else
-                fail("置換で失われる側鎖に外部結合があります。");
+                fail(tr("置換で失われる側鎖に外部結合があります。"));
         }
     auto residues = d.data["residues"].toArray();
     for (int i = residues.size() - 1; i >= 0; --i)
@@ -579,11 +580,11 @@ void setResidueTorsion(Document &d, const QString &rid, const QString &kind, dou
     Ids ids;
     if (kind == "phi") {
         if (i <= 0)
-            fail("N末端にphiは定義できません。");
+            fail(tr("N末端にphiは定義できません。"));
         ids = {named(residue(d, seq[i - 1]), "C"), named(r, "N"), named(r, "CA"), named(r, "C")};
     } else if (kind == "psi" || kind == "omega") {
         if (i + 1 >= seq.size())
-            fail("C末端にこの二面角は定義できません。");
+            fail(tr("C末端にこの二面角は定義できません。"));
         auto next = residue(d, seq[i + 1]);
         ids = kind == "psi" ? Ids{named(r, "N"), named(r, "CA"), named(r, "C"), named(next, "N")}
                             : Ids{named(r, "CA"), named(r, "C"), named(next, "N"), named(next, "CA")};
@@ -602,7 +603,7 @@ void setResidueTorsion(Document &d, const QString &rid, const QString &kind, dou
         bool ok = false;
         int chi = kind.mid(3).toInt(&ok);
         if (!ok || chi < 1 || chi + 3 > names.size())
-            fail("この残基に指定のchi二面角はありません。");
+            fail(tr("この残基に指定のchi二面角はありません。"));
         for (auto name : names.mid(chi - 1, 4))
             ids << named(r, name);
     }
@@ -610,13 +611,13 @@ void setResidueTorsion(Document &d, const QString &rid, const QString &kind, dou
 }
 void registerResidue(Document &d, const Ids &ids, const QString &code) {
     if (ids.isEmpty())
-        fail("残基の原子を選択してください。");
+        fail(tr("残基の原子を選択してください。"));
     QJsonObject names;
     for (auto id : ids) {
         auto a = d.atom(id);
         QString name = a.name.isEmpty() ? a.element + QString::number(d.index(id) + 1) : a.name;
         if (names.contains(name))
-            fail("原子名が重複しています。");
+            fail(tr("原子名が重複しています。"));
         names[name] = id;
     }
     QString rid = newId(), chain = newId();
@@ -640,10 +641,10 @@ void registerResidue(Document &d, const Ids &ids, const QString &code) {
 void reconnectResidues(Document &d, const QString &left, const QString &right) {
     auto a = residue(d, left), b = residue(d, right);
     if (a["chain"] == b["chain"] || a["c_terminal"] == "internal" || b["n_terminal"] == "internal")
-        fail("異なる鎖の空いたC末端、N末端を選んでください。");
+        fail(tr("異なる鎖の空いたC末端、N末端を選んでください。"));
     double distance = (d.atom(named(a, "C")).position - d.atom(named(b, "N")).position).norm();
     if (distance < 1.1 || distance > 1.7)
-        fail("C–N距離を1.1〜1.7 Åに整えてから連結してください。");
+        fail(tr("C–N距離を1.1〜1.7 Åに整えてから連結してください。"));
     setTerminals(d, left, {}, "internal");
     setTerminals(d, right, "internal", {});
     d.setBond(named(a, "C"), named(b, "N"), "single");
@@ -668,7 +669,7 @@ QStringList residueDiagnostics(const Document &d, const QString &rid) {
     try {
         t = aminoTemplate(r["code"].toString(), r["state"].toString("default"), r["chirality"].toString("L"));
     } catch (const std::exception &) {
-        return {"テンプレートがない残基です。手動で確認してください。"};
+        return {tr("テンプレートがない残基です。手動で確認してください。")};
     }
     auto names = r["atoms"].toObject();
     for (auto v : t["atoms"].toArray()) {
@@ -677,15 +678,15 @@ QStringList residueDiagnostics(const Document &d, const QString &rid) {
         if (a["element"] == "H" || (name == "OXT" && r["c_terminal"] == "internal"))
             continue;
         if (!names.contains(name) || !d.contains(names[name].toString()))
-            result << "欠損原子: " + name;
+            result << tr("欠損原子: %1").arg(name);
         else if (d.atom(names[name].toString()).element != a["element"].toString())
-            result << "原子名と元素が一致しません: " + name;
+            result << tr("原子名と元素が一致しません: %1").arg(name);
     }
     for (auto name : {"N", "CA", "C"})
         if (!names.contains(name))
-            result << QString("主鎖%1がないため自動補完できません。").arg(name);
+            result << tr("主鎖%1がないため自動補完できません。").arg(name);
     if (result.isEmpty())
-        result << "主鎖・側鎖の重原子が揃っています。末端状態・水素・電荷を確認してください。";
+        result << tr("主鎖・側鎖の重原子が揃っています。末端状態・水素・電荷を確認してください。");
     return result;
 }
 void repairResidue(Document &d, const QString &rid) {
@@ -708,7 +709,7 @@ void repairResidue(Document &d, const QString &rid) {
             QString old = names[a.name].toString();
             if (d.contains(old)) {
                 if (d.atom(old).element != a.element)
-                    fail("原子名と元素の不一致を先に修正してください: " + a.name);
+                    fail(tr("原子名と元素の不一致を先に修正してください: %1").arg(a.name));
                 mapping[a.id] = old;
             } else {
                 auto copy = a;

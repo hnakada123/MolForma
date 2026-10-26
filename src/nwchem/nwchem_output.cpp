@@ -1,5 +1,6 @@
 #include "nwchem/nwchem_output.h"
 #include "model/geometry.h"
+#include "model/i18n.h"
 #include "nwchem/nwchem_advanced.h"
 #include <QDir>
 #include <QLocale>
@@ -79,42 +80,43 @@ void validateNwchemOutput(const Document &d, NwchemValidation &v) {
     if ((!cube && !molden) || !v.errors.isEmpty())
         return;
     if (std::any_of(d.atoms.cbegin(), d.atoms.cend(), [](const auto &atom) { return atom.ghost; }))
-        v.errors << "CUBE・MOLDENのGUI出力はゴースト中心に対応していません。";
+        v.errors << tr("CUBE・MOLDENのGUI出力はゴースト中心に対応していません。");
     if (s["method"] != "hf" && s["method"] != "dft")
-        v.warnings
-            << "CUBE・MOLDENは参照HFの軌道・密度を出力します。MP2/CCSDの相関密度・自然軌道ではありません。";
+        v.warnings << tr(
+            "CUBE・MOLDENは参照HFの軌道・密度を出力します。MP2/CCSDの相関密度・自然軌道ではありません。");
     if (s["task"].toString().contains("frequencies"))
-        v.warnings << "可視化ファイル出力前に、振動数計算後の基準構造でHF/DFTエネルギーを再計算します。";
+        v.warnings << tr("可視化ファイル出力前に、振動数計算後の基準構造でHF/DFTエネルギーを再計算します。");
     if (cube) {
         if (a["cube_type"] == "orbital") {
             if (a["cube_spin"] == "beta" && v.reference != "uhf")
-                v.errors
-                    << "Betaの分子軌道CUBEにはUHF/UKSを指定してください。制限計算ではAlphaを使用します。";
+                v.errors << tr(
+                    "Betaの分子軌道CUBEにはUHF/UKSを指定してください。制限計算ではAlphaを使用します。");
             if (a["cube_orbital"] == "index" && !a.contains("cube_index"))
-                v.errors << "CUBEに出力する分子軌道番号を指定してください。";
+                v.errors << tr("CUBEに出力する分子軌道番号を指定してください。");
             else if (orbital(d, v) < 1)
-                v.errors << "選択したスピンにはHOMOがありません。LUMOまたは軌道番号を指定してください。";
-            v.warnings << "CUBEの軌道番号は実行時の軌道総数以下である必要があります。最小基底等ではLUMOが存在"
-                          "しない場合があります。";
+                v.errors << tr("選択したスピンにはHOMOがありません。LUMOまたは軌道番号を指定してください。");
+            v.warnings << tr(
+                "CUBEの軌道番号は実行時の軌道総数以下である必要があります。最小基底等ではLUMOが存在"
+                "しない場合があります。");
         }
         const auto grid = nwchemCubeGrid(d);
         if (grid.points() > 2000000 || grid.points() < 8)
-            v.errors << "CUBEの格子点数は200万点までです。分割数を小さくしてください。";
+            v.errors << tr("CUBEの格子点数は200万点までです。分割数を小さくしてください。");
         for (int axis = 0; axis < 3; ++axis) {
             if (!std::isfinite(grid.minimum[axis]) || !std::isfinite(grid.maximum[axis]) ||
                 grid.minimum[axis] < -100000 || grid.maximum[axis] > 100000 ||
                 grid.minimum[axis] >= grid.maximum[axis])
-                v.errors << "CUBEの範囲が不正です。範囲・余白を確認してください。";
+                v.errors << tr("CUBEの範囲が不正です。範囲・余白を確認してください。");
         }
         if (nwchemDriverTask(s))
-            v.warnings
-                << "CUBEの格子範囲は入力構造から決めます。最適化後の構造に十分な余白を指定してください。";
+            v.warnings << tr(
+                "CUBEの格子範囲は入力構造から決めます。最適化後の構造に十分な余白を指定してください。");
     }
     const auto vectors =
         nwchemPermanentFile(d, a["vectors_output"].toString(s["start"].toString() + ".movecs"));
     for (const auto &file : nwchemOutputFiles(d, v))
         if (file == vectors)
-            v.errors << "CUBE・MOLDENと出力movecsには別のファイル名を指定してください。";
+            v.errors << tr("CUBE・MOLDENと出力movecsには別のファイル名を指定してください。");
     v.errors.removeDuplicates();
 }
 QString nwchemOutputLines(const Document &d, const NwchemValidation &v) {

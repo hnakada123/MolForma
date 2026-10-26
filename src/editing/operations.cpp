@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/operations.h"
+#include "model/i18n.h"
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -166,7 +167,7 @@ void completeHydrogens(Document &d, const Ids &selection) {
             }
         }
         if (difference < 0)
-            fail("原子価を超えています: " + a.element + QString::number(d.index(id) + 1));
+            fail(tr("原子価を超えています: %1%2").arg(a.element).arg(d.index(id) + 1));
         for (int i = 0; i < difference; ++i) {
             Atom h;
             h.element = "H";
@@ -218,7 +219,7 @@ QString addAtom(Document &d, const QString &symbol, const Vec &position, const Q
         if (d.atom(parent).element == "H") {
             auto n = d.neighbors(parent);
             if (n.size() != 1)
-                fail("結合している水素を選択してください。");
+                fail(tr("結合している水素を選択してください。"));
             p = d.atom(parent).position;
             QString h = parent;
             parent = n.first();
@@ -256,7 +257,7 @@ QString addAtom(Document &d, const QString &symbol, const Vec &position, const Q
 void replaceElement(Document &d, const Ids &ids, const QString &symbol, bool hydrogen) {
     element(symbol);
     if (ids.isEmpty())
-        fail("原子を選択してください。");
+        fail(tr("原子を選択してください。"));
     for (const auto &id : ids) {
         auto &a = d.atom(id);
         a.element = symbol;
@@ -273,21 +274,21 @@ PlacedPart attachPart(Document &d, const QString &anchor, const QJsonObject &t, 
     if (d.atom(anchor).element == "H") {
         auto ns = d.neighbors(anchor);
         if (ns.size() != 1)
-            fail("置換する末端水素を選択してください。");
+            fail(tr("置換する末端水素を選択してください。"));
     } else {
         Ids hs;
         for (const auto &n : d.neighbors(anchor))
             if (d.atom(n).element == "H")
                 hs << n;
         if (hs.size() != 1)
-            fail("置換する水素を1個指定してください。");
+            fail(tr("置換する水素を1個指定してください。"));
         leaving = hs.first();
     }
     return replacePart(d, {leaving}, t, twist);
 }
 PlacedPart replacePart(Document &d, Ids ids, const QJsonObject &t, double twist) {
     if (ids.isEmpty())
-        fail("置換する原子または部品を選択してください。");
+        fail(tr("置換する原子または部品を選択してください。"));
     if (ids.size() == 1 && d.atom(ids.first()).element != "H")
         for (auto id : d.neighbors(ids.first()))
             if (d.atom(id).element == "H")
@@ -297,13 +298,13 @@ PlacedPart replacePart(Document &d, Ids ids, const QJsonObject &t, double twist)
         if (ids.contains(bond.a) != ids.contains(bond.b))
             boundary << bond;
     if (boundary.size() != 1)
-        fail("部品置換は外部への結合が1本の範囲に対応します。残基・配位子は専用操作を使ってください。");
+        fail(tr("部品置換は外部への結合が1本の範囲に対応します。残基・配位子は専用操作を使ってください。"));
     const auto bond = boundary.first();
     const auto parent = ids.contains(bond.a) ? bond.b : bond.a;
     const auto leaving = ids.contains(bond.a) ? bond.a : bond.b;
     auto connections = t["connections"].toArray();
     if (connections.size() != 1)
-        fail("置換基には接続点が1個必要です。");
+        fail(tr("置換基には接続点が1個必要です。"));
     int donor = connections.first().toInt();
     QVector<Vec> points;
     for (auto a : t["atoms"].toArray())
@@ -377,9 +378,9 @@ PlacedPart replacePart(Document &d, Ids ids, const QJsonObject &t, double twist)
 }
 Ids duplicate(Document &d, const Ids &ids, const Vec &offset) {
     if (ids.isEmpty())
-        fail("複製する原子を選択してください。");
+        fail(tr("複製する原子を選択してください。"));
     if (offset.norm() < 1e-6)
-        fail("複製の間隔は0以外にしてください。");
+        fail(tr("複製の間隔は0以外にしてください。"));
     auto old = d;
     QMap<QString, QString> mapping;
     Ids added;
@@ -487,12 +488,12 @@ Ids duplicate(Document &d, const Ids &ids, const Vec &offset) {
 }
 void mirror(Document &d, const Ids &ids, int axis, const Vec &origin) {
     if (ids.isEmpty() || axis < 0 || axis > 2)
-        fail("鏡映する分子を選択してください。");
+        fail(tr("鏡映する分子を選択してください。"));
     QSet<QString> selected(ids.begin(), ids.end());
     for (const auto &id : ids)
         for (const auto &n : d.neighbors(id))
             if (!selected.contains(n))
-                fail("分子全体を選択して鏡映してください。");
+                fail(tr("分子全体を選択して鏡映してください。"));
     Mat r = Mat::Identity();
     r(axis, axis) = -1;
     transform(d, ids, r, Vec::Zero(), origin);
@@ -507,11 +508,11 @@ void mirror(Document &d, const Ids &ids, int axis, const Vec &origin) {
 void invertCenter(Document &d, const QString &id) {
     auto ns = d.neighbors(id, false);
     if (ns.size() != 4)
-        fail("4配位の不斉中心を選択してください。");
+        fail(tr("4配位の不斉中心を選択してください。"));
     auto a = d.bondSide(id, ns[0]), b = d.bondSide(id, ns[1]);
     for (auto x : a)
         if (b.contains(x))
-            fail("環で接続した置換基は反転できません。");
+            fail(tr("環で接続した置換基は反転できません。"));
     Vec o = d.atom(id).position, u = d.atom(ns[0]).position - o, v = d.atom(ns[1]).position - o;
     transform(d, a, alignVectors(u, v), Vec::Zero(), o);
     transform(d, b, alignVectors(v, u), Vec::Zero(), o);
@@ -520,7 +521,7 @@ void invertCenter(Document &d, const QString &id) {
 }
 void switchEZ(Document &d, const Ids &ids) {
     if (ids.size() != 2 || !d.bond(ids[0], ids[1]) || d.bond(ids[0], ids[1])->kind != "double")
-        fail("二重結合の両端を選択してください。");
+        fail(tr("二重結合の両端を選択してください。"));
     Vec a = d.atom(ids[0]).position, b = d.atom(ids[1]).position;
     transform(d, d.bondSide(ids[0], ids[1]), rotation(b - a, 180), Vec::Zero(), b);
     for (auto &bond : d.bonds)
@@ -530,24 +531,24 @@ void switchEZ(Document &d, const Ids &ids) {
 void assignFragments(Document &d, const QString &target, const QList<int> &members, const QList<int> &charges,
                      const QList<int> &mult, const QList<QPair<int, int>> &cuts) {
     if (members.size() != d.atoms.size() || members.isEmpty())
-        fail("全原子分の断片番号が必要です。");
+        fail(tr("全原子分の断片番号が必要です。"));
     int count = *std::max_element(members.begin(), members.end());
     if (count < 1 || count > members.size() || charges.size() != count || mult.size() != count)
-        fail("断片数と電荷・多重度の個数を合わせてください。");
+        fail(tr("断片数と電荷・多重度の個数を合わせてください。"));
     QJsonObject mm, qq, ss;
     QSet<int> seen;
     for (int i = 0; i < members.size(); ++i) {
         if (members[i] < 1)
-            fail("断片番号は1から連番にしてください。");
+            fail(tr("断片番号は1から連番にしてください。"));
         seen.insert(members[i]);
         mm[d.atoms[i].id] = QString::number(members[i]);
     }
     if (seen.size() != count)
-        fail("断片番号に欠番があります。");
+        fail(tr("断片番号に欠番があります。"));
     int total = 0;
     for (int i = 0; i < count; ++i) {
         if (mult[i] < 1)
-            fail("多重度は1以上にしてください。");
+            fail(tr("多重度は1以上にしてください。"));
         qq[QString::number(i + 1)] = charges[i];
         ss[QString::number(i + 1)] = mult[i];
         total += charges[i];
@@ -556,10 +557,10 @@ void assignFragments(Document &d, const QString &target, const QList<int> &membe
     for (auto pair : cuts) {
         if (pair.first < 1 || pair.second < 1 || pair.first > d.atoms.size() ||
             pair.second > d.atoms.size() || members[pair.first - 1] == members[pair.second - 1])
-            fail("切断位置が不正です。");
+            fail(tr("切断位置が不正です。"));
         auto a = d.atoms[pair.first - 1].id, b = d.atoms[pair.second - 1].id;
         if (!d.bond(a, b))
-            fail("切断位置に結合がありません。");
+            fail(tr("切断位置に結合がありません。"));
         cc.append(QJsonArray{a, b});
     }
     for (const auto &b : d.bonds)
@@ -571,16 +572,16 @@ void assignFragments(Document &d, const QString &target, const QList<int> &membe
                     present = true;
             }
             if (!present)
-                fail("断片間の共有結合にはBDA:BAAの指定が必要です。");
+                fail(tr("断片間の共有結合にはBDA:BAAの指定が必要です。"));
         }
     if (target == "sapt0" && count != 2)
-        fail("SAPT0は2断片にしてください。");
+        fail(tr("SAPT0は2断片にしてください。"));
     if (target != "fmo" && !cuts.isEmpty())
-        fail("共有結合の切断はFMOのみ対応しています。");
+        fail(tr("共有結合の切断はFMOのみ対応しています。"));
     if (target == "sapt0")
         for (int m : mult)
             if (m != 1)
-                fail("SAPT0の断片は閉殻一重項にしてください。");
+                fail(tr("SAPT0の断片は閉殻一重項にしてください。"));
     auto assignments = d.data["assignments"].toObject();
     assignments[target] = QJsonObject{{"members", mm}, {"charges", qq},     {"multiplicities", ss},
                                       {"cuts", cc},    {"status", "valid"}, {"issues", QJsonArray()}};
@@ -593,7 +594,7 @@ void assignFragments(Document &d, const QString &target, const QList<int> &membe
 }
 void proposeFragments(Document &d, const QString &target, const QString &mode) {
     if (d.atoms.isEmpty())
-        fail("分子が空です。");
+        fail(tr("分子が空です。"));
     QList<QPair<int, int>> cuts;
     QSet<QString> blocked;
     auto pairKey = [](QString a, QString b) { return a < b ? a + b : b + a; };
@@ -608,7 +609,7 @@ void proposeFragments(Document &d, const QString &target, const QString &mode) {
                 covered.insert(id.toString());
         }
         if (covered.size() != d.atoms.size())
-            fail("未登録の原子があります。残基を確認するか手動指定してください。");
+            fail(tr("未登録の原子があります。残基を確認するか手動指定してください。"));
         for (auto sequence : d.data["chains"].toObject()) {
             Ids chain;
             for (auto id : idsFromJson(sequence))
@@ -619,7 +620,7 @@ void proposeFragments(Document &d, const QString &target, const QString &mode) {
                     auto names = residues[chain[i]]["atoms"].toObject();
                     QString a = names["CA"].toString(), b = names["C"].toString();
                     if (!d.contains(a) || !d.contains(b) || !d.bond(a, b) || d.bond(a, b)->kind != "single")
-                        fail("Cα–C(=O)の単結合が必要です。");
+                        fail(tr("Cα–C(=O)の単結合が必要です。"));
                     blocked.insert(pairKey(a, b));
                     cuts.append({d.index(a) + 1, d.index(b) + 1});
                 }
@@ -649,7 +650,7 @@ void proposeFragments(Document &d, const QString &target, const QString &mode) {
     }
     for (auto pair : cuts)
         if (groups[d.atoms[pair.first - 1].id] == groups[d.atoms[pair.second - 1].id])
-            fail("架橋または環が切断を迂回します。分割単位を変更してください。");
+            fail(tr("架橋または環が切断を迂回します。分割単位を変更してください。"));
     assignFragments(d, target, members, charges, mult, cuts);
 }
 void mergeIonContacts(Document &d) {
@@ -659,7 +660,7 @@ void mergeIonContacts(Document &d) {
          spins = assignment["multiplicities"].toObject();
     for (const auto &a : d.atoms)
         if (!members.contains(a.id))
-            fail("先にFMOの断片割当を作成・確定してください。");
+            fail(tr("先にFMOの断片割当を作成・確定してください。"));
     static const QStringList metals =
         QString(
             "Li Be Na Mg Al K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn "
@@ -690,7 +691,7 @@ void mergeIonContacts(Document &d) {
             if (cut)
                 continue;
             if (spins[left].toInt(1) != 1 || spins[right].toInt(1) != 1)
-                fail("開殻断片の統合にはスピン結合の確認が必要です。手動で割り当ててください。");
+                fail(tr("開殻断片の統合にはスピン結合の確認が必要です。手動で割り当ててください。"));
             if (order.indexOf(left) > order.indexOf(right))
                 std::swap(left, right);
             for (auto it = members.begin(); it != members.end(); ++it)
@@ -703,7 +704,7 @@ void mergeIonContacts(Document &d) {
         }
     }
     if (!merged)
-        fail("統合対象となる金属と断片の近接はありません。");
+        fail(tr("統合対象となる金属と断片の近接はありません。"));
     QJsonArray cuts;
     for (auto value : assignment["cuts"].toArray()) {
         auto pair = idsFromJson(value);
@@ -715,16 +716,18 @@ void mergeIonContacts(Document &d) {
     assignment["multiplicities"] = spins;
     assignment["cuts"] = cuts;
     assignment["status"] = "candidate";
+    // Saved in Japanese with the project; structureReport() translates them when shown.
     assignment["issues"] =
         charges.size() == 1
-            ? QJsonArray{"統合後は1断片です。FMO計算には使えないため、通常のHF/DFTとして設定してください。"}
-            : QJsonArray{"金属との近接から断片を統合しました。電荷・多重度を確認してください。"};
+            ? QJsonArray{QT_TR_NOOP(
+                  "統合後は1断片です。FMO計算には使えないため、通常のHF/DFTとして設定してください。")}
+            : QJsonArray{QT_TR_NOOP("金属との近接から断片を統合しました。電荷・多重度を確認してください。")};
     assignments["fmo"] = assignment;
     d.data["assignments"] = assignments;
 }
 void waterToCharges(Document &d, const Ids &ids) {
     if (ids.size() != 3)
-        fail("水分子のOとH2個を選択してください。");
+        fail(tr("水分子のOとH2個を選択してください。"));
     int oxygen = 0, hydrogen = 0;
     QString oid;
     for (const auto &id : ids) {
@@ -737,7 +740,7 @@ void waterToCharges(Document &d, const Ids &ids) {
             ++hydrogen;
     }
     if (oxygen != 1 || hydrogen != 2 || d.component(oid).size() != 3)
-        fail("独立したH2O分子を選択してください。");
+        fail(tr("独立したH2O分子を選択してください。"));
     auto charges = d.data["point_charges"].toArray();
     for (const auto &id : ids) {
         const auto &a = d.atom(id);
@@ -752,7 +755,7 @@ void waterToCharges(Document &d, const Ids &ids) {
 }
 void addReference(Document &d, const Ids &ids, const QString &kind, double value, double end, int steps) {
     if (ids.isEmpty() || (kind != "freeze" && (ids.size() < 2 || ids.size() > 4)))
-        fail("凍結は1原子以上、拘束とスキャンは2〜4原子を選択してください。");
+        fail(tr("凍結は1原子以上、拘束とスキャンは2〜4原子を選択してください。"));
     auto job = d.emittedJob(), sections = job["sections"].toObject();
     auto refs = d.data["references"].toArray();
     QString section = kind == "scan" ? "scan" : "constraint";
@@ -771,7 +774,7 @@ void addReference(Document &d, const Ids &ids, const QString &kind, double value
     QStringList numbers;
     for (auto id : actual) {
         if (!d.contains(id))
-            fail("原子参照が不正です。");
+            fail(tr("原子参照が不正です。"));
         numbers << QString::number(d.index(id) + 1);
     }
     QString atomText = numbers.join(','), text = atomText;
@@ -828,7 +831,7 @@ void addReference(Document &d, const Ids &ids, const QString &kind, double value
 }
 Ids insertFragment(Document &d, const Document &fragment) {
     if (fragment.atoms.isEmpty())
-        fail("追加する断片に原子がありません。");
+        fail(tr("追加する断片に原子がありません。"));
     auto errors = fragment.validate();
     if (!errors.isEmpty())
         fail(errors.join('\n'));
@@ -852,7 +855,7 @@ Ids insertFragment(Document &d, const Document &fragment) {
     Ids added;
     for (auto a : fragment.atoms) {
         if (d.contains(a.id))
-            fail("断片の原子IDが重複しています。");
+            fail(tr("断片の原子IDが重複しています。"));
         a.position += offset;
         d.atoms << a;
         added << a.id;
@@ -881,7 +884,7 @@ QString structureReport(const Document &d) {
         if (!a.ghost)
             electrons += element(a.element).number;
     int mult = d.job()["multiplicity"].toInt(1);
-    lines << QString("%1 原子 / %2 結合 / %3\n形式電荷合計: %4 / 設定電荷: %5 / 多重度: %6")
+    lines << tr("%1 原子 / %2 結合 / %3\n形式電荷合計: %4 / 設定電荷: %5 / 多重度: %6")
                  .arg(d.atoms.size())
                  .arg(d.bonds.size())
                  .arg(d.formula())
@@ -889,20 +892,20 @@ QString structureReport(const Document &d) {
                  .arg(d.job()["charge"].toInt())
                  .arg(mult);
     if (electrons < 0 || mult < 1 || mult > electrons + 1 || (electrons + mult) % 2 != 1)
-        lines << "電子数と多重度の組合せを確認してください。";
+        lines << tr("電子数と多重度の組合せを確認してください。");
     if (d.formalCharge() != d.job()["charge"].toInt())
-        lines << "形式電荷の合計と設定電荷が異なります。";
+        lines << tr("形式電荷の合計と設定電荷が異なります。");
     if (!d.data["invalid_settings"].toArray().isEmpty())
-        lines << "削除された原子を参照する保留設定があります。";
+        lines << tr("削除された原子を参照する保留設定があります。");
     for (auto a : d.data["assignments"].toObject())
         for (auto issue : a.toObject()["issues"].toArray())
-            lines << issue.toString();
+            lines << translated(issue.toString());
     const auto doubles = aromaticDoubleBonds(d);
     for (const auto &a : d.atoms) {
         const double used = valenceUsed(d, a.id, doubles);
         int expected = valence(a, used);
         if (!a.ghost && expected >= 0 && std::abs(used - expected) > .1)
-            lines << QString("%1%2: 結合次数合計 %3（目安 %4）")
+            lines << tr("%1%2: 結合次数合計 %3（目安 %4）")
                          .arg(a.element)
                          .arg(d.index(a.id) + 1)
                          .arg(used)
@@ -923,26 +926,26 @@ QString structureReport(const Document &d) {
             return s.toObject()["donor"].toString().isEmpty();
         });
         if (open)
-            lines << QString("%1%2: 配位サイト %3 のうち %4 "
-                             "が空いています（配位子を置くか、配位形状を変えてください）。")
+            lines << tr("%1%2: 配位サイト %3 のうち %n "
+                        "が空いています（配位子を置くか、配位形状を変えてください）。",
+                        nullptr, int(open))
                          .arg(d.atom(id).element)
                          .arg(d.index(id) + 1)
-                         .arg(sites.size())
-                         .arg(open);
+                         .arg(sites.size());
     }
     if (!centers.isEmpty()) {
         for (const auto &a : d.atoms)
             if (!centers.contains(a.id))
                 expected += a.charge;
         if (expected != d.job()["charge"].toInt())
-            lines << QString("配位中心の酸化数（補助）と配位子の形式電荷から見込まれる全電荷は %1 ですが、"
-                             "設定電荷は %2 です。")
+            lines << tr("配位中心の酸化数（補助）と配位子の形式電荷から見込まれる全電荷は %1 ですが、"
+                        "設定電荷は %2 です。")
                          .arg(expected)
                          .arg(d.job()["charge"].toInt());
     }
     // Besides the summary line, every line is a finding.
     if (lines.size() == 1)
-        lines << "問題は見つかりませんでした。";
+        lines << tr("問題は見つかりませんでした。");
     return lines.join('\n');
 }
 } // namespace mf

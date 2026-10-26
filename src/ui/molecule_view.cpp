@@ -1,5 +1,6 @@
 #include "ui/molecule_view.h"
 #include "model/geometry.h"
+#include "model/i18n.h"
 #include "ui/theme.h"
 #include <Eigen/Geometry>
 #include <QSettings>
@@ -96,11 +97,11 @@ QString MoleculeView::rendererName() const {
 }
 void MoleculeView::updateRendererStatus() {
     // Only a fallback is worth a note on the picture; the renderer in use is in "MolFormaについて".
-    rendererStatus->setText(renderer ? "描画: VTK（OpenGL）"
-                                     : "描画: QPainter（CPU）· OpenGLを使えないため簡易表示");
+    rendererStatus->setText(renderer ? tr("描画: VTK（OpenGL）")
+                                     : tr("描画: QPainter（CPU）· OpenGLを使えないため簡易表示"));
     rendererStatus->setToolTip(
-        "OpenGL 3.2を使えないため、CPUで描画しています。表示は同じ内容で、大きな等値面は"
-        "間引いて描きます。");
+        tr("OpenGL 3.2を使えないため、CPUで描画しています。表示は同じ内容で、大きな等値面は"
+           "間引いて描きます。"));
     rendererStatus->setVisible(fallback && !renderer);
     rendererStatus->adjustSize();
     rendererStatus->raise();
@@ -457,9 +458,10 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
         f.setPointSize(16);
         p.setFont(f);
         p.drawText(rect().adjusted(20, 20, -20, -20), Qt::AlignCenter,
-                   emptyMessage.isEmpty() ? "分子を作成\n\n左のパレットから原子・骨格を選び、\nこの画面をクリ"
-                                            "ックしてください。\n\n構造ファイル・SMILESも読み込めます。"
-                                          : emptyMessage);
+                   emptyMessage.isEmpty()
+                       ? tr("分子を作成\n\n左のパレットから原子・骨格を選び、\nこの画面をクリ"
+                            "ックしてください。\n\n構造ファイル・SMILESも読み込めます。")
+                       : emptyMessage);
         return;
     }
     struct Item {
@@ -728,7 +730,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
                 p.setBrush(QColor("#e2f6ee"));
                 p.drawRoundedRect(QRectF(pos - QPointF(27, 12), QSizeF(54, 24)), 8, 8);
                 p.drawText(QRectF(pos - QPointF(27, 12), QSizeF(54, 24)), Qt::AlignCenter,
-                           n ? "＋ N" : "＋ C");
+                           n ? tr("＋ N") : tr("＋ C"));
                 markers << Marker{pos, res["id"].toString(), -1, n};
             }
         }
