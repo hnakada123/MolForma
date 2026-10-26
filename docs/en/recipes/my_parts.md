@@ -16,17 +16,44 @@ Build a trimethylsilyl group –Si(CH₃)₃, which is not among the substituent
 ## 1. Build the atoms of the part
 
 1. Start an empty molecule with “File → New”, choose the category “Atom” in the parts palette and enter `Si` (or “Silicon”, or 14) in the search field. Click “Silicon” and place it in empty space: SiH4. Elements without a button are chosen with the search or “Periodic table…”.
+
+   ![Si entered in the search field of the category “Atom”: the list shows only “Silicon”](images/my_parts/01_search_si.png)
+
+   **Figure 1** With `Si` in the search field, silicon, which has no element button, appears in the list.
+
 2. With “Methyl” of the category “Substituent”, replace three hydrogens of Si in turn: (CH3)3SiH (C3H10Si · 14 atoms).
 3. Clean up with “Clean up all” and confirm.
+
+   ![(CH3)3SiH with three hydrogens of Si replaced by methyl groups and cleaned up: C2, C3 and C4 around Si1, and the Si–H hydrogen H5](images/my_parts/02_trimethylsilane.png)
+
+   **Figure 2** Trimethylsilane (CH3)3SiH cleaned up (C3H10Si · 14 atoms).
 
 ## 2. Choose the attachment point and save
 
 A substituent part is attached at “the inner end of its one outgoing bond”. Make a part where the Si–H hydrogen comes off and the molecule joins there.
 
 1. With the “Select” tool, click **the attachment atom Si first**, then Shift+click the atoms of the methyl groups (the 12 carbons and hydrogens). Do not select the Si–H hydrogen (13 atoms selected). A selection that is not connected cannot be saved.
+
+   ![Si1 chosen first and then the 12 atoms of the methyl groups (13 atoms selected): Si1 heads the selection box on the right, and the Si–H hydrogen H5 is not chosen. The palette shows the category “My parts”, still empty](images/my_parts/03_selection.png)
+
+   **Figure 3** Choose the attachment atom Si first, then add the atoms of the methyl groups, but not the Si–H hydrogen.
+
 2. Choose the category “My parts” and press “Save selected atoms…” above the list.
 3. Enter `Trimethylsilyl` as the “Part name” and press OK, choose “Substituent (one attachment point)” as the kind and press OK.
+
+   ![The “Part name” dialog of “Save selected atoms…” with “Trimethylsilyl” entered](images/my_parts/04_part_name.png)
+
+   **Figure 4** Enter the part name.
+
+   ![The dialog “Kind (for substituents and ligands, select the attachment atoms first)” with “Substituent (one attachment point)” chosen](images/my_parts/05_part_kind.png)
+
+   **Figure 5** Choose the kind of part.
+
 4. You are asked where to save the part file; save it as `trimethylsilyl.kpart.json` or similar. “Trimethylsilyl” appears in the category “My parts”.
+
+   ![The category “My parts” after saving, listing “Trimethylsilyl”](images/my_parts/06_my_parts.png)
+
+   **Figure 6** The saved part appears in “My parts”.
 
 There are three kinds of parts:
 
@@ -42,13 +69,26 @@ The my-parts list is kept in the application settings and is there at the next s
 
 1. With “File → New”, place “Benzene”.
 2. Click “Trimethylsilyl” in the category “My parts”. Under the 3D view: “Place (Trimethylsilyl): click the hydrogen to replace (or drop on it)”.
+
+   ![Benzene placed and “Trimethylsilyl” chosen in “My parts”: “Part to place Trimethylsilyl” above the 3D view and “Place (Trimethylsilyl): click the hydrogen to replace (or drop on it)” below](images/my_parts/07_place_hint.png)
+
+   **Figure 7** A part of your own is attached like a built-in substituent, by clicking the hydrogen to replace.
+
 3. Click a hydrogen of benzene. You get trimethylsilylbenzene (C9H14Si · 24 atoms). Clean up with “Clean up all” and confirm.
+
+   ![Trimethylsilylbenzene, with a benzene hydrogen replaced by the trimethylsilyl group and cleaned up](images/my_parts/08_tms_benzene.png)
+
+   **Figure 8** Trimethylsilylbenzene (C9H14Si · 24 atoms).
 
 Part files received from others are added to the list with “Load…” in the category “My parts”. “Remove from list” only removes them from the list; the file stays.
 
 ## 4. Calculate
 
 In “2 Calculation”, set the task to “Geometry optimization”, the method to “DFT” (B3LYP) and the basis set to “6-31G*”, and run.
+
+![“Summary” of the result viewer for trimethylsilylbenzene: energy −640.924517685 Eh, optimization converged (40 steps), HOMO–LUMO gap 6.40 eV, dipole moment 0.11 D](images/my_parts/09_results_summary.png)
+
+**Figure 9** “Summary” of the optimization of trimethylsilylbenzene.
 
 ### Results
 

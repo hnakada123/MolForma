@@ -17,20 +17,54 @@ Delete just the O–H hydrogen of phenol and make the phenoxyl radical (doublet)
 1. With “File → New”, place “Benzene” from the category “Skeleton” and replace a hydrogen with “Hydroxy –OH” from the category “Substituent”.
 2. Clean up with “Clean up all”, confirm, and save as `phenol.kgui.json` with “File → Save as…”.
 
+   ![Phenol, made by replacing a benzene hydrogen with a hydroxy group and cleaning up, with oxygen O7 and hydrogen H13](images/phenoxyl_radical/01_phenol.png)
+
+   **Figure 1** Phenol cleaned up (C6H6O · 13 atoms).
+
 ## 2. Make the phenoxyl radical
 
 1. With the “Delete” (X) tool, click the O–H hydrogen and confirm the candidate. You have C6H5O · 12 atoms.
 2. Now 49 electrons (odd) do not fit multiplicity 1: “4 Input preview” in the header turns red and “2 Calculation” says “49 electrons do not fit multiplicity 1.”
+
+   ![“Charge and spin” of “2 Calculation” after deleting the O–H hydrogen: the checks on the right turn red with “Input cannot be generated (one error)” and “Error: 49 electrons do not fit multiplicity 1.”](images/phenoxyl_radical/02_mismatch.png)
+
+   **Figure 2** Deleting one hydrogen leaves an odd number of electrons, and no input can be made with multiplicity 1.
+
 3. Click the oxygen with the “Select” tool, set “Unpaired electrons” to 1 on the “Attributes” page on the right and press “Apply attributes”. Unpaired electrons are an attribute that prepares the structure (adding hydrogens and so on); the multiplicity does not change by itself.
+
+   ![Oxygen O7 chosen, with unpaired electrons set to 1 under “Atom attributes” on the “Attributes” page and applied](images/phenoxyl_radical/03_radical_attribute.png)
+
+   **Figure 3** Set the unpaired electrons of the oxygen to 1 on the “Attributes” page.
+
 4. Set “Spin multiplicity 2S+1” to 2 in “Charge and spin” of “2 Calculation”. “→ UKS (open shell)” appears under the reference (open-shell DFT is unrestricted). Double-clicking the line “49 electrons do not fit multiplicity 1.” in the checks fixes the multiplicity too.
+
+   ![Spin multiplicity 2S+1 set to 2 in “Charge and spin”: “→ UKS (open shell)” appears under the reference, and the checks on the right say the input can be generated](images/phenoxyl_radical/04_multiplicity_2.png)
+
+   **Figure 4** With multiplicity 2, the reference becomes UKS (open shell).
+
 5. Save as `phenoxyl.kgui.json`.
 
 ## 3. Make phenolate
 
 1. Choose the oxygen of the phenoxyl radical, set “Formal charge” to −1 and “Unpaired electrons” to 0 on the “Attributes” page, and press “Apply attributes”.
+
+   ![The oxygen chosen, with formal charge −1 and unpaired electrons 0 applied on the “Attributes” page: its label in the 3D view reads “O7(-1)”](images/phenoxyl_radical/05_phenolate_attribute.png)
+
+   **Figure 5** An atom with a formal charge shows the charge in its label.
+
 2. Press “Use formal charges as total” on the “Charge” page. The total charge becomes −1 (the atoms' formal charges and the calculation's total charge are kept apart).
+
+   ![The “Charge” page after “Use formal charges as total”: total charge and multiplicity read −1 · multiplicity 2, and because the multiplicity is still 2 it says “50 electrons do not fit multiplicity 2.”](images/phenoxyl_radical/06_charge_page.png)
+
+   **Figure 6** “Molecular charge” on the “Charge” page. The total charge is now −1; the next step sets the multiplicity back to 1.
+
 3. Set the multiplicity back to 1 in “2 Calculation” (→ RKS (closed shell)).
 4. The checks note “The rotational symmetry number is estimated as σ=2.” Coordinates are written with `noautosym`, so NWChem's thermochemistry uses symmetry number 1. Correct the entropy and free energy of phenolate (C2v) by the amounts shown (−R ln 2, +RT ln 2 = 0.411 kcal/mol).
+
+   ![“2 Calculation” of phenolate with multiplicity 1 again: the summary on the right shows charge and multiplicity −1 · 1 (RKS), and the checks note “The rotational symmetry number is estimated as σ=2.” with the corrections](images/phenoxyl_radical/07_symmetry_check.png)
+
+   **Figure 7** The checks note the rotational symmetry number and the corrections of entropy and free energy.
+
 5. Save as `phenolate.kgui.json`.
 
 ## 4. Settings and runs
@@ -42,6 +76,10 @@ The bond dissociation energy also needs the energy of a hydrogen atom: with “F
 ## 5. From the results
 
 “History” lists the four jobs. Open each with “Open in result viewer” and read the energy and the thermochemical corrections in the “Summary”.
+
+![“Summary” of the result viewer for the phenoxyl radical: energy −306.842408832 Eh, optimization converged, no imaginary frequencies, HOMO–LUMO gaps (alpha 5.55 eV, beta 3.05 eV) and the thermochemical corrections](images/phenoxyl_radical/08_results_phenoxyl.png)
+
+**Figure 8** “Summary” of the phenoxyl radical. Being open shell, it shows alpha and beta HOMO–LUMO gaps. The thermochemical corrections are further down.
 
 With the enthalpy of each molecule H = energy of the calculation + enthalpy correction (298 K):
 

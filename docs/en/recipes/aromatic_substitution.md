@@ -16,7 +16,16 @@ Put substituent templates on the benzene skeleton to make p-nitroaniline. A subs
 
 1. Start an empty molecule with “File → New”.
 2. Choose the category “Skeleton” at the top of the parts palette and click “Benzene”. The tool becomes “Place”.
+
+   ![“Benzene” chosen in the category “Skeleton”: the left column shows “Place”, and “Part to place Benzene” and “Keep tool after placing a part” appear above the 3D view](images/aromatic_substitution/01_benzene_chosen.png)
+
+   **Figure 1** Choosing “Benzene” in “Skeleton” switches to the “Place” tool.
+
 3. Click in empty space in the 3D view. Benzene (C6H6 · 12 atoms) is placed and the tool returns to “Select”. Placing one part (skeleton, substituent, …) returns to selection; to keep placing, turn on “Keep tool after placing a part” above the 3D view.
+
+   ![Benzene placed by clicking empty space, with ring carbons C1 to C6 and hydrogens H7 to H12 numbered](images/aromatic_substitution/02_benzene.png)
+
+   **Figure 2** The placed benzene: ring carbons C1 to C6, hydrogens H7 to H12. A part just placed is shown selected.
 
 In the labels, the ring carbons are C1–C6 and their hydrogens H7–H12. If no numbers are shown, turn on “View → Show numbers”.
 
@@ -24,7 +33,17 @@ In the labels, the ring carbons are C1–C6 and their hydrogens H7–H12. If no 
 
 1. Choose the category “Substituent” and click “Amino”. Under the 3D view: “Place (Amino): click the hydrogen to replace (or drop on it)”.
 2. Click hydrogen H7 of benzene. H7 becomes NH2: aniline (C6H7N · 14 atoms). Substituents go on hydrogens only; clicking empty space does not place them.
+
+   ![Aniline made by clicking H7 with “Amino”: NH2 on C1](images/aromatic_substitution/03_aniline.png)
+
+   **Figure 3** Clicking H7 with “Amino” replaces that hydrogen with NH2: aniline.
+
 3. Choose “Nitro” and click H10, the hydrogen of the carbon three steps around the ring from C1 (C4, para). You get C6H6N2O2 · 16 atoms; the labels show the formal charge “(+1)” on N and “(−1)” on one O (one resonance structure of the nitro group). The total charge stays 0.
+
+   ![p-Nitroaniline made by clicking H10 with “Nitro”: the nitro N shows the formal charge (+1) and one O (−1)](images/aromatic_substitution/04_p_nitroaniline.png)
+
+   **Figure 4** p-Nitroaniline (C6H6N2O2 · 16 atoms), with the para hydrogen H10 replaced by “Nitro”.
+
 4. Press “Clean up all”, look at the candidate and press “Confirm changes”.
 
 A hydrogen next to the amino carbon (C2, C6) gives the ortho isomer, two steps away (C3, C5) the meta isomer. Undo a misplaced group with Ctrl+Z. To exchange a placed substituent for another, choose the new substituent in the palette, choose “Replace” (R) in the left column and click the atom where the old substituent is attached (N for the amino group); the exchange is a candidate.
@@ -32,11 +51,24 @@ A hydrogen next to the amino carbon (C2, C6) gives the ortho isomer, two steps a
 ## 3. Set up the calculation
 
 1. In “Basics” of “2 Calculation”, set the task to “Optimization → frequencies”, the method to “DFT” (B3LYP) and the basis set to “6-31G*”.
+
+   ![“Basics” of “2 Calculation” with task “Optimization → frequencies”, method “DFT” (B3LYP) and basis set “6-31G*”](images/aromatic_substitution/05_calculation.png)
+
+   **Figure 5** “2 Calculation” with the task, method and basis set chosen.
+
 2. Check total charge 0 and multiplicity 1 (→ RKS (closed shell)).
 
 ## 4. Run and look at the results
 
 Run with “Run calculation” (F5) in the header. The frequency task (analytic Hessian) takes longer than the optimization; the run panel marks each task as done, running or waiting.
+
+![“Summary” of the result viewer: energy −492.108697994 Eh, optimization converged, no imaginary frequencies, HOMO–LUMO gap 4.30 eV, dipole moment 7.12 D](images/aromatic_substitution/06_results_summary.png)
+
+**Figure 6** “Summary” of the “Result viewer” after the run.
+
+![The “Vibrations” tab with the strongest IR band, the NO2 symmetric stretch (1391 cm⁻¹), selected](images/aromatic_substitution/07_ir_nitro.png)
+
+**Figure 7** The strongest IR band (NO2 symmetric stretch, 1391 cm⁻¹) chosen in the “Vibrations” tab.
 
 ### Results
 

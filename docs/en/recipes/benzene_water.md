@@ -18,9 +18,18 @@ Align benzene with the origin and the XY plane, put the oxygen of a water molecu
 2. Set “Select by” above the 3D view to “Molecule” and click an atom of benzene. The whole molecule (12 atoms) is selected.
 3. Press “Align to principal axes” under “Orientation and position” on the “Transform” page on the right. The center of mass goes to the origin, the ring into the XY plane and its normal along Z (the carbons' Z in the coordinate table becomes 0.000000).
 
+   ![The whole benzene selected with “Select by” “Molecule” after “Align to principal axes”: the ring lies parallel to the screen, and its 12 atoms are ringed in orange](images/benzene_water/01_align.png)
+
+   **Figure 1** Benzene selected with “Select by” “Molecule”, after “Align to principal axes” on the “Transform” page.
+
 ## 2. Place the water and set its position
 
 1. Clear the selection (Esc), and click “Water” of the category “Skeleton” into empty space away from benzene. It is a second, unbonded molecule (C6H8O · 15 atoms · 14 bonds).
+
+   ![Water (O13, H14, H15) placed in empty space away from benzene, not bonded to it](images/benzene_water/02_water_placed.png)
+
+   **Figure 2** Water placed in empty space is a second, unbonded molecule.
+
 2. Choose “3D + table” at the right end of the strip under the 3D view to show the coordinate table. The water atoms are O13, H14 and H15.
 3. Double-click the X, Y and Z cells of the table, enter the values and press Enter:
 
@@ -31,7 +40,16 @@ Align benzene with the origin and the XY plane, put the oxygen of a water molecu
    | H15 | −0.757 | 0 | 2.814 |
 
    The oxygen sits 3.40 Å straight above the ring center and both hydrogens point to the ring (smaller Z). Each cell edit is one “Undo”.
+
+   ![The coordinate table of “3D + table” with O13 at (0, 0, 3.400000), H14 at (0.757, 0, 2.814) and H15 at (−0.757, 0, 2.814); in the 3D view the water overlaps the ring center](images/benzene_water/03_table_edit.png)
+
+   **Figure 3** The water coordinates entered in the coordinate table. Choosing rows selects those atoms in the 3D view too.
+
 4. Look from the side with “+X” to check that the water is right above the ring.
+
+   ![The view from “+X”: the benzene ring appears as a vertical line, the water oxygen sits straight above the ring center (to the left on screen), and both hydrogens point to the ring](images/benzene_water/04_side_view.png)
+
+   **Figure 4** From “+X”, the water sits right above the ring center with its hydrogens toward the ring.
 
 Instead of entering coordinates, you can choose two unbonded atoms (a benzene carbon and the water oxygen, for example) and set their distance with “Apply dimension”; between separate molecules, the whole molecule of the atom chosen last moves. “View → Show hydrogen bonds” draws dashed lines for X–H···Y (X, Y = N, O, F) that meet the criteria.
 
@@ -39,13 +57,26 @@ Instead of entering coordinates, you can choose two unbonded atoms (a benzene ca
 
 1. In “Basics” of “2 Calculation”, set the task to “Single-point energy”, the method to “MP2” and the basis set to “6-31G*”.
 2. In “BSSE correction” in the list on the left, turn on “Counterpoise correction per monomer (BSSE)”. It shows “2 monomers: C6H6, H2O (charges from the formal charges of the atoms)”.
+
+   ![“BSSE correction” in “2 Calculation”: “Counterpoise correction per monomer (BSSE)” on, showing “2 monomers: C6H6, H2O”; the summary on the right is an MP2 / 6-31G* single point](images/benzene_water/05_bsse.png)
+
+   **Figure 5** With “BSSE correction” on, the number and composition of the monomers are shown.
+
 3. In “4 Input preview”, check the `bsse` block with `mon m1 1 2 … 12` (benzene) and `mon m2 13 14 15` (water), and the lines such as `bqC library C "6-31g*"` added to `basis` to compute each partner as ghosts.
+
+   ![The bsse block chosen in “4 Input preview”: mon m1 1 2 3 4 5 6 7 8 9 10 11 12 and mon m2 13 14 15, with lines such as bqC library C "6-31g*" in the basis above](images/benzene_water/06_input_bsse.png)
+
+   **Figure 6** The `bsse` block of the input, with the atom numbers, charge and multiplicity of each monomer.
 
 The BSSE correction takes the bonded molecules as monomers. All monomers must be closed shell, and the total charge must equal the sum of formal charges. It cannot be combined with solvents, TDDFT, properties, the follow-up single point, CUBE/MOLDEN output or external point charges. With the task “Geometry optimization”, it optimizes with BSSE-corrected gradients.
 
 ## 4. Run and look at the results
 
 Run with “Run calculation” (F5). NWChem computes the dimer, then each monomer in its own basis and in the dimer basis (with the partner as ghosts). The “Energy” card in the “Summary” of the “Result viewer” shows the corrected value, and the “Properties” tab shows the BSSE correction and the interaction energy against the sum of the monomers in their own bases (corrected and uncorrected).
+
+![The “Properties” tab of the result viewer: the BSSE (counterpoise) correction of 1.888 kcal/mol with the corrected and uncorrected energies, and the interaction energy against the sum of the monomers](images/benzene_water/07_results_bsse.png)
+
+**Figure 7** The “Properties” tab of the “Result viewer” shows the BSSE correction and the interaction energy.
 
 ### Results
 

@@ -16,7 +16,17 @@ Build [Na(H₂O)₄]⁺ with four waters coordinated to Na⁺, and put one more 
 
 1. With “File → New”, choose “Sodium” in the category “Coordination center”.
 2. On the “Coordination” page, set “Coordination geometry” to “Tetrahedral”, “Center–donor / Å” to 2.40 and “Oxidation state (aux.)” to 1, and click in empty space. The total charge becomes +1.
+
+   ![Sodium Na1 placed as a tetrahedral coordination center with purple sites 1–4; the “Coordination” page on the right has tetrahedral geometry, center–donor 2.40 Å and oxidation state 1](images/hydrated_sodium/01_na_sites.png)
+
+   **Figure 1** Sodium placed as a tetrahedral coordination center.
+
 3. With “Aqua H2O” of the category “Ligand”, click sites 1–4 in turn and confirm. You have H8NaO4 · 13 atoms · charge 1.
+
+   ![[Na(H₂O)₄]⁺ confirmed with four aqua ligands; dative-bond arrows run from the water oxygens to Na](images/hydrated_sodium/02_na_h2o4.png)
+
+   **Figure 2** Confirmed [Na(H₂O)₄]⁺ (H8NaO4 · 13 atoms · charge 1).
+
 4. In “2 Calculation”, set the task to “Geometry optimization”, the method to “DFT” (B3LYP) and the basis set to “6-31G*”, and run.
 5. When it ends, bring the optimized structure in with “Apply as candidate” in the “Result viewer” and confirm ([recipe 14](reuse_result.md)).
 
@@ -26,14 +36,38 @@ Site 1 of the tetrahedron points along (1, 1, 1). Duplicate the water on site 1,
 
 1. Set “Select by” above the 3D view to “Part” and click an atom of the water on site 1 (its three atoms are selected).
 2. Under “Mirror and duplicate” on the “Transform” page, set “Copy offset X / Å”, “Copy offset Y / Å” and “Copy offset Z / Å” to 1.6166 each (2.8 Å ÷ √3) and press “Duplicate at offset”. One more, unbonded water appears: H10NaO5 · 16 atoms (the total charge stays +1).
+
+   ![After duplicating with copy offsets X, Y and Z of 1.61660 under “Mirror and duplicate” on the “Transform” page: seen from +Z, an unbonded water (O14, H15, H16) has appeared up and to the right of the water on O2](images/hydrated_sodium/03_duplicated.png)
+
+   **Figure 3** The water on site 1 duplicated along (1, 1, 1) with “Mirror and duplicate” (seen from +Z).
+
 3. Save this state as `na_h2o5.kgui.json` (for comparing with all five waters as atoms).
 
 ## 3. Turn the outer water into point charges
 
 1. Set “Select by” to “Molecule” and click an atom of the outer water (the three atoms of the unbonded water are selected).
 2. Press “Water to TIP3P charges” on the “Charge” page on the right. The water's three atoms go away and three point charges, O −0.834 and H +0.417, take their place in a candidate. Confirmed: H8NaO4 · 13 atoms · 3 point charges.
-3. “External point charges” on the “Charge” page says “Not included in NWChem input” and lists them (`1: -0.834 e (3.00, 3.00, 3.00)` and so on). Placed charges alone do not go into the input.
+
+   ![The candidate of “Water to TIP3P charges”: three point charges (−0.834, +0.417) drawn as red circles where the outer water was, and the amber bar shows the candidate](images/hydrated_sodium/04_tip3p_candidate.png)
+
+   **Figure 4** The candidate replacing the outer water with point charges, drawn as circles with their charges.
+
+3. “External point charges” on the “Charge” page says “Not included in NWChem input” and lists them (`1: -0.834 e (2.93, 2.94, 2.91)` and so on). Placed charges alone do not go into the input.
+
+   ![The “Charge” page after confirming: “External point charges” says “Not included in NWChem input” and lists 1: −0.834 e (2.93, 2.94, 2.91), 2: 0.417 e (3.08, 2.86, 3.86) and 3: 0.417 e (3.41, 3.75, 2.65)](images/hydrated_sodium/05_point_charges.png)
+
+   **Figure 5** “External point charges” on the “Charge” page. They are not in the input yet.
+
 4. Press “Set in “2 Calculation”” and turn on “Include the external point charges of “1 Molecule”” in “Environment”. “4 Input preview” gains a `bq units angstrom` block; point-charge coordinates are always written in Å, whatever the molecule's output unit.
+
+   ![“Environment” of “2 Calculation” with “Include the external point charges of “1 Molecule”” turned on](images/hydrated_sodium/06_environment.png)
+
+   **Figure 6** Include the external point charges in “Environment”.
+
+   ![The bq units angstrom block in “4 Input preview”, with one line of coordinates and charge for each of the three point charges](images/hydrated_sodium/07_input_bq.png)
+
+   **Figure 7** The `bq` block of the input, with coordinates in Å.
+
 5. Save as `na_h2o4_charges.kgui.json`.
 
 Point charges are not counted in the molecule's total charge or electron count (the total charge stays +1, the electrons 50). To place charges in the 3D view, use the “Charge” (Q) tool in the left column; to place them by value, use “Add point charge” on the “Charge” page. “Export point charges…” writes `x y z q` (Å).
@@ -49,6 +83,10 @@ At the optimized [Na(H₂O)₄]⁺ structure, set the task to “Single-point en
 3. The outer water as atoms (`na_h2o5.kgui.json`, 16 atoms)
 
 Turning on “Mulliken charges” under “Properties” lets you compare atomic charges in the “Properties” tab of the “Result viewer”.
+
+![The “Properties” tab of the result viewer for the run with point charges: the table of Mulliken charges per atom, with 0.5699 on Na](images/hydrated_sodium/08_mulliken.png)
+
+**Figure 8** The “Properties” tab of the run with point charges, listing Mulliken charges per atom.
 
 The interaction energy with the outer water also needs the energy of the outer water alone. Open `na_h2o5.kgui.json`, click Na with “Select by” “Molecule” (Na and its four coordinated waters are chosen), delete them and confirm. You get H2O · 3 atoms, and the total charge goes back from +1 to 0. Calculate a single point of it under the same conditions too (no need to save it).
 

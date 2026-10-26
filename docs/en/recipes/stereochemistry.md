@@ -19,12 +19,27 @@ R/S and E/Z are assigned with RDKit. In builds without RDKit, “Record stereo (
 1. Start with “File → New” and place “Ethane” from the category “Skeleton”.
 2. Replace one hydrogen of C1 with “Carboxyl –C(=O)OH” from the category “Substituent”, and another hydrogen of C1 with “Hydroxy –OH”. You get CH3–CH(OH)–COOH (C3H6O3 · 12 atoms).
 3. Clean up with “Clean up all” and confirm.
+
+   ![Lactic acid built from ethane with a carboxyl and a hydroxy group and cleaned up: C1 carries methyl, hydroxy, carboxyl and hydrogen](images/stereochemistry/01_lactic.png)
+
+   **Figure 1** Lactic acid built and cleaned up (C3H6O3 · 12 atoms).
+
 4. Open the “Transform” page on the right and press “Record stereo (R/S, E/Z)” under “Stereo”. The status bar says “Recorded the configurations: C1: S”, for example, and the label of C1 in the 3D view becomes “C1 (S)”. Which one you get depends on the hydrogens the substituents replaced.
+
+   ![C1 chosen and “Record stereo (R/S, E/Z)” pressed: the label of C1 in the 3D view reads “C1 (S)”, and the status bar says the configuration was recorded as C1: S](images/stereochemistry/02_record_s.png)
+
+   **Figure 2** “Record stereo (R/S, E/Z)” on the “Transform” page adds R/S to the stereocenter's label.
+
 5. Save it with “File → Save as…” (`lactic_S.kgui.json` in this example).
 
 ## 2. Invert the stereocenter
 
 1. Choose only the stereocenter C1 and press “Invert stereocenter” on the “Transform” page. Two substituents of C1 (here the hydrogen and the methyl group) trade places, and the label becomes “C1 (R)”.
+
+   ![After “Invert stereocenter”: the hydrogen and the methyl group of C1 have traded places, and the label reads “C1 (R)”](images/stereochemistry/03_invert_r.png)
+
+   **Figure 3** “Invert stereocenter” swaps two substituents of C1: the R isomer.
+
 2. Save under another name (`lactic_R.kgui.json`).
 
 A recorded configuration is protected in later cleanups. When a cleanup would give another configuration, MolForma says “The cleanup result differs from the recorded stereo configuration. The original structure was kept.” and leaves the structure as it was.
@@ -36,11 +51,24 @@ To put the mirror image beside the original, choose the whole molecule, turn on 
 1. With “File → New”, place “Ethylene” from the category “Skeleton”.
 2. Replace one hydrogen of C1 with “Methyl”, then the hydrogen of C2 across the double bond from it. Clean up and confirm.
 3. Choose the two carbons of the double bond (C1 and C2) and press “Record stereo (R/S, E/Z)”. “(E)” appears in the middle of the double bond.
+
+   ![C1 and C2 of 2-butene chosen and their stereo recorded: “(E)” appears in the middle of the double bond](images/stereochemistry/04_butene_e.png)
+
+   **Figure 4** Recording with the two atoms of the double bond chosen puts (E) or (Z) in the middle of the bond.
+
 4. With C1 and C2 still chosen, press “Switch E/Z”. One side of the double bond turns by 180° to the Z isomer, and the label changes to “(Z)”. Save E and Z under their own names.
+
+   ![Z-2-butene recorded again after “Switch E/Z”: both methyl groups on the same side of the double bond, and “(Z)” in the middle](images/stereochemistry/05_butene_z.png)
+
+   **Figure 5** “Switch E/Z” turns one side by 180°: the Z isomer.
 
 ## 4. Calculate and compare
 
 For each of E and Z, set the task to “Optimization → frequencies”, the method to “DFT” (B3LYP) and the basis set to “6-31G*” in “2 Calculation”, and run. “Compare ΔE” in “History” lists the energy difference between jobs of the same composition, method and basis.
+
+![“Compare ΔE” in “History” with E-2-butene as the reference: the row of Z-2-butene shows its energy difference to E](images/stereochemistry/06_history_compare.png)
+
+**Figure 6** “Compare ΔE” in “History” lists the energy differences between the reference job (E) and jobs of the same composition, method and basis (Z).
 
 R- and S-lactic acid are mirror images and have the same energy with any method (checking that with single points is a good exercise).
 

@@ -19,21 +19,152 @@
   <file>recipes/sn2_transition_state.md</file>
   <file>recipes/stereochemistry.md</file>
   <file>recipes/images/aromatic_substitution.png</file>
+  <file>recipes/images/aromatic_substitution/01_benzene_chosen.png</file>
+  <file>recipes/images/aromatic_substitution/02_benzene.png</file>
+  <file>recipes/images/aromatic_substitution/03_aniline.png</file>
+  <file>recipes/images/aromatic_substitution/04_p_nitroaniline.png</file>
+  <file>recipes/images/aromatic_substitution/05_calculation.png</file>
+  <file>recipes/images/aromatic_substitution/06_results_summary.png</file>
+  <file>recipes/images/aromatic_substitution/07_ir_nitro.png</file>
   <file>recipes/images/atoms_and_bonds.png</file>
+  <file>recipes/images/atoms_and_bonds/01_element_c.png</file>
+  <file>recipes/images/atoms_and_bonds/02_methane.png</file>
+  <file>recipes/images/atoms_and_bonds/03_ethane.png</file>
+  <file>recipes/images/atoms_and_bonds/04_ethanol.png</file>
+  <file>recipes/images/atoms_and_bonds/05_cleanup_candidate.png</file>
+  <file>recipes/images/atoms_and_bonds/06_distance.png</file>
+  <file>recipes/images/atoms_and_bonds/07_calculation.png</file>
+  <file>recipes/images/atoms_and_bonds/08_input_preview.png</file>
+  <file>recipes/images/atoms_and_bonds/09_run_panel.png</file>
+  <file>recipes/images/atoms_and_bonds/10_results_summary.png</file>
+  <file>recipes/images/atoms_and_bonds/11_vibration_oh.png</file>
+  <file>recipes/images/atoms_and_bonds/12_delete_candidate.png</file>
+  <file>recipes/images/atoms_and_bonds/13_acetaldehyde.png</file>
+  <file>recipes/images/atoms_and_bonds/14_dimethyl_ether.png</file>
   <file>recipes/images/benzene_water.png</file>
+  <file>recipes/images/benzene_water/01_align.png</file>
+  <file>recipes/images/benzene_water/02_water_placed.png</file>
+  <file>recipes/images/benzene_water/03_table_edit.png</file>
+  <file>recipes/images/benzene_water/04_side_view.png</file>
+  <file>recipes/images/benzene_water/05_bsse.png</file>
+  <file>recipes/images/benzene_water/06_input_bsse.png</file>
+  <file>recipes/images/benzene_water/07_results_bsse.png</file>
   <file>recipes/images/butane_conformers.png</file>
+  <file>recipes/images/butane_conformers/01_ethane.png</file>
+  <file>recipes/images/butane_conformers/02_butane.png</file>
+  <file>recipes/images/butane_conformers/03_dihedral_anti.png</file>
+  <file>recipes/images/butane_conformers/04_dihedral_gauche.png</file>
+  <file>recipes/images/butane_conformers/05_scan_settings.png</file>
+  <file>recipes/images/butane_conformers/06_scan_input.png</file>
+  <file>recipes/images/butane_conformers/07_scan_profile.png</file>
   <file>recipes/images/caffeine_smiles.png</file>
+  <file>recipes/images/caffeine_smiles/01_smiles_dialog.png</file>
+  <file>recipes/images/caffeine_smiles/02_smiles_candidate.png</file>
+  <file>recipes/images/caffeine_smiles/03_caffeine.png</file>
+  <file>recipes/images/caffeine_smiles/04_sdf_flat.png</file>
+  <file>recipes/images/caffeine_smiles/05_hydrogens.png</file>
+  <file>recipes/images/caffeine_smiles/06_regenerate_candidate.png</file>
+  <file>recipes/images/caffeine_smiles/07_results_summary.png</file>
+  <file>recipes/images/caffeine_smiles/08_optimization.png</file>
   <file>recipes/images/capped_peptide.png</file>
+  <file>recipes/images/capped_peptide/01_sequence_form.png</file>
+  <file>recipes/images/capped_peptide/02_build_candidate.png</file>
+  <file>recipes/images/capped_peptide/03_peptide.png</file>
+  <file>recipes/images/capped_peptide/04_his_selected.png</file>
+  <file>recipes/images/capped_peptide/05_hip_candidate.png</file>
+  <file>recipes/images/capped_peptide/06_hip_charge.png</file>
+  <file>recipes/images/capped_peptide/07_torsion_phi.png</file>
+  <file>recipes/images/capped_peptide/08_environment.png</file>
+  <file>recipes/images/capped_peptide/09_results_summary.png</file>
   <file>recipes/images/cobalt_complex.png</file>
+  <file>recipes/images/cobalt_complex/01_center_co.png</file>
+  <file>recipes/images/cobalt_complex/02_sites.png</file>
+  <file>recipes/images/cobalt_complex/03_en_candidate.png</file>
+  <file>recipes/images/cobalt_complex/04_en_two.png</file>
+  <file>recipes/images/cobalt_complex/05_side_view.png</file>
+  <file>recipes/images/cobalt_complex/06_complex.png</file>
+  <file>recipes/images/cobalt_complex/07_charge_page.png</file>
+  <file>recipes/images/cobalt_complex/08_calculation.png</file>
+  <file>recipes/images/cobalt_complex/09_results_summary.png</file>
+  <file>recipes/images/cobalt_complex/10_optimization.png</file>
   <file>recipes/images/hydrated_sodium.png</file>
+  <file>recipes/images/hydrated_sodium/01_na_sites.png</file>
+  <file>recipes/images/hydrated_sodium/02_na_h2o4.png</file>
+  <file>recipes/images/hydrated_sodium/03_duplicated.png</file>
+  <file>recipes/images/hydrated_sodium/04_tip3p_candidate.png</file>
+  <file>recipes/images/hydrated_sodium/05_point_charges.png</file>
+  <file>recipes/images/hydrated_sodium/06_environment.png</file>
+  <file>recipes/images/hydrated_sodium/07_input_bq.png</file>
+  <file>recipes/images/hydrated_sodium/08_mulliken.png</file>
   <file>recipes/images/isotopes.png</file>
+  <file>recipes/images/isotopes/01_deuterium.png</file>
+  <file>recipes/images/isotopes/02_mass_column.png</file>
+  <file>recipes/images/isotopes/03_frequencies.png</file>
+  <file>recipes/images/isotopes/04_od_stretch.png</file>
+  <file>recipes/images/isotopes/05_sorted.png</file>
   <file>recipes/images/main_group.png</file>
+  <file>recipes/images/main_group/01_center_s.png</file>
+  <file>recipes/images/main_group/02_s_sites.png</file>
+  <file>recipes/images/main_group/03_four_fluorides.png</file>
+  <file>recipes/images/main_group/04_sf6.png</file>
+  <file>recipes/images/main_group/05_p_sites.png</file>
+  <file>recipes/images/main_group/06_pf5.png</file>
+  <file>recipes/images/main_group/07_symmetry_check.png</file>
+  <file>recipes/images/main_group/08_sf6_vibration.png</file>
   <file>recipes/images/my_parts.png</file>
+  <file>recipes/images/my_parts/01_search_si.png</file>
+  <file>recipes/images/my_parts/02_trimethylsilane.png</file>
+  <file>recipes/images/my_parts/03_selection.png</file>
+  <file>recipes/images/my_parts/04_part_name.png</file>
+  <file>recipes/images/my_parts/05_part_kind.png</file>
+  <file>recipes/images/my_parts/06_my_parts.png</file>
+  <file>recipes/images/my_parts/07_place_hint.png</file>
+  <file>recipes/images/my_parts/08_tms_benzene.png</file>
+  <file>recipes/images/my_parts/09_results_summary.png</file>
   <file>recipes/images/phenoxyl_radical.png</file>
+  <file>recipes/images/phenoxyl_radical/01_phenol.png</file>
+  <file>recipes/images/phenoxyl_radical/02_mismatch.png</file>
+  <file>recipes/images/phenoxyl_radical/03_radical_attribute.png</file>
+  <file>recipes/images/phenoxyl_radical/04_multiplicity_2.png</file>
+  <file>recipes/images/phenoxyl_radical/05_phenolate_attribute.png</file>
+  <file>recipes/images/phenoxyl_radical/06_charge_page.png</file>
+  <file>recipes/images/phenoxyl_radical/07_symmetry_check.png</file>
+  <file>recipes/images/phenoxyl_radical/08_results_phenoxyl.png</file>
   <file>recipes/images/residue_mutation.png</file>
+  <file>recipes/images/residue_mutation/01_mutation_candidate.png</file>
+  <file>recipes/images/residue_mutation/02_delete_candidate.png</file>
+  <file>recipes/images/residue_mutation/03_split.png</file>
+  <file>recipes/images/residue_mutation/04_distance.png</file>
+  <file>recipes/images/residue_mutation/05_relink_candidate.png</file>
+  <file>recipes/images/residue_mutation/06_relinked.png</file>
+  <file>recipes/images/residue_mutation/07_xyz_reopened.png</file>
+  <file>recipes/images/residue_mutation/08_recognize_candidate.png</file>
+  <file>recipes/images/residue_mutation/09_results_summary.png</file>
   <file>recipes/images/reuse_result.png</file>
+  <file>recipes/images/reuse_result/01_history.png</file>
+  <file>recipes/images/reuse_result/02_results_opened.png</file>
+  <file>recipes/images/reuse_result/03_apply_candidate.png</file>
+  <file>recipes/images/reuse_result/04_tddft_settings.png</file>
+  <file>recipes/images/reuse_result/05_input_tddft.png</file>
+  <file>recipes/images/reuse_result/06_excited_states.png</file>
   <file>recipes/images/sn2_transition_state.png</file>
+  <file>recipes/images/sn2_transition_state/01_ch3cl.png</file>
+  <file>recipes/images/sn2_transition_state/02_fluorine.png</file>
+  <file>recipes/images/sn2_transition_state/03_charge.png</file>
+  <file>recipes/images/sn2_transition_state/04_reactant.png</file>
+  <file>recipes/images/sn2_transition_state/05_ts_guess.png</file>
+  <file>recipes/images/sn2_transition_state/06_ts_settings.png</file>
+  <file>recipes/images/sn2_transition_state/07_imaginary_mode.png</file>
+  <file>recipes/images/sn2_transition_state/08_irc_settings.png</file>
+  <file>recipes/images/sn2_transition_state/09_irc_forward_stopped.png</file>
+  <file>recipes/images/sn2_transition_state/10_irc_backward.png</file>
   <file>recipes/images/stereochemistry.png</file>
+  <file>recipes/images/stereochemistry/01_lactic.png</file>
+  <file>recipes/images/stereochemistry/02_record_s.png</file>
+  <file>recipes/images/stereochemistry/03_invert_r.png</file>
+  <file>recipes/images/stereochemistry/04_butene_e.png</file>
+  <file>recipes/images/stereochemistry/05_butene_z.png</file>
+  <file>recipes/images/stereochemistry/06_history_compare.png</file>
   <file>en/features.md</file>
   <file>en/mcp.md</file>
   <file>en/recipes.md</file>
@@ -54,21 +185,152 @@
   <file>en/recipes/sn2_transition_state.md</file>
   <file>en/recipes/stereochemistry.md</file>
   <file>en/recipes/images/aromatic_substitution.png</file>
+  <file>en/recipes/images/aromatic_substitution/01_benzene_chosen.png</file>
+  <file>en/recipes/images/aromatic_substitution/02_benzene.png</file>
+  <file>en/recipes/images/aromatic_substitution/03_aniline.png</file>
+  <file>en/recipes/images/aromatic_substitution/04_p_nitroaniline.png</file>
+  <file>en/recipes/images/aromatic_substitution/05_calculation.png</file>
+  <file>en/recipes/images/aromatic_substitution/06_results_summary.png</file>
+  <file>en/recipes/images/aromatic_substitution/07_ir_nitro.png</file>
   <file>en/recipes/images/atoms_and_bonds.png</file>
+  <file>en/recipes/images/atoms_and_bonds/01_element_c.png</file>
+  <file>en/recipes/images/atoms_and_bonds/02_methane.png</file>
+  <file>en/recipes/images/atoms_and_bonds/03_ethane.png</file>
+  <file>en/recipes/images/atoms_and_bonds/04_ethanol.png</file>
+  <file>en/recipes/images/atoms_and_bonds/05_cleanup_candidate.png</file>
+  <file>en/recipes/images/atoms_and_bonds/06_distance.png</file>
+  <file>en/recipes/images/atoms_and_bonds/07_calculation.png</file>
+  <file>en/recipes/images/atoms_and_bonds/08_input_preview.png</file>
+  <file>en/recipes/images/atoms_and_bonds/09_run_panel.png</file>
+  <file>en/recipes/images/atoms_and_bonds/10_results_summary.png</file>
+  <file>en/recipes/images/atoms_and_bonds/11_vibration_oh.png</file>
+  <file>en/recipes/images/atoms_and_bonds/12_delete_candidate.png</file>
+  <file>en/recipes/images/atoms_and_bonds/13_acetaldehyde.png</file>
+  <file>en/recipes/images/atoms_and_bonds/14_dimethyl_ether.png</file>
   <file>en/recipes/images/benzene_water.png</file>
+  <file>en/recipes/images/benzene_water/01_align.png</file>
+  <file>en/recipes/images/benzene_water/02_water_placed.png</file>
+  <file>en/recipes/images/benzene_water/03_table_edit.png</file>
+  <file>en/recipes/images/benzene_water/04_side_view.png</file>
+  <file>en/recipes/images/benzene_water/05_bsse.png</file>
+  <file>en/recipes/images/benzene_water/06_input_bsse.png</file>
+  <file>en/recipes/images/benzene_water/07_results_bsse.png</file>
   <file>en/recipes/images/butane_conformers.png</file>
+  <file>en/recipes/images/butane_conformers/01_ethane.png</file>
+  <file>en/recipes/images/butane_conformers/02_butane.png</file>
+  <file>en/recipes/images/butane_conformers/03_dihedral_anti.png</file>
+  <file>en/recipes/images/butane_conformers/04_dihedral_gauche.png</file>
+  <file>en/recipes/images/butane_conformers/05_scan_settings.png</file>
+  <file>en/recipes/images/butane_conformers/06_scan_input.png</file>
+  <file>en/recipes/images/butane_conformers/07_scan_profile.png</file>
   <file>en/recipes/images/caffeine_smiles.png</file>
+  <file>en/recipes/images/caffeine_smiles/01_smiles_dialog.png</file>
+  <file>en/recipes/images/caffeine_smiles/02_smiles_candidate.png</file>
+  <file>en/recipes/images/caffeine_smiles/03_caffeine.png</file>
+  <file>en/recipes/images/caffeine_smiles/04_sdf_flat.png</file>
+  <file>en/recipes/images/caffeine_smiles/05_hydrogens.png</file>
+  <file>en/recipes/images/caffeine_smiles/06_regenerate_candidate.png</file>
+  <file>en/recipes/images/caffeine_smiles/07_results_summary.png</file>
+  <file>en/recipes/images/caffeine_smiles/08_optimization.png</file>
   <file>en/recipes/images/capped_peptide.png</file>
+  <file>en/recipes/images/capped_peptide/01_sequence_form.png</file>
+  <file>en/recipes/images/capped_peptide/02_build_candidate.png</file>
+  <file>en/recipes/images/capped_peptide/03_peptide.png</file>
+  <file>en/recipes/images/capped_peptide/04_his_selected.png</file>
+  <file>en/recipes/images/capped_peptide/05_hip_candidate.png</file>
+  <file>en/recipes/images/capped_peptide/06_hip_charge.png</file>
+  <file>en/recipes/images/capped_peptide/07_torsion_phi.png</file>
+  <file>en/recipes/images/capped_peptide/08_environment.png</file>
+  <file>en/recipes/images/capped_peptide/09_results_summary.png</file>
   <file>en/recipes/images/cobalt_complex.png</file>
+  <file>en/recipes/images/cobalt_complex/01_center_co.png</file>
+  <file>en/recipes/images/cobalt_complex/02_sites.png</file>
+  <file>en/recipes/images/cobalt_complex/03_en_candidate.png</file>
+  <file>en/recipes/images/cobalt_complex/04_en_two.png</file>
+  <file>en/recipes/images/cobalt_complex/05_side_view.png</file>
+  <file>en/recipes/images/cobalt_complex/06_complex.png</file>
+  <file>en/recipes/images/cobalt_complex/07_charge_page.png</file>
+  <file>en/recipes/images/cobalt_complex/08_calculation.png</file>
+  <file>en/recipes/images/cobalt_complex/09_results_summary.png</file>
+  <file>en/recipes/images/cobalt_complex/10_optimization.png</file>
   <file>en/recipes/images/hydrated_sodium.png</file>
+  <file>en/recipes/images/hydrated_sodium/01_na_sites.png</file>
+  <file>en/recipes/images/hydrated_sodium/02_na_h2o4.png</file>
+  <file>en/recipes/images/hydrated_sodium/03_duplicated.png</file>
+  <file>en/recipes/images/hydrated_sodium/04_tip3p_candidate.png</file>
+  <file>en/recipes/images/hydrated_sodium/05_point_charges.png</file>
+  <file>en/recipes/images/hydrated_sodium/06_environment.png</file>
+  <file>en/recipes/images/hydrated_sodium/07_input_bq.png</file>
+  <file>en/recipes/images/hydrated_sodium/08_mulliken.png</file>
   <file>en/recipes/images/isotopes.png</file>
+  <file>en/recipes/images/isotopes/01_deuterium.png</file>
+  <file>en/recipes/images/isotopes/02_mass_column.png</file>
+  <file>en/recipes/images/isotopes/03_frequencies.png</file>
+  <file>en/recipes/images/isotopes/04_od_stretch.png</file>
+  <file>en/recipes/images/isotopes/05_sorted.png</file>
   <file>en/recipes/images/main_group.png</file>
+  <file>en/recipes/images/main_group/01_center_s.png</file>
+  <file>en/recipes/images/main_group/02_s_sites.png</file>
+  <file>en/recipes/images/main_group/03_four_fluorides.png</file>
+  <file>en/recipes/images/main_group/04_sf6.png</file>
+  <file>en/recipes/images/main_group/05_p_sites.png</file>
+  <file>en/recipes/images/main_group/06_pf5.png</file>
+  <file>en/recipes/images/main_group/07_symmetry_check.png</file>
+  <file>en/recipes/images/main_group/08_sf6_vibration.png</file>
   <file>en/recipes/images/my_parts.png</file>
+  <file>en/recipes/images/my_parts/01_search_si.png</file>
+  <file>en/recipes/images/my_parts/02_trimethylsilane.png</file>
+  <file>en/recipes/images/my_parts/03_selection.png</file>
+  <file>en/recipes/images/my_parts/04_part_name.png</file>
+  <file>en/recipes/images/my_parts/05_part_kind.png</file>
+  <file>en/recipes/images/my_parts/06_my_parts.png</file>
+  <file>en/recipes/images/my_parts/07_place_hint.png</file>
+  <file>en/recipes/images/my_parts/08_tms_benzene.png</file>
+  <file>en/recipes/images/my_parts/09_results_summary.png</file>
   <file>en/recipes/images/phenoxyl_radical.png</file>
+  <file>en/recipes/images/phenoxyl_radical/01_phenol.png</file>
+  <file>en/recipes/images/phenoxyl_radical/02_mismatch.png</file>
+  <file>en/recipes/images/phenoxyl_radical/03_radical_attribute.png</file>
+  <file>en/recipes/images/phenoxyl_radical/04_multiplicity_2.png</file>
+  <file>en/recipes/images/phenoxyl_radical/05_phenolate_attribute.png</file>
+  <file>en/recipes/images/phenoxyl_radical/06_charge_page.png</file>
+  <file>en/recipes/images/phenoxyl_radical/07_symmetry_check.png</file>
+  <file>en/recipes/images/phenoxyl_radical/08_results_phenoxyl.png</file>
   <file>en/recipes/images/residue_mutation.png</file>
+  <file>en/recipes/images/residue_mutation/01_mutation_candidate.png</file>
+  <file>en/recipes/images/residue_mutation/02_delete_candidate.png</file>
+  <file>en/recipes/images/residue_mutation/03_split.png</file>
+  <file>en/recipes/images/residue_mutation/04_distance.png</file>
+  <file>en/recipes/images/residue_mutation/05_relink_candidate.png</file>
+  <file>en/recipes/images/residue_mutation/06_relinked.png</file>
+  <file>en/recipes/images/residue_mutation/07_xyz_reopened.png</file>
+  <file>en/recipes/images/residue_mutation/08_recognize_candidate.png</file>
+  <file>en/recipes/images/residue_mutation/09_results_summary.png</file>
   <file>en/recipes/images/reuse_result.png</file>
+  <file>en/recipes/images/reuse_result/01_history.png</file>
+  <file>en/recipes/images/reuse_result/02_results_opened.png</file>
+  <file>en/recipes/images/reuse_result/03_apply_candidate.png</file>
+  <file>en/recipes/images/reuse_result/04_tddft_settings.png</file>
+  <file>en/recipes/images/reuse_result/05_input_tddft.png</file>
+  <file>en/recipes/images/reuse_result/06_excited_states.png</file>
   <file>en/recipes/images/sn2_transition_state.png</file>
+  <file>en/recipes/images/sn2_transition_state/01_ch3cl.png</file>
+  <file>en/recipes/images/sn2_transition_state/02_fluorine.png</file>
+  <file>en/recipes/images/sn2_transition_state/03_charge.png</file>
+  <file>en/recipes/images/sn2_transition_state/04_reactant.png</file>
+  <file>en/recipes/images/sn2_transition_state/05_ts_guess.png</file>
+  <file>en/recipes/images/sn2_transition_state/06_ts_settings.png</file>
+  <file>en/recipes/images/sn2_transition_state/07_imaginary_mode.png</file>
+  <file>en/recipes/images/sn2_transition_state/08_irc_settings.png</file>
+  <file>en/recipes/images/sn2_transition_state/09_irc_forward_stopped.png</file>
+  <file>en/recipes/images/sn2_transition_state/10_irc_backward.png</file>
   <file>en/recipes/images/stereochemistry.png</file>
+  <file>en/recipes/images/stereochemistry/01_lactic.png</file>
+  <file>en/recipes/images/stereochemistry/02_record_s.png</file>
+  <file>en/recipes/images/stereochemistry/03_invert_r.png</file>
+  <file>en/recipes/images/stereochemistry/04_butene_e.png</file>
+  <file>en/recipes/images/stereochemistry/05_butene_z.png</file>
+  <file>en/recipes/images/stereochemistry/06_history_compare.png</file>
 </qresource><qresource prefix="/icons">
   <file alias="molforma.png">../packaging/molforma-256.png</file>
 </qresource></RCC>

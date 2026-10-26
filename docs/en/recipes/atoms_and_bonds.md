@@ -16,8 +16,17 @@ Build a molecule with the element buttons and the “Place”, “Bond” and �
 
 1. Start an empty molecule with “File → New”.
 2. Press “C” among the element buttons of the parts palette on the left. The tool in the left column becomes “Place”, and “Part to place Carbon (C)” and “Bond type” appear above the 3D view.
+
+   ![“1 Molecule” right after pressing “C”: “C” and “Carbon” are chosen in the palette, the left column shows “Place”, and “Part to place Carbon (C)”, “Bond type Single bond” and “Auto-add hydrogens” appear above the 3D view](images/atoms_and_bonds/01_element_c.png)
+
+   **Figure 1** Pressing “C” switches to the “Place” tool and shows the part to place and the bond type above the 3D view.
+
 3. Check that “Auto-add hydrogens” above the 3D view is on and “Bond type” is “Single bond”. A double bond left from earlier work would give ethylene in the next step.
 4. Click once in empty space in the 3D view. Carbon gets four hydrogens: methane (CH4 · 5 atoms). The first atom goes to the origin wherever you click.
+
+   ![Methane made by clicking empty space: C1 with hydrogens H2 to H5](images/atoms_and_bonds/02_methane.png)
+
+   **Figure 2** A click in empty space gives methane (CH4 · 5 atoms), carbon with four hydrogens. From figure 2 on, the 3D view is turned by left-dragging so that atoms do not overlap (only the view changes, not the coordinates).
 
 The numbers in the labels (C1, H2, …) are the order of the coordinate lines in “4 Input preview”; they are renumbered from 1 whenever atoms are added or deleted. When you work by number, look at the numbers again after each step.
 
@@ -33,7 +42,16 @@ What the “Place” tool does depends on where you click:
 | A bond | The atom is inserted between the two atoms (used in the variations) |
 
 1. With “C” still chosen, click one of the hydrogens (H2, for example). You get ethane (C2H6 · 8 atoms); the new carbon gets its hydrogens too.
+
+   ![Ethane made by clicking H2: C1 and C5 with three hydrogens each](images/atoms_and_bonds/03_ethane.png)
+
+   **Figure 3** Clicking H2 replaces that hydrogen with carbon C5: ethane (C2H6 · 8 atoms).
+
 2. Press “O” and click a hydrogen on the first carbon C1. You get ethanol (C2H6O · 9 atoms), with one hydrogen added to the oxygen.
+
+   ![Ethanol made by clicking a hydrogen of C1 with “O”: oxygen O8 on C1, with hydrogen H9 added to O8](images/atoms_and_bonds/04_ethanol.png)
+
+   **Figure 4** With “O”, clicking a hydrogen of C1 gives ethanol (C2H6O · 9 atoms).
 
 The status bar at the bottom shows the formula, atom and bond counts, charge and multiplicity (`C2H6O · 9 atoms · 8 bonds · charge 0 · multiplicity 1`). Each click is one “Undo” (Ctrl+Z), so a misplaced atom is undone step by step.
 
@@ -42,8 +60,17 @@ The status bar at the bottom shows the formula, atom and bond counts, charge and
 Adding hydrogens puts them in free directions only, so the dihedrals (the methyl group, the O–H) are whatever came out.
 
 1. Press “Clean up all” above the 3D view. The force-field result appears as a **candidate** in the amber bar (“Candidate: Clean up structure”).
+
+   ![The candidate of “Clean up all”: the amber bar above the 3D view shows “Candidate: Clean up structure” with “Discard candidate (Esc)” and “Confirm changes (Ctrl+Enter)”, and orange rings mark the moving atoms](images/atoms_and_bonds/05_cleanup_candidate.png)
+
+   **Figure 5** The result of “Clean up all” is shown as a candidate. “Confirm changes” in the amber bar applies it; “Discard candidate” drops it.
+
 2. Look at it and press “Confirm changes” (Ctrl+Enter), or “Discard candidate” (Esc).
 3. Choose “Select” (S) in the left column, click C1 and then Shift+click O8. The bottom left of the 3D view shows “Distance C1 – O8 = 1.4207 Å”. Three atoms in turn give the angle (at the second atom), four give the dihedral.
+
+   ![C1 and O8 selected: the bottom left of the 3D view shows “Distance C1 – O8 = 1.4207 Å” and a field to set it](images/atoms_and_bonds/06_distance.png)
+
+   **Figure 6** With C1 and O8 selected, the distance appears at the bottom left of the 3D view. Enter a value and press “Apply dimension” to change it.
 
 Entering a value and pressing “Apply dimension” moves the side of the atom chosen last so that the distance, angle or dihedral takes that value ([recipe 5](butane_conformers.md)).
 
@@ -54,13 +81,35 @@ Entering a value and pressing “Apply dimension” moves the side of the atom c
 3. In “Charge and spin”, check total charge 0 and spin multiplicity 1. “→ RKS (closed shell)” appears under the reference.
 4. Check that the check card on the right says “Input can be generated”.
 
+   ![“Basics” of “2 Calculation”: task “Optimization → frequencies”, method “DFT”, functional “B3LYP” and basis set “6-31G*” chosen; the right side shows “Input can be generated” and three settings changed from the default](images/atoms_and_bonds/07_calculation.png)
+
+   **Figure 7** Once the task, method and basis set are chosen, the right side says “Input can be generated” and lists what differs from the defaults.
+
 ## 5. Run and look at the results
 
 1. In “4 Input preview”, check that `geometry` has 9 atoms and the input ends with the two lines `task dft optimize` and `task dft frequencies`.
+
+   ![“4 Input preview”: the input blocks are listed on the left; the middle shows the geometry with 9 atoms and the closing task dft optimize and task dft frequencies](images/atoms_and_bonds/08_input_preview.png)
+
+   **Figure 8** “4 Input preview”. The “Input blocks” on the left jump to each block.
+
 2. Before the first run, check the NWChem executable, the MPI process count and the job folder in “3 Run settings” (“Ready to run”).
 3. Press “Run calculation” (F5) in the header. The run panel (“Run status and log”) opens on the right with the optimization steps and their convergence tests (Gmax, Grms, …), then the frequency task.
+
+   ![“Run status and log” during the run: “1 Geometry optimization Running”, “2 Frequencies Waiting”, the current values and targets of Gmax, Grms, Xmax and Xrms, and the standard output below](images/atoms_and_bonds/09_run_panel.png)
+
+   **Figure 9** The run panel during the run: the state of each task and the convergence criteria of the optimization (Gmax, Grms, Xmax, Xrms) against their targets.
+
 4. When it ends, the result is loaded into the “Result viewer” and the status bar says “Calculation finished:” followed by the convergence, the energy (E = −155.033797408 Eh) and the number of imaginary frequencies (0).
 5. In the “Summary” of the “Result viewer”, check the optimization (converged, steps), imaginary frequencies, HOMO–LUMO gap, dipole moment and thermochemistry. The “Vibrations” tab has the IR spectrum and the mode table; choose a row and press play under the 3D view to animate it.
+
+   ![“Summary” of the “Result viewer”: energy −155.033797408 Eh, optimization converged, no imaginary frequencies, HOMO–LUMO gap 9.20 eV, dipole moment 1.56 D and thermochemistry](images/atoms_and_bonds/10_results_summary.png)
+
+   **Figure 10** “Summary” of the “Result viewer”: the energy, the convergence of the optimization, imaginary frequencies, the HOMO–LUMO gap, the dipole moment and thermochemistry.
+
+   ![The “Vibrations” tab with the O–H stretch (3750.7 cm⁻¹) selected: the IR spectrum above, and the play button and amplitude of the mode under the 3D view](images/atoms_and_bonds/11_vibration_oh.png)
+
+   **Figure 11** The O–H stretch (3751 cm⁻¹) chosen in the “Vibrations” tab. The play button under the 3D view animates it.
 
 ### Results
 
@@ -82,14 +131,28 @@ Ethanol has conformers with the OH turned differently (anti and gauche). Changin
 ### Acetaldehyde (delete two hydrogens, make a double bond)
 
 1. From ethanol of step 2 (before cleanup is fine), choose “Delete” (X) in the left column and click the O–H hydrogen. Deletion is a candidate; press “Confirm changes”. Deleting only a hydrogen adds no capping hydrogen, even with “Cap with hydrogens after deleting” on.
+
+   ![The O–H hydrogen H9 clicked with the “Delete” tool: H9 is crossed out in red, and the amber bar shows “Candidate: Delete selected atoms” with one atom removed](images/atoms_and_bonds/12_delete_candidate.png)
+
+   **Figure 12** Clicking a hydrogen with the “Delete” tool makes a candidate with the atom to remove crossed out.
+
 2. Delete one hydrogen of C1 the same way and confirm. You get C2H4O · 7 atoms.
 3. Choose the “Bond” (B) tool, set “Bond type” above the 3D view to “Double bond”, and click C1 and then O. The atoms are already bonded, so only the bond order changes (with the focus in the 3D view, choosing the two atoms and pressing “2” does the same).
 4. Changing the order does not change the bond length; tidy it with “Clean up all”.
+
+   ![Acetaldehyde after making C1–O7 a double bond and cleaning up; C1=O7 is drawn as a double line](images/atoms_and_bonds/13_acetaldehyde.png)
+
+   **Figure 13** Acetaldehyde (C2H4O · 7 atoms) with the double bond, cleaned up.
 
 ### Dimethyl ether (insert an atom into a bond)
 
 1. Build ethane (C2H6) with “File → New” and the first half of steps 1 and 2. Set “Bond type” back to “Single bond”.
 2. Press “O” and click on the C–C bond line. Oxygen goes between the two carbons: C2H6O · 9 atoms.
+
+   ![The C–C bond of ethane clicked with “O”: oxygen O9 sits between C1 and C5](images/atoms_and_bonds/14_dimethyl_ether.png)
+
+   **Figure 14** Clicking on the C–C bond puts oxygen O9 between the two carbons (before cleanup).
+
 3. The inserted atom goes where covalent radii and a tetrahedral angle put it (C–O 1.42 Å, C–O–C 109.5°), and the smaller fragment moves outward. “Clean up all” brings C–O–C to about 111.5°. In a ring bond, nothing else moves and the atom sits off the bond line; widen the ring with “Clean up all”.
 
 ## Troubleshooting

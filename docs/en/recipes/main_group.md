@@ -17,13 +17,31 @@ A coordination center does not have to be a metal. Place sulfur as an octahedral
 1. Start an empty molecule with “File → New” and choose the category “Coordination center” in the parts palette. The list shows metals.
 2. Press the element button “S”. “Sulfur” joins the top of the list, highlighted, and “Place (coordination center S)” appears under the 3D view. Under “Coordination center”, the element buttons, “Periodic table…” and the search field (symbol, name, atomic number) choose non-metal centers too.
 3. On the “Coordination” page on the right, set “Coordination geometry” to “Octahedral”, “Center–donor / Å” to 1.56 and “Oxidation state (aux.)” to 6.
+
+   ![The element button “S” pressed under the category “Coordination center”: “Sulfur” is highlighted at the top of the list, and the “Coordination” page on the right has octahedral geometry, center–donor 1.56 Å and oxidation state 6](images/main_group/01_center_s.png)
+
+   **Figure 1** The element button “S” adds sulfur to the top of the coordination centers.
+
 4. Click in empty space in the 3D view. Purple sites 1–6 appear, and the total charge follows the S(VI) oxidation number to 6.
+
+   ![Sulfur S1 placed in empty space with the purple coordination sites 1–6 around it](images/main_group/02_s_sites.png)
+
+   **Figure 2** Clicking in empty space shows the six sites of the octahedron.
 
 ## 2. Place six fluorides
 
 1. Click “Fluoride F−” in the category “Ligand”.
 2. Click sites 1–4 in turn. From the second on, the previous ligand is confirmed before the next becomes a candidate.
+
+   ![The candidate with fluorides at sites 1–4: F2 to F5 lie in a plane around sulfur, and sites 5 and 6 remain as purple circles](images/main_group/03_four_fluorides.png)
+
+   **Figure 3** Fluorides placed at sites 1–4. The last ligand is shown as a candidate.
+
 3. Look from the side with “+X”, click sites 5 and 6, and press “Confirm changes”. You get SF₆ (F6S · 7 atoms · 6 bonds), and the total charge is back to 6 + 6×(−1) = 0.
+
+   ![SF₆ confirmed with six fluorides: F2 to F7 form an octahedron around sulfur, each labelled (-1)](images/main_group/04_sf6.png)
+
+   **Figure 4** Confirmed SF₆ (F6S · 7 atoms · 6 bonds).
 
 The “Charge” page shows a formal charge sum of −6 and offers “Use oxidation and formal charges (0)”. Dative bonds (arrows to the center) are not written to the NWChem input; only atoms and coordinates are used.
 
@@ -33,7 +51,16 @@ Molecules with dative bonds are outside the force field even when the center is 
 
 1. With “File → New”, press the element button “P” under the category “Coordination center”.
 2. Set “Coordination geometry” to “Trigonal bipyramidal”, “Center–donor / Å” to 1.58 and “Oxidation state (aux.)” to 5, and click in empty space.
+
+   ![Phosphorus P1 placed as a trigonal-bipyramidal coordination center, with sites 1–5](images/main_group/05_p_sites.png)
+
+   **Figure 5** A trigonal bipyramid has three equatorial and two axial sites.
+
 3. With “Fluoride F−”, click sites 1–3 (equatorial), look from the side with “+X”, click sites 4 and 5 (axial) and confirm. PF₅ (F5P · 6 atoms), total charge 0.
+
+   ![PF₅ confirmed with five fluorides](images/main_group/06_pf5.png)
+
+   **Figure 6** Confirmed PF₅ (F5P · 6 atoms).
 
 A trigonal bipyramid has different equatorial and axial bonds (experiment: P–F 1.53 Å equatorial, 1.58 Å axial). Starting with all at 1.58 Å, the optimization separates them. To separate them from the start, open “Site directions” on the “Coordination” page and give directions and distances per site.
 
@@ -42,6 +69,10 @@ A trigonal bipyramid has different equatorial and axial bonds (experiment: P–F
 For SF₆ and PF₅, set the task to “Optimization → frequencies”, the method to “DFT” (B3LYP) and the basis set to “6-31G*” in “2 Calculation”, and run.
 
 The checks note the estimated rotational symmetry number (σ=24 for SF₆, σ=6 for PF₅) and the entropy and free-energy corrections. NWChem's thermochemistry uses σ=1, so add these corrections when comparing with literature values.
+
+![“2 Calculation” of PF₅: optimization → frequencies, DFT (B3LYP), 6-31G*; the checks on the right note “The rotational symmetry number is estimated as σ=6.” with the entropy and free-energy corrections](images/main_group/07_symmetry_check.png)
+
+**Figure 7** The settings of PF₅ and the note on the rotational symmetry number.
 
 ### Results
 
@@ -55,6 +86,10 @@ The checks note the estimated rotational symmetry number (σ=24 for SF₆, σ=6 
 | Entropy (298.15 K, σ=1) | 77.22 cal/(mol·K) | 76.00 cal/(mol·K) |
 
 Corrected with the rotational symmetry number σ=24, the entropy of SF₆ is 77.22 − 6.32 = 70.90 cal/(mol·K), close to experiment (69.7). Degenerate vibrations appear with the same frequency in the “Vibrations” tab.
+
+![The “Vibrations” tab of the result viewer for SF₆: the IR spectrum and the table of vibrations with triply degenerate 558.2 cm⁻¹ and 964.29 cm⁻¹, and the 964.3 cm⁻¹ mode animated in the 3D view](images/main_group/08_sf6_vibration.png)
+
+**Figure 8** The “Vibrations” tab of SF₆. A degenerate vibration appears as three rows with the same frequency.
 
 ## Troubleshooting
 

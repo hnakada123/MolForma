@@ -105,6 +105,9 @@ h1, h2, h3, h4 { line-height: 1.35; scroll-margin-top: 72px; word-break: auto-ph
 .content li > ul, .content li > ol, .content li > table { margin-top: .4em; }
 strong { font-weight: 650; }
 .content img { max-width: 100%; height: auto; border: 1px solid var(--hair); border-radius: 6px; }
+/* A figure inside a step: the screenshot paragraph, then its caption ("**図N** …"). */
+.content li > p:has(> img) { margin: .7em 0 .3em; }
+.content li > p:has(> img) + p { margin-bottom: 1.2em; font-size: .9rem; color: var(--mute); }
 hr { border: 0; border-top: 1px solid var(--hair); margin: 2em 0; }
 blockquote { margin: 0 0 1em; padding: .2em 1em; border-left: 4px solid var(--hair); color: var(--mute); }
 
