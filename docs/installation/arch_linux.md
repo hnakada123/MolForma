@@ -68,7 +68,17 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j 4
 ```
 
-最初のコマンド（構成）の出力の `MolForma rendering:` の行で、3D描画の方式を確認できます。
+3行目の `cmake -S . -B build …`（構成。CMakeが必要なライブラリを調べてビルドの準備をする段階）を実行すると、端末に `-- MolForma rendering:` で始まる行が出ます。この行で3D描画の方式を確認できます。出力の終わり近くは、例えば次のようになります。
+
+```
+--   Found openbabel-3, version 3.2.1
+-- MolForma rendering: VTK 9.7.1 (Qt6), with QPainter fallback
+-- Configuring done (2.5s)
+-- Generating done (0.2s)
+-- Build files have been written to: …/MolForma/build
+```
+
+出力が流れて見逃した場合は、構成のコマンドをもう一度実行すると同じ行が出ます。`MolForma rendering:` の行の意味は次のとおりです。
 
 | 出力 | 意味 |
 | --- | --- |

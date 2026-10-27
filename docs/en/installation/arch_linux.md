@@ -68,7 +68,17 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j 4
 ```
 
-The `MolForma rendering:` line in the output of the first command (the configuration) shows how the 3D view will be drawn.
+Running the third line, `cmake -S . -B build …` (the configuration: CMake looks for the libraries it needs and prepares the build), prints a line beginning with `-- MolForma rendering:` in the terminal. This line shows how the 3D view will be drawn. Near the end, the output looks like this, for example:
+
+```
+--   Found openbabel-3, version 3.2.1
+-- MolForma rendering: VTK 9.7.1 (Qt6), with QPainter fallback
+-- Configuring done (2.5s)
+-- Generating done (0.2s)
+-- Build files have been written to: …/MolForma/build
+```
+
+If it scrolled past, running the configuration command again prints the same line. The `MolForma rendering:` line means:
 
 | Output | Meaning |
 | --- | --- |
