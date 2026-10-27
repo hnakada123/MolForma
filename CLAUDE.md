@@ -116,7 +116,8 @@ Key cross-cutting designs:
   pages); MCP tool changes belong in `docs/mcp.md`. Keep the English manuals `docs/en/features*` / `docs/en/mcp.md`
   and the recipes `docs/en/recipes*` (shown by the English UI) in step; `test_translations` compares their headings
   and checks that every embedded page's links and images exist. When a UI change alters a recipe's steps or a screen
-  shown in the feature pages, update those pages (and their screenshots) too.
+  shown in the feature pages, update those pages (and their screenshots) too. `tools/screenshots` (see its README)
+  takes the screenshots by driving `molforma --mcp-gui`; Python is only a development tool there.
 - **Interface language**: Japanese is the source language; English comes from `assets/translations/en.json`
   (`src/model/i18n.h`). Write user-visible text as `tr("日本語")` (QObject::tr in QObject classes, `mf::tr`
   elsewhere — same catalog), `QT_TR_NOOP("…")` in tables shown via `translated()`, `%1` templates rather than

@@ -89,7 +89,8 @@ tool changes belong in `docs/mcp.md`. Keep the English manuals
 `docs/en/features*` and `docs/en/mcp.md` in step with them. The recipes (`docs/recipes.md`,
 `docs/recipes/*.md`, screenshots in `docs/recipes/images/`, practice files
 in `docs/recipes/samples/`, embedded with the manual) have English versions under `docs/en/`; update
-both when a UI change alters a recipe's steps. `docs/` is also published as the
+both when a UI change alters a recipe's steps. `tools/screenshots` (see its
+README) takes the screenshots by driving `molforma --mcp-gui`. `docs/` is also published as the
 GitHub Pages site https://hnakada123.github.io/MolForma/: on pushes to main,
 `.github/workflows/pages.yml` generates the HTML with Jekyll (`docs/Gemfile`,
 `docs/Gemfile.lock`) and publishes it; preview with `bundle exec jekyll build`
