@@ -325,3 +325,11 @@ pre.code { flex: 1.2 1 440px; min-width: 0; }
 .start dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; font-size: 15px; }
 .start dt { font-weight: 700; color: var(--ink); }
 .start dd { margin: 0; }
+
+/* The last band runs into the footer, which draws the line between them. */
+.home .license { border-bottom: 0; }
+.license .wrap { display: flex; flex-direction: column; gap: 14px; color: var(--body); word-break: auto-phrase; }
+.license .wrap > * { max-width: 52em; }
+.license h2, .license h3 { color: var(--ink); }
+.license h3 { margin-top: 18px; }
+.license ul { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 8px; }

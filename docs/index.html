@@ -188,3 +188,19 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j 4
 ./build/molforma</pre>
 </section>
+
+<section class="band license">
+  <div class="wrap">
+    <h2>ライセンス</h2>
+    <p>MolFormaは GNU General Public License バージョン2以降（GPL-2.0-or-later）のもとで公開されているフリーソフトウェアです。</p>
+    <ul>
+      <li>ソフトウェアの利用・改変・再配布は自由です。改変・利用にあたって作者への連絡は不要です。</li>
+      <li>改変して配布する場合は、同じGPL（バージョン2以降）のもとでソースコードを公開する必要があります。Open Babel（GPL-2.0-only）とリンクしたバイナリを配布する場合は、GPLバージョン2の条件に従います。</li>
+      <li>本ソフトウェアは無保証で提供されます。いかなる場合においても、作者は本ソフトウェアの使用によって生じた損害について一切の責任を負いません。</li>
+    </ul>
+    <p>ライセンス全文は <a href="{{ site.repository_url }}/blob/main/LICENSE">LICENSE</a> ファイルを、依存ライブラリのライセンスとの関係は <a href="{{ site.repository_url }}/blob/main/NOTICE">NOTICE</a> ファイルをご覧ください。</p>
+    <h3>NWChemについて</h3>
+    <p>MolFormaはNWChemを同梱していません。計算には別にインストールしたNWChemを使い、NWChemはそれ自身のライセンス（<a href="https://github.com/nwchemgit/nwchem/blob/master/LICENSE.TXT">Educational Community License 2.0</a>）に従います。MolFormaはNWChemの開発元とは関係のない独立したソフトウェアです。</p>
+    <p>NWChemで得た結果を発表する際は、NWChemの文献を引用してください：E. Aprà et al., “NWChem: Past, present, and future”, <i>J. Chem. Phys.</i> 152, 184102 (2020), <a href="https://doi.org/10.1063/5.0004997">doi:10.1063/5.0004997</a></p>
+  </div>
+</section>
