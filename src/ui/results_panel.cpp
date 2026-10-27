@@ -942,7 +942,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     ppl->addWidget(atomProperties, 1);
     tabs->addTab(propertyPage, tr("物性"));
     auto *surfaces = new QWidget;
-    auto *sf = new QFormLayout(surfaces);
+    auto *sf = new FormLayout(surfaces);
     isovalue = new QLineEdit("0.03");
     isovalue->setObjectName("resultsIsovalue");
     sf->addRow(tr("等値（ファイルの単位）"), isovalue);

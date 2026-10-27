@@ -533,7 +533,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     detailHelp->setTextFormat(Qt::PlainText);
     detailHelp->setWordWrap(true);
     detailCard->body()->addWidget(detailHelp);
-    auto *facts = new QFormLayout;
+    auto *facts = new FormLayout;
     facts->setHorizontalSpacing(14);
     facts->setVerticalSpacing(3);
     for (const auto &[name, label, objectName] :
@@ -837,7 +837,7 @@ QFormLayout *CalculationPanel::group(const QString &key, const QString &title) {
             if (section.key == key)
                 reset(section.keys, {}, detailBoxes.value(key).groups);
     });
-    auto *form = new QFormLayout;
+    auto *form = new FormLayout;
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     form->setRowWrapPolicy(QFormLayout::WrapLongRows);
     form->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);

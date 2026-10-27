@@ -711,6 +711,13 @@ int FlowLayout::arrange(const QRect &rect, bool testOnly) const {
     }
     return total + m.top() + m.bottom();
 }
+void FormLayout::setGeometry(const QRect &rect) {
+    // A neighboring width takes the place of the remembered row heights, so that QFormLayout computes them
+    // again for this width rather than reusing those of another one.
+    if (hasHeightForWidth() && rect.isValid())
+        heightForWidth(rect.width() + 1);
+    QFormLayout::setGeometry(rect);
+}
 
 ChoiceButtons::ChoiceButtons(QComboBox *box, Look look, const QStringList &labels, QWidget *parent)
     : QFrame(parent), combo(box), other(new QLabel) {
@@ -1025,7 +1032,7 @@ CalculationSummary::CalculationSummary(const QString &prefix, const QString &cap
     task->setObjectName(prefix + "SummaryTask");
     task->setWordWrap(true);
     body()->addWidget(task);
-    auto *facts = new QFormLayout;
+    auto *facts = new FormLayout;
     facts->setContentsMargins(0, 6, 0, 0);
     facts->setHorizontalSpacing(14);
     facts->setVerticalSpacing(3);
@@ -1110,7 +1117,7 @@ ViewControls::ViewControls(MoleculeView *view, const Names &names, bool rotate, 
         // The angles as sliders in a popup under "回転"; the mouse rotation moves them too.
         popup = new QFrame(this, Qt::Popup);
         popup->setObjectName(names.popup);
-        auto *angles = new QFormLayout(popup);
+        auto *angles = new FormLayout(popup);
         angles->setContentsMargins(14, 12, 14, 12);
         QSlider *sliders[3];
         const auto start = view->angles();

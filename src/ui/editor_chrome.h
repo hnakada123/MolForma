@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
+#include <QFormLayout>
 #include <QFrame>
 #include <QIcon>
 #include <QLabel>
@@ -77,6 +78,16 @@ class FlowLayout : public QLayout {
     QList<QLayoutItem *> items;
     int horizontal, vertical;
     bool uniform = false;
+};
+
+// A QFormLayout whose rows of wrapping text or buttons get the height they need at its width. QFormLayout
+// keeps one set of row heights for the two widths it remembers (its size hint's and the last one asked),
+// so after a height asked for its size hint's width it laid rows out at the heights of that wider width,
+// too short for its own, and they covered each other.
+class FormLayout : public QFormLayout {
+  public:
+    using QFormLayout::QFormLayout;
+    void setGeometry(const QRect &rect) override;
 };
 
 // Keeps a toolbar laid out by a FlowLayout on one row while it can: before the row would wrap,

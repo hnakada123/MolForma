@@ -32,7 +32,7 @@ static Vec fields(QDoubleSpinBox *const *spins) {
 }
 // A form in a card or above the cards of a page: its rows, then buttons side by side.
 static QFormLayout *formLayout(QWidget *parent) {
-    auto *form = new QFormLayout(parent);
+    auto *form = new FormLayout(parent);
     form->setContentsMargins(0, 0, 0, 0);
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     form->setRowWrapPolicy(QFormLayout::WrapLongRows);
@@ -134,11 +134,7 @@ void MainWindow::buildEditPanel() {
     changesNote->setWordWrap(true);
     changes->addWidget(changesNote);
     candidateCard->hide();
-    // Both cards go into the column of the page, not into its form: after the selection text changed,
-    // the form gave the selection card the height of its size hint instead of the height for its width,
-    // and wrapped buttons (the longer English ones) covered the check boxes below them.
-    auto *column = pageCards.value(outer);
-    column->insertWidget(0, candidateCard);
+    outer->addRow(candidateCard);
     auto *card = new QFrame;
     card->setObjectName("selectionCard");
     card->setProperty("card", true);
@@ -189,8 +185,7 @@ void MainWindow::buildEditPanel() {
         tr("すべての削除（Delete・ツールバー・削除ツール・右クリック）に適用します。削除した原子"
            "だけに付いていた水素も一緒に削除します。"));
     cardLayout->addWidget(deleteTerminate);
-    column->insertWidget(1, card);
-    outer->parentWidget()->hide(); // The form above the cards has no rows here.
+    outer->addRow(card);
     // The atoms and bonds under the selection; transformations and attributes on pages of their own.
     auto *f = outer;
     QStringList symbols;

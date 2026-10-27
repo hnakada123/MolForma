@@ -3612,7 +3612,7 @@ void MainWindow::symmetryDialog() {
     dialog.setObjectName("symmetryDialog");
     dialog.setWindowTitle(tr("点群・対称化"));
     auto *layout = new QVBoxLayout(&dialog);
-    auto *form = new QFormLayout;
+    auto *form = new FormLayout;
     layout->addLayout(form);
     auto *tolerance = new QDoubleSpinBox;
     tolerance->setObjectName("symmetryTolerance");
@@ -3701,7 +3701,7 @@ void MainWindow::preferences() {
     const auto saved = executionPreferences();
     const auto card = [&](const QString &title) {
         auto *c = new SettingsCard(title);
-        auto *form = new QFormLayout;
+        auto *form = new FormLayout;
         form->setHorizontalSpacing(12);
         form->setVerticalSpacing(8);
         c->body()->addLayout(form);

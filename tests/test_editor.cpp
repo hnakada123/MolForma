@@ -126,6 +126,37 @@ class EditorTest : public QObject {
         QVERIFY2(imageWidth > 0 && imageWidth < pageWidth,
                  qPrintable(QString("%1 / %2").arg(imageWidth).arg(pageWidth)));
     }
+    void chargeCardRows() {
+        // The charge page stays open while another molecule comes in: the rows of its first card, which
+        // wrap (the value and its link, the electrons with a note), keep their wrapped height and do not
+        // cover each other.
+        MainWindow w;
+        w.show();
+        QTemporaryDir dir;
+        QVERIFY(
+            w.useSample(":/docs/recipes/samples/na_h2o4_charges.kgui.json", dir.filePath("na.kgui.json")));
+        w.findChild<QTabWidget *>("propertyTabs")->setCurrentIndex(5);
+        QTest::qWait(50);
+        w.findChild<QAction *>("newAction")->trigger(); // An empty molecule: the longest notes.
+        QTest::qWait(50);
+        QVERIFY(w.useSample(":/docs/recipes/samples/ethanol_od.kgui.json", dir.filePath("od.kgui.json")));
+        QTest::qWait(50);
+        auto *link = w.findChild<QWidget *>("moleculeChargeLink");
+        auto *summary = w.findChild<QLabel *>("moleculeChargeSummary");
+        auto *input = w.findChild<QWidget *>("moleculeInputState");
+        QVERIFY(link && summary && input);
+        auto *body = summary->parentWidget();
+        const auto top = [body](QWidget *x) { return x->mapTo(body, QPoint()).y(); };
+        QVERIFY2(top(link) + link->height() <= top(summary),
+                 qPrintable(QString("link ends at %1, summary starts at %2")
+                                .arg(top(link) + link->height())
+                                .arg(top(summary))));
+        QVERIFY2(summary->height() >= summary->heightForWidth(summary->width()),
+                 qPrintable(QString("summary %1 px of %2")
+                                .arg(summary->height())
+                                .arg(summary->heightForWidth(summary->width()))));
+        QVERIFY(top(summary) + summary->height() <= top(input));
+    }
     void manualSamples() {
         // The practice files of the recipes are embedded: a molecule is opened from a copy that can be
         // saved, and a part joins "マイ部品" when its link in the manual is clicked.
