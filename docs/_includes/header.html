@@ -7,6 +7,9 @@
       <a href="{{ root }}{{ home }}recipes.html"{% if page.url contains recipes %} aria-current="page"{% endif %}>{% if en %}Recipes{% else %}題材から選ぶ実習{% endif %}</a>
       <a href="{{ root }}{{ home }}mcp.html"{% if page.url contains 'mcp' %} aria-current="page"{% endif %}>{% if en %}MCP server{% else %}MCPサーバー{% endif %}</a>
       <a href="{{ site.repository_url }}">GitHub</a>
+      {%- comment -%} Opens X's post form with this page's title (page_title from head.html) and absolute URL; X shows
+      the page's card from head.html. A plain link, so the pages load no script from X. {%- endcomment %}
+      <a class="share" href="https://x.com/intent/post?text={{ page_title | url_encode }}&amp;url={{ page.url | absolute_url | url_encode }}" target="_blank" rel="noopener"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24"><path d="M18.24 2.25h3.31l-7.23 8.26 8.5 11.24h-6.65l-5.21-6.82-5.97 6.82H1.68l7.73-8.84L1.25 2.25h6.83l4.71 6.23zm-1.16 17.52h1.83L7.08 4.13H5.12z"/></svg>{% if en %}Share on X{% else %}Xで共有{% endif %}</a>
       <a class="lang" href="{{ root }}{{ other }}" hreflang="{% if en %}ja{% else %}en{% endif %}" lang="{% if en %}ja{% else %}en{% endif %}">{% if en %}日本語{% else %}English{% endif %}</a>
     </nav>
   </div>

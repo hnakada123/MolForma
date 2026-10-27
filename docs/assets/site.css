@@ -58,7 +58,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .skip { position: absolute; left: -999px; }
 .skip:focus { left: 16px; top: 8px; z-index: 10; background: var(--card); padding: 4px 8px; }
 
-/* Header and footer: the brand, the pages and the other language. */
+/* Header and footer: the brand, the pages, sharing on X and the other language. */
 header.site, footer.site { background: var(--card); }
 header.site { position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--hair); }
 footer.site { border-top: 1px solid var(--hair); margin-top: 48px; }
@@ -82,6 +82,10 @@ header.site nav a { padding: 8px 12px; border-radius: 8px; color: var(--mute); }
 header.site nav a:hover { background: var(--soft); color: var(--ink); text-decoration: none; }
 header.site nav a[aria-current="page"] { color: var(--accent); background: var(--mark); font-weight: 600; }
 header.site nav a.lang { border: 1px solid var(--hair); color: var(--ink); }
+/* Sharing on X: a dark button, as X draws its own. */
+header.site nav a.share { display: inline-flex; align-items: center; gap: 7px; background: var(--ink); color: var(--card); font-weight: 500; }
+header.site nav a.share:hover { background: var(--body); color: var(--card); }
+header.site .share svg { display: block; fill: currentColor; stroke: none; }
 footer.site nav { gap: 4px 18px; }
 footer.site nav a { color: var(--mute); }
 

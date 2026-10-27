@@ -101,7 +101,7 @@ Key cross-cutting designs:
   themselves (`root` from `_includes/language.html`; the layouts also convert the content's root-absolute links), so
   the generated HTML opens as files too. The
   site's sources: `_config.yml`, `_layouts/` (`default.html` for the manual pages, `home.html`), `_includes/` (head,
-  header with navigation and language switch, footer), `assets/site.css`, and the home pages `index.html` / `en/index.html`
+  header with navigation, X share button and language switch, footer), `assets/site.css`, and the home pages `index.html` / `en/index.html`
   (HTML with front matter, not in the app; their feature and recipe cards come from `_data/features.yml` and
   `_data/recipes.yml`, kept in step with the tables of `features.md` / `recipes.md` and their English versions).
   The manual pages stay plain Markdown without front matter, since the app shows them verbatim; Jekyll plugins give
