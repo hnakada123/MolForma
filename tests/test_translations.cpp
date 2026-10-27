@@ -393,6 +393,20 @@ class TranslationsTest : public QObject {
                                     .arg(scroll->widget()->minimumSizeHint().width())
                                     .arg(scroll->viewport()->width())));
         }
+        // The longer English buttons of the selection card wrap into a second row: the card grows with
+        // them, and the check boxes below do not cover the wrapped button.
+        pages->setCurrentIndex(0);
+        QTest::qWait(20);
+        auto *card = w.findChild<QFrame *>("selectionCard");
+        auto *refine = w.findChild<QWidget *>("refineSelectionButton");
+        auto *keep = w.findChild<QWidget *>("keepSelection");
+        QVERIFY(card && refine && keep);
+        QVERIFY(refine->y() > w.findChild<QWidget *>("clearSelection")->y()); // Wrapped.
+        QVERIFY2(refine->geometry().bottom() < keep->y(),
+                 qPrintable(QString("button ends at %1, check box starts at %2")
+                                .arg(refine->geometry().bottom())
+                                .arg(keep->y())));
+        QVERIFY(w.findChild<QWidget *>("deleteTerminate")->geometry().bottom() < card->height());
     }
 };
 QTEST_MAIN(TranslationsTest)
