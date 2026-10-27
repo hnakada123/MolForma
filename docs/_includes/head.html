@@ -1,8 +1,27 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>{% if path == home_page %}{{ page.title }}{% else %}{{ page.title | strip_html }} | MolForma{% endif %}</title>
-<meta name="description" content="{% if en %}{{ site.description_en }}{% else %}{{ site.description }}{% endif %}">
+{%- capture page_title -%}{% if path == home_page %}{{ page.title }}{% else %}{{ page.title | strip_html }} | MolForma{% endif %}{%- endcapture -%}
+{%- if en -%}{%- assign description = site.description_en -%}{%- else -%}{%- assign description = site.description -%}{%- endif %}
+<title>{{ page_title }}</title>
+<meta name="description" content="{{ description }}">
+{%- comment -%} The card shown where a page is shared (X and other sites); the image needs an absolute URL. {%- endcomment %}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="MolForma">
+<meta property="og:locale" content="{% if en %}en_US{% else %}ja_JP{% endif %}">
+<meta property="og:title" content="{{ page_title | escape }}">
+<meta property="og:description" content="{{ description }}">
+<meta property="og:url" content="{{ page.url | absolute_url }}">
+{%- if en %}
+<meta property="og:image" content="{{ 'assets/og-image-en.png' | absolute_url }}">
+<meta property="og:image:alt" content="MolForma — Build a molecule, calculate it, check the results. The “1 Molecule” tab with a cobalt complex.">
+{%- else %}
+<meta property="og:image" content="{{ 'assets/og-image.png' | absolute_url }}">
+<meta property="og:image:alt" content="MolForma — 分子を組み、計算し、結果を確かめる。コバルト錯体を組んだ「1 分子」の画面">
+{%- endif %}
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="{{ root }}assets/molforma.svg" type="image/svg+xml">
 <link rel="alternate" hreflang="{% if en %}ja{% else %}en{% endif %}" href="{{ root }}{{ other }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">

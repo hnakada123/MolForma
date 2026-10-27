@@ -6,6 +6,8 @@
 title: MolForma
 description: NWChemのための分子エディタ・計算入力作成・結果表示アプリ
 description_en: A molecular editor, input builder and result viewer for NWChem
+# url + baseurl begin the absolute links of the card shown where a page is shared (_includes/head.html).
+url: https://hnakada123.github.io
 baseurl: /MolForma
 repository_url: https://github.com/hnakada123/MolForma
 lang: ja
