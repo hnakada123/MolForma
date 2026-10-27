@@ -1636,6 +1636,8 @@ class EditorTest : public QObject {
     }
     void qtDialogTextsInJapanese() {
         // Qt's standard buttons follow the Japanese interface, with or without Qt's translation.
+        // Japanese whatever the system's language, which would otherwise choose it.
+        qputenv("MOLFORMA_LANGUAGE", "ja");
         installTranslations(*QCoreApplication::instance());
         QDialogButtonBox box(QDialogButtonBox::Save | QDialogButtonBox::Discard | QDialogButtonBox::Cancel |
                              QDialogButtonBox::Close);

@@ -221,7 +221,8 @@ class CoordinatesTest : public QObject {
         w.show();
         button(w, "moleculeLayout_both")->click();
         auto *split = w.findChild<QSplitter *>("moleculeSplit");
-        QTRY_VERIFY(split->sizes().value(0) > split->sizes().value(1));
+        // The split is sized after the table is shown (queued): until then the table has no room.
+        QTRY_VERIFY(split->sizes().value(1) > 0 && split->sizes().value(0) > split->sizes().value(1));
         QVERIFY(w.findChild<QWidget *>("coordinatesTab")->minimumSizeHint().height() < 300);
         QVERIFY(table(w)->viewport()->height() >= 4 * table(w)->verticalHeader()->defaultSectionSize());
         button(w, "moleculeLayout_view")->click();
