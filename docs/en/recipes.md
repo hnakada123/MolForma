@@ -6,7 +6,7 @@ The calculations on these pages were run on 2026-10-26 with NWChem 7.3.1 (Linux,
 
 ## Using these recipes
 
-- **By feature**: “[Features and coverage](features.md)” describes each part of the window and what every button does.
+- **By feature**: “[Features](features.md)” describes each part of the window and what every button does, one page per screen.
 - **By topic**: the 16 recipes on this page. Each starts from a new molecule (or a structure file or a calculation result) and goes through the calculation settings, the run and the results.
 - **The pages**: “What you build” → steps → calculation settings → run and results → “Troubleshooting”. Names in quotes (“Clean up all”) are as shown in the window.
 - **Practice data**: The finished projects (`.kgui.json`) are linked under “Practice data” in the table of each recipe (`docs/recipes/samples/` of the repository). The web manual downloads them from the links; in the app's “Guide and manual”, clicking a link saves a copy where you choose and opens it (a part file `.kpart.json` goes to “My parts”). Use them to start halfway or to compare with your own. They carry no run settings (NWChem executable, job folder and so on), so check “3 Run settings” before running.
@@ -42,7 +42,7 @@ The total charge and multiplicity of the calculation are set in “Charge and sp
 
 MolForma builds finite molecules (and external point charges) and runs NWChem's molecular methods. Not covered:
 
-- FMO (fragment molecular orbitals) and SAPT0 (energy decomposition). NWChem cannot run them, so there is no recipe that splits a protein's active site into fragments. For reading, checking and repairing PDB files, see the “Residues” page of “1 Molecule” in “[Features and coverage](features.md)”.
+- FMO (fragment molecular orbitals) and SAPT0 (energy decomposition). NWChem cannot run them, so there is no recipe that splits a protein's active site into fragments. For reading, checking and repairing PDB files, see the “Residue” page in [Right-side pages of “1 Molecule”](features/molecule_pages.md).
 - Crystals and periodic systems, surfaces, automatic polymers, automatic solvent boxes, and NEB paths between two structures. Place solvent molecules by hand ([recipe 12](recipes/hydrated_sodium.md)) or use a continuum model (COSMO, SMD).
 
 An MCP client (AI) can be asked to do the same in words. The tools and examples are in “[MCP server](mcp.md)”.

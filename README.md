@@ -24,7 +24,7 @@ Qt Testが不要な配布用ビルドでは `-DBUILD_TESTING=OFF` を指定し�
 
 Qt6対応のVTK 9.1以上の開発パッケージ（`GUISupportQt`、`RenderingOpenGL2`など）とQt6 OpenGL Widgetsがある場合、分子編集画面と結果ビューアの3D描画にVTKを使用します。VTKの外部依存の開発パッケージも必要です（配布によってMPI、FastFloat、nlohmann_jsonなど）。VTKはC++ APIで使用し、Python/PyVistaは不要です。配布時はVTKの共有ライブラリも含めてください。CMakeの `MolForma rendering:` 行で有効な構成を確認できます。
 
-VTKがない場合や `-DMOLFORMA_ENABLE_VTK=OFF` を指定したビルドはQPainterで描画します。実行時に `MOLFORMA_RENDERER=painter ./build/molforma` で従来描画を選択できます。Qtのoffscreen/minimal環境とOpenGL 3.2コンテキストを作成できない環境では自動的にQPainterを使用します。詳しい動作と検証方法は [描画の説明](docs/features.md#3d描画) を参照してください。
+VTKがない場合や `-DMOLFORMA_ENABLE_VTK=OFF` を指定したビルドはQPainterで描画します。実行時に `MOLFORMA_RENDERER=painter ./build/molforma` で従来描画を選択できます。Qtのoffscreen/minimal環境とOpenGL 3.2コンテキストを作成できない環境では自動的にQPainterを使用します。詳しい動作と検証方法は [描画の説明](docs/features/rendering.md) を参照してください。
 
 ```sh
 cmake --install build --prefix /tmp/molforma-install
@@ -58,7 +58,7 @@ MCPクライアントからも操作できます。GUIを表示する場合は `
 
 マニュアル・実習・MCPの説明は、`docs/` から生成したHTMLを公開している https://hnakada123.github.io/MolForma/ でも読めます。
 
-機能の対応範囲、制限事項、検証例は [docs/features.md](docs/features.md) を参照してください。分子を組んで計算し結果を確かめるまでを題材ごとに通す実習（エタノール・金属錯体・ペプチド・BSSE補正・ラジカル・遷移状態など16題材、画面写真と練習データ付き）は [docs/recipes.md](docs/recipes.md)（英語は [docs/en/recipes.md](docs/en/recipes.md)）にあり、「ヘルプ → 操作ガイド・マニュアル」でも読めます。
+機能の対応範囲、制限事項、検証例は [docs/features.md](docs/features.md)（画面・タブごとのページの一覧）を参照してください。分子を組んで計算し結果を確かめるまでを題材ごとに通す実習（エタノール・金属錯体・ペプチド・BSSE補正・ラジカル・遷移状態など16題材、画面写真と練習データ付き）は [docs/recipes.md](docs/recipes.md)（英語は [docs/en/recipes.md](docs/en/recipes.md)）にあり、「ヘルプ → 操作ガイド・マニュアル」でも読めます。
 
 ## 開発
 

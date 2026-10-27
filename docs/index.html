@@ -52,6 +52,7 @@ title: MolForma — NWChemのための分子エディタ
       <li>立体（R/S・E/Z）の記録と反転、同位体、外部点電荷、自作の部品</li>
       <li>SMILES、XYZ・MOL・SDF・PDB、NWChem・Gaussian入力からも始められる</li>
     </ul>
+    <a class="more" href="{{ '/features/molecule.html' | relative_url }}">「1 分子」の画面と操作<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
   </div>
   <figure class="shot">
     <img src="{{ '/recipes/images/capped_peptide.png' | relative_url }}" alt="配列 AHE からキャップ付きのペプチドを組んだ「1 分子」の画面と、右側の「残基」ページ" width="1380" height="900" loading="lazy">
@@ -101,6 +102,7 @@ title: MolForma — NWChemのための分子エディタ
         <li>ZORA・DKH・X2C</li>
         <li>Mulliken・ESP・NMR・分極率</li>
       </ul>
+      <a class="more" href="{{ '/features/calculation.html' | relative_url }}">「2 計算条件」の説明<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
     </div>
   </div>
 </section>
@@ -116,6 +118,7 @@ title: MolForma — NWChemのための分子エディタ
       <li>分子軌道・電子密度の等値面（CUBE・MOLDEN）</li>
       <li>励起状態と吸収スペクトル、スキャン・IRCの経路</li>
     </ul>
+    <a class="more" href="{{ '/features/results.html' | relative_url }}">「結果ビューア」の説明<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
   </div>
   <figure class="shot">
     <img src="{{ '/recipes/images/reuse_result.png' | relative_url }}" alt="結果ビューアの「励起状態」タブ。励起エネルギーと振動子強度の表と、吸収スペクトルのグラフ" width="1380" height="900" loading="lazy">
@@ -127,12 +130,28 @@ title: MolForma — NWChemのための分子エディタ
   <div class="card">
     <h3><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"><path d="M12 7v5l3 2"/><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3 4v4h4"/></svg>履歴</h3>
     <p>保存した計算を日ごとに一覧し、組成・手法・基底が同じジョブどうしのエネルギー差（ΔE）を並べます。計算に使った分子と条件は、そのまま再利用できます。</p>
+    <a class="more" href="{{ '/features/history.html' | relative_url }}">「履歴」の説明<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
   </div>
   <div class="card">
     <h3><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"><path d="M4 6h16v10H8l-4 4z"/><path d="M8 10h8"/><path d="M8 13h5"/></svg>AIからの操作（MCP）</h3>
     <p>MCPサーバーを内蔵しています。Claude CodeやCodexに登録すると、分子の編集から計算・結果の確認までを言葉で頼めます。NWChemの実行ファイルや読み書きする場所は、利用者が決めた範囲に限られます。</p>
     <a class="more" href="{{ '/mcp.html' | relative_url }}">MCPサーバーの説明<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
   </div>
+</section>
+
+<section class="wrap pages">
+  <div class="head">
+    <div>
+      <h2>画面ごとの機能と操作</h2>
+      <p class="sub">タブと画面の部品が何をするかを、画面写真とともに12のページで説明しています。</p>
+    </div>
+    <a class="more" href="{{ '/features.html' | relative_url }}">機能と操作の一覧へ<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
+  </div>
+  <ul>
+    {%- for p in site.data.features %}
+    <li><a href="{{ '/features/' | append: p.page | append: '.html' | relative_url }}"><span class="no">{{ p.ja.screen }}</span><span class="title">{{ p.ja.title }}</span><span class="summary">{{ p.ja.summary }}</span></a></li>
+    {%- endfor %}
+  </ul>
 </section>
 
 <section class="band">

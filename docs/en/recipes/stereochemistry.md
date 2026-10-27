@@ -91,4 +91,4 @@ Z lies above E by ΔE = +1.34 kcal/mol, ΔH = +1.47 kcal/mol (enthalpy at 298 K)
 - **“Switch E/Z” cannot be pressed**: Choose exactly the two atoms of the double bond.
 - **Cleanup is refused**: When a cleanup would change a recorded configuration, the structure is kept. Record again with “Record stereo”, or match it with inverting or switching.
 
-See also: the right-side pages of “1 Molecule” (Transform) in “[Features and coverage](../features.md)”, [recipe 5 Chains and conformers](butane_conformers.md).
+See also: [Right-side pages of “1 Molecule”](../features/molecule_pages.md) (Transform), [recipe 5 Chains and conformers](butane_conformers.md).

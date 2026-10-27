@@ -111,4 +111,4 @@ B3LYP tends to underestimate bond dissociation energies by a few kcal/mol. Compa
 - **The total charge did not change with the formal charge**: Atom formal charges are not applied to the total charge automatically. Use “Use formal charges as total” on the “Charge” page or “Use the sum of formal charges (−1)” in “2 Calculation”.
 - **Deleting adds a hydrogen next to it**: Only deleting a heavy atom adds hydrogens to the cut bonds (“Cap with hydrogens after deleting”); deleting a hydrogen alone adds none.
 
-See also: “2 Calculation” (supported calculations, diagnostics) in “[Features and coverage](../features.md)”, [recipe 1 Building from atoms and bonds](atoms_and_bonds.md).
+See also: [“2 Calculation”](../features/calculation.md) (supported calculations, diagnostics), [recipe 1 Building from atoms and bonds](atoms_and_bonds.md).

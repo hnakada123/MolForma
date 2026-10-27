@@ -113,4 +113,4 @@ Three point charges roughly reproduce the interaction of the outer water treated
 - **Frequencies cannot be computed**: Frequencies with external point charges are not supported (“Frequency analysis in external point charges is not supported.”).
 - **You want a continuum solvent**: Choose COSMO (HF, DFT) or SMD (DFT) as the solvent model in “Environment”. It can be combined with point charges.
 
-See also: the right-side pages of “1 Molecule” (Charge) and solvents in “[Features and coverage](../features.md)”, [recipe 2 Coordination compounds](cobalt_complex.md).
+See also: [Right-side pages of “1 Molecule”](../features/molecule_pages.md) (Charge), solvents in [“2 Calculation”](../features/calculation.md), [recipe 2 Coordination compounds](cobalt_complex.md).

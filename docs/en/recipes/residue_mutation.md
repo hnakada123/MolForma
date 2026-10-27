@@ -116,4 +116,4 @@ Replacing the polar imidazole (His) with the nonpolar benzyl group (Phe) makes t
 - **“Select a free C-terminus and a free N-terminus of different chains.”**: The residues are in the same chain, or the order is reversed. Choose the C-terminal residue first.
 - **Reopened XYZ has too many or too few bonds**: Bonds are guessed from distances, so atoms that are too close (around 1 Å) get extra bonds. Clean up the structure before exporting, or pass a project.
 
-See also: the right-side pages of “1 Molecule” (Residue) in “[Features and coverage](../features.md)”, [recipe 7 Peptides](capped_peptide.md), [recipe 15 Isotopes and atom order](isotopes.md).
+See also: [Right-side pages of “1 Molecule”](../features/molecule_pages.md) (Residue), [recipe 7 Peptides](capped_peptide.md), [recipe 15 Isotopes and atom order](isotopes.md).

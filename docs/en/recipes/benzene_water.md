@@ -103,4 +103,4 @@ The “BSSE error” (0.001616831 Eh) and “Corrected energy” NWChem 7.3.1 pr
 - **“Monomer charges for the BSSE correction come from the formal charges of the atoms.”**: Make the total charge the sum of formal charges (“Use formal charges as total” on the “Charge” page).
 - **Table cells cannot be edited**: Not while a candidate is shown. Confirm or discard it first.
 
-See also: the coordinate table and properties, BSSE and follow-up single point in “[Features and coverage](../features.md)”, [recipe 12 Solvated clusters and point charges](hydrated_sodium.md).
+See also: [Coordinate table](../features/coordinates.md), properties, BSSE and follow-up single point in [“2 Calculation”](../features/calculation.md), [recipe 12 Solvated clusters and point charges](hydrated_sodium.md).

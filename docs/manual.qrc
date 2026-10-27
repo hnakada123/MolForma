@@ -1,5 +1,47 @@
 <RCC><qresource prefix="/docs">
   <file>features.md</file>
+  <file>features/molecule.md</file>
+  <file>features/molecule_pages.md</file>
+  <file>features/coordinates.md</file>
+  <file>features/calculation.md</file>
+  <file>features/advanced.md</file>
+  <file>features/execution.md</file>
+  <file>features/input_preview.md</file>
+  <file>features/results.md</file>
+  <file>features/history.md</file>
+  <file>features/rendering.md</file>
+  <file>features/app.md</file>
+  <file>features/ai.md</file>
+  <file>features/images/molecule/01_window.png</file>
+  <file>features/images/molecule/02_measure.png</file>
+  <file>features/images/molecule/03_candidate.png</file>
+  <file>features/images/molecule/04_periodic_table.png</file>
+  <file>features/images/molecule_pages/01_edit.png</file>
+  <file>features/images/molecule_pages/02_transform.png</file>
+  <file>features/images/molecule_pages/03_coordination.png</file>
+  <file>features/images/molecule_pages/04_residue.png</file>
+  <file>features/images/molecule_pages/05_charge.png</file>
+  <file>features/images/molecule_pages/06_symmetry.png</file>
+  <file>features/images/coordinates/01_view_and_table.png</file>
+  <file>features/images/coordinates/02_table.png</file>
+  <file>features/images/calculation/01_overview.png</file>
+  <file>features/images/calculation/02_diagnostics.png</file>
+  <file>features/images/calculation/03_changed.png</file>
+  <file>features/images/advanced/01_advanced.png</file>
+  <file>features/images/advanced/02_output.png</file>
+  <file>features/images/execution/01_settings.png</file>
+  <file>features/images/execution/02_run_panel.png</file>
+  <file>features/images/input_preview/01_preview.png</file>
+  <file>features/images/results/01_summary.png</file>
+  <file>features/images/results/02_optimization.png</file>
+  <file>features/images/results/03_vibration.png</file>
+  <file>features/images/results/04_orbital.png</file>
+  <file>features/images/history/01_list.png</file>
+  <file>features/images/history/02_delta_e.png</file>
+  <file>features/images/rendering/01_hydrogen_bonds.png</file>
+  <file>features/images/rendering/02_space_filling.png</file>
+  <file>features/images/app/01_manual.png</file>
+  <file>features/images/ai/01_mcp_gui.png</file>
   <file>mcp.md</file>
   <file>recipes.md</file>
   <file>recipes/aromatic_substitution.md</file>
@@ -199,6 +241,48 @@
   <file>recipes/samples/tms_benzene.kgui.json</file>
   <file>recipes/samples/trimethylsilyl.kpart.json</file>
   <file>en/features.md</file>
+  <file>en/features/molecule.md</file>
+  <file>en/features/molecule_pages.md</file>
+  <file>en/features/coordinates.md</file>
+  <file>en/features/calculation.md</file>
+  <file>en/features/advanced.md</file>
+  <file>en/features/execution.md</file>
+  <file>en/features/input_preview.md</file>
+  <file>en/features/results.md</file>
+  <file>en/features/history.md</file>
+  <file>en/features/rendering.md</file>
+  <file>en/features/app.md</file>
+  <file>en/features/ai.md</file>
+  <file>en/features/images/molecule/01_window.png</file>
+  <file>en/features/images/molecule/02_measure.png</file>
+  <file>en/features/images/molecule/03_candidate.png</file>
+  <file>en/features/images/molecule/04_periodic_table.png</file>
+  <file>en/features/images/molecule_pages/01_edit.png</file>
+  <file>en/features/images/molecule_pages/02_transform.png</file>
+  <file>en/features/images/molecule_pages/03_coordination.png</file>
+  <file>en/features/images/molecule_pages/04_residue.png</file>
+  <file>en/features/images/molecule_pages/05_charge.png</file>
+  <file>en/features/images/molecule_pages/06_symmetry.png</file>
+  <file>en/features/images/coordinates/01_view_and_table.png</file>
+  <file>en/features/images/coordinates/02_table.png</file>
+  <file>en/features/images/calculation/01_overview.png</file>
+  <file>en/features/images/calculation/02_diagnostics.png</file>
+  <file>en/features/images/calculation/03_changed.png</file>
+  <file>en/features/images/advanced/01_advanced.png</file>
+  <file>en/features/images/advanced/02_output.png</file>
+  <file>en/features/images/execution/01_settings.png</file>
+  <file>en/features/images/execution/02_run_panel.png</file>
+  <file>en/features/images/input_preview/01_preview.png</file>
+  <file>en/features/images/results/01_summary.png</file>
+  <file>en/features/images/results/02_optimization.png</file>
+  <file>en/features/images/results/03_vibration.png</file>
+  <file>en/features/images/results/04_orbital.png</file>
+  <file>en/features/images/history/01_list.png</file>
+  <file>en/features/images/history/02_delta_e.png</file>
+  <file>en/features/images/rendering/01_hydrogen_bonds.png</file>
+  <file>en/features/images/rendering/02_space_filling.png</file>
+  <file>en/features/images/app/01_manual.png</file>
+  <file>en/features/images/ai/01_mcp_gui.png</file>
   <file>en/mcp.md</file>
   <file>en/recipes.md</file>
   <file>en/recipes/aromatic_substitution.md</file>

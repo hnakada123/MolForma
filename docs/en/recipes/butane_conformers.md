@@ -92,4 +92,4 @@ The graph in the “Path / scan” tab shows the two valleys at 180° and 60° a
 - **Gauche came out with another value**: The order of the atoms decides the sign of the dihedral and which side turns. “Clean up all” after entering the value moves it to the force field's preferred value (about 65°).
 - **One point of the scan is high**: Each point of a relaxed scan is optimized from a starting structure of its own. Use more points or split the range.
 
-See also: transition states, IRC, constraints and scans in “[Features and coverage](../features.md)”, [recipe 13 Transition states and reaction paths](sn2_transition_state.md).
+See also: transition states, IRC, constraints and scans in [“2 Calculation”](../features/calculation.md), [recipe 13 Transition states and reaction paths](sn2_transition_state.md).

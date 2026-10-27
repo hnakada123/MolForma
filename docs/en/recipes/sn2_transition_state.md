@@ -123,4 +123,4 @@ Open `sn2_reactant.kgui.json` and run “Optimization → frequencies” with th
 - **IRC stops with “mepgs: could not optimize”**: Too few points, or a side where the minimum is close to the transition state (a path shorter than 1 amu½·Bohr). Check in “Path / scan” whether the last point of that side reached a minimum; if so, compute the remaining direction alone with “IRC direction”.
 - **The transition-state search does not converge**: Raise the maximum iterations in the advanced settings of “Optimization and frequencies”, or estimate the top first with an optimization constraining the reaction coordinates (the C–F and C–Cl distances) or a relaxed scan ([recipe 5](butane_conformers.md)).
 
-See also: transition states, IRC, constraints and scans in “[Features and coverage](../features.md)”, [recipe 14 From a result to the next calculation](reuse_result.md).
+See also: transition states, IRC, constraints and scans in [“2 Calculation”](../features/calculation.md), [recipe 14 From a result to the next calculation](reuse_result.md).

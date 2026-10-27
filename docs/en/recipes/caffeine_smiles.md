@@ -90,4 +90,4 @@ The fused rings are almost settled in the starting structure (3D from SMILES); m
 - **It stays flat**: Use “Regenerate 3D”. “Clean up all” only tidies the present coordinates with the force field and does not lift a flat start into 3D.
 - **Regenerate 3D is refused with fixed atoms**: It rebuilds all coordinates, so fixed atoms are not allowed.
 
-See also: structure tools and the coordinate table in “[Features and coverage](../features.md)”, [recipe 14 From a result to the next calculation](reuse_result.md).
+See also: structure tools in [Right-side pages of “1 Molecule”](../features/molecule_pages.md), [Coordinate table](../features/coordinates.md), [recipe 14 From a result to the next calculation](reuse_result.md).

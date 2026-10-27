@@ -108,6 +108,9 @@ strong { font-weight: 650; }
 /* A figure inside a step: the screenshot paragraph, then its caption ("**図N** …"). */
 .content li > p:has(> img) { margin: .7em 0 .3em; }
 .content li > p:has(> img) + p { margin-bottom: 1.2em; font-size: .9rem; color: var(--mute); }
+/* A figure between paragraphs of the feature pages, with its caption. */
+.content > p:has(> img) { margin: 1.4em 0 .3em; }
+.content > p:has(> img) + p { margin-bottom: 1.4em; font-size: .9rem; color: var(--mute); }
 hr { border: 0; border-top: 1px solid var(--hair); margin: 2em 0; }
 blockquote { margin: 0 0 1em; padding: .2em 1em; border-left: 4px solid var(--hair); color: var(--mute); }
 
@@ -284,12 +287,12 @@ pre.code { flex: 1.2 1 440px; min-width: 0; }
 .card h3 svg { color: var(--check); }
 .more { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-weight: 500; }
 
-.recipes .head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 32px; margin-bottom: 28px; }
-.recipes .head > div { flex: 1 1 520px; min-width: 0; }
-.recipes .head h2 { margin-bottom: 8px; }
-.recipes ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; }
-.recipes li { flex: 1 1 250px; min-width: 0; display: flex; }
-.recipes li a {
+.recipes .head, .pages .head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 32px; margin-bottom: 28px; }
+.recipes .head > div, .pages .head > div { flex: 1 1 520px; min-width: 0; }
+.recipes .head h2, .pages .head h2 { margin-bottom: 8px; }
+.recipes ul, .pages ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; }
+.recipes li, .pages li { flex: 1 1 250px; min-width: 0; display: flex; }
+.recipes li a, .pages li a {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -300,10 +303,10 @@ pre.code { flex: 1.2 1 440px; min-width: 0; }
   background: var(--paper);
   color: var(--ink);
 }
-.recipes li a:hover { border-color: var(--accent); text-decoration: none; }
-.recipes .no { font: 500 12px/1.4 var(--mono); color: var(--accent); }
-.recipes .title { font-weight: 700; font-size: 16px; line-height: 1.45; word-break: auto-phrase; }
-.recipes .molecule { font-size: 14px; line-height: 1.55; color: var(--body); }
+.recipes li a:hover, .pages li a:hover { border-color: var(--accent); text-decoration: none; }
+.recipes .no, .pages .no { font: 500 12px/1.4 var(--mono); color: var(--accent); }
+.recipes .title, .pages .title { font-weight: 700; font-size: 16px; line-height: 1.45; word-break: auto-phrase; }
+.recipes .molecule, .pages .summary { font-size: 14px; line-height: 1.55; color: var(--body); }
 .recipes .calc { margin-top: auto; padding-top: 6px; font: 12px/1.5 var(--mono); color: var(--mute); }
 
 .start { align-items: flex-start; }

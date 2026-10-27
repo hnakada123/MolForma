@@ -52,6 +52,7 @@ title: MolForma — a molecular editor for NWChem
       <li>Recording and inverting stereo (R/S, E/Z), isotopes, external point charges, your own parts</li>
       <li>Start from SMILES, XYZ, MOL, SDF or PDB files, or NWChem and Gaussian inputs</li>
     </ul>
+    <a class="more" href="{{ '/en/features/molecule.html' | relative_url }}">The “1 Molecule” window<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
   </div>
   <figure class="shot">
     <img src="{{ '/en/recipes/images/capped_peptide.png' | relative_url }}" alt="The “1 Molecule” tab with a capped peptide built from the sequence AHE, and the Residue page on the right" width="1380" height="900" loading="lazy">
@@ -101,6 +102,7 @@ title: MolForma — a molecular editor for NWChem
         <li>ZORA, DKH, X2C</li>
         <li>Mulliken, ESP, NMR, polarizability</li>
       </ul>
+      <a class="more" href="{{ '/en/features/calculation.html' | relative_url }}">About “2 Calculation”<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
     </div>
   </div>
 </section>
@@ -116,6 +118,7 @@ title: MolForma — a molecular editor for NWChem
       <li>Isosurfaces of molecular orbitals and densities (CUBE, MOLDEN)</li>
       <li>Excited states and absorption spectra, scan and IRC paths</li>
     </ul>
+    <a class="more" href="{{ '/en/features/results.html' | relative_url }}">About the result viewer<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
   </div>
   <figure class="shot">
     <img src="{{ '/en/recipes/images/reuse_result.png' | relative_url }}" alt="The Excited states tab of the result viewer: a table of excitation energies and oscillator strengths, and the absorption spectrum" width="1380" height="900" loading="lazy">
@@ -127,12 +130,28 @@ title: MolForma — a molecular editor for NWChem
   <div class="card">
     <h3><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"><path d="M12 7v5l3 2"/><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3 4v4h4"/></svg>History</h3>
     <p>Saved calculations are listed by day, with energy differences (ΔE) between jobs of the same composition, method and basis. The molecule and settings of a calculation can be reused as they are.</p>
+    <a class="more" href="{{ '/en/features/history.html' | relative_url }}">About history<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
   </div>
   <div class="card">
     <h3><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"><path d="M4 6h16v10H8l-4 4z"/><path d="M8 10h8"/><path d="M8 13h5"/></svg>Operated by AI (MCP)</h3>
     <p>MolForma has a built-in MCP server. Registered in Claude Code or Codex, it takes requests in words, from editing a molecule to running a calculation and checking its results. The NWChem executable and the places it reads and writes stay within what you allow.</p>
     <a class="more" href="{{ '/en/mcp.html' | relative_url }}">About the MCP server<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
   </div>
+</section>
+
+<section class="wrap pages">
+  <div class="head">
+    <div>
+      <h2>Features screen by screen</h2>
+      <p class="sub">Twelve pages with screenshots describe what the parts of each tab and screen do.</p>
+    </div>
+    <a class="more" href="{{ '/en/features.html' | relative_url }}">All feature pages<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
+  </div>
+  <ul>
+    {%- for p in site.data.features %}
+    <li><a href="{{ '/en/features/' | append: p.page | append: '.html' | relative_url }}"><span class="no">{{ p.en.screen }}</span><span class="title">{{ p.en.title }}</span><span class="summary">{{ p.en.summary }}</span></a></li>
+    {%- endfor %}
+  </ul>
 </section>
 
 <section class="band">

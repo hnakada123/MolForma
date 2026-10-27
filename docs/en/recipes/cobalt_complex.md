@@ -117,4 +117,4 @@ Click two atoms in turn in the 3D view of the “Result viewer” to see a dista
 - **The total charge does not become +1**: It does not follow if it was changed by hand before the ligands were placed. Set it as in step 4.3.
 - **Cleanup is refused for structures with metals**: By design. Change the starting distances with “Center–donor” and “Apply geometry and distance” on the “Coordination” page.
 
-See also: the right-side pages of “1 Molecule” (Coordination) in “[Features and coverage](../features.md)”, [recipe 11 Main-group molecules](main_group.md), [recipe 12 Solvated clusters and point charges](hydrated_sodium.md).
+See also: [Right-side pages of “1 Molecule”](../features/molecule_pages.md) (Coordination), [recipe 11 Main-group molecules](main_group.md), [recipe 12 Solvated clusters and point charges](hydrated_sodium.md).

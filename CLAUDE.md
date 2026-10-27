@@ -87,7 +87,8 @@ Key cross-cutting designs:
 - Persistence: UI prefs and user presets go to `QSettings("MolForma", "MolForma")`; molecule, calculation and
   execution settings go into the project file. Interactive sessions autosave unsaved work to
   `AppLocalDataLocation/autosave` (with a `QLockFile` per session) and offer recovery at startup.
-- The manual (`docs/features.md`, `docs/mcp.md`, the recipes `docs/recipes.md` + `docs/recipes/*.md` with their
+- The manual (`docs/features.md`, an index of one page per screen in `docs/features/*.md` with their screenshots in
+  `docs/features/images/`, `docs/mcp.md`, the recipes `docs/recipes.md` + `docs/recipes/*.md` with their
   screenshots in `docs/recipes/images/`) and the window icon are embedded via `docs/manual.qrc` in `molforma_ui`;
   the recipes' practice files in `docs/recipes/samples/` are embedded too, so that their links open them
   (`MainWindow::useSample`; `test_core recipeSamples` checks their contents).
@@ -101,19 +102,21 @@ Key cross-cutting designs:
   the generated HTML opens as files too. The
   site's sources: `_config.yml`, `_layouts/` (`default.html` for the manual pages, `home.html`), `_includes/` (head,
   header with navigation and language switch, footer), `assets/site.css`, and the home pages `index.html` / `en/index.html`
-  (HTML with front matter, not in the app; their recipe cards come from `_data/recipes.yml`, kept in step with the
-  tables of `recipes.md` / `en/recipes.md`). The manual pages stay plain Markdown without front matter,
-  since the app shows them verbatim; Jekyll plugins give them the layout and turn `.md` links into `.html`. Keep `{{`
-  and `{%` out of `docs/` (`test_translations` checks the embedded pages).
+  (HTML with front matter, not in the app; their feature and recipe cards come from `_data/features.yml` and
+  `_data/recipes.yml`, kept in step with the tables of `features.md` / `recipes.md` and their English versions).
+  The manual pages stay plain Markdown without front matter, since the app shows them verbatim; Jekyll plugins give
+  them the layout and turn `.md` links into `.html`. Keep `{{` and `{%` out of `docs/` (`test_translations` checks
+  the embedded pages).
 
 ## Conventions
 
 - Add deterministic regression tests, especially for file compatibility, connectivity, geometry, undo and
   candidates. Preserve project envelope fields in `.kgui.json`.
-- Document feature limitations in `docs/features.md` (Japanese); MCP tool changes belong in `docs/mcp.md`. Keep the
-  English manuals `docs/en/features.md` / `docs/en/mcp.md` and the recipes `docs/en/recipes*` (shown by the English
-  UI) in step; `test_translations` compares their headings and checks that every embedded page's links and images
-  exist. When a UI change alters a recipe's steps, update the recipe pages (and their screenshots) too.
+- Document feature limitations in the page of the screen in `docs/features/` (Japanese; `docs/features.md` lists the
+  pages); MCP tool changes belong in `docs/mcp.md`. Keep the English manuals `docs/en/features*` / `docs/en/mcp.md`
+  and the recipes `docs/en/recipes*` (shown by the English UI) in step; `test_translations` compares their headings
+  and checks that every embedded page's links and images exist. When a UI change alters a recipe's steps or a screen
+  shown in the feature pages, update those pages (and their screenshots) too.
 - **Interface language**: Japanese is the source language; English comes from `assets/translations/en.json`
   (`src/model/i18n.h`). Write user-visible text as `tr("日本語")` (QObject::tr in QObject classes, `mf::tr`
   elsewhere — same catalog), `QT_TR_NOOP("…")` in tables shown via `translated()`, `%1` templates rather than

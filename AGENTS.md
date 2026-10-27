@@ -83,9 +83,10 @@ connectivity, geometry, undo and candidates. Preserve project envelope fields.
 Tests must not write the user's settings or data: redirect
 `QSettings::NativeFormat` (MolForma's `QSettings("MolForma", "MolForma")`) and
 `XDG_CONFIG_HOME` / `XDG_DATA_HOME` (autosave) to temporary directories.
-Document limitations in `docs/features.md` (Japanese); MCP tool changes belong
-in `docs/mcp.md`. Keep the English manuals `docs/en/features.md` and
-`docs/en/mcp.md` in step with them. The recipes (`docs/recipes.md`,
+Document limitations in the page of the screen in `docs/features/` (Japanese;
+`docs/features.md` lists the pages, screenshots in `docs/features/images/`); MCP
+tool changes belong in `docs/mcp.md`. Keep the English manuals
+`docs/en/features*` and `docs/en/mcp.md` in step with them. The recipes (`docs/recipes.md`,
 `docs/recipes/*.md`, screenshots in `docs/recipes/images/`, practice files
 in `docs/recipes/samples/`, embedded with the manual) have English versions under `docs/en/`; update
 both when a UI change alters a recipe's steps. `docs/` is also published as the
@@ -97,8 +98,9 @@ or `serve` in `docs/` (output in the ignored `docs/_site`), after
 pages link relative to themselves (`root` from `_includes/language.html`), so the
 generated HTML also works opened as files. The site's sources are
 `_config.yml`, `_layouts/`, `_includes/`, `assets/site.css`, the HTML
-home pages `index.html` / `en/index.html` with recipe cards from
-`_data/recipes.yml`, which follows the tables of `recipes.md` / `en/recipes.md`). Keep the manual pages plain Markdown without front
+home pages `index.html` / `en/index.html` with feature and recipe cards from
+`_data/features.yml` and `_data/recipes.yml`, which follow the tables of
+`features.md` / `recipes.md` and their English versions). Keep the manual pages plain Markdown without front
 matter (the app shows them verbatim) and keep `{{` and `{%` out of them.
 
 The interface is Japanese or English (`src/model/i18n.h`). Write user-visible

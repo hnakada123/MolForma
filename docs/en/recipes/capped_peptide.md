@@ -110,4 +110,4 @@ With COSMO, NWChem runs two SCFs, in the gas phase and in the solvent. Most of t
 - **NWChem stops with “No space left on device” or similar**: The disk of the work directory filled up with integral files. Turn on “Recompute DFT integrals each time”, or put the “Job folder” in “3 Run settings” on a disk with more space.
 - **A dihedral cannot be applied**: Dihedrals without the neighboring residue are undefined (“phi is not defined at the N-terminus.”). With ACE and NME caps, phi and psi of the end residues can be set too.
 
-See also: the right-side pages of “1 Molecule” (Residue) in “[Features and coverage](../features.md)”, [recipe 8 Mutating residues and editing chains](residue_mutation.md).
+See also: [Right-side pages of “1 Molecule”](../features/molecule_pages.md) (Residue), [recipe 8 Mutating residues and editing chains](residue_mutation.md).

@@ -81,4 +81,4 @@ The `geometry` lines of “4 Input preview” are in the order of the numbers in
 - **“Apply attributes” removed the mass**: With one atom selected and an empty field, applying returns it to the default mass.
 - **Imaginary frequencies appear**: The frequencies use another method or basis than the optimization. Use a structure optimized under the same conditions.
 
-See also: the coordinate table and NWChem output in “[Features and coverage](../features.md)”, [recipe 1 Building from atoms and bonds](atoms_and_bonds.md).
+See also: NWChem output in [Coordinate table](../features/coordinates.md), [recipe 1 Building from atoms and bonds](atoms_and_bonds.md).

@@ -90,4 +90,4 @@ TDDFTは一点エネルギーの計算目的だけで使えます（励起状態
 - **履歴にジョブが出ない**: 「履歴」の上部の保存先が「3 実行設定」のジョブ保存先と同じか確かめます。別の場所は「保存先を選ぶ…」で選べます。
 - **TDDFTの項目が使えない**: 手法がDFT以外か、計算目的が一点エネルギー以外です。
 
-関連: 「[機能と操作](../features.md)」の結果ビューア・履歴、[題材3 芳香族の置換体](aromatic_substitution.md)、[題材15 同位体](isotopes.md)。
+関連: [「結果ビューア」](../features/results.md)、[「履歴」](../features/history.md)、[題材3 芳香族の置換体](aromatic_substitution.md)、[題材15 同位体](isotopes.md)。

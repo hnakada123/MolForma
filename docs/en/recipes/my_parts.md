@@ -107,4 +107,4 @@ Molecules with many soft degrees of freedom (methyl rotations and so on) take mo
 - **An attached part points oddly**: A substituent puts its attachment atom in the direction of the replaced hydrogen's bond. Clean up with “Clean up all”, or attach it again with the “Replace” tool.
 - **The part is not in the palette**: Check that the search field is empty and that the category is “My parts” or “All”.
 
-See also: tools and parts palette in “[Features and coverage](../features.md)”, [recipe 3 Substituted aromatics](aromatic_substitution.md).
+See also: tools and parts palette in [“1 Molecule”: layout, tools and selection](../features/molecule.md), [recipe 3 Substituted aromatics](aromatic_substitution.md).

@@ -163,4 +163,4 @@ Ethanol has conformers with the OH turned differently (anti and gauche). Changin
 - **The “4 Input preview” tab name is red**: The input cannot be generated; the tooltip or the checks of “2 Calculation” give the reason. Right after deleting a hydrogen the electron count is odd and does not match multiplicity 1.
 - **Cleanup says no force-field parameters are available**: Bond orders or formal charges are chemically odd. Check valences with “Tools → Check structure…”.
 
-See also: tools, palette, selection, deletion and candidates in “[Features and coverage](../features.md)”, [recipe 5 Chains and conformers](butane_conformers.md), [recipe 15 Isotopes](isotopes.md).
+See also: tools, palette, selection, deletion and candidates in [“1 Molecule”: layout, tools and selection](../features/molecule.md), [recipe 5 Chains and conformers](butane_conformers.md), [recipe 15 Isotopes](isotopes.md).

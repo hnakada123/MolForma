@@ -90,4 +90,4 @@ The strongest absorption is state 2 (287 nm), a charge-transfer excitation movin
 - **The job is not in History**: Check that the folder at the top of “History” is the job folder of “3 Run settings”. Another place can be chosen with “Choose folder…”.
 - **The TDDFT items are disabled**: The method is not DFT, or the task is not a single-point energy.
 
-See also: Result viewer and History in “[Features and coverage](../features.md)”, [recipe 3 Substituted aromatics](aromatic_substitution.md), [recipe 15 Isotopes](isotopes.md).
+See also: [“Result viewer”](../features/results.md), [“History”](../features/history.md), [recipe 3 Substituted aromatics](aromatic_substitution.md), [recipe 15 Isotopes](isotopes.md).

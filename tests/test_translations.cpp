@@ -286,9 +286,11 @@ class TranslationsTest : public QObject {
     void englishManual() {
         initManual();
         QStringList names{"features.md", "mcp.md", "recipes.md"};
+        for (const auto &page : QDir(":/docs/features").entryList({"*.md"}))
+            names << "features/" + page;
         for (const auto &recipe : QDir(":/docs/recipes").entryList({"*.md"}))
             names << "recipes/" + recipe;
-        QCOMPARE(names.size(), 3 + 16);
+        QCOMPARE(names.size(), 3 + 12 + 16);
         for (const auto &name : std::as_const(names)) {
             QVERIFY2(QFile::exists(":/docs/en/" + name), qPrintable(name));
             const auto japaneseLevels = headingLevels(":/docs/" + name);

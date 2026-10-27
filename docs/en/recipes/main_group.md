@@ -97,4 +97,4 @@ Corrected with the rotational symmetry number σ=24, the entropy of SF₆ is 77.
 - **Sites 5 and 6 cannot be seen**: From the front they overlap the center. Turn the view with “+X” or “+Y”.
 - **The total charge does not come back to 0**: It does not follow if it was changed by hand before the ligands were placed. Use “Use oxidation and formal charges (0)” on the “Charge” page.
 
-See also: [recipe 2 Coordination compounds](cobalt_complex.md), atom palette and periodic table in “[Features and coverage](../features.md)”.
+See also: [recipe 2 Coordination compounds](cobalt_complex.md), atom palette and periodic table in [“1 Molecule”: layout, tools and selection](../features/molecule.md).

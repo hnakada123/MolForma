@@ -99,4 +99,4 @@ The optimized structure is used for the excited states (TDDFT) of [recipe 14](re
 - **A part is not in the palette**: Text left in the search field above the palette shows only the parts containing it. Clear the search field.
 - **The formal charges of the nitro group**: N(+1) and O(−1) write the nitro group as one resonance structure and add up to 0. The calculation uses the total charge of “2 Calculation” (0).
 
-See also: tools and parts palette in “[Features and coverage](../features.md)”, [recipe 14 From a result to the next calculation](reuse_result.md).
+See also: tools and parts palette in [“1 Molecule”: layout, tools and selection](../features/molecule.md), [recipe 14 From a result to the next calculation](reuse_result.md).
