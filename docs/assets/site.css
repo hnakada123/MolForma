@@ -89,32 +89,46 @@ header.site .share svg { display: block; fill: currentColor; stroke: none; }
 footer.site nav { gap: 4px 18px; }
 footer.site nav a { color: var(--mute); }
 
-/* A manual page. */
+/* A manual page. The text keeps lines of about 44 characters in a column in the middle of the page; the figures
+   use the page's whole width and the tables may widen to its right edge. */
 .content {
+  --measure: 44rem;
+  --gutter: max(0px, (100cqi - var(--measure)) / 2);
+  --indent: 1.75rem;
+  container-type: inline-size;
   max-width: 1080px;
   margin: 28px auto 0;
-  padding: 36px 48px 48px;
+  padding: 40px 48px 56px;
   background: var(--card);
   border: 1px solid var(--hair);
   border-radius: 10px;
+  line-height: 1.85;
 }
+.content > * { max-width: var(--measure); margin-inline: auto; }
 .content > :first-child { margin-top: 0; }
 h1, h2, h3, h4 { line-height: 1.35; scroll-margin-top: 72px; word-break: auto-phrase; }
-.content h1 { font-size: 2rem; margin: 0 0 20px; }
-.content h2 { font-size: 1.45rem; margin: 2.2em 0 .8em; padding-bottom: .3em; border-bottom: 1px solid var(--hair); }
-.content h3 { font-size: 1.15rem; margin: 1.8em 0 .6em; }
-.content h4 { font-size: 1rem; margin: 1.5em 0 .5em; }
-.content p, .content ul, .content ol, .content table, .content pre { margin: 0 0 1em; }
-.content li { margin: .2em 0; }
-.content li > ul, .content li > ol, .content li > table { margin-top: .4em; }
+.content h1 { font-size: 2rem; margin-block: 0 24px; }
+.content h2 { font-size: 1.45rem; margin-block: 2.4em .9em; padding-bottom: .3em; border-bottom: 1px solid var(--hair); }
+.content h3 { font-size: 1.15rem; margin-block: 2em .7em; }
+.content h4 { font-size: 1rem; margin-block: 1.6em .5em; }
+.content p, .content ul, .content ol, .content table, .content pre { margin-block: 0 1.2em; }
+.content ul, .content ol { padding-left: var(--indent); }
+.content li { margin-block: .45em; }
+.content li > ul, .content li > ol, .content li > table { margin-top: .45em; }
 strong { font-weight: 650; }
+/* Items that begin with a term ("- **ヘッダー**: …", made li.term by the layout): the term on a line of its own
+   over the text, each item apart from the next and held together by a line at its left. */
+.content ul:has(> li.term) { list-style: none; padding-left: 0; }
+.content ul:has(> li.term) > li { margin-block: 0 1.3em; padding-left: 1.1rem; border-left: 3px solid var(--line); }
+.content li.term > strong:first-child { display: block; margin-bottom: .2em; font-size: 1.04em; }
 .content img { max-width: 100%; height: auto; border: 1px solid var(--hair); border-radius: 6px; }
-/* A figure inside a step: the screenshot paragraph, then its caption ("**図N** …"). */
-.content li > p:has(> img) { margin: .7em 0 .3em; }
-.content li > p:has(> img) + p { margin-bottom: 1.2em; font-size: .9rem; color: var(--mute); }
-/* A figure between paragraphs of the feature pages, with its caption. */
-.content > p:has(> img) { margin: 1.4em 0 .3em; }
-.content > p:has(> img) + p { margin-bottom: 1.4em; font-size: .9rem; color: var(--mute); }
+/* A figure between paragraphs of the feature pages, with its caption ("**図N** …") under it in the column. */
+.content > p:has(> img) { max-width: none; margin-block: 1.8em .5em; text-align: center; }
+.content > p:has(> img) + p { margin-bottom: 1.8em; font-size: .9rem; color: var(--mute); }
+/* A figure inside a step reaches out of the list to the page's width too. */
+.content li > p:has(> img) { margin-block: .8em .4em; text-align: center; }
+.content > :is(ol, ul) > li > p:has(> img) { width: 100cqi; margin-left: calc(-1 * var(--gutter) - var(--indent)); }
+.content li > p:has(> img) + p { margin-bottom: 1.4em; font-size: .9rem; color: var(--mute); }
 hr { border: 0; border-top: 1px solid var(--hair); margin: 2em 0; }
 blockquote { margin: 0 0 1em; padding: .2em 1em; border-left: 4px solid var(--hair); color: var(--mute); }
 
@@ -148,6 +162,8 @@ code {
 .content th:first-child, .content td:first-child { min-width: 6.5em; }
 .content th { background: var(--soft); text-align: left; font-weight: 600; }
 .content tr:nth-child(2n) td { background: color-mix(in srgb, var(--soft) 45%, transparent); }
+/* A table starts at the column's left edge and widens up to the page's right edge before it scrolls. */
+.content > table { width: max-content; max-width: calc(100cqi - var(--gutter)); margin-left: var(--gutter); }
 
 @media (max-width: 720px) {
   header.site nav, footer.site nav { margin-left: 0; }

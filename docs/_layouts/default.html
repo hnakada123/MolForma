@@ -7,8 +7,14 @@
 <body>
 {% include header.html %}
 <main id="content" class="content">
+{%- comment -%} An item that begins with a bold term and a colon ("- **ヘッダー**: …") becomes li.term without the
+colon, so that the stylesheet can show the term on a line of its own above the item's text. {%- endcomment -%}
+{%- assign items = content | split: '<li><strong>' -%}
+{%- capture body -%}
+{{ items.first }}{% for item in items offset: 1 %}{% assign term = item | split: '</strong>' | first %}{% assign rest = item | remove_first: term | remove_first: '</strong>' %}{% assign colon = rest | slice: 0, 2 %}{% if colon == ': ' %}<li class="term"><strong>{{ term }}</strong>{{ rest | remove_first: ': ' }}{% else %}<li><strong>{{ item }}{% endif %}{% endfor %}
+{%- endcapture -%}
 {%- comment -%} The practice files of the recipes are downloaded rather than shown. {%- endcomment -%}
-{{ content | replace: site_href, root_href | replace: site_src, root_src | replace: '.kgui.json">', '.kgui.json" download>' | replace: '.kpart.json">', '.kpart.json" download>' | replace: '.sdf">', '.sdf" download>' }}
+{{ body | replace: site_href, root_href | replace: site_src, root_src | replace: '.kgui.json">', '.kgui.json" download>' | replace: '.kpart.json">', '.kpart.json" download>' | replace: '.sdf">', '.sdf" download>' }}
 </main>
 {% include footer.html %}
 </body>
