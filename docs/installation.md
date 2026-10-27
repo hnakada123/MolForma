@@ -6,7 +6,7 @@ MolFormaを動かすのに必要なソフトウェアと、OSごとのインス�
 
 | OS | 手順 | 主な内容 |
 | --- | --- | --- |
-| Arch Linux | [Arch Linuxでのインストール](installation/arch_linux.md) | pacmanで依存パッケージ、AURからNWChemを入れ、ソースからビルドして `/usr/local` にインストール。VTK描画の確認、更新・削除、困ったとき |
+| Arch Linux | [Arch Linuxでのインストール](installation/arch_linux.md) | PKGBUILDからパッケージを作ってpacmanでインストール（依存パッケージも自動で導入）、AURからNWChem。VTK描画の確認、更新・削除、困ったとき |
 
 ほかのOSの手順は、用意でき次第このページに追加します。
 

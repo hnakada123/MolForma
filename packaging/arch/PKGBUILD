@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Builds an Arch Linux package of MolForma from the main branch on GitHub, with RDKit and VTK.
+# Install it with "makepkg -si" in the folder of this file (docs/installation/arch_linux.md).
+
+pkgname=molforma-git
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Molecular editor, input builder and result viewer for NWChem'
+arch=('x86_64')
+url='https://hnakada123.github.io/MolForma/'
+license=('GPL-2.0-or-later')
+depends=('qt6-base' 'openbabel' 'rdkit' 'vtk')
+# VTK's CMake files need fast_float, nlohmann-json and Open MPI, and RDKit's need Boost.
+makedepends=('git' 'cmake' 'ninja' 'eigen' 'boost' 'fast_float' 'nlohmann-json' 'openmpi')
+optdepends=('nwchem: running calculations (AUR)'
+            'qt6-translations: Japanese texts of the Qt standard dialogs'
+            'noto-fonts-cjk: Japanese font')
+provides=('molforma')
+conflicts=('molforma')
+source=('MolForma::git+https://github.com/hnakada123/MolForma.git')
+sha256sums=('SKIP')
+
+pkgver() {
+  cd MolForma
+  printf '%s.r%s.g%s' "$(sed -n 's/^project(MolForma VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)" \
+    "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+build() {
+  cmake -S MolForma -B build -G Ninja -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr
+  # Stop rather than package a build that silently left out VTK or RDKit.
+  grep -q -- '-DMOLFORMA_HAS_VTK=1' build/build.ninja ||
+    { error 'CMake cannot use VTK (see the "VTK development dependency unavailable" lines)'; return 1; }
+  grep -q -- '-DMOLFORMA_HAS_RDKIT=1' build/build.ninja ||
+    { error 'CMake cannot use RDKit'; return 1; }
+  cmake --build build
+}
+
+check() {
+  ctest --test-dir build --output-on-failure
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+}

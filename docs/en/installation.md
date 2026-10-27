@@ -6,7 +6,7 @@ The software MolForma needs and how to install it on each OS. MolForma is built 
 
 | OS | Steps | Contents |
 | --- | --- | --- |
-| Arch Linux | [Installing on Arch Linux](installation/arch_linux.md) | Dependencies with pacman and NWChem from the AUR, building from source and installing into `/usr/local`; checking VTK rendering, updating and removing, troubleshooting |
+| Arch Linux | [Installing on Arch Linux](installation/arch_linux.md) | Making a package from the PKGBUILD and installing it with pacman (with its dependencies), NWChem from the AUR; checking VTK rendering, updating and removing, troubleshooting |
 
 Steps for other operating systems will be added to this page as they become available.
 

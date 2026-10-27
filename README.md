@@ -37,6 +37,8 @@ cmake --install build --prefix /tmp/molforma-install
 
 インストールすると、デスクトップのランチャー（`share/applications/molforma.desktop`）、アイコン、`*.kgui.json` と `*.nw` のMIME型も配置します。説明書は実行ファイルに組み込んでおり、「ヘルプ → 操作ガイド・マニュアル」（F1）で読めます。未保存の作業は1分ごとに自動保存し、異常終了した場合は次の起動時に復旧を確認します。
 
+OSごとの必要なパッケージとインストール手順は「[OS別インストール・必要パッケージ](docs/installation.md)」にあります。Arch Linuxでは `packaging/arch/PKGBUILD` からパッケージを作り、pacmanでインストールできます。
+
 ## 操作
 
 MCPクライアントからも操作できます。GUIを表示する場合は `molforma --mcp-gui`、画面なしの場合は `molforma --mcp` をサーバーの起動コマンドに指定してください。最新の安定版MCP **2026-07-28** と **2025-11-25** をstdioでサポートします。Claude Codeでは `claude mcp add molforma -- /absolute/path/to/molforma --mcp-gui` で登録できます。MCPからはNWChemの実行ファイル・ランチャー・環境変数・計算条件の追加入力を変更できず、`--mcp-allow-dir` で読み書きする場所を限定できます。Claude Code・Codexの設定例、公開ツール、制限は [MCPサーバー](docs/mcp.md) を参照してください。
@@ -91,7 +93,7 @@ MCPクライアントからも操作できます。GUIを表示する場合は `
 | `src/results/` | 計算結果の読込み、等値面生成、MOLDEN分子軌道の評価 |
 | `src/ui/` | メインウィンドウ、各パネル、分子描画、UI部品、GUIを操作するMCPツール |
 | `src/mcp/` | MCPサーバー（stdio・JSON-RPC）、共通ツール定義、画面なしの計算・結果読込、アクセス制限 |
-| `packaging/` | デスクトップ連携（`.desktop`、アイコン、MIME型）。`docs/manual.qrc` で説明書とアイコンを実行ファイルに組み込み |
+| `packaging/` | デスクトップ連携（`.desktop`、アイコン、MIME型）とArch Linuxの `PKGBUILD`（`arch/`）。`docs/manual.qrc` で説明書とアイコンを実行ファイルに組み込み |
 | `tools/screenshots/` | マニュアル・実習の画面写真を `molforma --mcp-gui` の操作で撮るスクリプト（開発用。MolForma本体はPythonに依存しません） |
 
 エントリーポイントは `src/main.cpp` です。ヘッダーは `#include "model/document.h"` のように `src/` からのパスで参照します。ビルドターゲットは `molforma_core`（model・editing・nwchem・results）、`molforma_mcp`（mcp）、`molforma_ui`（ui）に分かれています。
