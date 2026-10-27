@@ -226,6 +226,181 @@ QPainterPath iconPath(const QString &name, bool &filled) {
     } else if (name == "stop") {
         filled = true;
         p.addRoundedRect(QRectF(6, 6, 12, 12), 2, 2);
+    } else if (name == "new") { // A document with a plus.
+        line({{6, 3}, {14, 3}, {19, 8}, {19, 21}, {6, 21}}, true);
+        line({{14, 3}, {14, 8}, {19, 8}});
+        line({{12.5, 11}, {12.5, 18}});
+        line({{9, 14.5}, {16, 14.5}});
+    } else if (name == "held") { // A document on hold.
+        line({{6, 3}, {14, 3}, {19, 8}, {19, 21}, {6, 21}}, true);
+        line({{14, 3}, {14, 8}, {19, 8}});
+        line({{10.5, 11.5}, {10.5, 17.5}});
+        line({{14.5, 11.5}, {14.5, 17.5}});
+    } else if (name == "ring") { // An aromatic ring.
+        line({{12, 3.5}, {19.4, 7.75}, {19.4, 16.25}, {12, 20.5}, {4.6, 16.25}, {4.6, 7.75}}, true);
+        circle({12, 12}, 4);
+    } else if (name == "ringAdd") {
+        line({{10, 3}, {16.1, 6.5}, {16.1, 13.5}, {10, 17}, {3.9, 13.5}, {3.9, 6.5}}, true);
+        line({{18.5, 15.5}, {18.5, 21.5}});
+        line({{15.5, 18.5}, {21.5, 18.5}});
+    } else if (name == "recent") { // A clock.
+        circle({12, 12}, 8.5);
+        line({{12, 7.5}, {12, 12}, {15.5, 14}});
+    } else if (name == "history") { // A clock turning back.
+        const QRectF ring(4.5, 4, 16, 16);
+        p.arcMoveTo(ring, 200);
+        p.arcTo(ring, 200, 295);
+        line({{3, 4.8}, {3, 10.2}, {8.4, 10.2}});
+        line({{12.5, 8}, {12.5, 12}, {15.5, 14}});
+    } else if (name == "save") { // A floppy disk.
+        line({{4, 4}, {16.5, 4}, {20, 7.5}, {20, 20}, {4, 20}}, true);
+        line({{8, 4}, {8, 8.5}, {15, 8.5}, {15, 4}});
+        line({{7.5, 20}, {7.5, 13.5}, {16.5, 13.5}, {16.5, 20}});
+    } else if (name == "saveAs") { // A floppy disk and a pencil.
+        line({{10, 17}, {3.5, 17}, {3.5, 3.5}, {14, 3.5}, {17, 6.5}, {17, 10}});
+        line({{7, 3.5}, {7, 7.5}, {13, 7.5}, {13, 3.5}});
+        line({{12.5, 21}, {15.8, 20.1}, {21.1, 14.8}, {18.7, 12.4}, {13.4, 17.7}}, true);
+    } else if (name == "quit") { // An arrow out of a door.
+        line({{13, 4}, {5, 4}, {5, 20}, {13, 20}});
+        line({{10, 12}, {20.5, 12}});
+        line({{16.5, 8}, {20.5, 12}, {16.5, 16}});
+    } else if (name == "selectAll") { // A dashed frame.
+        line({{4, 7}, {4, 4}, {7, 4}});
+        line({{17, 4}, {20, 4}, {20, 7}});
+        line({{20, 17}, {20, 20}, {17, 20}});
+        line({{7, 20}, {4, 20}, {4, 17}});
+        line({{10.5, 4}, {13.5, 4}});
+        line({{10.5, 20}, {13.5, 20}});
+        line({{4, 10.5}, {4, 13.5}});
+        line({{20, 10.5}, {20, 13.5}});
+    } else if (name.startsWith("bond")) {                  // The kinds of bond, at the angle of "bond".
+        const QPointF along(6.5, -3.75), across(.5, .866); // Half the bond; one unit to its side.
+        const auto at = [&](double t, double k) { return QPointF(12, 12) + along * t + across * k; };
+        if (name == "bond1" || name == "bond3" || name == "bondDative")
+            line({at(-1, 0), at(1, 0)});
+        if (name == "bond2")
+            for (const double k : {-2.2, 2.2})
+                line({at(-1, k), at(1, k)});
+        if (name == "bond3")
+            for (const double k : {-3.6, 3.6})
+                line({at(-1, k), at(1, k)});
+        if (name == "bondAromatic") {
+            line({at(-1, -2.2), at(1, -2.2)});
+            for (const double t : {-1., -.15, .7})
+                line({at(t, 2.2), at(t + .3, 2.2)});
+        }
+        if (name == "bondDative")
+            line({at(.5, -2.5), at(1, 0), at(.5, 2.5)});
+    } else if (name == "hash") {
+        line({{10, 4}, {8, 20}});
+        line({{16, 4}, {14, 20}});
+        line({{4.5, 9}, {19.5, 9}});
+        line({{4.5, 15}, {19.5, 15}});
+    } else if (name == "table") {
+        p.addRoundedRect(QRectF(3.5, 4.5, 17, 15), 2, 2);
+        line({{3.5, 9.5}, {20.5, 9.5}});
+        line({{3.5, 14.5}, {20.5, 14.5}});
+        line({{9.5, 9.5}, {9.5, 19.5}});
+    } else if (name == "split") { // A view over a table.
+        p.addRoundedRect(QRectF(3.5, 4.5, 17, 15), 2, 2);
+        line({{3.5, 13}, {20.5, 13}});
+    } else if (name == "settings") { // A gear of eight teeth.
+        QPolygonF gear;
+        for (int i = 0; i < 8; ++i)
+            for (const auto &[degrees, radius] : {std::pair{-17., 6.5}, {-9., 9.}, {9., 9.}, {17., 6.5}}) {
+                const double angle = (i * 45 + degrees) * M_PI / 180;
+                gear << QPointF(12 + radius * std::cos(angle), 12 + radius * std::sin(angle));
+            }
+        p.addPolygon(gear);
+        p.closeSubpath();
+        circle({12, 12}, 2.75);
+    } else if (name == "inspect") { // A magnifier over a check.
+        circle({10.5, 10.5}, 6.5);
+        line({{15.5, 15.5}, {20, 20}});
+        line({{7.7, 10.6}, {9.7, 12.6}, {13.4, 8.6}});
+    } else if (name == "symmetry") { // Two halves on either side of a mirror.
+        line({{9, 7}, {9, 18}, {3.5, 18}}, true);
+        line({{15, 7}, {15, 18}, {20.5, 18}}, true);
+        for (const double y : {3.5, 8.5, 13.5, 18.5})
+            line({{12, y}, {12, y + 1.5}});
+    } else if (name == "angle") {
+        line({{20, 19}, {4.5, 19}, {14, 5}});
+        const QRectF arc(-3.5, 11, 16, 16); // Around the vertex.
+        p.arcMoveTo(arc, 0);
+        p.arcTo(arc, 0, 56);
+    } else if (name == "newman") { // A Newman projection: a staggered conformer.
+        circle({12, 12}, 5.5);
+        for (int i = 0; i < 3; ++i) {
+            const double front = (i * 120 - 90) * M_PI / 180, back = front + M_PI;
+            line({{12, 12}, {12 + 9 * std::cos(front), 12 + 9 * std::sin(front)}});
+            line({{12 + 5.5 * std::cos(back), 12 + 5.5 * std::sin(back)},
+                  {12 + 9 * std::cos(back), 12 + 9 * std::sin(back)}});
+        }
+    } else if (name == "cube") {
+        line({{12, 3}, {19.8, 7.5}, {19.8, 16.5}, {12, 21}, {4.2, 16.5}, {4.2, 7.5}}, true);
+        line({{4.2, 7.5}, {12, 12}, {19.8, 7.5}});
+        line({{12, 12}, {12, 21}});
+    } else if (name == "newFolder") {
+        line({{3, 6}, {9.5, 6}, {11.5, 8.5}, {21, 8.5}, {21, 19}, {3, 19}}, true);
+        line({{12, 10.75}, {12, 16.75}});
+        line({{9, 13.75}, {15, 13.75}});
+    } else if (name == "chart") {
+        line({{4, 4}, {4, 20}, {20, 20}});
+        line({{7.5, 16}, {11, 10.5}, {14, 13.5}, {19, 6}});
+    } else if (name == "sphere") { // A shaded ball.
+        circle({12, 12}, 8.5);
+        const QRectF shine(7, 7, 10, 10);
+        p.arcMoveTo(shine, 100);
+        p.arcTo(shine, 100, 70);
+    } else if (name == "eyeOff") {
+        p.moveTo(2.5, 12);
+        p.quadTo(12, 3.5, 21.5, 12);
+        p.quadTo(12, 20.5, 2.5, 12);
+        circle({12, 12}, 3);
+        line({{4, 4}, {20, 20}});
+    } else if (name == "eraser") {
+        line({{4, 14.5}, {13, 5.5}, {19, 11.5}, {10, 20.5}}, true);
+        line({{8.5, 10}, {14.5, 16}});
+        line({{10, 20.5}, {20, 20.5}});
+    } else if (name == "tabs") { // A window whose first tab is open.
+        p.addRoundedRect(QRectF(3.5, 4.5, 17, 15), 2, 2);
+        line({{10, 4.5}, {10, 9.5}, {20.5, 9.5}});
+        line({{15.5, 4.5}, {15.5, 9.5}});
+    } else if (name == "image") {
+        p.addRoundedRect(QRectF(3.5, 4.5, 17, 15), 2, 2);
+        line({{3.5, 17}, {9, 11.5}, {13, 15.5}, {15.5, 13}, {20.5, 18}});
+        circle({15.5, 9}, 1.5);
+    } else if (name == "book") { // An open book.
+        for (const double s : {-1, 1}) {
+            p.moveTo(12, 7);
+            p.quadTo(12 + s * 4, 4.5, 12 + s * 9, 5);
+            p.lineTo(12 + s * 9, 18);
+            p.quadTo(12 + s * 4, 17.5, 12, 20);
+        }
+        line({{12, 7}, {12, 20}});
+    } else if (name == "keyboard") {
+        p.addRoundedRect(QRectF(2.5, 6, 19, 12), 2, 2);
+        for (const double x : {6, 10, 14, 18}) {
+            line({{x - .5, 9.5}, {x + .5, 9.5}});
+            line({{x - .5, 12.5}, {x + .5, 12.5}});
+        }
+        line({{8, 15}, {16, 15}});
+    } else if (name == "unlock") {
+        p.addRoundedRect(QRectF(5, 11, 14, 10), 2, 2);
+        p.moveTo(8, 11);
+        p.lineTo(8, 8);
+        p.arcTo(QRectF(8, 4, 8, 8), 180, -150);
+    } else if (name == "axes") { // The axes of a frame.
+        line({{8, 3.5}, {8, 16}, {20.5, 16}});
+        line({{8, 16}, {3.5, 20.5}});
+        line({{5.5, 6}, {8, 3.5}, {10.5, 6}});
+        line({{18, 13.5}, {20.5, 16}, {18, 18.5}});
+    } else if (name == "sort") { // Shorter and shorter lines beside an arrow down.
+        line({{4, 6.5}, {13, 6.5}});
+        line({{4, 12}, {10.5, 12}});
+        line({{4, 17.5}, {8, 17.5}});
+        line({{17.5, 5}, {17.5, 19}});
+        line({{14.5, 16}, {17.5, 19}, {20.5, 16}});
     }
     return p;
 }

@@ -383,7 +383,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     browseAction->setObjectName("historyBrowse");
     // With --mcp-allow-dir, MCP scans only checked paths through history_action.
     browseAction->setProperty("mcpPath", true);
-    executionRootAction = rootMenu->addAction(tr("「3 実行設定」の保存先に戻す"));
+    executionRootAction = rootMenu->addAction(lineIcon("reset"), tr("「3 実行設定」の保存先に戻す"));
     executionRootAction->setObjectName("historyExecutionRoot");
     executionRootAction->setProperty("mcpPath", true);
     rootMenu->addSeparator();

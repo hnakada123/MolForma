@@ -150,7 +150,7 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
                     tr("クリップボードのXYZ（Å）で今の構造を置き換える候補を作ります。"),
                     [this] { pasteXyz(); });
     // The order of the atoms, as the table and the NWChem geometry list them.
-    auto *sortMenu = structureMenu->addMenu(tr("原子を並べ替え"));
+    auto *sortMenu = structureMenu->addMenu(lineIcon("sort"), tr("原子を並べ替え"));
     sortMenu->setObjectName("coordinateSortMenu");
     for (const auto &[text, mode] : {std::pair{tr("元素順"), "element"},
                                      {tr("残基順"), "residue"},
@@ -214,7 +214,7 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     exportMenu->setObjectName("coordinateExportMenu");
     exportMenu->setToolTipsVisible(true);
     const auto exportAction = [&](const QString &text, const QString &name, bool xyz, bool save) {
-        auto *a = exportMenu->addAction(text);
+        auto *a = exportMenu->addAction(lineIcon(save ? "export" : "copy"), text);
         a->setObjectName(name);
         connect(a, &QAction::triggered, this, [this, xyz, save] { attempt([&] { exportText(xyz, save); }); });
         exportActions << a;

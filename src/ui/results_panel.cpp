@@ -284,8 +284,8 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         tr("結果ファイル（NWChem出力・XYZ・CUBE・MOLDEN）を開きます。▾ からジョブフォルダーも"
            "開けます。"));
     auto *openMenu = new QMenu(openButton);
-    auto *openFileAction = openMenu->addAction(tr("結果ファイルを開く…"));
-    auto *openDirectoryAction = openMenu->addAction(tr("ジョブフォルダーを開く…"));
+    auto *openFileAction = openMenu->addAction(lineIcon("document"), tr("結果ファイルを開く…"));
+    auto *openDirectoryAction = openMenu->addAction(lineIcon("folder"), tr("ジョブフォルダーを開く…"));
     openDirectoryAction->setObjectName("resultsDirectory");
     openButton->setMenu(openMenu);
     reload = new QPushButton(lineIcon("refresh"), QString());
@@ -316,9 +316,9 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     exportButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     exportButton->setPopupMode(QToolButton::InstantPopup);
     auto *exportMenu = new QMenu(exportButton);
-    saveXyz = exportMenu->addAction(tr("表示中の構造をXYZで書き出す…"));
+    saveXyz = exportMenu->addAction(lineIcon("export"), tr("表示中の構造をXYZで書き出す…"));
     saveXyz->setObjectName("resultsSaveXyz");
-    savePng = exportMenu->addAction(tr("3D表示をPNG画像で書き出す…"));
+    savePng = exportMenu->addAction(lineIcon("image"), tr("3D表示をPNG画像で書き出す…"));
     savePng->setObjectName("resultsSavePng");
     exportButton->setMenu(exportMenu);
     for (QWidget *w :
@@ -574,9 +574,9 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     modeExport->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     modeExport->setPopupMode(QToolButton::InstantPopup);
     auto *modeMenu = new QMenu(modeExport);
-    saveModeImages = modeMenu->addAction(tr("振動の連番画像を書き出す…"));
+    saveModeImages = modeMenu->addAction(lineIcon("image"), tr("振動の連番画像を書き出す…"));
     saveModeImages->setObjectName("resultsSaveModeImages");
-    saveModeTrajectory = modeMenu->addAction(tr("振動をXYZ（複数構造）で書き出す…"));
+    saveModeTrajectory = modeMenu->addAction(lineIcon("export"), tr("振動をXYZ（複数構造）で書き出す…"));
     saveModeTrajectory->setObjectName("resultsSaveModeXyz");
     modeExport->setMenu(modeMenu);
     closeMode = iconButton("close", "resultsCloseMode", tr("振動の表示を終えて構造列に戻る"));

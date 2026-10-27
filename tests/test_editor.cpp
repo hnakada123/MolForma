@@ -24,6 +24,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
+#include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPushButton>
@@ -125,6 +126,26 @@ class EditorTest : public QObject {
         QVERIFY(images > 10);
         QVERIFY2(imageWidth > 0 && imageWidth < pageWidth,
                  qPrintable(QString("%1 / %2").arg(imageWidth).arg(pageWidth)));
+    }
+    void menuIcons() {
+        // Commands show an icon; options that are switched on or chosen show their check mark instead
+        // (Fusion draws no check box beside an icon).
+        MainWindow w;
+        QStringList missing, hidden;
+        std::function<void(QMenu *)> check = [&](QMenu *menu) {
+            for (auto *a : menu->actions()) {
+                if (a->isSeparator())
+                    continue;
+                if (a->isCheckable() == !a->icon().isNull())
+                    (a->isCheckable() ? hidden : missing) << a->text();
+                if (a->menu())
+                    check(a->menu());
+            }
+        };
+        for (auto *a : w.menuBar()->actions())
+            check(a->menu());
+        QVERIFY2(missing.isEmpty(), qPrintable(missing.join(", ")));
+        QVERIFY2(hidden.isEmpty(), qPrintable(hidden.join(", ")));
     }
     void chargeCardRows() {
         // The charge page stays open while another molecule comes in: the rows of its first card, which

@@ -1312,7 +1312,7 @@ void CalculationPanel::reloadPresets() {
                 });
     }
     presetMenu->addSeparator();
-    auto *remove = presetMenu->addMenu(tr("登録を解除"));
+    auto *remove = presetMenu->addMenu(lineIcon("delete"), tr("登録を解除"));
     remove->setObjectName("calculationRemovePresets");
     remove->setEnabled(!userPresets.isEmpty());
     for (int i = 0; i < userPresets.size(); ++i) {
