@@ -47,6 +47,11 @@
 #include <QWheelEvent>
 #include <QtTest>
 using namespace mf;
+// Older Qt6 versions only accept integer positions for drag-enter events (as in McpGui).
+using DragPosition =
+    std::conditional_t<std::is_constructible_v<QDragEnterEvent, QPointF, Qt::DropActions, const QMimeData *,
+                                               Qt::MouseButtons, Qt::KeyboardModifiers>,
+                       QPointF, QPoint>;
 class InspectableTemplateDelegate : public TemplateDelegate {
   public:
     using TemplateDelegate::initStyleOption;
@@ -77,7 +82,7 @@ class EditorTest : public QObject {
         writeFile(other, "1\nneon\nNe 0 0 0\n");
         QMimeData mime;
         mime.setUrls({QUrl::fromLocalFile(other)});
-        QDragEnterEvent enter(QPointF(10, 10), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QDragEnterEvent enter(DragPosition(10, 10), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
         QApplication::sendEvent(&w, &enter);
         QVERIFY(enter.isAccepted());
         QDropEvent drop(QPointF(10, 10), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
@@ -1478,6 +1483,10 @@ class EditorTest : public QObject {
         const auto before = view->atomScreenPosition(carbon);
         w.findChild<QToolButton *>("quickElement_O")->click();
         QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, (before + QPointF(-120, 80)).toPoint());
+        // As the layouts settle, before the next click: bars that turn compact where the new tool's
+        // settings would wrap them (a wide font) post their changes again.
+        for (int pass = 0; pass < 3; ++pass)
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
         QCOMPARE(w.document().atoms.size(), 8 + 3);
         QCOMPARE(view->atomScreenPosition(carbon), before);
         Ids hydrogens;

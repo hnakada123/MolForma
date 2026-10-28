@@ -379,8 +379,10 @@ class MoldenTest : public QObject {
         QSignalSpy done(panel, &ResultsPanel::loaded), failed(panel, &ResultsPanel::loadFailed);
         auto geometry = [&] {
             // Deliver layout changes while leaving worker completion queued, so the loading
-            // message is checked deterministically even when the worker finishes quickly.
-            QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
+            // message is checked deterministically even when the worker finishes quickly. Again for
+            // the changes they cause: the bar that turns compact when "中止" would wrap it.
+            for (int pass = 0; pass < 3; ++pass)
+                QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
             QVector<QRect> rectangles;
             for (const auto *name : {"resultsView", "resultsHint", "resultsOrbitalPosition", "resultsFiles",
                                      "resultsOrbitalFirst", "resultsOrbitalNext"}) {

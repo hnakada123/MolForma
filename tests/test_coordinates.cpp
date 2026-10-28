@@ -5,6 +5,11 @@
 #include <QtTest>
 #include <QtWidgets>
 using namespace mf;
+// Older Qt6 versions only accept integer positions for drag-enter events (as in McpGui).
+using DragPosition =
+    std::conditional_t<std::is_constructible_v<QDragEnterEvent, QPointF, Qt::DropActions, const QMimeData *,
+                                               Qt::MouseButtons, Qt::KeyboardModifiers>,
+                       QPointF, QPoint>;
 
 class CoordinatesTest : public QObject {
     Q_OBJECT
@@ -542,7 +547,7 @@ class CoordinatesTest : public QObject {
         writeFile(path, "2\nH2\nH 0 0 0\nH 0 0 0.74\n");
         QMimeData mime;
         mime.setUrls({QUrl::fromLocalFile(path)});
-        QDragEnterEvent enter(QPointF(5, 5), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QDragEnterEvent enter(DragPosition(5, 5), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
         QApplication::sendEvent(panel, &enter);
         QVERIFY(enter.isAccepted());
         QDropEvent drop(QPointF(5, 5), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
