@@ -186,3 +186,17 @@ install(FILES packaging/molforma.desktop DESTINATION share/applications)
 install(FILES packaging/molforma.svg DESTINATION share/icons/hicolor/scalable/apps)
 install(FILES packaging/molforma-256.png DESTINATION share/icons/hicolor/256x256/apps RENAME molforma.png)
 install(FILES packaging/molforma-mime.xml DESTINATION share/mime/packages RENAME molforma.xml)
+# "cpack -G DEB" in the build folder makes a Debian/Ubuntu package of the installed files
+# (docs/installation/ubuntu.md). dpkg-shlibdeps adds the libraries the executable links;
+# Depends adds the Qt platform plugins it loads at run time.
+set(CPACK_PACKAGE_NAME molforma)
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Molecular editor, input builder and result viewer for NWChem")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://hnakada123.github.io/MolForma/")
+set(CPACK_PACKAGE_CONTACT "hnakada123")
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_DEBIAN_PACKAGE_SECTION science)
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-qpa-plugins")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "qt6-translations-l10n, fonts-noto-cjk")
+set(CPACK_DEBIAN_PACKAGE_SUGGESTS "nwchem")
+include(CPack)

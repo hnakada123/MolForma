@@ -37,7 +37,7 @@ cmake --install build --prefix /tmp/molforma-install
 
 インストールすると、デスクトップのランチャー（`share/applications/molforma.desktop`）、アイコン、`*.kgui.json` と `*.nw` のMIME型も配置します。説明書は実行ファイルに組み込んでおり、「ヘルプ → 操作ガイド・マニュアル」（F1）で読めます。未保存の作業は1分ごとに自動保存し、異常終了した場合は次の起動時に復旧を確認します。
 
-OSごとの必要なパッケージとインストール手順は「[OS別インストール・必要パッケージ](docs/installation.md)」にあります。Arch Linuxでは `packaging/arch/PKGBUILD` からパッケージを作り、pacmanでインストールできます。
+OSごとの必要なパッケージとインストール手順は「[OS別インストール・必要パッケージ](docs/installation.md)」にあります。Arch Linuxでは `packaging/arch/PKGBUILD` からパッケージを作り、pacmanでインストールできます。Ubuntuなどでは、ビルドしたフォルダーで `cpack -G DEB` を実行するとdebパッケージを作れます。
 
 ## 操作
 

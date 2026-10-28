@@ -94,6 +94,8 @@ Key cross-cutting designs:
   (`MainWindow::useSample`; `test_core recipeSamples` checks their contents).
   `packaging/` holds the desktop entry, icon and MIME types installed by `cmake --install`, and `packaging/arch/PKGBUILD`
   (an Arch Linux `molforma-git` package of GitHub's main, with RDKit and VTK; see `docs/installation/arch_linux.md`).
+  The CPack settings at the end of `CMakeLists.txt` make a Debian/Ubuntu package with `cpack -G DEB` in the build
+  folder (`dpkg-shlibdeps` finds the libraries; see `docs/installation/ubuntu.md`).
 - `docs/` is also the source of the GitHub Pages site https://hnakada123.github.io/MolForma/: on pushes to main that
   touch `docs/`, `.github/workflows/pages.yml` generates the HTML with Jekyll (`docs/Gemfile` + `Gemfile.lock`, the
   `github-pages` gem) and publishes that HTML (Pages source: GitHub Actions). Preview locally with
