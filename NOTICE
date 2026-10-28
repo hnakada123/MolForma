@@ -19,6 +19,9 @@ GPL version 2 only, so binaries linked with it are distributed under GPL version
 The Qt modules MolForma uses (Core, Gui, Widgets, OpenGL, OpenGL Widgets) are also
 offered under GPL-2.0-only; binaries linked with Open Babel use Qt under that option.
 Eigen (MPL-2.0), RDKit and VTK (BSD-3-Clause) are compatible with GPL version 2.
+The AppImage made with packaging/appimage bundles these libraries and those they use,
+with their license texts in usr/share/doc; whoever distributes it distributes those
+binaries too, under their terms (for Open Babel and Qt, the GPL's source requirement).
 
 NWChem is not included with MolForma and not linked into it: MolForma writes NWChem
 input files and runs an NWChem installed separately by the user as its own program.

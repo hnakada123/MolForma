@@ -95,7 +95,10 @@ Key cross-cutting designs:
   `packaging/` holds the desktop entry, icon and MIME types installed by `cmake --install`, and `packaging/arch/PKGBUILD`
   (an Arch Linux `molforma-git` package of GitHub's main, with RDKit and VTK; see `docs/installation/arch_linux.md`).
   The CPack settings at the end of `CMakeLists.txt` make a Debian/Ubuntu package with `cpack -G DEB` in the build
-  folder (`dpkg-shlibdeps` finds the libraries; see `docs/installation/ubuntu.md`).
+  folder (`dpkg-shlibdeps` finds the libraries; see `docs/installation/ubuntu.md`). `packaging/appimage/` builds an
+  AppImage in Docker (Ubuntu 24.04 with Qt 6.4, VTK built for Qt 6; `build.sh` runs linuxdeploy and appimagetool and
+  sets Open Babel's `BABEL_LIBDIR`/`BABEL_DATADIR` in an AppRun hook; see `docs/installation/appimage.md`). That
+  build is also the check that the code still builds and passes with Qt 6.4.
 - `docs/` is also the source of the GitHub Pages site https://hnakada123.github.io/MolForma/: on pushes to main that
   touch `docs/`, `.github/workflows/pages.yml` generates the HTML with Jekyll (`docs/Gemfile` + `Gemfile.lock`, the
   `github-pages` gem) and publishes that HTML (Pages source: GitHub Actions). Preview locally with

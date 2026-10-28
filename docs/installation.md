@@ -8,6 +8,7 @@ MolFormaを動かすのに必要なソフトウェアと、OSごとのインス�
 | --- | --- | --- |
 | Arch Linux | [Arch Linuxでのインストール](installation/arch_linux.md) | PKGBUILDからパッケージを作ってpacmanでインストール（依存パッケージも自動で導入）、AURからNWChem。VTK描画の確認、更新・削除、困ったとき |
 | Ubuntu 26.04 LTS | [Ubuntuでのインストール](installation/ubuntu.md) | aptで開発用パッケージとNWChemを入れ、ソースからビルドしてdebパッケージを作り、aptでインストール。VTK描画の確認、更新・削除、困ったとき |
+| Linux（ディストリビューション共通） | [AppImageの作成](installation/appimage.md) | Dockerの中でビルドし、Qt・Open Babel・RDKit・VTKを1つのファイルにまとめたAppImageを作る。glibc 2.38以上のLinux（Ubuntu 24.04以降、Debian 13以降、Fedora 39以降など）でインストールせずに起動。配布するときのライセンス、困ったとき |
 
 ほかのOSの手順は、用意でき次第このページに追加します。
 
