@@ -7,7 +7,11 @@
 #ifdef MOLFORMA_HAS_RDKIT
 #include <GraphMol/Atom.h>
 #include <GraphMol/Bond.h>
+#if __has_include(<GraphMol/CIPLabeler/CIPLabeler.h>)
 #include <GraphMol/CIPLabeler/CIPLabeler.h>
+#else
+#include <CIPLabeler/CIPLabeler.h> // Where RDKit 2023.09 is installed by Ubuntu 24.04.
+#endif
 #include <GraphMol/Conformer.h>
 #include <GraphMol/MolOps.h>
 #include <GraphMol/QueryAtom.h>

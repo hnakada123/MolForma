@@ -54,7 +54,7 @@ QStringList words(const QString &line) {
 }
 bool number(const QString &text, double &value) {
     bool ok;
-    value = QString(text).replace('d', 'e', Qt::CaseInsensitive).toDouble(&ok);
+    value = QString(text).replace(QChar('d'), QChar('e'), Qt::CaseInsensitive).toDouble(&ok);
     return ok && std::isfinite(value);
 }
 // NWChem atom tags: the element symbol followed by any label ("C1", "H_a"), "bq" for ghosts.

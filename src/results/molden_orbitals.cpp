@@ -11,7 +11,7 @@
 namespace mf {
 namespace {
 double real(QString text) {
-    text.replace('D', 'E', Qt::CaseInsensitive);
+    text.replace(QChar('D'), QChar('E'), Qt::CaseInsensitive);
     bool ok;
     const double value = text.toDouble(&ok);
     if (!ok || !std::isfinite(value))

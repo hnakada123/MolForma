@@ -12,7 +12,7 @@ double coordinateScale(CoordinateUnit unit) {
 }
 static double finiteNumber(QString text) {
     // Also accept Fortran exponents commonly found in quantum chemistry output.
-    text.replace('D', 'e', Qt::CaseInsensitive);
+    text.replace(QChar('D'), QChar('e'), Qt::CaseInsensitive);
     bool ok;
     double value = text.trimmed().toDouble(&ok);
     if (!ok || !std::isfinite(value))

@@ -24,7 +24,7 @@ QStringList words(const QString &line) {
     return line.split(whitespace, Qt::SkipEmptyParts);
 }
 double number(QString text) {
-    text.replace('D', 'E', Qt::CaseInsensitive);
+    text.replace(QChar('D'), QChar('E'), Qt::CaseInsensitive);
     bool ok;
     const double n = text.toDouble(&ok);
     if (!ok || !std::isfinite(n))
@@ -129,7 +129,7 @@ void NwchemEnergySummary::add(const QString &line) {
     static const QRegularExpression monomers(R"(^\s*number of monomers\s*=\s*(\d+)\s*$)");
     const auto read = [](QString text, double &value) {
         bool ok;
-        value = text.replace('D', 'E', Qt::CaseInsensitive).toDouble(&ok);
+        value = text.replace(QChar('D'), QChar('E'), Qt::CaseInsensitive).toDouble(&ok);
         return ok && std::isfinite(value);
     };
     auto &task = tasks.last();
@@ -233,7 +233,7 @@ const QRegularExpression &thresholdLine() {
 }
 double logNumber(QString text) {
     bool ok;
-    const double n = text.replace('D', 'E', Qt::CaseInsensitive).toDouble(&ok);
+    const double n = text.replace(QChar('D'), QChar('E'), Qt::CaseInsensitive).toDouble(&ok);
     return ok && std::isfinite(n) ? n : std::numeric_limits<double>::quiet_NaN();
 }
 ResultStep resultStep(const QRegularExpressionMatch &m) {
@@ -264,7 +264,7 @@ void nwchem(ResultData &r, const QStringList &lines) {
     // Lenient numbers for the summaries: one odd line must not reject the whole log.
     const auto value = [](QString text) {
         bool ok;
-        const double n = text.replace('D', 'E', Qt::CaseInsensitive).toDouble(&ok);
+        const double n = text.replace(QChar('D'), QChar('E'), Qt::CaseInsensitive).toDouble(&ok);
         return ok && std::isfinite(n) ? n : std::numeric_limits<double>::quiet_NaN();
     };
     // Markers written by MolForma's scan input ("title" of each point) and IRC point lines.

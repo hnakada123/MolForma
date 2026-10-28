@@ -172,7 +172,7 @@ HistoryEntry readHistoryEntry(const QString &directory) {
             while (matches.hasNext()) {
                 const auto match = matches.next();
                 auto value = match.captured(2);
-                value.replace('D', 'E', Qt::CaseInsensitive);
+                value.replace(QChar('D'), QChar('E'), Qt::CaseInsensitive);
                 bool ok;
                 const double n = value.toDouble(&ok);
                 if (ok && std::isfinite(n)) {
