@@ -431,7 +431,7 @@ class AdvancedTest : public QObject {
     }
     void saveShortcutAndFocusedTeardown() {
         QTemporaryDir files;
-        const auto path = files.filePath("advanced.kgui.json");
+        const auto path = files.filePath("advanced.molforma.json");
         water().save(path);
         MainWindow w;
         w.loadPath(path);

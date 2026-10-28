@@ -9,7 +9,7 @@ Build a three-residue peptide from its one-letter sequence and cap the N-terminu
 | Calculation | B3LYP/6-31G*, single-point energy, COSMO (water) |
 | Run time | About 14 minutes (8 MPI processes, “Recompute DFT integrals each time” on) |
 | Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
-| Practice data | [`ace_ahe_nme.kgui.json`](../../recipes/samples/ace_ahe_nme.kgui.json) |
+| Practice data | [`ace_ahe_nme.molforma.json`](../../recipes/samples/ace_ahe_nme.molforma.json) |
 
 ![ACE–Ala–His–Glu–NME built from its sequence, with the sequence in the 3D view](images/capped_peptide.png)
 

@@ -9,7 +9,7 @@ Find the transition state [F···CH₃···Cl]⁻ of an SN2 reaction. There is
 | Calculation | M06-2X/aug-cc-pVDZ, TS search → frequencies, IRC, reactant complex optimization → frequencies |
 | Run time | About 13 minutes for the transition-state search → frequencies, 8 for the reactant complex, 25 (forward) and 15 (backward) for IRC (8 MPI processes) |
 | Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
-| Practice data | [`sn2_ts_guess.kgui.json`](../../recipes/samples/sn2_ts_guess.kgui.json) (guess), [`sn2_reactant.kgui.json`](../../recipes/samples/sn2_reactant.kgui.json) (starting reactant complex) |
+| Practice data | [`sn2_ts_guess.molforma.json`](../../recipes/samples/sn2_ts_guess.molforma.json) (guess), [`sn2_reactant.molforma.json`](../../recipes/samples/sn2_reactant.molforma.json) (starting reactant complex) |
 
 ![Transition-state guess: planar CH3 between F and Cl](images/sn2_transition_state.png)
 
@@ -44,7 +44,7 @@ Choose atoms in order, enter a value at the bottom left of the 3D view and press
 
    **Figure 4** The starting reactant complex: F approaches C from opposite Cl.
 
-3. Save as `sn2_reactant.kgui.json`. This is the starting reactant complex, with F approaching C from opposite Cl.
+3. Save as `sn2_reactant.molforma.json`. This is the starting reactant complex, with F approaching C from opposite Cl.
 
 ## 3. Build the transition-state guess
 
@@ -57,7 +57,7 @@ At the transition state CH3 is planar, and both C–F and C–Cl are stretched.
 
    **Figure 5** The transition-state guess. From the side, the planar CH3 sits between Cl and F.
 
-3. Save as `sn2_ts_guess.kgui.json`.
+3. Save as `sn2_ts_guess.molforma.json`.
 
 ## 4. Transition-state search and frequencies
 
@@ -101,7 +101,7 @@ For this reaction, an IRC in both directions stops with “NWChem error: mepgs: 
 
 ## 6. Reactant complex and activation energy
 
-Open `sn2_reactant.kgui.json` and run “Optimization → frequencies” with the same method and basis. The energy difference to the transition state is the activation energy from the complex. “Compare ΔE” in “History” lists the differences between jobs of the same composition, method and basis (without thermal corrections).
+Open `sn2_reactant.molforma.json` and run “Optimization → frequencies” with the same method and basis. The energy difference to the transition state is the activation energy from the complex. “Compare ΔE” in “History” lists the differences between jobs of the same composition, method and basis (without thermal corrections).
 
 ### Results
 

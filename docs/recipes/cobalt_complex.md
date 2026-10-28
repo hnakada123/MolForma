@@ -9,7 +9,7 @@
 | 計算 | B3LYP/def2-SVP、構造最適化 |
 | 計算時間の目安 | 約40分（MPI 8プロセス、11ステップ） |
 | 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
-| 練習データ | [`co_en_complex.kgui.json`](samples/co_en_complex.kgui.json) |
+| 練習データ | [`co_en_complex.molforma.json`](samples/co_en_complex.molforma.json) |
 
 ![配位サイトにenと塩化物を並べたtrans-[Co(en)2Cl2]+](images/cobalt_complex.png)
 

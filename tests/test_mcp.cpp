@@ -960,7 +960,7 @@ class McpTest : public QObject {
                      .toInt(),
                  -32602);
         QTemporaryDir directory;
-        auto path = directory.filePath("molecule.kgui.json");
+        auto path = directory.filePath("molecule.molforma.json");
         QVERIFY(!failed(change(server, "save_file", {{"path", path}})));
         QCOMPARE(Document::load(path).toJson(), committed(server).toJson());
         QVERIFY(failed(change(server, "save_file", {{"path", path}})));
@@ -1107,7 +1107,7 @@ class McpTest : public QObject {
             server, "place_template",
             {{"templateId", "skeleton:water"}, {"position", QJsonArray{0, 0, 0}}, {"preview", false}})));
         QTemporaryDir directory;
-        const auto path = directory.filePath("existing.kgui.json");
+        const auto path = directory.filePath("existing.molforma.json");
         writeFile(path, "old");
         const auto save = [&](const QJsonObject &caps, QJsonObject params = {}) {
             params["name"] = "save_file";
@@ -1541,10 +1541,12 @@ class McpTest : public QObject {
         QVERIFY(!failed(change(
             server, "place_template",
             {{"templateId", "skeleton:water"}, {"position", QJsonArray{0, 0, 0}}, {"preview", false}})));
-        const auto inside = allowed.filePath("water.kgui.json"), copy = outside.filePath("water.kgui.json");
+        const auto inside = allowed.filePath("water.molforma.json"),
+                   copy = outside.filePath("water.molforma.json");
         QVERIFY(!failed(change(server, "save_file", {{"path", inside}})));
         QVERIFY(failed(change(server, "save_file", {{"path", copy}})));
-        QVERIFY(failed(change(server, "save_file", {{"path", allowed.filePath("link/water.kgui.json")}})));
+        QVERIFY(
+            failed(change(server, "save_file", {{"path", allowed.filePath("link/water.molforma.json")}})));
         QVERIFY(!QFile::exists(copy));
         QVERIFY(QFile::copy(inside, copy));
         QVERIFY(failed(change(server, "open_file", {{"path", copy}, {"preview", false}})));
@@ -1608,7 +1610,7 @@ class McpTest : public QObject {
             return QTest::qWaitFor([&] { return seen; }) && refused;
         };
         // Ctrl+S writes to the opened project path.
-        const auto kept = outside.filePath("kept.kgui.json");
+        const auto kept = outside.filePath("kept.molforma.json");
         QVERIFY(QFile::copy(inside, kept));
         w.loadPath(kept);
         QFile keptFile(kept);

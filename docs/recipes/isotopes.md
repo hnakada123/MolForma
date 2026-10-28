@@ -9,13 +9,13 @@
 | 計算 | B3LYP/6-31G*、振動数（[題材1](atoms_and_bonds.md)で最適化した構造） |
 | 計算時間の目安 | 約1分（MPI 8プロセス） |
 | 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
-| 練習データ | [`ethanol_opt.kgui.json`](samples/ethanol_opt.kgui.json)（最適化した構造）、[`ethanol_od.kgui.json`](samples/ethanol_od.kgui.json)（O–D） |
+| 練習データ | [`ethanol_opt.molforma.json`](samples/ethanol_opt.molforma.json)（最適化した構造）、[`ethanol_od.molforma.json`](samples/ethanol_od.molforma.json)（O–D） |
 
 ![O–Hの水素を重水素にしたエタノールと座標の表の質量](images/isotopes.png)
 
 ## 1. 最適化した構造から始める
 
-振動数は、その手法・基底で最適化した構造で計算します。[題材1](atoms_and_bonds.md)の計算結果を「履歴」→「結果ビューアで開く」→「分子へ候補として適用」で「1 分子」に取り込み、確定します（[題材14](reuse_result.md)）。練習データの `ethanol_opt.kgui.json` は取り込んだ後の状態です。
+振動数は、その手法・基底で最適化した構造で計算します。[題材1](atoms_and_bonds.md)の計算結果を「履歴」→「結果ビューアで開く」→「分子へ候補として適用」で「1 分子」に取り込み、確定します（[題材14](reuse_result.md)）。練習データの `ethanol_opt.molforma.json` は取り込んだ後の状態です。
 
 ## 2. 水素を重水素にする
 

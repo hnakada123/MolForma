@@ -9,7 +9,7 @@ In a structure assembled from templates, the configuration of a stereocenter or 
 | Calculation | B3LYP/6-31G*, optimization → frequencies (E and Z 2-butene) |
 | Run time | About 35 minutes for E and 47 minutes for Z (2 MPI processes, alongside other runs) |
 | Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
-| Practice data | [`lactic_R.kgui.json`](../../recipes/samples/lactic_R.kgui.json), [`lactic_S.kgui.json`](../../recipes/samples/lactic_S.kgui.json), [`butene_E.kgui.json`](../../recipes/samples/butene_E.kgui.json), [`butene_Z.kgui.json`](../../recipes/samples/butene_Z.kgui.json) |
+| Practice data | [`lactic_R.molforma.json`](../../recipes/samples/lactic_R.molforma.json), [`lactic_S.molforma.json`](../../recipes/samples/lactic_S.molforma.json), [`butene_E.molforma.json`](../../recipes/samples/butene_E.molforma.json), [`butene_Z.molforma.json`](../../recipes/samples/butene_Z.molforma.json) |
 
 ![Lactic acid with R/S on its stereocenter and 2-butene with E/Z](images/stereochemistry.png)
 
@@ -31,7 +31,7 @@ R/S and E/Z are assigned with RDKit. In builds without RDKit, “Record stereo (
 
    **Figure 2** “Record stereo (R/S, E/Z)” on the “Transform” page adds R/S to the stereocenter's label.
 
-5. Save it with “File → Save as…” (`lactic_S.kgui.json` in this example).
+5. Save it with “File → Save as…” (`lactic_S.molforma.json` in this example).
 
 ## 2. Invert the stereocenter
 
@@ -41,7 +41,7 @@ R/S and E/Z are assigned with RDKit. In builds without RDKit, “Record stereo (
 
    **Figure 3** “Invert stereocenter” swaps two substituents of C1: the R isomer.
 
-2. Save under another name (`lactic_R.kgui.json`).
+2. Save under another name (`lactic_R.molforma.json`).
 
 A recorded configuration is protected in later cleanups. When a cleanup would give another configuration, MolForma says “The cleanup result differs from the recorded stereo configuration. The original structure was kept.” and leaves the structure as it was.
 

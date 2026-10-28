@@ -9,7 +9,7 @@ A coordination center does not have to be a metal. Place sulfur as an octahedral
 | Calculation | B3LYP/6-31G*, optimization → frequencies |
 | Run time | About 4 minutes for SF₆ and 2 minutes for PF₅ (8 MPI processes) |
 | Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
-| Practice data | [`sf6.kgui.json`](../../recipes/samples/sf6.kgui.json), [`pf5.kgui.json`](../../recipes/samples/pf5.kgui.json) |
+| Practice data | [`sf6.molforma.json`](../../recipes/samples/sf6.molforma.json), [`pf5.molforma.json`](../../recipes/samples/pf5.molforma.json) |
 
 ![SF6 with sulfur as an octahedral center](images/main_group.png)
 

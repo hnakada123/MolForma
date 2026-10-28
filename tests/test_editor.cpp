@@ -159,13 +159,14 @@ class EditorTest : public QObject {
         MainWindow w;
         w.show();
         QTemporaryDir dir;
-        QVERIFY(
-            w.useSample(":/docs/recipes/samples/na_h2o4_charges.kgui.json", dir.filePath("na.kgui.json")));
+        QVERIFY(w.useSample(":/docs/recipes/samples/na_h2o4_charges.molforma.json",
+                            dir.filePath("na.molforma.json")));
         w.findChild<QTabWidget *>("propertyTabs")->setCurrentIndex(5);
         QTest::qWait(50);
         w.findChild<QAction *>("newAction")->trigger(); // An empty molecule: the longest notes.
         QTest::qWait(50);
-        QVERIFY(w.useSample(":/docs/recipes/samples/ethanol_od.kgui.json", dir.filePath("od.kgui.json")));
+        QVERIFY(
+            w.useSample(":/docs/recipes/samples/ethanol_od.molforma.json", dir.filePath("od.molforma.json")));
         QTest::qWait(50);
         auto *link = w.findChild<QWidget *>("moleculeChargeLink");
         auto *summary = w.findChild<QLabel *>("moleculeChargeSummary");
@@ -188,8 +189,8 @@ class EditorTest : public QObject {
         // saved, and a part joins "マイ部品" when its link in the manual is clicked.
         MainWindow w;
         QTemporaryDir dir;
-        const auto copy = dir.filePath("ethanol.kgui.json");
-        QVERIFY(w.useSample(":/docs/recipes/samples/ethanol.kgui.json", copy));
+        const auto copy = dir.filePath("ethanol.molforma.json");
+        QVERIFY(w.useSample(":/docs/recipes/samples/ethanol.molforma.json", copy));
         QCOMPARE(w.document().formula(), QString("C2H6O"));
         QVERIFY(QFileInfo(copy).isWritable());
         QCOMPARE(w.recentFiles().first(), copy);
@@ -202,7 +203,8 @@ class EditorTest : public QObject {
             for (auto block = browser->document()->begin(); block.isValid() && link.isNull();
                  block = block.next())
                 for (auto it = block.begin(); !it.atEnd(); ++it)
-                    if (it.fragment().charFormat().anchorHref() == "samples/trimethylsilyl.kpart.json") {
+                    if (it.fragment().charFormat().anchorHref() ==
+                        "samples/trimethylsilyl.molforma-part.json") {
                         link = QTextCursor(browser->document());
                         link.setPosition(it.fragment().position() + 1);
                         break;
@@ -238,10 +240,10 @@ class EditorTest : public QObject {
             const QDir autosaves(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
                                  "/autosave");
             QVERIFY(autosaves.absolutePath().startsWith(settingsHome.path()));
-            const auto copies = autosaves.entryList({"session-*.kgui.json"});
+            const auto copies = autosaves.entryList({"session-*.molforma.json"});
             QCOMPARE(copies.size(), 1);
             // Simulate a crash: keep the copy and leave a lock file of a process that no longer runs.
-            QFile::copy(autosaves.filePath(copies.first()), autosaves.filePath("session-1-2.kgui.json"));
+            QFile::copy(autosaves.filePath(copies.first()), autosaves.filePath("session-1-2.molforma.json"));
             writeFile(autosaves.filePath("session-1-2.lock"),
                       QByteArray("999999\nmolforma\n") + QSysInfo::machineHostName().toUtf8() + "\n");
             // Undo and a different edit return to the same undo index: the copy still follows.
@@ -269,11 +271,11 @@ class EditorTest : public QObject {
         }
         const QDir autosaves(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
                              "/autosave");
-        QVERIFY(autosaves.exists("session-1-2.kgui.json"));
+        QVERIFY(autosaves.exists("session-1-2.molforma.json"));
         MainWindow next;
         QTimer::singleShot(0, &next, [&] { answer("復旧する"); });
         next.offerRecovery();
-        QVERIFY(!autosaves.exists("session-1-2.kgui.json"));
+        QVERIFY(!autosaves.exists("session-1-2.molforma.json"));
         QCOMPARE(next.document().atoms.size(), 11); // Benzene without one hydrogen.
         QVERIFY(!next.history()->isClean());
     }
@@ -1203,7 +1205,7 @@ class EditorTest : public QObject {
         QVERIFY(x->isEnabled());
 
         QTemporaryDir dir;
-        const auto path = dir.filePath("legacy.kgui.json");
+        const auto path = dir.filePath("legacy.molforma.json");
         w.document().save(path);
         const auto loaded = Document::load(path);
         QCOMPARE(loaded.project(), w.document().project());

@@ -46,7 +46,7 @@ Some MPI-PR builds do not work with 1 MPI process. Specify an NWChem executable 
 | File | Contents |
 | --- | --- |
 | `input.nw` | The complete NWChem input that is run, with relative input movecs paths resolved |
-| `project.kgui.json` | A copy of the project with the molecule, calculation settings, advanced settings and run settings at launch |
+| `project.molforma.json` | A copy of the project with the molecule, calculation settings, advanced settings and run settings at launch |
 | `run.json` | Executable, arguments, overriding environment variables, working directory, SHA-256 of the input, times, state, exit code. The full parent environment is not recorded |
 | `output.out` / `stderr.err` | Full stdout/stderr, saved directly from the process |
 

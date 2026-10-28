@@ -9,7 +9,7 @@
 | 計算 | B3LYP/6-31G*、緩和スキャン（二面角 180°→0°、13点） |
 | 計算時間の目安 | 約92分（MPI 2プロセス、ほかの計算と並行。1点あたり約7分） |
 | 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
-| 練習データ | [`butane_anti.kgui.json`](samples/butane_anti.kgui.json)、[`butane_gauche.kgui.json`](samples/butane_gauche.kgui.json)、[`butane_scan.kgui.json`](samples/butane_scan.kgui.json)（スキャンの設定つき） |
+| 練習データ | [`butane_anti.molforma.json`](samples/butane_anti.molforma.json)、[`butane_gauche.molforma.json`](samples/butane_gauche.molforma.json)、[`butane_scan.molforma.json`](samples/butane_scan.molforma.json)（スキャンの設定つき） |
 
 ![4原子を選んで二面角を表示したn-ブタン](images/butane_conformers.png)
 
@@ -37,14 +37,14 @@
 
    **図3** 4原子を順に選ぶと、3D画面の左下に二面角が出ます。選んだ順が二面角の定義です。
 
-3. 3D画面の上の「全体整形」を押して確定し、「ファイル → 名前を付けて保存…」で `butane_anti.kgui.json` として保存します。
+3. 3D画面の上の「全体整形」を押して確定し、「ファイル → 名前を付けて保存…」で `butane_anti.molforma.json` として保存します。
 4. 4原子を選んだまま、左下の「二面角 / °」に 60 を入れて「寸法を適用」を押します。C1–C2結合のまわりで、3番目の原子（C2）の側が回ってgaucheになります。
 
    ![二面角に60を入れて「寸法を適用」したところ。C1–C2のまわりでC8側が回り、左下に「C3 – C1 – C2 – C8 = 60.0000 °」と出ている](images/butane_conformers/04_dihedral_gauche.png)
 
    **図4** 「二面角 / °」に60を入れて「寸法を適用」すると、gaucheの配座になります。
 
-5. 「全体整形」で整えると、二面角は約65°に開きます（メチル基どうしの反発を力場が和らげるため）。`butane_gauche.kgui.json` として別名で保存します。
+5. 「全体整形」で整えると、二面角は約65°に開きます（メチル基どうしの反発を力場が和らげるため）。`butane_gauche.molforma.json` として別名で保存します。
 
 二面角を変える操作は、環の中の結合では片側だけを回せないため拒否されます。固定原子を含む側も動かせません。
 

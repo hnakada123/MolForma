@@ -440,7 +440,7 @@ void MainWindow::buildUi() {
     enableWithSelection(savePartButton, 1);
     auto *loadPartButton = new QPushButton(tr("読み込む…"));
     loadPartButton->setObjectName("loadPart");
-    loadPartButton->setToolTip(tr("部品ファイル（.kpart.json）をマイ部品に読み込みます。"));
+    loadPartButton->setToolTip(tr("部品ファイル（.molforma-part.json）をマイ部品に読み込みます。"));
     auto *removePartButton = new QPushButton(tr("一覧から外す"));
     removePartButton->setObjectName("removePart");
     removePartButton->setToolTip(tr("パレットで選んだマイ部品を一覧から外します（ファイルは消しません）。"));
@@ -2552,7 +2552,7 @@ void MainWindow::newDocument() {
 void MainWindow::open() {
     QString p = QFileDialog::getOpenFileName(
         this, tr("分子を開く"), settings.value("directory").toString(),
-        tr("分子 (*.kgui.json *.json *.xyz *.mol *.sdf *.mol2 *.cml *.pdb *.ent *.nw *.gjf *.com);;"
+        tr("分子 (*.molforma.json *.json *.xyz *.mol *.sdf *.mol2 *.cml *.pdb *.ent *.nw *.gjf *.com);;"
            "NWChem入力 (*.nw);;Gaussian入力 (*.gjf *.com);;すべて (*)"));
     if (p.isEmpty() || !confirmDiscard())
         return;
@@ -2646,12 +2646,12 @@ bool MainWindow::save(bool as) {
     if (as || p.isEmpty())
         p = QFileDialog::getSaveFileName(
             this, tr("プロジェクトを保存"),
-            p.isEmpty() ? (doc.atoms.isEmpty() ? QString("molecule") : doc.formula()) + ".kgui.json" : p,
-            tr("MolFormaプロジェクト (*.kgui.json)"));
+            p.isEmpty() ? (doc.atoms.isEmpty() ? QString("molecule") : doc.formula()) + ".molforma.json" : p,
+            tr("MolFormaプロジェクト (*.molforma.json)"));
     if (p.isEmpty())
         return false;
     if (!p.endsWith(".json", Qt::CaseInsensitive))
-        p += ".kgui.json";
+        p += ".molforma.json";
     checkMcpPath(p); // Ctrl+S reuses the project path without a file dialog.
     doc.save(p);
     path = p;
@@ -2960,7 +2960,7 @@ void MainWindow::dropEvent(QDropEvent *e) {
 }
 bool MainWindow::useSample(const QString &resource, const QString &target) {
     const auto name = QFileInfo(resource).fileName();
-    if (name.endsWith(".kpart.json")) {
+    if (name.endsWith(".molforma-part.json")) {
         loadPartFile(resource);
         statusBar()->showMessage(tr("%1 をマイ部品に読み込みました。").arg(name), 5000);
         return true;
@@ -2974,7 +2974,8 @@ bool MainWindow::useSample(const QString &resource, const QString &target) {
         p = QFileDialog::getSaveFileName(
             parent ? parent : this, tr("練習データを保存して開く"),
             QDir(settings.value("directory", QDir::homePath()).toString()).filePath(name),
-            name.endsWith(".sdf") ? tr("構造ファイル (*.sdf)") : tr("MolFormaプロジェクト (*.kgui.json)"));
+            name.endsWith(".sdf") ? tr("構造ファイル (*.sdf)")
+                                  : tr("MolFormaプロジェクト (*.molforma.json)"));
         if (p.isEmpty())
             return false;
     }
@@ -3014,7 +3015,7 @@ void MainWindow::startAutosave() {
         autosaveLock.reset();
         return;
     }
-    autosavePath = directory.filePath(name + ".kgui.json");
+    autosavePath = directory.filePath(name + ".molforma.json");
     autosaveTimer = new QTimer(this);
     autosaveTimer->setInterval(60000);
     connect(autosaveTimer, &QTimer::timeout, this, &MainWindow::autosave);
@@ -3052,11 +3053,11 @@ void MainWindow::offerRecovery() {
     const QDir directory(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
                          "/autosave");
     // Each copy belongs to a session lock; a live MolForma keeps its lock, a crashed one leaves it stale.
-    for (const auto &copy : directory.entryList({"session-*.kgui.json"}, QDir::Files, QDir::Time)) {
+    for (const auto &copy : directory.entryList({"session-*.molforma.json"}, QDir::Files, QDir::Time)) {
         const auto file = directory.filePath(copy);
         if (file == autosavePath)
             continue;
-        QLockFile lock(directory.filePath(copy.chopped(QString(".kgui.json").size()) + ".lock"));
+        QLockFile lock(directory.filePath(copy.chopped(QString(".molforma.json").size()) + ".lock"));
         lock.setStaleLockTime(0);
         if (!lock.tryLock(0))
             continue; // Another MolForma window is still running and owns this copy.
@@ -3519,10 +3520,10 @@ void MainWindow::showReport() {
 void MainWindow::compareDialog() {
     if (!resolveCandidate())
         return;
-    const auto p =
-        QFileDialog::getOpenFileName(this, tr("比較する構造"), settings.value("directory").toString(),
-                                     tr("構造 (*.kgui.json *.json *.xyz *.mol *.sdf *.mol2 *.cml *.pdb *.ent "
-                                        "*.nw *.gjf *.com);;すべて (*)"));
+    const auto p = QFileDialog::getOpenFileName(
+        this, tr("比較する構造"), settings.value("directory").toString(),
+        tr("構造 (*.molforma.json *.json *.xyz *.mol *.sdf *.mol2 *.cml *.pdb *.ent "
+           "*.nw *.gjf *.com);;すべて (*)"));
     if (p.isEmpty())
         return;
     checkMcpPath(p);
@@ -3926,8 +3927,8 @@ void MainWindow::savePart() {
                       kind == kinds[1]   ? "ligand"
                       : kind == kinds[2] ? "skeleton"
                                          : "substituent");
-    QString p =
-        QFileDialog::getSaveFileName(this, tr("部品を保存"), name + ".kpart.json", tr("部品 (*.kpart.json)"));
+    QString p = QFileDialog::getSaveFileName(this, tr("部品を保存"), name + ".molforma-part.json",
+                                             tr("部品 (*.molforma-part.json)"));
     if (p.isEmpty())
         return;
     writeFile(p, QJsonDocument(t).toJson());
@@ -3936,8 +3937,8 @@ void MainWindow::savePart() {
     refreshPalette();
 }
 void MainWindow::loadPart() {
-    QString p =
-        QFileDialog::getOpenFileName(this, tr("マイ部品を読み込む"), {}, tr("部品 (*.kpart.json *.json)"));
+    QString p = QFileDialog::getOpenFileName(this, tr("マイ部品を読み込む"), {},
+                                             tr("部品 (*.molforma-part.json *.json)"));
     if (!p.isEmpty())
         loadPartFile(p);
 }

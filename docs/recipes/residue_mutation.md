@@ -9,13 +9,13 @@
 | 計算 | B3LYP/6-31G*、一点エネルギー、COSMO（水）（変異体） |
 | 計算時間の目安 | 約31分（MPI 8プロセス、ほかの計算と並行、「DFT積分を毎回再計算」オン） |
 | 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
-| 練習データ | [`ace_afe_nme.kgui.json`](samples/ace_afe_nme.kgui.json)（変異体）、[`ace_ae_nme.kgui.json`](samples/ace_ae_nme.kgui.json)（再連結後） |
+| 練習データ | [`ace_afe_nme.molforma.json`](samples/ace_afe_nme.molforma.json)（変異体）、[`ace_ae_nme.molforma.json`](samples/ace_ae_nme.molforma.json)（再連結後） |
 
 ![HisをPheに置き換えた変異体](images/residue_mutation.png)
 
 ## 1. HisをPheに置き換える
 
-1. [題材7](capped_peptide.md)のプロジェクト（`ace_ahe_nme.kgui.json`）を開きます。
+1. [題材7](capped_peptide.md)のプロジェクト（`ace_ahe_nme.molforma.json`）を開きます。
 2. 3D画面の配列の「HIS 2」をクリックしてHisの原子を選びます。
 3. 部品パレットの分類「アミノ酸」で「フェニルアラニン」をクリックし、右側の「残基」ページの「選択残基を置換」を押します。
 4. 候補が C20H27N4O6 · 57原子 · 電荷 −1 であることを確かめて「変更を確定」します。
@@ -89,7 +89,7 @@ XYZファイルには元素と座標しかないので、開くと残基・形�
 
 5. 認識できなかった原子は「未登録の原子を選択」で選べます。選んだ原子は「選択原子を残基に登録…」で3文字コードを付けて登録できます。
 
-残基・電荷・計算条件を保ったまま受け渡すには、XYZではなくプロジェクト（`.kgui.json`）を使います。
+残基・電荷・計算条件を保ったまま受け渡すには、XYZではなくプロジェクト（`.molforma.json`）を使います。
 
 ## 5. 計算して結果を見る
 

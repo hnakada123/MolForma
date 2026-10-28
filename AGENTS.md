@@ -5,8 +5,8 @@
 MolForma is a native Qt6 Widgets / C++20 molecular editor. Sources are grouped
 by responsibility, with paired headers and implementations in the same directory:
 
-- `src/model/`: `document.*` owns the stable-ID document and the `.kgui.json`
-  project serialization (format version 2); `geometry.*` owns double-precision geometry.
+- `src/model/`: `document.*` owns the stable-ID document and the `.molforma.json`
+  project serialization (format `molforma-project`, version 1); `geometry.*` owns double-precision geometry.
 - `src/editing/`: `library.*`, `operations.*`, `peptide.*` and `coordination.*`
   implement editing. `chemistry.*` uses the Open Babel C++ API.
   `stereochemistry.*` optionally uses native RDKit for CIP and residue recognition.

@@ -321,7 +321,7 @@ class TranslationsTest : public QObject {
     void englishWindow() {
         setEnglish(true);
         MainWindow w;
-        w.loadPath(FIXTURE_DIR "/ala_gly_ser.kgui.json");
+        w.loadPath(FIXTURE_DIR "/ala_gly_ser.molforma.json");
         w.show();
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
         auto *pages = w.findChild<QTabWidget *>("propertyTabs");

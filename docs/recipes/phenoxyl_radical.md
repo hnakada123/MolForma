@@ -9,14 +9,14 @@
 | 計算 | B3LYP/6-31+G*、最適化 → 振動数（3分子）、水素原子の一点 |
 | 計算時間の目安 | フェノール 約26分、フェノキシラジカル 約58分、フェノラート 約19分（MPI 6プロセス、ほかの計算と並行）、水素原子 数秒 |
 | 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
-| 練習データ | [`phenol.kgui.json`](samples/phenol.kgui.json)、[`phenoxyl.kgui.json`](samples/phenoxyl.kgui.json)、[`phenolate.kgui.json`](samples/phenolate.kgui.json) |
+| 練習データ | [`phenol.molforma.json`](samples/phenol.molforma.json)、[`phenoxyl.molforma.json`](samples/phenoxyl.molforma.json)、[`phenolate.molforma.json`](samples/phenolate.molforma.json) |
 
 ![属性ページで酸素に不対電子を付けたフェノキシラジカル](images/phenoxyl_radical.png)
 
 ## 1. フェノールを作る
 
 1. 「ファイル → 新規」で、分類「骨格」の「ベンゼン」を置き、分類「置換基」の「ヒドロキシ –OH」で水素を1つ置き換えます。
-2. 「全体整形」で整えて確定し、「ファイル → 名前を付けて保存…」で `phenol.kgui.json` として保存します。
+2. 「全体整形」で整えて確定し、「ファイル → 名前を付けて保存…」で `phenol.molforma.json` として保存します。
 
    ![ベンゼンの水素をヒドロキシ基に置き換えて整形したフェノール。酸素O7と水素H13が付いている](images/phenoxyl_radical/01_phenol.png)
 
@@ -43,7 +43,7 @@
 
    **図4** 多重度を2にすると、参照波動関数がUKS（開殻）になります。
 
-5. `phenoxyl.kgui.json` として保存します。
+5. `phenoxyl.molforma.json` として保存します。
 
 ## 3. フェノラートにする
 
@@ -66,7 +66,7 @@
 
    **図7** 検査結果の確認事項に、回転対称数とエントロピー・自由エネルギーの補正量が出ます。
 
-5. `phenolate.kgui.json` として保存します。
+5. `phenolate.molforma.json` として保存します。
 
 ## 4. 計算条件と計算
 

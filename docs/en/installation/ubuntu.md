@@ -102,7 +102,7 @@ sudo apt install ./molforma_1.0.0_amd64.deb
 | `/usr/bin/molforma` | The executable |
 | `/usr/share/applications/molforma.desktop` | The application menu entry |
 | `/usr/share/icons/hicolor/` | Icons (`scalable` and `256x256`) |
-| `/usr/share/mime/packages/molforma.xml` | The file types of `.kgui.json` (projects) and `.nw` (NWChem input) |
+| `/usr/share/mime/packages/molforma.xml` | The file types of `.molforma.json` (projects) and `.nw` (NWChem input) |
 | `/usr/share/molforma/` | LICENSE, NOTICE, README and the manual's Markdown (the manual is also built into the executable) |
 
 ## 5. Start and check

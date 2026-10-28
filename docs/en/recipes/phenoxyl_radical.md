@@ -9,14 +9,14 @@ Delete just the O–H hydrogen of phenol and make the phenoxyl radical (doublet)
 | Calculation | B3LYP/6-31+G*, optimization → frequencies (three molecules), a hydrogen-atom single point |
 | Run time | About 26 minutes for phenol, 58 for the phenoxyl radical and 19 for phenolate (6 MPI processes, alongside other runs); seconds for the hydrogen atom |
 | Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
-| Practice data | [`phenol.kgui.json`](../../recipes/samples/phenol.kgui.json), [`phenoxyl.kgui.json`](../../recipes/samples/phenoxyl.kgui.json), [`phenolate.kgui.json`](../../recipes/samples/phenolate.kgui.json) |
+| Practice data | [`phenol.molforma.json`](../../recipes/samples/phenol.molforma.json), [`phenoxyl.molforma.json`](../../recipes/samples/phenoxyl.molforma.json), [`phenolate.molforma.json`](../../recipes/samples/phenolate.molforma.json) |
 
 ![The phenoxyl radical with an unpaired electron on oxygen set on the Attributes page](images/phenoxyl_radical.png)
 
 ## 1. Make phenol
 
 1. With “File → New”, place “Benzene” from the category “Skeleton” and replace a hydrogen with “Hydroxy –OH” from the category “Substituent”.
-2. Clean up with “Clean up all”, confirm, and save as `phenol.kgui.json` with “File → Save as…”.
+2. Clean up with “Clean up all”, confirm, and save as `phenol.molforma.json` with “File → Save as…”.
 
    ![Phenol, made by replacing a benzene hydrogen with a hydroxy group and cleaning up, with oxygen O7 and hydrogen H13](images/phenoxyl_radical/01_phenol.png)
 
@@ -43,7 +43,7 @@ Delete just the O–H hydrogen of phenol and make the phenoxyl radical (doublet)
 
    **Figure 4** With multiplicity 2, the reference becomes UKS (open shell).
 
-5. Save as `phenoxyl.kgui.json`.
+5. Save as `phenoxyl.molforma.json`.
 
 ## 3. Make phenolate
 
@@ -66,7 +66,7 @@ Delete just the O–H hydrogen of phenol and make the phenoxyl radical (doublet)
 
    **Figure 7** The checks note the rotational symmetry number and the corrections of entropy and free energy.
 
-5. Save as `phenolate.kgui.json`.
+5. Save as `phenolate.molforma.json`.
 
 ## 4. Settings and runs
 

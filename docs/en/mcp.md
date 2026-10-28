@@ -47,7 +47,7 @@ In the server configuration of your MCP client, specify the absolute path of the
 With `--mcp-gui`, the client starts a new MolForma window and operates on that window's document. It does not connect to another window that is already running. Showing the GUI needs a normal desktop environment. You can also specify a file to open at startup.
 
 ```json
-"args": ["--mcp-gui", "/absolute/path/to/molecule.kgui.json"]
+"args": ["--mcp-gui", "/absolute/path/to/molecule.molforma.json"]
 ```
 
 For automated processing that needs no window, specify `"args": ["--mcp"]`. This mode starts with an empty document and needs neither DISPLAY nor Qt's display plugins. Both modes share 23 document and settings tools. `--mcp` adds 4 calculation and result tools, 27 in total. `--mcp-gui` adds 17 GUI, run and result tools, including the 4 tools of the same names, 40 in total. To test GUI features automatically without a display, you can set `QT_QPA_PLATFORM=offscreen` and `MOLFORMA_RENDERER=painter` for `--mcp-gui`.
@@ -182,10 +182,10 @@ Moving fixed atoms, invalid references, duplicate coordinates, invalid arguments
 | `measure` | Distance, angle or dihedral of 2/3/4 atoms |
 | `set_dimension` | Set the distance (Å), angle or dihedral (degrees) of 2/3/4 atoms. As in the GUI, moves the side of the later atom (for separate, unbonded molecules, the whole molecule of the later atom) |
 | `set_atom_properties` | Change the element (adjust hydrogens with `hydrogens`), formal charge, unpaired electrons, isotope (mass number, 0 to clear) or mass (amu), fixed, ghost and atom name of atoms by stable ID |
-| `import_document` | Import an XYZ string or the JSON string of a MolForma project (`.kgui.json`, version 2). With `append: true`, XYZ is added beside the current molecule |
+| `import_document` | Import an XYZ string or the JSON string of a MolForma project (`.molforma.json`, version 1). With `append: true`, XYZ is added beside the current molecule |
 | `open_file` | Import local XYZ/MOL/SDF/Mol2/CML/PDB/MolForma project files and NWChem or Gaussian input. `frame` selects the frame of multi-frame XYZ |
 | `export_document` | XYZ of the confirmed document, MolForma project JSON, validated NWChem input string |
-| `save_file` | Save the confirmed document as a MolForma project (`.kgui.json`). An existing file needs `overwrite: true` or the user's approval to overwrite |
+| `save_file` | Save the confirmed document as a MolForma project (`.molforma.json`). An existing file needs `overwrite: true` or the user's approval to overwrite |
 | `get_nwchem` / `set_nwchem` | Get calculation settings, defaults, options (`choices`) and validation results, and change settings. Includes solvent (SMD, solvent name), relativistic effects, RI-J, properties, transition state search, IRC, constraints (`constraints`, atoms by stable ID), scans (`scan_atoms` etc.), BSSE and the follow-up single point. The additional input (`extra_input` / `extra_tasks`) cannot be changed. Only errors the change brings in refuse it; errors already there (no atoms yet, a multiplicity still to be set) do not block other settings |
 | `get_advanced` / `set_advanced` | Get and change the types, options, applicability conditions and values of the advanced and visualization output settings. `null` resets an individual setting |
 | `get_execution` / `set_execution` | Get and change the executable, MPI, number of threads, working locations, environment variables and time limit (errors in the calculation settings do not block execution settings; `set_advanced` likewise refuses only errors its change brings in) |

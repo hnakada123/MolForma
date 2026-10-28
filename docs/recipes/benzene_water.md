@@ -9,7 +9,7 @@
 | 計算 | MP2/6-31G*、一点エネルギー、BSSE補正 |
 | 計算時間の目安 | 約20秒（MPI 6プロセス） |
 | 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
-| 練習データ | [`benzene_water.kgui.json`](samples/benzene_water.kgui.json) |
+| 練習データ | [`benzene_water.molforma.json`](samples/benzene_water.molforma.json) |
 
 ![環の上に水を置いたベンゼン–水二量体（+X方向から）](images/benzene_water.png)
 

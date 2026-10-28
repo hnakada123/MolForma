@@ -1,6 +1,6 @@
 # Recipe 16 Your own parts (My parts)
 
-Build a trimethylsilyl group –Si(CH₃)₃, which is not among the substituent templates, choose its attachment point and save it as one of “My parts”. Saved parts appear in the category “My parts” of the palette and, like the built-in substituents, replace the hydrogen you click. Pass parts as files (`.kpart.json`) and optimize a molecule built with one.
+Build a trimethylsilyl group –Si(CH₃)₃, which is not among the substituent templates, choose its attachment point and save it as one of “My parts”. Saved parts appear in the category “My parts” of the palette and, like the built-in substituents, replace the hydrogen you click. Pass parts as files (`.molforma-part.json`) and optimize a molecule built with one.
 
 | What you build | Details |
 | --- | --- |
@@ -10,7 +10,7 @@ Build a trimethylsilyl group –Si(CH₃)₃, which is not among the substituent
 | Calculation | B3LYP/6-31G*, geometry optimization |
 | Run time | About 48 minutes (8 MPI processes, alongside other runs; 40 steps from the methyl rotations) |
 | Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
-| Practice data | [`trimethylsilyl.kpart.json`](../../recipes/samples/trimethylsilyl.kpart.json) (the part), [`tms_benzene.kgui.json`](../../recipes/samples/tms_benzene.kgui.json) |
+| Practice data | [`trimethylsilyl.molforma-part.json`](../../recipes/samples/trimethylsilyl.molforma-part.json) (the part), [`tms_benzene.molforma.json`](../../recipes/samples/tms_benzene.molforma.json) |
 
 ![Benzene with the trimethylsilyl group from My parts](images/my_parts.png)
 
@@ -50,7 +50,7 @@ A substituent part is attached at “the inner end of its one outgoing bond”. 
 
    **Figure 5** Choose the kind of part.
 
-4. You are asked where to save the part file; save it as `trimethylsilyl.kpart.json` or similar. “Trimethylsilyl” appears in the category “My parts”.
+4. You are asked where to save the part file; save it as `trimethylsilyl.molforma-part.json` or similar. “Trimethylsilyl” appears in the category “My parts”.
 
    ![The category “My parts” after saving, listing “Trimethylsilyl”](images/my_parts/06_my_parts.png)
 

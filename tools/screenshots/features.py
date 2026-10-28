@@ -29,7 +29,7 @@ def jobs():
     """Ethanol (with MOLDEN output) and dimethyl ether at the same level, so that history can compare ΔE."""
     g = Gui("ja")
     try:
-        g.open(SAMPLES + "ethanol.kgui.json")
+        g.open(SAMPLES + "ethanol.molforma.json")
         g.setup_execution(8)
         g.edit("set_advanced", settings={"molden_output": True})
         g.edit("set_nwchem", settings={"start": "ethanol"})
@@ -66,11 +66,11 @@ def run(language):
     g = Shots(language, [])
     try:
         if language == "ja":
-            g.open(SAMPLES + "p_nitroaniline.kgui.json")
+            g.open(SAMPLES + "p_nitroaniline.molforma.json")
             g.setup_execution(4)
             g.edit("set_nwchem", settings={"start": "p_nitroaniline"})
         else:
-            g.open(SAMPLES + "ethanol.kgui.json")
+            g.open(SAMPLES + "ethanol.molforma.json")
             g.setup_execution(4)
             g.tool("chemistry", action="smiles", smiles="CC=O")
             g.idle()
@@ -92,7 +92,7 @@ def shots(language, pages):
     T = g.T
     try:
         if g.want("molecule"):
-            g.fresh("p_nitroaniline.kgui.json")
+            g.fresh("p_nitroaniline.molforma.json")
             g.activate("quickElement_N")
             g.snap("molecule/01_window")
             g.activate("toolAction_select")
@@ -115,12 +115,12 @@ def shots(language, pages):
             g.key(modal, "Escape")
 
         if g.want("molecule_pages"):
-            g.fresh("ethanol.kgui.json")
+            g.fresh("ethanol.molforma.json")
             atoms, bonds = g.atoms()
             el = elements(atoms)
             g.select_atoms([next(a for a in el if el[a] == "O")])
             g.snap("molecule_pages/01_edit")
-            g.fresh("lactic_R.kgui.json")
+            g.fresh("lactic_R.molforma.json")
             atoms, bonds = g.atoms()
             el = elements(atoms)
             g.select("propertyTabs", index=1)
@@ -129,25 +129,25 @@ def shots(language, pages):
                           and len([n for n in neighbors(bonds, a) if el[n] != "H"]) == 3)
             g.select_atoms([center])
             g.snap("molecule_pages/02_transform")
-            g.fresh("co_en_complex.kgui.json")
+            g.fresh("co_en_complex.molforma.json")
             atoms, _ = g.atoms()
             g.select("propertyTabs", index=3)
             g.select_atoms([a["id"] for a in atoms if a["element"] == "Co"])
             g.snap("molecule_pages/03_coordination")
-            g.fresh("ace_ahe_nme.kgui.json")
+            g.fresh("ace_ahe_nme.molforma.json")
             g.select("propertyTabs", index=4)
             g.snap("molecule_pages/04_residue")
-            g.fresh("na_h2o4_charges.kgui.json")
+            g.fresh("na_h2o4_charges.molforma.json")
             g.select("propertyTabs", index=5)
             g.snap("molecule_pages/05_charge")
-            g.fresh("sf6.kgui.json")
+            g.fresh("sf6.molforma.json")
             g.activate("symmetryAction", seconds=1.0)
             modal = g.modal()
             g.snap("molecule_pages/06_symmetry", modal)
             g.key(modal, "Escape")
 
         if g.want("coordinates"):
-            g.fresh("ethanol_od.kgui.json")
+            g.fresh("ethanol_od.molforma.json")
             atoms, bonds = g.atoms()
             el = elements(atoms)
             oxygen = next(a for a in el if el[a] == "O")
@@ -161,14 +161,14 @@ def shots(language, pages):
             g.activate("moleculeLayout_view", seconds=0.4)
 
         if g.want("calculation"):
-            g.fresh("ethanol.kgui.json")
+            g.fresh("ethanol.molforma.json")
             g.tab(1)
             g.snap("calculation/01_overview")
-            g.fresh("phenoxyl.kgui.json")
+            g.fresh("phenoxyl.molforma.json")
             g.tab(1)
             g.set("nwchem_multiplicity", 1, seconds=0.6)  # 49 electrons: an error to fix.
             g.snap("calculation/02_diagnostics")
-            g.fresh("p_nitroaniline_tddft.kgui.json")
+            g.fresh("p_nitroaniline_tddft.molforma.json")
             g.tab(1)
             g.activate("calculationChangeFilter_changed", seconds=0.6)
             g.snap("calculation/03_changed")
@@ -180,7 +180,7 @@ def shots(language, pages):
                 g.select("calculationSections", index=next(r["row"] for r in rows if r["cells"][0]["data"] == key),
                          seconds=0.6)
 
-            g.fresh("ethanol.kgui.json")
+            g.fresh("ethanol.molforma.json")
             g.tab(1)
             g.activate("calculationDetails_convergence", seconds=0.6)
             g.set("advanced_dft_energy", "1e-8", seconds=0.6)
@@ -194,13 +194,13 @@ def shots(language, pages):
             g.snap("advanced/02_output")
 
         if g.want("execution"):
-            g.fresh("ethanol.kgui.json")
+            g.fresh("ethanol.molforma.json")
             g.tab(2)
             g.activate("executionCheck", seconds=0.8)
             g.snap("execution/01_settings")
 
         if g.want("input_preview"):
-            g.fresh("ethanol.kgui.json")
+            g.fresh("ethanol.molforma.json")
             g.edit("set_advanced", settings={"molden_output": True, "dft_energy": 1e-8})
             g.tab(3)
             line = g.item("inputPreviewText")["text"].split("\n").index("dft") + 1
@@ -213,7 +213,7 @@ def shots(language, pages):
         if g.want("results"):
             job = next(d for d in sorted(os.listdir(JOBS)) if d.startswith("ethanol-"))
             folder = f"{APP_JOBS}/{job}"
-            g.fresh("ethanol.kgui.json")
+            g.fresh("ethanol.molforma.json")
             g.tool("results_action", action="open_directory", path=folder)
             g.idle()
             g.tab(4)
@@ -256,7 +256,7 @@ def shots(language, pages):
             g.activate("historyCompareOff")
 
         if g.want("rendering"):
-            g.fresh("ace_ae_nme.kgui.json")
+            g.fresh("ace_ae_nme.molforma.json")
             atoms, bonds = g.atoms()
             el = elements(atoms)
             position = {a["id"]: a["position"] for a in atoms}
@@ -270,7 +270,7 @@ def shots(language, pages):
             g.select_atoms([])
             g.snap("rendering/01_hydrogen_bonds")
             g.activate(g.find(T("水素結合を表示")), seconds=0.2)
-            g.fresh("caffeine.kgui.json")
+            g.fresh("caffeine.molforma.json")
             g.activate(g.find(T("空間充填（CPK）")), seconds=0.6)
             g.activate("labelMode_none", seconds=0.4)
             g.snap("rendering/02_space_filling")
@@ -280,7 +280,7 @@ def shots(language, pages):
         if g.want("app"):
             # The second figure of the page is the window in the other language (molecule/01_window):
             # Preferences hold run settings, which MCP may not operate.
-            g.fresh("ethanol.kgui.json")
+            g.fresh("ethanol.molforma.json")
             g.activate("manualAction", seconds=1.5)
             modal = g.modal()
             g.snap("app/01_manual", modal)
@@ -288,7 +288,7 @@ def shots(language, pages):
 
         if g.want("ai"):
             g.fresh()
-            g.open(SAMPLES + "caffeine.kgui.json")
+            g.open(SAMPLES + "caffeine.molforma.json")
             atoms, _ = g.atoms()
             g.select_atoms([a["id"] for a in atoms if a["element"] == "N"])
             g.snap("ai/01_mcp_gui")

@@ -1,6 +1,6 @@
 # 題材16 自作の部品（マイ部品）
 
-置換基テンプレートにないトリメチルシリル基 –Si(CH₃)₃ を組み、接続点を決めて「マイ部品」として保存します。保存した部品はパレットの分類「マイ部品」に並び、組込みの置換基と同じく、クリックした水素を置き換えて付けられます。部品ファイル（`.kpart.json`）で受け渡す方法と、付けた分子の構造最適化も確かめます。
+置換基テンプレートにないトリメチルシリル基 –Si(CH₃)₃ を組み、接続点を決めて「マイ部品」として保存します。保存した部品はパレットの分類「マイ部品」に並び、組込みの置換基と同じく、クリックした水素を置き換えて付けられます。部品ファイル（`.molforma-part.json`）で受け渡す方法と、付けた分子の構造最適化も確かめます。
 
 | 作るもの | 内容 |
 | --- | --- |
@@ -10,7 +10,7 @@
 | 計算 | B3LYP/6-31G*、構造最適化 |
 | 計算時間の目安 | 約48分（MPI 8プロセス、ほかの計算と並行。メチル基の回転で40ステップ） |
 | 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
-| 練習データ | [`trimethylsilyl.kpart.json`](samples/trimethylsilyl.kpart.json)（部品）、[`tms_benzene.kgui.json`](samples/tms_benzene.kgui.json) |
+| 練習データ | [`trimethylsilyl.molforma-part.json`](samples/trimethylsilyl.molforma-part.json)（部品）、[`tms_benzene.molforma.json`](samples/tms_benzene.molforma.json) |
 
 ![マイ部品のトリメチルシリル基を付けたベンゼン](images/my_parts.png)
 
@@ -50,7 +50,7 @@
 
    **図5** 部品の種類を選びます。
 
-4. 部品ファイルの保存先を聞かれるので、`trimethylsilyl.kpart.json` などの名前で保存します。分類「マイ部品」の一覧に「トリメチルシリル」が並びます。
+4. 部品ファイルの保存先を聞かれるので、`trimethylsilyl.molforma-part.json` などの名前で保存します。分類「マイ部品」の一覧に「トリメチルシリル」が並びます。
 
    ![保存後の分類「マイ部品」。一覧に「トリメチルシリル」が並んでいる](images/my_parts/06_my_parts.png)
 

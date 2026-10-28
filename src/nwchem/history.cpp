@@ -57,7 +57,7 @@ QJsonObject manifest(const QString &directory) {
         fail(tr("実行状態が不明です。"));
     if (m["status"] == "finished" && (!m["exit_code"].isDouble() || m["exit_code"].toDouble() != 0))
         fail(tr("終了状態と終了コードが一致しません。"));
-    for (auto pair : {qMakePair("input", "input.nw"), qMakePair("project", "project.kgui.json"),
+    for (auto pair : {qMakePair("input", "input.nw"), qMakePair("project", "project.molforma.json"),
                       qMakePair("stdout", "output.out"), qMakePair("stderr", "stderr.err")})
         if (m[pair.first] != pair.second)
             fail(tr("実行記録のファイル名が未対応です。"));
@@ -124,7 +124,7 @@ HistoryEntry readHistoryEntry(const QString &directory) {
         e.orphaned = pending(e.status) && executionProcessGone(e.manifest);
         auto calculation = e.manifest["calculation"].toObject();
         if (calculation.isEmpty()) {
-            const auto project = parseJson(bytes(e.directory, "project.kgui.json", projectLimit));
+            const auto project = parseJson(bytes(e.directory, "project.molforma.json", projectLimit));
             calculation = project["document"].toObject()["nwchem"].toObject();
             auto defaults = nwchemDefaults();
             for (auto i = calculation.begin(); i != calculation.end(); ++i)
@@ -148,7 +148,7 @@ HistoryEntry readHistoryEntry(const QString &directory) {
         e.formula = e.manifest["formula"].toString();
         if (e.formula.isEmpty())
             e.formula =
-                Document::fromProject(parseJson(bytes(e.directory, "project.kgui.json", projectLimit)))
+                Document::fromProject(parseJson(bytes(e.directory, "project.molforma.json", projectLimit)))
                     .formula();
     } catch (const std::exception &error) {
         e.warnings << QString::fromUtf8(error.what());
@@ -255,7 +255,7 @@ void setHistoryMemo(const QString &directory, const QString &text) {
     writeFile(path, text.trimmed().toUtf8() + '\n');
 }
 HistoryMolecule historyMolecule(const QString &directory) {
-    const auto d = Document::fromProject(parseJson(bytes(directory, "project.kgui.json", projectLimit)));
+    const auto d = Document::fromProject(parseJson(bytes(directory, "project.molforma.json", projectLimit)));
     return {int(d.atoms.size()), d.job()["charge"].toInt(), d.job()["multiplicity"].toInt(1)};
 }
 QString historyIncomparable(const HistoryEntry &e, const HistoryEntry &reference) {
@@ -289,7 +289,7 @@ QString historyIntegrity(const HistoryEntry &e) {
         checkDigest(bytes(e.directory, "input.nw", projectLimit), m, "input_sha256", inputMismatch());
         if (!m.contains("project_sha256"))
             return tr("入力SHA-256一致。旧記録のためプロジェクトの照合情報なし。");
-        checkDigest(bytes(e.directory, "project.kgui.json", projectLimit), m, "project_sha256",
+        checkDigest(bytes(e.directory, "project.molforma.json", projectLimit), m, "project_sha256",
                     projectMismatch());
         return tr("入力・プロジェクトのSHA-256一致。");
     } catch (const std::exception &error) {
@@ -299,7 +299,7 @@ QString historyIntegrity(const HistoryEntry &e) {
 Document historyDocument(const QString &directory) {
     const auto m = manifest(directory);
     const auto input = bytes(directory, "input.nw", projectLimit);
-    const auto project = bytes(directory, "project.kgui.json", projectLimit);
+    const auto project = bytes(directory, "project.molforma.json", projectLimit);
     checkDigest(input, m, "input_sha256", inputMismatch());
     checkDigest(project, m, "project_sha256", projectMismatch());
     auto d = Document::fromProject(parseJson(project));

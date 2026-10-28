@@ -33,7 +33,7 @@ QT_QPA_PLATFORM=offscreen ./build/test_editor someTestFunction   # one Qt Test s
 - New source files must be added to the explicit lists in `CMakeLists.txt` (no globbing).
 - Format: `rg --files src tests -g '*.h' -g '*.cpp' -0 | xargs -0 clang-format -i` (uses `.clang-format`).
 - Headless screenshot for UI checks:
-  `QT_QPA_PLATFORM=offscreen ./build/molforma tests/fixtures/ala_gly_ser.kgui.json --screenshot /tmp/molforma.png`.
+  `QT_QPA_PLATFORM=offscreen ./build/molforma tests/fixtures/ala_gly_ser.molforma.json --screenshot /tmp/molforma.png`.
   `MOLFORMA_RENDERER=painter` forces the QPainter renderer.
 
 ## Architecture
@@ -60,8 +60,8 @@ Key cross-cutting designs:
 
 - **Document model**: `mf::Document` (`model/document.*`) holds atoms with stable IDs, bonds, residues,
   coordination centers, fragments, fixed atoms, isotopes, point charges and calculation/execution settings, and
-  serializes to the `.kgui.json` project envelope (format version 2, MolForma's own project format; keep its
-  format identifier unchanged for compatibility). Atom references are stored by stable ID and only
+  serializes to the `.molforma.json` project envelope (format `molforma-project`, version 1). Atom references are
+  stored by stable ID and only
   translated to indices at export (NWChem input, XYZ). Coordinates are doubles in Å; camera/view never edits them.
 - **Edit → candidate → commit**: UI edits operate on a copy of the document and commit only after validation.
   Operations such as ligand placement, sequence building, deletion and refinement produce a *candidate* shown
@@ -117,7 +117,7 @@ Key cross-cutting designs:
 ## Conventions
 
 - Add deterministic regression tests, especially for file compatibility, connectivity, geometry, undo and
-  candidates. Preserve project envelope fields in `.kgui.json`.
+  candidates. Preserve project envelope fields in `.molforma.json`.
 - Document feature limitations in the page of the screen in `docs/features/` (Japanese; `docs/features.md` lists the
   pages); MCP tool changes belong in `docs/mcp.md`. Keep the English manuals `docs/en/features*` / `docs/en/mcp.md`
   and the recipes `docs/en/recipes*` (shown by the English UI) in step; `test_translations` compares their headings

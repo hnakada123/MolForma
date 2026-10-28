@@ -35,7 +35,7 @@ namespace {
 const QStringList managedEnvironment{"OMP_NUM_THREADS",      "OMP_STACKSIZE",    "OMP_DYNAMIC",
                                      "OPENBLAS_NUM_THREADS", "GOTO_NUM_THREADS", "MKL_NUM_THREADS",
                                      "MKL_DYNAMIC",          "BLIS_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"};
-const QStringList bundleFiles{"input.nw", "project.kgui.json", "run.json", "output.out", "stderr.err"};
+const QStringList bundleFiles{"input.nw", "project.molforma.json", "run.json", "output.out", "stderr.err"};
 bool controls(const QString &s) {
     return s.contains(QRegularExpression("[\\x00-\\x1f\\x7f]"));
 }
@@ -340,7 +340,7 @@ ExecutionPlan executionPlan(const Document &d, const QString &base, const QStrin
                   {"input", "input.nw"},
                   {"stdout", "output.out"},
                   {"stderr", "stderr.err"},
-                  {"project", "project.kgui.json"},
+                  {"project", "project.molforma.json"},
                   {"timeout_seconds", p.timeoutSeconds},
                   {"input_sha256",
                    QString::fromLatin1(
@@ -396,7 +396,7 @@ ExecutionPlan saveExecutionBundle(const Document &d, const QString &base, bool f
     if (!errors.isEmpty())
         fail(errors.join('\n'));
     const auto project = QJsonDocument(d.project()).toJson();
-    writeFile(directory.filePath("project.kgui.json"), project);
+    writeFile(directory.filePath("project.molforma.json"), project);
     plan.manifest["project_sha256"] =
         QString::fromLatin1(QCryptographicHash::hash(project, QCryptographicHash::Sha256).toHex());
     writeManifest(plan);

@@ -9,7 +9,7 @@
 | 計算 | B3LYP/6-31G*、最適化 → 振動数 |
 | 計算時間の目安 | SF₆ 約4分、PF₅ 約2分（MPI 8プロセス） |
 | 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
-| 練習データ | [`sf6.kgui.json`](samples/sf6.kgui.json)、[`pf5.kgui.json`](samples/pf5.kgui.json) |
+| 練習データ | [`sf6.molforma.json`](samples/sf6.molforma.json)、[`pf5.molforma.json`](samples/pf5.molforma.json) |
 
 ![硫黄を八面体の中心にしたSF6](images/main_group.png)
 

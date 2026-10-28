@@ -9,13 +9,13 @@ Make the O–H hydrogen of optimized ethanol a deuterium and compute the frequen
 | Calculation | B3LYP/6-31G*, frequencies (at the structure optimized in [recipe 1](atoms_and_bonds.md)) |
 | Run time | About 1 minute (8 MPI processes) |
 | Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
-| Practice data | [`ethanol_opt.kgui.json`](../../recipes/samples/ethanol_opt.kgui.json) (optimized structure), [`ethanol_od.kgui.json`](../../recipes/samples/ethanol_od.kgui.json) (O–D) |
+| Practice data | [`ethanol_opt.molforma.json`](../../recipes/samples/ethanol_opt.molforma.json) (optimized structure), [`ethanol_od.molforma.json`](../../recipes/samples/ethanol_od.molforma.json) (O–D) |
 
 ![Ethanol with deuterium on oxygen and the mass in the coordinate table](images/isotopes.png)
 
 ## 1. Start from the optimized structure
 
-Frequencies are computed at a structure optimized with the same method and basis. Bring the result of [recipe 1](atoms_and_bonds.md) into “1 Molecule” with “History” → “Open in result viewer” → “Apply as candidate”, and confirm ([recipe 14](reuse_result.md)). The practice file `ethanol_opt.kgui.json` is that state.
+Frequencies are computed at a structure optimized with the same method and basis. Bring the result of [recipe 1](atoms_and_bonds.md) into “1 Molecule” with “History” → “Open in result viewer” → “Apply as candidate”, and confirm ([recipe 14](reuse_result.md)). The practice file `ethanol_opt.molforma.json` is that state.
 
 ## 2. Make the hydrogen a deuterium
 

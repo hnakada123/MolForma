@@ -90,7 +90,7 @@ class ExecutionTest : public QObject {
         applyExecutionPreferences(fresh);
         QCOMPARE(executionSettings(fresh)["executable"].toString(), helper);
         QVERIFY(!fresh.data["nwchem_execution"].toObject().contains("launcher")); // Defaults stay implicit.
-        const auto xyz = files.filePath("preferred.xyz"), project = files.filePath("own.kgui.json");
+        const auto xyz = files.filePath("preferred.xyz"), project = files.filePath("own.molforma.json");
         writeFile(xyz, "3\nwater\nO 0 0 0\nH .76 0 .5\nH -.76 0 .5\n");
         auto own = water();
         setExecutionSetting(own, "mpi_ranks", 3);
@@ -167,7 +167,7 @@ class ExecutionTest : public QObject {
         QVERIFY(first.directory != second.directory);
         QCOMPARE(QString::fromUtf8(readFile(first.directory + "/input.nw")), nwchemInput(d));
         QCOMPARE(readObject(first.directory + "/run.json")["status"].toString(), "prepared");
-        QCOMPARE(Document::fromProject(readObject(first.directory + "/project.kgui.json")).toJson(),
+        QCOMPARE(Document::fromProject(readObject(first.directory + "/project.molforma.json")).toJson(),
                  d.toJson());
         QVERIFY(!QFileInfo::exists(first.directory + "/output.out"));
         setExecutionSetting(d, "executable", helper);
@@ -502,7 +502,7 @@ class ExecutionTest : public QObject {
         QVERIFY(w.findChild<QLabel *>("executionStatePill")->text().contains("停止"));
     }
     void saveFocusedFieldsAndTeardown() {
-        const auto path = files.filePath("settings.kgui.json");
+        const auto path = files.filePath("settings.molforma.json");
         configured().save(path);
         MainWindow w;
         w.loadPath(path);

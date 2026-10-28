@@ -260,7 +260,7 @@ class CoreTest : public QObject {
                                {"sn2_reactant", "CH3ClF", 6, -1, 1, "task dft optimize"},
                                {"tms_benzene", "C9H14Si", 24, 0, 1, "task dft optimize"}};
         for (const auto &s : samples) {
-            const auto d = Document::load(QString(RECIPES_DIR) + "/" + s.name + ".kgui.json");
+            const auto d = Document::load(QString(RECIPES_DIR) + "/" + s.name + ".molforma.json");
             QVERIFY2(d.formula() == s.formula, s.name);
             QVERIFY2(d.atoms.size() == s.atoms, s.name);
             QVERIFY2(d.job()["charge"].toInt() == s.charge, s.name);
@@ -270,10 +270,10 @@ class CoreTest : public QObject {
             QVERIFY2(nwchemInput(d).contains(s.input), s.name);
             QVERIFY2(!d.data.contains("nwchem_execution"), s.name); // No local run settings or paths.
         }
-        QCOMPARE(Document::load(RECIPES_DIR "/lactic_R.kgui.json").atoms[0].stereo, QString("R"));
-        QCOMPARE(Document::load(RECIPES_DIR "/lactic_S.kgui.json").atoms[0].stereo, QString("S"));
+        QCOMPARE(Document::load(RECIPES_DIR "/lactic_R.molforma.json").atoms[0].stereo, QString("R"));
+        QCOMPARE(Document::load(RECIPES_DIR "/lactic_S.molforma.json").atoms[0].stereo, QString("S"));
         // The part of recipe 16 replaces a hydrogen of benzene; the 2D file of recipe 4 has no hydrogens.
-        QFile file(RECIPES_DIR "/trimethylsilyl.kpart.json");
+        QFile file(RECIPES_DIR "/trimethylsilyl.molforma-part.json");
         QVERIFY(file.open(QIODevice::ReadOnly));
         const auto part = QJsonDocument::fromJson(file.readAll()).object();
         QCOMPARE(part["category"].toString(), QString("substituent"));
@@ -289,10 +289,13 @@ class CoreTest : public QObject {
     }
     void projectRoundTrip() {
         for (auto name : {"benzoic_acid", "co_en", "ala_gly_ser", "water_dimer_counterpoise"}) {
-            auto d = Document::load(QString(FIXTURE_DIR) + "/" + name + ".kgui.json");
+            auto d = Document::load(QString(FIXTURE_DIR) + "/" + name + ".molforma.json");
             QTemporaryDir temp;
-            QString file = temp.filePath("test.kgui.json");
+            QString file = temp.filePath("test.molforma.json");
             d.save(file);
+            const auto saved = parseJson(readFile(file));
+            QCOMPARE(saved["format"].toString(), QString("molforma-project"));
+            QCOMPARE(saved["version"].toInt(), 1);
             auto copy = Document::load(file);
             QCOMPARE(copy.ids(), d.ids());
             QCOMPARE(copy.bonds.size(), d.bonds.size());

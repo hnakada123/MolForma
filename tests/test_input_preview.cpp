@@ -118,7 +118,7 @@ class InputPreviewTest : public QObject {
         setNwchemAdvanced(d, "vectors_input", "initial.movecs");
         setNwchemAdvanced(d, "vectors_output", "output/final.movecs");
         setNwchemAdvanced(d, "scratch_dir", "scratch");
-        const auto project = files.filePath("preview.kgui.json");
+        const auto project = files.filePath("preview.molforma.json");
         d.save(project);
         MainWindow w;
         w.loadPath(project);

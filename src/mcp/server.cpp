@@ -697,7 +697,7 @@ QJsonArray McpServer::toolList() const {
         {"ids"}, true, true);
     add("import_document",
         "Replace structure from XYZ text (preserving project metadata) or a complete "
-        "MolForma project JSON string (.kgui.json, version 2). With format xyz and append true, the XYZ "
+        "MolForma project JSON string (.molforma.json, version 1). With format xyz and append true, the XYZ "
         "molecule is added 3 Å "
         "beside the current one instead (e.g. to build a dimer). This is undoable.",
         {{"format", choice({"xyz", "project"})}, {"text", type("string")}, {"append", type("boolean")}},
@@ -715,7 +715,7 @@ QJsonArray McpServer::toolList() const {
         "Return the committed document as XYZ, MolForma project JSON, or validated NWChem input.",
         {{"format", choice({"xyz", "project", "nwchem"})}}, {"format"});
     add("save_file",
-        "Save the committed MolForma project (.kgui.json) locally. Refuse existing paths unless "
+        "Save the committed MolForma project (.molforma.json) locally. Refuse existing paths unless "
         "overwrite is true; reject pending candidates. Does not mark GUI history clean.",
         {{"path", type("string")}, {"overwrite", type("boolean")}, {"expectedRevision", type("string")}},
         {"path", "expectedRevision"});

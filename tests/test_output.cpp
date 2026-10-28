@@ -289,7 +289,7 @@ class OutputTest : public QObject {
                 if (result.format == "CUBE")
                     QVERIFY(!result.surface.isEmpty() || nwchemAdvanced(d)["cube_type"] == "spin_density");
             }
-            d.save(root + '/' + name + ".kgui.json");
+            d.save(root + '/' + name + ".molforma.json");
             writeFile(root + '/' + name + "-directory.txt", folder.toUtf8());
         };
         runCase(water(), "hf_density");

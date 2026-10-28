@@ -9,7 +9,7 @@
 | 計算 | B3LYP/6-31G*、最適化 → 振動数 |
 | 計算時間の目安 | 約2分（MPI 4プロセス） |
 | 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
-| 練習データ | [`ethanol.kgui.json`](samples/ethanol.kgui.json)（整形後の初期構造と計算条件） |
+| 練習データ | [`ethanol.molforma.json`](samples/ethanol.molforma.json)（整形後の初期構造と計算条件） |
 
 ![組み立てたエタノールと距離の表示](images/atoms_and_bonds.png)
 

@@ -5,7 +5,7 @@
     <comment xml:lang="ja">MolFormaプロジェクト</comment>
     <sub-class-of type="application/json"/>
     <generic-icon name="molforma"/>
-    <glob pattern="*.kgui.json" weight="60"/>
+    <glob pattern="*.molforma.json" weight="60"/>
   </mime-type>
   <mime-type type="text/x-nwchem-input">
     <comment>NWChem input</comment>

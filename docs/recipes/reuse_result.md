@@ -9,13 +9,13 @@
 | 計算 | CAM-B3LYP/6-31+G*、一点エネルギー＋TDDFT（10状態、一重項） |
 | 計算時間の目安 | 約42分（MPI 6プロセス） |
 | 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
-| 練習データ | [`p_nitroaniline_tddft.kgui.json`](samples/p_nitroaniline_tddft.kgui.json)（取り込んだ構造とTDDFTの条件） |
+| 練習データ | [`p_nitroaniline_tddft.molforma.json`](samples/p_nitroaniline_tddft.molforma.json)（取り込んだ構造とTDDFTの条件） |
 
 ![励起状態タブの吸収スペクトル](images/reuse_result.png)
 
 ## 1. 計算した構造を取り込む
 
-1. [題材3](aromatic_substitution.md)のプロジェクト（`p_nitroaniline.kgui.json`）を開きます。分子は計算前の初期構造です。
+1. [題材3](aromatic_substitution.md)のプロジェクト（`p_nitroaniline.molforma.json`）を開きます。分子は計算前の初期構造です。
 2. ヘッダーの「履歴」を開きます。「3 実行設定」のジョブ保存先にあるジョブが、計算名（既定の計算名のままならタイトル）・組成・手法・目的・エネルギーとともに並びます。
 3. p-ニトロアニリンのジョブを選び、右側の「結果ビューアで開く」を押します（行のダブルクリックでも同じ）。
 

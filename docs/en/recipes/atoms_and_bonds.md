@@ -9,7 +9,7 @@ Build a molecule with the element buttons and the “Place”, “Bond” and �
 | Calculation | B3LYP/6-31G*, optimization → frequencies |
 | Run time | About 2 minutes (4 MPI processes) |
 | Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
-| Practice data | [`ethanol.kgui.json`](../../recipes/samples/ethanol.kgui.json) (cleaned-up starting structure and settings) |
+| Practice data | [`ethanol.molforma.json`](../../recipes/samples/ethanol.molforma.json) (cleaned-up starting structure and settings) |
 
 ![Ethanol built from atoms, with a measured distance](images/atoms_and_bonds.png)
 

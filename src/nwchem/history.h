@@ -39,7 +39,7 @@ QString historyCsv(const QVector<HistoryEntry> &entries);
 // The user's note on a job: memo.txt in the job folder, outside the files the bundle hashes.
 QString historyMemo(const QString &directory);
 void setHistoryMemo(const QString &directory, const QString &text);
-// The molecule a job was saved with (its project.kgui.json): the atoms, ghosts included, the charge
+// The molecule a job was saved with (its project.molforma.json): the atoms, ghosts included, the charge
 // and the multiplicity.
 struct HistoryMolecule {
     int atoms = 0, charge = 0, multiplicity = 1;

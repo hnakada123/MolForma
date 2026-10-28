@@ -47,7 +47,7 @@ MCPクライアントのサーバー設定で、実行ファイルの絶対パ�
 `--mcp-gui` はクライアントが新しいMolFormaウィンドウを起動し、そのウィンドウの文書を操作します。既に起動している別のウィンドウには接続しません。GUIの表示には通常のデスクトップ環境が必要です。起動時のファイルも指定できます。
 
 ```json
-"args": ["--mcp-gui", "/absolute/path/to/molecule.kgui.json"]
+"args": ["--mcp-gui", "/absolute/path/to/molecule.molforma.json"]
 ```
 
 画面が不要な自動処理では `"args": ["--mcp"]` を指定します。このモードは空の文書で始まり、DISPLAYやQtの画面用プラグインを必要としません。両モードは23個の文書・設定ツールを共有します。`--mcp` はさらに計算・結果用の4ツールを提供し、合計27個です。`--mcp-gui` は同名の4ツールを含む17個のGUI・実行・結果ツールを提供し、合計40個です。GUI機能を表示なしで自動検証する場合は `--mcp-gui` に `QT_QPA_PLATFORM=offscreen`、`MOLFORMA_RENDERER=painter` を設定できます。
@@ -182,10 +182,10 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `measure` | 2/3/4原子の距離・角度・二面角 |
 | `set_dimension` | 2/3/4原子の距離（Å）・角度・二面角（度）の設定。GUIと同じく後の原子の側（結合していない別々の分子では後の原子の分子全体）を動かす |
 | `set_atom_properties` | 安定IDの原子の元素（`hydrogens` で水素の調整）、形式電荷、不対電子、同位体（質量数、0で解除）または質量（amu）、固定、ゴースト、原子名の変更 |
-| `import_document` | XYZ文字列またはMolFormaプロジェクト（`.kgui.json`、version 2）のJSON文字列の取込。XYZは `append: true` で今の分子の横に追加 |
+| `import_document` | XYZ文字列またはMolFormaプロジェクト（`.molforma.json`、version 1）のJSON文字列の取込。XYZは `append: true` で今の分子の横に追加 |
 | `open_file` | ローカルXYZ/MOL/SDF/Mol2/CML/PDB/MolFormaプロジェクト、NWChem・Gaussian入力の取込。複数フレームのXYZは `frame` で選択 |
 | `export_document` | 確定文書のXYZ、MolFormaプロジェクトのJSON、検証済みNWChem入力文字列 |
-| `save_file` | 確定文書をMolFormaプロジェクト（`.kgui.json`）として保存。既存ファイルは `overwrite: true` か、利用者の上書き承認が必要 |
+| `save_file` | 確定文書をMolFormaプロジェクト（`.molforma.json`）として保存。既存ファイルは `overwrite: true` か、利用者の上書き承認が必要 |
 | `get_nwchem` / `set_nwchem` | 計算条件・既定値・選択肢（`choices`）・検証結果の取得と条件変更。溶媒（SMD・溶媒名）、相対論、RI-J、物性、遷移状態探索・IRC・拘束（`constraints`、原子は安定ID）・スキャン（`scan_atoms` 等）、BSSE、後続の一点計算を含む。追加入力（`extra_input` / `extra_tasks`）は変更不可。変更で新たに生じたエラーだけで拒否し、変更前からあるエラー（原子がまだない、多重度が未設定など）はほかの条件の変更を妨げない |
 | `get_advanced` / `set_advanced` | 詳細・可視化出力設定の型、選択肢、適用条件、値を取得・変更。`null` で個別リセット |
 | `get_execution` / `set_execution` | 実行ファイル、MPI、スレッド数、作業場所、環境変数、時間制限の取得・変更（計算条件のエラーは実行設定の変更を妨げない。`set_advanced` も同じく、変更で新たに生じたエラーだけで拒否） |

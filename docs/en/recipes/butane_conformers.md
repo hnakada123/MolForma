@@ -9,7 +9,7 @@ Put two methyl groups on ethane to make n-butane, choose four atoms in order to 
 | Calculation | B3LYP/6-31G*, relaxed scan (dihedral 180° → 0°, 13 points) |
 | Run time | About 92 minutes (2 MPI processes, alongside other runs; about 7 minutes per point) |
 | Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
-| Practice data | [`butane_anti.kgui.json`](../../recipes/samples/butane_anti.kgui.json), [`butane_gauche.kgui.json`](../../recipes/samples/butane_gauche.kgui.json), [`butane_scan.kgui.json`](../../recipes/samples/butane_scan.kgui.json) (with the scan settings) |
+| Practice data | [`butane_anti.molforma.json`](../../recipes/samples/butane_anti.molforma.json), [`butane_gauche.molforma.json`](../../recipes/samples/butane_gauche.molforma.json), [`butane_scan.molforma.json`](../../recipes/samples/butane_scan.molforma.json) (with the scan settings) |
 
 ![n-Butane with four atoms chosen and the dihedral shown](images/butane_conformers.png)
 
@@ -37,14 +37,14 @@ Put two methyl groups on ethane to make n-butane, choose four atoms in order to 
 
    **Figure 3** With four atoms chosen in order, the dihedral appears at the bottom left of the 3D view. The order defines the dihedral.
 
-3. Press “Clean up all” above the 3D view, confirm, and save as `butane_anti.kgui.json` with “File → Save as…”.
+3. Press “Clean up all” above the 3D view, confirm, and save as `butane_anti.molforma.json` with “File → Save as…”.
 4. With the four atoms still chosen, enter 60 in “Dihedral / °” at the bottom left and press “Apply dimension”. The side of the third atom (C2) turns about the C1–C2 bond, giving gauche.
 
    ![After entering 60 and “Apply dimension”: the C8 side has turned about C1–C2, and the bottom left shows “C3 – C1 – C2 – C8 = 60.0000 °”](images/butane_conformers/04_dihedral_gauche.png)
 
    **Figure 4** Entering 60 in “Dihedral / °” and pressing “Apply dimension” gives the gauche conformer.
 
-5. “Clean up all” opens the dihedral to about 65° (the force field relieves the methyl–methyl repulsion). Save as `butane_gauche.kgui.json`.
+5. “Clean up all” opens the dihedral to about 65° (the force field relieves the methyl–methyl repulsion). Save as `butane_gauche.molforma.json`.
 
 Turning a dihedral is refused for ring bonds, where one side cannot turn alone, and for sides that contain fixed atoms.
 

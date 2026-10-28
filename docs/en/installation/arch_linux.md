@@ -91,7 +91,7 @@ The package places these files (`pacman -Ql molforma-git` lists them). pacman's 
 | `/usr/bin/molforma` | The executable |
 | `/usr/share/applications/molforma.desktop` | The application menu entry |
 | `/usr/share/icons/hicolor/` | Icons (`scalable` and `256x256`) |
-| `/usr/share/mime/packages/molforma.xml` | The file types of `.kgui.json` (projects) and `.nw` (NWChem input) |
+| `/usr/share/mime/packages/molforma.xml` | The file types of `.molforma.json` (projects) and `.nw` (NWChem input) |
 | `/usr/share/molforma/` | LICENSE, NOTICE, README and the manual's Markdown (the manual is also built into the executable) |
 
 Run `molforma` in a terminal or choose “MolForma” in the application menu. If it does not appear in the KDE Plasma menu right away, run `kbuildsycoca6`. The interface language follows the system language (“Language (after restart)” in “Edit → Preferences…” switches it; it takes effect after a restart).

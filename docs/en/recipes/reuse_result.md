@@ -9,13 +9,13 @@ Call up the p-nitroaniline optimized in [recipe 3](aromatic_substitution.md) fro
 | Calculation | CAM-B3LYP/6-31+G*, single point + TDDFT (10 singlet states) |
 | Run time | About 42 minutes (6 MPI processes) |
 | Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
-| Practice data | [`p_nitroaniline_tddft.kgui.json`](../../recipes/samples/p_nitroaniline_tddft.kgui.json) (the imported structure and TDDFT settings) |
+| Practice data | [`p_nitroaniline_tddft.molforma.json`](../../recipes/samples/p_nitroaniline_tddft.molforma.json) (the imported structure and TDDFT settings) |
 
 ![The absorption spectrum in the Excited states tab](images/reuse_result.png)
 
 ## 1. Bring the calculated structure in
 
-1. Open the project of [recipe 3](aromatic_substitution.md) (`p_nitroaniline.kgui.json`). Its molecule is the starting structure from before the calculation.
+1. Open the project of [recipe 3](aromatic_substitution.md) (`p_nitroaniline.molforma.json`). Its molecule is the starting structure from before the calculation.
 2. Open “History” in the header. Jobs in the job folder of “3 Run settings” are listed with their calculation name (or title, for the default calculation name), composition, method, task and energy.
 3. Choose the p-nitroaniline job and press “Open in result viewer” on the right (or double-click the row).
 

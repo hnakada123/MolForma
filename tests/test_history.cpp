@@ -103,14 +103,14 @@ class HistoryTest : public QObject {
         QCOMPARE(molecule.multiplicity, 1);
         QCOMPARE(historyJobCount(tmp.filePath("jobs")), 3);
         QCOMPARE(historyJobCount(tmp.filePath("missing")), -1);
-        const auto before = readFile(p.directory + "/project.kgui.json");
+        const auto before = readFile(p.directory + "/project.molforma.json");
         auto next = historyDocument(p.directory);
         QCOMPARE(next.atoms[0].id, d.atoms[0].id);
         QVERIFY(next.atoms[0].fixed);
         QCOMPARE(next.envelope["future"], d.envelope["future"]);
         QCOMPARE(nwchemSettings(next), nwchemSettings(d));
         QCOMPARE(executionSettings(next)["reference_directory"].toString(), tmp.path());
-        QCOMPARE(readFile(p.directory + "/project.kgui.json"), before);
+        QCOMPARE(readFile(p.directory + "/project.molforma.json"), before);
         p.manifest.remove("calculation");
         p.manifest.remove("project_sha256");
         p.manifest.remove("project_directory");
@@ -125,7 +125,7 @@ class HistoryTest : public QObject {
         next = historyDocument(moved);
         QCOMPARE(executionSettings(next)["job_root"].toString(), tmp.path());
         QCOMPARE(readHistoryEntry(moved).directory, moved); // Never follow the original manifest directory.
-        QCOMPARE(readFile(moved + "/project.kgui.json"), before);
+        QCOMPARE(readFile(moved + "/project.molforma.json"), before);
     }
     void hashesBoundsMissingAndMalformed() {
         QTemporaryDir tmp;
@@ -135,10 +135,10 @@ class HistoryTest : public QObject {
         QVERIFY(historyIntegrity(readHistoryEntry(p.directory)).contains("一致しません"));
         QVERIFY_EXCEPTION_THROWN(historyDocument(p.directory), std::runtime_error);
         writeFile(p.directory + "/input.nw", input);
-        const auto project = readFile(p.directory + "/project.kgui.json");
-        writeFile(p.directory + "/project.kgui.json", project + " ");
+        const auto project = readFile(p.directory + "/project.molforma.json");
+        writeFile(p.directory + "/project.molforma.json", project + " ");
         QVERIFY_EXCEPTION_THROWN(historyDocument(p.directory), std::runtime_error);
-        writeFile(p.directory + "/project.kgui.json", project);
+        writeFile(p.directory + "/project.molforma.json", project);
         p.manifest["input"] = "../outside.nw";
         manifest(p, "prepared");
         QVERIFY(!readHistoryEntry(p.directory).valid);
@@ -153,7 +153,7 @@ class HistoryTest : public QObject {
         QVERIFY_EXCEPTION_THROWN(historyText(p.directory, "input.nw"), std::runtime_error);
 #ifdef Q_OS_UNIX
         QVERIFY(QFile::remove(p.directory + "/input.nw"));
-        QVERIFY(QFile::link(p.directory + "/project.kgui.json", p.directory + "/input.nw"));
+        QVERIFY(QFile::link(p.directory + "/project.molforma.json", p.directory + "/input.nw"));
         QVERIFY_EXCEPTION_THROWN(historyText(p.directory, "input.nw"), std::runtime_error);
 #endif
     }
@@ -489,7 +489,7 @@ class HistoryTest : public QObject {
         QCOMPARE(readFile(first.directory + "/input.nw"), savedInput);
         QVERIFY(!widget<ExecutionPanel>(w, "executionTab")->running());
         // Ctrl+S must ask for a new path, never overwrite the saved snapshot.
-        const auto savePath = tmp.filePath("reused.kgui.json");
+        const auto savePath = tmp.filePath("reused.molforma.json");
         bool prompted = false;
         QTimer::singleShot(50, &w, [&] {
             for (auto *top : QApplication::topLevelWidgets())

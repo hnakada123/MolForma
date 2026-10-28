@@ -106,7 +106,7 @@ def ethanol(g):
 
 def atoms_and_bonds(g):
     # The cover: the practice file opened, C1 and O8 chosen.
-    g.open_dialog(SAMPLES + "ethanol.kgui.json")
+    g.open_dialog(SAMPLES + "ethanol.molforma.json")
     g.activate("quickElement_C")
     g.activate("toolAction_select")
     g.highlight("atom:C")
@@ -136,7 +136,7 @@ def atoms_and_bonds_variations(g):
     g.confirm()
     g.activate("toolAction_select")
     # Saved and calculated (steps 4-5), so that the title and the status bar show them.
-    name = f"{g.language}_ethanol.kgui.json"
+    name = f"{g.language}_ethanol.molforma.json"
     os.makedirs(HOME / "MolForma" / "projects", exist_ok=True)
     if (HOME / "MolForma" / "projects" / name).exists():
         (HOME / "MolForma" / "projects" / name).unlink()
@@ -239,11 +239,11 @@ def my_parts(g):
     g.confirm()
     g.snap("my_parts/02_trimethylsilane")
     # The part, saved in the language of the window (the practice file has its Japanese name).
-    part = json.load(open(SAMPLES + "trimethylsilyl.kpart.json", encoding="utf-8"))
+    part = json.load(open(SAMPLES + "trimethylsilyl.molforma-part.json", encoding="utf-8"))
     if g.language != "ja":
         part.update(id="my:Trimethylsilyl", name_en="Trimethylsilyl", name_ja="Trimethylsilyl")
     os.makedirs(HOME / "MolForma" / "parts", exist_ok=True)
-    with open(HOME / "MolForma" / "parts" / "trimethylsilyl.kpart.json", "w", encoding="utf-8") as f:
+    with open(HOME / "MolForma" / "parts" / "trimethylsilyl.molforma-part.json", "w", encoding="utf-8") as f:
         json.dump(part, f, ensure_ascii=False)
     g.new()
     g.activate("paletteCategory_skeleton")
@@ -251,7 +251,7 @@ def my_parts(g):
     g.click_empty()
     g.activate("paletteCategory_my")
     g.activate("loadPart", seconds=0.8)
-    path = f"{APP_HOME}/MolForma/parts/trimethylsilyl.kpart.json"
+    path = f"{APP_HOME}/MolForma/parts/trimethylsilyl.molforma-part.json"
     g.wait(g.tool("ui_file_dialog", target=g.modal(), path=path, accept=True), 0.8)
     g.tile(part["id"])
     g.fit("my_parts/07_place_hint")
@@ -306,7 +306,7 @@ def stereochemistry(g):
 
 
 def aromatic_substitution(g):
-    g.open_dialog(SAMPLES + "p_nitroaniline.kgui.json")
+    g.open_dialog(SAMPLES + "p_nitroaniline.molforma.json")
     g.activate("quickElement_C")
     g.activate("toolAction_select")  # As in the earlier screenshot: no palette item marked.
     g.fit("aromatic_substitution")

@@ -9,7 +9,7 @@
 | 計算 | B3LYP/6-31G*、構造最適化 |
 | 計算時間の目安 | 約59分（MPI 6プロセス、ほかの計算と並行） |
 | 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
-| 練習データ | [`caffeine.kgui.json`](samples/caffeine.kgui.json)（SMILESから作った構造）、[`caffeine_2d.sdf`](samples/caffeine_2d.sdf)（水素のない2次元の構造式） |
+| 練習データ | [`caffeine.molforma.json`](samples/caffeine.molforma.json)（SMILESから作った構造）、[`caffeine_2d.sdf`](samples/caffeine_2d.sdf)（水素のない2次元の構造式） |
 
 ![SMILESから作ったカフェインの候補](images/caffeine_smiles.png)
 

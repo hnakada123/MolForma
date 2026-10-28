@@ -9,13 +9,13 @@ Replace His of the ACE–Ala–His–Glu–NME of [recipe 7](capped_peptide.md) 
 | Calculation | B3LYP/6-31G*, single-point energy, COSMO (water) (the mutant) |
 | Run time | About 31 minutes (8 MPI processes, alongside other runs, “Recompute DFT integrals each time” on) |
 | Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
-| Practice data | [`ace_afe_nme.kgui.json`](../../recipes/samples/ace_afe_nme.kgui.json) (mutant), [`ace_ae_nme.kgui.json`](../../recipes/samples/ace_ae_nme.kgui.json) (after reconnecting) |
+| Practice data | [`ace_afe_nme.molforma.json`](../../recipes/samples/ace_afe_nme.molforma.json) (mutant), [`ace_ae_nme.molforma.json`](../../recipes/samples/ace_ae_nme.molforma.json) (after reconnecting) |
 
 ![The mutant with His replaced by Phe](images/residue_mutation.png)
 
 ## 1. Replace His with Phe
 
-1. Open the project of [recipe 7](capped_peptide.md) (`ace_ahe_nme.kgui.json`).
+1. Open the project of [recipe 7](capped_peptide.md) (`ace_ahe_nme.molforma.json`).
 2. Click “HIS 2” in the sequence of the 3D view to select the atoms of His.
 3. Click “Phenylalanine” in the category “Amino acid” of the parts palette and press “Mutate selected residue” on the “Residue” page.
 4. Check that the candidate is C20H27N4O6 · 57 atoms · charge −1 and press “Confirm changes”.
@@ -89,7 +89,7 @@ An XYZ file has elements and coordinates only: opening it loses residues, formal
 
 5. Atoms that were not recognized can be chosen with “Select atoms without residue” and registered with a three-letter code using “Register as residue…”.
 
-To keep residues, charges and settings, pass projects (`.kgui.json`) rather than XYZ.
+To keep residues, charges and settings, pass projects (`.molforma.json`) rather than XYZ.
 
 ## 5. Run and look at the results
 

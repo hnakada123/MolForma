@@ -9,7 +9,7 @@ SN2反応の遷移状態 [F···CH₃···Cl]⁻ を探します。2つの構�
 | 計算 | M06-2X/aug-cc-pVDZ、遷移状態探索 → 振動数、IRC、反応物錯体の最適化 → 振動数 |
 | 計算時間の目安 | 遷移状態探索 → 振動数 約13分、反応物錯体 約8分、IRC 約25分（前進）・約15分（後退）（MPI 8プロセス） |
 | 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
-| 練習データ | [`sn2_ts_guess.kgui.json`](samples/sn2_ts_guess.kgui.json)（推定構造）、[`sn2_reactant.kgui.json`](samples/sn2_reactant.kgui.json)（反応物錯体の初期構造） |
+| 練習データ | [`sn2_ts_guess.molforma.json`](samples/sn2_ts_guess.molforma.json)（推定構造）、[`sn2_reactant.molforma.json`](samples/sn2_reactant.molforma.json)（反応物錯体の初期構造） |
 
 ![平面のCH3をFとClではさんだ遷移状態の推定構造](images/sn2_transition_state.png)
 
@@ -44,7 +44,7 @@ SN2反応の遷移状態 [F···CH₃···Cl]⁻ を探します。2つの構�
 
    **図4** 反応物錯体の初期構造。FがClの反対側からCに近づいています。
 
-3. `sn2_reactant.kgui.json` として保存します。FがClの反対側からCに近づいた反応物錯体の初期構造です。
+3. `sn2_reactant.molforma.json` として保存します。FがClの反対側からCに近づいた反応物錯体の初期構造です。
 
 ## 3. 遷移状態の推定構造を作る
 
@@ -57,7 +57,7 @@ SN2反応の遷移状態 [F···CH₃···Cl]⁻ を探します。2つの構�
 
    **図5** 遷移状態の推定構造。横から見ると、平面になったCH3がClとFの間にあります。
 
-3. `sn2_ts_guess.kgui.json` として保存します。
+3. `sn2_ts_guess.molforma.json` として保存します。
 
 ## 4. 遷移状態探索と振動数
 
@@ -101,7 +101,7 @@ SN2反応の遷移状態 [F···CH₃···Cl]⁻ を探します。2つの構�
 
 ## 6. 反応物錯体と活性化エネルギー
 
-`sn2_reactant.kgui.json` を開き、同じ手法・基底で「最適化 → 振動数」を計算します。遷移状態とのエネルギー差が、錯体からの活性化エネルギーです。「履歴」の「ΔEを比べる」で、同じ組成・手法・基底のジョブどうしの差を並べて見られます（熱補正は含みません）。
+`sn2_reactant.molforma.json` を開き、同じ手法・基底で「最適化 → 振動数」を計算します。遷移状態とのエネルギー差が、錯体からの活性化エネルギーです。「履歴」の「ΔEを比べる」で、同じ組成・手法・基底のジョブどうしの差を並べて見られます（熱補正は含みません）。
 
 ### 実行した結果
 

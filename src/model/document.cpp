@@ -660,8 +660,8 @@ Document Document::fromJson(const QJsonObject &o) {
 }
 QJsonObject Document::project() const {
     auto o = envelope;
-    o["format"] = "kagami-gui-project";
-    o["version"] = 2;
+    o["format"] = "molforma-project";
+    o["version"] = 1;
     o["coordinate_units"] = "angstrom";
     auto document = toJson();
     document["job"] = emittedJob();
@@ -684,9 +684,8 @@ QJsonObject Document::project() const {
     return o;
 }
 Document Document::fromProject(const QJsonObject &o) {
-    if (o["format"] != "kagami-gui-project" || o["version"].toInt() != 2 ||
-        o["coordinate_units"] != "angstrom")
-        fail(tr("MolFormaプロジェクト（.kgui.json、version 2）を指定してください。"));
+    if (o["format"] != "molforma-project" || o["version"].toInt() != 1 || o["coordinate_units"] != "angstrom")
+        fail(tr("MolFormaプロジェクト（.molforma.json、version 1）を指定してください。"));
     Document d = fromJson(o["document"].toObject());
     d.envelope = o;
     return d;

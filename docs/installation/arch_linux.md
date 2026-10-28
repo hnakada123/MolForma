@@ -91,7 +91,7 @@ makepkg -si
 | `/usr/bin/molforma` | 実行ファイル |
 | `/usr/share/applications/molforma.desktop` | アプリケーションメニューの項目 |
 | `/usr/share/icons/hicolor/` | アイコン（`scalable` と `256x256`） |
-| `/usr/share/mime/packages/molforma.xml` | `.kgui.json`（プロジェクト）と `.nw`（NWChem入力）のファイルの種類 |
+| `/usr/share/mime/packages/molforma.xml` | `.molforma.json`（プロジェクト）と `.nw`（NWChem入力）のファイルの種類 |
 | `/usr/share/molforma/` | LICENSE・NOTICE・README とマニュアルのMarkdown（マニュアルは実行ファイルにも組み込み済み） |
 
 端末で `molforma` を実行するか、アプリケーションメニューの「MolForma」を選びます。KDE Plasmaでメニューにすぐ出ない場合は `kbuildsycoca6` を実行します。表示言語はシステムの言語に従います（「編集 → 環境設定」の「表示言語 / Language」で切り替え、再起動後に反映）。

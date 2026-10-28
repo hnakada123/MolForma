@@ -9,7 +9,7 @@ Build [Na(H₂O)₄]⁺ with four waters coordinated to Na⁺, and put one more 
 | Calculation | B3LYP/6-31G*, geometry optimization (no charges) and three single points |
 | Run time | About 1 minute for the optimization, 10–20 seconds per single point (8 MPI processes) |
 | Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
-| Practice data | [`na_h2o4.kgui.json`](../../recipes/samples/na_h2o4.kgui.json) (cluster), [`na_h2o4_charges.kgui.json`](../../recipes/samples/na_h2o4_charges.kgui.json) (with point charges), [`na_h2o5.kgui.json`](../../recipes/samples/na_h2o5.kgui.json) (outer water as atoms) |
+| Practice data | [`na_h2o4.molforma.json`](../../recipes/samples/na_h2o4.molforma.json) (cluster), [`na_h2o4_charges.molforma.json`](../../recipes/samples/na_h2o4_charges.molforma.json) (with point charges), [`na_h2o5.molforma.json`](../../recipes/samples/na_h2o5.molforma.json) (outer water as atoms) |
 
 ![Hydrated Na+ with the outer water replaced by TIP3P point charges](images/hydrated_sodium.png)
 
@@ -42,7 +42,7 @@ Site 1 of the tetrahedron points along (1, 1, 1). Duplicate the water on site 1,
 
    **Figure 3** The water on site 1 duplicated along (1, 1, 1) with “Mirror and duplicate” (seen from +Z).
 
-3. Save this state as `na_h2o5.kgui.json` (for comparing with all five waters as atoms).
+3. Save this state as `na_h2o5.molforma.json` (for comparing with all five waters as atoms).
 
 ## 3. Turn the outer water into point charges
 
@@ -69,7 +69,7 @@ Site 1 of the tetrahedron points along (1, 1, 1). Duplicate the water on site 1,
 
    **Figure 7** The `bq` block of the input, with coordinates in Å.
 
-5. Save as `na_h2o4_charges.kgui.json`.
+5. Save as `na_h2o4_charges.molforma.json`.
 
 Point charges are not counted in the molecule's total charge or electron count (the total charge stays +1, the electrons 50). To place charges in the 3D view, use the “Charge” (Q) tool in the left column; to place them by value, use “Add point charge” on the “Charge” page. “Export point charges…” writes `x y z q` (Å).
 
@@ -79,9 +79,9 @@ This is a fixed external electrostatic field, not NWChem's QM/MM with force fiel
 
 At the optimized [Na(H₂O)₄]⁺ structure, set the task to “Single-point energy” and calculate these three (B3LYP/6-31G*):
 
-1. Without point charges (`na_h2o4.kgui.json`, external point charges off)
-2. With point charges (`na_h2o4_charges.kgui.json`)
-3. The outer water as atoms (`na_h2o5.kgui.json`, 16 atoms)
+1. Without point charges (`na_h2o4.molforma.json`, external point charges off)
+2. With point charges (`na_h2o4_charges.molforma.json`)
+3. The outer water as atoms (`na_h2o5.molforma.json`, 16 atoms)
 
 Turning on “Mulliken charges” under “Properties” lets you compare atomic charges in the “Properties” tab of the “Result viewer”.
 
@@ -89,7 +89,7 @@ Turning on “Mulliken charges” under “Properties” lets you compare atomic
 
 **Figure 8** The “Properties” tab of the run with point charges, listing Mulliken charges per atom.
 
-The interaction energy with the outer water also needs the energy of the outer water alone. Open `na_h2o5.kgui.json`, click Na with “Select by” “Molecule” (Na and its four coordinated waters are chosen), delete them and confirm. You get H2O · 3 atoms, and the total charge goes back from +1 to 0. Calculate a single point of it under the same conditions too (no need to save it).
+The interaction energy with the outer water also needs the energy of the outer water alone. Open `na_h2o5.molforma.json`, click Na with “Select by” “Molecule” (Na and its four coordinated waters are chosen), delete them and confirm. You get H2O · 3 atoms, and the total charge goes back from +1 to 0. Calculate a single point of it under the same conditions too (no need to save it).
 
 ### Results
 

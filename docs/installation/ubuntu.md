@@ -102,7 +102,7 @@ sudo apt install ./molforma_1.0.0_amd64.deb
 | `/usr/bin/molforma` | 実行ファイル |
 | `/usr/share/applications/molforma.desktop` | アプリケーションメニューの項目 |
 | `/usr/share/icons/hicolor/` | アイコン（`scalable` と `256x256`） |
-| `/usr/share/mime/packages/molforma.xml` | `.kgui.json`（プロジェクト）と `.nw`（NWChem入力）のファイルの種類 |
+| `/usr/share/mime/packages/molforma.xml` | `.molforma.json`（プロジェクト）と `.nw`（NWChem入力）のファイルの種類 |
 | `/usr/share/molforma/` | LICENSE・NOTICE・README とマニュアルのMarkdown（マニュアルは実行ファイルにも組み込み済み） |
 
 ## 5. 起動して確認する

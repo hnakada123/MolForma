@@ -1168,7 +1168,7 @@ class CalculationTest : public QObject {
     void saveCommitsFocusedField() {
         QTemporaryDir files;
         QVERIFY(files.isValid());
-        const auto path = files.filePath("test.kgui.json");
+        const auto path = files.filePath("test.molforma.json");
         water().save(path);
         MainWindow w;
         w.loadPath(path);
