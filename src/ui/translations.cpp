@@ -42,6 +42,8 @@ class Fallback : public QTranslator {
             // Labels of Qt's own file dialog that Qt's translation leaves untranslated.
             {"QFileDialog|&Look in:", "場所(&L):"},
             {"QFileDialog|Files of &type:", "ファイルの種類(&T):"},
+            {"QFileDialog|Look in:", "場所:"}, // Before Qt 6.12, without the mnemonic.
+            {"QFileDialog|Files of type:", "ファイルの種類:"},
             {"QCommandLineParser|Displays help on commandline options.", "オプションの説明を表示する。"},
             {"QCommandLineParser|Displays help, including generic Qt options.",
              "Qtの共通オプションを含めて説明を表示する。"},

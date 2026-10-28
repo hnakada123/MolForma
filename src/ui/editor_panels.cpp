@@ -102,6 +102,8 @@ SettingsCard *MainWindow::section(QFormLayout *&f, const QString &title, int ope
     auto *cards = pageCards.value(f);
     auto *card = new SettingsCard(translated(title));
     card->setObjectName("moleculeCard_" + title);
+    // A long title (English, a wide font) wraps rather than widen the page, which scrolls only down.
+    card->titleLabel()->setWordWrap(true);
     auto *body = new QWidget;
     auto *form = formLayout(body);
     card->body()->addWidget(body);
