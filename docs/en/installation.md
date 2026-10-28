@@ -8,7 +8,7 @@ The software MolForma needs and how to install it on each OS. MolForma is built 
 | --- | --- | --- |
 | Arch Linux | [Installing on Arch Linux](installation/arch_linux.md) | Making a package from the PKGBUILD and installing it with pacman (with its dependencies), NWChem from the AUR; checking VTK rendering, updating and removing, troubleshooting |
 | Ubuntu 26.04 LTS | [Installing on Ubuntu](installation/ubuntu.md) | Development packages and NWChem with apt, building from source, making a deb package and installing it with apt; checking VTK rendering, updating and removing, troubleshooting |
-| Windows 11 | [Installing on Windows](installation/windows.md) | Building with Visual Studio (MSVC) and vcpkg, Open Babel also from source, and installing into a folder that holds Qt and the rest; NWChem in Ubuntu on WSL, started through the included batch files; updating and removing, troubleshooting |
+| Windows 11 | [Installing on Windows](installation/windows.md) | Building with Visual Studio (MSVC) and vcpkg, Open Babel, RDKit and VTK also from source, and installing into a folder that holds Qt and the rest; NWChem in Ubuntu on WSL, started through the included batch files; updating and removing, troubleshooting |
 | Linux (any distribution) | [Making an AppImage](installation/appimage.md) | Building inside Docker and making an AppImage that holds Qt, Open Babel, RDKit and VTK in one file; starts without installation on Linux with glibc 2.38 or later (Ubuntu 24.04 or later, Debian 13 or later, Fedora 39 or later and others); licenses when distributing it, troubleshooting |
 
 Steps for other operating systems will be added to this page as they become available.

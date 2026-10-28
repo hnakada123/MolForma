@@ -1,6 +1,6 @@
 # Windowsでのインストール
 
-MolFormaをWindowsでMicrosoft Visual C++（MSVC）を使ってソースからビルドし、フォルダーにインストールする手順です。ビルドに使うライブラリはvcpkgとソースから、計算に使うNWChemはWSL（Windows Subsystem for Linux）のUbuntuに入れます。
+MolFormaをWindowsでMicrosoft Visual C++（MSVC）を使ってソースからビルドし、フォルダーにインストールする手順です。ビルドに使うライブラリはvcpkgとソースから（RDKitとVTKを含む）、計算に使うNWChemはWSL（Windows Subsystem for Linux）のUbuntuに入れます。
 
 対象はWindows 11（x64）とMolForma 1.0.0です。2026-10-28に、Windows 11 HomeとVisual Studio Community 2026で手順を確認しました（[確認した構成](#確認した構成)）。
 
@@ -15,10 +15,12 @@ MolFormaのWindows用のインストーラーや配布ファイルはありま�
 | 必須 | Qt 6（6.4以上）の「MSVC 2022 64-bit」 | 画面（Qt Widgets）、テスト（Qt Test）、`windeployqt` |
 | 必須 | vcpkgの `eigen3`・`zlib`・`libxml2` | 座標・幾何の計算、Open Babelのビルド |
 | 必須 | Open Babel 3.2.1（ソースからビルド） | 構造ファイルの読み書き、力場による整形、SMILESからの3D構造 |
+| 任意 | RDKit Release_2026_09_1（ソースからビルド）と、vcpkgのBoost | 厳密な立体判定（R/S・E/Z）、残基認識 |
+| 任意 | VTK 9.7.1（Qt 6に合わせてソースからビルド） | 3D画面をVTK（OpenGL）で描画。ないときはQPainter（CPU）で描画 |
 | 計算 | WSL 2のUbuntuと、そのパッケージ `nwchem` | 計算の実行。入力の作成・保存だけならなくても使えます |
 
 - **Open Babel**: vcpkgにはないため、ソースからMSVCでビルドします（[3. Open Babelをビルドする](#3-open-babelをビルドする)）。
-- **RDKitとVTK**: この手順では入れません。RDKitを使う厳密な立体判定（R/S・E/Z）と残基認識は無効になり、3D画面はQPainter（CPU）で描画します（[3D描画](../features/rendering.md)）。
+- **RDKitとVTK**: どちらも任意で、ビルド時にCMakeが見つけたときだけ有効になります（[4. RDKitとVTKをビルドする（任意）](#4-rdkitとvtkをビルドする任意)）。VTKがないときは、3D画面をQPainter（CPU）で描画します（[3D描画](../features/rendering.md)）。
 - **Python**: ビルドにも実行にも使いません。
 
 以下のコマンドは、スタートメニューの「x64 Native Tools Command Prompt for VS」（MSVCの環境を設定したコマンドプロンプト）で実行します。作業用のフォルダーは `C:\dev` とします。
@@ -64,7 +66,69 @@ cmake --install build
 
 `C:\dev\openbabel-install\bin` に `openbabel-3.dll` とフォーマットのプラグイン（`*.obf`）が、`bin\data` に力場などのデータが入ります。Open BabelのCMakeの設定（`lib\cmake\openbabel3`）もここに入り、MolFormaはこれで見つけます（MSVCのビルドではpkg-configの設定は作られません）。
 
-## 4. MolFormaをビルドする
+## 4. RDKitとVTKをビルドする（任意）
+
+RDKit（厳密な立体判定・残基認識）とVTK（3D画面のOpenGL描画）は任意です。RDKitはvcpkgになく、vcpkgのVTKはvcpkg自身のQtを使うため、どちらもソースからビルドします。使わない場合はこの章を飛ばし、[5. MolFormaをビルドする](#5-molformaをビルドする)の `CMAKE_PREFIX_PATH` から `C:/dev/rdkit-install` と `C:/dev/vtk-install` を除きます。4コアのPCで、BoostとRDKitで約40分、VTKで約45分かかりました（一部を並行して実行）。
+
+### RDKit
+
+RDKitが使うBoostのライブラリをvcpkgで入れます。
+
+```bat
+cd /d C:\dev
+vcpkg\vcpkg install --triplet x64-windows boost-algorithm boost-any boost-assign boost-container boost-crc boost-dynamic-bitset ^
+  boost-flyweight boost-format boost-functional boost-graph boost-integer boost-iostreams[core] boost-json ^
+  boost-lexical-cast boost-multi-array boost-multiprecision boost-numeric-conversion boost-optional ^
+  boost-parameter boost-predef boost-property-map boost-property-tree boost-random boost-range ^
+  boost-rational boost-smart-ptr boost-tokenizer boost-unordered boost-variant2
+```
+
+RDKit Release_2026_09_1のソースを取得し、C++のライブラリだけをビルドして `C:\dev\rdkit-install` にインストールします。構成の途中で、RDKitのCMakeがCatch2・better-enums・RingDecomposerLibをGitHubから取得します。
+
+```bat
+cd /d C:\dev
+git clone -c core.autocrlf=false -c core.eol=lf --depth 1 --branch Release_2026_09_1 https://github.com/rdkit/rdkit.git
+cd rdkit
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=C:/dev/rdkit-install ^
+  -DCMAKE_PREFIX_PATH=C:/dev/vcpkg/installed/x64-windows -DRDK_INSTALL_INTREE=OFF ^
+  -DRDK_BUILD_PYTHON_WRAPPERS=OFF -DRDK_BUILD_CPP_TESTS=OFF -DRDK_TEST_MMFF_COMPLIANCE=OFF ^
+  -DRDK_USE_BOOST_SERIALIZATION=OFF -DRDK_USE_BOOST_IOSTREAMS=OFF -DRDK_USE_BOOST_STACKTRACE=OFF ^
+  -DRDK_BUILD_COORDGEN_SUPPORT=OFF -DRDK_BUILD_MAEPARSER_SUPPORT=OFF -DRDK_BUILD_CHEMDRAW_SUPPORT=OFF ^
+  -DRDK_BUILD_PUBCHEMSHAPE_SUPPORT=OFF -DRDK_BUILD_DESCRIPTORS3D=OFF -DRDK_BUILD_FREETYPE_SUPPORT=OFF
+cmake --build build -j 4
+cmake --install build
+```
+
+- MSVCでは静的ライブラリ（`*.lib`）を作ります。MolFormaの実行ファイルに組み込まれるので、インストールしたフォルダーにRDKitのDLLは増えません。
+- Pythonのラッパー、図の描画のフォント（FreeType）、Coordgen・Maestro形式・ChemDraw形式・PubChemの形状比較・3D記述子は、MolFormaが使わないのでビルドしません。
+
+### VTK
+
+VTK 9.7.1のソースを取得し、MolFormaが使うモジュールだけを、Qtに合わせてビルドします（AppImageと同じ構成です）。`certutil` が表示するSHA-256が `cae04fd355004cb916a409db79d53a208f1221e975aeacc7540ee67b148ee91a` であることを確認してから展開します。
+
+```bat
+cd /d C:\dev
+curl -L -o VTK-9.7.1.tar.gz https://vtk.org/files/release/9.7/VTK-9.7.1.tar.gz
+certutil -hashfile VTK-9.7.1.tar.gz SHA256
+tar -xzf VTK-9.7.1.tar.gz
+cd VTK-9.7.1
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=C:/dev/vtk-install ^
+  -DCMAKE_PREFIX_PATH=C:/Qt/6.11.2/msvc2022_64 -DBUILD_SHARED_LIBS=ON -DVTK_QT_VERSION=6 ^
+  -DVTK_BUILD_TESTING=OFF -DVTK_BUILD_EXAMPLES=OFF -DVTK_WRAP_PYTHON=OFF -DVTK_WRAP_JAVA=OFF -DVTK_USE_MPI=OFF ^
+  -DVTK_GROUP_ENABLE_Imaging=DONT_WANT -DVTK_GROUP_ENABLE_MPI=DONT_WANT -DVTK_GROUP_ENABLE_Qt=DONT_WANT ^
+  -DVTK_GROUP_ENABLE_Rendering=DONT_WANT -DVTK_GROUP_ENABLE_StandAlone=DONT_WANT ^
+  -DVTK_GROUP_ENABLE_Views=DONT_WANT -DVTK_GROUP_ENABLE_Web=DONT_WANT ^
+  -DVTK_MODULE_ENABLE_VTK_CommonCore=YES -DVTK_MODULE_ENABLE_VTK_CommonDataModel=YES ^
+  -DVTK_MODULE_ENABLE_VTK_FiltersSources=YES -DVTK_MODULE_ENABLE_VTK_RenderingCore=YES ^
+  -DVTK_MODULE_ENABLE_VTK_RenderingOpenGL2=YES -DVTK_MODULE_ENABLE_VTK_GUISupportQt=YES ^
+  -DVTK_MODULE_ENABLE_VTK_InteractionStyle=YES
+cmake --build build -j 4
+cmake --install build
+```
+
+`C:\dev\vtk-install\bin` にVTKのDLLが入ります。VTKで描画するには、OpenGL 3.2以上を使えるGPUドライバーも必要です。
+
+## 5. MolFormaをビルドする
 
 ソースを取得し、Releaseでビルドします。取得したフォルダーと `build` は、更新で使うので残しておきます。
 
@@ -73,25 +137,25 @@ cd /d C:\dev
 git clone https://github.com/hnakada123/MolForma.git
 cd MolForma
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ^
-  "-DCMAKE_PREFIX_PATH=C:/Qt/6.11.2/msvc2022_64;C:/dev/openbabel-install;C:/dev/vcpkg/installed/x64-windows"
+  "-DCMAKE_PREFIX_PATH=C:/Qt/6.11.2/msvc2022_64;C:/dev/openbabel-install;C:/dev/rdkit-install;C:/dev/vtk-install;C:/dev/vcpkg/installed/x64-windows"
 cmake --build build -j 4
 ```
 
-`cmake -S . -B build …`（構成）の出力の終わり近くに、見つけたOpen Babelと3D描画の方式が出ます。
+`cmake -S . -B build …`（構成）の出力の終わり近くに、見つけたOpen Babelと3D描画の方式が出ます。VTKを入れていない場合は `MolForma rendering: QPainter (Qt6-enabled VTK development package not found)` になります。RDKitは、CMakeのキャッシュ（`build\CMakeCache.txt`）の `rdkit_DIR` が `C:/dev/rdkit-install/lib/cmake/rdkit` なら見つかっています。
 
 ```
 -- Found OpenBabel3, version 3.2.1, in C:/dev/openbabel-install/bin
--- MolForma rendering: QPainter (Qt6-enabled VTK development package not found)
+-- MolForma rendering: VTK 9.7.1 (Qt6), with QPainter fallback
 ```
 
-テストを実行する場合は次のとおりです（任意）。テストはQt・Open Babel・vcpkgのDLLを使うので、先にそれらのフォルダーをPATHに加えます。NWChem・ネットワークは使いません。
+テストを実行する場合は次のとおりです（任意）。テストはQt・Open Babel・VTK・vcpkgのDLLを使うので、先にそれらのフォルダーをPATHに加えます。NWChem・ネットワークは使いません。
 
 ```bat
-set PATH=C:\Qt\6.11.2\msvc2022_64\bin;C:\dev\openbabel-install\bin;C:\dev\vcpkg\installed\x64-windows\bin;%PATH%
+set PATH=C:\Qt\6.11.2\msvc2022_64\bin;C:\dev\openbabel-install\bin;C:\dev\vtk-install\bin;C:\dev\vcpkg\installed\x64-windows\bin;%PATH%
 ctest --test-dir build --output-on-failure
 ```
 
-## 5. インストールする
+## 6. インストールする
 
 `build` からインストールします。ここではユーザーごとのアプリの場所（`%LOCALAPPDATA%\Programs\MolForma`）に入れます。管理者の権限は要りません。
 
@@ -99,14 +163,14 @@ ctest --test-dir build --output-on-failure
 cmake --install build --prefix "%LOCALAPPDATA%\Programs\MolForma"
 ```
 
-`windeployqt` がQtのDLL・プラグイン・翻訳を、CMakeがOpen Babelとvcpkgの必要なDLLを集め、このフォルダーだけで起動できるようにします（約110 MB）。
+`windeployqt` がQtのDLL・プラグイン・翻訳を、CMakeがOpen Babel・VTK・vcpkgの必要なDLLを集め、このフォルダーだけで起動できるようにします（RDKitとVTKを含めて約190 MB、どちらもなしで約110 MB）。
 
 | 配置先 | 内容 |
 | --- | --- |
-| `bin\molforma.exe` | 実行ファイル。同じフォルダーにQt・Open Babel・zlib・libxml2のDLL |
+| `bin\molforma.exe` | 実行ファイル（RDKitを組み込み済み）。同じフォルダーにQt・Open Babel・VTK・zlib・libxml2のDLL |
 | `bin\*.obf`、`bin\data\` | Open Babelのフォーマットのプラグインと、力場などのデータ |
 | `plugins\`、`translations\` | Qtのプラグイン（画面・画像形式など）と、Qtの標準ダイアログの翻訳 |
-| `nwchem-wsl\` | WSLのNWChemを起動する `nwchem.cmd`・`mpirun.cmd`（[6. NWChemを入れる（WSL）](#6-nwchemを入れるwsl)） |
+| `nwchem-wsl\` | WSLのNWChemを起動する `nwchem.cmd`・`mpirun.cmd`（[7. NWChemを入れる（WSL）](#7-nwchemを入れるwsl)） |
 | `share\molforma\` | LICENSE・NOTICE・README とマニュアルのMarkdown（マニュアルは実行ファイルにも組み込み済み） |
 
 スタートメニューから起動できるように、ショートカットを作ります（任意）。PowerShellで次を実行します。
@@ -119,7 +183,7 @@ $s.Save()
 
 MSVCの実行時ライブラリ（`MSVCP140.dll` など）はフォルダーに含めません。Visual Studioを入れたPCにはあります。フォルダーをほかのPCにコピーして使う場合は、そのPCに「Microsoft Visual C++ 再頒布可能パッケージ」（x64）を入れてください。
 
-## 6. NWChemを入れる（WSL）
+## 7. NWChemを入れる（WSL）
 
 WSLのUbuntuにNWChemを入れます。WSLを使っていない場合は、管理者のPowerShellで `wsl --install` を実行し、再起動後にUbuntuのユーザー名とパスワードを設定します。続けて、コマンドプロンプトで次を実行します。
 
@@ -150,11 +214,11 @@ MolFormaの「編集 → 環境設定」で、実行設定の既定値を次の�
 - 「停止」では、2秒後に `cmd.exe`・`wsl.exe` とWSLの `mpirun`・NWChemをまとめて終了します（[「3 実行設定」](../features/execution.md)）。
 - ジョブフォルダー（既定は `C:\Users\<ユーザー名>\MolForma\jobs`）はWSLからはネットワーク経由のように見えるため、大きな一時ファイルを書く計算は、Linuxで直接動かすより遅くなります。
 
-## 7. 起動して確認する
+## 8. 起動して確認する
 
 スタートメニューの「MolForma」か、`%LOCALAPPDATA%\Programs\MolForma\bin\molforma.exe` から起動します。表示言語はWindowsの言語に従います（「編集 → 環境設定」の「表示言語 / Language」で切り替え、再起動後に反映）。
 
-1. 「ヘルプ → MolFormaについて」を開き、版が「MolForma 1.0.0」、「3D描画: QPainter（CPU）」と表示されることを確認します。
+1. 「ヘルプ → MolFormaについて」を開き、版が「MolForma 1.0.0」で、RDKit・VTKを入れた場合は「立体判定・残基認識（RDKit）: 有効」「3D描画: VTK（OpenGL）」と表示されることを確認します。OpenGLを使えない環境（一部のリモートデスクトップや仮想マシン）では「3D描画: QPainter（CPU）」になります。
 2. 部品パレットの検索欄に `CC1CCCCC1`（メチルシクロヘキサン）と入力し、「SMILES「CC1CCCCC1」から3Dで作成」で3D構造の候補ができることを確認します（Open Babelとそのデータを使います）。
 3. 「3 実行設定」を開き、「実行前の確認」でNWChem実行ファイルとMPIランチャーが見つかっていることを確認します。
 4. 小さな分子で計算してみます。手順は[題材1 原子と結合から組む](../recipes/atoms_and_bonds.md)にあります。
@@ -165,7 +229,7 @@ MolFormaの「編集 → 環境設定」で、実行設定の既定値を次の�
 
 ### 更新する
 
-ソースを更新してビルドし直し、同じ場所にインストールし直します。Open Babel・Qt・vcpkgのライブラリを更新しない間は、[4. MolFormaをビルドする](#4-molformaをビルドする)の構成からやり直す必要はありません。
+ソースを更新してビルドし直し、同じ場所にインストールし直します。Open Babel・RDKit・VTK・Qt・vcpkgのライブラリを更新しない間は、[5. MolFormaをビルドする](#5-molformaをビルドする)の構成からやり直す必要はありません。
 
 ```bat
 cd /d C:\dev\MolForma
@@ -174,11 +238,11 @@ cmake --build build -j 4
 cmake --install build --prefix "%LOCALAPPDATA%\Programs\MolForma"
 ```
 
-Qtの版を変えた場合は、`build` を削除し、新しいQtのフォルダーを `CMAKE_PREFIX_PATH` に指定して構成からやり直します。インストール先も一度削除してから入れ直すと、古いQtのファイルが残りません。
+Qtの版を変えた場合は、VTKもそのQtでビルドし直し、MolFormaの `build` を削除して、新しいQtのフォルダーを `CMAKE_PREFIX_PATH` に指定して構成からやり直します。インストール先も一度削除してから入れ直すと、古いQtのファイルが残りません。
 
 ### 削除する
 
-インストールしたフォルダー `%LOCALAPPDATA%\Programs\MolForma` と、作った場合はスタートメニューのショートカット（`%APPDATA%\Microsoft\Windows\Start Menu\Programs\MolForma.lnk`）を削除します。設定（`%APPDATA%\MolForma`）、自動保存（`%LOCALAPPDATA%\MolForma`）、計算のジョブ（既定は `%USERPROFILE%\MolForma\jobs`）は残ります。不要なら手動で削除してください。ビルドに使った `C:\dev` の下のフォルダー（MolForma・Open Babel・vcpkg）も、不要なら削除できます。NWChemは `wsl sudo apt remove nwchem` の後に `wsl sudo apt autoremove` で削除できます。
+インストールしたフォルダー `%LOCALAPPDATA%\Programs\MolForma` と、作った場合はスタートメニューのショートカット（`%APPDATA%\Microsoft\Windows\Start Menu\Programs\MolForma.lnk`）を削除します。設定（`%APPDATA%\MolForma`）、自動保存（`%LOCALAPPDATA%\MolForma`）、計算のジョブ（既定は `%USERPROFILE%\MolForma\jobs`）は残ります。不要なら手動で削除してください。ビルドに使った `C:\dev` の下のフォルダー（MolForma・Open Babel・RDKit・VTK・vcpkgと、それぞれの `*-install`）も、不要なら削除できます。NWChemは `wsl sudo apt remove nwchem` の後に `wsl sudo apt autoremove` で削除できます。
 
 ## 困ったとき
 
@@ -186,11 +250,15 @@ Qtの版を変えた場合は、`build` を削除し、新しいQtのフォル�
 | --- | --- |
 | `cmake` や `cl` が見つからない | 「x64 Native Tools Command Prompt for VS」で実行しているか確認します。普通のコマンドプロンプトにはMSVCとCMakeの設定がありません |
 | MolFormaの構成が `Could not find a package configuration file provided by "OpenBabel3"` や `Qt6`・`Eigen3` が見つからないというエラーで止まる | `CMAKE_PREFIX_PATH` に、QtのMSVC版のフォルダー・`C:/dev/openbabel-install`・`C:/dev/vcpkg/installed/x64-windows` の3つを `;` で区切って指定したか確認します |
+| RDKitのビルドが `boost/iostreams/tee.hpp` が見つからないというエラーで止まる | vcpkgで `boost-iostreams[core]` を入れます。RDKitは `-DRDK_USE_BOOST_IOSTREAMS=OFF` でもこのヘッダーを使います |
+| RDKitの構成が `Could NOT find Freetype` で止まる | 構成に `-DRDK_BUILD_FREETYPE_SUPPORT=OFF` を付けてやり直します |
+| `MolForma rendering: QPainter (Qt6-enabled VTK development package not found)` と出る | `CMAKE_PREFIX_PATH` に `C:/dev/vtk-install` を入れたか、VTKをMolFormaと同じQtでビルドしたか確認します。直前の `VTK development dependency unavailable:` の行に足りないものが出ます |
+| 3D画面の左上に「描画: QPainter（CPU）· OpenGLを使えないため簡易表示」と出る | OpenGL 3.2以上を使えません。GPUドライバーを更新します。リモートデスクトップや仮想マシンでは使えない場合があります |
 | Open Babelの構成が `Could NOT find Perl` で止まる | `-DPERL_EXECUTABLE` にGit for Windowsの `perl.exe` を指定します |
 | Open Babelのビルドが `inchi.dll` のリンクエラー（`Get_inchi_Input_FromAuxInfo` など）で止まる | 構成に `-DWITH_INCHI=OFF` を付けてやり直します |
 | SMILESや部品からの3D生成で「2つの原子が同じ位置に重なっています」と出る（特に環のある分子） | Open BabelのデータがCRLFで取得されています。[3. Open Babelをビルドする](#3-open-babelをビルドする)の `git clone` の `-c` の指定でソースを取り直し、`build` と `C:\dev\openbabel-install` を削除してビルドし直します |
 | 整形で「この構造に使える力場パラメータがありません」と出る | Open Babelのデータ（`bin\data`）が見つかっていません。インストールしたフォルダーなら `bin\data` があるか、ビルドしたフォルダーの `molforma.exe` なら `C:\dev\openbabel-install\bin\data` があるか確認します。環境変数 `BABEL_DATADIR` を設定している場合は、その値が優先されます |
-| `build\molforma.exe` やテストが `Qt6Core.dll` などが見つからないというエラーで起動しない | ビルドしたフォルダーの実行ファイルは、QtなどのDLLをPATHから探します。[4. MolFormaをビルドする](#4-molformaをビルドする)の `set PATH=…` を実行するか、インストールしたフォルダーのものを使います |
+| `build\molforma.exe` やテストが `Qt6Core.dll` などが見つからないというエラーで起動しない | ビルドしたフォルダーの実行ファイルは、QtなどのDLLをPATHから探します。[5. MolFormaをビルドする](#5-molformaをビルドする)の `set PATH=…` を実行するか、インストールしたフォルダーのものを使います |
 | 「実行前の確認」でNWChem実行ファイルやMPIランチャーが見つからない | 「3 実行設定」のパスが `nwchem-wsl` の2つのバッチファイルを指しているか確認します |
 | 計算がすぐに失敗し、ログ（標準エラー）に `wsl` のエラーが出る | コマンドプロンプトで `wsl nwchem` と `wsl mpirun --version` が動くか確認します。既定でないWSLディストリビューションを使う場合は、バッチファイルの `wsl.exe` の後に `-d <ディストリビューション名>` を加えます |
 | 標準エラーに `your 131072x1 screen size is bogus. expect trouble` と出る | WSLの `ps` などが出す警告で、計算には影響しません |
@@ -199,7 +267,8 @@ Qtの版を変えた場合は、`build` を削除し、新しいQtのフォル�
 
 2026-10-28に、次の構成で確かめました。
 
-- 上の手順でOpen BabelとMolFormaを構成・ビルドし、CTestの14件すべてが通ること。
+- 上の手順でOpen Babel・RDKit・VTKとMolFormaを構成・ビルドし、CTestの14件すべてが通ること（RDKitの検査もスキップされずに実行）。RDKit・VTKのない構成でも14件すべてが通ること。
+- 実際のデスクトップ（GPUのOpenGL）で、VTKの描画経路を検査する任意のテスト（`MOLFORMA_REQUIRE_VTK=1` で `test_rendering` を実行。[3D描画](../features/rendering.md)）が通ること。
 - `cmake --install` で作ったフォルダーから、Qt・Open Babel・vcpkgのフォルダーをPATHに含めずに起動でき、シクロヘキサン・メチルシクロヘキサンのSMILESから3D構造を生成できること。
 - WSLのUbuntu 24.04にaptで入れたNWChemを `mpirun.cmd`・`nwchem.cmd` で起動し、MolFormaの実行設定のテスト（実際のNWChemを使う任意のテスト）で、MPI 2プロセスの水のHF/STO-3G計算が完了し、SCFエネルギーが −74.945628203255 Hartree になること。計算途中の停止で、WSLの `mpirun` とNWChemも終了すること。
 
@@ -211,10 +280,12 @@ Qtの版を変えた場合は、`build` を削除し、新しいQtのフォル�
 | Git for Windows | 2.50.1 |
 | Qt（MSVC 2022 64-bit） | 6.11.2 |
 | Open Babel | 3.2.1 |
+| RDKit・Boost（vcpkg） | 2026.09.1・1.91.0 |
+| VTK | 9.7.1 |
 | Eigen・zlib・libxml2（vcpkg） | 5.0.1・1.3.2・2.15.3 |
 | WSLのUbuntu | 24.04.4 LTS |
 | NWChem・Open MPI（WSL） | 7.2.2・4.1.6 |
 
-vcpkgは、Visual Studioに付属する `vcpkg.exe` と、それに合う版のポート（タグ `2026.06.24`）を使いました。RDKit・VTKを使う構成、Windows 10、ARM64のWindowsは確認していません。
+vcpkgは、Visual Studioに付属する `vcpkg.exe` と、それに合う版のポート（タグ `2026.06.24`）を使いました。Windows 10とARM64のWindowsは確認していません。
 
 関連: [OS別インストール・必要パッケージ](../installation.md)、[3D描画](../features/rendering.md)、[「3 実行設定」](../features/execution.md)
