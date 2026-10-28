@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/translations.h"
 #include "model/i18n.h"
+#include "model/settings.h"
 #include <QCoreApplication>
 #include <QHash>
 #include <QLibraryInfo>
@@ -56,7 +57,9 @@ class Fallback : public QTranslator {
 void installTranslations(QCoreApplication &app) {
     auto language = qEnvironmentVariable("MOLFORMA_LANGUAGE");
     if (language != "ja" && language != "en")
-        language = QSettings("MolForma", "MolForma").value("ui/language").toString();
+        language = QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
+                       .value("ui/language")
+                       .toString();
     if (language != "ja" && language != "en")
         language = QLocale::system().uiLanguages().value(0).startsWith("ja") ? "ja" : "en";
     qputenv("MOLFORMA_LANGUAGE", language.toUtf8());

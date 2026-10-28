@@ -343,7 +343,7 @@ GUI変更は `documentId` と `expectedRevision` を必要とし、`queued` の 
 
 ## 範囲と制限
 
-- stdioはPOSIX環境（Linux/macOS）向けです。Windowsの標準ストリーム転送は未実装です。
+- stdioはLinux・macOS・Windowsで使えます。Windowsでは読み書きを別スレッドで行います。起動コマンドには `molforma.exe` のパスを指定します（例: `claude mcp add molforma -- C:\Users\<ユーザー名>\AppData\Local\Programs\MolForma\bin\molforma.exe --mcp-gui`）。
 - Streamable HTTP、OAuth、リモート接続、Sampling、Roots、Logging、補完（`completion/complete`）、購読（`subscriptions/listen`）、MCP Appsは提供せず、対応機能としても宣言しません。
 - Elicitationはform形式だけを使います。対象は `save_file` の上書き確認と、Tasks実行中の `QMessageBox` だけです。ファイル選択などその他のダイアログは `get_ui` → `ui_*` で操作します。
 - Tasks拡張の対象は、GUI変更ツールと、画面なしモードの計算開始・結果読込です。文書ツールは同期で結果を返します。

@@ -10,8 +10,31 @@
 #include <fcntl.h>
 #include <unistd.h>
 #endif
+#ifdef Q_OS_WIN
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+#define NOMINMAX
+#include <windows.h>
+#endif
 
 namespace mf {
+// Windows pipes cannot be watched by the event loop: one thread blocks in ReadFile, another drains the
+// output, and both post to the event loop. The threads are detached and keep this state alive; they
+// post nothing once the transport is gone, and a client that stops reading never blocks the GUI.
+struct McpStdioTransport::Threads {
+#ifdef Q_OS_WIN
+    std::mutex mutex;
+    std::condition_variable wake;
+    McpStdioTransport *owner = nullptr; // Null once the transport is destroyed.
+    QByteArray pending;
+    template <typename F> void post(F f) {
+        std::lock_guard lock(mutex);
+        if (auto *transport = owner)
+            QMetaObject::invokeMethod(transport, [transport, f] { f(transport); }, Qt::QueuedConnection);
+    }
+#endif
+};
 McpStdioTransport::McpStdioTransport(McpServer *s, QObject *parent) : QObject(parent), server(s) {}
 McpStdioTransport::~McpStdioTransport() {
 #ifdef Q_OS_UNIX
@@ -23,6 +46,15 @@ McpStdioTransport::~McpStdioTransport() {
         fcntl(STDIN_FILENO, F_SETFL, inputFlags);
     if (outputFlags >= 0)
         fcntl(STDOUT_FILENO, F_SETFL, outputFlags);
+#endif
+#ifdef Q_OS_WIN
+    if (threads) {
+        {
+            std::lock_guard lock(threads->mutex);
+            threads->owner = nullptr;
+        }
+        threads->wake.notify_all();
+    }
 #endif
 }
 void McpStdioTransport::start() {
@@ -42,8 +74,67 @@ void McpStdioTransport::start() {
     connect(reader, &QSocketNotifier::activated, this, [this] { readInput(); });
     connect(writer, &QSocketNotifier::activated, this, [this] { writeOutput(); });
     QTimer::singleShot(0, this, [this] { readInput(); });
+#elif defined(Q_OS_WIN)
+    if (threads)
+        fail("MCP transport already started");
+    const auto in = GetStdHandle(STD_INPUT_HANDLE), out = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (!in || in == INVALID_HANDLE_VALUE || !out || out == INVALID_HANDLE_VALUE)
+        fail("Cannot open MCP standard streams");
+    threads = std::make_shared<Threads>();
+    threads->owner = this;
+    std::thread([state = threads, in] {
+        QByteArray buffer(65536, Qt::Uninitialized);
+        for (;;) {
+            DWORD count = 0;
+            const bool read = ReadFile(in, buffer.data(), DWORD(buffer.size()), &count, nullptr);
+            if (!read || count == 0) {
+                // A closed pipe reports ERROR_BROKEN_PIPE, the end of a file zero bytes.
+                const auto error = read ? DWORD(ERROR_HANDLE_EOF) : GetLastError();
+                const bool failed = error != ERROR_BROKEN_PIPE && error != ERROR_HANDLE_EOF;
+                state->post([failed](McpStdioTransport *t) {
+                    if (failed) {
+                        t->stop("Failed to read stdin");
+                        return;
+                    }
+                    t->eof = true;
+                    t->dispatch();
+                });
+                return;
+            }
+            state->post([bytes = buffer.left(count)](McpStdioTransport *t) {
+                if (t->stopped || t->eof)
+                    return;
+                t->input.append(bytes);
+                t->dispatch();
+            });
+        }
+    }).detach();
+    std::thread([state = threads, out] {
+        for (;;) {
+            QByteArray chunk;
+            {
+                std::unique_lock lock(state->mutex);
+                state->wake.wait(lock, [&] { return !state->pending.isEmpty() || !state->owner; });
+                if (!state->owner)
+                    return;
+                chunk.swap(state->pending);
+            }
+            for (qsizetype done = 0; done < chunk.size();) {
+                DWORD count = 0;
+                if (!WriteFile(out, chunk.constData() + done, DWORD(chunk.size() - done), &count, nullptr)) {
+                    state->post([](McpStdioTransport *t) { t->stop("Failed to write stdout"); });
+                    return;
+                }
+                done += count;
+            }
+            state->post([written = chunk.size()](McpStdioTransport *t) {
+                t->unflushed -= written;
+                t->writeOutput();
+            });
+        }
+    }).detach();
 #else
-    fail("MCP stdio currently requires a POSIX platform (Linux/macOS).");
+    fail("MCP stdio requires Linux, macOS or Windows.");
 #endif
 }
 void McpStdioTransport::stop(const char *message) {
@@ -101,7 +192,7 @@ void McpStdioTransport::dispatch() {
         auto reply = server->receive(line);
         if (!reply.isEmpty()) {
             auto bytes = QJsonDocument(reply).toJson(QJsonDocument::Compact);
-            if (output.size() + bytes.size() > 32 * 1024 * 1024) {
+            if (output.size() + unflushed + bytes.size() > 32 * 1024 * 1024) {
                 stop("Client is not reading responses; output limit exceeded");
                 return;
             }
@@ -110,21 +201,22 @@ void McpStdioTransport::dispatch() {
         }
     }
     if (!stopped && (input.contains('\n') || (eof && !input.isEmpty()))) {
-        reader->setEnabled(false);
+        if (reader)
+            reader->setEnabled(false);
         scheduled = true;
         QTimer::singleShot(0, this, [this] {
             scheduled = false;
             dispatch();
-            if (!stopped && !eof && !scheduled)
+            if (reader && !stopped && !eof && !scheduled)
                 reader->setEnabled(true);
         });
     }
     writeOutput();
 }
 void McpStdioTransport::writeOutput() {
-#ifdef Q_OS_UNIX
     if (stopped)
         return;
+#ifdef Q_OS_UNIX
     while (!output.isEmpty()) {
         const auto count = ::write(STDOUT_FILENO, output.constData(), output.size());
         if (count > 0)
@@ -140,10 +232,22 @@ void McpStdioTransport::writeOutput() {
         }
     }
     writer->setEnabled(false);
+#elif defined(Q_OS_WIN)
+    if (!output.isEmpty()) {
+        unflushed += output.size();
+        {
+            std::lock_guard lock(threads->mutex);
+            threads->pending.append(output);
+        }
+        output.clear();
+        threads->wake.notify_one();
+    }
+    if (unflushed)
+        return;
+#endif
     if (eof && input.isEmpty() && !scheduled) {
         stopped = true;
         emit finished(exitCode);
     }
-#endif
 }
 } // namespace mf

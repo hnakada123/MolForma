@@ -6,6 +6,7 @@
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
 #include "model/i18n.h"
+#include "model/settings.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_import.h"
@@ -115,7 +116,8 @@ static QByteArray identity(const Document &d) {
 static QString atomName(const Document &d, const QString &id) {
     return d.atom(id).element + QString::number(d.index(id) + 1);
 }
-MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), settings("MolForma", "MolForma") {
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent), settings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma") {
     setObjectName("mainWindow");
     setAcceptDrops(true);
     resize(1380, 900);
@@ -3001,9 +3003,16 @@ void MainWindow::openDropped(const QString &file) {
     if (confirmDiscard())
         loadPath(file);
 }
+QString MainWindow::autosaveDirectory() {
+#ifdef Q_OS_WIN
+    // Windows has no XDG folders; honoring the variable keeps tests out of the user's %LOCALAPPDATA%.
+    if (const auto home = qEnvironmentVariable("XDG_DATA_HOME"); !home.isEmpty())
+        return home + "/MolForma/autosave";
+#endif
+    return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/autosave";
+}
 void MainWindow::startAutosave() {
-    const QDir directory(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
-                         "/autosave");
+    const QDir directory(autosaveDirectory());
     if (!directory.mkpath("."))
         return;
     const auto name = QString("session-%1-%2")
@@ -3050,8 +3059,7 @@ void MainWindow::removeAutosave() {
     autosavedIdentity.clear();
 }
 void MainWindow::offerRecovery() {
-    const QDir directory(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
-                         "/autosave");
+    const QDir directory(autosaveDirectory());
     // Each copy belongs to a session lock; a live MolForma keeps its lock, a crashed one leaves it stale.
     for (const auto &copy : directory.entryList({"session-*.molforma.json"}, QDir::Files, QDir::Time)) {
         const auto file = directory.filePath(copy);

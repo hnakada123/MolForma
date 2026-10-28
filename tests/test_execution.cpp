@@ -6,6 +6,12 @@
 #include <QtTest>
 #include <QtWidgets>
 using namespace mf;
+// Executables carry .exe on Windows.
+#ifdef Q_OS_WIN
+#define EXE ".exe"
+#else
+#define EXE ""
+#endif
 
 class ExecutionTest : public QObject {
     Q_OBJECT
@@ -50,8 +56,8 @@ class ExecutionTest : public QObject {
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settings.path());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
                            settings.path()); // MolForma uses NativeFormat.
-        helper = files.filePath("native engine");
-        QVERIFY(QFile::copy(QCoreApplication::applicationDirPath() + "/fake_nwchem", helper));
+        helper = files.filePath("native engine" EXE);
+        QVERIFY(QFile::copy(QCoreApplication::applicationDirPath() + "/fake_nwchem" EXE, helper));
         QVERIFY(QFile::setPermissions(helper, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
     }
     void defaultsAndCompatibility() {

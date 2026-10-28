@@ -1,5 +1,6 @@
 #include "nwchem/nwchem_execution.h"
 #include "model/i18n.h"
+#include "model/settings.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
@@ -8,6 +9,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -40,7 +42,8 @@ bool controls(const QString &s) {
     return s.contains(QRegularExpression("[\\x00-\\x1f\\x7f]"));
 }
 QString locateProgram(const QString &name, const QString &base, const QProcessEnvironment &environment) {
-    if (QDir::isAbsolutePath(name) || name.contains('/') || name.startsWith("~"))
+    if (QDir::isAbsolutePath(name) || name.contains('/') || name.contains(QDir::separator()) ||
+        name.startsWith("~"))
         return absolutePath(name, base);
     const auto paths = environment.value("PATH").split(QDir::listSeparator(), Qt::SkipEmptyParts);
     return paths.isEmpty() ? QString() : QStandardPaths::findExecutable(name, paths);
@@ -62,6 +65,11 @@ void writeManifest(const ExecutionPlan &plan) {
     if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
         fail(tr("実行記録を保存できません: %1").arg(file.errorString()));
 }
+#ifdef Q_OS_WIN
+// Defined last in this file, away from the macros of windows.h.
+bool windowsProcessRunning(qint64 pid);
+void windowsTerminateTree(qint64 pid);
+#endif
 QString bootId() {
     QFile f("/proc/sys/kernel/random/boot_id");
     return f.open(QIODevice::ReadOnly) ? QString::fromLatin1(f.read(64)).trimmed() : QString();
@@ -92,7 +100,9 @@ QStringList executionPreferenceKeys() {
 }
 QJsonObject executionPreferences() {
     const auto stored =
-        QJsonDocument::fromJson(QSettings("MolForma", "MolForma").value("execution/defaults").toByteArray())
+        QJsonDocument::fromJson(QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
+                                    .value("execution/defaults")
+                                    .toByteArray())
             .object();
     const auto defaults = executionDefaults();
     QJsonObject result;
@@ -105,7 +115,7 @@ void saveExecutionPreferences(const QJsonObject &settings) {
     for (const auto &key : executionPreferenceKeys())
         if (settings.contains(key))
             stored[key] = settings[key];
-    QSettings("MolForma", "MolForma")
+    QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
         .setValue("execution/defaults", QJsonDocument(stored).toJson(QJsonDocument::Compact));
 }
 void applyExecutionPreferences(Document &d) {
@@ -426,6 +436,11 @@ bool executionProcessGone(const QJsonObject &m) {
         return true;
     const auto start = processStart(pid);
     return !start.isEmpty() && !m["pid_start"].toString().isEmpty() && start != m["pid_start"].toString();
+#elif defined(Q_OS_WIN)
+    if (m["host"].toString().isEmpty() || m["host"].toString() != QSysInfo::machineHostName())
+        return false;
+    const qint64 pid = m["pid"].toInteger();
+    return pid > 0 && !windowsProcessRunning(pid);
 #else
     Q_UNUSED(m);
     return false;
@@ -511,6 +526,11 @@ void NwchemRun::signalProcess(bool force) {
 #ifdef Q_OS_UNIX
     if (groupId > 0)
         ::kill(-pid_t(groupId), force ? SIGKILL : SIGTERM);
+#elif defined(Q_OS_WIN)
+    // No process groups and no signal a console program would heed: the forced stop ends the whole
+    // tree (cmd, wsl.exe, mpiexec and NWChem), not only the program MolForma started.
+    if (force && groupId > 0)
+        windowsTerminateTree(groupId);
 #endif
     if (force)
         process.kill();
@@ -573,3 +593,57 @@ void NwchemRun::shutdown() {
     }
 }
 } // namespace mf
+#ifdef Q_OS_WIN
+#define NOMINMAX
+#include <windows.h>
+
+#include <tlhelp32.h> // After windows.h.
+namespace mf {
+namespace {
+bool windowsProcessRunning(qint64 pid) {
+    const auto handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, DWORD(pid));
+    if (!handle)
+        return GetLastError() == ERROR_ACCESS_DENIED; // Exists, but belongs to someone else.
+    DWORD code = 0;
+    const bool running = GetExitCodeProcess(handle, &code) && code == STILL_ACTIVE;
+    CloseHandle(handle);
+    return running;
+}
+// Creation time of a process, or 0 when it cannot be opened.
+quint64 windowsProcessCreation(DWORD pid) {
+    const auto handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!handle)
+        return 0;
+    FILETIME created{}, exited{}, kernel{}, user{};
+    const bool ok = GetProcessTimes(handle, &created, &exited, &kernel, &user);
+    CloseHandle(handle);
+    return ok ? (quint64(created.dwHighDateTime) << 32) | created.dwLowDateTime : 0;
+}
+void windowsTerminateTree(qint64 pid) {
+    const auto snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE)
+        return;
+    QMultiHash<DWORD, DWORD> children;
+    PROCESSENTRY32W entry{};
+    entry.dwSize = sizeof(entry);
+    for (bool more = Process32FirstW(snapshot, &entry); more; more = Process32NextW(snapshot, &entry))
+        if (entry.th32ProcessID != entry.th32ParentProcessID)
+            children.insert(entry.th32ParentProcessID, entry.th32ProcessID);
+    CloseHandle(snapshot);
+    // A parent id may have been recycled: only processes started after the run belong to its tree.
+    const auto started = windowsProcessCreation(DWORD(pid));
+    QList<DWORD> tree{DWORD(pid)};
+    for (qsizetype i = 0; i < tree.size(); ++i)
+        for (const auto child : children.values(tree[i]))
+            if (!tree.contains(child) && windowsProcessCreation(child) >= started)
+                tree << child;
+    // Parents first, so that none of them starts a replacement for an ended child.
+    for (const auto id : tree)
+        if (const auto handle = OpenProcess(PROCESS_TERMINATE, FALSE, id)) {
+            TerminateProcess(handle, 1);
+            CloseHandle(handle);
+        }
+}
+} // namespace
+} // namespace mf
+#endif

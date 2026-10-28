@@ -5,6 +5,7 @@
 #include "mcp/stdio_transport.h"
 #include "mcp/tools.h"
 #include "model/geometry.h"
+#include "model/settings.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
@@ -28,7 +29,12 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QtTest>
-
+// Executables carry .exe on Windows.
+#ifdef Q_OS_WIN
+#define EXE ".exe"
+#else
+#define EXE ""
+#endif
 using namespace mf;
 namespace {
 QJsonObject metadata(const QString &version = McpProtocolVersion) {
@@ -618,9 +624,10 @@ class McpTest : public QObject {
         const auto root = files.filePath("jobs");
         QVERIFY(!failed(processCall(
             process, "set_execution",
-            {{"settings", QJsonObject{{"mode", "direct"},
-                                      {"executable", QCoreApplication::applicationDirPath() + "/fake_nwchem"},
-                                      {"job_root", root}}},
+            {{"settings",
+              QJsonObject{{"mode", "direct"},
+                          {"executable", QCoreApplication::applicationDirPath() + "/fake_nwchem" EXE},
+                          {"job_root", root}}},
              {"preview", false}},
             true)));
         QCOMPARE(processCommand(process, "calculation", {{"action", "start"}})["state"].toString(), "done");
@@ -1283,7 +1290,7 @@ class McpTest : public QObject {
                 process, "set_execution",
                 {{"settings",
                   QJsonObject{{"mode", "direct"},
-                              {"executable", QCoreApplication::applicationDirPath() + "/fake_nwchem"},
+                              {"executable", QCoreApplication::applicationDirPath() + "/fake_nwchem" EXE},
                               {"job_root", files.filePath("jobs")},
                               {"environment", QJsonArray{QJsonObject{{"enabled", !mode.isEmpty()},
                                                                      {"name", "MOLFORMA_FAKE_MODE"},
@@ -1430,7 +1437,7 @@ class McpTest : public QObject {
             {{"settings", QJsonObject{{"mode", "direct"}, {"job_root", jobs.path()}}}, {"preview", false}})));
         // A project loaded over MCP may name another program; MCP cannot run it.
         auto project = w.document();
-        const auto fake = QCoreApplication::applicationDirPath() + "/fake_nwchem";
+        const auto fake = QCoreApplication::applicationDirPath() + "/fake_nwchem" EXE;
         setExecutionSetting(project, "executable", fake);
         QVERIFY(!failed(change(s, "import_document",
                                {{"format", "project"},
@@ -1496,7 +1503,8 @@ class McpTest : public QObject {
             return command["error"].toString().contains("MCPからはこの設定で実行できません");
         };
         auto project = w.document();
-        setExecutionSetting(project, "executable", QCoreApplication::applicationDirPath() + "/fake_nwchem");
+        setExecutionSetting(project, "executable",
+                            QCoreApplication::applicationDirPath() + "/fake_nwchem" EXE);
         // A person confirming an MCP candidate does not make the executable it carries trusted.
         QVERIFY(!failed(change(s, "import_document",
                                {{"format", "project"},
@@ -1533,10 +1541,12 @@ class McpTest : public QObject {
         // "~" is expanded as execution expands it, even when the base directory is allowed.
         QVERIFY(rejects("~/escape", allowed.path()));
         QVERIFY(rejects("~", allowed.path()));
+#ifndef Q_OS_WIN // QFile::link makes .lnk shortcuts there, which the file system does not follow.
         QVERIFY(QFile::link(outside.path(), allowed.filePath("link")));
         QVERIFY(rejects(allowed.filePath("link/file.json")));
         QVERIFY(QFile::link(allowed.filePath("missing-target"), allowed.filePath("dangling")));
         QVERIFY(rejects(allowed.filePath("dangling")));
+#endif
         McpServer server({}, policy);
         QVERIFY(!failed(change(
             server, "place_template",
@@ -1545,8 +1555,11 @@ class McpTest : public QObject {
                    copy = outside.filePath("water.molforma.json");
         QVERIFY(!failed(change(server, "save_file", {{"path", inside}})));
         QVERIFY(failed(change(server, "save_file", {{"path", copy}})));
-        QVERIFY(
-            failed(change(server, "save_file", {{"path", allowed.filePath("link/water.molforma.json")}})));
+#ifndef Q_OS_WIN
+        QVERIFY(failed(change(server, "save_file",
+                              {{ "path",
+                                 allowed.filePath("link/water.molforma.json") }})));
+#endif
         QVERIFY(!QFile::exists(copy));
         QVERIFY(QFile::copy(inside, copy));
         QVERIFY(failed(change(server, "open_file", {{"path", copy}, {"preview", false}})));
@@ -1746,7 +1759,7 @@ class McpTest : public QObject {
             process.start(QCoreApplication::applicationDirPath() + "/molforma", QStringList{"--mcp"} + extra);
             return process.waitForStarted();
         };
-        const auto fake = QCoreApplication::applicationDirPath() + "/fake_nwchem";
+        const auto fake = QCoreApplication::applicationDirPath() + "/fake_nwchem" EXE;
         const auto caps = clientCapabilities(false, true);
         QProcess process;
         QVERIFY(launch(process, {"--mcp-allow-execution-settings"}));
@@ -1828,7 +1841,11 @@ class McpTest : public QObject {
         QVERIFY(strict.waitForFinished(10000));
         // The executable and launcher the user saved in Preferences are trusted and preset.
         {
-            QSettings saved(files.filePath("settings/MolForma/MolForma.conf"), QSettings::IniFormat);
+            // MolForma.conf, or MolForma.ini on Windows (model/settings.h).
+            QSettings saved(files.filePath(SettingsFormat == QSettings::IniFormat
+                                               ? "settings/MolForma/MolForma.ini"
+                                               : "settings/MolForma/MolForma.conf"),
+                            QSettings::IniFormat);
             saved.setValue("execution/defaults",
                            QJsonDocument(QJsonObject{{"executable", fake},
                                                      {"mode", "direct"},

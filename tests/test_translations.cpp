@@ -401,7 +401,9 @@ class TranslationsTest : public QObject {
         auto *refine = w.findChild<QWidget *>("refineSelectionButton");
         auto *keep = w.findChild<QWidget *>("keepSelection");
         QVERIFY(card && refine && keep);
+#ifndef Q_OS_WIN // The narrower fonts of Windows may keep the buttons on one row.
         QVERIFY(refine->y() > w.findChild<QWidget *>("clearSelection")->y()); // Wrapped.
+#endif
         QVERIFY2(refine->geometry().bottom() < keep->y(),
                  qPrintable(QString("button ends at %1, check box starts at %2")
                                 .arg(refine->geometry().bottom())

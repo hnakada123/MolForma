@@ -3,6 +3,7 @@
 #include "mcp/server.h"
 #include "mcp/stdio_transport.h"
 #include "model/i18n.h"
+#include "model/settings.h"
 #include "ui/main_window.h"
 #include "ui/mcp_gui.h"
 #include "ui/translations.h"
@@ -32,6 +33,11 @@ mf::McpPolicy mcpPolicy(const QCommandLineParser &parser) {
 }
 } // namespace
 int main(int argc, char **argv) {
+#ifdef Q_OS_WIN
+    // Windows has no XDG folders; honoring XDG_CONFIG_HOME moves MolForma.ini there as on Linux (tests).
+    if (const auto config = qEnvironmentVariable("XDG_CONFIG_HOME"); !config.isEmpty())
+        QSettings::setPath(mf::SettingsFormat, QSettings::UserScope, config);
+#endif
     // Check before QApplication so headless MCP needs no display or platform plugin.
     bool headlessMcp = false, guiMcp = false;
     for (int i = 1; i < argc; ++i) {

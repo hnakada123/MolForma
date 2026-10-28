@@ -3,6 +3,7 @@
 #include "editing/operations.h"
 #include "editing/peptide.h"
 #include "model/geometry.h"
+#include "model/settings.h"
 #include "nwchem/nwchem.h"
 #include "ui/editor_chrome.h"
 #include "ui/main_window.h"
@@ -222,10 +223,13 @@ class EditorTest : public QObject {
         QVERIFY(clicked);
         QVERIFY(closed);
         QStringList parts;
-        for (const auto &part : QSettings("MolForma", "MolForma").value("parts").toJsonArray())
+        for (const auto &part : QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
+                                    .value("parts")
+                                    .toJsonArray())
             parts << part.toObject()["id"].toString();
         QVERIFY2(parts.contains("my:トリメチルシリル"), qPrintable(parts.join(' ')));
-        QSettings("MolForma", "MolForma").remove("parts"); // Later tests start without parts.
+        QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
+            .remove("parts"); // Later tests start without parts.
     }
     void autosaveAndRecovery() {
         QDir(settingsHome.filePath("data")).removeRecursively();
@@ -237,15 +241,18 @@ class EditorTest : public QObject {
             w.startAutosave();
             w.edit("削除", [&](Document &next) { next.remove({next.atoms.last().id}); });
             w.autosave();
-            const QDir autosaves(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
-                                 "/autosave");
+            const QDir autosaves(MainWindow::autosaveDirectory());
             QVERIFY(autosaves.absolutePath().startsWith(settingsHome.path()));
             const auto copies = autosaves.entryList({"session-*.molforma.json"});
             QCOMPARE(copies.size(), 1);
             // Simulate a crash: keep the copy and leave a lock file of a process that no longer runs.
             QFile::copy(autosaves.filePath(copies.first()), autosaves.filePath("session-1-2.molforma.json"));
-            writeFile(autosaves.filePath("session-1-2.lock"),
-                      QByteArray("999999\nmolforma\n") + QSysInfo::machineHostName().toUtf8() + "\n");
+#ifdef Q_OS_WIN
+            const auto host = qgetenv("COMPUTERNAME"); // QLockFile writes the NetBIOS name there.
+#else
+            const auto host = QSysInfo::machineHostName().toUtf8();
+#endif
+            writeFile(autosaves.filePath("session-1-2.lock"), QByteArray("999999\nmolforma\n") + host + "\n");
             // Undo and a different edit return to the same undo index: the copy still follows.
             w.history()->undo();
             w.edit("削除", [&](Document &next) { next.remove({next.atoms.first().id}); }, false);
@@ -269,8 +276,7 @@ class EditorTest : public QObject {
             later.offerRecovery();
             QVERIFY(later.document().atoms.isEmpty()); // The window starts with a new document.
         }
-        const QDir autosaves(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
-                             "/autosave");
+        const QDir autosaves(MainWindow::autosaveDirectory());
         QVERIFY(autosaves.exists("session-1-2.molforma.json"));
         MainWindow next;
         QTimer::singleShot(0, &next, [&] { answer("復旧する"); });
@@ -461,7 +467,10 @@ class EditorTest : public QObject {
         tabs->setCurrentIndex(0);
         w.findChild<QToolButton *>("moleculeLayout_table")->click();
         QVERIFY(table->isVisible() && !w.canvas()->isVisible());
-        QCOMPARE(QSettings("MolForma", "MolForma").value("molecule/layout").toString(), QString("table"));
+        QCOMPARE(QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
+                     .value("molecule/layout")
+                     .toString(),
+                 QString("table"));
         const auto ids = w.document().ids();
         w.setSelection({ids[2], ids[0], ids[1]});
         QCOMPARE(table->selectionModel()->selectedRows().size(), 3);
@@ -1237,7 +1246,7 @@ class EditorTest : public QObject {
             QVERIFY(!w.windowTitle().contains('*'));
         }
         // The preference still loads a water molecule when it is turned on.
-        QSettings settings("MolForma", "MolForma");
+        QSettings settings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma");
         settings.setValue("startupWater", true);
         MainWindow w;
         settings.remove("startupWater");

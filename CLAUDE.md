@@ -27,8 +27,9 @@ QT_QPA_PLATFORM=offscreen ./build/test_editor someTestFunction   # one Qt Test s
   All run with `QT_QPA_PLATFORM=offscreen` and need no network, credentials or NWChem install:
   `tests/fake_nwchem.cpp` builds a stand-in NWChem used by execution/history/output/mcp tests.
   `test_mcp` launches the built `molforma` binary. Fixtures live in `tests/fixtures/` (`FIXTURE_DIR` in `test_core`).
-  Tests must not touch the user's files: `QSettings("MolForma", "MolForma")` uses NativeFormat, so redirect
-  `QSettings::setPath(QSettings::NativeFormat, …)` (not only IniFormat) and set `XDG_CONFIG_HOME` / `XDG_DATA_HOME`
+  Tests must not touch the user's files: MolForma's settings use `mf::SettingsFormat` (`model/settings.h`: NativeFormat,
+  an INI file on Windows), so redirect `QSettings::setPath` for both NativeFormat and IniFormat and set
+  `XDG_CONFIG_HOME` / `XDG_DATA_HOME` (honored on Windows too)
   (autosave copies) to temporary directories, also for launched `molforma` processes.
 - New source files must be added to the explicit lists in `CMakeLists.txt` (no globbing).
 - Format: `rg --files src tests -g '*.h' -g '*.cpp' -0 | xargs -0 clang-format -i` (uses `.clang-format`).
@@ -98,7 +99,10 @@ Key cross-cutting designs:
   folder (`dpkg-shlibdeps` finds the libraries; see `docs/installation/ubuntu.md`). `packaging/appimage/` builds an
   AppImage in Docker (Ubuntu 24.04 with Qt 6.4, VTK built for Qt 6; `build.sh` runs linuxdeploy and appimagetool and
   sets Open Babel's `BABEL_LIBDIR`/`BABEL_DATADIR` in an AppRun hook; see `docs/installation/appimage.md`). That
-  build is also the check that the code still builds and passes with Qt 6.4.
+  build is also the check that the code still builds and passes with Qt 6.4. On Windows MSVC builds find Open Babel
+  through its CMake package (no pkg-config), keep preferences in an INI file (`model/settings.h`), and `cmake --install`
+  makes a self-contained folder with windeployqt plus `packaging/windows/` (batch files that run NWChem in WSL); see
+  `docs/installation/windows.md`.
 - `docs/` is also the source of the GitHub Pages site https://hnakada123.github.io/MolForma/: on pushes to main that
   touch `docs/`, `.github/workflows/pages.yml` generates the HTML with Jekyll (`docs/Gemfile` + `Gemfile.lock`, the
   `github-pages` gem) and publishes that HTML (Pages source: GitHub Actions). Preview locally with

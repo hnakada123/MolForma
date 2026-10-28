@@ -475,6 +475,7 @@ class MoldenTest : public QObject {
         QVERIFY(panel->loading());
         QTRY_VERIFY_WITH_TIMEOUT(!panel->loading(), 10000);
         QVERIFY(panel->result().surface.constData() != firstSurface.constData());
+#ifndef Q_OS_WIN // Qt reports no metadata change time there: a rewrite that keeps size and mtime goes unseen.
         const auto oldTime = QFileInfo(path).lastModified();
         QTest::qWait(5);
         auto changed = sample();
@@ -491,11 +492,15 @@ class MoldenTest : public QObject {
         recompute(); // Same size and mtime: metadata change time must still invalidate it.
         QCOMPARE(panel->result().orbitals[0].energy, -.6);
         QCOMPARE(widget<QTableWidget>(w, "resultsOrbitals")->item(0, 4)->text(), QString("-0.600000"));
+#else
+        QFile file(path);
+#endif
+        const double kept = panel->result().orbitals[0].energy;
         QVERIFY(file.remove());
         const int count = failed.count();
         emit iso->editingFinished();
         QTRY_COMPARE_WITH_TIMEOUT(failed.count(), count + 1, 10000);
-        QCOMPARE(panel->result().orbitals[0].energy, -.6);
+        QCOMPARE(panel->result().orbitals[0].energy, kept); // A missing file keeps the result shown.
     }
     void realBenzeneArtifacts() {
         const auto path = qEnvironmentVariable("MOLFORMA_MOLDEN_REAL");

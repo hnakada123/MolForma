@@ -1,3 +1,4 @@
+#include "model/settings.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "ui/execution_panel.h"
@@ -7,6 +8,12 @@
 #include <QtTest>
 #include <QtWidgets>
 using namespace mf;
+// Executables carry .exe on Windows.
+#ifdef Q_OS_WIN
+#define EXE ".exe"
+#else
+#define EXE ""
+#endif
 
 class HistoryTest : public QObject {
     Q_OBJECT
@@ -17,7 +24,7 @@ class HistoryTest : public QObject {
         d.envelope["future"] = QJsonObject{{"preserve", 12}};
         setExecutionSetting(d, "job_root", root);
         setExecutionSetting(d, "mode", "direct");
-        setExecutionSetting(d, "executable", QCoreApplication::applicationDirPath() + "/fake_nwchem");
+        setExecutionSetting(d, "executable", QCoreApplication::applicationDirPath() + "/fake_nwchem" EXE);
         return d;
     }
     static void manifest(ExecutionPlan &p, const QString &state, int seconds = 0) {
@@ -71,7 +78,7 @@ class HistoryTest : public QObject {
                            settings.path()); // MolForma uses NativeFormat.
     }
     void init() {
-        QSettings("MolForma", "MolForma").clear();
+        QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma").clear();
     }
     void snapshotsLegacyAndMovedDirectories() {
         QTemporaryDir tmp;
@@ -298,7 +305,7 @@ class HistoryTest : public QObject {
         // A process that has ended.
         QProcess done;
         done.setWorkingDirectory(tmp.path());
-        done.start(QCoreApplication::applicationDirPath() + "/fake_nwchem", {});
+        done.start(QCoreApplication::applicationDirPath() + "/fake_nwchem" EXE, {});
         QVERIFY(done.waitForStarted(10000));
         p.manifest["pid"] = done.processId();
         p.manifest.remove("pid_start");

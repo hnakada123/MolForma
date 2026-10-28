@@ -570,3 +570,23 @@ QVector<Conformer> searchConformers(const Document &d, int count) {
     return result;
 }
 } // namespace mf
+#ifdef MOLFORMA_OPENBABEL_DATADIR
+// Last in the file: the macros of windows.h rename Open Babel's methods such as AddAtom.
+#include <QDir>
+#define NOMINMAX
+#include <windows.h>
+namespace mf {
+// Open Babel built with MSVC finds its force fields and fragments only through BABEL_DATADIR: the data
+// folder beside the installed executable, else the one of the Open Babel it was built with.
+[[maybe_unused]] static const bool openBabelData = [] {
+    if (!qEnvironmentVariableIsEmpty("BABEL_DATADIR"))
+        return false;
+    wchar_t path[MAX_PATH];
+    const auto length = GetModuleFileNameW(nullptr, path, MAX_PATH);
+    const QDir beside = QFileInfo(QString::fromWCharArray(path, int(length))).dir();
+    const auto data =
+        beside.exists("data/UFF.prm") ? beside.filePath("data") : QString(MOLFORMA_OPENBABEL_DATADIR);
+    return qputenv("BABEL_DATADIR", QDir::toNativeSeparators(data).toLocal8Bit());
+}();
+} // namespace mf
+#endif

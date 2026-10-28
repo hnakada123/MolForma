@@ -7,6 +7,12 @@
 #include <QtTest>
 #include <QtWidgets>
 using namespace mf;
+// Executables carry .exe on Windows.
+#ifdef Q_OS_WIN
+#define EXE ".exe"
+#else
+#define EXE ""
+#endif
 
 class OutputTest : public QObject {
     Q_OBJECT
@@ -173,7 +179,7 @@ class OutputTest : public QObject {
         both(d);
         setExecutionSetting(d, "job_root", tmp.path());
         setExecutionSetting(d, "mode", "direct");
-        setExecutionSetting(d, "executable", QCoreApplication::applicationDirPath() + "/fake_nwchem");
+        setExecutionSetting(d, "executable", QCoreApplication::applicationDirPath() + "/fake_nwchem" EXE);
         setNwchemAdvanced(d, "permanent_dir", "permanent");
         setNwchemAdvanced(d, "vectors_output", "nested/custom orbitals.movecs");
         const auto plan = saveExecutionBundle(d, tmp.path(), true);
@@ -204,10 +210,12 @@ class OutputTest : public QObject {
         const auto moved = tmp.filePath("moved");
         QVERIFY(QDir().rename(plan.directory, moved));
         QVERIFY(resultFiles(moved).contains("permanent/molforma_density.cube"));
+#ifndef Q_OS_WIN // There absolute paths start with a drive, and NWChem input takes no ":" in them.
         // An absolute permanent directory uses the same discovery path without recursively scanning it.
         setNwchemAdvanced(d, "permanent_dir", moved + "/permanent");
         const auto external = saveExecutionBundle(d, tmp.path());
         QVERIFY(resultFiles(external.directory).contains(moved + "/permanent/molforma_density.cube"));
+#endif
         setNwchemAdvanced(d, "vectors_output", "./direct/custom.movecs");
         const auto direct = saveExecutionBundle(d, tmp.path());
         QVERIFY(QFileInfo(direct.directory + "/direct").isDir());

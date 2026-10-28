@@ -7,8 +7,18 @@ set(CMAKE_AUTORCC ON)
 find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets)
 set(CMAKE_FIND_USE_PACKAGE_REGISTRY FALSE)
 find_package(Eigen3 REQUIRED NO_MODULE)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(OPENBABEL REQUIRED IMPORTED_TARGET openbabel-3)
+if(MSVC)
+    # Open Babel's MSVC build installs a CMake package but no pkg-config file (docs/installation/windows.md).
+    find_package(OpenBabel3 3 CONFIG REQUIRED)
+    set(MOLFORMA_OPENBABEL openbabel)
+    get_target_property(openbabel_dll openbabel IMPORTED_LOCATION_RELEASE)
+    get_filename_component(openbabel_bin "${openbabel_dll}" DIRECTORY)
+    message(STATUS "Found OpenBabel3, version ${OpenBabel3_VERSION}, in ${openbabel_bin}")
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(OPENBABEL REQUIRED IMPORTED_TARGET openbabel-3)
+    set(MOLFORMA_OPENBABEL PkgConfig::OPENBABEL)
+endif()
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW)
 endif()
@@ -36,10 +46,16 @@ add_library(molforma_core STATIC
 target_include_directories(molforma_core PUBLIC src)
 target_compile_definitions(molforma_core PUBLIC MOLFORMA_VERSION="${PROJECT_VERSION}")
 find_package(Threads REQUIRED)
-target_link_libraries(molforma_core PUBLIC Qt6::Widgets Eigen3::Eigen PkgConfig::OPENBABEL Threads::Threads)
+target_link_libraries(molforma_core PUBLIC Qt6::Widgets Eigen3::Eigen ${MOLFORMA_OPENBABEL} Threads::Threads)
 if(TARGET RDKit::CIPLabeler)
     target_link_libraries(molforma_core PRIVATE RDKit::CIPLabeler RDKit::GraphMol RDKit::SubstructMatch)
     target_compile_definitions(molforma_core PUBLIC MOLFORMA_HAS_RDKIT=1)
+endif()
+if(MSVC)
+    # Open Babel's headers import from its DLL only with USING_DYNAMIC_LIBS, which its package does not set.
+    target_compile_definitions(molforma_core PUBLIC USING_DYNAMIC_LIBS)
+    # Force fields and fragments: found beside the installed executable, else in Open Babel's bin.
+    target_compile_definitions(molforma_core PRIVATE MOLFORMA_OPENBABEL_DATADIR="${openbabel_bin}/data")
 endif()
 target_compile_options(molforma_core PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 add_library(molforma_ui STATIC
@@ -110,6 +126,8 @@ add_library(molforma_mcp STATIC
 target_link_libraries(molforma_mcp PUBLIC molforma_core)
 target_compile_options(molforma_mcp PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 add_executable(molforma src/main.cpp)
+# On Windows a GUI application without a console window; MCP clients still pass pipes as its standard streams.
+set_target_properties(molforma PROPERTIES WIN32_EXECUTABLE ON)
 target_link_libraries(molforma PRIVATE molforma_ui molforma_mcp)
 include(CTest)
 if(BUILD_TESTING)
@@ -173,6 +191,13 @@ if(BUILD_TESTING)
     target_link_libraries(test_molden PRIVATE molforma_ui Qt6::Test)
     add_test(NAME molden COMMAND test_molden)
     set_tests_properties(core editor coordinates calculation advanced execution input_preview results history output molden translations PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    if(WIN32)
+        # The offscreen platform finds no fonts on Windows by itself; without them every text is a box.
+        file(TO_CMAKE_PATH "$ENV{WINDIR}/Fonts" windows_fonts)
+        set_tests_properties(mcp core editor rendering coordinates calculation advanced execution input_preview results
+            history output molden translations PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_FONTDIR=${windows_fonts}")
+    endif()
     set_tests_properties(core editor coordinates calculation advanced execution input_preview results history output molden translations PROPERTIES TIMEOUT 120)
 endif()
 install(TARGETS molforma RUNTIME DESTINATION bin)
@@ -181,11 +206,35 @@ install(FILES docs/features.md docs/mcp.md DESTINATION share/molforma/docs)
 install(DIRECTORY docs/features DESTINATION share/molforma/docs)
 install(FILES docs/en/features.md docs/en/mcp.md DESTINATION share/molforma/docs/en)
 install(DIRECTORY docs/en/features DESTINATION share/molforma/docs/en)
-# Desktop integration (freedesktop.org): launcher, icon and file types.
-install(FILES packaging/molforma.desktop DESTINATION share/applications)
-install(FILES packaging/molforma.svg DESTINATION share/icons/hicolor/scalable/apps)
-install(FILES packaging/molforma-256.png DESTINATION share/icons/hicolor/256x256/apps RENAME molforma.png)
-install(FILES packaging/molforma-mime.xml DESTINATION share/mime/packages RENAME molforma.xml)
+if(MSVC)
+    # Windows: a folder that runs on its own (docs/installation/windows.md). bin gets Qt (windeployqt),
+    # Open Babel with its format plugins (*.obf, loaded from beside its DLL), its data folder and the
+    # DLLs they link.
+    file(GLOB openbabel_plugins "${openbabel_bin}/*.obf")
+    install(FILES ${openbabel_plugins} DESTINATION bin)
+    install(DIRECTORY "${openbabel_bin}/data" DESTINATION bin)
+    set(dll_directories "${openbabel_bin}")
+    foreach(prefix IN LISTS CMAKE_PREFIX_PATH)
+        list(APPEND dll_directories "${prefix}/bin")
+    endforeach()
+    install(CODE "
+        set(plugins \"${openbabel_plugins}\")
+        set(directories \"${dll_directories}\")
+        file(GET_RUNTIME_DEPENDENCIES EXECUTABLES \"$<TARGET_FILE:molforma>\" MODULES \${plugins}
+            DIRECTORIES \${directories} PRE_EXCLUDE_REGEXES \"^api-ms-\" \"^ext-ms-\" \"^Qt6\"
+            POST_EXCLUDE_REGEXES \"[Ss]ystem32\" RESOLVED_DEPENDENCIES_VAR dlls)
+        file(INSTALL \${dlls} DESTINATION \"\${CMAKE_INSTALL_PREFIX}/bin\")")
+    # NWChem and mpirun of WSL, for "3 Run settings" (packaging/windows).
+    install(FILES packaging/windows/nwchem.cmd packaging/windows/mpirun.cmd DESTINATION nwchem-wsl)
+    qt_generate_deploy_app_script(TARGET molforma OUTPUT_SCRIPT molforma_deploy NO_UNSUPPORTED_PLATFORM_ERROR)
+    install(SCRIPT "${molforma_deploy}")
+else()
+    # Desktop integration (freedesktop.org): launcher, icon and file types.
+    install(FILES packaging/molforma.desktop DESTINATION share/applications)
+    install(FILES packaging/molforma.svg DESTINATION share/icons/hicolor/scalable/apps)
+    install(FILES packaging/molforma-256.png DESTINATION share/icons/hicolor/256x256/apps RENAME molforma.png)
+    install(FILES packaging/molforma-mime.xml DESTINATION share/mime/packages RENAME molforma.xml)
+endif()
 # "cpack -G DEB" in the build folder makes a Debian/Ubuntu package of the installed files
 # (docs/installation/ubuntu.md). dpkg-shlibdeps adds the libraries the executable links;
 # Depends adds the Qt platform plugins it loads at run time.

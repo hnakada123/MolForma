@@ -1,10 +1,12 @@
 #pragma once
 #include <QByteArray>
 #include <QObject>
+#include <memory>
 class QSocketNotifier;
 namespace mf {
 class McpServer;
-// Nonblocking POSIX streams; the Qt event loop remains responsive to GUI input.
+// Nonblocking POSIX streams, or reader/writer threads on Windows; the Qt event loop remains
+// responsive to GUI input.
 class McpStdioTransport : public QObject {
     Q_OBJECT
   public:
@@ -16,9 +18,12 @@ class McpStdioTransport : public QObject {
     void finished(int exitCode);
 
   private:
+    struct Threads;
     McpServer *server;
     QSocketNotifier *reader = nullptr, *writer = nullptr;
+    std::shared_ptr<Threads> threads;
     QByteArray input, output;
+    qsizetype unflushed = 0; // Handed to the Windows writer thread, not yet written.
     int inputFlags = -1, outputFlags = -1, exitCode = 0;
     bool eof = false, scheduled = false, stopped = false;
     void readInput();
