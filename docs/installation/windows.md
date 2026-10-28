@@ -148,10 +148,11 @@ cmake --build build -j 4
 -- MolForma rendering: VTK 9.7.1 (Qt6), with QPainter fallback
 ```
 
-テストを実行する場合は次のとおりです（任意）。テストはQt・Open Babel・VTK・vcpkgのDLLを使うので、先にそれらのフォルダーをPATHに加えます。NWChem・ネットワークは使いません。
+ビルドすると、`build` の実行ファイルの横に、それが使うDLL（Qt・Open Babel・VTK・vcpkgのもの）とOpen Babelのプラグイン、Qtの場所を示す `qt.conf` がコピーされます。このため `build\molforma.exe` は、PATHを設定しなくても起動できます。
+
+テストを実行する場合は次のとおりです（任意）。NWChem・ネットワークは使いません。
 
 ```bat
-set PATH=C:\Qt\6.11.2\msvc2022_64\bin;C:\dev\openbabel-install\bin;C:\dev\vtk-install\bin;C:\dev\vcpkg\installed\x64-windows\bin;%PATH%
 ctest --test-dir build --output-on-failure
 ```
 
@@ -258,7 +259,7 @@ Qtの版を変えた場合は、VTKもそのQtでビルドし直し、MolForma�
 | Open Babelのビルドが `inchi.dll` のリンクエラー（`Get_inchi_Input_FromAuxInfo` など）で止まる | 構成に `-DWITH_INCHI=OFF` を付けてやり直します |
 | SMILESや部品からの3D生成で「2つの原子が同じ位置に重なっています」と出る（特に環のある分子） | Open BabelのデータがCRLFで取得されています。[3. Open Babelをビルドする](#3-open-babelをビルドする)の `git clone` の `-c` の指定でソースを取り直し、`build` と `C:\dev\openbabel-install` を削除してビルドし直します |
 | 整形で「この構造に使える力場パラメータがありません」と出る | Open Babelのデータ（`bin\data`）が見つかっていません。インストールしたフォルダーなら `bin\data` があるか、ビルドしたフォルダーの `molforma.exe` なら `C:\dev\openbabel-install\bin\data` があるか確認します。環境変数 `BABEL_DATADIR` を設定している場合は、その値が優先されます |
-| `build\molforma.exe` やテストが `Qt6Core.dll` などが見つからないというエラーで起動しない | ビルドしたフォルダーの実行ファイルは、QtなどのDLLをPATHから探します。[5. MolFormaをビルドする](#5-molformaをビルドする)の `set PATH=…` を実行するか、インストールしたフォルダーのものを使います |
+| `build\molforma.exe` やテストが `Qt6Core.dll` などが見つからないというエラーで起動しない | DLLは実行ファイルをリンクしたときに `build` にコピーします。Qt・Open Babel・RDKit・VTKを入れ直した後や、`build` のDLLを消した後は、`build` の `*.exe` を削除して `cmake --build build` で作り直します |
 | 「実行前の確認」でNWChem実行ファイルやMPIランチャーが見つからない | 「3 実行設定」のパスが `nwchem-wsl` の2つのバッチファイルを指しているか確認します |
 | 計算がすぐに失敗し、ログ（標準エラー）に `wsl` のエラーが出る | コマンドプロンプトで `wsl nwchem` と `wsl mpirun --version` が動くか確認します。既定でないWSLディストリビューションを使う場合は、バッチファイルの `wsl.exe` の後に `-d <ディストリビューション名>` を加えます |
 | 標準エラーに `your 131072x1 screen size is bogus. expect trouble` と出る | WSLの `ps` などが出す警告で、計算には影響しません |

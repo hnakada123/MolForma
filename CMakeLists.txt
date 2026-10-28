@@ -196,7 +196,9 @@ if(BUILD_TESTING)
         file(TO_CMAKE_PATH "$ENV{WINDIR}/Fonts" windows_fonts)
         set_tests_properties(mcp core editor rendering coordinates calculation advanced execution input_preview results
             history output molden translations PROPERTIES
-            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_FONTDIR=${windows_fonts}")
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_FONTDIR=${windows_fonts}"
+            # The copy of fake_nwchem in a temporary folder (test_execution) has no Qt beside it.
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT6_INSTALL_PREFIX}/bin")
     endif()
     set_tests_properties(core editor coordinates calculation advanced execution input_preview results history output molden translations PROPERTIES TIMEOUT 120)
 endif()
@@ -228,6 +230,21 @@ if(MSVC)
     install(FILES packaging/windows/nwchem.cmd packaging/windows/mpirun.cmd DESTINATION nwchem-wsl)
     qt_generate_deploy_app_script(TARGET molforma OUTPUT_SCRIPT molforma_deploy NO_UNSUPPORTED_PLATFORM_ERROR)
     install(SCRIPT "${molforma_deploy}")
+    # The executables of the build folder start without PATH too: after linking, each gets the DLLs it
+    # loads (Qt's as well), Open Babel's plugins and a qt.conf beside it.
+    set(runtime_targets molforma)
+    if(BUILD_TESTING)
+        list(APPEND runtime_targets fake_nwchem test_mcp test_core test_editor test_rendering test_coordinates
+            test_calculation test_advanced test_execution test_input_preview test_results test_history test_output
+            test_translations test_molden)
+    endif()
+    foreach(target IN LISTS runtime_targets)
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} "-DEXECUTABLE=$<TARGET_FILE:${target}>" "-DPLUGINS=${openbabel_plugins}"
+                "-DDIRECTORIES=${QT6_INSTALL_PREFIX}/bin;${dll_directories}" "-DQT_PREFIX=${QT6_INSTALL_PREFIX}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/copy_runtime.cmake"
+            VERBATIM)
+    endforeach()
 else()
     # Desktop integration (freedesktop.org): launcher, icon and file types.
     install(FILES packaging/molforma.desktop DESTINATION share/applications)

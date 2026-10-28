@@ -148,10 +148,11 @@ Near the end of the output of `cmake -S . -B build …` (configuring), the Open 
 -- MolForma rendering: VTK 9.7.1 (Qt6), with QPainter fallback
 ```
 
-To run the tests (optional): they use the DLLs of Qt, Open Babel, VTK and vcpkg, so add their folders to PATH first. They use neither NWChem nor the network.
+Building copies beside each executable in `build` the DLLs it uses (those of Qt, Open Babel, VTK and vcpkg), Open Babel's plugins and a `qt.conf` naming the Qt folder, so `build\molforma.exe` starts without setting PATH.
+
+To run the tests (optional); they use neither NWChem nor the network:
 
 ```bat
-set PATH=C:\Qt\6.11.2\msvc2022_64\bin;C:\dev\openbabel-install\bin;C:\dev\vtk-install\bin;C:\dev\vcpkg\installed\x64-windows\bin;%PATH%
 ctest --test-dir build --output-on-failure
 ```
 
@@ -258,7 +259,7 @@ Delete the installed folder `%LOCALAPPDATA%\Programs\MolForma` and, if you made 
 | Building Open Babel stops with link errors of `inchi.dll` (`Get_inchi_Input_FromAuxInfo` and others) | Configure again with `-DWITH_INCHI=OFF` |
 | 3D generation from SMILES or parts says that two atoms overlap at the same position (especially for molecules with rings) | Open Babel's data was checked out with CRLF. Get the source again with the `-c` options of `git clone` in [3. Build Open Babel](#3-build-open-babel), delete `build` and `C:\dev\openbabel-install`, and build again |
 | Cleanup says that no force-field parameters fit this structure | Open Babel's data (`bin\data`) is not found. For the installed folder, check that `bin\data` exists; for `molforma.exe` in the build folder, check `C:\dev\openbabel-install\bin\data`. The environment variable `BABEL_DATADIR`, if set, takes precedence |
-| `build\molforma.exe` or the tests do not start because `Qt6Core.dll` or another DLL is missing | Executables in the build folder look for the DLLs of Qt and the others in PATH. Run the `set PATH=…` of [5. Build MolForma](#5-build-molforma), or use the installed folder |
+| `build\molforma.exe` or the tests do not start because `Qt6Core.dll` or another DLL is missing | The DLLs are copied into `build` when an executable is linked. After reinstalling Qt, Open Babel, RDKit or VTK, or deleting DLLs from `build`, delete the `*.exe` files in `build` and run `cmake --build build` again |
 | The pre-run check does not find the NWChem executable or the MPI launcher | Check that the paths in “3 Run settings” point to the two batch files in `nwchem-wsl` |
 | The calculation fails at once and the log (standard error) shows an error of `wsl` | Check in the command prompt that `wsl nwchem` and `wsl mpirun --version` work. For a WSL distribution that is not the default, add `-d <distribution name>` after `wsl.exe` in the batch files |
 | Standard error shows `your 131072x1 screen size is bogus. expect trouble` | A warning of `ps` and similar programs in WSL; it does not affect the calculation |

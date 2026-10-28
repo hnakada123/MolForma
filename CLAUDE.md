@@ -101,7 +101,8 @@ Key cross-cutting designs:
   sets Open Babel's `BABEL_LIBDIR`/`BABEL_DATADIR` in an AppRun hook; see `docs/installation/appimage.md`). That
   build is also the check that the code still builds and passes with Qt 6.4. On Windows MSVC builds find Open Babel
   through its CMake package (no pkg-config), keep preferences in an INI file (`model/settings.h`), and `cmake --install`
-  makes a self-contained folder with windeployqt plus `packaging/windows/` (batch files that run NWChem in WSL); see
+  makes a self-contained folder with windeployqt plus `packaging/windows/` (batch files that run NWChem in WSL; its
+  `copy_runtime.cmake` also copies the DLLs beside each executable of the build folder after linking); see
   `docs/installation/windows.md`.
 - `docs/` is also the source of the GitHub Pages site https://hnakada123.github.io/MolForma/: on pushes to main that
   touch `docs/`, `.github/workflows/pages.yml` generates the HTML with Jekyll (`docs/Gemfile` + `Gemfile.lock`, the
