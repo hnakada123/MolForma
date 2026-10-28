@@ -8,6 +8,7 @@ SN2反応の遷移状態 [F···CH₃···Cl]⁻ を探します。2つの構�
 | 使う機能 | 原子の単独配置（水素自動補完をオフ）、形式電荷と全電荷、距離・角度の数値指定（別々の分子は後に選んだ側が動く）、遷移状態探索 → 振動数、虚振動の再生、IRCとその方向 |
 | 計算 | M06-2X/aug-cc-pVDZ、遷移状態探索 → 振動数、IRC、反応物錯体の最適化 → 振動数 |
 | 計算時間の目安 | 遷移状態探索 → 振動数 約13分、反応物錯体 約8分、IRC 約25分（前進）・約15分（後退）（MPI 8プロセス） |
+| 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
 | 練習データ | [`sn2_ts_guess.kgui.json`](samples/sn2_ts_guess.kgui.json)（推定構造）、[`sn2_reactant.kgui.json`](samples/sn2_reactant.kgui.json)（反応物錯体の初期構造） |
 
 ![平面のCH3をFとClではさんだ遷移状態の推定構造](images/sn2_transition_state.png)

@@ -8,6 +8,7 @@ Align benzene with the origin and the XY plane, put the oxygen of a water molecu
 | Features | A second molecule in empty space, selecting by molecule, Align to principal axes, editing cells of the coordinate table (3D + table), distances between molecules with dimensions, BSSE correction (counterpoise) |
 | Calculation | MP2/6-31G*, single-point energy, BSSE correction |
 | Run time | About 20 seconds (6 MPI processes) |
+| Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
 | Practice data | [`benzene_water.kgui.json`](../../recipes/samples/benzene_water.kgui.json) |
 
 ![The benzene–water dimer with the water above the ring (seen along +X)](images/benzene_water.png)

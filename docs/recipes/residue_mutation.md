@@ -8,6 +8,7 @@
 | 使う機能 | 選択残基を置換、残基を削除（鎖を分割）、寸法による2つの鎖の位置合わせ、選択した2末端を再連結、残基の一覧、結合グラフから残基を認識 |
 | 計算 | B3LYP/6-31G*、一点エネルギー、COSMO（水）（変異体） |
 | 計算時間の目安 | 約31分（MPI 8プロセス、ほかの計算と並行、「DFT積分を毎回再計算」オン） |
+| 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
 | 練習データ | [`ace_afe_nme.kgui.json`](samples/ace_afe_nme.kgui.json)（変異体）、[`ace_ae_nme.kgui.json`](samples/ace_ae_nme.kgui.json)（再連結後） |
 
 ![HisをPheに置き換えた変異体](images/residue_mutation.png)

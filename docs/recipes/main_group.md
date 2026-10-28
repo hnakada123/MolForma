@@ -8,6 +8,7 @@
 | 使う機能 | 配位中心の分類で元素ボタン・周期表・検索から中心の元素を選ぶ、配位形状、酸化数と電荷の追従、フッ化物配位子、回転対称数 |
 | 計算 | B3LYP/6-31G*、最適化 → 振動数 |
 | 計算時間の目安 | SF₆ 約4分、PF₅ 約2分（MPI 8プロセス） |
+| 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
 | 練習データ | [`sf6.kgui.json`](samples/sf6.kgui.json)、[`pf5.kgui.json`](samples/pf5.kgui.json) |
 
 ![硫黄を八面体の中心にしたSF6](images/main_group.png)

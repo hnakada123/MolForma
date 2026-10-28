@@ -8,6 +8,7 @@
 | 使う機能 | 骨格・置換基のテンプレート、部品の配置後のツール、番号の表示、全体整形 |
 | 計算 | B3LYP/6-31G*、最適化 → 振動数（o体・m体は構造最適化） |
 | 計算時間の目安 | 約35分（MPI 6プロセス、振動数の解析Hessianが大半） |
+| 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
 | 練習データ | [`p_nitroaniline.kgui.json`](samples/p_nitroaniline.kgui.json)、[`o_nitroaniline.kgui.json`](samples/o_nitroaniline.kgui.json)、[`m_nitroaniline.kgui.json`](samples/m_nitroaniline.kgui.json) |
 
 ![ベンゼンにアミノ基とニトロ基を付けたp-ニトロアニリン](images/aromatic_substitution.png)

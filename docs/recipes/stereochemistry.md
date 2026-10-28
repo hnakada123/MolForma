@@ -8,6 +8,7 @@
 | 使う機能 | 立体を記録（R/S・E/Z）、3D画面のR/S・E/Zの表示、不斉中心を反転、E/Zを切替、名前を付けて保存 |
 | 計算 | B3LYP/6-31G*、最適化 → 振動数（2-ブテンのE体・Z体） |
 | 計算時間の目安 | E体 約35分・Z体 約47分（MPI 2プロセス、ほかの計算と並行） |
+| 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux） |
 | 練習データ | [`lactic_R.kgui.json`](samples/lactic_R.kgui.json)、[`lactic_S.kgui.json`](samples/lactic_S.kgui.json)、[`butene_E.kgui.json`](samples/butene_E.kgui.json)、[`butene_Z.kgui.json`](samples/butene_Z.kgui.json) |
 
 ![不斉中心にR/Sを表示した乳酸と、E/Zを表示した2-ブテン](images/stereochemistry.png)

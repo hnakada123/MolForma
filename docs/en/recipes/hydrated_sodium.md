@@ -8,6 +8,7 @@ Build [Na(H₂O)₄]⁺ with four waters coordinated to Na⁺, and put one more 
 | Features | Na center, tetrahedral geometry, aqua ligands, selecting by part and by molecule, Duplicate at offset, Water to TIP3P charges on the “Charge” page, the point-charge list, Environment (include external point charges), Export point charges |
 | Calculation | B3LYP/6-31G*, geometry optimization (no charges) and three single points |
 | Run time | About 1 minute for the optimization, 10–20 seconds per single point (8 MPI processes) |
+| Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
 | Practice data | [`na_h2o4.kgui.json`](../../recipes/samples/na_h2o4.kgui.json) (cluster), [`na_h2o4_charges.kgui.json`](../../recipes/samples/na_h2o4_charges.kgui.json) (with point charges), [`na_h2o5.kgui.json`](../../recipes/samples/na_h2o5.kgui.json) (outer water as atoms) |
 
 ![Hydrated Na+ with the outer water replaced by TIP3P point charges](images/hydrated_sodium.png)

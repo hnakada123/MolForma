@@ -8,6 +8,7 @@ Place a Co coordination center with octahedral geometry and put two bidentate et
 | Features | Coordination centers, coordination geometry, center–donor distance and oxidation state, clicking sites, bidentate ligands, placing ligands one after another, the charge following them, Check structure |
 | Calculation | B3LYP/def2-SVP, geometry optimization |
 | Run time | About 40 minutes (8 MPI processes, 11 steps) |
+| Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
 | Practice data | [`co_en_complex.kgui.json`](../../recipes/samples/co_en_complex.kgui.json) |
 
 ![trans-[Co(en)2Cl2]+ with en and chloride on the coordination sites](images/cobalt_complex.png)

@@ -2,7 +2,7 @@
 
 These recipes take one molecule each from an empty window (or a structure file, or an earlier result) to an NWChem calculation and its results, using MolForma's interface only. Pick the topic closest to the molecule you want to build; along the way you try the features it needs (atoms and bonds, skeletons and substituents, coordination centers and ligands, peptides from a sequence, stereochemistry, point charges, BSSE correction, transition-state searches, reusing results, isotopes, your own parts and more).
 
-The calculations on these pages were run on 2026-10-26 with NWChem 7.3.1 (Linux, 2–8 MPI processes). Another NWChem version or process count may change the last digits of energies or the number of optimization steps.
+The calculations on these pages were run on 2026-10-26 on a PC with an AMD Ryzen 7 2700X (8 cores, 16 threads) and 32 GB of memory, using NWChem 7.3.1 (Linux, 2–8 MPI processes). The run times on each page were measured on this PC too; they depend strongly on the CPU and its core count, the number of MPI processes and other calculations running at the same time. Another NWChem version or process count may also change the last digits of energies or the number of optimization steps.
 
 ## Using these recipes
 

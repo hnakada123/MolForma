@@ -8,6 +8,7 @@ Fused ring systems that are not among the skeleton templates come from SMILES (a
 | Features | From SMILES, SMILES from the palette search, opening structure files, Add hydrogens, Regenerate 3D, heterocyclic skeleton templates |
 | Calculation | B3LYP/6-31G*, geometry optimization |
 | Run time | About 59 minutes (6 MPI processes, alongside other runs) |
+| Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
 | Practice data | [`caffeine.kgui.json`](../../recipes/samples/caffeine.kgui.json) (built from SMILES), [`caffeine_2d.sdf`](../../recipes/samples/caffeine_2d.sdf) (2D structure without hydrogens) |
 
 ![Caffeine built from SMILES, as a candidate](images/caffeine_smiles.png)

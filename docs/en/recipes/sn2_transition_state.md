@@ -8,6 +8,7 @@ Find the transition state [F···CH₃···Cl]⁻ of an SN2 reaction. There is
 | Features | Placing a lone atom (auto-added hydrogens off), formal and total charge, distances and angles by value (between separate molecules the later one moves), TS search → frequencies, playing the imaginary mode, IRC and its direction |
 | Calculation | M06-2X/aug-cc-pVDZ, TS search → frequencies, IRC, reactant complex optimization → frequencies |
 | Run time | About 13 minutes for the transition-state search → frequencies, 8 for the reactant complex, 25 (forward) and 15 (backward) for IRC (8 MPI processes) |
+| Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
 | Practice data | [`sn2_ts_guess.kgui.json`](../../recipes/samples/sn2_ts_guess.kgui.json) (guess), [`sn2_reactant.kgui.json`](../../recipes/samples/sn2_reactant.kgui.json) (starting reactant complex) |
 
 ![Transition-state guess: planar CH3 between F and Cl](images/sn2_transition_state.png)
