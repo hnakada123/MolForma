@@ -2,7 +2,9 @@
 #include "ui/coordinates_panel.h"
 #include "editing/chemistry.h"
 #include "editing/peptide.h"
+#include "io/structure_io.h"
 #include "model/geometry.h"
+#include "nwchem/nwchem_geometry.h"
 #include "ui/calculation_panel.h"
 #include "ui/editor_chrome.h"
 #include "ui/input_preview_panel.h"
@@ -163,7 +165,7 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     }
     connect(sortMenu, &QMenu::aboutToShow, this, [this] {
         findChild<QAction *>("coordinateSort_selected")
-            ->setEnabled(editable() && !window->selected.isEmpty());
+            ->setEnabled(editable() && !window->selection().isEmpty());
     });
     structureMenu->addSeparator();
     structureAction(
@@ -187,10 +189,10 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     attributes->setObjectName("coordinateAttributeColumns");
     attributes->setCheckable(true);
     attributes->setToolTip(tr("形式電荷・不対電子・原子名の列を表示して編集します。"));
-    attributes->setChecked(window->settings.value("coordinates/attributes", false).toBool());
+    attributes->setChecked(window->preference("coordinates/attributes", false).toBool());
     tools->addWidget(attributes);
     connect(attributes, &QPushButton::toggled, this, [this](bool on) {
-        window->settings.setValue("coordinates/attributes", on);
+        window->setPreference("coordinates/attributes", on);
         for (const int column : {ChargeColumn, RadicalColumn, NameColumn})
             table->setColumnHidden(column, !on);
     });
@@ -380,7 +382,7 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
         const QSet<QString> rows(ids.begin(), ids.end());
         Ids ordered;
         QSet<QString> kept;
-        for (const auto &id : window->selected)
+        for (const auto &id : window->selection())
             if (rows.contains(id) && !kept.contains(id)) {
                 ordered << id;
                 kept.insert(id);
@@ -468,7 +470,7 @@ void CoordinatesPanel::showAttributes() {
     table->scrollTo(table->model()->index(std::max(0, table->currentRow()), ChargeColumn));
 }
 bool CoordinatesPanel::editable() const {
-    return !window->hasCandidate() && !window->worker;
+    return !window->hasCandidate() && !window->chemistryRunning();
 }
 CoordinateUnit CoordinatesPanel::tableUnit() const {
     return units->currentIndex() == 1 ? CoordinateUnit::Bohr : CoordinateUnit::Angstrom;
@@ -637,17 +639,17 @@ void CoordinatesPanel::refreshCount() {
         hidden += table->isRowHidden(row);
     const auto fixed = std::count_if(d.atoms.begin(), d.atoms.end(), [](const Atom &a) { return a.fixed; });
     const int n = d.atoms.size();
-    count->setText(hidden
-                       ? tr("%n 原子・選択 %1・固定 %2・表示 %3", nullptr, n)
-                             .arg(window->selected.size())
-                             .arg(fixed)
-                             .arg(n - hidden)
-                       : tr("%n 原子・選択 %1・固定 %2", nullptr, n).arg(window->selected.size()).arg(fixed));
+    count->setText(
+        hidden ? tr("%n 原子・選択 %1・固定 %2・表示 %3", nullptr, n)
+                     .arg(window->selection().size())
+                     .arg(fixed)
+                     .arg(n - hidden)
+               : tr("%n 原子・選択 %1・固定 %2", nullptr, n).arg(window->selection().size()).arg(fixed));
 }
 void CoordinatesPanel::refreshSelection() {
     const QSignalBlocker blocker(table);
     // One selection of row ranges: selecting item by item is quadratic in the selected rows.
-    const QSet<QString> chosen(window->selected.begin(), window->selected.end());
+    const QSet<QString> chosen(window->selection().begin(), window->selection().end());
     const int last = table->columnCount() - 1;
     QItemSelection rows;
     for (int row = 0; row < table->rowCount(); ++row) {
@@ -683,11 +685,11 @@ void CoordinatesPanel::refreshSelectionBar() {
         selectionBar->style()->polish(selectionBar);
     }
     QHash<QString, int> index;
-    for (int i = 0; !window->selected.isEmpty() && i < d.atoms.size(); ++i)
+    for (int i = 0; !window->selection().isEmpty() && i < d.atoms.size(); ++i)
         index.insert(d.atoms[i].id, i);
     // Atoms that a candidate removes are left out until it is confirmed or cancelled.
     Ids shown;
-    for (const auto &id : window->selected)
+    for (const auto &id : window->selection())
         if (index.contains(id))
             shown << id;
     const bool selecting = !candidate && !shown.isEmpty();
@@ -722,7 +724,7 @@ void CoordinatesPanel::refreshSelectionBar() {
         moreAtoms->setVisible(n > chips.size());
         moreAtoms->setText(tr("ほか %n 原子", nullptr, n - int(chips.size())));
         QString measured;
-        if (n >= 2 && n <= 4 && n == window->selected.size()) {
+        if (n >= 2 && n <= 4 && n == window->selection().size()) {
             try {
                 const double m = measure(d, shown);
                 measured = QString("%1 %2 %3")
@@ -735,8 +737,7 @@ void CoordinatesPanel::refreshSelectionBar() {
         }
         measurement->setText(measured);
         // The measurement panel of the 3D view shows it, unless the table is shown in its place.
-        measurement->setVisible(!measured.isEmpty() && window->moleculeLayout &&
-                                window->moleculeLayout->currentData() == "table");
+        measurement->setVisible(!measured.isEmpty() && window->moleculeLayoutMode() == "table");
     }
     refreshCount();
 }
@@ -973,7 +974,7 @@ void CoordinatesPanel::pasteXyz() {
 void CoordinatesPanel::importFile() {
     const auto base = window->document().toJson();
     QString path = QFileDialog::getOpenFileName(this, tr("構造を読み込んで置換候補を作成"),
-                                                window->settings.value("directory").toString(),
+                                                window->preference("directory").toString(),
                                                 tr("分子構造 (*.xyz *.mol *.sdf *.pdb *.ent)"));
     if (path.isEmpty())
         return;
@@ -1010,7 +1011,7 @@ void CoordinatesPanel::importPath(const QString &path) {
     if (base != window->document().toJson())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
     previewStructure(importStructure(path, model, altloc));
-    window->settings.setValue("directory", QFileInfo(path).absolutePath());
+    window->setPreference("directory", QFileInfo(path).absolutePath());
 }
 void CoordinatesPanel::dragEnterEvent(QDragEnterEvent *event) {
     // Structure files become a replacement candidate here; other files (results, projects) go on to

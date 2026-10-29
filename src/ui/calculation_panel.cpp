@@ -63,7 +63,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     storeButton->setObjectName("calculationStorePreset");
     tools->addWidget(storeButton);
     connect(storeButton, &QPushButton::clicked, this, &CalculationPanel::storePreset);
-    userPresets = QJsonDocument::fromJson(window->settings.value("nwchem/presets").toByteArray()).array();
+    userPresets = QJsonDocument::fromJson(window->preference("nwchem/presets").toByteArray()).array();
     reloadPresets();
     connect(presetMenu, &QMenu::aboutToShow, this, [this] {
         // What each preset would change, against the current settings.
@@ -460,7 +460,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
         if (tab == 1 && !setting.isEmpty())
             showField(setting);
         else
-            window->workspaceTabs->setCurrentIndex(tab);
+            window->showPanel(tab);
     });
     connect(validation, &DiagnosticsList::fixRequested, this, &CalculationPanel::applyFix);
     railLayout->addWidget(validationCard);
@@ -541,7 +541,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
             [this] { changeDetail(selectedDetail, QJsonValue::Undefined); });
     connect(showInInput, &QPushButton::clicked, this, [this] {
         if (const auto line = showInInput->property("line").toInt(); line >= 0)
-            window->inputPreview->showLine(line);
+            window->previewPanel()->showLine(line);
     });
     detailCard->hide();
     railLayout->addWidget(detailCard);
@@ -581,8 +581,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     previewRow->addStretch();
     previewRow->addWidget(showPreview);
     railLayout->addLayout(previewRow);
-    connect(showPreview, &QPushButton::clicked, this,
-            [this] { window->workspaceTabs->setCurrentWidget(window->inputPreview); });
+    connect(showPreview, &QPushButton::clicked, this, [this] { window->showPanel(window->previewPanel()); });
 
     // Labels for search and the list of changes: form rows, plus the fields with their own rows.
     QStringList completions = labels.values();
@@ -636,8 +635,8 @@ void CalculationPanel::showField(const QString &key) {
         return;
     }
     if (key == "memory_mb") { // Set in "3 実行設定".
-        window->workspaceTabs->setCurrentWidget(window->execution);
-        if (auto *memory = window->execution->findChild<QWidget *>("execution_memory"))
+        window->showPanel(window->executionPanel());
+        if (auto *memory = window->executionPanel()->findChild<QWidget *>("execution_memory"))
             memory->setFocus(Qt::OtherFocusReason);
         return;
     }
@@ -894,7 +893,7 @@ static std::pair<Ids, double> selectedCoordinate(MainWindow *window, const Ids &
 }
 void CalculationPanel::addConstraint() {
     window->safe([&] {
-        const auto [ids, value] = selectedCoordinate(window, window->selected);
+        const auto [ids, value] = selectedCoordinate(window, window->selection());
         auto list = nwchemSettings(window->document())["constraints"].toArray();
         list.append(QJsonObject{{"atoms", idsToJson(ids)}, {"value", std::round(value * 1e4) / 1e4}});
         change("constraints", list);
@@ -902,7 +901,7 @@ void CalculationPanel::addConstraint() {
 }
 void CalculationPanel::setScanCoordinate() {
     window->safe([&] {
-        const auto [ids, value] = selectedCoordinate(window, window->selected);
+        const auto [ids, value] = selectedCoordinate(window, window->selection());
         // A first guess for the range: +0.5 Å, +60° or half a turn, kept inside the valid range.
         const double start = std::round(value * 1e4) / 1e4;
         const double end = ids.size() == 2   ? start + 0.5
@@ -921,7 +920,7 @@ void CalculationPanel::setScanCoordinate() {
     });
 }
 bool CalculationPanel::editable() const {
-    return !window->hasCandidate() && !window->worker;
+    return !window->hasCandidate() && !window->chemistryRunning();
 }
 void CalculationPanel::change(const QString &key, const QJsonValue &value) {
     if (busy || !editable())
@@ -1196,8 +1195,8 @@ void CalculationPanel::reloadPresets() {
             if (i >= userPresets.size())
                 return;
             userPresets.removeAt(i);
-            window->settings.setValue("nwchem/presets",
-                                      QJsonDocument(userPresets).toJson(QJsonDocument::Compact));
+            window->setPreference("nwchem/presets",
+                                  QJsonDocument(userPresets).toJson(QJsonDocument::Compact));
             QTimer::singleShot(0, this, &CalculationPanel::reloadPresets); // Not inside its own menu.
         });
     }
@@ -1256,7 +1255,7 @@ void CalculationPanel::storePreset() {
             return;
         }
     userPresets << QJsonObject{{"name", name}, {"settings", settings}};
-    window->settings.setValue("nwchem/presets", QJsonDocument(userPresets).toJson(QJsonDocument::Compact));
+    window->setPreference("nwchem/presets", QJsonDocument(userPresets).toJson(QJsonDocument::Compact));
     reloadPresets();
     window->statusBar()->showMessage(tr("プリセット「%1」を登録しました。").arg(name), 5000);
 }
@@ -1316,8 +1315,8 @@ void CalculationPanel::refresh() {
     resetAll->setEnabled(canEdit);
     message->setText(window->hasCandidate()
                          ? tr("未確定の分子候補を表示しています。確定・取消後に条件を編集できます。")
-                     : window->worker ? tr("分子の整形中です。終了後に条件を編集できます。")
-                                      : QString());
+                     : window->chemistryRunning() ? tr("分子の整形中です。終了後に条件を編集できます。")
+                                                  : QString());
     banner->setVisible(!message->text().isEmpty());
     const auto check = validateNwchem(d);
     const auto method = s["method"].toString();
@@ -1512,7 +1511,7 @@ void CalculationPanel::showDetail(const QString &key) {
         return;
     const auto detail = details.value(key);
     const auto &d = window->displayDocument();
-    window->workspaceTabs->setCurrentWidget(this);
+    window->showPanel(this);
     if (changedOnly() && !nwchemAdvanced(d).contains(key))
         changeFilter->setCurrentIndex(0);
     openDetails(detail.section, !nwchemAdvancedApplies(*detail.option, d));
@@ -1529,7 +1528,7 @@ void CalculationPanel::showDetailGroup(const QString &group) {
         if (!it->groups.contains(group))
             continue;
         const auto &d = window->displayDocument();
-        window->workspaceTabs->setCurrentWidget(this);
+        window->showPanel(this);
         if (changedOnly())
             changeFilter->setCurrentIndex(0);
         bool used = false; // A group the calculation does not use is shown all the same.

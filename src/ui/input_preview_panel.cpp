@@ -329,7 +329,7 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     body->addWidget(rail);
     summaryCard = new CalculationSummary("inputPreview", tr("この入力"), [this](const QString &link) {
         if (link == "memory")
-            window->calculation->showField("memory_mb");
+            window->calculationPanel()->showField("memory_mb");
     });
     railLayout->addWidget(summaryCard);
     checkCard = new StatusCard;
@@ -348,11 +348,10 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     // How the paths of the input are written, folded with a summary (and remembered).
     pathCard = new SettingsCard(tr("書き出し後のパス"));
     pathCard->setObjectName("inputPreviewPathCard");
-    auto *pathsToggle =
-        pathCard->setCollapsible(window->settings.value("inputPreview/showPaths", true).toBool());
+    auto *pathsToggle = pathCard->setCollapsible(window->preference("inputPreview/showPaths", true).toBool());
     pathsToggle->setObjectName("inputPreviewPathsToggle");
     connect(pathsToggle, &QToolButton::clicked, this,
-            [this](bool on) { window->settings.setValue("inputPreview/showPaths", on); });
+            [this](bool on) { window->setPreference("inputPreview/showPaths", on); });
     paths = new QLabel;
     paths->setObjectName("inputPreviewPaths");
     paths->setWordWrap(true);
@@ -367,8 +366,8 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
         if (url.scheme() == "tab" && ok)
             navigate(tab);
         else if (url.scheme() == "field") {
-            window->workspaceTabs->setCurrentWidget(window->calculation);
-            window->calculation->showField(url.path());
+            window->showPanel(window->calculationPanel());
+            window->calculationPanel()->showField(url.path());
         }
     };
     connect(paths, &QLabel::linkActivated, this, openLink);
@@ -390,7 +389,7 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     });
 }
 void InputPreviewPanel::showLine(int line) {
-    window->workspaceTabs->setCurrentWidget(this);
+    window->showPanel(this);
     window->refreshPanel(this);
     QTextCursor cursor(input->document()->findBlockByNumber(line));
     input->setTextCursor(cursor);
@@ -398,15 +397,14 @@ void InputPreviewPanel::showLine(int line) {
     input->setFocus();
 }
 void InputPreviewPanel::navigate(int tab) {
-    if (tab >= 0 && tab < window->workspaceTabs->count())
-        window->workspaceTabs->setCurrentIndex(tab);
+    window->showPanel(tab);
 }
 void InputPreviewPanel::openSource(int tab, const QString &setting, const QString &group) {
     navigate(tab - 1);
     if (!group.isEmpty())
-        window->calculation->showDetailGroup(group);
+        window->calculationPanel()->showDetailGroup(group);
     else if (!setting.isEmpty())
-        window->calculation->showField(setting); // Also the memory of "3 実行設定".
+        window->calculationPanel()->showField(setting); // Also the memory of "3 実行設定".
 }
 QList<InputPreviewPanel::Source> InputPreviewPanel::sources(const NwchemInputBlock &b) {
     QList<Source> result;
@@ -500,7 +498,8 @@ void InputPreviewPanel::followCursor() {
         } else if ((source.setting == "extra_input" || source.setting == "extra_tasks"))
             text = tr("%1 › 追加入力").arg(text);
         else if (source.tab == 2 && !source.setting.isEmpty())
-            if (const auto section = window->calculation->sectionTitle(source.setting); !section.isEmpty())
+            if (const auto section = window->calculationPanel()->sectionTitle(source.setting);
+                !section.isEmpty())
                 text += " › " + section;
         auto *link = new QPushButton(text);
         link->setProperty("link", true);
@@ -535,8 +534,9 @@ void InputPreviewPanel::refresh() {
     NwchemInputOutline generatedOutline;
     try {
         if (resolved) {
-            const auto base =
-                window->path.isEmpty() ? QDir::currentPath() : QFileInfo(window->path).absolutePath();
+            const auto base = window->projectPath().isEmpty()
+                                  ? QDir::currentPath()
+                                  : QFileInfo(window->projectPath()).absolutePath();
             const auto plan = executionPreviewPlan(d, base);
             text = plan.input;
             generatedOutline = plan.inputOutline;
@@ -585,11 +585,11 @@ void InputPreviewPanel::refresh() {
                       " で確認してください。ここではNWChemを起動しません。")
                        .arg(c.accentText.name()));
     summaryCard->update(d);
-    const bool pending = window->hasCandidate() || window->worker;
+    const bool pending = window->hasCandidate() || window->chemistryRunning();
     hint->setText(window->hasCandidate()
                       ? tr("未確定の分子候補を表示しています。確定または取消後にコピー・保存できます。")
-                  : window->worker ? tr("分子の整形中です。終了後にコピー・保存できます。")
-                                   : QString());
+                  : window->chemistryRunning() ? tr("分子の整形中です。終了後にコピー・保存できます。")
+                                               : QString());
     banner->setVisible(pending);
     if (pending)
         checkCard->setState(StatusCard::Waiting, tr("候補・整形の完了待ち（出力不可）"));
@@ -636,18 +636,13 @@ void InputPreviewPanel::refreshBadge() {
                               : tr("入力を生成できません（エラー %n 件）", nullptr, int(errors.size())));
 }
 void InputPreviewPanel::setBadge(bool failed, const QString &tip) {
-    const int index = window->workspaceTabs->indexOf(this);
-    if (index >= 0) {
-        window->workspaceTabs->tabBar()->setTabTextColor(index, failed ? errorColor(palette()) : QColor());
-        window->workspaceTabs->setTabToolTip(index, tip);
-        window->syncWorkflowSteps();
-    }
+    window->setPanelDiagnostics(this, failed, tip);
 }
 QString InputPreviewPanel::prepareExport() {
-    window->execution->commitPendingEdits();
+    window->executionPanel()->commitPendingEdits();
     if (auto *focused = QApplication::focusWidget())
         focused->clearFocus();
-    if (window->hasCandidate() || window->worker)
+    if (window->hasCandidate() || window->chemistryRunning())
         fail(tr("分子候補の確定・取消、または整形の終了後に出力してください。"));
     refresh();
     if (contents.isEmpty())

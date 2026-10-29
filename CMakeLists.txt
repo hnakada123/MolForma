@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
-find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets)
 set(CMAKE_FIND_USE_PACKAGE_REGISTRY FALSE)
 find_package(Eigen3 REQUIRED NO_MODULE)
 if(MSVC)
@@ -23,43 +23,69 @@ if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW)
 endif()
 find_package(rdkit CONFIG QUIET)
-add_library(molforma_core STATIC
+# Keep dependency directions visible in both the target graph and source includes.
+set(MOLFORMA_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
+include(cmake/CheckLayers.cmake)
+add_library(molforma_model STATIC
     src/model/document.cpp
     src/model/geometry.cpp
     src/model/i18n.cpp
+    assets/resources.qrc)
+target_include_directories(molforma_model PUBLIC src)
+target_compile_definitions(molforma_model PUBLIC MOLFORMA_VERSION="${PROJECT_VERSION}")
+target_link_libraries(molforma_model PUBLIC Qt6::Core Qt6::Gui Eigen3::Eigen)
+
+add_library(molforma_editing STATIC
+    src/editing/atom_properties.cpp
     src/editing/chemistry.cpp
+    src/editing/chemistry_job.cpp
     src/editing/editor_session.cpp
     src/editing/coordinates.cpp
     src/editing/coordination.cpp
     src/editing/library.cpp
     src/editing/operations.cpp
     src/editing/peptide.cpp
-    src/editing/stereochemistry.cpp
+    src/editing/stereochemistry.cpp)
+target_link_libraries(molforma_editing PUBLIC molforma_model PRIVATE ${MOLFORMA_OPENBABEL})
+if(TARGET RDKit::CIPLabeler)
+    target_link_libraries(molforma_editing PRIVATE RDKit::CIPLabeler RDKit::GraphMol RDKit::SubstructMatch)
+    target_compile_definitions(molforma_editing PUBLIC MOLFORMA_HAS_RDKIT=1)
+endif()
+if(MSVC)
+    # These definitions apply only to the targets using Open Babel's native API.
+    target_compile_definitions(molforma_editing PRIVATE USING_DYNAMIC_LIBS
+        MOLFORMA_OPENBABEL_DATADIR="${openbabel_bin}/data")
+endif()
+
+find_package(Threads REQUIRED)
+add_library(molforma_results STATIC
+    src/results/molden_orbitals.cpp
+    src/results/result_loader.cpp
+    src/results/results.cpp)
+target_link_libraries(molforma_results PUBLIC molforma_model PRIVATE Threads::Threads)
+
+add_library(molforma_nwchem STATIC
     src/nwchem/history.cpp
     src/nwchem/nwchem.cpp
     src/nwchem/nwchem_advanced.cpp
     src/nwchem/nwchem_execution.cpp
+    src/nwchem/nwchem_geometry.cpp
     src/nwchem/nwchem_import.cpp
-    src/nwchem/nwchem_output.cpp
-    src/results/molden_orbitals.cpp
-    src/results/result_loader.cpp
-    src/results/results.cpp
-    assets/resources.qrc)
-target_include_directories(molforma_core PUBLIC src)
-target_compile_definitions(molforma_core PUBLIC MOLFORMA_VERSION="${PROJECT_VERSION}")
-find_package(Threads REQUIRED)
-target_link_libraries(molforma_core PUBLIC Qt6::Widgets Eigen3::Eigen ${MOLFORMA_OPENBABEL} Threads::Threads)
-if(TARGET RDKit::CIPLabeler)
-    target_link_libraries(molforma_core PRIVATE RDKit::CIPLabeler RDKit::GraphMol RDKit::SubstructMatch)
-    target_compile_definitions(molforma_core PUBLIC MOLFORMA_HAS_RDKIT=1)
-endif()
+    src/nwchem/nwchem_output.cpp)
+target_link_libraries(molforma_nwchem PUBLIC molforma_model PRIVATE molforma_editing molforma_results ${MOLFORMA_OPENBABEL})
 if(MSVC)
-    # Open Babel's headers import from its DLL only with USING_DYNAMIC_LIBS, which its package does not set.
-    target_compile_definitions(molforma_core PUBLIC USING_DYNAMIC_LIBS)
-    # Force fields and fragments: found beside the installed executable, else in Open Babel's bin.
-    target_compile_definitions(molforma_core PRIVATE MOLFORMA_OPENBABEL_DATADIR="${openbabel_bin}/data")
+    target_compile_definitions(molforma_nwchem PRIVATE USING_DYNAMIC_LIBS)
 endif()
-target_compile_options(molforma_core PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+
+add_library(molforma_io STATIC src/io/document_storage.cpp src/io/structure_io.cpp)
+target_link_libraries(molforma_io PUBLIC molforma_model PRIVATE molforma_nwchem molforma_editing)
+
+# Preserve the convenient aggregate for applications/tests without hiding the internal graph.
+add_library(molforma_core INTERFACE)
+target_link_libraries(molforma_core INTERFACE molforma_io molforma_nwchem molforma_editing molforma_results molforma_model)
+foreach(target molforma_model molforma_editing molforma_results molforma_nwchem molforma_io)
+    target_compile_options(${target} PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+endforeach()
 add_library(molforma_ui STATIC
     src/ui/calculation_panel.cpp
     src/ui/coordinates_panel.cpp
@@ -80,7 +106,11 @@ add_library(molforma_ui STATIC
     src/ui/translations.cpp
     docs/manual.qrc)
 # McpGui shares tool definitions, result views and the access policy with the headless server.
-target_link_libraries(molforma_ui PUBLIC molforma_core molforma_mcp)
+target_link_libraries(molforma_ui PUBLIC molforma_core molforma_mcp Qt6::Widgets PRIVATE ${MOLFORMA_OPENBABEL})
+if(MSVC)
+    # Both renderers use Open Babel van der Waals radii.
+    target_compile_definitions(molforma_ui PRIVATE USING_DYNAMIC_LIBS)
+endif()
 target_compile_options(molforma_ui PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 option(MOLFORMA_ENABLE_VTK "Use native VTK for accelerated molecular rendering when available" ON)
 if(MOLFORMA_ENABLE_VTK)
@@ -134,11 +164,17 @@ target_link_libraries(molforma PRIVATE molforma_ui molforma_mcp)
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
+    add_test(NAME source_layers COMMAND ${CMAKE_COMMAND}
+        "-DMOLFORMA_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/src"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckLayers.cmake")
     add_executable(test_mcp tests/test_mcp.cpp)
     target_link_libraries(test_mcp PRIVATE molforma_mcp molforma_ui Qt6::Test)
     add_dependencies(test_mcp molforma)
     add_test(NAME mcp COMMAND test_mcp)
     set_tests_properties(mcp PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 120)
+    add_executable(test_services tests/test_services.cpp)
+    target_link_libraries(test_services PRIVATE molforma_core Qt6::Test)
+    add_test(NAME services COMMAND test_services)
     add_executable(test_core tests/test_core.cpp)
     target_link_libraries(test_core PRIVATE molforma_core Qt6::Test)
     target_compile_definitions(test_core PRIVATE FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
@@ -192,17 +228,17 @@ if(BUILD_TESTING)
     add_executable(test_molden tests/test_molden.cpp)
     target_link_libraries(test_molden PRIVATE molforma_ui Qt6::Test)
     add_test(NAME molden COMMAND test_molden)
-    set_tests_properties(core editor coordinates calculation advanced execution input_preview results history output molden translations PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    set_tests_properties(core services editor coordinates calculation advanced execution input_preview results history output molden translations PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     if(WIN32)
         # The offscreen platform finds no fonts on Windows by itself; without them every text is a box.
         file(TO_CMAKE_PATH "$ENV{WINDIR}/Fonts" windows_fonts)
-        set_tests_properties(mcp core editor rendering coordinates calculation advanced execution input_preview results
+        set_tests_properties(mcp core services editor rendering coordinates calculation advanced execution input_preview results
             history output molden translations PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_FONTDIR=${windows_fonts}"
             # The copy of fake_nwchem in a temporary folder (test_execution) has no Qt beside it.
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT6_INSTALL_PREFIX}/bin")
     endif()
-    set_tests_properties(core editor coordinates calculation advanced execution input_preview results history output molden translations PROPERTIES TIMEOUT 120)
+    set_tests_properties(core services editor coordinates calculation advanced execution input_preview results history output molden translations PROPERTIES TIMEOUT 120)
 endif()
 install(TARGETS molforma RUNTIME DESTINATION bin)
 install(FILES LICENSE NOTICE README.md DESTINATION share/molforma)
@@ -236,7 +272,7 @@ if(MSVC)
     # loads (Qt's as well), Open Babel's plugins and a qt.conf beside it.
     set(runtime_targets molforma)
     if(BUILD_TESTING)
-        list(APPEND runtime_targets fake_nwchem test_mcp test_core test_editor test_rendering test_coordinates
+        list(APPEND runtime_targets fake_nwchem test_mcp test_core test_services test_editor test_rendering test_coordinates
             test_calculation test_advanced test_execution test_input_preview test_results test_history test_output
             test_translations test_molden)
     endif()

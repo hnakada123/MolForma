@@ -8,15 +8,22 @@ by responsibility, with paired headers and implementations in the same directory
 - `src/model/`: `document.*` owns the stable-ID document and the `.molforma.json`
   project serialization (format `molforma-project`, version 1); `geometry.*` owns double-precision geometry.
   `diagnostic.h` defines diagnostics with stable codes, setting targets and typed fixes.
+  `units.h` owns coordinate units and physical conversion constants.
 - `src/editing/`: `library.*`, `operations.*`, `peptide.*` and `coordination.*`
   implement editing. `editor_session.*` owns document edits, candidates and undo for both GUI and MCP.
-  `chemistry.*` uses the Open Babel C++ API.
+  `atom_properties.*` shares atom-property edits and validation across panels and MCP.
+  `chemistry.*` uses the Open Babel C++ API; `chemistry_job.*` owns cancellable chemistry
+  processes, stale-result checks and candidate application.
   `stereochemistry.*` optionally uses native RDKit for CIP and residue recognition.
-  `coordinates.*` implements coordinate edits and NWChem geometry fragments.
+  `coordinates.*` implements coordinate edits, structure replacement and Z-matrices.
+- `src/io/`: `structure_io.*` routes project, XYZ, NWChem, Gaussian and native Open Babel
+  import/export; `document_storage.*` owns project persistence, recent files and locked
+  autosave/recovery copies. Recovery choices and file dialogs stay in the UI.
 - `src/nwchem/`: `nwchem.*` validates computational settings and generates complete
   NWChem input. Its setting specifications share defaults, types, ranges, choices and applicability
   with the UI. `input_builder.h` records source lines as input is generated; do not infer them
   by diffing or parsing generated text. `nwchem_advanced.*` defines typed overrides and applicability.
+  `nwchem_geometry.*` generates geometry fragments and fixed-atom constraints.
   `nwchem_output.*` validates visualization settings and generates CUBE/MOLDEN output
   tasks. `nwchem_execution.*` validates launch settings, saves immutable run bundles
   and controls cancellable NWChem processes. `history.*` scans saved bundles and
@@ -43,7 +50,8 @@ by responsibility, with paired headers and implementations in the same directory
   `results_panel.*` provides the independent result viewer with cancellable native
   readers. `history_panel.*` provides calculation history, log browsing, reuse and
   result navigation. `mcp_gui.*` exposes GUI, execution and result tools to MCP
-  by driving the editor window.
+  through public editor/panel operations and state snapshots; panels do not access
+  MainWindow or one another through friendship. Playback kind is explicit, independent of timer intervals.
 - `src/mcp/`: `server.*` implements the MCP JSON-RPC server (protocols 2026-07-28
   and legacy 2025-11-25) with document tools, candidates and undo; editor hooks
   let it operate a GUI document, otherwise it owns a headless one. `headless.*`
@@ -55,8 +63,12 @@ by responsibility, with paired headers and implementations in the same directory
 `src/main.cpp` is the entry point; `--mcp` runs the headless MCP server and
 `--mcp-gui` runs it with the editor window. Include project headers relative to
 `src/`, for example `#include "model/document.h"`. The `molforma_core` target
-contains model, editing, nwchem and results; `molforma_ui` contains ui and links
-to core and mcp; `molforma_mcp` contains mcp and links to core.
+is an interface aggregate of `molforma_model`, `molforma_editing`, `molforma_results`,
+`molforma_nwchem` and `molforma_io`. Dependencies flow from io to nwchem, from nwchem
+to editing/results, and from editing/results to model. Only `molforma_ui` links
+Qt Widgets; core libraries use Qt Core/Gui. `molforma_ui` contains ui and links to
+core and mcp; `molforma_mcp` contains mcp and links to core. `cmake/CheckLayers.cmake`
+checks source-header dependency directions during configuration and in CTest.
 
 Tests are in `tests/`, documentation in `docs/`, and resource data in `assets/`.
 MolForma is GPL-2.0-or-later (it links the GPL-2.0-only Open Babel); keep new

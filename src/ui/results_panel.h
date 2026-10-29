@@ -4,6 +4,7 @@
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QWidget>
+#include <optional>
 class QAction;
 class QCheckBox;
 class QComboBox;
@@ -28,6 +29,13 @@ class FrameTimeline;
 class MainWindow;
 class MoleculeView;
 class OrbitalLevels;
+enum class ResultAnimation { None, Frames, Mode };
+struct ResultViewerState {
+    QString pendingPath;
+    ResultAnimation animation = ResultAnimation::None;
+    int frame = -1, mode = -1;
+    double amplitude = 0;
+};
 class ResultsPanel : public QWidget {
     Q_OBJECT
   public:
@@ -53,16 +61,24 @@ class ResultsPanel : public QWidget {
     QString message() const;
     // Style sheets in the editor's chrome colors; again when the palette changes.
     void applyChromeStyle();
+    ResultViewerState viewerState() const;
+    void reloadResult();
+    void selectFrame(int index);
+    void selectMode(int index, std::optional<double> amplitude = {}, bool play = false);
+    void selectOrbital(int index);
+    void playTrajectory();
+    void stopAnimation();
+    const Document &displayedGeometry() const;
   signals:
     void loaded();
     void loadFailed(QString message);
 
   private:
-    friend class McpGui;
     MainWindow *window;
     ResultData data;
     ResultLoader loader;
     QTimer animation;
+    ResultAnimation animationKind = ResultAnimation::None;
     double phase = 0;
     bool modeDisplayed = false;
     QString folder;
@@ -168,8 +184,6 @@ class ResultsPanel : public QWidget {
     void exportMode(bool images);
     void setViewDocument(const Document &document);
     void pickAtom(const QString &id);
-    const Document &displayedGeometry() const;
-    void stopAnimation();
     void updateActions();
     void error(const QString &message);
 };

@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordinates.h"
+#include "editing/atom_properties.h"
 #include "model/geometry.h"
 #include "model/i18n.h"
 #include <QRegularExpression>
 #include <cmath>
-#include <openbabel/elements.h>
 
 namespace mf {
-double coordinateScale(CoordinateUnit unit) {
-    return unit == CoordinateUnit::Bohr ? BohrToAngstrom : 1.;
-}
 static double finiteNumber(QString text) {
     // Also accept Fortran exponents commonly found in quantum chemistry output.
     text.replace(QChar('D'), QChar('e'), Qt::CaseInsensitive);
@@ -36,25 +33,6 @@ static void setSymbol(Atom &atom, QString text) {
     }
     atom.element = text;
     atom.ghost = ghost;
-}
-static void setMass(Atom &atom, const QString &text) {
-    const auto entry = text.trimmed();
-    atom.isotope = 0;
-    atom.mass = 0;
-    if (entry.isEmpty())
-        return;
-    if (QRegularExpression("^[+]?[0-9]+$").match(entry).hasMatch()) {
-        bool ok;
-        int number = entry.toInt(&ok);
-        if (!ok || number < element(atom.element).number ||
-            OpenBabel::OBElements::GetExactMass(element(atom.element).number, number) <= 0)
-            fail(tr("この元素の同位体質量数を確認してください。任意の質量は小数で入力します。"));
-        atom.isotope = number;
-    } else {
-        atom.mass = finiteNumber(entry);
-        if (atom.mass <= 0)
-            fail(tr("質量は正の値（amu）を入力してください。"));
-    }
 }
 QString coordinateText(const Atom &atom, CoordinateColumn column, CoordinateUnit unit) {
     if (column == CoordinateColumn::Element)
@@ -112,27 +90,25 @@ void setCoordinateCell(Document &document, const QString &id, CoordinateColumn c
         if (atom.fixed && value != atom.position[axis])
             fail(tr("固定原子の座標は変更できません。先に固定を解除してください。"));
         atom.position[axis] = value;
-    } else if (column == CoordinateColumn::Mass)
-        setMass(atom, text);
-    else if (column == CoordinateColumn::Ghost) {
-        atom.ghost = text == "1";
-        document.invalidateAssignments();
-    } else if (column == CoordinateColumn::Fixed)
-        atom.fixed = text == "1";
-    else if (column == CoordinateColumn::Charge || column == CoordinateColumn::Radical) {
-        bool ok;
-        const int value = text.trimmed().toInt(&ok);
-        if (!ok)
-            fail(column == CoordinateColumn::Charge ? tr("形式電荷は整数で入力してください。")
-                                                    : tr("不対電子の数は整数で入力してください。"));
-        if (column == CoordinateColumn::Radical && (value < 0 || value > 8))
-            fail(tr("不対電子の数は0〜8で入力してください。"));
-        if (column == CoordinateColumn::Charge && (value < -99 || value > 20))
-            fail(tr("形式電荷は−99〜20で入力してください。"));
-        (column == CoordinateColumn::Charge ? atom.charge : atom.radical) = value;
-        document.invalidateAssignments();
-    } else if (column == CoordinateColumn::Name)
-        atom.name = text.trimmed();
+    } else {
+        AtomProperties properties;
+        if (column == CoordinateColumn::Mass)
+            properties = atomMassInput(text);
+        else if (column == CoordinateColumn::Ghost)
+            properties.ghost = text == "1";
+        else if (column == CoordinateColumn::Fixed)
+            properties.fixed = text == "1";
+        else if (column == CoordinateColumn::Charge || column == CoordinateColumn::Radical) {
+            bool ok;
+            const int value = text.trimmed().toInt(&ok);
+            if (!ok)
+                fail(column == CoordinateColumn::Charge ? tr("形式電荷は整数で入力してください。")
+                                                        : tr("不対電子の数は整数で入力してください。"));
+            (column == CoordinateColumn::Charge ? properties.charge : properties.radical) = value;
+        } else if (column == CoordinateColumn::Name)
+            properties.name = text.trimmed();
+        setAtomProperties(document, {id}, properties);
+    }
 }
 Atom coordinateAtom(const QString &symbol, const QStringList &xyz, const QString &mass, CoordinateUnit unit,
                     bool ghost, bool fixed) {
@@ -146,7 +122,7 @@ Atom coordinateAtom(const QString &symbol, const QStringList &xyz, const QString
             fail(tr("座標が大きすぎます。"));
     }
     if (!mass.trimmed().isEmpty())
-        setMass(atom, mass);
+        atom = withAtomProperties(atom, atomMassInput(mass));
     atom.ghost |= ghost;
     atom.fixed = fixed;
     return atom;
@@ -226,71 +202,6 @@ std::pair<double, double> applyResultGeometry(Document &document, const Document
         if (!document.atoms[i].fixed)
             document.atoms[i].position = result.atoms[i].position;
     return {document.atoms.isEmpty() ? 0 : std::sqrt(squares / document.atoms.size()), largest};
-}
-NwchemGeometryFragment nwchemGeometryFragment(const Document &document, CoordinateUnit unit,
-                                              const NwchemGeometryOptions &options) {
-    auto errors = document.validate();
-    if (!errors.isEmpty())
-        fail(errors.join('\n'));
-    if (document.atoms.isEmpty())
-        fail(tr("原子を追加するとNWChem座標を表示します。"));
-    // The shortest text that reads back as the same double: 0.758, not 0.75800000000000001.
-    auto number = [](double value) { return QString::number(value, 'g', QLocale::FloatingPointShortest); };
-    NwchemGeometryFragment result;
-    QString &text = result.geometry;
-    text += QString("geometry %1units %2 nocenter noautosym%3")
-                .arg(options.name.isEmpty() ? QString() : options.name + ' ',
-                     unit == CoordinateUnit::Bohr ? "au" : "angstrom",
-                     options.zcoord.isEmpty() && !options.autoz ? " noautoz" : "");
-    if (unit == CoordinateUnit::Angstrom)
-        text += " angstrom_to_au " + number(1. / BohrToAngstrom);
-    text += '\n';
-    QStringList fixed;
-    QSet<QString> ghosts;
-    for (int i = 0; i < document.atoms.size(); ++i) {
-        const auto &atom = document.atoms[i];
-        element(atom.element);
-        const QString tag = (atom.ghost ? "bq" : "") + atom.element;
-        const Vec p = atom.position / coordinateScale(unit);
-        text += QString("  %1 %2 %3 %4").arg(tag, number(p.x()), number(p.y()), number(p.z()));
-        double mass = atom.mass;
-        if (atom.isotope) {
-            mass = OpenBabel::OBElements::GetExactMass(element(atom.element).number, atom.isotope);
-            if (!std::isfinite(mass) || mass <= 0)
-                fail(tr("原子%1: 同位体の質量が不明です。amuを小数で指定してください。").arg(i + 1));
-        }
-        if (mass > 0)
-            text += " mass " + number(mass);
-        text += '\n';
-        if (atom.fixed)
-            fixed << QString::number(i + 1);
-        if (atom.ghost)
-            ghosts.insert(atom.element);
-    }
-    if (!options.zcoord.isEmpty())
-        text += "  zcoord\n    " + options.zcoord.join("\n    ") + "\n  end\n";
-    text += "end\n";
-    if (options.constraints) {
-        result.constraints += "\nconstraints\n  clear\n";
-        // Keep lines short for NWChem's input parser, even for large structures.
-        for (int i = 0; i < fixed.size(); i += 12)
-            result.constraints += "  fix atom " + fixed.mid(i, 12).join(' ') + '\n';
-        result.constraints += "end\n";
-    }
-    auto symbols = ghosts.values();
-    std::sort(symbols.begin(), symbols.end());
-    for (const auto &symbol : symbols)
-        result.comments +=
-            QString("# Ghost basis required in BASIS: bq%1 library %1 <basis-name>\n").arg(symbol);
-    return result;
-}
-QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragmentComments,
-                       const NwchemGeometryOptions &options) {
-    const auto result = nwchemGeometryFragment(document, unit, options);
-    return (fragmentComments
-                ? QString("# MolForma: geometry fragment; add basis, charge, method and task separately.\n")
-                : QString()) +
-           result.geometry + result.constraints + (fragmentComments ? result.comments : QString());
 }
 QVector<ZMatrixRow> zMatrix(const Document &d) {
     const int n = d.atoms.size();

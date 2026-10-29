@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "model/document.h"
 #include "model/i18n.h"
+#include "model/units.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -606,7 +607,7 @@ QJsonObject Document::emittedJob() const {
             auto q = v.toObject();
             Vec p = vectorFromJson(q["position"]);
             if (bohr)
-                p /= 0.529177210903;
+                p /= BohrToAngstrom;
             charges << QString("%1,%2,%3,%4")
                            .arg(p.x(), 0, 'g', 15)
                            .arg(p.y(), 0, 'g', 15)

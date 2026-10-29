@@ -1,5 +1,7 @@
+#include "editing/atom_properties.h"
 #include "editing/peptide.h"
 #include "model/geometry.h"
+#include "nwchem/nwchem_geometry.h"
 #include "ui/coordinates_panel.h"
 #include "ui/main_window.h"
 #include <QtTest>
@@ -36,6 +38,23 @@ class CoordinatesTest : public QObject {
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
                            settingsDir.path()); // MolForma uses NativeFormat.
+    }
+    void atomPropertiesAreAtomicAcrossSelection() {
+        auto d = Document::fromXyz("2\nmixed\nH 0 0 0\nC 1.5 0 0\n");
+        const auto before = d.project();
+        AtomProperties properties;
+        properties.isotope = 2; // Valid for H, invalid for C.
+        properties.charge = 1;
+        QVERIFY_EXCEPTION_THROWN(setAtomProperties(d, d.ids(), properties), std::runtime_error);
+        QCOMPARE(d.project(), before);
+        QVERIFY_EXCEPTION_THROWN(
+            setCoordinateCell(d, d.atoms[1].id, CoordinateColumn::Mass, "400", CoordinateUnit::Angstrom),
+            std::runtime_error);
+        QCOMPARE(d.project(), before);
+        properties = atomMassInput("13.0");
+        setAtomProperties(d, {d.atoms[1].id}, properties);
+        QCOMPARE(d.atoms[1].mass, 13.0);
+        QCOMPARE(d.atoms[1].isotope, 0);
     }
     void nativeAtomInput() {
         auto a = coordinateAtom("D", {"1D0", "-2e-1", "0"}, "", CoordinateUnit::Bohr);

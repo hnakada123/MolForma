@@ -28,6 +28,8 @@ The right side has six pages, “Edit”, “Transform”, “Attributes” (ato
 | Charge: whether external point charges go into the NWChem input, list of point charges (explains how to add them when there are none) | Set under “Environment” in “2 Calculation” (writes `bq units angstrom`) |
 | Charge: electron count and consistency, whether input can be generated, input check | Shows the electron count with ECPs and ghosts taken into account, the α/β electron counts, errors and checks, and whether “Input can be generated”; Check in “4 Input preview” goes there |
 
+Atom properties use the same validation as the coordinate table and MCP. Mass numbers absent from the isotope data are rejected during editing; custom masses must be positive finite values entered as decimals.
+
 ![The “Edit” page: the chosen atom (O8) with deselect, delete and local cleanup, and the cards for element, coordinates (one atom) and placement and bonds](images/molecule_pages/01_edit.png)
 
 **Figure 1** The “Edit” page. The chosen atoms with “Deselect”, “Delete selected atoms” and “Local cleanup” are at the top, followed by the cards for element, coordinates and bonds.

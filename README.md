@@ -87,8 +87,9 @@ MCPクライアントからも操作できます。GUIを表示する場合は `
 
 | ディレクトリ | 内容 |
 | --- | --- |
-| `src/model/` | 分子ドキュメント、保存形式、幾何計算 |
-| `src/editing/` | 分子・座標編集、部品ライブラリ、ペプチド・配位構造、化学処理 |
+| `src/model/` | 分子ドキュメント、保存形式、幾何計算、単位定義 |
+| `src/editing/` | 分子・座標編集、共通の原子属性検証、部品ライブラリ、ペプチド・配位構造、化学ジョブ管理 |
+| `src/io/` | ファイル形式別の読込・書出し、プロジェクト保存、最近使ったファイル、自動保存・復旧 |
 | `src/nwchem/` | NWChem入力生成、詳細設定、可視化出力設定、実行制御、計算履歴 |
 | `src/results/` | 計算結果の読込み、等値面生成、MOLDEN分子軌道の評価 |
 | `src/ui/` | メインウィンドウ、各パネル、分子描画、UI部品、GUIを操作するMCPツール |
@@ -96,7 +97,7 @@ MCPクライアントからも操作できます。GUIを表示する場合は `
 | `packaging/` | デスクトップ連携（`.desktop`、アイコン、MIME型）、Arch Linuxの `PKGBUILD`（`arch/`）、AppImageのビルド環境（`appimage/`）、WindowsでWSLのNWChemを起動するバッチファイル（`windows/`）。`docs/manual.qrc` で説明書とアイコンを実行ファイルに組み込み |
 | `tools/screenshots/` | マニュアル・実習の画面写真を `molforma --mcp-gui` の操作で撮るスクリプト（開発用。MolForma本体はPythonに依存しません） |
 
-エントリーポイントは `src/main.cpp` です。ヘッダーは `#include "model/document.h"` のように `src/` からのパスで参照します。ビルドターゲットは `molforma_core`（model・editing・nwchem・results）、`molforma_mcp`（mcp）、`molforma_ui`（ui）に分かれています。
+エントリーポイントは `src/main.cpp` です。ヘッダーは `#include "model/document.h"` のように `src/` からのパスで参照します。`molforma_core` は `molforma_model`・`molforma_editing`・`molforma_results`・`molforma_nwchem`・`molforma_io` を束ねるインターフェースターゲットです。依存方向は io → nwchem → editing / results → model で、逆方向のプロジェクトヘッダー参照をCMake設定時とCTestで検出します。`molforma_mcp`（mcp）はコア、`molforma_ui`（ui）はコア・MCP・Qt Widgetsに依存します。化学ジョブと自動保存は画面を作らずにテストでき、各パネル・GUI用MCPは公開APIから編集操作と状態取得を行います。
 
 ```sh
 rg --files src tests -g '*.h' -g '*.cpp' -0 | xargs -0 clang-format -i

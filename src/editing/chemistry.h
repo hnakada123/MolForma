@@ -1,18 +1,11 @@
 #pragma once
 #include "model/document.h"
 namespace mf {
-// xyzFrame selects one structure of a multi-frame XYZ file (0-based); a multi-frame file without
-// it is rejected. NWChem (.nw) and Gaussian (.gjf/.com) inputs give their Cartesian structure,
-// charge and multiplicity (.nw also the calculation settings, see importNwchemInput).
-Document importStructure(const QString &path, int pdbModel = 1, const QString &altloc = {},
-                         int xyzFrame = -1);
-// The frames of an XYZ file (each as its own XYZ text) and their comment lines.
-QStringList xyzFrames(const QString &text);
-// Cartesian structure, charge and multiplicity of a Gaussian input (route and title are skipped).
-Document gaussianStructure(const QString &text);
+// Native Open Babel formats; routing of project/XYZ/NWChem/Gaussian files is in io/structure_io.h.
+Document importBabelStructure(const QString &path, int pdbModel = 1, const QString &altloc = {});
+void exportBabelStructure(const Document &document, const QString &path);
 // Reads XYZ text and assigns bond orders from the geometry; XYZ itself carries none.
 Document xyzStructure(const QString &text);
-void exportStructure(const Document &d, const QString &path);
 Document fromSmiles(const QString &smiles);
 Document refine(const Document &d, bool regenerate = false, const Ids &moving = {});
 struct Conformer {

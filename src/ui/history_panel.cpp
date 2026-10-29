@@ -832,7 +832,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
             setRoot(p);
     });
     connect(executionRootAction, &QAction::triggered, this, [this] {
-        window->execution->commitPendingEdits();
+        window->executionPanel()->commitPendingEdits();
         setRoot(executionRoot(), false);
     });
     connect(copyRoot, &QAction::triggered, this, [this] { QApplication::clipboard()->setText(root); });
@@ -933,7 +933,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     });
     connect(stop, &QPushButton::clicked, this, [this] {
         if (!selectedDirectory().isEmpty() && selectedDirectory() == activeDirectory())
-            window->execution->confirmStop();
+            window->executionPanel()->confirmStop();
     });
     connect(setReference, &QPushButton::clicked, this, [this] {
         const auto *e = selectedEntry();
@@ -946,7 +946,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
         else
             setComparing(true);
     });
-    connect(showExecution, &QPushButton::clicked, this, [this] { window->execution->showRunPanel(); });
+    connect(showExecution, &QPushButton::clicked, this, [this] { window->executionPanel()->showRunPanel(); });
     connect(stopComparing, &QPushButton::clicked, this, [this] { setComparing(false); });
     connect(repair, &QPushButton::clicked, this, [this] { window->safe([this] { repairSelected(); }); });
     connect(trash, &QPushButton::clicked, this, [this] { window->safe([this] { trashSelected(); }); });
@@ -970,11 +970,11 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
         updateLive();
     });
     timer.start();
-    const auto saved = window->settings.value("history/root").toString();
+    const auto saved = window->preference("history/root").toString();
     followsExecution = saved.isEmpty();
     root = saved;
     // The files are opened when wanted: the list first.
-    setFilesOpen(window->settings.value("history/files_open", false).toBool(), false);
+    setFilesOpen(window->preference("history/files_open", false).toBool(), false);
     updateActions();
 }
 void HistoryPanel::fitDetail() {
@@ -1019,8 +1019,9 @@ bool HistoryPanel::eventFilter(QObject *watched, QEvent *event) {
     return QWidget::eventFilter(watched, event);
 }
 QString HistoryPanel::executionRoot() const {
-    return historyRoot(window->document(),
-                       window->path.isEmpty() ? QDir::currentPath() : QFileInfo(window->path).absolutePath());
+    return historyRoot(window->document(), window->projectPath().isEmpty()
+                                               ? QDir::currentPath()
+                                               : QFileInfo(window->projectPath()).absolutePath());
 }
 void HistoryPanel::setRoot(const QString &path, bool remember) {
     auto value = path.trimmed();
@@ -1032,7 +1033,7 @@ void HistoryPanel::setRoot(const QString &path, bool remember) {
         return;
     value = QFileInfo(value).absoluteFilePath();
     followsExecution = !remember;
-    window->settings.setValue("history/root", remember ? value : QString());
+    window->setPreference("history/root", remember ? value : QString());
     if (root != value) {
         saveMemo();
         scan.cancel();
@@ -1089,7 +1090,7 @@ const HistoryEntry *HistoryPanel::selectedEntry() const {
     return entry(selectedDirectory());
 }
 QString HistoryPanel::activeDirectory() const {
-    const auto &run = window->execution->currentRun();
+    const auto &run = window->executionPanel()->currentRun();
     return run.active() ? run.plan().directory : QString();
 }
 QVector<HistoryEntry> HistoryPanel::visibleEntries() const {
@@ -1401,7 +1402,7 @@ void HistoryPanel::setFilesOpen(bool open, bool remember) {
         filesHeight = listSplit->sizes().value(1);
     filesOpen = open;
     if (remember)
-        window->settings.setValue("history/files_open", open);
+        window->setPreference("history/files_open", open);
     filesCard->setOpen(open);
     for (QWidget *w :
          {static_cast<QWidget *>(fileName), static_cast<QWidget *>(follow), static_cast<QWidget *>(copyFile)})
@@ -1467,9 +1468,9 @@ void HistoryPanel::showDetails() {
     showFacts(*e, owned);
     // Over MCP with --mcp-allow-dir, memos are written only inside the allowed folders.
     bool outside = false;
-    if (window->mcp.policy && window->mcp.policy->restricted())
+    if (window->accessPolicy() && window->accessPolicy()->restricted())
         try {
-            window->mcp.policy->checkPath(e->directory);
+            window->accessPolicy()->checkPath(e->directory);
         } catch (const std::exception &) {
             outside = true;
         }
@@ -1611,7 +1612,7 @@ void HistoryPanel::showFacts(const HistoryEntry &e, bool owned) {
     else
         text("started", tr("開始"), started.isValid() ? dayAndTime(started) : QString("—"));
     if (owned && pending(e.status))
-        text("elapsed", tr("経過"), elapsedClock(window->execution->currentRun().elapsedSeconds()));
+        text("elapsed", tr("経過"), elapsedClock(window->executionPanel()->currentRun().elapsedSeconds()));
     else if (e.status != "prepared") {
         QString end = finished.isValid() ? (finished.toLocalTime().date() == started.toLocalTime().date()
                                                 ? finished.toLocalTime().toString("HH:mm")
@@ -1694,7 +1695,7 @@ void HistoryPanel::updateLive() {
     const auto *e = selectedEntry();
     if (!e || e->directory != activeDirectory() || !detail->isVisible())
         return;
-    const auto &run = window->execution->currentRun();
+    const auto &run = window->executionPanel()->currentRun();
     progress->showRun(e->directory, run.state(), run.active());
     const qint64 seconds = run.elapsedSeconds();
     progressTiming->setText(
@@ -1721,8 +1722,8 @@ void HistoryPanel::updateActions() {
     const bool owned = e && e->directory == activeDirectory();
     viewer->setEnabled(exists && !resultFiles(e->directory).isEmpty());
     folder->setEnabled(exists);
-    reuse->setEnabled(exists && e->valid && !window->hasCandidate() && !window->worker);
-    stop->setEnabled(exists && owned && window->execution->currentRun().state() != "stopping");
+    reuse->setEnabled(exists && e->valid && !window->hasCandidate() && !window->chemistryRunning());
+    stop->setEnabled(exists && owned && window->executionPanel()->currentRun().state() != "stopping");
     const bool unfinished = e && pending(e->status);
     repair->setEnabled(exists && e->valid && e->orphaned && !owned);
     repairBox->setVisible(e && e->orphaned && !owned && !comparing);
@@ -1747,8 +1748,8 @@ void HistoryPanel::notifyJob(const QString &path) {
     }
     auto next = readHistoryEntry(path);
     if (path == activeDirectory()) {
-        next.status = window->execution->currentRun().state();
-        next.seconds = window->execution->currentRun().elapsedSeconds();
+        next.status = window->executionPanel()->currentRun().state();
+        next.seconds = window->executionPanel()->currentRun().elapsedSeconds();
     }
     for (auto &e : entries)
         if (e.directory == path) {
@@ -1786,21 +1787,27 @@ void HistoryPanel::saveMemo() {
         memoStatus->show();
     }
 }
+bool HistoryPanel::containsDirectory(const QString &directory) const {
+    return std::any_of(entries.cbegin(), entries.cend(),
+                       [&](const auto &entry) { return entry.directory == directory; });
+}
+QString HistoryPanel::message() const {
+    return status->text();
+}
 void HistoryPanel::reuseSelected() {
     const auto directory = selectedDirectory();
     if (directory.isEmpty())
         return;
     window->checkMcpPath(directory);
-    if (window->hasCandidate() || window->worker)
+    if (window->hasCandidate() || window->chemistryRunning())
         fail(tr("候補を確定・取消し、整形の終了後に再利用してください。"));
     const auto next = historyDocument(directory);
     if (!window->confirmDiscard())
         return;
-    window->path.clear();
+    window->clearProjectPath();
     window->loadDocument(next);
     window->history()->resetClean();
-    window->refresh();
-    window->workspaceTabs->setCurrentWidget(window->calculation);
+    window->showPanel(window->calculationPanel());
     window->statusBar()->showMessage(
         tr("履歴から新しい未保存プロジェクトを作成しました。実行前に条件・参照ファイルを確認してください。"),
         15000);
@@ -1812,8 +1819,8 @@ void HistoryPanel::openResult() {
     window->checkMcpPath(directory);
     if (resultFiles(directory).isEmpty())
         return;
-    window->workspaceTabs->setCurrentWidget(window->results);
-    window->results->openDirectory(directory);
+    window->showPanel(window->resultsPanel());
+    window->resultsPanel()->openDirectory(directory);
 }
 void HistoryPanel::trashSelected() {
     const auto directory = selectedDirectory();

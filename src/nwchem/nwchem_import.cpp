@@ -1,7 +1,7 @@
 #include "nwchem/nwchem_import.h"
 #include "editing/chemistry.h"
-#include "editing/coordinates.h"
 #include "model/i18n.h"
+#include "model/units.h"
 #include "nwchem/nwchem.h"
 #include <QRegularExpression>
 #include <cmath>

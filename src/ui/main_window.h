@@ -1,13 +1,13 @@
 #pragma once
+#include "editing/chemistry_job.h"
 #include "editing/editor_session.h"
+#include "io/document_storage.h"
 #include "mcp/policy.h"
 #include "ui/molecule_view.h"
 #include <QHash>
-#include <QLockFile>
 #include <QMainWindow>
-#include <QProcess>
+#include <QScopedValueRollback>
 #include <QSettings>
-#include <QTemporaryDir>
 #include <QUndoStack>
 #include <functional>
 #include <optional>
@@ -60,6 +60,15 @@ class MainWindow : public QMainWindow {
     void cancelCandidate();
     void remoteHistory(const QString &action);
     void loadPath(const QString &path);
+    bool chemistryRunning() const {
+        return chemistry.active();
+    }
+    QString projectPath() const {
+        return storage.path();
+    }
+    void clearProjectPath() {
+        storage.setPath({});
+    }
     void setSelection(const Ids &ids);
     void loadDocument(const Document &d);
     QUndoStack *history() {
@@ -87,6 +96,78 @@ class MainWindow : public QMainWindow {
     // whether it was used.
     bool useSample(const QString &resource, const QString &target = {});
 
+    // The editor context used by panels and the MCP adapter. Widgets and mutable session state
+    // remain private; consumers request operations and observe snapshots.
+    const std::optional<Document> &candidate() const {
+        return session.candidate();
+    }
+    const Ids &selection() const {
+        return selected;
+    }
+    bool modified() const {
+        return !undo.isClean();
+    }
+    QVariant preference(const QString &key, const QVariant &fallback = {}) const {
+        return settings.value(key, fallback);
+    }
+    void setPreference(const QString &key, const QVariant &value) {
+        settings.setValue(key, value);
+    }
+    CalculationPanel *calculationPanel() const {
+        return calculation;
+    }
+    ExecutionPanel *executionPanel() const {
+        return execution;
+    }
+    InputPreviewPanel *previewPanel() const {
+        return inputPreview;
+    }
+    ResultsPanel *resultsPanel() const {
+        return results;
+    }
+    HistoryPanel *historyPanel() const {
+        return calculationHistory;
+    }
+    void showPanel(QWidget *panel);
+    void showPanel(int index);
+    QWidget *currentPanel() const;
+    int currentPanelIndex() const;
+    QWidget *workspaceWidget() const;
+    bool moleculePanelVisible() const;
+    QString moleculeLayoutMode() const;
+    void setPanelDiagnostics(QWidget *panel, bool error, const QString &tip);
+    void setRunPanelShown(bool shown);
+    const McpPolicy *accessPolicy() const {
+        return mcp.policy;
+    }
+    void setAccessPolicy(const McpPolicy *policy) {
+        mcp.policy = policy;
+    }
+    bool remoteRequest() const {
+        return mcp.depth > 0;
+    }
+    QScopedValueRollback<int> remoteScope() {
+        return QScopedValueRollback<int>(mcp.depth, mcp.depth + 1);
+    }
+    const QJsonObject &trustedExecution() const {
+        return mcp.trustedExecution;
+    }
+    void trustCurrentExecution();
+
+    // Paths reached by an MCP-driven GUI action obey --mcp-allow-dir like the semantic tools.
+    void checkMcpPath(const QString &path) const;
+    // Sorts the atoms: "element", "residue" or "selected" (the selection first).
+    void sortAtoms(const QString &mode);
+    bool confirmDiscard();
+    void refreshPanel(QWidget *panel, bool always = false);
+    // The header while a run is active: the elapsed time, and stop instead of run.
+    void showRun(bool active, const QString &text, bool stoppable);
+    void cancelWorker();
+    // mode: smiles, fragment, refine, regenerate or conformers (count: conformers to keep).
+    void runWorker(const QString &mode, const QString &smiles = {}, const Ids &moving = {}, int count = 10);
+  signals:
+    void panelChanged();
+
   protected:
     void changeEvent(QEvent *) override;
     void closeEvent(QCloseEvent *) override;
@@ -94,13 +175,6 @@ class MainWindow : public QMainWindow {
     void dropEvent(QDropEvent *) override;
 
   private:
-    friend class CoordinatesPanel;
-    friend class CalculationPanel;
-    friend class ExecutionPanel;
-    friend class InputPreviewPanel;
-    friend class ResultsPanel;
-    friend class HistoryPanel;
-    friend class McpGui;
     EditorSession session;
     // MCP access, set by McpGui. A calculation started over MCP may only use the executable,
     // launcher and environment that were last changed outside MCP (trustedExecution).
@@ -109,20 +183,13 @@ class MainWindow : public QMainWindow {
         int depth = 0; // > 0 while an MCP request or GUI command is being applied
         QJsonObject trustedExecution;
     } mcp;
-    QString path;
-    bool workerRemote = false; // Worker started over MCP.
     Ids selected;
     QVector<Ids> monitors; // Measurements kept on screen (view state, not saved).
     QMenu *recentMenu = nullptr;
-    QTimer *autosaveTimer = nullptr;
-    QString autosavePath;
-    std::unique_ptr<QLockFile> autosaveLock;
-    QByteArray autosavedIdentity; // Content of the last recovery copy.
     QUndoStack &undo = session.history();
     QSettings settings;
-    QProcess *worker = nullptr;
-    std::unique_ptr<QTemporaryDir> workdir;
-    QByteArray workerBase;
+    DocumentStorage storage;
+    ChemistryJob chemistry;
     bool refreshing = false;
     MoleculeView *view = nullptr;
     CoordinatesPanel *coordinates = nullptr;
@@ -139,8 +206,6 @@ class MainWindow : public QMainWindow {
     QToolButton *documentButton = nullptr, *runButton = nullptr, *headerStop = nullptr;
     // "実行中 18:31" in the header while NWChem runs; it opens the run panel.
     QToolButton *runPill = nullptr;
-    // The header while a run is active: the elapsed time, and stop instead of run.
-    void showRun(bool active, const QString &text, bool stoppable);
     QButtonGroup *toolGroup = nullptr; // The editing tools in the rail at the left of "1 分子".
     QComboBox *toolBondKind = nullptr; // In the option bar of the bond and place tools; mirrors bondKind.
     QButtonGroup *unitGroup = nullptr, *categoryGroup = nullptr; // Selection unit, palette category.
@@ -227,7 +292,6 @@ class MainWindow : public QMainWindow {
     void showPalette(bool show);
     QSet<QWidget *> stalePanels;
     void refreshPanels();
-    void refreshPanel(QWidget *panel, bool always = false);
     void refreshPalette();
     void refreshSelection();
     void refreshChargePanel();
@@ -270,14 +334,11 @@ class MainWindow : public QMainWindow {
     Ids expandedSelection(const Ids &ids) const;
     // Status bar note after Undo/Redo, naming the tab whose content changed.
     void announceHistory(const QString &verb, const QString &name, const Document &from, const Document &to);
-    // Paths reached by an MCP-driven GUI action obey --mcp-allow-dir like the semantic tools.
-    void checkMcpPath(const QString &path) const;
     void trackExecution(const Document &before, const Document &after);
     void newDocument();
     void open();
     bool save(bool as = false);
     bool resolveCandidate();
-    bool confirmDiscard();
     void exportFile();
     // Asks which structure of a multi-frame XYZ file to read (0-based; 0 for single frames).
     int chooseXyzFrame(const QString &path);
@@ -285,16 +346,13 @@ class MainWindow : public QMainWindow {
     void importSmiles(const QString &initial = {});
     void addFragmentFromSmiles(const QString &initial = {});
     void addFragmentFromFile();
-    // mode: smiles, fragment, refine, regenerate or conformers (count: conformers to keep).
-    void runWorker(const QString &mode, const QString &smiles = {}, const Ids &moving = {}, int count = 10);
-    void cancelWorker();
+    void chemistryReady(const ChemistryResult &result);
+    void chemistryFailed(const ChemistryRequest &request, const QString &message, bool starting);
     void contextMenu(const QPoint &p, const QString &id);
     void savePart();
     void loadPart();
     void loadPartFile(const QString &path);
-    void removePart(); // The user's part chosen in the palette, from its list.
-    // Sorts the atoms: "element", "residue" or "selected" (the selection first).
-    void sortAtoms(const QString &mode);
+    void removePart();       // The user's part chosen in the palette, from its list.
     void showHeldSettings(); // Atom references and settings held on reading a project.
     void selectNumbers();
     void showReport();

@@ -57,6 +57,10 @@ class ExecutionPanel : public QWidget {
         run.stop();
     }
     void applyChromeStyle();
+    QString baseDirectory() const;
+    QString savedDirectory() const {
+        return saved.directory;
+    }
   signals:
     void bundleChanged(QString directory);
 
@@ -64,7 +68,6 @@ class ExecutionPanel : public QWidget {
     bool eventFilter(QObject *watched, QEvent *event) override;
 
   private:
-    friend class McpGui;
     MainWindow *window;
     NwchemRun run;
     bool busy = false, environmentDirty = false, startable = false;
@@ -100,7 +103,6 @@ class ExecutionPanel : public QWidget {
     QString summaryDirectory, resultSummary;
     void showResultSummary();
     void appendLog();
-    QString baseDirectory() const;
     void change(const QString &key, const QJsonValue &value);
     void editEnvironment();
     void updateRun();

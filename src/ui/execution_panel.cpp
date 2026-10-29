@@ -94,9 +94,9 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     openResults->setToolTip(
         tr("計算が終わると、ジョブフォルダーを「結果ビューア」に読み込みます（タブは切り替えません）。"
            "終了はステータスバーとデスクトップ通知でも知らせます。"));
-    openResults->setChecked(window->settings.value("execution/open_results", true).toBool());
+    openResults->setChecked(window->preference("execution/open_results", true).toBool());
     connect(openResults, &QCheckBox::toggled, this,
-            [this](bool on) { window->settings.setValue("execution/open_results", on); });
+            [this](bool on) { window->setPreference("execution/open_results", on); });
     tools->addWidget(openResults);
     prepare = new QPushButton(tr("ジョブとして保存"));
     prepare->setObjectName("executionPrepare");
@@ -217,7 +217,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     memoryLayout->addWidget(memory);
     grid->addWidget(memoryCell, 1, 1);
     connect(memory, &QSpinBox::valueChanged, this, [this](int n) {
-        if (busy || window->hasCandidate() || window->worker)
+        if (busy || window->hasCandidate() || window->chemistryRunning())
             return;
         window->safe([&] {
             window->edit(tr("NWChemメモリを変更"), [&](Document &d) { setNwchemSetting(d, "memory_mb", n); });
@@ -455,13 +455,13 @@ void ExecutionPanel::buildRunPanel() {
     connect(openFolder, &QPushButton::clicked, this,
             [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(saved.directory)); });
     connect(history, &QPushButton::clicked, this, [this] {
-        window->workspaceTabs->setCurrentWidget(window->calculationHistory);
+        window->showPanel(window->historyPanel());
         if (!saved.directory.isEmpty())
-            window->calculationHistory->selectDirectory(saved.directory);
+            window->historyPanel()->selectDirectory(saved.directory);
     });
     connect(viewResults, &QPushButton::clicked, this, [this] {
-        window->workspaceTabs->setCurrentWidget(window->results);
-        window->results->openDirectory(saved.directory);
+        window->showPanel(window->resultsPanel());
+        window->resultsPanel()->openDirectory(saved.directory);
     });
     panel->addWidget(runCard);
 
@@ -505,9 +505,9 @@ void ExecutionPanel::buildRunPanel() {
     panel->addWidget(logCard, 1);
     // The panel follows the area of the tabs, over "1 分子" the pages at its right and over this tab
     // the settings below its bar (whose height changes as it wraps).
-    window->workspaceTabs->installEventFilter(this);
+    window->workspaceWidget()->installEventFilter(this);
     toolbar->installEventFilter(this);
-    connect(window->workspaceTabs, &QTabWidget::currentChanged, this, [this] {
+    connect(window, &MainWindow::panelChanged, this, [this] {
         if (runPanel->isVisible())
             placeRunPanel();
     });
@@ -519,20 +519,19 @@ void ExecutionPanel::showRunPanel(bool show) {
         runPanel->raise();
     } else
         runPanel->hide();
-    if (window->runPanelAction)
-        window->runPanelAction->setChecked(show);
+    window->setRunPanelShown(show);
 }
 bool ExecutionPanel::runPanelShown() const {
     return runPanel->isVisible();
 }
 void ExecutionPanel::placeRunPanel() {
-    auto *tabs = window->workspaceTabs;
+    auto *tabs = window->workspaceWidget();
     const QRect area(tabs->mapTo(window, QPoint()), tabs->size());
     int left = area.right() + 1 - std::clamp(area.width() * 2 / 5, std::min(420, area.width()), 600);
     // Over "1 分子" it takes the place of the pages at the right: the view, its controls and the
     // options above it stay in sight.
     auto *column = window->findChild<QWidget *>("propertyColumn");
-    if (column && tabs->currentWidget() == window->moleculePage && column->isVisible()) {
+    if (column && window->moleculePanelVisible() && column->isVisible()) {
         if (!column->property("runPanelWatched").toBool()) { // Its width follows the splitter.
             column->setProperty("runPanelWatched", true);
             column->installEventFilter(this);
@@ -542,19 +541,20 @@ void ExecutionPanel::placeRunPanel() {
     // Over "3 実行設定" it starts below the bar: the calculation, "終了したら結果ビューアに読み込む"
     // and "ジョブとして保存" stay in sight.
     int top = area.top();
-    if (tabs->currentWidget() == this)
+    if (window->currentPanel() == this)
         top = toolbar->mapTo(window, QPoint(0, toolbar->height())).y();
     runPanel->setGeometry(left, top, area.right() + 1 - left, area.bottom() + 1 - top);
 }
 bool ExecutionPanel::eventFilter(QObject *watched, QEvent *event) {
-    if ((watched == window->workspaceTabs || watched == toolbar ||
+    if ((watched == window->workspaceWidget() || watched == toolbar ||
          watched->objectName() == "propertyColumn") &&
         (event->type() == QEvent::Resize || event->type() == QEvent::Move) && runPanel->isVisible())
         placeRunPanel();
     return QWidget::eventFilter(watched, event);
 }
 QString ExecutionPanel::baseDirectory() const {
-    return window->path.isEmpty() ? QDir::currentPath() : QFileInfo(window->path).absolutePath();
+    return window->projectPath().isEmpty() ? QDir::currentPath()
+                                           : QFileInfo(window->projectPath()).absolutePath();
 }
 void ExecutionPanel::pathField(QGridLayout *grid, const QString &label, const QString &key, bool directory) {
     const int row = grid->rowCount();
@@ -612,7 +612,7 @@ QWidget *ExecutionPanel::integer(const QString &label, const QString &key, int l
     return cell;
 }
 void ExecutionPanel::change(const QString &key, const QJsonValue &value) {
-    if (busy || window->hasCandidate() || window->worker ||
+    if (busy || window->hasCandidate() || window->chemistryRunning() ||
         executionSettings(window->document()).value(key) == value)
         return;
     window->safe([&] {
@@ -643,26 +643,25 @@ void ExecutionPanel::commitPendingEdits() {
     editEnvironment();
 }
 void ExecutionPanel::saveBundle() {
-    if (window->hasCandidate() || window->worker || run.active())
+    if (window->hasCandidate() || window->chemistryRunning() || run.active())
         fail(tr("候補・整形・実行中は入力一式を保存できません。"));
     commitPendingEdits();
-    if (window->mcp.policy && window->mcp.depth > 0)
-        window->mcp.policy->checkRun(window->document(), baseDirectory());
+    if (window->accessPolicy() && window->remoteRequest())
+        window->accessPolicy()->checkRun(window->document(), baseDirectory());
     saved = saveExecutionBundle(window->document(), baseDirectory());
     updateRun();
     emit bundleChanged(saved.directory);
 }
 void ExecutionPanel::startCalculation() {
-    if (window->hasCandidate() || window->worker || run.active())
+    if (window->hasCandidate() || window->chemistryRunning() || run.active())
         fail(tr("候補・整形・実行中は新しい計算を開始できません。"));
     commitPendingEdits();
-    auto &mcp = window->mcp;
-    if (mcp.policy) {
-        const bool remote = mcp.depth > 0;
+    if (const auto *policy = window->accessPolicy()) {
+        const bool remote = window->remoteRequest();
         if (remote)
-            mcp.policy->checkRun(window->document(), baseDirectory());
+            policy->checkRun(window->document(), baseDirectory());
         const auto settings = protectedExecution(window->document());
-        if (!mcp.policy->allowExecutionSettings && settings != mcp.trustedExecution) {
+        if (!policy->allowExecutionSettings && settings != window->trustedExecution()) {
             if (remote)
                 fail(tr("NWChem実行ファイル・MPIランチャー・追加の環境変数・NWChemの追加入力が、"
                         "MolForma上で最後に設定した値と異なります（MCP経由の変更や"
@@ -690,7 +689,7 @@ void ExecutionPanel::startCalculation() {
             box.setProperty("mcpProtected", true);
             if (box.exec() != QMessageBox::Yes)
                 return;
-            mcp.trustedExecution = settings;
+            window->trustCurrentExecution();
         }
     }
     run.start(window->document(), baseDirectory());
@@ -709,7 +708,7 @@ void ExecutionPanel::confirmStop() {
 void ExecutionPanel::startFromMenu() {
     window->refreshPanel(this, true); // The tab may be stale while another one is shown.
     if (!startable) {
-        window->workspaceTabs->setCurrentWidget(this);
+        window->showPanel(this);
         window->statusBar()->showMessage(
             run.active() ? tr("計算を実行中です。")
                          : tr("計算を開始できません。「3 実行設定」の「実行前の確認」を見てください。"),
@@ -772,7 +771,7 @@ void ExecutionPanel::refresh() {
         removeEnvironment->setVisible(rows.size());
         environmentEmpty->setVisible(rows.isEmpty());
     }
-    const bool editable = !window->hasCandidate() && !window->worker;
+    const bool editable = !window->hasCandidate() && !window->chemistryRunning();
     form->setEnabled(editable);
     fields["launcher"]->setEnabled(s["mode"] == "mpi");
     fields["mpi_ranks"]->setEnabled(s["mode"] == "mpi");
@@ -946,8 +945,7 @@ void ExecutionPanel::updateRun() {
     prepare->setVisible(!run.active());
     runningNote->setVisible(run.active());
     state->setVisible(!run.active() && !state->text().isEmpty());
-    if (window->stopAction)
-        window->stopAction->setEnabled(stoppable);
+
     if (run.active()) {
         startable = false;
         prepare->setEnabled(false);
@@ -1054,21 +1052,21 @@ void ExecutionPanel::runEnded() {
     }
     resultSummary.clear();
     if (openResults->isChecked() && run.state() == "finished" && !resultFiles(directory).isEmpty() &&
-        !window->results->loading()) {
+        !window->resultsPanel()->loading()) {
         summaryDirectory = directory;
-        connect(window->results, &ResultsPanel::loaded, this, &ExecutionPanel::showResultSummary,
+        connect(window->resultsPanel(), &ResultsPanel::loaded, this, &ExecutionPanel::showResultSummary,
                 Qt::UniqueConnection);
-        window->results->openDirectory(directory);
+        window->resultsPanel()->openDirectory(directory);
     }
 }
 void ExecutionPanel::showResultSummary() {
     // Only the log of the run that just ended, not files the user opens later.
-    const auto source = window->results->result().source;
+    const auto source = window->resultsPanel()->result().source;
     if (summaryDirectory.isEmpty() ||
         QFileInfo(source).absolutePath() != QFileInfo(summaryDirectory).absoluteFilePath())
         return;
     summaryDirectory.clear();
-    resultSummary = window->results->briefSummary();
+    resultSummary = window->resultsPanel()->briefSummary();
     updateRun();
     if (!resultSummary.isEmpty())
         window->statusBar()->showMessage(tr("計算が終了しました: %1").arg(resultSummary), 60000);

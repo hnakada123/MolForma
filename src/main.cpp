@@ -1,4 +1,4 @@
-#include "editing/chemistry.h"
+#include "editing/chemistry_job.h"
 #include "mcp/headless.h"
 #include "mcp/server.h"
 #include "mcp/stdio_transport.h"
@@ -90,32 +90,7 @@ int main(int argc, char **argv) {
     if (argc == 4 && QString::fromLocal8Bit(argv[1]) == "--worker") {
         QCoreApplication app(argc, argv);
         mf::inheritTranslations();
-        QString input = QString::fromLocal8Bit(argv[2]), output = QString::fromLocal8Bit(argv[3]);
-        try {
-            auto request = mf::parseJson(mf::readFile(input));
-            auto mode = request["mode"].toString();
-            if (mode == "conformers") {
-                QJsonArray list;
-                for (const auto &c : mf::searchConformers(
-                         mf::Document::fromJson(request["document"].toObject()), request["count"].toInt(10)))
-                    list.append(QJsonObject{{"document", c.document.toJson()}, {"energy", c.energy}});
-                mf::writeFile(output, QJsonDocument(QJsonObject{{"conformers", list}}).toJson());
-                return 0;
-            }
-            auto d = mode == "smiles" || mode == "fragment"
-                         ? mf::fromSmiles(request["smiles"].toString())
-                         : mf::refine(mf::Document::fromJson(request["document"].toObject()),
-                                      mode == "regenerate", mf::idsFromJson(request["moving"]));
-            mf::writeFile(output, QJsonDocument(QJsonObject{{"document", d.toJson()}}).toJson());
-            return 0;
-        } catch (const std::exception &e) {
-            try {
-                mf::writeFile(output,
-                              QJsonDocument(QJsonObject{{"error", QString::fromUtf8(e.what())}}).toJson());
-            } catch (...) {
-            }
-            return 1;
-        }
+        return mf::chemistryWorker(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]));
     }
 #ifdef Q_OS_LINUX
     // MCP clients may filter the child environment. Diagnose missing desktop variables

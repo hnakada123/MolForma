@@ -1,10 +1,12 @@
 #include "ui/main_window.h"
+#include "editing/atom_properties.h"
 #include "editing/chemistry.h"
 #include "editing/coordinates.h"
 #include "editing/coordination.h"
 #include "editing/operations.h"
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
+#include "io/structure_io.h"
 #include "model/i18n.h"
 #include "model/settings.h"
 #include "nwchem/nwchem.h"
@@ -89,15 +91,13 @@ class PaletteList : public QListWidget {
 static QString value(QComboBox *box) {
     return box->currentData().toString();
 }
-static QByteArray identity(const Document &d) {
-    return QJsonDocument(d.project()).toJson(QJsonDocument::Compact);
-}
 // An atom as the 3D view labels it ("C14"); atomPlace() gives its place in a residue.
 static QString atomName(const Document &d, const QString &id) {
     return d.atom(id).element + QString::number(d.index(id) + 1);
 }
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), settings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma") {
+    : QMainWindow(parent), settings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma"),
+      storage(settings), chemistry(session) {
     setObjectName("mainWindow");
     setAcceptDrops(true);
     resize(1380, 900);
@@ -105,6 +105,14 @@ MainWindow::MainWindow(QWidget *parent)
     customParts = settings.value("parts").toJsonArray();
     buildUi();
     buildMenus();
+    connect(workspaceTabs, &QTabWidget::currentChanged, this, &MainWindow::panelChanged);
+    connect(&chemistry, &ChemistryJob::ready, this, &MainWindow::chemistryReady);
+    connect(&chemistry, &ChemistryJob::failed, this, &MainWindow::chemistryFailed);
+    connect(&chemistry, &ChemistryJob::changed, this, [this] {
+        cancelWorkerButton->setVisible(chemistryRunning());
+        refresh();
+    });
+    connect(&storage, &DocumentStorage::autosaveRequested, this, &MainWindow::autosave);
     // Commands change the document in undo()/redo(); refresh once the stack index (and so the
     // Undo/Redo texts) has moved. Saving only changes the title.
     connect(&session, &EditorSession::changed, this, &MainWindow::refresh);
@@ -136,7 +144,7 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow() {
     // A normal end (window closed, or MCP's standard input closed) leaves nothing to recover.
     removeAutosave();
-    autosaveLock.reset();
+    storage.close();
     results->cancelLoad();
     calculation->stopEditing();
     execution->stopEditing();
@@ -194,7 +202,7 @@ void MainWindow::announceHistory(const QString &verb, const QString &name, const
                              elsewhere ? 10000 : 5000);
 }
 void MainWindow::edit(const QString &name, const std::function<void(Document &)> &operation, bool preview) {
-    if (worker)
+    if (chemistryRunning())
         fail(tr("整形処理の完了または中止後に編集してください。"));
     if (!session.edit(name, operation, preview, mcp.depth > 0))
         return;
@@ -219,7 +227,7 @@ void MainWindow::cancelCandidate() {
     statusBar()->showMessage(tr("変更候補を取り消しました。"), 4000);
 }
 void MainWindow::remoteHistory(const QString &action) {
-    if (worker)
+    if (chemistryRunning())
         fail(tr("整形処理の完了または中止後に操作してください。"));
     if (action == "confirm" || action == "cancel") {
         if (!hasCandidate())
@@ -230,6 +238,44 @@ void MainWindow::remoteHistory(const QString &action) {
             cancelCandidate();
     } else
         session.navigate(action);
+}
+void MainWindow::showPanel(QWidget *panel) {
+    workspaceTabs->setCurrentWidget(panel);
+}
+void MainWindow::showPanel(int index) {
+    if (index >= 0 && index < workspaceTabs->count())
+        workspaceTabs->setCurrentIndex(index);
+}
+QWidget *MainWindow::currentPanel() const {
+    return workspaceTabs->currentWidget();
+}
+int MainWindow::currentPanelIndex() const {
+    return workspaceTabs->currentIndex();
+}
+QWidget *MainWindow::workspaceWidget() const {
+    return workspaceTabs;
+}
+bool MainWindow::moleculePanelVisible() const {
+    return currentPanel() == moleculePage;
+}
+QString MainWindow::moleculeLayoutMode() const {
+    return moleculeLayout->currentData().toString();
+}
+void MainWindow::setPanelDiagnostics(QWidget *panel, bool error, const QString &tip) {
+    const int index = workspaceTabs->indexOf(panel);
+    if (index >= 0) {
+        workspaceTabs->tabBar()->setTabTextColor(index,
+                                                 error ? errorColor(QMainWindow::palette()) : QColor());
+        workspaceTabs->setTabToolTip(index, tip);
+    }
+    syncWorkflowSteps();
+}
+void MainWindow::setRunPanelShown(bool shown) {
+    if (runPanelAction)
+        runPanelAction->setChecked(shown);
+}
+void MainWindow::trustCurrentExecution() {
+    mcp.trustedExecution = protectedExecution(document());
 }
 void MainWindow::buildUi() {
     auto *central = new QWidget;
@@ -2144,6 +2190,7 @@ void MainWindow::refreshSummary() {
                          .arg(session.candidate() ? tr(" · 変更候補あり") : ""));
 }
 void MainWindow::refreshTitle() {
+    const auto path = projectPath();
     const auto name = path.isEmpty() ? tr("新規分子") : QFileInfo(path).fileName();
     const auto mark = undo.isClean() && !session.candidate() ? "" : " *";
     setWindowTitle(QString("%1%2 — MolForma").arg(name, mark));
@@ -2154,6 +2201,8 @@ void MainWindow::refreshTitle() {
     }
 }
 void MainWindow::showRun(bool active, const QString &text, bool stoppable) {
+    if (stopAction)
+        stopAction->setEnabled(stoppable);
     if (!runPill)
         return;
     runPill->setText(text);
@@ -2442,7 +2491,7 @@ void MainWindow::refreshSelection() {
     } else {
         for (auto *field : positionFields)
             field->setValue(field->minimum());
-        formal->setValue(-99);
+        formal->setValue(MinimumAtomCharge - 1);
         radical->setValue(-1);
         mass->clear();
         mass->setPlaceholderText(selected.isEmpty() ? tr("原子を選択してください")
@@ -2495,7 +2544,7 @@ void MainWindow::newDocument() {
     // A new, empty project like a freshly opened file: nothing to save until it is edited.
     Document next;
     applyExecutionPreferences(next);
-    path.clear();
+    clearProjectPath();
     loadDocument(next);
     removeAutosave();
     view->viewFrom(2); // A new molecule starts from the front, whatever the last one was turned to.
@@ -2566,7 +2615,7 @@ void MainWindow::loadPath(const QString &p) {
     if (!p.endsWith(".json", Qt::CaseInsensitive))
         applyExecutionPreferences(next); // Structure files carry no execution settings.
     loadDocument(next);
-    path = p.endsWith(".json", Qt::CaseInsensitive) ? p : "";
+    storage.setPath(p.endsWith(".json", Qt::CaseInsensitive) ? p : "");
     settings.setValue("directory", QFileInfo(p).absolutePath());
     addRecent(p);
     refresh();
@@ -2595,7 +2644,7 @@ bool MainWindow::save(bool as) {
         focused->clearFocus(); // Include the active calculation field when saving via Ctrl+S.
     if (!resolveCandidate())
         return false;
-    QString p = path;
+    QString p = projectPath();
     if (as || p.isEmpty())
         p = QFileDialog::getSaveFileName(
             this, tr("プロジェクトを保存"),
@@ -2608,8 +2657,7 @@ bool MainWindow::save(bool as) {
     if (!p.endsWith(".json", Qt::CaseInsensitive))
         p += ".molforma.json";
     checkMcpPath(p); // Ctrl+S reuses the project path without a file dialog.
-    document().save(p);
-    path = p;
+    storage.save(document(), p);
     undo.setClean();
     addRecent(p);
     removeAutosave(); // Saved work needs no recovery copy.
@@ -2689,183 +2737,74 @@ void MainWindow::importSmiles(const QString &initial) {
         runWorker("smiles", smiles);
 }
 void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids &moving, int count) {
-    if (worker || session.candidate())
-        fail(tr("処理中または変更候補があります。先に完了・取消してください。"));
-    if (mode == "smiles") {
-        Document replaced = document(); // Fail before starting when fixed atoms block the replacement.
-        replaced.remove(replaced.ids());
-    }
-    workdir = std::make_unique<QTemporaryDir>();
-    if (!workdir->isValid())
-        fail(tr("一時ディレクトリを作成できません。"));
-    QString input = workdir->filePath("input.json"), output = workdir->filePath("output.json");
-    QJsonObject request{{"mode", mode},
-                        {"smiles", smiles},
-                        {"moving", idsToJson(moving)},
-                        {"count", count},
-                        {"document", document().toJson()}};
-    writeFile(input, QJsonDocument(request).toJson());
-    workerBase = identity(document());
-    workerRemote = mcp.depth > 0;
-    worker = new QProcess(this);
-    auto *running = worker;
-    running->setProgram(QCoreApplication::applicationFilePath());
-    running->setArguments({"--worker", input, output});
-    cancelWorkerButton->show();
+    chemistry.start({mode, smiles, moving, count, mcp.depth > 0});
     statusBar()->showMessage(tr("構造を生成・整形しています…"));
-    connect(
-        running, &QProcess::finished, this,
-        [this, running, output, mode, smiles](int code, QProcess::ExitStatus status) {
-            if (worker != running)
-                return;
-            QString error;
-            try {
-                auto response = parseJson(readFile(output));
-                if (code != 0 || status != QProcess::NormalExit || response.contains("error"))
-                    fail(response["error"].toString(tr("整形に失敗しました。")));
-                if (workerBase != identity(document()))
-                    fail(tr("分子が変更されたため整形結果を破棄しました。"));
-                Document next = document();
-                if (mode == "conformers") {
-                    const auto list = response["conformers"].toArray();
-                    if (list.isEmpty())
-                        fail(tr("配座が見つかりませんでした。"));
-                    int chosen = 0;
-                    if (!workerRemote && list.size() > 1) {
-                        // MCP-started searches take the lowest energy without a dialog.
-                        const double lowest = list[0].toObject()["energy"].toDouble();
-                        QStringList labels;
-                        for (int i = 0; i < list.size(); ++i)
-                            labels << tr("%1: ΔE %2 kcal/mol（力場エネルギー %3）")
-                                          .arg(i + 1)
-                                          .arg(list[i].toObject()["energy"].toDouble() - lowest, 0, 'f', 2)
-                                          .arg(list[i].toObject()["energy"].toDouble(), 0, 'f', 2);
-                        bool ok;
-                        const auto item = QInputDialog::getItem(
-                            this, tr("配座探索"),
-                            tr("%1個の配座が見つかりました。候補にする配座").arg(list.size()), labels, 0,
-                            false, &ok);
-                        if (!ok)
-                            fail(tr("配座の選択を取り消しました。"));
-                        chosen = labels.indexOf(item);
-                    }
-                    applyResultGeometry(next,
-                                        Document::fromJson(list[chosen].toObject()["document"].toObject()));
-                    double moved = 0;
-                    for (int i = 0; i < next.atoms.size() && i < document().atoms.size(); ++i)
-                        moved =
-                            std::max(moved, (next.atoms[i].position - document().atoms[i].position).norm());
-                    if (moved < 1e-3) {
-                        // Nothing to confirm: say so instead of an empty candidate.
-                        statusBar()->showMessage(tr("配座探索: 別の配座は見つからず、現在の構造のままです"
-                                                    "（回転できる結合がない分子など）。"),
-                                                 10000);
-                    } else {
-                        session.propose(tr("配座を適用"), next, workerRemote);
-                        statusBar()->showMessage(
-                            tr("配座 %1/%2 を候補にしました。「変更を確定」で適用します。")
-                                .arg(chosen + 1)
-                                .arg(list.size()),
-                            10000);
-                    }
-                } else {
-                    auto result = Document::fromJson(response["document"].toObject());
-                    // The worker exchanges the document without the project envelope.
-                    if (mode == "smiles") {
-                        replaceCoordinateStructure(next, result);
-                        next.setJobValue("charge", next.formalCharge());
-                    } else if (mode == "fragment")
-                        insertFragment(next, result);
-                    else {
-                        next = result;
-                        next.envelope = document().envelope;
-                    }
-                    const auto name = mode == "smiles"       ? tr("SMILESから分子を作成")
-                                      : mode == "fragment"   ? tr("SMILESから断片を追加")
-                                      : mode == "regenerate" ? tr("3Dを再生成")
-                                                             : tr("構造を整形");
-                    session.propose(name, next, workerRemote);
-                }
-            } catch (const std::exception &e) {
-                error = QString::fromUtf8(e.what());
-            }
-            worker = nullptr;
-            const bool remote = workerRemote;
-            running->deleteLater();
-            cancelWorkerButton->hide();
-            workdir.reset();
-            refresh();
-            // A new molecule from SMILES is shown whole; refined or added parts only if needed.
-            if (mode == "smiles")
-                view->fit();
-            else
-                view->keepInView();
-            if (error.isEmpty()) {
-                if (mode != "conformers")
-                    statusBar()->showMessage(
-                        tr("「%1」の候補を作成しました。確認して「変更を確定」してください。")
-                            .arg(session.candidateName()),
-                        10000);
-                return;
-            }
-            statusBar()->clearMessage();
-            const bool fromSmiles = mode == "smiles" || mode == "fragment";
-            QMessageBox box(QMessageBox::Warning,
-                            fromSmiles             ? tr("SMILESから作成できません")
-                            : mode == "conformers" ? tr("配座探索できません")
+}
+void MainWindow::chemistryReady(const ChemistryResult &result) {
+    const auto &request = result.request;
+    int chosen = 0;
+    if (request.mode == "conformers" && !request.remote && result.conformers.size() > 1) {
+        const double lowest = result.conformers[0].energy;
+        QStringList labels;
+        for (int i = 0; i < result.conformers.size(); ++i)
+            labels << tr("%1: ΔE %2 kcal/mol（力場エネルギー %3）")
+                          .arg(i + 1)
+                          .arg(result.conformers[i].energy - lowest, 0, 'f', 2)
+                          .arg(result.conformers[i].energy, 0, 'f', 2);
+        bool ok;
+        const auto item = QInputDialog::getItem(
+            this, tr("配座探索"), tr("%1個の配座が見つかりました。候補にする配座").arg(labels.size()), labels,
+            0, false, &ok);
+        if (!ok)
+            fail(tr("配座の選択を取り消しました。"));
+        chosen = labels.indexOf(item);
+    }
+    const bool proposed = chemistry.propose(result, chosen);
+    if (request.mode == "smiles")
+        view->fit();
+    else
+        view->keepInView();
+    if (request.mode == "conformers") {
+        statusBar()->showMessage(proposed ? tr("配座 %1/%2 を候補にしました。「変更を確定」で適用します。")
+                                                .arg(chosen + 1)
+                                                .arg(result.conformers.size())
+                                          : tr("配座探索: 別の配座は見つからず、現在の構造のままです"
+                                               "（回転できる結合がない分子など）。"),
+                                 10000);
+    } else
+        statusBar()->showMessage(tr("「%1」の候補を作成しました。確認して「変更を確定」してください。")
+                                     .arg(session.candidateName()),
+                                 10000);
+}
+void MainWindow::chemistryFailed(const ChemistryRequest &request, const QString &error, bool starting) {
+    statusBar()->clearMessage();
+    if (starting) {
+        QMessageBox::warning(this, tr("処理を起動できません"), error);
+        return;
+    }
+    const bool smiles = request.mode == "smiles" || request.mode == "fragment";
+    QMessageBox box(QMessageBox::Warning,
+                    smiles                         ? tr("SMILESから作成できません")
+                    : request.mode == "conformers" ? tr("配座探索できません")
                                                    : tr("構造を整形できません"),
-                            error, QMessageBox::Close, this);
-            // A person may correct the SMILES they typed; MCP clients send a new request.
-            auto *retry =
-                fromSmiles && !remote ? box.addButton(tr("SMILESを修正…"), QMessageBox::AcceptRole) : nullptr;
-            box.exec();
-            if (retry && box.clickedButton() == retry)
-                safe([&] { mode == "smiles" ? importSmiles(smiles) : addFragmentFromSmiles(smiles); });
+                    error, QMessageBox::Close, this);
+    auto *retry =
+        smiles && !request.remote ? box.addButton(tr("SMILESを修正…"), QMessageBox::AcceptRole) : nullptr;
+    box.exec();
+    if (retry && box.clickedButton() == retry)
+        safe([&] {
+            request.mode == "smiles" ? importSmiles(request.smiles) : addFragmentFromSmiles(request.smiles);
         });
-    connect(running, &QProcess::errorOccurred, this, [this, running](QProcess::ProcessError error) {
-        if (worker != running || error != QProcess::FailedToStart)
-            return;
-        QString message = running->errorString();
-        worker = nullptr;
-        running->deleteLater();
-        workdir.reset();
-        cancelWorkerButton->hide();
-        refreshChargePanel();
-        refreshPanels();
-        statusBar()->clearMessage();
-        QMessageBox::warning(this, tr("処理を起動できません"), message);
-    });
-    running->start();
-    refreshChargePanel();
-    refreshPanels();
 }
 void MainWindow::cancelWorker() {
-    if (!worker)
-        return;
-    auto *process = worker;
-    worker = nullptr;
-    process->disconnect(this);
-    process->kill();
-    process->waitForFinished(2000);
-    process->deleteLater();
-    workdir.reset();
-    if (cancelWorkerButton)
-        cancelWorkerButton->hide();
-    if (chargeEditor)
-        refreshChargePanel();
-    if (workspaceTabs)
-        refreshPanels();
-    statusBar()->showMessage(tr("処理を中止しました。"), 4000);
+    if (chemistry.cancel())
+        statusBar()->showMessage(tr("処理を中止しました。"), 4000);
 }
 QStringList MainWindow::recentFiles() const {
-    return settings.value("recentFiles").toStringList();
+    return storage.recentFiles();
 }
-void MainWindow::addRecent(const QString &p) {
-    const auto absolute = QFileInfo(p).absoluteFilePath();
-    auto list = recentFiles();
-    list.removeAll(absolute);
-    list.prepend(absolute);
-    settings.setValue("recentFiles", list.mid(0, 10));
+void MainWindow::addRecent(const QString &path) {
+    storage.remember(path);
     refreshRecent();
 }
 void MainWindow::refreshRecent() {
@@ -2955,84 +2894,26 @@ void MainWindow::openDropped(const QString &file) {
         loadPath(file);
 }
 QString MainWindow::autosaveDirectory() {
-#ifdef Q_OS_WIN
-    // Windows has no XDG folders; honoring the variable keeps tests out of the user's %LOCALAPPDATA%.
-    if (const auto home = qEnvironmentVariable("XDG_DATA_HOME"); !home.isEmpty())
-        return home + "/MolForma/autosave";
-#endif
-    return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/autosave";
+    return DocumentStorage::autosaveDirectory();
 }
 void MainWindow::startAutosave() {
-    const QDir directory(autosaveDirectory());
-    if (!directory.mkpath("."))
-        return;
-    const auto name = QString("session-%1-%2")
-                          .arg(QCoreApplication::applicationPid())
-                          .arg(QDateTime::currentMSecsSinceEpoch());
-    autosaveLock = std::make_unique<QLockFile>(directory.filePath(name + ".lock"));
-    autosaveLock->setStaleLockTime(0); // Only a dead owner makes the lock stale.
-    if (!autosaveLock->tryLock(0)) {
-        autosaveLock.reset();
-        return;
-    }
-    autosavePath = directory.filePath(name + ".molforma.json");
-    autosaveTimer = new QTimer(this);
-    autosaveTimer->setInterval(60000);
-    connect(autosaveTimer, &QTimer::timeout, this, &MainWindow::autosave);
-    autosaveTimer->start();
+    storage.startAutosave();
 }
 void MainWindow::autosave() {
-    if (autosavePath.isEmpty())
-        return;
-    if (undo.isClean()) {
-        removeAutosave();
-        return;
-    }
-    // Compare the content: undo followed by a new edit returns to the same undo index.
-    const auto current = identity(document());
-    if (current == autosavedIdentity && QFileInfo::exists(autosavePath))
-        return;
     try {
-        auto project = document().project();
-        project["molforma_autosave"] =
-            QJsonObject{{"path", path}, {"time", QDateTime::currentDateTime().toString(Qt::ISODate)}};
-        writeFile(autosavePath + ".tmp", QJsonDocument(project).toJson(QJsonDocument::Compact));
-        QFile::remove(autosavePath);
-        QFile::rename(autosavePath + ".tmp", autosavePath);
-        autosavedIdentity = current;
+        storage.autosave(document(), !undo.isClean());
     } catch (const std::exception &e) {
         statusBar()->showMessage(tr("自動保存できません: %1").arg(QString::fromUtf8(e.what())), 8000);
     }
 }
 void MainWindow::removeAutosave() {
-    if (!autosavePath.isEmpty())
-        QFile::remove(autosavePath);
-    autosavedIdentity.clear();
+    storage.removeAutosave();
 }
 void MainWindow::offerRecovery() {
-    const QDir directory(autosaveDirectory());
-    // Each copy belongs to a session lock; a live MolForma keeps its lock, a crashed one leaves it stale.
-    for (const auto &copy : directory.entryList({"session-*.molforma.json"}, QDir::Files, QDir::Time)) {
-        const auto file = directory.filePath(copy);
-        if (file == autosavePath)
-            continue;
-        QLockFile lock(directory.filePath(copy.chopped(QString(".molforma.json").size()) + ".lock"));
-        lock.setStaleLockTime(0);
-        if (!lock.tryLock(0))
-            continue; // Another MolForma window is still running and owns this copy.
-        QString origin, time;
-        Document recovered;
-        try {
-            const auto project = parseJson(readFile(file));
-            origin = project["molforma_autosave"].toObject()["path"].toString();
-            time = project["molforma_autosave"].toObject()["time"].toString();
-            auto clean = project;
-            clean.remove("molforma_autosave");
-            recovered = Document::fromProject(clean);
-        } catch (const std::exception &) {
-            QFile::remove(file); // Unreadable: nothing to recover.
-            continue;
-        }
+    for (const auto &copy : storage.recoverable()) {
+        const auto &recovered = copy.document;
+        const auto &origin = copy.origin;
+        const auto &time = copy.time;
         QMessageBox box(QMessageBox::Question, tr("作業の復旧"),
                         tr("前回のMolFormaは正常に終了しませんでした。自動保存した作業があります。\n\n"
                            "保存日時: %1\n元のファイル: %2\n分子: %3（%4原子）\n\n復旧しますか？")
@@ -3048,15 +2929,15 @@ void MainWindow::offerRecovery() {
         box.exec();
         if (box.clickedButton() == restore) {
             loadDocument(recovered);
-            path.clear(); // Save explicitly; the recovered copy may differ from the original file.
+            clearProjectPath(); // Save explicitly; the recovered copy may differ from the original file.
             undo.resetClean();
             refresh();
-            QFile::remove(file);
+            copy.discard();
             statusBar()->showMessage(tr("自動保存から復旧しました。名前を付けて保存してください。"), 15000);
             return;
         }
         if (box.clickedButton() == discard)
-            QFile::remove(file);
+            copy.discard();
     }
 }
 void MainWindow::deleteAtoms(const Ids &chosen) {
@@ -3382,7 +3263,7 @@ void MainWindow::closeEvent(QCloseEvent *e) {
     settings.setValue("keepTool", keepTool->isChecked());
     settings.setValue("parts", customParts);
     removeAutosave();
-    autosaveLock.reset();
+    storage.close();
     e->accept();
 }
 void MainWindow::contextMenu(const QPoint &p, const QString &id) {
@@ -3635,7 +3516,7 @@ void MainWindow::symmetryDialog() {
                     .arg(group.name.contains("∞") ? QString("∞") : QString::number(group.operations.size()))
                     .arg(group.deviation, 0, 'f', 4));
         apply->setEnabled(!group.name.isEmpty() && group.name != "C1" && group.name != "Kh" &&
-                          !hasCandidate() && !worker);
+                          !hasCandidate() && !chemistryRunning());
     };
     evaluate();
     connect(tolerance, &QDoubleSpinBox::valueChanged, &dialog, evaluate);

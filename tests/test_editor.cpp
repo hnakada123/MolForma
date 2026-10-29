@@ -69,6 +69,33 @@ class EditorTest : public QObject {
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
                            settingsHome.path()); // MolForma uses NativeFormat.
     }
+    void isotopeValidationMatchesCoordinateTable() {
+        MainWindow w;
+        const auto carbon = Document::fromXyz("1\ncarbon\nC 0 0 0\n");
+        w.loadDocument(carbon);
+        w.setSelection(carbon.ids());
+        const auto before = w.document().project();
+        auto *mass = w.findChild<QLineEdit *>("atomMass");
+        auto *apply = w.findChild<QPushButton *>("applyAtomAttributes");
+        QVERIFY(mass && apply);
+        mass->setText("400");
+        bool rejected = false;
+        QTimer::singleShot(0, &w, [&] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                rejected = box->text().contains("同位体");
+                box->accept();
+            }
+        });
+        apply->click();
+        QVERIFY(rejected);
+        QCOMPARE(w.document().project(), before);
+        QCOMPARE(w.history()->count(), 0);
+        mass->setText("13");
+        apply->click();
+        QCOMPARE(w.document().atoms[0].isotope, 13);
+        w.history()->undo();
+        QCOMPARE(w.document().project(), before);
+    }
     void recentFilesDropsAndManual() {
         QTemporaryDir dir;
         const auto xyz = dir.filePath("water.xyz");

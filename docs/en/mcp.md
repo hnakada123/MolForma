@@ -191,6 +191,8 @@ Moving fixed atoms, invalid references, duplicate coordinates, invalid arguments
 | `get_execution` / `set_execution` | Get and change the executable, MPI, number of threads, working locations, environment variables and time limit (errors in the calculation settings do not block execution settings; `set_advanced` likewise refuses only errors its change brings in) |
 | `history` | Confirm or discard the candidate, undo/redo |
 
+`set_atom_properties` uses the same validation as the coordinate table and atom properties panel. Formal charge is −99 to 20, unpaired electrons 0 to 8, and atom names at most 16 characters without control characters. Unknown isotope mass numbers change neither the candidate nor the committed molecule. Use `mass` for a custom mass.
+
 The following 4 tools are added with `--mcp`. `--mcp-gui` has tools of the same names, which handle the same calculations and results as the GUI window.
 
 | Tool | Purpose |

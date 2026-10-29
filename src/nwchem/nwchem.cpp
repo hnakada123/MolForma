@@ -1,9 +1,9 @@
 #include "nwchem/nwchem.h"
-#include "editing/coordinates.h"
 #include "model/geometry.h"
 #include "model/i18n.h"
 #include "nwchem/input_builder.h"
 #include "nwchem/nwchem_advanced.h"
+#include "nwchem/nwchem_geometry.h"
 #include "nwchem/nwchem_import.h"
 #include "nwchem/nwchem_output.h"
 #include <QHash>

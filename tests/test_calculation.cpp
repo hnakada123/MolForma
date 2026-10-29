@@ -1,8 +1,10 @@
 #include "editing/chemistry.h"
 #include "editing/coordinates.h"
+#include "io/structure_io.h"
 #include "model/i18n.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
+#include "nwchem/nwchem_geometry.h"
 #include "nwchem/nwchem_import.h"
 #include "ui/main_window.h"
 #include <QListWidget>

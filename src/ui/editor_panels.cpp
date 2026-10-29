@@ -1,3 +1,4 @@
+#include "editing/atom_properties.h"
 #include "editing/chemistry.h"
 #include "editing/coordinates.h"
 #include "editing/coordination.h"
@@ -407,12 +408,12 @@ void MainWindow::buildEditPanel() {
     section(f, QT_TR_NOOP("原子の属性"));
     formal = new QSpinBox;
     formal->setObjectName("atomFormalCharge");
-    formal->setRange(-99, 20);
+    formal->setRange(MinimumAtomCharge - 1, MaximumAtomCharge);
     formal->setSpecialValueText(tr("変更なし"));
     f->addRow(tr("形式電荷"), formal);
     radical = new QSpinBox;
     radical->setObjectName("atomRadical");
-    radical->setRange(-1, 8);
+    radical->setRange(-1, MaximumAtomRadical);
     radical->setSpecialValueText(tr("変更なし"));
     f->addRow(tr("不対電子"), radical);
     formal->setToolTip(tr("水素補完などの構造準備に使用します。計算の全電荷は「2 計算条件」で設定します。"));
@@ -427,31 +428,17 @@ void MainWindow::buildEditPanel() {
         auto ids = requireSelection();
         int q = formal->value(), r = radical->value();
         QString m = mass->text().trimmed();
-        edit(tr("原子属性を変更"), [=](Document &d) {
-            for (auto id : ids) {
-                auto &a = d.atom(id);
-                if (q != -99)
-                    a.charge = q;
-                if (r != -1)
-                    a.radical = r;
-                if (!m.isEmpty() || ids.size() == 1) {
-                    a.isotope = 0;
-                    a.mass = 0;
-                    if (!m.isEmpty()) {
-                        bool ok;
-                        a.isotope = m.toInt(&ok);
-                        if (!ok) {
-                            a.isotope = 0;
-                            a.mass = m.toDouble(&ok);
-                            if (!ok || !std::isfinite(a.mass) || a.mass <= 0)
-                                fail(tr("質量は正の値にしてください。"));
-                        } else if (a.isotope <= 0)
-                            fail(tr("質量数は正の整数にしてください。"));
-                    }
-                }
-            }
-            d.invalidateAssignments();
-        });
+        AtomProperties properties;
+        if (q != MinimumAtomCharge - 1)
+            properties.charge = q;
+        if (r != -1)
+            properties.radical = r;
+        if (!m.isEmpty() || ids.size() == 1) {
+            const auto parsed = atomMassInput(m);
+            properties.isotope = parsed.isotope;
+            properties.mass = parsed.mass;
+        }
+        edit(tr("原子属性を変更"), [=](Document &d) { setAtomProperties(d, ids, properties); });
     });
     attributes->setObjectName("applyAtomAttributes");
     enableWithSelection(attributes, 1);
@@ -464,9 +451,9 @@ void MainWindow::buildEditPanel() {
                 auto ids = requireSelection();
                 edit(ghost ? tr("選択原子をゴーストにする") : tr("選択原子のゴーストを解除"),
                      [=](Document &d) {
-                         for (auto id : ids)
-                             d.atom(id).ghost = ghost;
-                         d.invalidateAssignments();
+                         AtomProperties properties;
+                         properties.ghost = ghost;
+                         setAtomProperties(d, ids, properties);
                      });
             },
             ghost ? "ghostSelectedAtoms" : "unghostSelectedAtoms");
@@ -479,8 +466,9 @@ void MainWindow::buildEditPanel() {
             [this, fixed] {
                 auto ids = requireSelection();
                 edit(fixed ? tr("選択原子を固定") : tr("選択原子の固定を解除"), [=](Document &d) {
-                    for (auto id : ids)
-                        d.atom(id).fixed = fixed;
+                    AtomProperties properties;
+                    properties.fixed = fixed;
+                    setAtomProperties(d, ids, properties);
                 });
             },
             fixed ? "fixSelectedAtoms" : "unfixSelectedAtoms");
@@ -1065,7 +1053,7 @@ void MainWindow::refreshChargePanel() {
     pointChargeState->setText(nwchemSettings(d)["include_point_charges"].toBool()
                                   ? tr("NWChem入力に含める")
                                   : tr("NWChem入力に含めない"));
-    chargeEditor->setEnabled(!session.candidate() && !worker);
+    chargeEditor->setEnabled(!session.candidate() && !chemistryRunning());
     if (auto *apply = findChild<QPushButton *>("applyMoleculeFormalCharge"))
         apply->setText(d.hasCenters()
                            ? tr("酸化数と形式電荷の合計（%1）を全電荷に適用").arg(d.expectedCharge())
@@ -1083,7 +1071,7 @@ void MainWindow::refreshChargePanel() {
         text << tr("確認: %1").arg(warning);
     if (session.candidate())
         text.prepend(tr("未確定候補です。確定・取消後に設定を変更できます。"));
-    else if (worker)
+    else if (chemistryRunning())
         text.prepend(tr("分子の整形中です。終了後に設定を変更できます。"));
     chargeSummary->setText(text.join('\n'));
     // The outcome of the checks as the cards of the settings tabs say it.

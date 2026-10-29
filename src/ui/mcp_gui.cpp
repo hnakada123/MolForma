@@ -164,19 +164,19 @@ QJsonObject commandSchema() {
 } // namespace
 
 McpGui::McpGui(MainWindow &w, McpPolicy rules) : QObject(&w), window(w), policy(std::move(rules)) {
-    window.mcp.policy = &policy;
+    window.setAccessPolicy(&policy);
 }
 McpGui::~McpGui() {
-    window.mcp.policy = nullptr;
+    window.setAccessPolicy(nullptr);
 }
 McpEditor McpGui::editor() {
     McpEditor e;
     e.document = [this] { return window.document(); };
-    e.candidate = [this]() -> std::optional<Document> { return window.session.candidate(); };
+    e.candidate = [this]() -> std::optional<Document> { return window.candidate(); };
     e.edit = [this](const QString &name, const auto &operation, bool preview) {
         if (QApplication::activeModalWidget())
             fail("Handle the active modal dialog before editing the document.");
-        QScopedValueRollback depth(window.mcp.depth, window.mcp.depth + 1);
+        auto scope = window.remoteScope();
         window.edit(name, operation, preview);
         // Like the GUI's edits: the view follows only when part of the molecule left the picture
         // (an opened project, added fragments).
@@ -185,13 +185,13 @@ McpEditor McpGui::editor() {
     e.history = [this](const QString &action) {
         if (QApplication::activeModalWidget())
             fail("Handle the active modal dialog before changing editing history.");
-        QScopedValueRollback depth(window.mcp.depth, window.mcp.depth + 1);
+        auto scope = window.remoteScope();
         window.remoteHistory(action);
         window.canvas()->keepInView();
     };
     e.additionalTools = [this] { return tools(); };
     e.callAdditionalTool = [this](const QString &name, const QJsonObject &args) { return call(name, args); };
-    e.baseDirectory = [this] { return window.execution->baseDirectory(); };
+    e.baseDirectory = [this] { return window.executionPanel()->baseDirectory(); };
     e.taskWork = [](const QString &, const QJsonObject &result) {
         return result["state"] == "queued" ? result["commandId"].toString() : QString();
     };
@@ -199,7 +199,8 @@ McpEditor McpGui::editor() {
     e.cancelTask = [this](const QString &commandId) { return cancel(commandId); };
     e.additionalResources = [] { return runtimeResources(); };
     e.readResource = [this](const QString &uri) {
-        return runtimeResource(uri, state(), window.results->data, window.execution->currentRun().plan());
+        return runtimeResource(uri, state(), window.resultsPanel()->result(),
+                               window.executionPanel()->currentRun().plan());
     };
     e.pendingPrompt = [this] { return prompt(); };
     e.answerPrompt = [this](const QString &key, const QString &choice) { answer(key, choice); };
@@ -501,41 +502,42 @@ QJsonObject McpGui::describe(QObject *o) {
 }
 QByteArray McpGui::documentState() const {
     return QJsonDocument(
-               QJsonArray{window.document().project(), window.session.candidate()
-                                                           ? QJsonValue(window.session.candidate()->project())
-                                                           : QJsonValue()})
+               QJsonArray{window.document().project(),
+                          window.candidate() ? QJsonValue(window.candidate()->project()) : QJsonValue()})
         .toJson(QJsonDocument::Compact);
 }
 QJsonObject McpGui::state() const {
-    const auto &run = window.execution->currentRun();
-    const auto *r = window.results;
-    return {{"selection", idsToJson(window.selected)},
+    const auto &run = window.executionPanel()->currentRun();
+    const auto *r = window.resultsPanel();
+    const auto viewer = r->viewerState();
+    return {{"selection", idsToJson(window.selection())},
             {"candidate", window.hasCandidate()},
-            {"modified", !window.undo.isClean()},
-            {"projectPath", window.path},
-            {"tab", window.workspaceTabs->currentIndex()},
-            {"chemistryRunning", window.worker != nullptr},
+            {"modified", window.modified()},
+            {"projectPath", window.projectPath()},
+            {"tab", window.currentPanelIndex()},
+            {"chemistryRunning", window.chemistryRunning()},
             {"status", window.statusBar()->currentMessage()},
-            {"calculation", calculationJson(run, window.execution->saved.directory)},
-            {"results", QJsonObject{{"loading", r->loading()},
-                                    {"source", r->data.source},
-                                    {"pendingPath", r->loader.pendingPath()},
-                                    {"message", r->message()},
-                                    {"playing", r->animation.isActive()},
-                                    {"animation", r->animation.isActive()
-                                                      ? (r->animation.interval() == 180 ? "frames" : "mode")
-                                                      : "none"},
-                                    {"frame", r->frame->value() - 1},
-                                    {"mode", r->modes->currentRow()},
-                                    {"amplitude", r->amplitude->value()}}},
-            {"history", QJsonObject{{"scanning", window.calculationHistory->scanning()},
-                                    {"root", window.calculationHistory->root},
-                                    {"count", window.calculationHistory->entries.size()},
-                                    {"selected", window.calculationHistory->selectedDirectory()},
-                                    {"message", window.calculationHistory->status->text()}}}};
+            {"calculation", calculationJson(run, window.executionPanel()->savedDirectory())},
+            {"results",
+             QJsonObject{{"loading", r->loading()},
+                         {"source", r->result().source},
+                         {"pendingPath", viewer.pendingPath},
+                         {"message", r->message()},
+                         {"playing", viewer.animation != ResultAnimation::None},
+                         {"animation", viewer.animation != ResultAnimation::None
+                                           ? (viewer.animation == ResultAnimation::Frames ? "frames" : "mode")
+                                           : "none"},
+                         {"frame", viewer.frame},
+                         {"mode", viewer.mode},
+                         {"amplitude", viewer.amplitude}}},
+            {"history", QJsonObject{{"scanning", window.historyPanel()->scanning()},
+                                    {"root", window.historyPanel()->rootDirectory()},
+                                    {"count", window.historyPanel()->entryCount()},
+                                    {"selected", window.historyPanel()->selectedDirectory()},
+                                    {"message", window.historyPanel()->message()}}}};
 }
 QJsonObject McpGui::results(const QJsonObject &args) const {
-    return resultsJson(window.results->data, args, state()["results"].toObject());
+    return resultsJson(window.resultsPanel()->result(), args, state()["results"].toObject());
 }
 
 QJsonObject McpGui::enqueue(const QString &name, const QJsonObject &args) {
@@ -576,7 +578,7 @@ QJsonObject McpGui::enqueue(const QString &name, const QJsonObject &args) {
         try {
             if (base != documentState())
                 fail("Document changed before the queued command ran; refresh and retry.");
-            QScopedValueRollback depth(window.mcp.depth, window.mcp.depth + 1);
+            auto scope = window.remoteScope();
             commands[id]["result"] = execute(name, captured);
             commands[id]["state"] = "done";
         } catch (const std::exception &e) {
@@ -638,23 +640,23 @@ bool McpGui::cancel(const QString &commandId) {
     // A GUI call that is still running, for example inside a dialog, cannot be interrupted.
     if (state != "done")
         return false;
-    QScopedValueRollback depth(window.mcp.depth, window.mcp.depth + 1);
-    if (tool == "chemistry" && action != "cancel" && window.worker) {
+    auto scope = window.remoteScope();
+    if (tool == "chemistry" && action != "cancel" && window.chemistryRunning()) {
         window.cancelWorker();
         return true;
     }
-    if (tool == "calculation" && action == "start" && window.execution->running()) {
-        window.execution->stopCalculation();
+    if (tool == "calculation" && action == "start" && window.executionPanel()->running()) {
+        window.executionPanel()->stopCalculation();
         return true;
     }
     if (tool == "results_action" &&
         (action == "open_file" || action == "open_directory" || action == "reload") &&
-        window.results->loading()) {
-        window.results->cancelLoad();
+        window.resultsPanel()->loading()) {
+        window.resultsPanel()->cancelLoad();
         return true;
     }
-    if (tool == "history_action" && action == "scan" && window.calculationHistory->scanning()) {
-        window.calculationHistory->scan.cancel();
+    if (tool == "history_action" && action == "scan" && window.historyPanel()->scanning()) {
+        window.historyPanel()->cancelScan();
         return true;
     }
     return false;
@@ -707,7 +709,7 @@ void McpGui::answer(const QString &key, const QString &choice) {
     QTimer::singleShot(0, box, [this, box, choice] {
         if (!box || !box->isVisible())
             return;
-        QScopedValueRollback depth(window.mcp.depth, window.mcp.depth + 1);
+        auto scope = window.remoteScope();
         for (auto *button : box->buttons())
             if (!choice.isEmpty() && plainButtonText(button) == choice)
                 return button->click();
@@ -1140,18 +1142,18 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
     } else if (name == "calculation") {
         const auto action = args["action"].toString();
         if (action == "start")
-            window.execution->startCalculation();
+            window.executionPanel()->startCalculation();
         else if (action == "stop")
-            window.execution->stopCalculation();
+            window.executionPanel()->stopCalculation();
         else
-            window.execution->saveBundle();
+            window.executionPanel()->saveBundle();
     } else if (name == "results_action") {
-        auto *p = window.results;
+        auto *p = window.resultsPanel();
         const auto action = args["action"].toString();
         if (action == "open_file" || action == "open_directory") {
             if (args["path"].toString().isEmpty())
                 fail("Specify path.");
-            window.workspaceTabs->setCurrentWidget(p);
+            window.showPanel(p);
             if (action == "open_file")
                 p->openFile(args["path"].toString());
             else
@@ -1163,67 +1165,39 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
         else {
             if (p->loading())
                 fail("Wait for the current result load or cancel it.");
-            if (action == "reload") {
-                if (p->data.source.isEmpty())
-                    fail("No result file is open.");
-                p->startLoad(p->data.source, p->data.isovalue, p->data.dataset, p->data.selectedOrbital,
-                             p->data.normalizationRequest, p->data.orbitalDivisions);
-            } else if (action == "select_frame") {
-                p->stopAnimation();
-                p->frame->setValue(index(args["index"].toInt(-1), p->data.frames.size()) + 1);
-                p->showFrame();
-            } else if (action == "select_mode" || action == "play_mode") {
-                const int n = index(args["index"].toInt(p->modes->currentRow()), p->data.modes.size());
-                if (action == "play_mode" && p->data.modes[n].displacement.isEmpty())
-                    fail("This mode has no displacement data.");
-                p->stopAnimation();
-                p->modes->setCurrentCell(n, 0);
-                p->details->setCurrentWidget(p->modes->parentWidget());
+            if (action == "reload")
+                p->reloadResult();
+            else if (action == "select_frame")
+                p->selectFrame(args["index"].toInt(-1));
+            else if (action == "select_mode" || action == "play_mode") {
+                std::optional<double> amplitude;
                 if (args.contains("amplitude"))
-                    p->amplitude->setValue(args["amplitude"].toDouble());
-                if (!p->data.modes[n].displacement.isEmpty()) {
-                    p->phase = 0;
-                    p->showMode();
-                }
-                if (action == "play_mode")
-                    p->playMode->click();
-            } else if (action == "select_orbital") {
-                const int n = index(args["index"].toInt(-1), p->data.orbitals.size());
-                p->details->setCurrentWidget(p->orbitals->parentWidget());
-                if (p->orbitals->currentRow() == n)
-                    p->renderOrbital(n);
-                else
-                    p->orbitals->setCurrentCell(n, 0);
-            } else if (action == "play_frames") {
-                if (p->data.frames.size() < 2)
-                    fail("At least two frames are required.");
-                p->stopAnimation();
-                p->playFrames->click();
-            } else if (action == "apply_structure") {
+                    amplitude = args["amplitude"].toDouble();
+                p->selectMode(args["index"].toInt(p->viewerState().mode), amplitude, action == "play_mode");
+            } else if (action == "select_orbital")
+                p->selectOrbital(args["index"].toInt(-1));
+            else if (action == "play_frames")
+                p->playTrajectory();
+            else if (action == "apply_structure")
                 p->applyStructure();
-            } else if (action == "save_xyz") {
-                const int n = index(p->frame->value() - 1, p->data.frames.size());
-                const auto &doc = p->modeDisplayed && p->modes->currentRow() >= 0
-                                      ? p->data.vibrationGeometry
-                                      : p->data.frames[n].molecule;
-                writeOutput(args["path"].toString(), doc.xyz().toUtf8(), args["overwrite"].toBool());
-            }
+            else if (action == "save_xyz")
+                writeOutput(args["path"].toString(), p->displayedGeometry().xyz().toUtf8(),
+                            args["overwrite"].toBool());
         }
     } else if (name == "history_action") {
-        auto *p = window.calculationHistory;
+        auto *p = window.historyPanel();
         const auto action = args["action"].toString();
         if (action == "scan") {
             if (args["path"].toString().isEmpty())
                 fail("Specify history root path.");
             p->setRoot(args["path"].toString());
         } else if (action == "cancel")
-            p->scan.cancel();
+            p->cancelScan();
         else if (action == "select") {
             const auto path = QDir(args["path"].toString()).absolutePath();
             if (p->scanning())
                 fail("Wait for the history scan.");
-            if (std::none_of(p->entries.cbegin(), p->entries.cend(),
-                             [&](const auto &e) { return e.directory == path; }))
+            if (!p->containsDirectory(path))
                 fail("Directory is not in the current history.");
             p->selectDirectory(path);
         } else if (action == "save_csv") {

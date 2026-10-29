@@ -4,6 +4,7 @@
 #include "editing/editor_session.h"
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
+#include "io/structure_io.h"
 #include "model/geometry.h"
 #include "nwchem/nwchem.h"
 #include <QJsonDocument>

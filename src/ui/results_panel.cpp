@@ -375,7 +375,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     auto *labelMenu = new QMenu(viewControlsFrame->menuButton());
     labelMenu->addSection(tr("ラベル"));
     auto *labelGroup = new QActionGroup(labelMenu);
-    auto savedLabels = window->settings.value("results/labels", "all").toString();
+    auto savedLabels = window->preference("results/labels", "all").toString();
     if (!QStringList{"all", "heavy", "selection", "none"}.contains(savedLabels))
         savedLabels = "all";
     for (const auto &[label, mode] : {std::pair{QT_TR_NOOP("すべて"), "all"},
@@ -394,7 +394,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     view->setLabelMode(savedLabels);
     connect(labelGroup, &QActionGroup::triggered, this, [this](QAction *a) {
         view->setLabelMode(a->data().toString());
-        window->settings.setValue("results/labels", a->data().toString());
+        window->setPreference("results/labels", a->data().toString());
     });
     viewArea->addOverlay(viewControlsFrame, Qt::AlignTop | Qt::AlignRight);
     // Distance, angle or dihedral of the atoms clicked in order, and the ones kept on the view.
@@ -1037,6 +1037,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
             showFrame();
         } else {
             phase = 0;
+            animationKind = ResultAnimation::Frames;
             animation.setInterval(180);
             animation.start();
             setPlaying(playFrames, tr("再生を停止"));
@@ -1048,6 +1049,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
             showFrame();
         } else {
             phase = 0;
+            animationKind = ResultAnimation::Mode;
             animation.setInterval(40);
             animation.start();
             setPlaying(playMode, tr("再生を停止"));
@@ -1080,7 +1082,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         showContext();
     });
     connect(&animation, &QTimer::timeout, this, [this] {
-        if (animation.interval() == 180) {
+        if (animationKind == ResultAnimation::Frames) {
             frame->setValue(frame->value() % data.frames.size() + 1);
             showFrame();
         } else {
@@ -1191,6 +1193,7 @@ void ResultsPanel::applyChromeStyle() {
     showOptimization();
 }
 void ResultsPanel::stopAnimation() {
+    animationKind = ResultAnimation::None;
     animation.stop();
     const auto onAccent = ChromeColors(palette()).onAccent;
     playFrames->setIcon(lineIcon("play", onAccent));
@@ -1204,6 +1207,66 @@ void ResultsPanel::stopAnimation() {
 void ResultsPanel::error(const QString &message) {
     status->setPlainText(tr("読込・表示エラー: %1\n前の結果は保持しています。").arg(message));
     emit loadFailed(message);
+}
+ResultViewerState ResultsPanel::viewerState() const {
+    return {loader.pendingPath(), animation.isActive() ? animationKind : ResultAnimation::None,
+            frame->value() - 1, modes->currentRow(), amplitude->value()};
+}
+namespace {
+void requireResultIndex(int index, qsizetype size) {
+    if (index < 0 || index >= size)
+        fail(tr("結果の選択番号が範囲外です。"));
+}
+} // namespace
+void ResultsPanel::reloadResult() {
+    if (data.source.isEmpty())
+        fail(tr("結果ファイルが開かれていません。"));
+    startLoad(data.source, data.isovalue, data.dataset, data.selectedOrbital, data.normalizationRequest,
+              data.orbitalDivisions);
+}
+void ResultsPanel::selectFrame(int index) {
+    if (loading())
+        fail(tr("読込完了後に操作してください。"));
+    requireResultIndex(index, data.frames.size());
+    stopAnimation();
+    frame->setValue(index + 1);
+    showFrame();
+}
+void ResultsPanel::selectMode(int index, std::optional<double> value, bool play) {
+    if (loading())
+        fail(tr("読込完了後に操作してください。"));
+    requireResultIndex(index, data.modes.size());
+    if (play && data.modes[index].displacement.isEmpty())
+        fail(tr("このモードには変位データがありません。"));
+    stopAnimation();
+    modes->setCurrentCell(index, 0);
+    details->setCurrentWidget(modes->parentWidget());
+    if (value)
+        amplitude->setValue(*value);
+    if (!data.modes[index].displacement.isEmpty()) {
+        phase = 0;
+        showMode();
+    }
+    if (play)
+        playMode->click();
+}
+void ResultsPanel::selectOrbital(int index) {
+    if (loading())
+        fail(tr("読込完了後に操作してください。"));
+    requireResultIndex(index, data.orbitals.size());
+    details->setCurrentWidget(orbitals->parentWidget());
+    if (orbitals->currentRow() == index)
+        renderOrbital(index);
+    else
+        orbitals->setCurrentCell(index, 0);
+}
+void ResultsPanel::playTrajectory() {
+    if (loading())
+        fail(tr("読込完了後に操作してください。"));
+    if (data.frames.size() < 2)
+        fail(tr("再生には2つ以上の構造が必要です。"));
+    stopAnimation();
+    playFrames->click();
 }
 void ResultsPanel::cancelLoad() {
     if (!loader.cancel())
@@ -2542,7 +2605,7 @@ void ResultsPanel::applyStructure() {
         tr("計算結果の構造を適用"), [&](Document &d) { moved = applyResultGeometry(d, result); }, true);
     if (!window->hasCandidate())
         fail(tr("編集中の分子と結果の座標は同じです。"));
-    window->workspaceTabs->setCurrentIndex(0);
+    window->showPanel(0);
     window->statusBar()->showMessage(
         tr("結果の構造を候補にしました（RMSD %1 Å、最大変位 %2 Å）。「変更を確定」"
            "で適用します。")

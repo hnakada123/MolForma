@@ -1,13 +1,11 @@
 #pragma once
 #include "model/document.h"
+#include "model/units.h"
 
 namespace mf {
-inline constexpr double BohrToAngstrom = 0.529177210903;
-enum class CoordinateUnit { Angstrom, Bohr };
 // Cells of the coordinate table; the atom attributes (formal charge, unpaired electrons, atom name)
 // come after the columns of the NWChem geometry.
 enum class CoordinateColumn { Element, X, Y, Z, Mass, Ghost, Fixed, Charge, Radical, Name };
-double coordinateScale(CoordinateUnit unit);
 QString coordinateText(const Atom &atom, CoordinateColumn column, CoordinateUnit unit);
 // Change only the requested cell; callers edit a document copy and validate before committing.
 void setCoordinateCell(Document &document, const QString &id, CoordinateColumn column, const QString &text,
@@ -38,18 +36,4 @@ struct ZMatrixRow {
 QVector<ZMatrixRow> zMatrix(const Document &document);
 // "O" / "H 1 0.96" / "H 1 0.96 2 104.5" / ... with 1-based references (Å, degrees).
 QString zMatrixText(const Document &document);
-struct NwchemGeometryOptions {
-    QString name;            // Named geometry (scan points); empty for NWChem's default "geometry".
-    QStringList zcoord;      // ZCOORD internal coordinates; switches AUTOZ on so they can be constrained.
-    bool autoz = false;      // Leave AUTOZ on without ZCOORD (optimizations in internal coordinates).
-    bool constraints = true; // CONSTRAINTS block with the fixed atoms.
-};
-struct NwchemGeometryFragment {
-    QString geometry, constraints, comments;
-};
-NwchemGeometryFragment nwchemGeometryFragment(const Document &document, CoordinateUnit unit,
-                                              const NwchemGeometryOptions &options = {});
-// NWChem input fragment, not a complete calculation (basis/method/task are configured separately).
-QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragmentComments = true,
-                       const NwchemGeometryOptions &options = {});
 } // namespace mf

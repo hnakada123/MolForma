@@ -164,6 +164,22 @@ class McpTest : public QObject {
     Q_OBJECT
     QTemporaryDir settingsHome;
   private slots:
+    void atomPropertiesRejectUnknownIsotope() {
+        McpServer server;
+        const auto carbon = Document::fromXyz("1\ncarbon\nC 0 0 0\n");
+        server.resetDocument(carbon);
+        const auto before = server.snapshot();
+        for (bool preview : {false, true}) {
+            QVERIFY(
+                failed(change(server, "set_atom_properties",
+                              {{"ids", idsToJson(carbon.ids())}, {"isotope", 400}, {"preview", preview}})));
+            QCOMPARE(server.snapshot(), before);
+        }
+        QVERIFY(!failed(
+            change(server, "set_atom_properties", {{"ids", idsToJson(carbon.ids())}, {"isotope", 13}})));
+        QCOMPARE(server.candidate()->atoms[0].isotope, 13);
+        QCOMPARE(server.document().project(), carbon.project());
+    }
     void initTestCase() {
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsHome.path());
@@ -590,6 +606,8 @@ class McpTest : public QObject {
                      .toString(),
                  "done");
         QVERIFY(data(processCall(process, "get_app_state"))["results"].toObject()["playing"].toBool());
+        QCOMPARE(data(processCall(process, "get_app_state"))["results"].toObject()["animation"].toString(),
+                 "mode");
         const auto screenshot = files.filePath("mode.png");
         auto shot = processCall(process, "capture_screenshot", {{"path", screenshot}, {"maxWidth", 800}});
         QVERIFY2(!failed(shot), qPrintable(QString::fromUtf8(QJsonDocument(shot).toJson())));
@@ -602,6 +620,8 @@ class McpTest : public QObject {
         QCOMPARE(data(processCall(process, "get_app_state"))["results"].toObject()["mode"].toInt(), 1);
         QCOMPARE(processCommand(process, "results_action", {{"action", "stop"}})["state"].toString(), "done");
         QVERIFY(!data(processCall(process, "get_app_state"))["results"].toObject()["playing"].toBool());
+        QCOMPARE(data(processCall(process, "get_app_state"))["results"].toObject()["animation"].toString(),
+                 "none");
         QCOMPARE(processCommand(process, "results_action", {{"action", "play_mode"}, {"index", 99}})["state"]
                      .toString(),
                  "failed");

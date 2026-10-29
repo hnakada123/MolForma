@@ -54,13 +54,25 @@ class HistoryPanel : public QWidget {
     void setComparing(bool on);
     void applyChromeStyle();
 
+    void cancelScan() {
+        scan.cancel();
+    }
+    bool containsDirectory(const QString &directory) const;
+    qsizetype entryCount() const {
+        return entries.size();
+    }
+    QString message() const;
+
+    void openResult();
+    void trashSelected();
+    void repairSelected();
+
   protected:
     void showEvent(QShowEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
 
   private:
-    friend class McpGui;
     struct Row {
         const HistoryEntry *entry;
         bool owned;                  // The run of this window.
@@ -140,9 +152,7 @@ class HistoryPanel : public QWidget {
     void setFilesOpen(bool open, bool remember = true);
     void fitDetail();
     void saveMemo();
-    void openResult();
-    void trashSelected();
-    void repairSelected();
+
     void repairOrphans();
 };
 } // namespace mf

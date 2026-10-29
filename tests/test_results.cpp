@@ -333,6 +333,12 @@ class ResultsTest : public QObject {
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
         QCOMPARE(failed.count(), 0);
         QCOMPARE(panel->result().frames.size(), 2);
+        panel->playTrajectory();
+        QCOMPARE(panel->viewerState().animation, ResultAnimation::Frames);
+        panel->selectFrame(0);
+        QCOMPARE(panel->viewerState().animation, ResultAnimation::None);
+        QCOMPARE(panel->viewerState().frame, 0);
+        panel->selectFrame(1);
         const auto output = files.filePath("saved.xyz");
         panel->saveGeometry(output);
         QCOMPARE(Document::fromXyz(QString::fromUtf8(readFile(output))).atoms[1].position.z(), 2.0);
@@ -354,6 +360,8 @@ class ResultsTest : public QObject {
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 3, 10000);
         widget<QTableWidget>(w, "resultsModes")->setCurrentCell(1, 0);
         widget<QPushButton>(w, "resultsPlayMode")->click();
+        QCOMPARE(panel->viewerState().animation, ResultAnimation::Mode);
+        QCOMPARE(panel->viewerState().mode, 1);
         QTest::qWait(100);
         panel->saveGeometry(output);
         QVERIFY(std::abs(Document::fromXyz(QString::fromUtf8(readFile(output))).atoms[1].position.z() -

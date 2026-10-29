@@ -1,7 +1,9 @@
 #include "mcp/server.h"
+#include "editing/atom_properties.h"
 #include "editing/chemistry.h"
 #include "editing/coordinates.h"
 #include "editing/operations.h"
+#include "io/structure_io.h"
 #include "mcp/tools.h"
 #include "model/geometry.h"
 #include "nwchem/nwchem.h"
@@ -645,10 +647,11 @@ QJsonArray McpServer::toolList() const {
         {{"ids", idsSchema()},
          {"element", type("string")},
          {"hydrogens", type("boolean")},
-         {"charge", QJsonObject{{"type", "integer"}, {"minimum", -20}, {"maximum", 20}}},
-         {"radical", QJsonObject{{"type", "integer"}, {"minimum", 0}, {"maximum", 10}}},
+         {"charge",
+          QJsonObject{{"type", "integer"}, {"minimum", MinimumAtomCharge}, {"maximum", MaximumAtomCharge}}},
+         {"radical", QJsonObject{{"type", "integer"}, {"minimum", 0}, {"maximum", MaximumAtomRadical}}},
          {"isotope", QJsonObject{{"type", "integer"}, {"minimum", 0}, {"maximum", 400}}},
-         {"mass", QJsonObject{{"type", "number"}, {"exclusiveMinimum", 0}, {"maximum", 1000}}},
+         {"mass", QJsonObject{{"type", "number"}, {"exclusiveMinimum", 0}}},
          {"fixed", type("boolean")},
          {"ghost", type("boolean")},
          {"name", type("string")}},
@@ -925,32 +928,22 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                     fail("Set either isotope or mass.");
                 if (args.contains("element"))
                     replaceElement(next, ids, args["element"].toString(), args["hydrogens"].toBool());
-                for (const auto &atomId : ids) {
-                    auto &a = next.atom(atomId);
-                    if (args.contains("charge"))
-                        a.charge = args["charge"].toInt();
-                    if (args.contains("radical"))
-                        a.radical = args["radical"].toInt();
-                    if (args.contains("isotope")) {
-                        a.isotope = args["isotope"].toInt();
-                        a.mass = 0;
-                    }
-                    if (args.contains("mass")) {
-                        a.mass = args["mass"].toDouble();
-                        a.isotope = 0;
-                    }
-                    if (args.contains("fixed"))
-                        a.fixed = args["fixed"].toBool();
-                    if (args.contains("ghost"))
-                        a.ghost = args["ghost"].toBool();
-                    if (args.contains("name")) {
-                        const auto label = args["name"].toString();
-                        if (label.size() > 16 || label.contains(QRegularExpression("[\\x00-\\x1f\\x7f]")))
-                            fail("Atom names are up to 16 characters without control characters.");
-                        a.name = label;
-                    }
-                }
-                next.invalidateAssignments();
+                AtomProperties properties;
+                if (args.contains("charge"))
+                    properties.charge = args["charge"].toInt();
+                if (args.contains("radical"))
+                    properties.radical = args["radical"].toInt();
+                if (args.contains("isotope"))
+                    properties.isotope = args["isotope"].toInt();
+                if (args.contains("mass"))
+                    properties.mass = args["mass"].toDouble();
+                if (args.contains("fixed"))
+                    properties.fixed = args["fixed"].toBool();
+                if (args.contains("ghost"))
+                    properties.ghost = args["ghost"].toBool();
+                if (args.contains("name"))
+                    properties.name = args["name"].toString();
+                setAtomProperties(next, ids, properties);
             } else if (name == "delete_atoms" || name == "translate") {
                 auto ids = idsFromJson(args["ids"]);
                 for (const auto &atomId : ids) {
