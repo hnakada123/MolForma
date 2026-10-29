@@ -648,10 +648,29 @@ class CoreTest : public QObject {
             QVERIFY2(rotationalSymmetryNumber(d) == sigma,
                      qPrintable(QString("%1: %2").arg(id).arg(rotationalSymmetryNumber(d))));
         }
+        // Isotopes count as other kinds, as in the point group the symmetry tool shows.
         Document hdo;
         instantiate(hdo, findTemplate("skeleton:water"));
-        hdo.atoms[1].isotope = 2;
-        QCOMPARE(rotationalSymmetryNumber(hdo), 0);
+        int hydrogens = 0;
+        for (auto &a : hdo.atoms)
+            if (a.element == "H" && !hydrogens++)
+                a.isotope = 2;
+        QCOMPARE(pointGroup(hdo).name, QString("Cs"));
+        QCOMPARE(rotationalSymmetryNumber(hdo), 1);
+        for (auto &a : hdo.atoms)
+            if (a.element == "H")
+                a.isotope = 2;
+        QCOMPARE(rotationalSymmetryNumber(hdo), 2);
+        // Ghosts are not part of the molecule.
+        auto ghosted = hdo;
+        ghosted.atoms << Atom{};
+        ghosted.atoms.last().element = "He";
+        ghosted.atoms.last().ghost = true;
+        ghosted.atoms.last().position = Vec(0.3, 0.2, 2);
+        QCOMPARE(rotationalSymmetryNumber(ghosted), 2);
+        Document single;
+        single.atoms << Atom{};
+        QCOMPARE(rotationalSymmetryNumber(single), 0);
     }
     void pointGroups() {
         for (const auto &[id, expected] : {std::pair{"skeleton:water", "C2v"},

@@ -2157,7 +2157,7 @@ void ResultsPanel::showSpectrum() {
     }
     spectrum->setChart(
         tr("吸収スペクトル（表示用）"), nm ? tr("波長 / nm") : tr("励起エネルギー / eV"), tr("振動子強度"),
-        {{tr("広がり"), curve, QColor("#2f6db5")}, {tr("各状態"), sticks, QColor("#c0392b"), true}});
+        {{tr("広がり"), curve, ChartTone::Accent}, {tr("各状態"), sticks, ChartTone::Contrast, true}});
 }
 void ResultsPanel::showEnergies() {
     const auto unit = energyUnit->currentData().toString();
@@ -2251,7 +2251,7 @@ void ResultsPanel::showPath() {
         pathChart->clear();
     else
         pathChart->setChart(scan.isEmpty() ? tr("IRC（遷移状態基準）") : tr("座標スキャン（最小値基準）"),
-                            xLabel, "ΔE / kcal mol⁻¹", {{tr("エネルギー"), curve, QColor("#2f6db5")}});
+                            xLabel, "ΔE / kcal mol⁻¹", {{tr("エネルギー"), curve, ChartTone::Accent}});
 }
 void ResultsPanel::showProperties() {
     const auto mulliken = data.properties.value("mulliken").toArray(),
@@ -2322,15 +2322,13 @@ void ResultsPanel::showIrSpectrum() {
             y += s.y() * gamma * gamma / ((x - s.x()) * (x - s.x()) + gamma * gamma);
         curve << QPointF(x, y);
     }
-    const ChromeColors c(palette());
-    irSpectrum->setChart(tr("IRスペクトル（表示用）"), tr("波数 / cm⁻¹"), tr("IR強度 / km mol⁻¹"),
-                         {{tr("広がり"), curve, c.muted}, {tr("各モード"), sticks, c.text, true}});
+    irSpectrum->setChart(
+        tr("IRスペクトル（表示用）"), tr("波数 / cm⁻¹"), tr("IR強度 / km mol⁻¹"),
+        {{tr("広がり"), curve, ChartTone::Muted}, {tr("各モード"), sticks, ChartTone::Text, true}});
     irSpectrum->setSelectedStick(1, irModes.indexOf(modes->currentRow()));
 }
 void ResultsPanel::showOptimization() {
     const ChromeColors c(static_cast<QWidget *>(window)->palette());
-    const QColor orange =
-        darkPalette(static_cast<QWidget *>(window)->palette()) ? QColor("#f0883e") : QColor("#c2570c");
     const auto thresholds = data.properties.value("thresholds").toObject();
     // The four criteria of the last step against their thresholds.
     auto *box = static_cast<QVBoxLayout *>(criteria->layout());
@@ -2392,14 +2390,15 @@ void ResultsPanel::showOptimization() {
         return;
     }
     energyChart->setChart(tr("エネルギー（最終ステップ基準）"), tr("ステップ"), "ΔE / kcal mol⁻¹",
-                          {{tr("エネルギー"), relative, c.accent}});
+                          {{tr("エネルギー"), relative, ChartTone::Accent}});
     QVector<QPair<QString, double>> levels;
     if (thresholds.contains("gmax"))
         levels.append({tr("Gmax閾値"), thresholds["gmax"].toDouble()});
     if (thresholds.contains("grms"))
         levels.append({tr("Grms閾値"), thresholds["grms"].toDouble()});
     gradientChart->setChart(tr("勾配"), tr("ステップ"), "Hartree / Bohr",
-                            {{"Gmax", gmax, c.accent}, {"Grms", grms, orange}}, true, levels);
+                            {{"Gmax", gmax, ChartTone::Accent}, {"Grms", grms, ChartTone::Second}}, true,
+                            levels);
 }
 void ResultsPanel::showArrows() {
     const int n = modes->currentRow();

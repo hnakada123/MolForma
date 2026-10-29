@@ -3,6 +3,7 @@
 #include "model/i18n.h"
 #include "nwchem/nwchem.h"
 #include "ui/editor_chrome.h"
+#include "ui/execution_form.h"
 #include "ui/main_window.h"
 #include "ui/run_progress.h"
 #include "ui/theme.h"
@@ -174,79 +175,9 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     runningNote->setWordWrap(true);
     runningNote->hide();
     forms->addWidget(runningNote);
-    auto *files = new SettingsCard(tr("実行ファイル・保存先"));
-    files->setObjectName("executionFiles");
-    files->header()->insertWidget(1, note(tr("実行ごとに専用のジョブフォルダーを作ります")), 1);
-    forms->addWidget(files);
-    auto *paths = new QGridLayout;
-    paths->setHorizontalSpacing(12);
-    paths->setVerticalSpacing(6);
-    paths->setColumnStretch(1, 1);
-    files->body()->addLayout(paths);
-    pathField(paths, tr("NWChem実行ファイル"), "executable", false);
-    mode = new QComboBox;
-    mode->setObjectName("execution_mode");
-    mode->addItem(tr("MPIで起動"), "mpi");
-    mode->addItem(tr("直接実行（対応する逐次版等）"), "direct");
-    fields["mode"] = mode;
-    auto *modes =
-        new ChoiceButtons(mode, ChoiceButtons::Segments, {tr("MPIで起動"), tr("直接実行（逐次版など）")});
-    choices << modes;
-    {
-        const int row = paths->rowCount();
-        paths->addWidget(new QLabel(tr("起動方式")), row, 0);
-        paths->addWidget(modes, row, 1, 1, 2, Qt::AlignLeft);
-    }
-    connect(mode, &QComboBox::currentIndexChanged, this,
-            [this] { change("mode", mode->currentData().toString()); });
-    pathField(paths, tr("MPIランチャー"), "launcher", false);
-    pathField(paths, tr("ジョブ保存先"), "job_root", true);
-    pathField(paths, tr("参照ファイルの基準"), "reference_directory", true);
-    qobject_cast<QLineEdit *>(fields["reference_directory"])
-        ->setPlaceholderText(tr("空欄: プロジェクトの場所（未保存時は起動時の場所）"));
-    auto *pathsHelp = new Disclosure(tr("パスの扱いについて"));
-    pathsHelp->button()->setObjectName("executionPathHelp");
-    files->body()->addWidget(pathsHelp, 0, Qt::AlignLeft);
-    auto *pathHint =
-        muted(tr("実行ファイルは名前またはパスで指定します。MPIはmpirun/mpiexecの -np を使用します。"
-                 "入力movecsの相対パスは参照基準から解決します。scratch・permanentは新しいジョブ"
-                 "フォルダーが基準です。出力movecs・CUBE・MOLDENはpermanent（未指定ならジョブ）に保存します。"
-                 "出力movecsを./で始めるとジョブ内、絶対パスなら指定先に保存します。"));
-    pathHint->hide();
-    files->body()->addWidget(pathHint);
-    connect(pathsHelp->button(), &QToolButton::toggled, pathHint, &QWidget::setVisible);
-
-    auto *parallel = new SettingsCard(tr("計算資源"));
-    parallel->setObjectName("executionResourcesCard");
-    forms->addWidget(parallel);
-    auto *grid = new QGridLayout;
-    grid->setHorizontalSpacing(12);
-    grid->setVerticalSpacing(10);
-    parallel->body()->addLayout(grid);
-    grid->addWidget(integer(tr("MPI起動プロセス数"), "mpi_ranks", 1, 4096), 0, 0);
-    // Short names over the narrow columns; the full ones in their tooltips.
-    auto *omp = integer(tr("OpenMP / プロセス"), "omp_threads", 1, 1024);
-    omp->setToolTip(tr("1プロセスあたりのOpenMPスレッド数（OMP_NUM_THREADS）"));
-    grid->addWidget(omp, 0, 1);
-    auto *blas = integer(tr("BLAS / プロセス"), "blas_threads", 1, 1024);
-    blas->setToolTip(tr("1プロセスあたりのBLASスレッド数（OPENBLAS_NUM_THREADS・MKL_NUM_THREADS など）"));
-    grid->addWidget(blas, 0, 2);
-    auto *stackCell = new QWidget;
-    auto *stackLayout = new QVBoxLayout(stackCell);
-    stackLayout->setContentsMargins(0, 0, 0, 0);
-    stackLayout->setSpacing(4);
-    stackLayout->addWidget(caption(tr("OpenMPスタック")));
-    auto *stack = new QLineEdit;
-    fields["omp_stacksize"] = stack;
-    stack->setObjectName("execution_omp_stacksize");
-    stack->setPlaceholderText(tr("空欄: 継承（例: 64M）"));
-    stackLayout->addWidget(stack);
-    grid->addWidget(stackCell, 1, 0);
-    connect(stack, &QLineEdit::editingFinished, this, [this, stack] {
-        if (stack->isModified())
-            change("omp_stacksize", stack->text().trimmed());
-        stack->setModified(false);
-    });
+    settingsForm = new ExecutionForm(ExecutionForm::Scope::Project, "execution");
+    forms->addWidget(settingsForm);
+    connect(settingsForm, &ExecutionForm::changed, this, &ExecutionPanel::change);
     auto *memoryCell = new QWidget;
     auto *memoryLayout = new QVBoxLayout(memoryCell);
     memoryLayout->setContentsMargins(0, 0, 0, 0);
@@ -261,7 +192,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     memory->setToolTip(tr("NWChemの memory 指定です（「2 計算条件」と「4 入力プレビュー」の要約にも表示）。"
                           "実際の使用量の上限ではありません。"));
     memoryLayout->addWidget(memory);
-    grid->addWidget(memoryCell, 1, 1);
+    settingsForm->resourcesGrid()->addWidget(memoryCell, 1, 1);
     connect(memory, &QSpinBox::valueChanged, this, [this](int n) {
         if (busy || window->hasCandidate() || window->chemistryRunning())
             return;
@@ -269,10 +200,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
             window->edit(tr("NWChemメモリを変更"), [&](Document &d) { setNwchemSetting(d, "memory_mb", n); });
         });
     });
-    grid->addWidget(integer(tr("制限時間（0: なし）"), "timeout_seconds", 0, 604800, tr(" 秒")), 1, 2);
-    for (int column = 0; column < 3; ++column)
-        grid->setColumnStretch(column, 1);
-    // What the run takes of this PC.
+    // What the run takes of this PC, under the resources.
     auto *usage = new QFrame;
     usage->setObjectName("executionUsage");
     auto *usageLayout = new QVBoxLayout(usage);
@@ -290,58 +218,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     memoryTotal->setObjectName("executionMemoryTotal");
     memoryTotal->setWordWrap(true);
     usageLayout->addWidget(memoryTotal);
-    parallel->body()->addWidget(usage);
-    parallel->body()->addWidget(caption(tr("MPI-PR版では補助プロセスが必要です（1計算プロセスでも起動数2）。"
-                                           "起動数は自動補正しません。OpenMP/BLASの既定は各1です。")));
-
-    auto *environmentCard = new SettingsCard(tr("追加の環境変数"));
-    environmentCard->setObjectName("executionEnvironmentCard");
-    forms->addWidget(environmentCard);
-    auto *add = new QPushButton(tr("追加"));
-    add->setIcon(lineIcon("plus"));
-    removeEnvironment = new QPushButton(tr("選択行を削除"));
-    add->setObjectName("executionAddEnvironment");
-    removeEnvironment->setObjectName("executionRemoveEnvironment");
-    add->setProperty("mcpExecutionSetting", true);
-    removeEnvironment->setProperty("mcpExecutionSetting", true);
-    environmentCard->header()->addWidget(removeEnvironment);
-    environmentCard->header()->addWidget(add);
-    environment = new QTableWidget(0, 3);
-    environment->setObjectName("executionEnvironment");
-    environment->setProperty("mcpExecutionSetting", true);
-    environment->setHorizontalHeaderLabels({tr("有効"), tr("名前"), tr("値")});
-    environment->verticalHeader()->hide();
-    environment->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    environment->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    environment->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
-    environment->setMinimumHeight(110);
-    environment->setMaximumHeight(200);
-    environmentCard->body()->addWidget(environment);
-    environmentEmpty = muted(tr("なし。有効な行だけを起動環境へ上書きします（例: NWCHEM_BASIS_LIBRARY）。"));
-    environmentEmpty->setObjectName("executionEnvironmentEmpty");
-    environmentCard->body()->addWidget(environmentEmpty);
-    environmentCard->body()->addWidget(
-        caption(tr("スレッド数は「計算資源」で指定してください。値の環境変数展開は行いません。")));
-    connect(add, &QPushButton::clicked, this, [this] {
-        auto rows = executionSettings(window->document())["environment"].toArray();
-        rows.append(QJsonObject{{"enabled", false}, {"name", ""}, {"value", ""}});
-        change("environment", rows);
-    });
-    connect(removeEnvironment, &QPushButton::clicked, this, [this] {
-        const int row = environment->currentRow();
-        auto rows = executionSettings(window->document())["environment"].toArray();
-        if (row >= 0 && row < rows.size()) {
-            rows.removeAt(row);
-            change("environment", rows);
-        }
-    });
-    // Defer table refresh until the delegate's current edit has completed.
-    connect(environment, &QTableWidget::itemChanged, this, [this] {
-        if (!busy) {
-            environmentDirty = true;
-            QTimer::singleShot(0, this, &ExecutionPanel::editEnvironment);
-        }
-    });
+    settingsForm->resourcesCard()->body()->insertWidget(1, usage);
     forms->addStretch();
     split->addWidget(scroll);
 
@@ -583,61 +460,6 @@ QString ExecutionPanel::baseDirectory() const {
     return window->projectPath().isEmpty() ? QDir::currentPath()
                                            : QFileInfo(window->projectPath()).absolutePath();
 }
-void ExecutionPanel::pathField(QGridLayout *grid, const QString &label, const QString &key, bool directory) {
-    const int row = grid->rowCount();
-    auto *line = new QLineEdit;
-    line->setObjectName("execution_" + key);
-    fields[key] = line;
-    auto *browse = new QPushButton(tr("参照…"));
-    browse->setObjectName("executionBrowse_" + key);
-    // The program to run is chosen by a person; McpGui refuses to operate these controls.
-    if (isProtectedExecutionKey(key)) {
-        line->setProperty("mcpExecutionSetting", true);
-        browse->setProperty("mcpExecutionSetting", true);
-    }
-    auto *name = new QLabel(label);
-    name->setBuddy(line);
-    grid->addWidget(name, row, 0);
-    grid->addWidget(line, row, 1);
-    grid->addWidget(browse, row, 2);
-    if (!directory) { // Where the program was found, under its field.
-        auto *where = new QLabel;
-        where->setObjectName("executionFound_" + key);
-        where->setTextFormat(Qt::PlainText);
-        where->setWordWrap(true);
-        found[key] = where;
-        grid->addWidget(where, row + 1, 1, 1, 2);
-    }
-    connect(line, &QLineEdit::editingFinished, this, [this, line, key] {
-        if (line->isModified())
-            change(key, line->text().trimmed());
-        line->setModified(false);
-    });
-    connect(browse, &QPushButton::clicked, this, [this, line, key, directory] {
-        const auto path = directory
-                              ? QFileDialog::getExistingDirectory(this, tr("ディレクトリ"), line->text())
-                              : QFileDialog::getOpenFileName(this, tr("実行ファイル"), line->text());
-        if (!path.isEmpty())
-            change(key, path);
-    });
-}
-QWidget *ExecutionPanel::integer(const QString &label, const QString &key, int lo, int hi,
-                                 const QString &unit) {
-    auto *cell = new QWidget;
-    auto *layout = new QVBoxLayout(cell);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(4);
-    layout->addWidget(caption(label));
-    auto *spin = new QSpinBox;
-    spin->setObjectName("execution_" + key);
-    spin->setRange(lo, hi);
-    spin->setSuffix(unit);
-    spin->setKeyboardTracking(false);
-    fields[key] = spin;
-    layout->addWidget(spin);
-    connect(spin, &QSpinBox::valueChanged, this, [this, key](int value) { change(key, value); });
-    return cell;
-}
 void ExecutionPanel::change(const QString &key, const QJsonValue &value) {
     if (busy || window->hasCandidate() || window->chemistryRunning() ||
         executionSettings(window->document()).value(key) == value)
@@ -646,31 +468,15 @@ void ExecutionPanel::change(const QString &key, const QJsonValue &value) {
         window->edit(tr("NWChem実行設定を変更"), [&](Document &d) { setExecutionSetting(d, key, value); });
     });
 }
-void ExecutionPanel::editEnvironment() {
-    if (busy || !environmentDirty)
-        return;
-    environmentDirty = false;
-    auto rows = executionSettings(window->document())["environment"].toArray();
-    if (rows.size() != environment->rowCount())
-        return;
-    for (int row = 0; row < rows.size(); ++row) {
-        auto item = rows[row].toObject(); // Preserve unknown per-row fields.
-        item["enabled"] = environment->item(row, 0)->checkState() == Qt::Checked;
-        item["name"] = environment->item(row, 1)->text().trimmed();
-        item["value"] = environment->item(row, 2)->text();
-        rows[row] = item;
-    }
-    change("environment", rows);
-}
 void ExecutionPanel::commitPendingEdits() {
     // A stale tab first catches up, dropping typing that an eager refresh would have replaced.
     window->refreshPanel(this);
     if (auto *focused = QApplication::focusWidget(); focused && isAncestorOf(focused))
         focused->clearFocus();
-    editEnvironment();
+    settingsForm->commitEnvironment();
 }
 void ExecutionPanel::showField(const QString &key) {
-    QWidget *target = key == "memory_mb" ? memory : key == "environment" ? environment : fields.value(key);
+    QWidget *target = key == "memory_mb" ? memory : settingsForm->field(key);
     if (target)
         target->setFocus(Qt::OtherFocusReason);
 }
@@ -755,58 +561,15 @@ void ExecutionPanel::refresh() {
     QScopedValueRollback guard(busy, true);
     const auto &d = window->displayDocument();
     const auto s = executionSettings(d);
-    for (auto it = fields.begin(); it != fields.end(); ++it) {
-        const QSignalBlocker blocker(it.value());
-        if (auto *line = qobject_cast<QLineEdit *>(it.value())) {
-            if (line->text() != s[it.key()].toString())
-                line->setText(s[it.key()].toString());
-        } else if (auto *spin = qobject_cast<QSpinBox *>(it.value()))
-            spin->setValue(s[it.key()].toInt());
-        else if (auto *combo = qobject_cast<QComboBox *>(it.value())) {
-            while (combo->count() > 2)
-                combo->removeItem(2);
-            int index = combo->findData(s[it.key()].toString());
-            if (index < 0) {
-                combo->addItem(tr("未対応: %1").arg(s[it.key()].toVariant().toString()), s[it.key()]);
-                index = 2;
-            }
-            combo->setCurrentIndex(index);
-        }
-    }
+    settingsForm->setSettings(s);
     for (auto *group : std::as_const(choices))
         group->sync();
     {
         const QSignalBlocker blocker(memory);
         memory->setValue(nwchemSettings(d)["memory_mb"].toInt());
     }
-    {
-        const QSignalBlocker blocker(environment);
-        environmentDirty = false;
-        const auto rows = s["environment"].toArray();
-        environment->setRowCount(rows.size());
-        for (int row = 0; row < rows.size(); ++row) {
-            const auto entry = rows[row].toObject();
-            for (int column = 0; column < 3; ++column) {
-                auto *item = environment->item(row, column);
-                if (!item) {
-                    item = new QTableWidgetItem;
-                    environment->setItem(row, column, item);
-                }
-                if (column == 0) {
-                    item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable);
-                    item->setCheckState(entry["enabled"].toBool() ? Qt::Checked : Qt::Unchecked);
-                } else
-                    item->setText(entry[column == 1 ? "name" : "value"].toString());
-            }
-        }
-        environment->setVisible(rows.size());
-        removeEnvironment->setVisible(rows.size());
-        environmentEmpty->setVisible(rows.isEmpty());
-    }
     const bool editable = !window->hasCandidate() && !window->chemistryRunning();
-    form->setEnabled(editable);
-    fields["launcher"]->setEnabled(s["mode"] == "mpi");
-    fields["mpi_ranks"]->setEnabled(s["mode"] == "mpi");
+    settingsForm->setEnabled(editable);
     const int ranks = s["mode"] == "mpi" ? s["mpi_ranks"].toInt() : 1;
     const int threads = std::max(s["omp_threads"].toInt(), s["blas_threads"].toInt());
     const int cpus = QThread::idealThreadCount();
@@ -859,15 +622,12 @@ void ExecutionPanel::refresh() {
             if (c.label == (QString(key) == "executable" ? tr("NWChem実行ファイル") : tr("MPIランチャー"))) {
                 const auto value = s[key].toString();
                 const bool named = !value.contains('/') && !value.contains('\\');
-                found[key]->setText(!c.ok   ? c.detail
-                                    : named ? tr("✓ PATHから: %1").arg(c.detail)
-                                            : QString());
-                found[key]->setProperty("good", c.ok);
-                found[key]->setProperty("bad", !c.ok);
-                repolish(found[key]);
+                settingsForm->setFound(key,
+                                       !c.ok   ? c.detail
+                                       : named ? tr("✓ PATHから: %1").arg(c.detail)
+                                               : QString(),
+                                       c.ok);
             }
-    found["executable"]->setVisible(!found["executable"]->text().isEmpty());
-    found["launcher"]->setVisible(s["mode"] == "mpi" && !found["launcher"]->text().isEmpty());
     QStringList messages;
     if (!editable)
         messages << tr("候補を確定・取消し、整形の終了後に実行できます。");
@@ -941,10 +701,7 @@ void ExecutionPanel::updateRun() {
     location->setToolTip(saved.directory);
     location->setVisible(!saved.directory.isEmpty());
     showRunLink->setVisible(!saved.directory.isEmpty());
-    const auto kind = !showingRun                         ? QString("saved")
-                      : run.active()                      ? QString("running")
-                      : run.state() == RunState::Finished ? QString("finished")
-                                                          : QString("failed");
+    const auto kind = showingRun ? runStateKind(run.state()) : runStateKind(RunState::Prepared);
     statePill->setText(showingRun                  ? runStateName(run.state())
                        : saved.directory.isEmpty() ? QString()
                                                    : runStateName(RunState::Prepared));
@@ -1086,14 +843,11 @@ void ExecutionPanel::applyChromeStyle() {
         #runPanel { background: @window; border: none; border-left: 1px solid @line; }
         #executionUsage { background: @window; border: 1px solid @line; border-radius: 8px; }
         QLabel#executionStatePill { border-radius: 10px; padding: 2px 9px; font-weight: bold; }
-        QLabel#executionStatePill[state="running"] { background: @tint; color: @accentText; }
-        QLabel#executionStatePill[state="finished"] { background: @goodTint; color: @good; }
-        QLabel#executionStatePill[state="failed"] { background: @badTint; color: @error; }
-        QLabel#executionStatePill[state="saved"] { background: @segment; color: @muted; }
         QLabel#executionRunningNote { background: @tint; color: @accentText; border-radius: 8px; padding: 8px 12px; }
         QLabel[tile="true"] { background: @window; border: 1px solid @line; border-radius: 8px; padding: 6px 9px; }
     )";
-    setStyleSheet(chromeRules(rules, pal));
-    runPanel->setStyleSheet(chromeRules(rules, pal));
+    const auto pills = pillRules("QLabel#executionStatePill", "state", ChromeColors(pal));
+    setStyleSheet(chromeRules(rules, pal) + pills);
+    runPanel->setStyleSheet(chromeRules(rules, pal) + pills);
 }
 } // namespace mf

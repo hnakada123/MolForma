@@ -113,6 +113,141 @@ void CoordinateDelegate::paint(QPainter *painter, const QStyleOptionViewItem &op
                QRect(option.rect.right() - side - 6, option.rect.center().y() - side / 2, side, side));
 }
 
+CoordinateModel::CoordinateModel(QObject *parent, Edit edit, QStringList titles, QStringList tips)
+    : QAbstractTableModel(parent), edit(std::move(edit)), titles(std::move(titles)), tips(std::move(tips)) {}
+void CoordinateModel::show(View next) {
+    if (next.document.atoms.size() != shown.document.atoms.size()) {
+        beginResetModel();
+        shown = std::move(next);
+        endResetModel();
+    } else {
+        shown = std::move(next);
+        if (rowCount() > 0)
+            emit dataChanged(index(0, 0), index(rowCount() - 1, ColumnCount - 1));
+    }
+    emit headerDataChanged(Qt::Horizontal, XColumn, ZColumn);
+}
+void CoordinateModel::clearIcons() {
+    icons.clear();
+}
+QString CoordinateModel::id(int row) const {
+    return row >= 0 && row < shown.document.atoms.size() ? shown.document.atoms[row].id : QString();
+}
+int CoordinateModel::rowCount(const QModelIndex &parent) const {
+    return parent.isValid() ? 0 : int(shown.document.atoms.size());
+}
+int CoordinateModel::columnCount(const QModelIndex &parent) const {
+    return parent.isValid() ? 0 : ColumnCount;
+}
+QVariant CoordinateModel::headerData(int section, Qt::Orientation orientation, int role) const {
+    if (orientation != Qt::Horizontal || section < 0 || section >= ColumnCount)
+        return QAbstractTableModel::headerData(section, orientation, role);
+    if (role == Qt::DisplayRole)
+        return section >= XColumn && section <= ZColumn
+                   ? QString("%1 / %2")
+                         .arg(QString("XYZ")[section - XColumn])
+                         .arg(shown.unit == CoordinateUnit::Bohr ? "Bohr" : "Å")
+                   : titles[section];
+    if (role == Qt::ToolTipRole)
+        return tips[section];
+    return {};
+}
+Qt::ItemFlags CoordinateModel::flags(const QModelIndex &index) const {
+    if (!index.isValid())
+        return Qt::NoItemFlags;
+    const auto &atom = shown.document.atoms[index.row()];
+    const int col = index.column();
+    auto flags = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+    if (shown.editable && textColumn(col) && !(atom.fixed && col >= XColumn && col <= ZColumn))
+        flags |= Qt::ItemIsEditable;
+    if (shown.editable && (col == GhostColumn || col == FixedColumn))
+        flags |= Qt::ItemIsUserCheckable;
+    return flags;
+}
+QVariant CoordinateModel::data(const QModelIndex &index, int role) const {
+    if (!index.isValid())
+        return {};
+    const auto &atom = shown.document.atoms[index.row()];
+    const int col = index.column();
+    const bool added = shown.changes.added.contains(atom.id), moved = shown.changes.moved.contains(atom.id);
+    switch (role) {
+    case Qt::DisplayRole:
+    case Qt::EditRole:
+        if (textColumn(col))
+            return coordinateText(atom, documentColumn(col), shown.unit);
+        if (col == PlaceColumn)
+            return shown.places.value(atom.id);
+        if (col == ChangeColumn)
+            return added ? tr("追加", "atom change") : moved ? tr("移動", "atom change") : QString();
+        return {};
+    case Qt::CheckStateRole:
+        if (col == GhostColumn || col == FixedColumn)
+            return (col == GhostColumn ? atom.ghost : atom.fixed) ? Qt::Checked : Qt::Unchecked;
+        return {};
+    case Qt::DecorationRole:
+        if (col == AtomColumn)
+            return atomDot(atom);
+        if (col == ChangeColumn && (added || moved))
+            return mark(added ? "added" : "moved");
+        return {};
+    case Qt::ForegroundRole:
+        if (col == PlaceColumn || (atom.fixed && col >= XColumn && col <= ZColumn))
+            return QBrush(shown.muted);
+        if (col == ChangeColumn)
+            return QBrush(added ? shown.good : shown.changed);
+        return {};
+    case Qt::ToolTipRole:
+        return col >= ChargeColumn  ? tips[col]
+               : col == MassColumn  ? tr("例: 13 = ¹³C、13.003355 = 質量（amu）、空欄 = 既定値")
+               : col == GhostColumn ? tr("NWChemではbq元素として出力します。基底の割当が別途必要です。")
+               : col == FixedColumn ? tr("座標編集・削除を禁止し、NWChemのconstraints fix atomへ出力します。")
+               : col >= XColumn && col <= ZColumn && atom.fixed ? tr("固定原子は座標を編集できません")
+                                                                : QString();
+    case IdRole:
+        return atom.id;
+    case FixedRole:
+        return col == AtomColumn ? QVariant(atom.fixed) : QVariant();
+    default:
+        return {};
+    }
+}
+bool CoordinateModel::setData(const QModelIndex &index, const QVariant &value, int role) {
+    if (!index.isValid() ||
+        !(flags(index) & (role == Qt::CheckStateRole ? Qt::ItemIsUserCheckable : Qt::ItemIsEditable)))
+        return false;
+    const int col = index.column();
+    if (role == Qt::CheckStateRole)
+        edit(id(index.row()), documentColumn(col), value.toInt() == Qt::Checked ? "1" : "0");
+    else if (role == Qt::EditRole && textColumn(col))
+        edit(id(index.row()), documentColumn(col), value.toString());
+    else
+        return false;
+    return true;
+}
+QIcon CoordinateModel::atomDot(const Atom &atom) const {
+    const auto key = (atom.ghost ? "@" : "") + atom.element;
+    if (const auto it = icons.constFind(key); it != icons.constEnd())
+        return *it;
+    QPixmap pixmap(QSize(28, 28));
+    pixmap.setDevicePixelRatio(2);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing);
+    const auto color = element(atom.element).color;
+    // A ghost has no nucleus: only the outline.
+    p.setPen(QPen(color.darker(160), atom.ghost ? 1.6 : 1));
+    p.setBrush(atom.ghost ? QBrush(Qt::NoBrush) : QBrush(color));
+    p.drawEllipse(QRectF(2.5, 2.5, 9, 9));
+    p.end();
+    return *icons.insert(key, QIcon(pixmap));
+}
+QIcon CoordinateModel::mark(const QString &kind) const {
+    auto &icon = icons["#" + kind];
+    if (icon.isNull())
+        icon = changeIcon(kind);
+    return icon;
+}
+
 CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     setObjectName("coordinatesTab");
     setAcceptDrops(true);
@@ -313,7 +448,7 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     // The table, or what to do while there are no atoms.
     tablePages = new QStackedWidget;
     ll->addWidget(tablePages, 1);
-    table = new QTableWidget(0, ColumnCount);
+    table = new QTableView;
     table->setObjectName("coordinateTable");
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -323,9 +458,6 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     table->setFrameShape(QFrame::NoFrame);
     table->setMinimumWidth(360);
     table->verticalHeader()->setDefaultSectionSize(30);
-    // Four rows at least: the 3D view above it gives way first.
-    table->setMinimumHeight(table->horizontalHeader()->sizeHint().height() + 4 * 30 +
-                            table->horizontalScrollBar()->sizeHint().height());
     const QStringList titles{tr("原子"), "X / Å",        "Y / Å",        "Z / Å",
                              tr("質量"), tr("ゴースト"), tr("固定"),     tr("残基 · 名前"),
                              tr("変化"), tr("形式電荷"), tr("不対電子"), tr("原子名")};
@@ -342,11 +474,21 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
         tr("水素補完などの構造準備に使う形式電荷です。計算の全電荷は「2 計算条件」で設定します。"),
         tr("原子のラジカル属性です。計算のスピン多重度は「2 計算条件」で設定します。"),
         tr("PDB・残基で使う原子名です（例: CA）。")};
-    for (int column = 0; column < ColumnCount; ++column) {
-        auto *item = new QTableWidgetItem(titles[column]);
-        item->setToolTip(tips[column]);
-        table->setHorizontalHeaderItem(column, item);
-    }
+    model = new CoordinateModel(
+        this,
+        [this](const QString &id, CoordinateColumn column, const QString &text) {
+            const auto unit = tableUnit();
+            attempt([&] {
+                window->edit(tr("座標表を編集"),
+                             [=](Document &d) { setCoordinateCell(d, id, column, text, unit); });
+            });
+            refresh();
+        },
+        titles, tips);
+    table->setModel(model);
+    // Four rows at least: the 3D view above it gives way first.
+    table->setMinimumHeight(table->horizontalHeader()->sizeHint().height() + 4 * 30 +
+                            table->horizontalScrollBar()->sizeHint().height());
     auto *header = table->horizontalHeader();
     header->setSectionResizeMode(QHeaderView::Interactive);
     header->setSectionResizeMode(PlaceColumn, QHeaderView::Stretch);
@@ -365,18 +507,17 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     for (const int column : {ChargeColumn, RadicalColumn, NameColumn})
         table->setColumnHidden(column, !attributes->isChecked());
     tablePages->addWidget(table);
-    connect(table, &QTableWidget::itemChanged, this, &CoordinatesPanel::cellChanged);
-    connect(table, &QTableWidget::itemSelectionChanged, this, [this] {
+    connect(table->selectionModel(), &QItemSelectionModel::selectionChanged, this, [this] {
         if (busy)
             return;
-        QList<bool> marked(table->rowCount(), false);
+        QList<bool> marked(model->rowCount(), false);
         for (const auto &range : table->selectionModel()->selection())
             for (int row = range.top(); row <= range.bottom(); ++row)
                 marked[row] = true;
         Ids ids;
-        for (int row = 0; row < table->rowCount(); ++row)
+        for (int row = 0; row < model->rowCount(); ++row)
             if (marked[row])
-                ids << table->item(row, 0)->data(IdRole).toString();
+                ids << model->id(row);
         // Retain click order from the molecule view when adding table rows.
         const QSet<QString> rows(ids.begin(), ids.end());
         Ids ordered;
@@ -466,7 +607,7 @@ QPushButton *CoordinatesPanel::button(QLayout *layout, const QString &text, cons
 void CoordinatesPanel::showAttributes() {
     window->showCoordinateTable();
     attributes->setChecked(true);
-    table->scrollTo(table->model()->index(std::max(0, table->currentRow()), ChargeColumn));
+    table->scrollTo(model->index(std::max(0, table->currentIndex().row()), ChargeColumn));
 }
 bool CoordinatesPanel::editable() const {
     return !window->hasCandidate() && !window->chemistryRunning();
@@ -491,23 +632,6 @@ void CoordinatesPanel::attempt(const std::function<void()> &action) {
         message->show();
     }
 }
-QIcon CoordinatesPanel::atomDot(const Atom &atom) {
-    const auto key = (atom.ghost ? "@" : "") + atom.element;
-    if (const auto it = icons.constFind(key); it != icons.constEnd())
-        return *it;
-    QPixmap pixmap(QSize(28, 28));
-    pixmap.setDevicePixelRatio(2);
-    pixmap.fill(Qt::transparent);
-    QPainter p(&pixmap);
-    p.setRenderHint(QPainter::Antialiasing);
-    const auto color = element(atom.element).color;
-    // A ghost has no nucleus: only the outline.
-    p.setPen(QPen(color.darker(160), atom.ghost ? 1.6 : 1));
-    p.setBrush(atom.ghost ? QBrush(Qt::NoBrush) : QBrush(color));
-    p.drawEllipse(QRectF(2.5, 2.5, 9, 9));
-    p.end();
-    return *icons.insert(key, QIcon(pixmap));
-}
 void CoordinatesPanel::refresh() {
     if (busy)
         return;
@@ -515,70 +639,9 @@ void CoordinatesPanel::refresh() {
     const auto &d = window->displayDocument();
     const bool candidate = window->hasCandidate();
     const auto changes = candidate ? atomChanges(window->document(), d) : AtomChanges{};
-    const QSignalBlocker blocker(table);
-    const auto unit = tableUnit();
-    for (int column = XColumn; column <= ZColumn; ++column)
-        table->horizontalHeaderItem(column)->setText(QString("%1 / %2")
-                                                         .arg(QString("XYZ")[column - XColumn])
-                                                         .arg(unit == CoordinateUnit::Bohr ? "Bohr" : "Å"));
-    const auto places = atomPlaces(d);
     const ChromeColors colors(palette());
-    const auto mark = [this](const QString &kind) {
-        auto &icon = icons["#" + kind];
-        if (icon.isNull())
-            icon = changeIcon(kind);
-        return icon;
-    };
-    const QIcon added = mark("added"), moved = mark("moved");
-    table->setRowCount(d.atoms.size());
-    for (int row = 0; row < d.atoms.size(); ++row) {
-        const auto &atom = d.atoms[row];
-        for (int col = 0; col < ColumnCount; ++col) {
-            auto *item = table->item(row, col);
-            if (!item) {
-                item = new QTableWidgetItem;
-                table->setItem(row, col, item);
-            }
-            item->setData(IdRole, atom.id);
-            auto flags = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-            if (textColumn(col)) {
-                if (editable() && !(atom.fixed && col >= XColumn && col <= ZColumn))
-                    flags |= Qt::ItemIsEditable;
-                item->setText(coordinateText(atom, documentColumn(col), unit));
-            } else if (col <= FixedColumn) {
-                if (editable())
-                    flags |= Qt::ItemIsUserCheckable;
-                item->setCheckState((col == GhostColumn ? atom.ghost : atom.fixed) ? Qt::Checked
-                                                                                   : Qt::Unchecked);
-            } else if (col == PlaceColumn) {
-                item->setText(places.value(atom.id));
-                item->setForeground(colors.muted);
-            } else {
-                const bool isAdded = changes.added.contains(atom.id),
-                           isMoved = changes.moved.contains(atom.id);
-                item->setText(isAdded   ? tr("追加", "atom change")
-                              : isMoved ? tr("移動", "atom change")
-                                        : QString());
-                item->setIcon(isAdded ? added : isMoved ? moved : QIcon());
-                item->setForeground(isAdded ? colors.good : colors.candidateText);
-            }
-            item->setFlags(flags);
-            item->setToolTip(
-                col >= ChargeColumn  ? table->horizontalHeaderItem(col)->toolTip()
-                : col == MassColumn  ? tr("例: 13 = ¹³C、13.003355 = 質量（amu）、空欄 = 既定値")
-                : col == GhostColumn ? tr("NWChemではbq元素として出力します。基底の割当が別途必要です。")
-                : col == FixedColumn
-                    ? tr("座標編集・削除を禁止し、NWChemのconstraints fix atomへ出力します。")
-                : col >= XColumn && col <= ZColumn && atom.fixed ? tr("固定原子は座標を編集できません")
-                                                                 : "");
-        }
-        auto *atomItem = table->item(row, AtomColumn);
-        atomItem->setData(FixedRole, atom.fixed);
-        atomItem->setIcon(atomDot(atom));
-        for (int col = XColumn; col <= ZColumn; ++col)
-            table->item(row, col)->setData(Qt::ForegroundRole,
-                                           atom.fixed ? QVariant(QBrush(colors.muted)) : QVariant());
-    }
+    model->show({d, changes, atomPlaces(d), tableUnit(), editable(), colors.muted, colors.good,
+                 colors.candidateText});
     table->setColumnHidden(ChangeColumn, !candidate);
     if (!candidate)
         showAll->setChecked(true);
@@ -615,12 +678,13 @@ void CoordinatesPanel::refreshExport() {
 void CoordinatesPanel::applyFilter() {
     const auto needle = filter->text().trimmed();
     const bool changedOnly = window->hasCandidate() && showChanged->isChecked();
-    for (int row = 0; row < table->rowCount(); ++row) {
-        bool shown = !changedOnly || !table->item(row, ChangeColumn)->text().isEmpty();
+    const auto text = [this](int row, int column) { return model->index(row, column).data().toString(); };
+    for (int row = 0; row < model->rowCount(); ++row) {
+        bool shown = !changedOnly || !text(row, ChangeColumn).isEmpty();
         if (shown && !needle.isEmpty())
-            shown = (table->item(row, AtomColumn)->text() + QString::number(row + 1))
-                        .contains(needle, Qt::CaseInsensitive) ||
-                    table->item(row, PlaceColumn)->text().contains(needle, Qt::CaseInsensitive);
+            shown =
+                (text(row, AtomColumn) + QString::number(row + 1)).contains(needle, Qt::CaseInsensitive) ||
+                text(row, PlaceColumn).contains(needle, Qt::CaseInsensitive);
         if (table->isRowHidden(row) == shown)
             table->setRowHidden(row, !shown);
     }
@@ -634,7 +698,7 @@ void CoordinatesPanel::refreshCount() {
         return;
     }
     int hidden = 0;
-    for (int row = 0; row < table->rowCount(); ++row)
+    for (int row = 0; row < model->rowCount(); ++row)
         hidden += table->isRowHidden(row);
     const auto fixed = std::count_if(d.atoms.begin(), d.atoms.end(), [](const Atom &a) { return a.fixed; });
     const int n = d.atoms.size();
@@ -646,18 +710,18 @@ void CoordinatesPanel::refreshCount() {
                : tr("%n 原子・選択 %1・固定 %2", nullptr, n).arg(window->selection().size()).arg(fixed));
 }
 void CoordinatesPanel::refreshSelection() {
-    const QSignalBlocker blocker(table);
+    QScopedValueRollback guard(busy, true);
     // One selection of row ranges: selecting item by item is quadratic in the selected rows.
     const QSet<QString> chosen(window->selection().begin(), window->selection().end());
-    const int last = table->columnCount() - 1;
+    const int last = ColumnCount - 1;
     QItemSelection rows;
-    for (int row = 0; row < table->rowCount(); ++row) {
-        if (!chosen.contains(table->item(row, 0)->data(IdRole).toString()))
+    for (int row = 0; row < model->rowCount(); ++row) {
+        if (!chosen.contains(model->id(row)))
             continue;
         if (!rows.isEmpty() && rows.last().bottom() == row - 1)
-            rows.last() = QItemSelectionRange(rows.last().topLeft(), table->model()->index(row, last));
+            rows.last() = QItemSelectionRange(rows.last().topLeft(), model->index(row, last));
         else
-            rows.select(table->model()->index(row, 0), table->model()->index(row, last));
+            rows.select(model->index(row, 0), model->index(row, last));
     }
     table->selectionModel()->select(rows, QItemSelectionModel::ClearAndSelect);
     // Atoms chosen in the 3D view: bring their rows into the table when none of them shows.
@@ -669,10 +733,10 @@ void CoordinatesPanel::refreshSelection() {
             if (!table->isRowHidden(row)) {
                 if (first < 0)
                     first = row;
-                visible = table->visualRect(table->model()->index(row, 0)).intersects(viewport);
+                visible = table->visualRect(model->index(row, 0)).intersects(viewport);
             }
     if (!visible && first >= 0)
-        table->scrollTo(table->model()->index(first, 0), QAbstractItemView::PositionAtTop);
+        table->scrollTo(model->index(first, 0), QAbstractItemView::PositionAtTop);
     refreshSelectionBar();
 }
 void CoordinatesPanel::refreshSelectionBar() {
@@ -740,25 +804,10 @@ void CoordinatesPanel::refreshSelectionBar() {
     }
     refreshCount();
 }
-void CoordinatesPanel::cellChanged(QTableWidgetItem *item) {
-    if (busy || item->column() == PlaceColumn || item->column() == ChangeColumn)
-        return;
-    // Copy values before edit() refreshes the view/table.
-    const QString id = item->data(IdRole).toString();
-    const auto column = documentColumn(item->column());
-    const auto text = textColumn(item->column())          ? item->text()
-                      : item->checkState() == Qt::Checked ? "1"
-                                                          : "0";
-    const auto unit = tableUnit();
-    attempt([&] {
-        window->edit(tr("座標表を編集"), [=](Document &d) { setCoordinateCell(d, id, column, text, unit); });
-    });
-    refresh();
-}
 void CoordinatesPanel::addAtom() {
     if (!editable())
         fail(tr("候補を確定・取消し、実行中の整形を終了してください。"));
-    const auto base = window->document().toJson();
+    const auto base = window->revision();
     const auto unit = tableUnit();
     QDialog dialog(this);
     dialog.setObjectName("coordinateAtomDialog");
@@ -943,11 +992,11 @@ void CoordinatesPanel::addAtom() {
     validate();
     if (dialog.exec() != QDialog::Accepted)
         return;
-    if (base != window->document().toJson() || !editable())
+    if (base != window->revision() || !editable())
         fail(tr("入力中に分子が変更されました。原子を追加し直してください。"));
     window->edit(tr("座標から原子を追加"), [&](Document &d) { d.atoms << *atom; });
     window->setSelection({atom->id});
-    table->scrollToItem(table->item(table->rowCount() - 1, 0));
+    table->scrollTo(model->index(model->rowCount() - 1, 0));
     window->canvas()->keepInView();
 }
 void CoordinatesPanel::previewStructure(const Document &structure) {
@@ -955,7 +1004,7 @@ void CoordinatesPanel::previewStructure(const Document &structure) {
         tr("座標から構造を読込"), [&](Document &d) { replaceCoordinateStructure(d, structure); }, true);
 }
 void CoordinatesPanel::pasteXyz() {
-    const auto base = window->document().toJson();
+    const auto base = window->revision();
     bool ok;
     const QString text = QInputDialog::getMultiLineText(
         this, tr("XYZを貼り付けて置き換え"),
@@ -963,18 +1012,18 @@ void CoordinatesPanel::pasteXyz() {
         QApplication::clipboard()->text(), &ok);
     if (!ok)
         return;
-    if (base != window->document().toJson())
+    if (base != window->revision())
         fail(tr("入力中に分子が変更されました。貼り付けをやり直してください。"));
     previewStructure(xyzStructure(text));
 }
 void CoordinatesPanel::importFile() {
-    const auto base = window->document().toJson();
+    const auto base = window->revision();
     QString path = QFileDialog::getOpenFileName(this, tr("構造を読み込んで置換候補を作成"),
                                                 window->preference("directory").toString(),
                                                 tr("分子構造 (*.xyz *.mol *.sdf *.pdb *.ent)"));
     if (path.isEmpty())
         return;
-    if (base != window->document().toJson())
+    if (base != window->revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
     importPath(path);
 }
@@ -982,11 +1031,11 @@ void CoordinatesPanel::importPath(const QString &path) {
     window->checkMcpPath(path);
     if (!editable())
         fail(tr("候補を確定・取消し、実行中の整形を終了してから読み込んでください。"));
-    const auto base = window->document().toJson();
+    const auto base = window->revision();
     const auto options = chooseStructureImport(this, path);
     if (!options)
         return;
-    if (base != window->document().toJson())
+    if (base != window->revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
     previewStructure(importStructure(path, options->model, options->altloc, options->frame));
     window->setPreference("directory", QFileInfo(path).absolutePath());
@@ -1079,7 +1128,7 @@ void CoordinatesPanel::applyChromeStyle() {
     tablePalette.setColor(QPalette::Highlight, c.tint);
     tablePalette.setColor(QPalette::HighlightedText, c.text);
     table->setPalette(tablePalette);
-    icons.clear();
+    model->clearIcons();
     refresh();
 }
 } // namespace mf

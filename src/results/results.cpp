@@ -2,6 +2,7 @@
 #include "results/results.h"
 #include "model/geometry.h"
 #include "model/i18n.h"
+#include "model/numbers.h"
 #include "model/units.h"
 #include "results/molden_orbitals.h"
 #include <Eigen/Geometry>
@@ -25,13 +26,10 @@ QStringList words(const QString &line) {
     static const QRegularExpression whitespace("\\s+");
     return line.split(whitespace, Qt::SkipEmptyParts);
 }
-double number(QString text) {
-    text.replace(QChar('D'), QChar('E'), Qt::CaseInsensitive);
-    bool ok;
-    const double n = text.toDouble(&ok);
-    if (!ok || !std::isfinite(n))
-        fail(tr("結果ファイルの数値が不正です: %1").arg(text.left(80)));
-    return n;
+double number(const QString &text) {
+    if (const auto n = fortranNumber(text))
+        return *n;
+    fail(tr("結果ファイルの数値が不正です: %1").arg(text.left(80)));
 }
 int integer(const QString &text, int lo, int hi) {
     const double n = number(text);
@@ -138,10 +136,10 @@ void NwchemEnergySummary::add(const QString &line) {
     static const QRegularExpression supermolecular(R"(^\s*Supermolecular energy\s*=\s*([-+0-9.eEdD]+)\s*$)");
     static const QRegularExpression bsseError(R"(^\s*BSSE error\s*=\s*([-+0-9.eEdD]+)\s*$)");
     static const QRegularExpression monomers(R"(^\s*number of monomers\s*=\s*(\d+)\s*$)");
-    const auto read = [](QString text, double &value) {
-        bool ok;
-        value = text.replace(QChar('D'), QChar('E'), Qt::CaseInsensitive).toDouble(&ok);
-        return ok && std::isfinite(value);
+    const auto read = [](const QString &text, double &value) {
+        const auto n = fortranNumber(text);
+        value = n.value_or(0);
+        return n.has_value();
     };
     auto &task = tasks.last();
     double value;
@@ -242,10 +240,8 @@ const QRegularExpression &thresholdLine() {
         R"(^\s*(?:maximum|rms) (?:gradient|cartesian step) threshold\s+\((gmax|grms|xmax|xrms)\)\s*=\s*(\S+))");
     return pattern;
 }
-double logNumber(QString text) {
-    bool ok;
-    const double n = text.replace(QChar('D'), QChar('E'), Qt::CaseInsensitive).toDouble(&ok);
-    return ok && std::isfinite(n) ? n : std::numeric_limits<double>::quiet_NaN();
+double logNumber(const QString &text) {
+    return fortranNumber(text).value_or(std::numeric_limits<double>::quiet_NaN());
 }
 ResultStep resultStep(const QRegularExpressionMatch &m) {
     const auto columns = words(m.captured(2));

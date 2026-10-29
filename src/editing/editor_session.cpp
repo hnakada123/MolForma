@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/editor_session.h"
 #include "model/i18n.h"
-#include <QJsonDocument>
 
 namespace mf {
 class SessionCommand : public QUndoCommand {
@@ -31,6 +30,7 @@ void EditorSession::apply(const Document &d, bool remote) {
     const auto before = current;
     current = d;
     pending.reset();
+    ++changes;
     emit applied(before, current, remote);
 }
 void EditorSession::reset(const Document &d, bool remote) {
@@ -51,7 +51,7 @@ void EditorSession::validateEdit(const Document &next) const {
 }
 bool EditorSession::commit(const QString &name, const Document &next, bool remote) {
     validateEdit(next);
-    if (current.project() == next.project())
+    if (current == next)
         return false;
     stack.push(new SessionCommand(*this, name, next, remote));
     return true;
@@ -68,12 +68,13 @@ bool EditorSession::propose(const QString &name, const Document &next, bool remo
     if (pending)
         fail(tr("先に変更候補を確定するか、取消してください。"));
     validateEdit(next);
-    if (current.project() == next.project())
+    if (current == next)
         return false;
     pending = next;
     pendingName = name;
     pendingRemote = remote;
     ++pendingSerial;
+    ++changes;
     emit changed();
     return true;
 }
@@ -88,6 +89,7 @@ bool EditorSession::confirm(bool remote) {
 }
 void EditorSession::cancel() {
     pending.reset();
+    ++changes;
     emit changed();
 }
 void EditorSession::navigate(const QString &action) {

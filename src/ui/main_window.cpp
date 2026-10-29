@@ -14,6 +14,7 @@
 #include "ui/candidate_controls.h"
 #include "ui/coordinates_panel.h"
 #include "ui/editor_chrome.h"
+#include "ui/execution_form.h"
 #include "ui/execution_panel.h"
 #include "ui/history_panel.h"
 #include "ui/input_preview_panel.h"
@@ -896,7 +897,7 @@ void MainWindow::loadPath(const QString &p) {
             fail(tr("%1 を読み込めません。\n%2").arg(QFileInfo(p).fileName(), QString::fromUtf8(e.what())));
         }
     };
-    const auto base = document().project();
+    const auto base = revision();
     const auto options = chooseStructureImport(this, p);
     if (!options)
         return;
@@ -919,7 +920,7 @@ void MainWindow::loadPath(const QString &p) {
         }
     } else
         next = reading([&] { return importStructure(p, options->model, options->altloc, options->frame); });
-    if (base != document().project())
+    if (base != revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
     if (!p.endsWith(".json", Qt::CaseInsensitive))
         applyExecutionPreferences(next); // Structure files carry no execution settings.
@@ -1395,115 +1396,25 @@ void MainWindow::preferences() {
     intro->setWordWrap(true);
     intro->setProperty("muted", true);
     layout->addWidget(intro);
-    const auto saved = executionPreferences();
+    // The cards of "3 実行設定" for the machine-wide settings; the dialog keeps what they show.
+    auto chosen = executionPreferences();
+    auto *form = new ExecutionForm(ExecutionForm::Scope::Preferences, "preferences");
+    form->setSettings(chosen);
+    connect(form, &ExecutionForm::changed, &dialog,
+            [&chosen, form](const QString &key, const QJsonValue &value) {
+                chosen[key] = value;
+                form->setSettings(chosen);
+            });
+    layout->addWidget(form);
     const auto card = [&](const QString &title) {
         auto *c = new SettingsCard(title);
-        auto *form = new FormLayout;
-        form->setHorizontalSpacing(12);
-        form->setVerticalSpacing(8);
-        c->body()->addLayout(form);
+        auto *rows = new FormLayout;
+        rows->setHorizontalSpacing(12);
+        rows->setVerticalSpacing(8);
+        c->body()->addLayout(rows);
         layout->addWidget(c);
-        return form;
+        return rows;
     };
-    auto *files = card(tr("実行ファイル・保存先"));
-    auto path = [&](const QString &label, const QString &key, bool directory) {
-        auto *line = new QLineEdit(saved[key].toString());
-        line->setObjectName("preferences_" + key);
-        auto *browse = new QPushButton(tr("参照…"));
-        connect(browse, &QPushButton::clicked, &dialog, [&dialog, line, directory] {
-            const auto chosen =
-                directory ? QFileDialog::getExistingDirectory(&dialog, tr("ジョブ保存先"), line->text())
-                          : QFileDialog::getOpenFileName(&dialog, tr("NWChem実行ファイル"), line->text());
-            if (!chosen.isEmpty())
-                line->setText(chosen);
-        });
-        auto *row = new QHBoxLayout;
-        row->addWidget(line, 1);
-        row->addWidget(browse);
-        files->addRow(label, row);
-        return line;
-    };
-    auto *executable = path(tr("NWChem実行ファイル"), "executable", false);
-    auto *mode = new QComboBox;
-    mode->setObjectName("preferences_mode");
-    mode->addItem(tr("MPIで起動"), "mpi");
-    mode->addItem(tr("直接実行（逐次版など）"), "direct");
-    mode->setCurrentIndex(std::max(0, mode->findData(saved["mode"].toString())));
-    files->addRow(tr("起動方式"), new ChoiceButtons(mode, ChoiceButtons::Segments));
-    auto *launcher = new QLineEdit(saved["launcher"].toString());
-    launcher->setObjectName("preferences_launcher");
-    files->addRow(tr("MPIランチャー"), launcher);
-    auto *root = path(tr("ジョブ保存先"), "job_root", true);
-    auto *resources = card(tr("計算資源"));
-    auto spin = [&](const QString &label, const QString &key, int minimum, int maximum,
-                    const QString &unit = {}) {
-        auto *box = new QSpinBox;
-        box->setObjectName("preferences_" + key);
-        box->setRange(minimum, maximum);
-        box->setSuffix(unit);
-        box->setValue(saved[key].toInt());
-        resources->addRow(label, box);
-        return box;
-    };
-    auto *ranks = spin(tr("MPI起動プロセス数"), "mpi_ranks", 1, 4096);
-    auto *omp = spin(tr("OpenMPスレッド / プロセス"), "omp_threads", 1, 1024);
-    auto *blas = spin(tr("BLASスレッド / プロセス"), "blas_threads", 1, 1024);
-    auto *stack = new QLineEdit(saved["omp_stacksize"].toString());
-    stack->setObjectName("preferences_omp_stacksize");
-    stack->setPlaceholderText(tr("空欄: 継承（例: 64M）"));
-    resources->addRow(tr("OpenMPスタック"), stack);
-    auto *timeout = spin(tr("制限時間（0: なし）"), "timeout_seconds", 0, 604800, tr(" 秒"));
-    // The environment as the table of "3 実行設定": rows that are off are kept.
-    auto *environmentCard = new SettingsCard(tr("追加の環境変数"));
-    auto *environment = new QTableWidget(0, 3);
-    environment->setObjectName("preferences_environment");
-    environment->setHorizontalHeaderLabels({tr("有効"), tr("名前"), tr("値")});
-    environment->verticalHeader()->hide();
-    environment->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    environment->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    environment->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
-    environment->setMinimumHeight(110);
-    environment->setMaximumHeight(170);
-    const auto showEnvironment = [environment](const QJsonArray &rows) {
-        environment->setRowCount(rows.size());
-        for (int row = 0; row < rows.size(); ++row) {
-            const auto entry = rows[row].toObject();
-            auto *enabled = new QTableWidgetItem;
-            enabled->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable);
-            enabled->setCheckState(entry["enabled"].toBool() ? Qt::Checked : Qt::Unchecked);
-            environment->setItem(row, 0, enabled);
-            environment->setItem(row, 1, new QTableWidgetItem(entry["name"].toString()));
-            environment->setItem(row, 2, new QTableWidgetItem(entry["value"].toString()));
-        }
-    };
-    showEnvironment(saved["environment"].toArray());
-    auto *addRow = new QPushButton(tr("追加"));
-    addRow->setIcon(lineIcon("plus"));
-    auto *removeRow = new QPushButton(tr("選択行を削除"));
-    environmentCard->header()->addWidget(removeRow);
-    environmentCard->header()->addWidget(addRow);
-    connect(addRow, &QPushButton::clicked, &dialog, [environment] {
-        const int row = environment->rowCount();
-        environment->insertRow(row);
-        auto *enabled = new QTableWidgetItem;
-        enabled->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable);
-        enabled->setCheckState(Qt::Checked);
-        environment->setItem(row, 0, enabled);
-        environment->setItem(row, 1, new QTableWidgetItem);
-        environment->setItem(row, 2, new QTableWidgetItem);
-        environment->editItem(environment->item(row, 1));
-    });
-    connect(removeRow, &QPushButton::clicked, &dialog, [environment] {
-        if (environment->currentRow() >= 0)
-            environment->removeRow(environment->currentRow());
-    });
-    environmentCard->body()->addWidget(environment);
-    auto *environmentNote =
-        new QLabel(tr("有効な行だけを起動環境へ上書きします（例: NWCHEM_BASIS_LIBRARY）。"));
-    environmentNote->setProperty("caption", true);
-    environmentNote->setWordWrap(true);
-    environmentCard->body()->addWidget(environmentNote);
-    layout->addWidget(environmentCard);
     auto *startup = card(tr("起動・表示"));
     auto *water = new QCheckBox(tr("起動時に水分子を読み込む"));
     water->setObjectName("preferences_startupWater");
@@ -1529,49 +1440,29 @@ void MainWindow::preferences() {
     layout->addWidget(buttons);
     connect(current, &QPushButton::clicked, &dialog, [&] {
         const auto s = executionSettings(document());
-        executable->setText(s["executable"].toString());
-        mode->setCurrentIndex(std::max(0, mode->findData(s["mode"].toString())));
-        launcher->setText(s["launcher"].toString());
-        ranks->setValue(s["mpi_ranks"].toInt());
-        omp->setValue(s["omp_threads"].toInt());
-        blas->setValue(s["blas_threads"].toInt());
-        stack->setText(s["omp_stacksize"].toString());
-        root->setText(s["job_root"].toString());
-        timeout->setValue(s["timeout_seconds"].toInt());
-        showEnvironment(s["environment"].toArray());
+        for (const auto &key : executionPreferenceKeys())
+            chosen[key] = s[key];
+        form->setSettings(chosen);
     });
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
         safe([&] {
+            form->commitEnvironment();
+            // Rows left empty are dropped.
             QJsonArray rows;
-            for (int row = 0; row < environment->rowCount(); ++row) {
-                const auto name = environment->item(row, 1)->text().trimmed();
-                const auto value = environment->item(row, 2)->text();
-                if (name.isEmpty() && value.isEmpty())
-                    continue;
-                rows.append(QJsonObject{{"enabled", environment->item(row, 0)->checkState() == Qt::Checked},
-                                        {"name", name},
-                                        {"value", value}});
-            }
-            const QJsonObject chosen{{"executable", executable->text().trimmed()},
-                                     {"mode", mode->currentData().toString()},
-                                     {"launcher", launcher->text().trimmed()},
-                                     {"mpi_ranks", ranks->value()},
-                                     {"omp_threads", omp->value()},
-                                     {"blas_threads", blas->value()},
-                                     {"omp_stacksize", stack->text().trimmed()},
-                                     {"job_root", root->text().trimmed()},
-                                     {"timeout_seconds", timeout->value()},
-                                     {"environment", rows}};
-            // Check the values with the same rules as "3 実行設定", ignoring the molecule itself.
+            for (const auto &row : chosen["environment"].toArray())
+                if (const auto entry = row.toObject();
+                    !entry["name"].toString().isEmpty() || !entry["value"].toString().isEmpty())
+                    rows.append(entry);
+            chosen["environment"] = rows;
+            // Check the values with the rules of "3 実行設定", leaving out the molecule's own.
             Document probe;
             for (auto it = chosen.begin(); it != chosen.end(); ++it)
                 setExecutionSetting(probe, it.key(), it.value());
-            const auto molecule = validateNwchem(probe).errors;
             QStringList errors;
-            for (const auto &error : validateExecution(probe, QDir::homePath(), false).errors)
-                if (!molecule.contains(error))
-                    errors << error;
+            for (const auto &diagnostic : validateExecution(probe, QDir::homePath(), false).diagnostics)
+                if (diagnostic.severity == DiagnosticSeverity::Error && diagnostic.tab == 2)
+                    errors << diagnostic.message;
             if (!errors.isEmpty())
                 fail(errors.join('\n'));
             saveExecutionPreferences(chosen);

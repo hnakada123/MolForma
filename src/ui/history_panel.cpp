@@ -41,33 +41,7 @@ std::pair<QString, QString> stateLabel(const HistoryEntry &e, bool owned) {
     if (runStateActive(e.status) && !owned)
         return e.orphaned ? std::pair<QString, QString>{tr("プロセスなし"), "orphan"}
                           : std::pair<QString, QString>{tr("稼働未確認"), "unknown"};
-    QString kind;
-    switch (e.status) {
-    case RunState::Starting:
-    case RunState::Running:
-    case RunState::Stopping:
-        kind = "running";
-        break;
-    case RunState::Prepared:
-        kind = "saved";
-        break;
-    case RunState::Finished:
-        kind = "finished";
-        break;
-    case RunState::TimedOut:
-        kind = "time";
-        break;
-    case RunState::Cancelled:
-    case RunState::Interrupted:
-        kind = "stopped";
-        break;
-    case RunState::Idle:
-    case RunState::Failed:
-    case RunState::Invalid:
-        kind = "failed";
-        break;
-    }
-    return {runStateName(e.status), kind};
+    return {runStateName(e.status), runStateKind(e.status)};
 }
 // The names of the state filters, as their keys "", active, finished, stopped and prepared.
 QStringList stateFilterNames() {
@@ -78,28 +52,6 @@ QString stateGroup(const HistoryEntry &e, bool owned) {
     if (e.status == RunState::Prepared || e.status == RunState::Finished)
         return runStateKey(e.status);
     return runStateActive(e.status) && (owned || !e.orphaned) ? "active" : "stopped";
-}
-struct PillColors {
-    QColor background, text, line;
-};
-PillColors pillColors(const QString &kind, const ChromeColors &c) {
-    if (kind == "running")
-        return {c.tint, c.accentText, c.tint};
-    if (kind == "finished")
-        return {c.goodTint, c.good, c.goodTint};
-    if (kind == "failed")
-        return {c.badTint, c.bad, c.badTint};
-    if (kind == "time")
-        return {c.candidate, c.candidateText, c.candidate};
-    if (kind == "orphan")
-        return {c.candidate, c.candidateText, c.candidateLine};
-    if (kind == "saved")
-        return {c.base, c.text, c.line};
-    if (kind == "unknown")
-        return {c.segment, c.muted, c.line};
-    if (kind == "reference")
-        return {c.accent, c.onAccent, c.accent};
-    return {c.segment, c.text, c.segment}; // stopped
 }
 void paintPill(QPainter *p, const QRect &cell, const QString &text, const QString &kind, const QFont &font,
                const ChromeColors &c) {
@@ -348,6 +300,204 @@ class JobDelegate : public QStyledItemDelegate {
 };
 } // namespace
 
+// The rows of the job list: the jobs that pass the search and the state filter in their order, under
+// the headings of their days when the list is in order of creation, or else a line that says none
+// matches. The cells are computed as the view paints them, so another search costs no widgets.
+class HistoryModel : public QAbstractItemModel {
+  public:
+    struct Job {
+        HistoryEntry entry;
+        bool owned = false;          // The run of this window.
+        std::optional<double> delta; // ΔE / Hartree against the reference.
+        QString note;                // Why there is no ΔE.
+    };
+    struct Day {
+        QString title, detail; // The date, and the number of its jobs.
+        QDate date;
+        int first = 0, count = 0; // Its jobs in the list.
+    };
+    struct Context {
+        const EnergyUnit *unit = nullptr;
+        QString reference;   // The job folder ΔE refers to.
+        double largest = 0;  // The largest |ΔE|, the full length of a bar.
+        bool narrow = false; // The task under the method, in place of its column.
+        QString placeholder; // Shown when no job matches.
+    };
+    HistoryModel(QObject *parent, QStringList titles);
+    void show(QVector<Job> jobs, QVector<Day> days, const Context &context);
+    void setNarrow(bool on);
+    void update(const HistoryEntry &e); // The same job, read again.
+    QModelIndex find(const QString &directory) const;
+    // Rows of the top level that span all columns: the days, or the placeholder.
+    bool spanned(int row) const;
+    QModelIndex index(int row, int column, const QModelIndex &parent = {}) const override;
+    QModelIndex parent(const QModelIndex &child) const override;
+    int rowCount(const QModelIndex &parent = {}) const override;
+    int columnCount(const QModelIndex &parent = {}) const override;
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+    QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
+    Qt::ItemFlags flags(const QModelIndex &index) const override;
+
+  private:
+    QStringList titles;
+    QVector<Job> jobs;
+    QVector<Day> days; // Empty unless the list is in order of creation.
+    Context context;
+    const Job *job(const QModelIndex &index) const;
+};
+HistoryModel::HistoryModel(QObject *parent, QStringList titles)
+    : QAbstractItemModel(parent), titles(titles) {}
+void HistoryModel::show(QVector<Job> nextJobs, QVector<Day> nextDays, const Context &next) {
+    beginResetModel();
+    jobs = std::move(nextJobs);
+    days = std::move(nextDays);
+    context = next;
+    endResetModel();
+}
+void HistoryModel::setNarrow(bool on) {
+    if (context.narrow == on)
+        return;
+    context.narrow = on;
+    const auto changed = [this](const QModelIndex &parent) {
+        if (const int rows = rowCount(parent); rows > 0)
+            emit dataChanged(index(0, LevelColumn, parent), index(rows - 1, LevelColumn, parent));
+    };
+    if (days.isEmpty())
+        changed({});
+    for (int day = 0; day < days.size(); ++day)
+        changed(index(day, 0));
+}
+void HistoryModel::update(const HistoryEntry &e) {
+    const auto at = find(e.directory);
+    if (!at.isValid())
+        return;
+    jobs[days.isEmpty() ? at.row() : days[at.parent().row()].first + at.row()].entry = e;
+    emit dataChanged(at, at.siblingAtColumn(ColumnCount - 1));
+}
+QModelIndex HistoryModel::find(const QString &directory) const {
+    for (int i = 0; !directory.isEmpty() && i < jobs.size(); ++i) {
+        if (jobs[i].entry.directory != directory)
+            continue;
+        for (int day = 0; day < days.size(); ++day)
+            if (i < days[day].first + days[day].count)
+                return index(i - days[day].first, 0, index(day, 0));
+        return index(i, 0);
+    }
+    return {};
+}
+bool HistoryModel::spanned(int row) const {
+    return jobs.isEmpty() ? row == 0 : !days.isEmpty();
+}
+const HistoryModel::Job *HistoryModel::job(const QModelIndex &index) const {
+    if (!index.isValid() || jobs.isEmpty())
+        return nullptr;
+    if (index.internalId() == 0)
+        return days.isEmpty() ? &jobs[index.row()] : nullptr;
+    return &jobs[days[int(index.internalId()) - 1].first + index.row()];
+}
+QModelIndex HistoryModel::index(int row, int column, const QModelIndex &parent) const {
+    if (!hasIndex(row, column, parent))
+        return {};
+    return createIndex(row, column, parent.isValid() ? quintptr(parent.row() + 1) : quintptr(0));
+}
+QModelIndex HistoryModel::parent(const QModelIndex &child) const {
+    if (!child.isValid() || child.internalId() == 0)
+        return {};
+    return createIndex(int(child.internalId()) - 1, 0, quintptr(0));
+}
+int HistoryModel::rowCount(const QModelIndex &parent) const {
+    if (!parent.isValid())
+        return jobs.isEmpty()   ? int(!context.placeholder.isEmpty())
+               : days.isEmpty() ? int(jobs.size())
+                                : int(days.size());
+    if (parent.internalId() == 0 && parent.column() == 0 && !jobs.isEmpty() && !days.isEmpty())
+        return days[parent.row()].count;
+    return 0;
+}
+int HistoryModel::columnCount(const QModelIndex &) const {
+    return ColumnCount;
+}
+QVariant HistoryModel::headerData(int section, Qt::Orientation orientation, int role) const {
+    if (orientation != Qt::Horizontal || role != Qt::DisplayRole || section < 0 || section >= ColumnCount)
+        return QAbstractItemModel::headerData(section, orientation, role);
+    return section == DeltaColumn && context.unit ? QString("ΔE / ") + context.unit->label : titles[section];
+}
+Qt::ItemFlags HistoryModel::flags(const QModelIndex &index) const {
+    if (!index.isValid())
+        return Qt::NoItemFlags;
+    return job(index) ? Qt::ItemIsEnabled | Qt::ItemIsSelectable : Qt::ItemIsEnabled;
+}
+QVariant HistoryModel::data(const QModelIndex &index, int role) const {
+    if (!index.isValid())
+        return {};
+    const auto *j = job(index);
+    if (!j) { // The heading of a day, or the line that says nothing matches.
+        if (index.column() != StateColumn)
+            return {};
+        if (jobs.isEmpty())
+            return role == Qt::DisplayRole ? QVariant(context.placeholder)
+                   : role == KindRole      ? QVariant("placeholder")
+                                           : QVariant();
+        const auto &day = days[index.row()];
+        return role == Qt::DisplayRole ? QVariant(day.title)
+               : role == DetailRole    ? QVariant(day.detail)
+               : role == GroupRole     ? QVariant(true)
+                                       : QVariant();
+    }
+    const auto &e = j->entry;
+    const int column = index.column();
+    if (role == DirectoryRole)
+        return e.directory;
+    if (role == Qt::ToolTipRole) {
+        if (column == MemoColumn && !e.memo.isEmpty())
+            return e.memo;
+        return historyStatus(e.status, j->owned, e.orphaned) + "\n" + displayPath(e.directory) +
+               (e.warnings.isEmpty() ? "" : "\n" + e.warnings.join('\n'));
+    }
+    const auto &unit = *context.unit;
+    switch (column) {
+    case StateColumn: {
+        const auto [label, kind] = stateLabel(e, j->owned);
+        return role == Qt::DisplayRole ? QVariant(label) : role == KindRole ? QVariant(kind) : QVariant();
+    }
+    case NameColumn:
+        return role == Qt::DisplayRole ? QVariant(e.name)
+               : role == DetailRole    ? QVariant(e.formula.isEmpty() ? tr("組成不明") : e.formula)
+                                       : QVariant();
+    case LevelColumn:
+        return role == Qt::DisplayRole                ? QVariant(levelText(e))
+               : role == DetailRole && context.narrow ? QVariant(e.task.isEmpty() ? QString("—") : e.task)
+                                                      : QVariant();
+    case TaskColumn:
+        return role == Qt::DisplayRole ? QVariant(e.task.isEmpty() ? QString("—") : e.task) : QVariant();
+    case CreatedColumn:
+        return role == Qt::DisplayRole
+                   ? QVariant(e.created.isValid() ? listTime(e.created, !days.isEmpty()) : QString("—"))
+                   : QVariant();
+    case DurationColumn:
+        return role == Qt::DisplayRole ? QVariant(e.seconds < 0 ? QString("—") : elapsedClock(e.seconds))
+               : role == KindRole      ? QVariant(j->owned ? "running" : "")
+                                       : QVariant();
+    case EnergyColumn:
+        return role == Qt::DisplayRole ? QVariant(e.energy ? hartree(*e.energy) : QString("—"))
+               : role == DetailRole    ? QVariant(e.energy ? historyEnergyMethod(e.energyMethod) : QString())
+                                       : QVariant();
+    case DeltaColumn:
+        if (!j->delta)
+            return role == Qt::DisplayRole ? QVariant("—")
+                   : role == DetailRole    ? QVariant(j->note)
+                                           : QVariant();
+        return role == Qt::DisplayRole ? QVariant(signedNumber(*j->delta * unit.factor, unit.digits))
+               : role == KindRole      ? QVariant(e.directory == context.reference ? "reference" : "delta")
+               : role == BarRole ? QVariant(context.largest > 0 ? std::abs(*j->delta) / context.largest : 0.)
+                                 : QVariant();
+    case MemoColumn:
+        return role == Qt::DisplayRole ? QVariant(e.memo) : QVariant();
+    default:
+        return {};
+    }
+}
+
 HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
     : QWidget(owner), window(owner), run(activeRun), scan(this) {
     setObjectName("historyTab");
@@ -503,11 +653,11 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
     auto *listLayout = new QVBoxLayout(listCard);
     listLayout->setContentsMargins(1, 1, 1, 1);
     listLayout->setSpacing(0);
-    table = new QTreeWidget;
+    table = new QTreeView;
     table->setObjectName("historyTable");
-    table->setColumnCount(ColumnCount);
-    table->setHeaderLabels({tr("状態"), tr("計算名 / 組成"), tr("手法 / 基底"), tr("目的"), tr("作成"),
-                            tr("所要"), tr("計算のE / Eh"), "ΔE", tr("メモ")});
+    model = new HistoryModel(this, {tr("状態"), tr("計算名 / 組成"), tr("手法 / 基底"), tr("目的"),
+                                    tr("作成"), tr("所要"), tr("計算のE / Eh"), "ΔE", tr("メモ")});
+    table->setModel(model);
     table->setRootIsDecorated(false);
     table->setIndentation(0);
     table->setItemsExpandable(false);
@@ -890,9 +1040,10 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
         if (!scan.message.isEmpty())
             status->setText(status->text() + "\n" + scan.message);
     });
-    connect(table, &QTreeWidget::itemSelectionChanged, this, &HistoryPanel::showDetails);
-    connect(table, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem *item) {
-        if (!item->data(StateColumn, DirectoryRole).toString().isEmpty())
+    connect(table->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            &HistoryPanel::showDetails);
+    connect(table, &QTreeView::doubleClicked, this, [this](const QModelIndex &index) {
+        if (!index.data(DirectoryRole).toString().isEmpty())
             window->safe([this] { openResult(); });
     });
     connect(header, &QHeaderView::sortIndicatorChanged, this, [this](int column, Qt::SortOrder order) {
@@ -992,8 +1143,7 @@ void HistoryPanel::fitDetail() {
             split->setSizes({std::max(0, split->width() - detail), detail});
         }
         table->setColumnHidden(TaskColumn, narrow);
-        for (QTreeWidgetItemIterator it(table); *it; ++it)
-            (*it)->setData(LevelColumn, DetailRole, narrow ? (*it)->text(TaskColumn) : QString());
+        model->setNarrow(narrow);
     }
 }
 void HistoryPanel::resizeEvent(QResizeEvent *event) {
@@ -1074,8 +1224,8 @@ void HistoryPanel::selectDirectory(const QString &path) {
     refresh();
 }
 QString HistoryPanel::selectedDirectory() const {
-    const auto selected = table->selectedItems();
-    return selected.isEmpty() ? QString() : selected.first()->data(StateColumn, DirectoryRole).toString();
+    const auto selected = table->selectionModel()->selectedRows();
+    return selected.isEmpty() ? QString() : selected.first().data(DirectoryRole).toString();
 }
 const HistoryEntry *HistoryPanel::entry(const QString &directory) const {
     if (directory.isEmpty())
@@ -1192,60 +1342,44 @@ void HistoryPanel::populate(bool reloadDetails) {
             largest = std::max(largest, std::abs(*r.delta));
     const bool byDay = sortColumn == CreatedColumn;
     listed.clear();
+    QVector<HistoryModel::Job> jobs;
+    QVector<HistoryModel::Day> days;
+    for (const auto &r : std::as_const(rows)) {
+        if (byDay) {
+            const auto date = r.entry->created.isValid() ? r.entry->created.toLocalTime().date() : QDate();
+            if (days.isEmpty() || days.last().date != date)
+                days.append({dayTitle(date), {}, date, int(jobs.size()), 0});
+            ++days.last().count;
+        }
+        jobs.append({*r.entry, r.owned, r.delta, r.note});
+        listed << r.entry->directory;
+    }
+    for (auto &day : days)
+        day.detail = tr("%n 件", "jobs", day.count);
     const int scrolled = table->verticalScrollBar()->value();
     {
-        QSignalBlocker block(table);
+        QSignalBlocker block(table->selectionModel());
         QSignalBlocker blockHeader(table->header());
         table->header()->setSortIndicator(sortColumn, sortOrder);
-        table->clear();
         table->setColumnHidden(DurationColumn, comparing);
         table->setColumnHidden(DeltaColumn, !comparing);
         if (byDay != grouped) // Times under a day, or with their date.
             table->setColumnWidth(CreatedColumn, byDay ? 64 : 92);
         grouped = byDay;
-        table->headerItem()->setText(DeltaColumn, QString("ΔE / ") + unit.label);
-        QTreeWidgetItem *day = nullptr;
-        QDate date;
-        int inDay = 0;
-        const auto closeDay = [&] {
-            if (day)
-                day->setData(StateColumn, DetailRole, tr("%n 件", "jobs", inDay));
-        };
-        for (const auto &r : std::as_const(rows)) {
-            if (byDay) {
-                const auto next =
-                    r.entry->created.isValid() ? r.entry->created.toLocalTime().date() : QDate();
-                if (!day || next != date) {
-                    closeDay();
-                    day = new QTreeWidgetItem(table, {dayTitle(next)});
-                    day->setData(StateColumn, GroupRole, true);
-                    day->setFlags(Qt::ItemIsEnabled);
-                    day->setFirstColumnSpanned(true);
-                    date = next;
-                    inDay = 0;
-                }
-                ++inDay;
-            }
-            auto *item = day ? new QTreeWidgetItem(day) : new QTreeWidgetItem(table);
-            fillRow(item, r, byDay, largest);
-            listed << r.entry->directory;
-        }
-        closeDay();
-        if (rows.isEmpty() && !entries.isEmpty()) {
-            auto *none = new QTreeWidgetItem(
-                table, {tr("条件に合うジョブはありません。検索語と状態の絞り込みを見直してください。")});
-            none->setData(StateColumn, KindRole, "placeholder");
-            none->setFlags(Qt::ItemIsEnabled);
-            none->setFirstColumnSpanned(true);
-        }
+        model->show(jobs, days,
+                    {&unit, reference, largest, narrowList,
+                     rows.isEmpty() && !entries.isEmpty()
+                         ? tr("条件に合うジョブはありません。検索語と状態の絞り込みを見直してください。")
+                         : QString()});
+        for (int row = 0; row < model->rowCount(); ++row)
+            if (model->spanned(row))
+                table->setFirstColumnSpanned(row, {}, true);
         table->expandAll();
         table->verticalScrollBar()->setValue(scrolled);
-        for (QTreeWidgetItemIterator it(table); *it; ++it)
-            if ((*it)->data(StateColumn, DirectoryRole).toString() == selected && !selected.isEmpty()) {
-                table->setCurrentItem(*it);
-                table->scrollToItem(*it);
-                break;
-            }
+        if (const auto at = model->find(selected); at.isValid()) {
+            table->setCurrentIndex(at);
+            table->scrollTo(at);
+        }
     }
     // The states with their counts, and the folder.
     const QStringList keys{"", "active", "finished", "stopped", "prepared"}, names = stateFilterNames();
@@ -1276,47 +1410,8 @@ void HistoryPanel::populate(bool reloadDetails) {
     else
         updateActions();
 }
-void HistoryPanel::fillRow(QTreeWidgetItem *item, const Row &r, bool grouped, double largest) const {
-    const auto &e = *r.entry;
-    const auto &unit = energyUnits[std::max(0, energyUnit->currentIndex())];
-    const auto [label, kind] = stateLabel(e, r.owned);
-    item->setText(StateColumn, label);
-    item->setData(StateColumn, KindRole, kind);
-    item->setText(NameColumn, e.name);
-    item->setData(NameColumn, DetailRole, e.formula.isEmpty() ? tr("組成不明") : e.formula);
-    item->setText(LevelColumn, levelText(e));
-    item->setText(TaskColumn, e.task.isEmpty() ? QString("—") : e.task);
-    item->setData(LevelColumn, DetailRole, narrowList ? item->text(TaskColumn) : QString());
-    item->setText(CreatedColumn, e.created.isValid() ? listTime(e.created, grouped) : QString("—"));
-    item->setText(DurationColumn, e.seconds < 0 ? QString("—") : elapsedClock(e.seconds));
-    item->setData(DurationColumn, KindRole, r.owned ? "running" : "");
-    item->setText(EnergyColumn, e.energy ? hartree(*e.energy) : QString("—"));
-    item->setData(EnergyColumn, DetailRole, e.energy ? historyEnergyMethod(e.energyMethod) : QString());
-    if (r.delta) {
-        item->setText(DeltaColumn, signedNumber(*r.delta * unit.factor, unit.digits));
-        item->setData(DeltaColumn, KindRole, e.directory == reference ? "reference" : "delta");
-        item->setData(DeltaColumn, BarRole, largest > 0 ? std::abs(*r.delta) / largest : 0.);
-    } else {
-        item->setText(DeltaColumn, "—");
-        item->setData(DeltaColumn, DetailRole, r.note);
-    }
-    item->setText(MemoColumn, e.memo);
-    item->setData(StateColumn, DirectoryRole, e.directory);
-    const auto tip = historyStatus(e.status, r.owned, e.orphaned) + "\n" + displayPath(e.directory) +
-                     (e.warnings.isEmpty() ? "" : "\n" + e.warnings.join('\n'));
-    for (int column = 0; column < ColumnCount; ++column)
-        item->setToolTip(column, column == MemoColumn && !e.memo.isEmpty() ? e.memo : tip);
-    item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-}
 void HistoryPanel::updateRow(const HistoryEntry &e) {
-    for (QTreeWidgetItemIterator it(table); *it; ++it)
-        if ((*it)->data(StateColumn, DirectoryRole).toString() == e.directory) {
-            (*it)->setText(DurationColumn, e.seconds < 0 ? QString("—") : elapsedClock(e.seconds));
-            (*it)->setText(EnergyColumn, e.energy ? hartree(*e.energy) : QString("—"));
-            (*it)->setData(EnergyColumn, DetailRole,
-                           e.energy ? historyEnergyMethod(e.energyMethod) : QString());
-            (*it)->setText(MemoColumn, e.memo);
-        }
+    model->update(e);
 }
 void HistoryPanel::updateToolbar() {
     const auto other = executionRoot();
@@ -1857,26 +1952,17 @@ void HistoryPanel::applyChromeStyle() {
         QToolButton#historyMore::menu-indicator { width: 0; }
         QPushButton#historyCompare:checked { background: @tint; border-color: @accent; color: @accentText;
                                              font-weight: bold; }
-        QTreeWidget#historyTable { background: @base; border: none; border-top-left-radius: 9px;
+        QTreeView#historyTable { background: @base; border: none; border-top-left-radius: 9px;
                                    border-top-right-radius: 9px; }
-        QTreeWidget#historyTable::item { border: none; }
-        QTreeWidget#historyTable::item:hover { background: @hover; }
-        QTreeWidget#historyTable::item:selected { background: @tint; color: @text; }
-        QTreeWidget#historyTable QHeaderView::section { background: @base; color: @muted; border: none;
+        QTreeView#historyTable::item { border: none; }
+        QTreeView#historyTable::item:hover { background: @hover; }
+        QTreeView#historyTable::item:selected { background: @tint; color: @text; }
+        QTreeView#historyTable QHeaderView::section { background: @base; color: @muted; border: none;
                                                         border-bottom: 1px solid @line; padding: 6px 8px; }
         QFrame#historyListFooter { background: @window; border: none; border-top: 1px solid @line;
                                    border-bottom-left-radius: 9px; border-bottom-right-radius: 9px; }
         QLabel#historyDetailTitle { font-size: 18px; font-weight: bold; }
         QLabel#historyDetailState { border-radius: 10px; padding: 2px 9px; font-weight: bold; }
-        QLabel#historyDetailState[pill="running"] { background: @tint; color: @accentText; }
-        QLabel#historyDetailState[pill="finished"] { background: @goodTint; color: @good; }
-        QLabel#historyDetailState[pill="failed"] { background: @badTint; color: @error; }
-        QLabel#historyDetailState[pill="time"] { background: @candidate; color: @candidateText; }
-        QLabel#historyDetailState[pill="orphan"] { background: @candidate; color: @candidateText;
-                                                   border: 1px solid @candidateLine; }
-        QLabel#historyDetailState[pill="saved"] { background: @base; color: @text; border: 1px solid @line; }
-        QLabel#historyDetailState[pill="unknown"] { background: @segment; color: @muted; border: 1px solid @line; }
-        QLabel#historyDetailState[pill="stopped"] { background: @segment; color: @text; }
         QFrame#historyEnergyBox { background: @window; border: none; border-radius: 8px; }
         QFrame#historyEnergyBox[compare="true"] { background: @tint; border: 1px solid @accent; }
         QLabel#historyEnergyValue { font-family: monospace; font-size: 22px; font-weight: 600; }
@@ -1890,7 +1976,8 @@ void HistoryPanel::applyChromeStyle() {
         QFrame#historyEmptyCard { background: @base; border: 1px dashed @line; border-radius: 12px; }
         QPlainTextEdit#historyMemo { background: @base; border: 1px solid @line; border-radius: 6px; padding: 2px; }
     )",
-                              pal));
+                              pal) +
+                  pillRules("QLabel#historyDetailState", "pill", ChromeColors(pal)));
     setFilesOpen(filesOpen, false); // The height of the closed card follows the fonts of the style.
 }
 } // namespace mf

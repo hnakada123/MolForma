@@ -111,6 +111,40 @@ class ExecutionTest : public QObject {
             QCOMPARE(executionSettings(w.document())["mpi_ranks"].toInt(), 3);
         }
         saveExecutionPreferences({});
+        // "編集 → 環境設定" shows the controls of "3 実行設定", with the same ranges and new rows.
+        {
+            MainWindow w;
+            bool checked = false;
+            QTimer::singleShot(0, &w, [&] {
+                auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+                QVERIFY(dialog && dialog->objectName() == "preferencesDialog");
+                QVERIFY(!dialog->findChild<QLineEdit *>("preferences_reference_directory"));
+                auto *ranks = dialog->findChild<QSpinBox *>("preferences_mpi_ranks");
+                QCOMPARE(ranks->maximum(), executionRange("mpi_ranks").maximum);
+                QCOMPARE(dialog->findChild<QSpinBox *>("preferences_timeout_seconds")->maximum(),
+                         executionRange("timeout_seconds").maximum);
+                ranks->setValue(5);
+                dialog->findChild<QPushButton *>("preferencesAddEnvironment")->click();
+                auto *table = dialog->findChild<QTableWidget *>("preferencesEnvironment");
+                QCOMPARE(table->rowCount(), 1);
+                QCOMPARE(table->item(0, 0)->checkState(), Qt::Unchecked);
+                table->item(0, 1)->setText("MOLFORMA_Y");
+                table->item(0, 0)->setCheckState(Qt::Checked);
+                // A row left empty is not kept.
+                dialog->findChild<QPushButton *>("preferencesAddEnvironment")->click();
+                QTRY_COMPARE(table->rowCount(), 2);
+                dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok)->click();
+                checked = true;
+            });
+            w.findChild<QAction *>("preferencesAction")->trigger();
+            QVERIFY(checked);
+            QCOMPARE(executionPreferences()["mpi_ranks"].toInt(), 5);
+            const auto rows = executionPreferences()["environment"].toArray();
+            QCOMPARE(rows.size(), 1);
+            QCOMPARE(rows[0].toObject()["name"].toString(), QString("MOLFORMA_Y"));
+            QVERIFY(rows[0].toObject()["enabled"].toBool());
+        }
+        saveExecutionPreferences({});
         QCOMPARE(executionPreferences(), [] {
             QJsonObject defaults;
             for (const auto &key : executionPreferenceKeys())

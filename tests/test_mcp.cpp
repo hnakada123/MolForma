@@ -1012,6 +1012,7 @@ class McpTest : public QObject {
                             return window.hasCandidate() ? std::optional(window.displayDocument())
                                                          : std::nullopt;
                         },
+                        [&] { return window.revision(); },
                         [&](const QString &name, const std::function<void(Document &)> &edit, bool preview) {
                             window.edit(name, edit, preview);
                         },

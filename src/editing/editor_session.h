@@ -32,6 +32,11 @@ class EditorSession : public QObject {
     int candidateSerial() const {
         return pendingSerial;
     }
+    // Grows whenever the document or its candidate changes (edits, undo and redo, reset, candidates
+    // proposed, confirmed or cancelled): what was read at another revision is stale.
+    quint64 revision() const {
+        return changes;
+    }
     QUndoStack &history() {
         return stack;
     }
@@ -54,6 +59,7 @@ class EditorSession : public QObject {
     QString pendingName;
     bool pendingRemote = false;
     int pendingSerial = 0;
+    quint64 changes = 0;
     QUndoStack stack;
     void apply(const Document &document, bool remote);
     bool commit(const QString &name, const Document &next, bool remote);

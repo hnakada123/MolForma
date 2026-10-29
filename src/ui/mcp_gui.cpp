@@ -154,6 +154,7 @@ McpEditor McpGui::editor() {
     McpEditor e;
     e.document = [this] { return window.document(); };
     e.candidate = [this]() -> std::optional<Document> { return window.candidate(); };
+    e.revision = [this] { return window.revision(); };
     e.edit = [this](const QString &name, const auto &operation, bool preview) {
         if (QApplication::activeModalWidget())
             fail("Handle the active modal dialog before editing the document.");
@@ -492,12 +493,6 @@ QJsonObject McpGui::describe(QObject *o) {
     }
     return item;
 }
-QByteArray McpGui::documentState() const {
-    return QJsonDocument(
-               QJsonArray{window.document().project(),
-                          window.candidate() ? QJsonValue(window.candidate()->project()) : QJsonValue()})
-        .toJson(QJsonDocument::Compact);
-}
 QJsonObject McpGui::state() const {
     const auto &run = window.executionPanel()->currentRun();
     const auto *r = window.resultsPanel();
@@ -546,7 +541,7 @@ QJsonObject McpGui::enqueue(const QString &name, const QJsonObject &args) {
         captured["target"] = handle(object);
     }
     const auto id = "command-" + QString::number(++nextCommand);
-    const auto base = documentState();
+    const auto base = window.revision();
     commands[id] = QJsonObject{{"commandId", id}, {"tool", name}, {"state", "queued"}};
     if (args.contains("action"))
         commands[id]["action"] = args["action"];
@@ -568,7 +563,7 @@ QJsonObject McpGui::enqueue(const QString &name, const QJsonObject &args) {
             return;
         commands[id]["state"] = "running";
         try {
-            if (base != documentState())
+            if (base != window.revision())
                 fail("Document changed before the queued command ran; refresh and retry.");
             auto scope = window.remoteScope();
             commands[id]["result"] = execute(name, captured);

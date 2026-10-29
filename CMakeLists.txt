@@ -97,6 +97,7 @@ add_library(molforma_ui STATIC
     src/ui/molecule_panel.cpp
     src/ui/molecule_properties.cpp
     src/ui/candidate_controls.cpp
+    src/ui/execution_form.cpp
     src/ui/execution_panel.cpp
     src/ui/history_panel.cpp
     src/ui/input_highlighter.cpp

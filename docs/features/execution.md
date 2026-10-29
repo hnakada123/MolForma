@@ -25,7 +25,7 @@ NWChemとMPIの起動条件を設定し、ジョブとして保存します。�
 | 制限時間 | 秒単位、0は制限なし。到達時は停止処理へ移行 |
 | ジョブ保存先 | 既定は `~/MolForma/jobs`。実行ごとに計算名・日時（ローカル時刻）・ランダムIDから専用フォルダーを作成。`run.json` の時刻はUTCで記録 |
 | 参照ファイルの基準 | 相対指定の入力movecsを探す基準。空欄ではプロジェクトのディレクトリ、未保存ならアプリの作業ディレクトリ |
-| 環境変数 | 有効な行だけを親環境へ上書き。無効な行は保存するが適用しない。名前・値・重複を検査 |
+| 環境変数 | 有効な行だけを親環境へ上書き。無効な行は保存するが適用しない。「追加」した行は無効で始まる（環境設定でも同じ）。名前・値・重複を検査 |
 
 MPI起動数1では動作しないMPI-PR版があります。使用するNWChemとMPIランチャーは同じMPI環境のものを指定してください。UIにはMPI起動数とOpenMP/BLASスレッド数を分けて表示し、論理CPU数を超える並列度や多重並列の注意点を表示します。起動数の制限・CPU割当はMPI側の設定にも依存します。仕様の参照: [NWChem FAQ](https://nwchemgit.github.io/FAQ.html)、[Memory](https://nwchemgit.github.io/Memory.html)、[Open MPI mpirun](https://docs.open-mpi.org/en/main/man-openmpi/man1/mpirun.1.html)。
 

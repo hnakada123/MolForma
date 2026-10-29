@@ -95,6 +95,19 @@ QJsonObject executionDefaults() {
             {"reference_directory", ""},  {"timeout_seconds", 0},
             {"environment", QJsonArray{}}};
 }
+const QVector<ExecutionRange> &executionRanges() {
+    static const QVector<ExecutionRange> ranges{{"mpi_ranks", 1, 4096},
+                                                {"omp_threads", 1, 1024},
+                                                {"blas_threads", 1, 1024},
+                                                {"timeout_seconds", 0, 604800}};
+    return ranges;
+}
+ExecutionRange executionRange(const QString &key) {
+    for (const auto &range : executionRanges())
+        if (range.key == key)
+            return range;
+    fail("Unknown execution setting: " + key);
+}
 QStringList executionPreferenceKeys() {
     return {"executable",   "mode",          "launcher", "mpi_ranks",       "omp_threads",
             "blas_threads", "omp_stacksize", "job_root", "timeout_seconds", "environment"};
@@ -167,10 +180,8 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
     const bool mpi = s["mode"] == "mpi";
     if (!mpi && s["mode"] != "direct")
         r.error("execution.mode", "mode", tr("起動方式はMPIまたは直接実行を選んでください。"), {}, 2);
-    integer("mpi_ranks", 1, 4096);
-    integer("omp_threads", 1, 1024);
-    integer("blas_threads", 1, 1024);
-    integer("timeout_seconds", 0, 604800);
+    for (const auto &range : executionRanges())
+        integer(range.key, range.minimum, range.maximum);
     for (const auto &key : {"executable", "job_root"})
         if (s[key].toString().trimmed().isEmpty())
             r.error("execution.required", key, tr("%1 を指定してください。").arg(key), {}, 2);
@@ -284,7 +295,7 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
 ExecutionPlan executionPlan(const Document &d, const QString &base, const QString &directory, bool local) {
     const auto report = validateExecution(d, base, local);
     if (!report.errors.isEmpty())
-        fail(report.errors.join('\n'));
+        throw ValidationFailure(report);
     const auto s = executionSettings(d);
     ExecutionPlan p;
     p.directory = QDir::cleanPath(directory);
@@ -392,7 +403,7 @@ QString executionCommand(const ExecutionPlan &p) {
 ExecutionPlan saveExecutionBundle(const Document &d, const QString &base, bool forRun) {
     const auto report = validateExecution(d, base, forRun);
     if (!report.errors.isEmpty())
-        fail(report.errors.join('\n'));
+        throw ValidationFailure(report);
     const auto root = executionRoot(executionSettings(d), base);
     if (!QDir().mkpath(root))
         fail(tr("ジョブ保存先を作成できません: %1").arg(root));

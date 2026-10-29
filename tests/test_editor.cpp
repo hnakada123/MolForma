@@ -486,25 +486,25 @@ class EditorTest : public QObject {
         w.loadDocument(Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n"));
         w.show();
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
-        auto *table = w.findChild<QTableWidget *>("coordinateTable");
+        auto *table = w.findChild<QTableView *>("coordinateTable");
         auto *layout = w.findChild<QComboBox *>("moleculeLayout");
         QCOMPARE(layout->currentData().toString(), QString("view")); // The 3D view alone at first.
-        QCOMPARE(table->item(0, 1)->text().toDouble(), 0.0);
+        QCOMPARE(table->model()->index(0, 1).data().toString().toDouble(), 0.0);
         // While the coordinate table is hidden it waits; showing it under the view brings it up to date.
         w.edit("move", [](Document &d) { d.atoms[0].position.x() = 0.25; });
-        QCOMPARE(table->item(0, 1)->text().toDouble(), 0.0);
+        QCOMPARE(table->model()->index(0, 1).data().toString().toDouble(), 0.0);
         w.findChild<QToolButton *>("moleculeLayout_both")->click();
         QVERIFY(table->isVisible() && w.canvas()->isVisible());
-        QCOMPARE(table->item(0, 1)->text().toDouble(), 0.25);
+        QCOMPARE(table->model()->index(0, 1).data().toString().toDouble(), 0.25);
         // The table in view follows undo at once, once the Undo/Redo texts have moved too.
         w.history()->undo();
-        QCOMPARE(table->item(0, 1)->text().toDouble(), 0.0);
+        QCOMPARE(table->model()->index(0, 1).data().toString().toDouble(), 0.0);
         QVERIFY(w.findChild<QPushButton *>("editorRedo")->isEnabled());
         tabs->setCurrentIndex(1);
         w.history()->redo();
-        QCOMPARE(table->item(0, 1)->text().toDouble(), 0.0);
+        QCOMPARE(table->model()->index(0, 1).data().toString().toDouble(), 0.0);
         w.refreshStalePanels(); // What McpGui does before it reads or drives the GUI.
-        QCOMPARE(table->item(0, 1)->text().toDouble(), 0.25);
+        QCOMPARE(table->model()->index(0, 1).data().toString().toDouble(), 0.25);
         // The input preview tab still shows when the input cannot be generated.
         const int preview = 3;
         QCOMPARE(tabs->tabText(preview), QString("4 入力プレビュー"));

@@ -3,6 +3,7 @@
 #include "model/geometry.h"
 #include "model/i18n.h"
 #include "model/settings.h"
+#include "ui/bond_style.h"
 #include "ui/theme.h"
 #include <Eigen/Geometry>
 #include <QSettings>
@@ -510,7 +511,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             const auto &t = surface.at(item.index);
             const Vec smooth = t.na + t.nb + t.nc;
             const Vec normal = r * (smooth.isZero() ? (t.b - t.a).cross(t.c - t.a) : smooth).normalized();
-            QColor color(t.positive ? "#ce5268" : "#397cce");
+            QColor color = surfaceColor(t.positive);
             color = color.lighter(80 + qRound(30 * std::abs(normal.z())));
             color.setAlpha(surfaceOpacity);
             p.setPen(Qt::NoPen);
@@ -526,7 +527,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             if (len < 1)
                 continue;
             QPointF normal(-v.y() / len, v.x() / len);
-            if (displayStyle == "stick" || displayStyle == "wireframe") {
+            if (halfBonds(displayStyle)) {
                 // Half bonds in the atom colors; multiple bonds as one line.
                 const double width = displayStyle == "stick" ? std::clamp(scale * .2, 5., 12.) : 2.;
                 const QPointF middle = (from + to) / 2;
@@ -536,24 +537,20 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
                 p.drawLine(middle, to);
                 continue;
             }
-            QColor color = b.kind == "dative"     ? QColor("#2879bd")
-                           : b.kind == "aromatic" ? QColor("#a36a2b")
-                                                  : QColor("#748595");
-            int count = b.kind == "double" ? 2 : b.kind == "triple" ? 3 : 1;
-            p.setPen(QPen(color, 3.5, Qt::SolidLine, Qt::RoundCap));
-            for (int j = 0; j < count; ++j) {
-                auto offset = normal * ((j - (count - 1) * .5) * 5);
-                p.drawLine(from + offset, to + offset);
+            const auto style = bondStyle(b.kind);
+            p.setPen(QPen(style.color, 3.5, Qt::SolidLine, Qt::RoundCap));
+            for (const double offset : style.offsets)
+                p.drawLine(from + normal * offset, to + normal * offset);
+            if (style.dashed) {
+                p.setPen(QPen(style.color, 1.7, Qt::DashLine));
+                p.drawLine(from + normal * BondStyle::DashOffset, to + normal * BondStyle::DashOffset);
             }
-            if (b.kind == "aromatic") {
-                p.setPen(QPen(color, 1.7, Qt::DashLine));
-                p.drawLine(from + normal * 5, to + normal * 5);
-            }
-            if (b.kind == "dative") {
-                QPointF head = from + v * .72, back = head - v / len * 9;
-                p.setBrush(color);
+            if (style.arrow) {
+                QPointF head = from + v * BondStyle::ArrowAt, back = head - v / len * BondStyle::ArrowLength;
+                p.setBrush(style.color);
                 p.setPen(Qt::NoPen);
-                p.drawPolygon(QPolygonF{head, back + normal * 4, back - normal * 4});
+                p.drawPolygon(QPolygonF{head, back + normal * BondStyle::ArrowHalfWidth,
+                                        back - normal * BondStyle::ArrowHalfWidth});
             }
         } else {
             const auto &a = doc.atoms[item.index];

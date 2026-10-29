@@ -1678,11 +1678,11 @@ void MoleculePanel::addFragmentFromFile() {
     if (p.isEmpty())
         return;
     checkMcpPath(p);
-    const auto base = document().project();
+    const auto base = session.revision();
     const auto options = chooseStructureImport(this, p);
     if (!options)
         return;
-    if (base != document().project())
+    if (base != session.revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
     const auto fragment = importStructure(p, options->model, options->altloc, options->frame);
     edit(tr("ファイルから断片を追加"), [&](Document &d) { insertFragment(d, fragment); }, true);
@@ -1957,11 +1957,11 @@ void MoleculePanel::compareDialog() {
     if (p.isEmpty())
         return;
     checkMcpPath(p);
-    const auto base = document().project();
+    const auto base = session.revision();
     const auto options = chooseStructureImport(this, p);
     if (!options)
         return;
-    if (base != document().project())
+    if (base != session.revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
     const auto reference = importStructure(p, options->model, options->altloc, options->frame);
     const auto fit = superpose(document(), reference);

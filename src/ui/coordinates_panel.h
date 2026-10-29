@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "editing/coordinates.h"
+#include <QAbstractTableModel>
+#include <QColor>
 #include <QHash>
 #include <QIcon>
 #include <QStyledItemDelegate>
@@ -13,8 +15,7 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 class QStackedWidget;
-class QTableWidget;
-class QTableWidgetItem;
+class QTableView;
 class QToolButton;
 namespace mf {
 class MainWindow;
@@ -36,6 +37,40 @@ class CoordinateDelegate : public QStyledItemDelegate {
 
   private:
     Kind kind;
+};
+// The rows of the coordinate table: the atoms of the document shown, with each cell computed when
+// the view asks for it, so that a refresh costs the visible cells only. Editing a cell or its check
+// box calls `edit` with the atom, the document column and the text ("1" / "0" for a check).
+class CoordinateModel : public QAbstractTableModel {
+  public:
+    struct View {
+        Document document;
+        AtomChanges changes; // Of a candidate against the committed document.
+        QHash<QString, QString> places;
+        CoordinateUnit unit = CoordinateUnit::Angstrom;
+        bool editable = true;
+        QColor muted, good, changed;
+    };
+    using Edit = std::function<void(const QString &id, CoordinateColumn column, const QString &text)>;
+    CoordinateModel(QObject *parent, Edit edit, QStringList titles, QStringList tips);
+    void show(View view);
+    void clearIcons(); // After a change of theme.
+    QString id(int row) const;
+    int rowCount(const QModelIndex &parent = {}) const override;
+    int columnCount(const QModelIndex &parent = {}) const override;
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+    QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
+    Qt::ItemFlags flags(const QModelIndex &index) const override;
+    bool setData(const QModelIndex &index, const QVariant &value, int role = Qt::EditRole) override;
+
+  private:
+    View shown;
+    Edit edit;
+    QStringList titles, tips;
+    // Icons of the atom cells by element ("@C" for a ghost), and of the change column ("#added").
+    mutable QHash<QString, QIcon> icons;
+    QIcon atomDot(const Atom &atom) const;
+    QIcon mark(const QString &kind) const;
 };
 class CoordinatesPanel : public QWidget {
     Q_OBJECT
@@ -60,7 +95,8 @@ class CoordinatesPanel : public QWidget {
 
   private:
     MainWindow *window;
-    QTableWidget *table;
+    QTableView *table;
+    CoordinateModel *model;
     QStackedWidget *tablePages;
     QFrame *selectionBar;
     QComboBox *units;
@@ -73,8 +109,6 @@ class CoordinatesPanel : public QWidget {
     QToolButton *showAll, *showChanged;
     QList<QWidget *> editControls;
     QList<QAction *> editActions;
-    // Icons of the atom cells by element ("@C" for a ghost), and of the change column ("#added").
-    QHash<QString, QIcon> icons;
     bool busy = false;
     QPushButton *button(QLayout *layout, const QString &text, const QString &name, const QString &icon,
                         const std::function<void()> &action, bool editing = false);
@@ -82,12 +116,10 @@ class CoordinatesPanel : public QWidget {
     CoordinateUnit exportUnit() const;
     bool editable() const;
     void attempt(const std::function<void()> &action);
-    void cellChanged(QTableWidgetItem *item);
     void applyFilter();
     void refreshCount();
     void refreshSelectionBar();
     void refreshExport();
-    QIcon atomDot(const Atom &atom);
     void addAtom();
     void pasteXyz();
     void importFile();

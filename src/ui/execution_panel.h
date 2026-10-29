@@ -2,25 +2,22 @@
 #pragma once
 #include "nwchem/nwchem_execution.h"
 #include "results/results.h"
-#include <QMap>
 #include <QStringDecoder>
 #include <QWidget>
 class QCheckBox;
 class QComboBox;
 class QFrame;
-class QGridLayout;
 class QSystemTrayIcon;
 class QToolButton;
 class QLabel;
-class QLineEdit;
 class QPlainTextEdit;
 class QPushButton;
 class QSpinBox;
-class QTableWidget;
 class QVBoxLayout;
 namespace mf {
 class MainWindow;
 class ChoiceButtons;
+class ExecutionForm;
 class RunProgress;
 class SettingsCard;
 class StatusCard;
@@ -76,20 +73,18 @@ class ExecutionPanel : public QWidget {
   private:
     MainWindow *window;
     NwchemRun run;
-    bool busy = false, environmentDirty = false, startable = false;
-    QMap<QString, QWidget *> fields;
-    QMap<QString, QLabel *> found; // Where the executable and the launcher were found.
+    bool busy = false, startable = false;
     QWidget *form, *cpuMeter;
-    QTableWidget *environment;
-    QComboBox *mode, *logChannel;
+    ExecutionForm *settingsForm; // Programs and folders, resources and environment.
+    QComboBox *logChannel;
     QList<ChoiceButtons *> choices;
     QSpinBox *memory;
-    QLabel *resources, *memoryTotal, *environmentEmpty, *state, *location, *statePill, *timing, *diagnostics,
-        *context, *startHint, *logName;
+    QLabel *resources, *memoryTotal, *state, *location, *statePill, *timing, *diagnostics, *context,
+        *startHint, *logName;
     QVBoxLayout *checkList;
     RunProgress *progress;
     QPlainTextEdit *command, *log;
-    QPushButton *prepare, *openFolder, *viewResults, *removeEnvironment, *showRunLink, *stopRun;
+    QPushButton *prepare, *openFolder, *viewResults, *showRunLink, *stopRun;
     QFrame *runPanel;
     QFrame *toolbar;        // The calculation, "終了したら結果ビューアに読み込む" and "ジョブとして保存".
     QCheckBox *openResults; // Load the job folder into the result viewer when a run finishes.
@@ -109,12 +104,9 @@ class ExecutionPanel : public QWidget {
     QString resultSummary;
     void appendLog();
     void change(const QString &key, const QJsonValue &value);
-    void editEnvironment();
     void updateRun();
     void runEnded();
     void buildRunPanel();
     void placeRunPanel();
-    void pathField(QGridLayout *grid, const QString &label, const QString &key, bool directory);
-    QWidget *integer(const QString &label, const QString &key, int lo, int hi, const QString &unit = {});
 };
 } // namespace mf

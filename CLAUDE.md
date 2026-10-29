@@ -47,7 +47,7 @@ Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#inc
   `main_window.*` + `editor_panels.cpp` host the editor; `editor_chrome.*` holds the header (workflow steps that
   switch the hidden tab bar), tool rail, flow layout and 3D-view overlays. The numbered tabs are "1 分子" (the 3D
   view with the `coordinates_panel.*` table under it or in its place), "2 計算条件" (`calculation_panel.*`; each
-  section opens its advanced overrides as "詳細設定"), "3 実行設定" (`execution_panel.*`, settings only; the run
+  section opens its advanced overrides as "詳細設定"), "3 実行設定" (`execution_panel.*`, settings only, with the form `execution_form.*` that Preferences shares; the run
   state and log are its run panel over the tabs, opened from the header run pill) and "4 入力プレビュー"
   (`input_preview_panel.*`); result viewer and history are panels too.
 - `molforma_mcp` — `src/mcp`, links core only. A JSON-RPC MCP server over stdio (protocols 2026-07-28 and legacy
@@ -77,13 +77,14 @@ Key cross-cutting designs:
   never make execution settings trusted, even on undo/redo.
 - **Out-of-process work**: long chemistry operations (Open Babel refinement, SMILES → 3D) and heavy result reading
   re-launch the same executable with `--worker` / `--result-worker` via `QProcess`, exchanging JSON through temp
-  files, so they are cancellable. Results returning after the document changed must be rejected as stale.
+  files, so they are cancellable. Results returning after the document changed must be rejected as stale
+  (compare `EditorSession::revision()`, which also backs the MCP `revision`; don't serialize documents for it).
 - **NWChem pipeline**: `nwchem/nwchem.*` validates settings and generates full input; `nwchem_advanced.*` layers typed
   overrides (blank = default) on the base settings; `nwchem_output.*` adds CUBE/MOLDEN tasks; `nwchem_execution.*`
   saves immutable run bundles and controls NWChem/MPI processes; `history.*` scans those bundles. The Input preview
   tab and the MCP tools reuse the same generator and execution plan — don't fork generation logic in the UI.
 - **Rendering**: `ui/molecule_view.*` owns camera, input and Qt annotations and has a QPainter fallback;
-  `ui/vtk_molecule_renderer.*` is compiled only with VTK. Offscreen/minimal Qt platforms or missing OpenGL 3.2
+  `ui/vtk_molecule_renderer.*` is compiled only with VTK. Both draw bonds and isosurfaces by `ui/bond_style.h`. Offscreen/minimal Qt platforms or missing OpenGL 3.2
   automatically fall back to QPainter.
 - Persistence: UI prefs and user presets go to `QSettings("MolForma", "MolForma")`; molecule, calculation and
   execution settings go into the project file. Interactive sessions autosave unsaved work to

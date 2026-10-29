@@ -64,6 +64,32 @@ class ServicesTest : public QObject {
         QCOMPARE(ready, 0);
         QCOMPARE(failed, 1);
     }
+    void sessionRevisionFollowsEveryChange() {
+        // Every change of the document or its candidate moves the revision on, also one back to the
+        // same contents; an edit that changes nothing does not.
+        EditorSession session;
+        session.reset(Document::fromXyz("1\ncarbon\nC 0 0 0\n"));
+        auto revision = session.revision();
+        const auto moved = [&] {
+            const bool changed = session.revision() != revision;
+            revision = session.revision();
+            return changed;
+        };
+        QVERIFY(!session.edit("nothing", [](Document &) {}));
+        QVERIFY(!moved());
+        session.edit("move", [](Document &d) { d.atoms[0].position.y() = 1; });
+        QVERIFY(moved());
+        session.navigate("undo");
+        QVERIFY(moved());
+        session.edit("candidate", [](Document &d) { d.atoms[0].position.y() = 2; }, true);
+        QVERIFY(moved());
+        session.cancel();
+        QVERIFY(moved());
+        session.edit("candidate", [](Document &d) { d.atoms[0].position.y() = 2; }, true);
+        QVERIFY(moved());
+        session.confirm();
+        QVERIFY(moved());
+    }
     void chemistryStartFailureAndFixedAtoms() {
         EditorSession session;
         auto d = Document::fromXyz("1\ncarbon\nC 0 0 0\n");

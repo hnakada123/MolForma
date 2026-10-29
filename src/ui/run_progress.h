@@ -2,14 +2,27 @@
 #pragma once
 #include "nwchem/run_state.h"
 #include "results/results.h"
+#include <QColor>
 #include <QWidget>
 class QLabel;
 class QVBoxLayout;
 namespace mf {
+struct ChromeColors;
 // "18:31", or "1:02:03" past an hour.
 QString elapsedClock(qint64 seconds);
 // A path with the home folder written as "~", as the panels show job folders.
 QString displayPath(const QString &path);
+// The kind of label a run state takes in the run panel and the history: "running", "saved",
+// "finished", "time", "stopped" or "failed".
+QString runStateKind(RunState state);
+// The colors of a state label by its kind: those of runStateKind, and the history's "orphan" (no
+// process), "unknown" (not checked) and "reference" (the job compared against).
+struct PillColors {
+    QColor background, text, line;
+};
+PillColors pillColors(const QString &kind, const ChromeColors &colors);
+// Style rules that color `selector` by the kind in its `property`, as pillColors does.
+QString pillRules(const QString &selector, const QString &property, const ChromeColors &colors);
 
 // The tasks of a job with their state, and the four DRIVER criteria of a running optimization against
 // their thresholds, read from the job folder's input.nw and, as it grows, its output.out. "3 実行設定"

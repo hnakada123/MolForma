@@ -334,6 +334,8 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
             navigate(tab);
         else if (url.scheme() == "field")
             window->showSetting(1, url.path());
+        else if (url.scheme() == "execution")
+            window->showSetting(2, url.path());
     };
     connect(paths, &QLabel::linkActivated, this, openLink);
     connect(diagnostics, &QTextBrowser::anchorClicked, this,
@@ -478,8 +480,11 @@ void InputPreviewPanel::refresh() {
     modes->sync();
     QStringList errors = report.errors;
     QString html;
+    // The setting a message is about in "2 計算条件" or "3 実行設定", else its tab.
     const auto target = [](const Diagnostic &d) {
-        return d.tab == 1 && !d.setting.isEmpty() ? "field:" + d.setting : QString("tab:%1").arg(d.tab);
+        if (d.setting.isEmpty() || (d.tab != 1 && d.tab != 2))
+            return QString("tab:%1").arg(d.tab);
+        return (d.tab == 1 ? "field:" : "execution:") + d.setting;
     };
     auto append = [&](const QString &label, const QString &message, const QString &link,
                       const QColor &color) {
@@ -505,12 +510,16 @@ void InputPreviewPanel::refresh() {
             text = generated.text;
             generatedOutline = generated.outline;
         }
-    } catch (const std::exception &e) {
-        for (const auto &error : QString::fromUtf8(e.what()).split('\n'))
-            if (!errors.contains(error)) {
-                errors << error;
-                append(tr("エラー:"), error, "tab:2", c.bad);
+    } catch (const ValidationFailure &e) {
+        // The execution settings in resolved mode: each error points at its setting.
+        for (const auto &diagnostic : e.report.diagnostics)
+            if (diagnostic.severity == DiagnosticSeverity::Error && !errors.contains(diagnostic.message)) {
+                errors << diagnostic.message;
+                append(tr("エラー:"), diagnostic.message, target(diagnostic), c.bad);
             }
+    } catch (const std::exception &e) {
+        errors << QString::fromUtf8(e.what());
+        append(tr("エラー:"), errors.last(), "tab:2", c.bad);
     }
     for (const auto &diagnostic : report.diagnostics) {
         if (diagnostic.severity != DiagnosticSeverity::Warning)

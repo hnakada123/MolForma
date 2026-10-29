@@ -849,10 +849,10 @@ class CalculationTest : public QObject {
         QVERIFY(w.findChild<QLabel *>("calculationOutputFiles")->text().contains(".molden"));
     }
     void nwchemImportRoundTripEverySetting() {
-        // Every value of every setting reads back from the input MolForma writes for it, in a
-        // calculation that uses the setting. Not read from inputs: the settings of later tasks
-        // (follow-up calculations), scans (one geometry per point), point charges (bq) and the
-        // additional input.
+        // Every value of every setting reads back from the input MolForma writes for it, in each
+        // calculation that uses the setting (IRC writes the DRIVER maxiter in MEPGS). Not read from inputs:
+        // the settings of later tasks (follow-up calculations), scans (one geometry per point), point charges
+        // (bq) and the additional input.
         const QStringList notImported{"followup",
                                       "followup_method",
                                       "followup_functional",
@@ -916,41 +916,54 @@ class CalculationTest : public QObject {
                 if (notImported.contains(key))
                     continue;
                 // Bases of heavy elements, and counterpoise monomers.
-                auto d = value.toString().startsWith("sarc-")
-                             ? Document::fromXyz("2\ngold\nAu 0 0 0\nAu 0 0 2.5\n")
-                         : spec.key == "bsse"
-                             ? Document::fromXyz("6\ndimer\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 "
-                                                 "0.504\nO 0 0 3\nH 0.758 0 3.504\nH -0.758 0 3.504\n")
-                             : water();
-                // The first of these calculations that uses the setting.
+                const auto base =
+                    value.toString().startsWith("sarc-")
+                        ? Document::fromXyz("2\ngold\nAu 0 0 0\nAu 0 0 2.5\n")
+                    : spec.key == "bsse"
+                        ? Document::fromXyz("6\ndimer\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 "
+                                            "0.504\nO 0 0 3\nH 0.758 0 3.504\nH -0.758 0 3.504\n")
+                        : water();
+                // Every one of these calculations that uses the setting, except those not read back.
+                int tested = 0;
                 for (const auto &context : contexts) {
-                    auto next = d;
-                    for (const auto &[setting, contextValue] : context)
-                        set(next, setting,
+                    auto d = base;
+                    QStringList named;
+                    bool skipped = false;
+                    for (const auto &[setting, contextValue] : context) {
+                        set(d, setting,
                             contextValue == "<atoms>" ? QJsonValue(QJsonArray{d.atoms[0].id, d.atoms[1].id})
                                                       : contextValue);
-                    if (nwchemSettingApplies(spec, nwchemSettings(next))) {
-                        d = next;
-                        break;
+                        named << QString(setting) + "=" + nwchemAdvancedText(contextValue);
+                        skipped |= notImported.contains(setting) || notImported.contains(named.last());
                     }
+                    if (skipped || !nwchemSettingApplies(spec, nwchemSettings(d)))
+                        continue;
+                    const auto where = named.isEmpty() ? key : key + " with " + named.join(", ");
+                    set(d, spec.key, value);
+                    // Values that need another setting with them.
+                    if (value == "custom")
+                        set(d, "xc_custom", "xpbe96 0.75 cpbe96 1.0 hfexch 0.25");
+                    if (value == "zora" || value == "smd" || value == "sarc-zora")
+                        set(d, "method", "dft");
+                    if (value == "smd")
+                        set(d, "solvent_name", "h2o");
+                    if (value.toString().startsWith("sarc-"))
+                        set(d, "relativistic", value == "sarc-zora" ? "zora" : "dkh");
+                    if (!validateNwchem(d).errors.isEmpty())
+                        continue; // A combination MolForma refuses.
+                    ++tested;
+                    // Nothing tells the value from the default when the input is the same (RHF in DFT).
+                    auto initial = d;
+                    set(initial, spec.key, spec.initial);
+                    const auto input = nwchemInput(d);
+                    if (validateNwchem(initial).errors.isEmpty() && input == nwchemInput(initial))
+                        continue;
+                    const auto imported = nwchemSettings(importNwchemInput(input).document);
+                    if (imported[spec.key] != value)
+                        failures << where + " (read " + nwchemAdvancedText(imported[spec.key]) + ")";
                 }
-                set(d, spec.key, value);
-                // Values that need another setting with them.
-                if (value == "custom")
-                    set(d, "xc_custom", "xpbe96 0.75 cpbe96 1.0 hfexch 0.25");
-                if (value == "zora" || value == "smd" || value == "sarc-zora")
-                    set(d, "method", "dft");
-                if (value == "smd")
-                    set(d, "solvent_name", "h2o");
-                if (value.toString().startsWith("sarc-"))
-                    set(d, "relativistic", value == "sarc-zora" ? "zora" : "dkh");
-                if (const auto errors = validateNwchem(d).errors; !errors.isEmpty()) {
-                    failures << key + " (invalid: " + errors.join(' ') + ")";
-                    continue;
-                }
-                const auto imported = nwchemSettings(importNwchemInput(nwchemInput(d)).document);
-                if (imported[spec.key] != value)
-                    failures << key + " (read " + nwchemAdvancedText(imported[spec.key]) + ")";
+                if (!tested)
+                    failures << key + " (no valid calculation uses it)";
             }
         }
         QVERIFY2(failures.isEmpty(), qPrintable(failures.join('\n')));

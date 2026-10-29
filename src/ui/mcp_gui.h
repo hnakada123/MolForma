@@ -28,7 +28,6 @@ class McpGui : public QObject {
     QJsonObject describe(QObject *object);
     QJsonObject state() const;
     QJsonObject results(const QJsonObject &args) const;
-    QByteArray documentState() const;
     QJsonObject enqueue(const QString &name, const QJsonObject &args);
     std::optional<QJsonObject> task(const QString &commandId) const;
     bool cancel(const QString &commandId);

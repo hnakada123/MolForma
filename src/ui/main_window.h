@@ -55,6 +55,10 @@ class MainWindow : public QMainWindow {
     const Document &displayDocument() const {
         return session.displayDocument();
     }
+    // Grows with every change of the document or its candidate (EditorSession::revision).
+    quint64 revision() const {
+        return session.revision();
+    }
     bool hasCandidate() const {
         return session.candidate().has_value();
     }

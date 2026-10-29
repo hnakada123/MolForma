@@ -51,6 +51,7 @@ void ChemistryJob::start(const ChemistryRequest &request) {
                          .toJson());
     scratch = std::move(work);
     const auto serial = ++generation;
+    const auto revision = session.revision();
     auto *p = process = new QProcess(this);
     p->setProgram(program);
     p->setArguments({"--worker", input, output});
@@ -62,7 +63,7 @@ void ChemistryJob::start(const ChemistryRequest &request) {
         emit failed(request, message, true);
     });
     connect(p, &QProcess::finished, this,
-            [this, p, request, base, serial, output](int code, QProcess::ExitStatus status) {
+            [this, p, request, base, serial, revision, output](int code, QProcess::ExitStatus status) {
                 if (process != p)
                     return;
                 QString error;
@@ -70,9 +71,9 @@ void ChemistryJob::start(const ChemistryRequest &request) {
                     const auto response = parseJson(readFile(output));
                     if (code != 0 || status != QProcess::NormalExit || response.contains("error"))
                         fail(response["error"].toString(tr("整形に失敗しました。")));
-                    if (session.document().project() != base.project())
+                    if (session.revision() != revision)
                         fail(tr("分子が変更されたため整形結果を破棄しました。"));
-                    ChemistryResult result{request, base, {}, {}, serial};
+                    ChemistryResult result{request, base, {}, {}, serial, revision};
                     if (request.mode == "conformers") {
                         for (const auto &v : response["conformers"].toArray()) {
                             const auto c = v.toObject();
@@ -96,7 +97,7 @@ void ChemistryJob::start(const ChemistryRequest &request) {
     emit changed();
 }
 bool ChemistryJob::propose(const ChemistryResult &result, int conformer) {
-    if (!active() || result.generation != generation || session.document().project() != result.base.project())
+    if (!active() || result.generation != generation || session.revision() != result.revision)
         fail(tr("分子が変更されたため整形結果を破棄しました。"));
     auto next = session.document();
     const auto mode = result.request.mode;

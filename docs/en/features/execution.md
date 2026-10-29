@@ -25,7 +25,7 @@ Sets how NWChem and MPI are launched and saves the run as a job. At the top are 
 | Time limit | In seconds; 0 means no limit. When reached, the run is stopped |
 | Job folder | Default `~/MolForma/jobs`. Each run gets its own folder named from the calculation name, date and time (local time) and a random ID. Times in `run.json` are recorded in UTC |
 | Reference directory | Base for finding relative input movecs. If blank, the project's directory, or the app's working directory for an unsaved project |
-| Environment variables | Only enabled rows override the parent environment. Disabled rows are saved but not applied. Names, values and duplicates are checked |
+| Environment variables | Only enabled rows override the parent environment. Disabled rows are saved but not applied. Rows added with “Add” start disabled (also in Preferences). Names, values and duplicates are checked |
 
 Some MPI-PR builds do not work with 1 MPI process. Specify an NWChem executable and an MPI launcher from the same MPI environment. The UI shows MPI processes and OpenMP/BLAS threads separately, and warns about parallelism beyond the number of logical CPUs and about nested parallelism. Process limits and CPU binding also depend on the MPI configuration. References: [NWChem FAQ](https://nwchemgit.github.io/FAQ.html), [Memory](https://nwchemgit.github.io/Memory.html), [Open MPI mpirun](https://docs.open-mpi.org/en/main/man-openmpi/man1/mpirun.1.html).
 

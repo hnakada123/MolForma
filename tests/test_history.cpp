@@ -44,19 +44,39 @@ class HistoryTest : public QObject {
         widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(5);
         w.show();
     }
+    // A row of the list, read through the list's model.
+    struct Item {
+        QModelIndex index; // Its first column.
+        const Item *operator->() const {
+            return this;
+        }
+        QString text(int column) const {
+            return index.siblingAtColumn(column).data().toString();
+        }
+        QVariant data(int column, int role) const {
+            return index.siblingAtColumn(column).data(role);
+        }
+    };
     // The job rows of the list, in their order (the headings of the days hold no job folder).
-    static QList<QTreeWidgetItem *> rows(MainWindow &w) {
-        QList<QTreeWidgetItem *> jobs;
-        for (QTreeWidgetItemIterator it(widget<QTreeWidget>(w, "historyTable")); *it; ++it)
-            if (!(*it)->data(0, Qt::UserRole).toString().isEmpty())
-                jobs << *it;
+    static QList<Item> rows(MainWindow &w) {
+        QList<Item> jobs;
+        auto *model = widget<QTreeView>(w, "historyTable")->model();
+        const std::function<void(const QModelIndex &)> visit = [&](const QModelIndex &parent) {
+            for (int row = 0; row < model->rowCount(parent); ++row) {
+                const auto index = model->index(row, 0, parent);
+                if (!index.data(Qt::UserRole).toString().isEmpty())
+                    jobs << Item{index};
+                visit(index);
+            }
+        };
+        visit({});
         return jobs;
     }
-    static QTreeWidgetItem *row(MainWindow &w, const QString &directory) {
-        for (auto *item : rows(w))
-            if (item->data(0, Qt::UserRole).toString() == directory)
+    static Item row(MainWindow &w, const QString &directory) {
+        for (const auto &item : rows(w))
+            if (item.data(0, Qt::UserRole).toString() == directory)
                 return item;
-        return nullptr;
+        return {};
     }
     static QString fact(MainWindow &w, const QString &key) {
         auto *label = w.findChild<QLabel *>("historyFact_" + key);
@@ -404,15 +424,16 @@ class HistoryTest : public QObject {
         const int undo = w.history()->count();
         showHistory(w);
         auto *panel = widget<HistoryPanel>(w, "historyTab");
-        auto *table = widget<QTreeWidget>(w, "historyTable");
+        auto *table = widget<QTreeView>(w, "historyTable");
+        auto *list = table->model();
         QTRY_VERIFY(!panel->scanning());
         QCOMPARE(rows(w).size(), 3);
         QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->tabText(5), "履歴");
         // Newest first under the heading of their day, which is not a job to select.
-        QCOMPARE(table->topLevelItemCount(), 1);
-        QVERIFY(table->topLevelItem(0)->text(0).startsWith("今日 · "));
-        QCOMPARE(table->topLevelItem(0)->childCount(), 3);
-        QVERIFY(!(table->topLevelItem(0)->flags() & Qt::ItemIsSelectable));
+        QCOMPARE(list->rowCount(), 1);
+        QVERIFY(list->index(0, 0).data().toString().startsWith("今日 · "));
+        QCOMPARE(list->rowCount(list->index(0, 0)), 3);
+        QVERIFY(!(list->index(0, 0).flags() & Qt::ItemIsSelectable));
         QCOMPARE(rows(w).first()->data(0, Qt::UserRole).toString(), second.directory);
         QCOMPARE(rows(w).first()->text(0), "稼働未確認");
         // The states with their counts.
@@ -436,7 +457,7 @@ class HistoryTest : public QObject {
         widget<QPushButton>(w, "historyReference")->click();
         QVERIFY(widget<QPushButton>(w, "historyCompare")->isChecked());
         QVERIFY(!table->isColumnHidden(7));
-        QCOMPARE(table->headerItem()->text(7), "ΔE / kcal/mol");
+        QCOMPARE(list->headerData(7, Qt::Horizontal).toString(), "ΔE / kcal/mol");
         QCOMPARE(row(w, first.directory)->text(7), "0.00");
         QCOMPARE(row(w, third.directory)->text(7), "−6.28");
         QCOMPARE(row(w, second.directory)->data(7, Qt::UserRole + 2).toString(), "終了後に表示");
@@ -447,7 +468,7 @@ class HistoryTest : public QObject {
         auto *unit = widget<QComboBox>(w, "historyEnergyUnit");
         unit->setCurrentIndex(unit->findData("hartree"));
         QCOMPARE(row(w, third.directory)->text(7), "−0.01000000");
-        table->setCurrentItem(row(w, third.directory));
+        table->setCurrentIndex(row(w, third.directory)->index);
         QCOMPARE(widget<QLabel>(w, "historyEnergyCaption")->text(), "基準 molforma との差");
         QCOMPARE(widget<QLabel>(w, "historyEnergyValue")->text(), "−0.01000000");
         QVERIFY(widget<QLabel>(w, "historyEnergyNote")->text().contains("−6.28 kcal/mol"));
@@ -456,7 +477,7 @@ class HistoryTest : public QObject {
         QVERIFY(table->isColumnHidden(7));
         QVERIFY(!widget<QPushButton>(w, "historyCompare")->isChecked());
         // A memo kept in the job folder, shown in the list and written to CSV.
-        table->setCurrentItem(row(w, first.directory));
+        table->setCurrentIndex(row(w, first.directory)->index);
         widget<QPlainTextEdit>(w, "historyMemo")->setPlainText("基準構造");
         QTRY_VERIFY(QFileInfo::exists(first.directory + "/memo.txt")); // Saved shortly after typing.
         QCOMPARE(readFile(first.directory + "/memo.txt").trimmed(), QByteArray("基準構造"));
@@ -465,7 +486,7 @@ class HistoryTest : public QObject {
         QVERIFY(historyCsv({readHistoryEntry(first.directory)}).contains("\"H2O\",\"基準構造\""));
         // Sorting by another column lists the jobs without days.
         table->header()->setSortIndicator(5, Qt::AscendingOrder);
-        QCOMPARE(table->topLevelItemCount(), 3);
+        QCOMPARE(list->rowCount(), 3);
         QCOMPARE(rows(w).first()->text(5), "0:09");
         table->header()->setSortIndicator(5, Qt::DescendingOrder);
         QCOMPARE(rows(w).first()->text(5), "1:40");
@@ -475,7 +496,7 @@ class HistoryTest : public QObject {
         QCOMPARE(rows(w).size(), 1);
         QVERIFY(panel->selectedDirectory().isEmpty());
         QVERIFY(!widget<QPushButton>(w, "historyReuse")->isEnabled());
-        table->setCurrentItem(rows(w).first());
+        table->setCurrentIndex(rows(w).first()->index);
         QCOMPARE(panel->selectedDirectory(), second.directory);
         QVERIFY(!widget<QPushButton>(w, "historyStop")->isEnabled());
         QVERIFY(!widget<QPushButton>(w, "historyTrash")->isEnabled());
@@ -489,7 +510,7 @@ class HistoryTest : public QObject {
         QVERIFY(!readFile(csvPath).contains("基準構造"));
         widget<QLineEdit>(w, "historySearch")->setText("zzz");
         QCOMPARE(rows(w).size(), 0);
-        QCOMPARE(table->topLevelItemCount(), 1); // A line that says nothing matches.
+        QCOMPARE(list->rowCount(), 1); // A line that says nothing matches.
         QCOMPARE(w.document().project(), before);
         QCOMPARE(w.history()->count(), undo);
         widget<QLineEdit>(w, "historySearch")->clear();

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/atom_properties.h"
 #include "model/i18n.h"
+#include "model/numbers.h"
 #include <QRegularExpression>
 #include <cmath>
 #include <openbabel/elements.h>
@@ -18,11 +19,10 @@ AtomProperties atomMassInput(const QString &text) {
             fail(tr("質量数は正の整数にしてください。"));
         properties.isotope = isotope;
     } else {
-        bool ok;
-        const double mass = entry.replace(QChar('D'), QChar('e'), Qt::CaseInsensitive).toDouble(&ok);
-        if (!ok || !std::isfinite(mass) || mass <= 0)
+        const auto mass = fortranNumber(entry);
+        if (!mass || *mass <= 0)
             fail(tr("質量は正の値（amu）を入力してください。"));
-        properties.mass = mass;
+        properties.mass = *mass;
     }
     return properties;
 }

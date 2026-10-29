@@ -24,9 +24,10 @@ double measure(const Document &d, const Ids &ids);
 void setDimension(Document &d, const Ids &ids, double value);
 void orient(Document &d, const Ids &ids);
 void centerMass(Document &d, const Ids &ids, bool principal);
-// Number of proper rotations (identity included) that map the real atoms onto themselves within
-// 0.05 Å: the rotational symmetry number used in thermochemistry. 0 if not determined (isotopes
-// or explicit masses, fewer than 2 or more than 60 atoms).
+// The rotational symmetry number used in thermochemistry: the proper rotations (identity included)
+// of the point group of the real atoms at the default tolerance, as "点群・対称化" shows it, with
+// isotopes and masses as distinct kinds (HDO 1, D2O 2). 0 if not determined (one atom, more than
+// 200 atoms).
 int rotationalSymmetryNumber(const Document &d);
 Vec internalPoint(const Vec &a, const Vec &b, const Vec &c, double length, double angle, double dihedral);
 struct Superposition {

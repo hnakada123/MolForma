@@ -146,6 +146,13 @@ class InputPreviewTest : public QObject {
         mode->setCurrentIndex(0);
         QVERIFY(text(w)->toPlainText().contains("scratch_dir ../outside\n"));
         QVERIFY(widget<QPushButton>(w, "inputPreviewSave")->isEnabled());
+        // An error of the execution settings leads to its control in "3 実行設定".
+        w.edit("no ranks", [](Document &next) { setExecutionSetting(next, "mpi_ranks", 0); });
+        mode->setCurrentIndex(1);
+        auto *checks = widget<QTextBrowser>(w, "inputPreviewDiagnostics");
+        QVERIFY2(checks->toHtml().contains("execution:mpi_ranks"), qPrintable(checks->toPlainText()));
+        QVERIFY(QMetaObject::invokeMethod(checks, "anchorClicked", Q_ARG(QUrl, QUrl("execution:mpi_ranks"))));
+        QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 2);
     }
     void chemistryWorkerBlocksExportUntilCancelled() {
         MainWindow w;

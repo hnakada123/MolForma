@@ -16,6 +16,58 @@ QString displayPath(const QString &path) {
     const auto home = QDir::homePath();
     return path == home ? QString("~") : path.startsWith(home + '/') ? "~" + path.mid(home.size()) : path;
 }
+QString runStateKind(RunState state) {
+    switch (state) {
+    case RunState::Starting:
+    case RunState::Running:
+    case RunState::Stopping:
+        return "running";
+    case RunState::Prepared:
+        return "saved";
+    case RunState::Finished:
+        return "finished";
+    case RunState::TimedOut:
+        return "time";
+    case RunState::Cancelled:
+    case RunState::Interrupted:
+        return "stopped";
+    case RunState::Idle:
+    case RunState::Failed:
+    case RunState::Invalid:
+        break;
+    }
+    return "failed";
+}
+PillColors pillColors(const QString &kind, const ChromeColors &c) {
+    if (kind == "running")
+        return {c.tint, c.accentText, c.tint};
+    if (kind == "finished")
+        return {c.goodTint, c.good, c.goodTint};
+    if (kind == "failed")
+        return {c.badTint, c.bad, c.badTint};
+    if (kind == "time")
+        return {c.candidate, c.candidateText, c.candidate};
+    if (kind == "orphan")
+        return {c.candidate, c.candidateText, c.candidateLine};
+    if (kind == "saved")
+        return {c.base, c.text, c.line};
+    if (kind == "unknown")
+        return {c.segment, c.muted, c.line};
+    if (kind == "reference")
+        return {c.accent, c.onAccent, c.accent};
+    return {c.segment, c.text, c.segment}; // stopped
+}
+QString pillRules(const QString &selector, const QString &property, const ChromeColors &c) {
+    QString rules;
+    for (const auto *kind :
+         {"running", "saved", "finished", "time", "stopped", "failed", "orphan", "unknown"}) {
+        const auto colors = pillColors(kind, c);
+        rules += QString("%1[%2=\"%3\"] { background: %4; color: %5; border: 1px solid %6; }\n")
+                     .arg(selector, property, kind, colors.background.name(), colors.text.name(),
+                          colors.line.name());
+    }
+    return rules;
+}
 
 RunProgress::RunProgress(const QString &prefix, int columns, QWidget *parent)
     : QWidget(parent), name(prefix) {

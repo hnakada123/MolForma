@@ -3,6 +3,7 @@
 #include "model/units.h"
 #include "results/molden_orbitals.h"
 #include "ui/editor_chrome.h"
+#include "ui/theme.h"
 #include <QHelpEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -211,7 +212,7 @@ void ChartView::paintEvent(QPaintEvent *) {
     }
     for (int index = 0; index < series.size(); ++index) {
         const auto &s = series[index];
-        p.setPen(QPen(s.color, s.sticks ? 1.5 : 2));
+        p.setPen(QPen(color(s.tone), s.sticks ? 1.5 : 2));
         if (s.sticks) {
             for (const auto &point : s.points)
                 p.drawLine(toScreen(point.x(), logY ? std::pow(10, y0) : 0), toScreen(point.x(), point.y()));
@@ -247,13 +248,30 @@ void ChartView::paintEvent(QPaintEvent *) {
         if (s.name.isEmpty())
             continue;
         const double w = metrics.horizontalAdvance(s.name);
-        p.setPen(QPen(s.color, 2));
+        p.setPen(QPen(color(s.tone), 2));
         p.drawLine(QPointF(plot.right() - w - 30, y + metrics.height() / 2.),
                    QPointF(plot.right() - w - 12, y + metrics.height() / 2.));
         p.setPen(text);
         p.drawText(QPointF(plot.right() - w - 6, y + metrics.ascent()), s.name);
         y += metrics.height();
     }
+}
+
+QColor ChartView::color(ChartTone tone) const {
+    const ChromeColors c(palette());
+    switch (tone) {
+    case ChartTone::Accent:
+        return c.accent;
+    case ChartTone::Second:
+        return accentColor(palette(), "#c2570c", "#f0883e");
+    case ChartTone::Contrast:
+        return errorColor(palette());
+    case ChartTone::Muted:
+        return c.muted;
+    case ChartTone::Text:
+        return c.text;
+    }
+    return c.text;
 }
 
 FrameTimeline::FrameTimeline(QWidget *parent) : QWidget(parent) {

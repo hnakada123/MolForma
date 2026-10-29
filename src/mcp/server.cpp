@@ -340,11 +340,7 @@ std::optional<Document> McpServer::candidate() const {
     return editor.candidate ? editor.candidate() : session.candidate();
 }
 QString McpServer::revision() const {
-    auto c = candidate();
-    auto bytes = QJsonDocument(QJsonObject{{"document", document().project()},
-                                           {"candidate", c ? QJsonValue(c->project()) : QJsonValue()}})
-                     .toJson(QJsonDocument::Compact);
-    return QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex());
+    return QString::number(editor.revision ? editor.revision() : session.revision());
 }
 QJsonObject McpServer::snapshot() const {
     const auto d = document();
@@ -375,7 +371,7 @@ QJsonObject McpServer::summary() const {
     for (const auto &a : c->atoms)
         if (!d.contains(a.id))
             note(added, a.id);
-        else if (d.atom(a.id).toJson() != a.toJson())
+        else if (d.atom(a.id) != a)
             note(changed, a.id);
     for (const auto &a : d.atoms)
         if (!c->contains(a.id))

@@ -18,14 +18,14 @@ class QPushButton;
 class QSplitter;
 class QStackedWidget;
 class QToolButton;
-class QTreeWidget;
-class QTreeWidgetItem;
+class QTreeView;
 class QVBoxLayout;
 namespace mf {
 class MainWindow;
 class NwchemRun;
 class ChoiceButtons;
 class ElidedLabel;
+class HistoryModel;
 class RunProgress;
 class SettingsCard;
 class ToolbarFit;
@@ -119,7 +119,8 @@ class HistoryPanel : public QWidget {
     // The list and the files.
     QStackedWidget *pages, *fileStack;
     QSplitter *listSplit;
-    QTreeWidget *table;
+    QTreeView *table;
+    HistoryModel *model;
     QLabel *status, *note;
     SettingsCard *filesCard;
     QLabel *fileName;
@@ -147,7 +148,6 @@ class HistoryPanel : public QWidget {
     QString activeDirectory() const;
     QString executionRoot() const;
     void populate(bool reloadDetails = true);
-    void fillRow(QTreeWidgetItem *item, const Row &row, bool grouped, double largest) const;
     void updateRow(const HistoryEntry &e);
     void updateToolbar();
     void showEmptyPage();

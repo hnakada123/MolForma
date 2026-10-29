@@ -1428,7 +1428,7 @@ void extraInput(NwchemInputBuilder &out, const QString &text, const QString &key
 NwchemGeneratedInput generateNwchemInput(const Document &d) {
     const auto check = validateNwchem(d);
     if (!check.errors.isEmpty())
-        fail(check.errors.join('\n'));
+        throw ValidationFailure(check);
     const auto s = nwchemSettings(d), advanced = nwchemAdvanced(d);
     auto str = [&](const char *key) { return s[key].toString(); };
     auto integer = [&](const char *key) { return QString::number(s[key].toInt()); };

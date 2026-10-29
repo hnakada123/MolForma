@@ -16,13 +16,6 @@
 namespace mf {
 namespace {
 constexpr qint64 textLimit = 128 * 1024, projectLimit = 8 * 1024 * 1024;
-QString resolve(QString path, const QString &base) {
-    if (path == "~")
-        path = QDir::homePath();
-    else if (path.startsWith("~/"))
-        path = QDir::home().filePath(path.mid(2));
-    return QDir::cleanPath(QDir(base).absoluteFilePath(path));
-}
 QByteArray bytes(const QString &directory, const QString &name, qint64 limit, bool tail = false) {
     const auto path = QDir(directory).filePath(name);
     const QFileInfo info(path);
@@ -78,7 +71,7 @@ QString projectMismatch() {
 }
 } // namespace
 QString historyRoot(const Document &d, const QString &base) {
-    return resolve(executionSettings(d)["job_root"].toString(), base);
+    return absolutePath(executionSettings(d)["job_root"].toString(), base);
 }
 QString historyChoice(const QString &key, const QString &value) {
     for (const auto &c : nwchemChoices(key))
@@ -311,7 +304,7 @@ Document historyDocument(const QString &directory) {
         const auto value = s[key].toString();
         if (!QDir::isAbsolutePath(value) && (value.contains('/') || value.startsWith('~'))) {
             if (QDir::isAbsolutePath(base))
-                setExecutionSetting(d, key, resolve(value, base));
+                setExecutionSetting(d, key, absolutePath(value, base));
             else {
                 // Original v1 runs stored resolved commands but not the source project's directory.
                 const bool mpi = s["mode"] == "mpi";

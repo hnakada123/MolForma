@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "results/molden_orbitals.h"
 #include "model/i18n.h"
+#include "model/numbers.h"
 #include "model/units.h"
 #include <QRegularExpression>
 #include <algorithm>
@@ -11,13 +12,10 @@
 
 namespace mf {
 namespace {
-double real(QString text) {
-    text.replace(QChar('D'), QChar('E'), Qt::CaseInsensitive);
-    bool ok;
-    const double value = text.toDouble(&ok);
-    if (!ok || !std::isfinite(value))
-        fail(tr("MOLDEN基底の数値が不正です。"));
-    return value;
+double real(const QString &text) {
+    if (const auto value = fortranNumber(text))
+        return *value;
+    fail(tr("MOLDEN基底の数値が不正です。"));
 }
 int count(const QString &text, int maximum) {
     const double n = real(text);

@@ -23,8 +23,40 @@ class CoordinatesTest : public QObject {
         d.envelope["result_reference"] = QJsonObject{{"path", "existing-result.out"}};
         return d;
     }
-    static QTableWidget *table(MainWindow &w) {
-        return w.findChild<QTableWidget *>("coordinateTable");
+    static QTableView *table(MainWindow &w) {
+        return w.findChild<QTableView *>("coordinateTable");
+    }
+    // A cell of the coordinate table, read and edited through the table's model as the view does.
+    struct Cell {
+        QTableView *view;
+        QModelIndex index;
+        const Cell *operator->() const {
+            return this;
+        }
+        QString text() const {
+            return index.data().toString();
+        }
+        void setText(const QString &text) const {
+            view->model()->setData(index, text);
+        }
+        Qt::CheckState checkState() const {
+            return Qt::CheckState(index.data(Qt::CheckStateRole).toInt());
+        }
+        void setCheckState(Qt::CheckState state) const {
+            view->model()->setData(index, state, Qt::CheckStateRole);
+        }
+        Qt::ItemFlags flags() const {
+            return index.flags();
+        }
+        QVariant data(int role) const {
+            return index.data(role);
+        }
+        bool isSelected() const {
+            return view->selectionModel()->isSelected(index);
+        }
+    };
+    static Cell item(QTableView *t, int row, int column) {
+        return {t, t->model()->index(row, column)};
     }
     static QAbstractButton *button(MainWindow &w, const char *name) {
         return w.findChild<QAbstractButton *>(name);
@@ -181,6 +213,26 @@ class CoordinatesTest : public QObject {
             QVERIFY_EXCEPTION_THROWN(coordinateAtom("C", {"0", "0", "0"}, bad, CoordinateUnit::Angstrom),
                                      std::runtime_error);
     }
+    void refreshUpdatesCellsInPlace() {
+        // A refresh updates the cells of the rows there are; only another number of atoms resets them.
+        MainWindow w;
+        w.loadDocument(water());
+        w.showCoordinateTable();
+        auto *t = table(w);
+        QSignalSpy resets(t->model(), &QAbstractItemModel::modelReset);
+        QSignalSpy cells(t->model(), &QAbstractItemModel::dataChanged);
+        item(t, 1, 1)->setText("1.5");
+        QCOMPARE(w.document().atoms[1].position.x(), 1.5);
+        QCOMPARE(item(t, 1, 1)->text(), QString("1.5"));
+        QCOMPARE(resets.count(), 0);
+        QVERIFY(cells.count() > 0);
+        w.edit("add", [](Document &d) {
+            d.atoms << Atom{};
+            d.atoms.last().position = Vec(3, 3, 3);
+        });
+        QCOMPARE(t->model()->rowCount(), 4);
+        QCOMPARE(resets.count(), 1);
+    }
     void tabEditingUnitsUndoAndPrecision() {
         MainWindow w;
         auto d = water();
@@ -195,20 +247,20 @@ class CoordinatesTest : public QObject {
         QCOMPARE(tabs->currentIndex(), 0);
         auto *t = table(w);
         QVERIFY(w.findChild<QWidget *>("moleculeSplit")->isAncestorOf(t));
-        QCOMPARE(t->rowCount(), 3);
+        QCOMPARE(t->model()->rowCount(), 3);
         auto *units = w.findChild<QComboBox *>("coordinateUnits");
         for (int i = 0; i < 20; ++i)
             units->setCurrentIndex(i % 2);
         QCOMPARE(w.document().toJson(), d.toJson());
         QCOMPARE(w.history()->count(), 0);
-        QVERIFY(std::abs(t->item(0, 1)->text().toDouble() - d.atoms[0].position.x() / BohrToAngstrom) <
+        QVERIFY(std::abs(item(t, 0, 1)->text().toDouble() - d.atoms[0].position.x() / BohrToAngstrom) <
                 1e-13);
         // Shown with six decimals; the cell (and its editor) keeps the full value.
         auto *delegate = qobject_cast<QStyledItemDelegate *>(t->itemDelegateForColumn(1));
         QVERIFY(delegate);
-        QCOMPARE(delegate->displayText(t->item(0, 1)->text(), QLocale()),
+        QCOMPARE(delegate->displayText(item(t, 0, 1)->text(), QLocale()),
                  QString::number(d.atoms[0].position.x() / BohrToAngstrom, 'f', 6));
-        t->item(0, 1)->setText("2");
+        item(t, 0, 1)->setText("2");
         QCOMPARE(w.document().atoms[0].position.x(), 2 * BohrToAngstrom);
         QCOMPARE(w.document().atoms[0].position.y(), d.atoms[0].position.y());
         QCOMPARE(w.document().atoms[0].position.z(), d.atoms[0].position.z());
@@ -236,18 +288,18 @@ class CoordinatesTest : public QObject {
         d.atoms[0].fixed = true;
         w.loadDocument(d);
         auto *t = table(w);
-        QVERIFY(!(t->item(0, 1)->flags() & Qt::ItemIsEditable));
-        t->item(0, 1)->setText("1");
+        QVERIFY(!(item(t, 0, 1)->flags() & Qt::ItemIsEditable));
+        item(t, 0, 1)->setText("1"); // The model refuses the cell.
         QCOMPARE(w.document().toJson(), d.toJson());
-        QCOMPARE(t->item(0, 1)->text(), QString("0"));
-        QVERIFY(!w.findChild<QLabel *>("coordinateMessage")->text().isEmpty());
+        QCOMPARE(item(t, 0, 1)->text(), QString("0"));
         for (const auto &text : {"nan", "inf", "abc", "1e999"}) {
-            t->item(1, 1)->setText(text);
+            item(t, 1, 1)->setText(text);
             QCOMPARE(w.document().toJson(), d.toJson());
+            QVERIFY(!w.findChild<QLabel *>("coordinateMessage")->text().isEmpty());
         }
-        t->item(1, 0)->setText("Imaginary");
+        item(t, 1, 0)->setText("Imaginary");
         QCOMPARE(w.document().toJson(), d.toJson());
-        t->item(1, 4)->setText("-3");
+        item(t, 1, 4)->setText("-3");
         QCOMPARE(w.document().toJson(), d.toJson());
         QCOMPARE(w.history()->count(), 0);
         // "原点へ" is "向きをそろえる" of "変形" with one atom, and refuses to move the fixed atom.
@@ -260,7 +312,7 @@ class CoordinatesTest : public QObject {
         QCOMPARE(w.document().toJson(), d.toJson());
         action(w, "coordinateClear")->trigger();
         QVERIFY(!w.hasCandidate());
-        t->item(0, 6)->setCheckState(Qt::Unchecked);
+        item(t, 0, 6)->setCheckState(Qt::Unchecked);
         QVERIFY(!w.document().atoms[0].fixed);
         // Moving H1 to the origin translates the entire molecule rigidly.
         w.setSelection({d.atoms[1].id});
@@ -279,8 +331,8 @@ class CoordinatesTest : public QObject {
         w.show();
         QTest::qWait(30);
         auto *t = table(w);
-        t->setCurrentCell(1, 1);
-        t->editItem(t->item(1, 1));
+        t->setCurrentIndex(t->model()->index(1, 1));
+        t->edit(t->model()->index(1, 1));
         auto *editor = t->findChild<QLineEdit *>();
         QVERIFY(editor);
         editor->selectAll();
@@ -296,7 +348,7 @@ class CoordinatesTest : public QObject {
         v->fit();
         QTest::mouseClick(v, Qt::LeftButton, Qt::NoModifier, v->atomScreenPosition(d.atoms[2].id).toPoint());
         QCOMPARE(w.canvas()->selection(), Ids{d.atoms[2].id});
-        QVERIFY(t->item(2, 0)->isSelected());
+        QVERIFY(item(t, 2, 0)->isSelected());
         // Switching tabs and layouts cannot commit rounded display values.
         auto before = w.document().toJson();
         w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(1);
@@ -360,25 +412,25 @@ class CoordinatesTest : public QObject {
         auto d = water();
         w.loadDocument(d);
         auto *t = table(w);
-        t->item(1, 0)->setText("D");
+        item(t, 1, 0)->setText("D");
         QCOMPARE(w.document().atoms[1].isotope, 2);
         QCOMPARE(w.document().atoms[1].element, QString("H"));
-        t->item(1, 0)->setText("C");
+        item(t, 1, 0)->setText("C");
         QCOMPARE(w.document().atoms[1].isotope, 0);
-        t->item(1, 4)->setText("13");
-        t->item(1, 5)->setCheckState(Qt::Checked);
+        item(t, 1, 4)->setText("13");
+        item(t, 1, 5)->setCheckState(Qt::Checked);
         QVERIFY(w.document().atoms[1].ghost);
         action(w, "copyNwchemGeometry")->trigger();
         QVERIFY(QApplication::clipboard()->text().contains("bqC"));
         QVERIFY(QApplication::clipboard()->text().contains("mass 13.003"));
-        t->item(1, 5)->setCheckState(Qt::Unchecked);
+        item(t, 1, 5)->setCheckState(Qt::Unchecked);
         QVERIFY(!w.document().atoms[1].ghost);
         auto previous = w.document().toJson();
         int count = w.history()->count();
-        t->item(1, 1)->setText("-0.758");
+        item(t, 1, 1)->setText("-0.758");
         QCOMPARE(w.document().toJson(), previous);
         QCOMPARE(w.history()->count(), count);
-        QCOMPARE(t->item(1, 1)->text().toDouble(), 0.758);
+        QCOMPARE(item(t, 1, 1)->text().toDouble(), 0.758);
     }
     void selectionCandidatesAndStableIds() {
         MainWindow w;
@@ -391,22 +443,22 @@ class CoordinatesTest : public QObject {
         t->selectRow(1);
         QCOMPARE(w.canvas()->selection(), Ids{d.atoms[1].id});
         w.setSelection({d.atoms[2].id, d.atoms[0].id});
-        QVERIFY(t->item(2, 0)->isSelected());
-        QVERIFY(t->item(0, 0)->isSelected());
-        QVERIFY(!t->item(1, 0)->isSelected());
+        QVERIFY(item(t, 2, 0)->isSelected());
+        QVERIFY(item(t, 0, 0)->isSelected());
+        QVERIFY(!item(t, 1, 0)->isSelected());
         // Deleting from the pages at the right is a candidate to confirm, shown in the table.
         w.setSelection({d.atoms[1].id});
         button(w, "deleteSelection")->click();
         QVERIFY(w.hasCandidate());
         QCOMPARE(w.document().atoms.size(), 3);
-        QCOMPARE(t->rowCount(), 2);
+        QCOMPARE(t->model()->rowCount(), 2);
         QVERIFY(!action(w, "copyNwchemGeometry")->isEnabled());
         QVERIFY(!action(w, "coordinateImport")->isEnabled());
         QVERIFY(!button(w, "coordinateAdd")->isEnabled());
-        QVERIFY(!(t->item(0, 0)->flags() & Qt::ItemIsEditable));
+        QVERIFY(!(item(t, 0, 0)->flags() & Qt::ItemIsEditable));
         button(w, "editorUndo")->click(); // Cancels the candidate.
         QVERIFY(!w.hasCandidate());
-        QCOMPARE(t->rowCount(), 3);
+        QCOMPARE(t->model()->rowCount(), 3);
         w.setSelection({d.atoms[1].id});
         button(w, "deleteSelection")->click();
         w.confirmCandidate();
@@ -414,7 +466,7 @@ class CoordinatesTest : public QObject {
         w.history()->undo();
         QCOMPARE(w.document().toJson(), d.toJson());
         w.edit("reorder", [](Document &d) { std::reverse(d.atoms.begin(), d.atoms.end()); });
-        t->item(0, 3)->setText("2.5");
+        item(t, 0, 3)->setText("2.5");
         QCOMPARE(w.document().atom(d.atoms[2].id).position.z(), 2.5);
         QCOMPARE(w.document().atom(d.atoms[0].id).position.z(), 0.0);
     }
@@ -497,7 +549,7 @@ class CoordinatesTest : public QObject {
         QCOMPARE(w.document().atoms.size(), 3);
         action(w, "coordinateClear")->trigger();
         QVERIFY(w.hasCandidate());
-        QCOMPARE(table(w)->rowCount(), 0);
+        QCOMPARE(table(w)->model()->rowCount(), 0);
         w.confirmCandidate();
         QVERIFY(w.document().atoms.isEmpty());
         QVERIFY(!action(w, "copyNwchemGeometry")->isEnabled());
@@ -550,7 +602,7 @@ class CoordinatesTest : public QObject {
         auto *header = t->horizontalHeader();
         QCOMPARE(header->visualIndex(0), 1);
         QCOMPARE(header->visualIndex(7), 2);
-        QCOMPARE(t->item(1, 7)->text(), QString("HOH 1 · HA"));
+        QCOMPARE(item(t, 1, 7)->text(), QString("HOH 1 · HA"));
         QCOMPARE(atomPlace(w.document(), d.atoms[2].id), QString("HOH 1 · HB"));
         QVERIFY(t->isColumnHidden(8));
         auto *filter = w.findChild<QLineEdit *>("coordinateFilter");
@@ -580,11 +632,11 @@ class CoordinatesTest : public QObject {
         button(w, "fixSelectedAtoms")->click();
         QVERIFY(w.document().atoms[0].fixed && w.document().atoms[1].fixed && !w.document().atoms[2].fixed);
         QCOMPARE(w.history()->count(), 1);
-        QVERIFY(t->item(0, 0)->data(Qt::UserRole + 1).toBool()); // The lock in the atom cell.
-        QVERIFY(!(t->item(0, 1)->flags() & Qt::ItemIsEditable));
+        QVERIFY(item(t, 0, 0)->data(Qt::UserRole + 1).toBool()); // The lock in the atom cell.
+        QVERIFY(!(item(t, 0, 1)->flags() & Qt::ItemIsEditable));
         button(w, "ghostSelectedAtoms")->click();
         QVERIFY(w.document().atoms[0].ghost && w.document().atoms[1].ghost);
-        QCOMPARE(t->item(0, 5)->checkState(), Qt::Checked);
+        QCOMPARE(item(t, 0, 5)->checkState(), Qt::Checked);
         action(w, "copyNwchemGeometry")->trigger();
         QVERIFY(QApplication::clipboard()->text().contains("bqO"));
         button(w, "unfixSelectedAtoms")->click();
@@ -615,26 +667,26 @@ class CoordinatesTest : public QObject {
         QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 0);
         QVERIFY(w.findChild<QComboBox *>("moleculeLayout")->currentData() != "view");
         QVERIFY(!t->isColumnHidden(9) && !t->isColumnHidden(10) && !t->isColumnHidden(11));
-        QCOMPARE(t->horizontalHeaderItem(9)->text(), QString("形式電荷"));
-        QCOMPARE(t->item(0, 9)->text(), QString("0"));
-        t->item(0, 9)->setText("-1");
+        QCOMPARE(t->model()->headerData(9, Qt::Horizontal).toString(), QString("形式電荷"));
+        QCOMPARE(item(t, 0, 9)->text(), QString("0"));
+        item(t, 0, 9)->setText("-1");
         QCOMPARE(w.document().atoms[0].charge, -1);
-        t->item(0, 10)->setText("1");
+        item(t, 0, 10)->setText("1");
         QCOMPARE(w.document().atoms[0].radical, 1);
-        t->item(1, 11)->setText(" HW1 ");
+        item(t, 1, 11)->setText(" HW1 ");
         QCOMPARE(w.document().atoms[1].name, QString("HW1"));
         QCOMPARE(w.history()->count(), 3);
         // Invalid values are refused with a message and leave the document as it was.
-        t->item(0, 10)->setText("9");
+        item(t, 0, 10)->setText("9");
         QCOMPARE(w.document().atoms[0].radical, 1);
         QVERIFY(!w.findChild<QLabel *>("coordinateMessage")->isHidden());
-        QCOMPARE(t->item(0, 10)->text(), QString("1"));
-        t->item(0, 9)->setText("x");
+        QCOMPARE(item(t, 0, 10)->text(), QString("1"));
+        item(t, 0, 9)->setText("x");
         QCOMPARE(w.document().atoms[0].charge, -1);
         QCOMPARE(w.history()->count(), 3);
         w.history()->undo();
         QCOMPARE(w.document().atoms[1].name, d.atoms[1].name);
-        QCOMPARE(t->item(1, 11)->text(), d.atoms[1].name);
+        QCOMPARE(item(t, 1, 11)->text(), d.atoms[1].name);
         // The columns stay as chosen (a preference of the table).
         button(w, "coordinateAttributeColumns")->click();
         QVERIFY(t->isColumnHidden(9));
@@ -651,8 +703,8 @@ class CoordinatesTest : public QObject {
             Document::fromXyz("4\nwith helium\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\nHe 3 0 0\n"));
         QVERIFY(w.hasCandidate());
         QVERIFY(!t->isColumnHidden(8));
-        QCOMPARE(t->item(3, 8)->text(), QString("追加"));
-        QVERIFY(t->item(0, 8)->text().isEmpty());
+        QCOMPARE(item(t, 3, 8)->text(), QString("追加"));
+        QVERIFY(item(t, 0, 8)->text().isEmpty());
         QVERIFY(w.findChild<QLabel *>("candidateBannerText")->text().contains("追加 1"));
         QVERIFY(w.findChild<QLabel *>("candidateBannerText")->text().contains("削除 0"));
         QVERIFY(!w.findChild<QLabel *>("coordinateCompareNote")->text().isEmpty());

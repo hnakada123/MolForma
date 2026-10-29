@@ -3,18 +3,16 @@
 #include "editing/atom_properties.h"
 #include "model/geometry.h"
 #include "model/i18n.h"
+#include "model/numbers.h"
 #include <QRegularExpression>
 #include <cmath>
 
 namespace mf {
-static double finiteNumber(QString text) {
+static double finiteNumber(const QString &text) {
     // Also accept Fortran exponents commonly found in quantum chemistry output.
-    text.replace(QChar('D'), QChar('e'), Qt::CaseInsensitive);
-    bool ok;
-    double value = text.trimmed().toDouble(&ok);
-    if (!ok || !std::isfinite(value))
-        fail(tr("有限の数値を入力してください。小数点は . を使用します。"));
-    return value;
+    if (const auto value = fortranNumber(text.trimmed()))
+        return *value;
+    fail(tr("有限の数値を入力してください。小数点は . を使用します。"));
 }
 static void setSymbol(Atom &atom, QString text) {
     text = text.trimmed();

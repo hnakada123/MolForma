@@ -36,7 +36,7 @@ def2系ではRb〜Xeに28電子、Cs〜Laに46電子、Hf〜Rnに60電子を除�
 
 分散補正は、NWChem 7.3.1がGrimmeの公表パラメータを出力する組合せだけ選べます。M06系のD3(BJ)とSCAN・r²SCANのD3はNWChemにパラメータがなく、B3PW91のD3(BJ)とPW6B95のD3はNWChemの値が公表値と一致しないため拒否します。ωB97X-D3はD3を含むため補正なしで使います。「任意のxc指定」ではDFTブロックの `xc` 行を英数字・`_`・`.`・`+`・`-`・空白の1行で指定します（例: `xpbe96 0.75 cpbe96 1.0 hfexch 0.25`）。名前の妥当性はNWChemが実行時に判定し、分散補正は選べません。2026-10-24にNWChem 7.3.1で、追加した全汎関数と許可した分散補正の入力が正常終了することを確認しました。
 
-振動数はHF/DFTの解析Hessianを基本とし、MP2・ROHF・ECP・COSMO、メタGGA・長距離補正・任意のxcのDFTでは数値Hessianを選びます（NWChemはメタGGA・長距離補正の解析Hessianを持たず、自動で差分計算に切り替えるため）。手動で数値Hessianを選択することもできます。固定・ゴースト・外部点電荷を含む振動数解析と、ゴーストを含むCOSMOは未対応です。座標を `noautosym` で出力するため、NWChemの熱化学は回転対称数σ=1で計算されます。60原子以下で同位体・質量指定のない分子では、MolFormaが原子の置換として重なる回転を数えてσを推定し、σ>1なら確認事項にエントロピー（−R ln σ）と自由エネルギー（+RT ln σ、298.15 K）の補正量を表示します。最適化に続けて振動数を求める場合は、二つの `task` を順に出力します。SCF収束は標準1e-5・厳密1e-7（既定）・さらに厳密1e-9で、HFは `thresh`、DFTはenergy/density/gradientに適用します。「NWChem既定」はこれらを出力せず、NWChemの既定の閾値を使います（振動数の計算では精度が不足することがあるため確認事項に表示します）。CCの収束閾値は1e-7です。「SCF・電子相関」の詳細設定で個別の閾値を指定すると、対応する値を上書きします。
+振動数はHF/DFTの解析Hessianを基本とし、MP2・ROHF・ECP・COSMO、メタGGA・長距離補正・任意のxcのDFTでは数値Hessianを選びます（NWChemはメタGGA・長距離補正の解析Hessianを持たず、自動で差分計算に切り替えるため）。手動で数値Hessianを選択することもできます。固定・ゴースト・外部点電荷を含む振動数解析と、ゴーストを含むCOSMOは未対応です。座標を `noautosym` で出力するため、NWChemの熱化学は回転対称数σ=1で計算されます。MolFormaは「点群・対称化」と同じ点群（許容差0.05 Å、200原子まで。同位体・質量指定の原子は別の種類として区別し、ゴーストは除く）の回転の数からσを推定し（直線分子はD∞hで2、C∞vで1）、σ>1なら確認事項にエントロピー（−R ln σ）と自由エネルギー（+RT ln σ、298.15 K）の補正量を表示します。最適化に続けて振動数を求める場合は、二つの `task` を順に出力します。SCF収束は標準1e-5・厳密1e-7（既定）・さらに厳密1e-9で、HFは `thresh`、DFTはenergy/density/gradientに適用します。「NWChem既定」はこれらを出力せず、NWChemの既定の閾値を使います（振動数の計算では精度が不足することがあるため確認事項に表示します）。CCの収束閾値は1e-7です。「SCF・電子相関」の詳細設定で個別の閾値を指定すると、対応する値を上書きします。
 
 ## 保存・プリセット・互換性
 
@@ -76,7 +76,7 @@ def2系ではRb〜Xeに28電子、Cs〜Laに46電子、Hf〜Rnに60電子を除�
 
 ## NWChem・Gaussian入力の取込み
 
-「ファイル → 開く」で `.nw` を開くと、最初のCartesian `geometry`（`units`（Bohrなら座標の出力単位もBohr）、`bq` ゴースト、`mass`、`\` の継続行と `;` 区切り）、`charge`、`scf`/`dft` の多重度と参照・SCF収束（`thresh`・`convergence` が標準・厳密・さらに厳密の値ならその設定、なければNWChem既定。それ以外の値は一覧で知らせます）、`xc`（一覧の汎関数に一致しなければ任意のxc）、分散補正・グリッド、`basis`（ライブラリ名が一覧にあるもの、元素別、`cd basis` によるRI-J、spherical/cartesian）、`cosmo`（誘電率・溶媒名・SMD）、`relativistic`、`tddft`、`ccsd` の反復数、`driver` の反復数、`property`・`esp`・`bsse`・`mepgs`、`constraints` の `fix atom`、`task` の組合せ（最適化＋振動数、遷移状態探索、IRC等。振動数の `numerical` は数値Hessianの指定）を取り込みます。最初のtaskより後の計算条件（後続計算）、2番目以降のgeometry、`zcoord`、その他のブロックは取り込まず、一覧で知らせます。Z-matrix形式のgeometryは拒否します。実行設定は環境設定の既定値を使います。
+「ファイル → 開く」で `.nw` を開くと、最初のCartesian `geometry`（`units`（Bohrなら座標の出力単位もBohr）、`bq` ゴースト、`mass`、`\` の継続行と `;` 区切り）、`charge`、`scf`/`dft` の多重度と参照・SCF収束（`thresh`・`convergence` が標準・厳密・さらに厳密の値ならその設定、なければNWChem既定。それ以外の値は一覧で知らせます）、`xc`（一覧の汎関数に一致しなければ任意のxc）、分散補正・グリッド、`basis`（ライブラリ名が一覧にあるもの、元素別、`cd basis` によるRI-J、spherical/cartesian）、`cosmo`（誘電率・溶媒名・SMD）、`relativistic`、`tddft`、`ccsd`・`driver`・`mepgs` の反復数、`property`・`esp`・`bsse`・`mepgs`、`constraints` の `fix atom`、`task` の組合せ（最適化＋振動数、遷移状態探索、IRC等。振動数の `numerical` は数値Hessianの指定）を取り込みます。最初のtaskより後の計算条件（後続計算）、2番目以降のgeometry、`zcoord`、その他のブロックは取り込まず、一覧で知らせます。Z-matrix形式のgeometryは拒否します。実行設定は環境設定の既定値を使います。
 
 Gaussian入力（`.gjf` / `.com`）はLink0とルート・タイトルを読み飛ばし、電荷・多重度とCartesian座標（`C(Fragment=1)`、原子番号、凍結フラグの列に対応）を取り込みます。Z-matrixや変数を使う入力は拒否します。ルートの手法・基底は取り込みません。
 

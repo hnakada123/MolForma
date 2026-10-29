@@ -129,6 +129,13 @@ int main(int argc, char **argv) {
     addMcpOptions(parser);
     parser.process(app);
     try {
+        // Refuse contradictory options before a window opens, a file loads or autosave starts.
+        if (!parser.isSet("mcp-gui") &&
+            (parser.isSet("mcp-allow-dir") || parser.isSet("mcp-allow-execution-settings")))
+            mf::fail("--mcp-allow-dir and --mcp-allow-execution-settings require --mcp or --mcp-gui.");
+        if (parser.isSet("mcp-gui") && parser.isSet("screenshot"))
+            mf::fail("--mcp-gui and --screenshot cannot be combined.");
+        const auto policy = mcpPolicy(parser);
         mf::MainWindow window;
         if (!guiMcp && !parser.positionalArguments().isEmpty())
             window.loadPath(parser.positionalArguments().first());
@@ -142,13 +149,7 @@ int main(int argc, char **argv) {
         std::unique_ptr<mf::McpServer> server;
         std::unique_ptr<mf::McpGui> gui;
         std::unique_ptr<mf::McpStdioTransport> transport;
-        if (!parser.isSet("mcp-gui") &&
-            (parser.isSet("mcp-allow-dir") || parser.isSet("mcp-allow-execution-settings")))
-            mf::fail("--mcp-allow-dir and --mcp-allow-execution-settings require --mcp or --mcp-gui.");
         if (parser.isSet("mcp-gui")) {
-            if (parser.isSet("screenshot"))
-                mf::fail("--mcp-gui and --screenshot cannot be combined.");
-            const auto policy = mcpPolicy(parser);
             gui = std::make_unique<mf::McpGui>(window, policy);
             server = std::make_unique<mf::McpServer>(gui->editor(), policy);
             transport = std::make_unique<mf::McpStdioTransport>(server.get());

@@ -12,6 +12,14 @@ namespace mf {
 // Every execution path goes through this, and the MCP access policy checks the same result.
 QString absolutePath(QString path, const QString &base);
 QJsonObject executionDefaults();
+// The whole-number settings and their ranges, for the checks and the controls of "3 実行設定" and
+// Preferences.
+struct ExecutionRange {
+    QString key;
+    int minimum = 0, maximum = 0;
+};
+const QVector<ExecutionRange> &executionRanges();
+ExecutionRange executionRange(const QString &key);
 // Defaults the user saved in Preferences (QSettings "execution/defaults") for new documents.
 // Only machine-wide keys are kept; per-project ones such as reference_directory are not.
 QStringList executionPreferenceKeys();

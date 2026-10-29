@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "nwchem/nwchem_advanced.h"
 #include "model/i18n.h"
+#include "model/numbers.h"
 #include "nwchem/input_builder.h"
 #include "nwchem/nwchem_output.h"
 #include <QHash>
@@ -87,15 +88,13 @@ QString number(double value) {
     return QString::number(value, 'g', QLocale::FloatingPointShortest);
 }
 bool realNumber(const QString &text, double &number) {
-    QString normalized = text;
-    normalized.replace('D', 'e').replace('d', 'e');
-    if (!QRegularExpression("^[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?$")
-             .match(normalized)
+    if (!QRegularExpression("^[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eEdD][+-]?[0-9]+)?$")
+             .match(text)
              .hasMatch())
         return false;
-    bool ok;
-    number = QLocale::c().toDouble(normalized, &ok);
-    return ok && std::isfinite(number);
+    const auto value = fortranNumber(text);
+    number = value.value_or(0);
+    return value.has_value();
 }
 // The options with their display texts (label, help, defaultText, choice labels) as source texts;
 // nwchemAdvancedOptions translates them.

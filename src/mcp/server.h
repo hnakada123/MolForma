@@ -18,6 +18,9 @@ inline constexpr auto McpTasksExtension = "io.modelcontextprotocol/tasks";
 struct McpEditor {
     std::function<Document()> document;
     std::function<std::optional<Document>()> candidate;
+    // Grows whenever the document or its candidate changes (EditorSession::revision); required with
+    // document and candidate.
+    std::function<quint64()> revision;
     std::function<void(const QString &, const std::function<void(Document &)> &, bool)> edit;
     std::function<void(const QString &)> history;
     std::function<QJsonArray()> additionalTools;

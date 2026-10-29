@@ -30,11 +30,13 @@ struct Atom {
     QJsonObject extra;
     QJsonObject toJson() const;
     static Atom fromJson(const QJsonObject &o);
+    bool operator==(const Atom &) const = default;
 };
 struct Bond {
     QString a, b, kind = "single", stereo, source = "explicit";
     double order() const;
     QJsonObject toJson() const;
+    bool operator==(const Bond &) const = default;
 };
 // A residue of a peptide chain. Its atoms are named as in PDB files ("CA").
 struct Residue {
@@ -46,6 +48,7 @@ struct Residue {
     QJsonObject metadata, extra; // extra: fields MolForma does not know, kept on round trips.
     QJsonObject toJson() const;
     static Residue fromJson(const QJsonObject &o);
+    bool operator==(const Residue &) const = default;
 };
 // The atoms placed from a template (skeleton, substituent, ligand, amino acid, user part).
 struct Part {
@@ -59,12 +62,14 @@ struct Part {
     }
     QJsonObject toJson() const;
     static Part fromJson(const QJsonObject &o);
+    bool operator==(const Part &) const = default;
 };
 struct CoordinationSite {
     Vec direction = Vec::UnitZ();
     double distance = 0;
     QString donor, part; // The donor atom and its part while a ligand occupies the site.
     QJsonObject extra;
+    bool operator==(const CoordinationSite &) const = default;
 };
 struct Center {
     QString atom, geometry;
@@ -73,6 +78,7 @@ struct Center {
     QJsonObject extra;
     QJsonObject toJson() const;
     static Center fromJson(const QJsonObject &o);
+    bool operator==(const Center &) const = default;
 };
 // An external point charge (Å, e).
 struct PointCharge {
@@ -83,6 +89,7 @@ struct PointCharge {
     QJsonObject extra;
     QJsonObject toJson() const;
     static PointCharge fromJson(const QJsonObject &o);
+    bool operator==(const PointCharge &) const = default;
 };
 struct Element {
     QString symbol;
@@ -109,6 +116,7 @@ struct Document {
     QJsonObject data;
     QJsonObject envelope; // Preserves unknown top-level fields on project round trips.
     Document();
+    bool operator==(const Document &) const = default;
     Atom &atom(const QString &id);
     const Atom &atom(const QString &id) const;
     bool contains(const QString &id) const;

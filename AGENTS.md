@@ -7,10 +7,12 @@ by responsibility, with paired headers and implementations in the same directory
 
 - `src/model/`: `document.*` owns the stable-ID document and the `.molforma.json`
   project serialization (format `molforma-project`, version 1); `geometry.*` owns double-precision geometry.
-  `diagnostic.h` defines diagnostics with stable codes, setting targets and typed fixes.
-  `units.h` owns coordinate units and physical conversion constants.
+  `diagnostic.h` defines diagnostics with stable codes, setting targets and typed fixes, and
+  `ValidationFailure`, which throws a refused report whole. `units.h` owns coordinate units and
+  physical conversion constants; `numbers.h` reads numbers with Fortran exponents ("1.5D-03").
 - `src/editing/`: `library.*`, `operations.*`, `peptide.*` and `coordination.*`
-  implement editing. `editor_session.*` owns document edits, candidates and undo for both GUI and MCP.
+  implement editing. `editor_session.*` owns document edits, candidates and undo for both GUI and MCP,
+  and the revision that stale checks and the MCP `revision` compare (never serialize documents for that).
   `atom_properties.*` shares atom-property edits and validation across panels and MCP.
   `chemistry.*` uses the Open Babel C++ API; `chemistry_job.*` owns cancellable chemistry
   processes, stale-result checks and candidate application.
@@ -41,21 +43,22 @@ by responsibility, with paired headers and implementations in the same directory
   panels emit requests instead of directly accessing sibling panels. The molecular workspace
   composes its coordinate table. `molecule_view.*` owns camera/input, Qt annotations and
   the QPainter fallback; `vtk_molecule_renderer.*` provides optional retained
-  native VTK/OpenGL rendering. `editor_chrome.*` holds the window header, tool rail,
+  native VTK/OpenGL rendering; both draw bonds and isosurfaces by `bond_style.h`. `editor_chrome.*` holds the window header, tool rail,
   wrapping option bar layout, 3D-view overlays and palette-derived chrome colors.
   `template_delegate.*` renders and caches the palette's molecular thumbnails and
   tiles; `periodic_table.*` provides the element picker.
   The numbered tabs are "1 分子" through "4 入力プレビュー". `coordinates_panel.*`
-  provides the coordinate table of "1 分子", shown under the 3D view or in its place
-  (layouts 3D / 3D＋表 / 表). `calculation_panel.*` provides "2 計算条件"; each
+  provides the coordinate table of "1 分子" (a `CoordinateModel` over the shown document),
+  shown under the 3D view or in its place (layouts 3D / 3D＋表 / 表). `calculation_panel.*` provides "2 計算条件"; each
   section opens its `nwchem_advanced.*` overrides as "詳細設定". `execution_panel.*`
   provides the settings of "3 実行設定" and the run panel over the tabs (state,
-  `run_progress.*` and log), opened from the header run pill. `input_preview_panel.*`
+  `run_progress.*` and log), opened from the header run pill; its form (`execution_form.*`) is
+  also that of Preferences. `run_progress.*` also holds the state labels of runs and their colors. `input_preview_panel.*`
   provides the read-only "4 入力プレビュー" tab using the shared NWChem input
   generator and execution plan.
   `results_panel.*` provides the independent result viewer with cancellable native
-  readers. `history_panel.*` provides calculation history, log browsing, reuse and
-  result navigation. `mcp_gui.*` exposes GUI, execution and result tools to MCP
+  readers. `history_panel.*` provides calculation history (its list a `HistoryModel`), log
+  browsing, reuse and result navigation. `mcp_gui.*` exposes GUI, execution and result tools to MCP
   through public editor/panel operations and state snapshots; panels do not access
   MainWindow or one another through friendship. Playback kind is explicit, independent of timer intervals.
 - `src/mcp/`: `server.*` implements the MCP JSON-RPC server (protocols 2026-07-28

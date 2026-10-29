@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/vtk_molecule_renderer.h"
+#include "ui/bond_style.h"
 #include <Eigen/Geometry>
 #include <QOpenGLContext>
 #include <QSurfaceFormat>
@@ -119,7 +120,7 @@ VtkMoleculeRenderer::VtkMoleculeRenderer(QWidget *parent)
     s.renderer->AddActor(s.atomActor);
     for (int i = 0; i < 2; ++i) {
         auto *property = s.surfaces[i].actor->GetProperty();
-        const QColor color(i == 0 ? "#ce5268" : "#397cce");
+        const QColor color = surfaceColor(i == 0);
         property->SetColor(color.redF(), color.greenF(), color.blueF());
         property->SetAmbient(.4);
         property->SetDiffuse(.6);
@@ -274,7 +275,7 @@ void VtkMoleculeRenderer::setCamera(const Mat &rotation, const Vec &center, doub
         s.radii->Modified();
         s.atomScale = scale;
     }
-    const bool halfBonds = s.style == "stick" || s.style == "wireframe";
+    const bool halves = halfBonds(s.style);
     s.bonds.actor->GetProperty()->SetLineWidth((s.style == "stick"       ? std::clamp(scale * .2, 5., 12.)
                                                 : s.style == "wireframe" ? 2.
                                                                          : 3.5) *
@@ -302,7 +303,7 @@ void VtkMoleculeRenderer::setCamera(const Mat &rotation, const Vec &center, doub
         if ((!s.hydrogens && (a.element == "H" || b.element == "H")) || s.hidden.contains(a.id) ||
             s.hidden.contains(b.id))
             continue;
-        if (halfBonds) {
+        if (halves) {
             // Half bonds in the atom colors, one line per bond.
             const Vec middle = (a.position + b.position) / 2;
             line(a.position, middle, s.colors.value(ai));
@@ -314,25 +315,23 @@ void VtkMoleculeRenderer::setCamera(const Mat &rotation, const Vec &center, doub
         if (length * scale < 1)
             continue;
         const Vec normal = rotation.transpose() * Vec(-delta.y(), delta.x(), 0) / (length * scale);
-        const QColor color(bond.kind == "dative"     ? "#2879bd"
-                           : bond.kind == "aromatic" ? "#a36a2b"
-                                                     : "#748595");
-        const int count = bond.kind == "double" ? 2 : bond.kind == "triple" ? 3 : 1;
-        for (int j = 0; j < count; ++j) {
-            const Vec offset = normal * ((j - (count - 1) * .5) * 5);
-            line(a.position + offset, b.position + offset, color);
-        }
-        if (bond.kind == "aromatic") {
+        const auto style = bondStyle(bond.kind);
+        const auto color = style.color;
+        for (const double offset : style.offsets)
+            line(a.position + normal * offset, b.position + normal * offset, color);
+        if (style.dashed) {
+            const Vec beside = normal * BondStyle::DashOffset;
             const int segments = std::clamp(int(length * scale / 7), 1, 256);
             for (int j = 0; j < segments; j += 2)
-                line(a.position + (b.position - a.position) * (double(j) / segments) + normal * 5,
-                     a.position + (b.position - a.position) * (double(j + 1) / segments) + normal * 5, color);
+                line(a.position + (b.position - a.position) * (double(j) / segments) + beside,
+                     a.position + (b.position - a.position) * (double(j + 1) / segments) + beside, color);
         }
-        if (bond.kind == "dative") {
-            const Vec head = a.position + (b.position - a.position) * .72;
-            const Vec back =
-                head - rotation.transpose() * Vec(delta.x(), delta.y(), 0) * (9 / (length * scale));
-            const Vec left = back + normal * 4, right = back - normal * 4;
+        if (style.arrow) {
+            const Vec head = a.position + (b.position - a.position) * BondStyle::ArrowAt;
+            const Vec back = head - rotation.transpose() * Vec(delta.x(), delta.y(), 0) *
+                                        (BondStyle::ArrowLength / (length * scale));
+            const Vec left = back + normal * BondStyle::ArrowHalfWidth,
+                      right = back - normal * BondStyle::ArrowHalfWidth;
             const vtkIdType indices[] = {arrowPoints->InsertNextPoint(head.data()),
                                          arrowPoints->InsertNextPoint(left.data()),
                                          arrowPoints->InsertNextPoint(right.data())};

@@ -4,6 +4,7 @@
 #include <QStringList>
 #include <QVector>
 #include <optional>
+#include <stdexcept>
 
 namespace mf {
 enum class DiagnosticSeverity { Error, Warning };
@@ -42,5 +43,13 @@ struct ValidationReport {
                  std::optional<DiagnosticFix> fix = {}, int tab = 1) {
         add({code, setting, message, DiagnosticSeverity::Warning, tab, std::move(fix)});
     }
+};
+// A refusal that keeps the diagnostics behind it, so that a caller can still point at each setting.
+// what() is the error messages, one per line.
+class ValidationFailure : public std::runtime_error {
+  public:
+    explicit ValidationFailure(const ValidationReport &report)
+        : std::runtime_error(report.errors.join('\n').toStdString()), report(report) {}
+    ValidationReport report;
 };
 } // namespace mf

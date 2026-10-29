@@ -11,10 +11,12 @@ namespace mf {
 // The name of an orbital by its place among the occupied or empty orbitals of its spin: "HOMO",
 // "HOMO−2", "LUMO", "LUMO+1", …
 QString frontierName(const QVector<ResultOrbital> &orbitals, int index);
+// The color of a series, taken from the palette when it is drawn, so that it follows the theme.
+enum class ChartTone { Accent, Second, Contrast, Muted, Text };
 struct ChartSeries {
     QString name;
     QVector<QPointF> points;
-    QColor color;
+    ChartTone tone = ChartTone::Accent;
     bool sticks = false; // Vertical lines from zero (stick spectra) instead of a polyline.
 };
 // Small QPainter chart for result summaries: optimization convergence and broadened spectra.
@@ -57,6 +59,7 @@ class ChartView : public QWidget {
     QRectF plot;
     double x0 = 0, x1 = 1;
     double screenX(double x) const;
+    QColor color(ChartTone tone) const;
 };
 
 // The frames of a structure list as a track to click or drag along, with the energy of each frame

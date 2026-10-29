@@ -17,6 +17,7 @@ struct ChemistryResult {
     Document base, document;
     QVector<Conformer> conformers;
     quint64 generation = 0;
+    quint64 revision = 0; // The session's revision the work started from.
 };
 // Owns worker lifetime, snapshots and candidate application independently of the window.
 // The receiver of ready() chooses a conformer and calls propose(), or leaves the result unused.

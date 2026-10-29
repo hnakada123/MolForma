@@ -2,6 +2,7 @@
 #include "nwchem/nwchem_import.h"
 #include "editing/chemistry.h"
 #include "model/i18n.h"
+#include "model/numbers.h"
 #include "model/units.h"
 #include "nwchem/nwchem.h"
 #include <QRegularExpression>
@@ -54,9 +55,9 @@ QStringList words(const QString &line) {
     return result;
 }
 bool number(const QString &text, double &value) {
-    bool ok;
-    value = QString(text).replace(QChar('d'), QChar('e'), Qt::CaseInsensitive).toDouble(&ok);
-    return ok && std::isfinite(value);
+    const auto n = fortranNumber(text);
+    value = n.value_or(0);
+    return n.has_value();
 }
 // NWChem atom tags: the element symbol followed by any label ("C1", "H_a"), "bq" for ghosts.
 QString tagElement(QString tag, bool &ghost) {
@@ -406,6 +407,8 @@ NwchemImport importNwchemInput(const QString &text) {
                 double value;
                 if (row.value(0).toLower() == "maxmep")
                     settings["irc_points"] = row.value(1).toInt();
+                else if (row.value(0).toLower() == "maxiter")
+                    settings["opt_maxiter"] = row.value(1).toInt();
                 else if (row.value(0).toLower() == "stride" && number(row.value(1), value))
                     settings["irc_stride"] = value;
                 else if (row.value(0).toLower() == "forward" || row.value(0).toLower() == "backward")
