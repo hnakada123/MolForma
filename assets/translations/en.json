@@ -509,7 +509,7 @@
     "NWChem座標ブロックを書き出す…（%1）": "Export NWChem geometry block (%1)…",
     "NWChem既定": "NWChem default",
     "NWChem規約": "NWChem convention",
-    "NWChem規約または未正規化。利用先の解析ソフトの規約に合わせて指定します。": "NWChem convention or unnormalized. Choose the convention of the analysis program that reads the file.",
+    "NWChem規約はプリミティブの正規化因子を含みます。標準MOLDENの係数を読むソフトではNONEを選びます。": "The NWChem convention includes primitive normalization factors. Choose NONE for programs that read standard MOLDEN coefficients.",
     "NWChem計算条件を変更": "Change NWChem calculation settings",
     "NWChem設定はオブジェクトである必要があります。": "The NWChem settings must be an object.",
     "NWChem詳細設定はオブジェクトである必要があります。": "The NWChem advanced settings must be an object.",

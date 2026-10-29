@@ -192,7 +192,8 @@ QVector<AdvancedOption> advancedOptionSources() {
              QT_TR_NOOP(
                  "計算終了後のHF/KS分子軌道を〈計算名〉.moldenへ出力します。MP2/CCSDでは参照HFの軌道です。")),
         choice("molden_norm", "visualization", QT_TR_NOOP("MOLDENの基底正規化"), "molden_norm",
-               QT_TR_NOOP("NWChem規約または未正規化。利用先の解析ソフトの規約に合わせて指定します。"),
+               QT_TR_NOOP("NWChem規約はプリミティブの正規化因子を含みます。標準MOLDENの係数を読むソフトでは"
+                          "NONEを選びます。"),
                {{"nwchem", QT_TR_NOOP("NWChem規約")}, {"none", QT_TR_NOOP("未正規化（NONE）")}},
                QT_TR_NOOP("NWChem規約")),
         flag("cube_output", "visualization", QT_TR_NOOP("CUBEファイルを出力"), "dplot gaussian",

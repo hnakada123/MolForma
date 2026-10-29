@@ -1,4 +1,6 @@
+#include "model/units.h"
 #include "nwchem/nwchem_output.h"
+#include "results/molden_orbitals.h"
 #include "ui/calculation_panel.h"
 #include "ui/execution_panel.h"
 #include "ui/input_preview_panel.h"
@@ -43,6 +45,122 @@ class OutputTest : public QObject {
     static QString cube() {
         return "density\nfixture\n1 0 0 0\n2 1 0 0\n2 0 1 0\n2 0 0 1\n1 1 0 0 0\n-1 -1 -1 -1 1 1 1 1\n";
     }
+    // Check NWChem's serialized data as well as whether the viewer can open it. Use the
+    // requested, unrounded grid for numerical comparisons: CUBE headers keep only six decimals,
+    // and DPLOT uses NWChem's own Angstrom conversion constant.
+    static void verifyCubeValues(const Document &d, const QString &cubePath, const QString &moldenPath) {
+        // NONE may contain unnormalized contractions (e.g. cc-pVQZ), so the file alone need
+        // not identify the convention. Here the producing input supplies it unambiguously.
+        const QString normalization = nwchemAdvanced(d)["molden_norm"] == "none" ? "standard" : "nwchem";
+        const auto mo = readResult(moldenPath, .03, 0, -1, normalization, 16);
+        QVERIFY2(mo.orbitalError.isEmpty(), qPrintable(mo.orbitalError));
+        QMap<QString, QStringList> blocks;
+        QString section;
+        QVector<QVector<double>> coefficients;
+        for (const auto &line : QString::fromUtf8(readFile(moldenPath)).split('\n')) {
+            if (line.startsWith('['))
+                section = line.mid(1, line.indexOf(']') - 1).toUpper();
+            else if (!line.trimmed().isEmpty()) {
+                blocks[section] << line;
+                if (section == "MO") {
+                    if (line.startsWith("Sym="))
+                        coefficients.append(QVector<double>());
+                    else if (!line.contains('=')) {
+                        const auto row = line.simplified().split(' ');
+                        QCOMPARE(row.size(), 2);
+                        QVERIFY(!coefficients.isEmpty());
+                        QCOMPARE(row[0].toInt(), coefficients.last().size() + 1);
+                        coefficients.last() << row[1].toDouble();
+                    }
+                }
+            }
+            if (!section.isEmpty())
+                blocks[section]; // Keep empty [5D]/[9G] markers.
+        }
+        QCOMPARE(coefficients.size(), mo.orbitals.size());
+        const auto wave = moldenWavefunction(blocks, mo.frames.first().molecule, coefficients, normalization);
+        QString cubeText = QString::fromUtf8(readFile(cubePath));
+        QTextStream stream(&cubeText);
+        QVERIFY(!stream.readLine().isEmpty());
+        stream.readLine();
+        int atoms;
+        double x, y, z;
+        stream >> atoms >> x >> y >> z;
+        QCOMPARE(atoms, d.atoms.size()); // NWChem writes one scalar field, even for an MO.
+        const auto grid = nwchemCubeGrid(d);
+        const Vec origin(grid.minimum.data());
+        QVERIFY((Vec(x, y, z) * BohrToAngstrom - origin).norm() < 2e-6);
+        Vec step;
+        for (int axis = 0; axis < 3; ++axis) {
+            int points;
+            stream >> points >> x >> y >> z;
+            QCOMPARE(points, grid.divisions[axis] + 1);
+            step[axis] = (grid.maximum[axis] - grid.minimum[axis]) / grid.divisions[axis];
+            QVERIFY((Vec(x, y, z) * BohrToAngstrom - Vec::Unit(axis) * step[axis]).norm() < 1e-6);
+        }
+        for (int i = 0; i < atoms; ++i) {
+            int atomicNumber;
+            double charge;
+            stream >> atomicNumber >> charge >> x >> y >> z;
+            QCOMPARE(atomicNumber, element(d.atoms[i].element).number);
+            QVERIFY(std::isfinite(charge)); // An ECP charge need not equal the atomic number.
+            QVERIFY((Vec(x, y, z) * BohrToAngstrom - mo.frames.first().molecule.atoms[i].position).norm() <
+                    1e-6);
+        }
+        const auto a = nwchemAdvanced(d);
+        const QString type = a["cube_type"].toString("density");
+        const QString spin = a["cube_spin"] == "beta" ? "Beta" : "Alpha";
+        const bool unrestricted = std::any_of(mo.orbitals.begin(), mo.orbitals.end(),
+                                              [](const auto &o) { return o.spin == "Beta"; });
+        int selected = frontierOrbital(mo.orbitals, spin, a["cube_orbital"] == "lumo");
+        if (a["cube_orbital"] == "index") {
+            selected = -1;
+            for (int i = 0; i < mo.orbitals.size(); ++i)
+                if (mo.orbitals[i].spin == spin && mo.orbitals[i].number == a["cube_index"].toInt())
+                    selected = i;
+        }
+        if (type == "orbital")
+            QVERIFY(selected >= 0);
+        double squaredError = 0, squaredReference = 0;
+        qint64 index = 0;
+        for (int ix = 0; ix <= grid.divisions[0]; ++ix)
+            for (int iy = 0; iy <= grid.divisions[1]; ++iy)
+                for (int iz = 0; iz <= grid.divisions[2]; ++iz, ++index) {
+                    double actual;
+                    stream >> actual;
+                    QCOMPARE(stream.status(), QTextStream::Ok);
+                    QVERIFY(std::isfinite(actual));
+                    if (index % 17 != 0)
+                        continue;
+                    const Vec point = origin + step.cwiseProduct(Vec(ix, iy, iz));
+                    double expected = 0;
+                    if (type == "orbital")
+                        expected = wave.value(selected, point);
+                    else {
+                        double alpha = 0, beta = 0;
+                        for (int i = 0; i < mo.orbitals.size(); ++i) {
+                            const auto &o = mo.orbitals[i];
+                            if (o.occupation == 0)
+                                continue;
+                            const double value = wave.value(i, point);
+                            if (unrestricted)
+                                (o.spin == "Beta" ? beta : alpha) += o.occupation * value * value;
+                            else {
+                                alpha += std::min(1., o.occupation) * value * value;
+                                beta += std::max(0., o.occupation - 1) * value * value;
+                            }
+                        }
+                        expected = type == "alpha_density"  ? alpha
+                                   : type == "beta_density" ? beta
+                                   : type == "spin_density" ? alpha - beta
+                                                            : alpha + beta;
+                    }
+                    squaredError += (actual - expected) * (actual - expected);
+                    squaredReference += expected * expected;
+                }
+        QVERIFY(stream.readAll().trimmed().isEmpty());
+        QVERIFY2(std::sqrt(squaredError / std::max(1e-20, squaredReference)) < 5e-5, qPrintable(cubePath));
+    }
   private slots:
     void initTestCase() {
         QVERIFY(settings.isValid());
@@ -50,6 +168,8 @@ class OutputTest : public QObject {
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settings.path());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
                            settings.path()); // MolForma uses NativeFormat.
+        qputenv("XDG_CONFIG_HOME", settings.path().toUtf8());
+        qputenv("XDG_DATA_HOME", settings.path().toUtf8());
     }
     void defaultsAndTasks() {
         auto d = water();
@@ -297,6 +417,11 @@ class OutputTest : public QObject {
                 if (result.format == "CUBE")
                     QVERIFY(!result.surface.isEmpty() || nwchemAdvanced(d)["cube_type"] == "spin_density");
             }
+            const auto output = nwchemOutputFiles(d, validateNwchem(d));
+            QCOMPARE(output.size(), 2);
+            verifyCubeValues(d, QDir(folder).filePath(output[1]), QDir(folder).filePath(output[0]));
+            if (QTest::currentTestFailed())
+                return;
             d.save(root + '/' + name + ".molforma.json");
             writeFile(root + '/' + name + "-directory.txt", folder.toUtf8());
         };
@@ -325,6 +450,37 @@ class OutputTest : public QObject {
         base(h2, "task", "optimize_frequencies");
         base(h2, "numerical_frequencies", true);
         runCase(h2, "h2_frequencies");
+        if (QTest::currentTestFailed())
+            return;
+        for (const auto &functions : {"spherical", "cartesian"}) {
+            auto d = water();
+            base(d, "basis", "cc-pvqz"); // s–g, including every Cartesian mixed-power ordering.
+            base(d, "basis_functions", functions);
+            setNwchemAdvanced(d, "cube_type", "orbital");
+            setNwchemAdvanced(d, "cube_orbital", "index");
+            setNwchemAdvanced(d, "cube_index", 70);
+            for (const auto &norm : {"nwchem", "none"}) {
+                setNwchemAdvanced(d, "molden_norm", norm);
+                runCase(d, QString("g_%1_%2").arg(functions, norm));
+                if (QTest::currentTestFailed())
+                    return;
+            }
+        }
+        for (const auto &reference : {"rohf", "uhf"}) {
+            auto d = water();
+            d.setJobValue("charge", 1);
+            d.setJobValue("multiplicity", 2);
+            base(d, "reference", reference);
+            for (const auto &type : {"alpha_density", "beta_density", "spin_density"}) {
+                setNwchemAdvanced(d, "cube_type", type);
+                runCase(d, QString("%1_%2").arg(reference, type));
+                if (QTest::currentTestFailed())
+                    return;
+            }
+        }
+        auto ecp = Document::fromXyz("2\nICl\nI 0 0 0\nCl 0 0 2.32\n");
+        base(ecp, "basis", "lanl2dz ecp");
+        runCase(ecp, "ecp_density");
         if (QTest::currentTestFailed())
             return;
         MainWindow w;

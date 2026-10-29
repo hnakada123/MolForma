@@ -99,7 +99,14 @@ class MoldenTest : public QObject {
     }
     void contractedBasisAndBounds() {
         QMap<QString, QStringList> b{{"GTO", {"1 0", "s 2 1", "2 .5", ".5 .6"}}};
+        // Valid standard coefficients need not describe a normalized contraction. Do not
+        // silently guess when the file cannot distinguish standard from embedded factors.
         const auto standard = moldenWavefunction(b, hydrogen(), {{1}}, "standard");
+        const QMap<QString, QStringList> unnormalized{{"GTO", {"1 0", "s 2 1", "2 1", ".5 1.2"}}};
+        QVERIFY_EXCEPTION_THROWN(moldenWavefunction(unnormalized, hydrogen(), {{1}}), std::runtime_error);
+        const auto explicitStandard = moldenWavefunction(unnormalized, hydrogen(), {{1}}, "standard");
+        QVERIFY(std::abs(explicitStandard.value(0, Vec(.2, .3, .4)) - standard.value(0, Vec(.2, .3, .4))) <
+                1e-12);
         auto embedded = b;
         for (int i = 0; i < 2; ++i) {
             const auto p = standard.shells[0].primitives[i];
