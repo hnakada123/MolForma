@@ -1,6 +1,7 @@
 #pragma once
 #include "model/document.h"
 #include <array>
+#include <functional>
 #include <limits>
 
 namespace mf {
@@ -98,11 +99,21 @@ class NwchemEnergySummary {
     QVector<Task> tasks{Task{}};
     bool ended = false;
 };
-// What the log of a running NWChem job tells so far, fed line by line: the tasks begun, the DRIVER
-// steps of the latest optimization with their thresholds, and the last total energy.
-class NwchemProgress {
+// One reading of an NWChem log, fed its lines in order: the whole log for the result viewer, a growing
+// log for the run panel, the end of an old one for the history. Sections that span several lines
+// (coordinate and normal-mode tables, excited states, charges, thermochemistry, ...) are read as their
+// lines arrive.
+class NwchemLog {
   public:
+    // With a result, everything goes into it and finish() completes it; without, only the progress
+    // below and the energy summary are read.
+    explicit NwchemLog(ResultData *result = nullptr);
     void add(const QString &line);
+    // The log ends: sections still open are incomplete. Completes the result.
+    void finish();
+    const NwchemEnergySummary &summary() const {
+        return energySummary;
+    }
     // The tasks of an input in their order, in words ("構造最適化", "振動数"), and the most steps
     // its DRIVER takes (maxiter; 0 without a DRIVER block).
     static QStringList tasks(const QString &input);
@@ -112,11 +123,28 @@ class NwchemProgress {
     int convergedTask = -1;
     QVector<ResultStep> steps;                                // Of the latest optimization.
     QJsonObject thresholds;                                   // {gmax, grms, xmax, xrms} of the DRIVER.
-    double energy = std::numeric_limits<double>::quiet_NaN(); // The last total energy / Hartree.
+    double energy = std::numeric_limits<double>::quiet_NaN(); // The last total energy / Hartree,
+    QString energyMethod;                                     // and its method ("SCF", "MP2").
     bool ended = false;                                       // NWChem's closing timing line.
 
   private:
+    ResultData *result;
+    NwchemEnergySummary energySummary;
+    int lineNumber = 0;
     bool busy = false; // The current task has printed something since its input banner.
+    bool recognized = false, fatal = false;
+    QString abort, orbitalSpin, ircDirection, shieldingElement;
+    QStringList recent; // The lines before this one, for the message that precedes an error.
+    QVector<ResultOrbital> orbitals;
+    QJsonArray thermochemistry, ircPoints, shielding;
+    QJsonObject irc, solvation;
+    QMap<int, QJsonObject> scan;
+    int scanPoint = 0, shieldingAtom = 0, ircConverged = 0;
+    // The sections being read: each takes the following lines until it returns false, and nullptr
+    // once the log ends.
+    QVector<std::function<bool(const QString *line)>> sections;
+    void read(const QString &line);
+    void progress(const QString &line);
 };
 // Parsing/meshing is bounded and runs in a cancellable native process in the UI.
 ResultData readResult(const QString &path, double isovalue = .03, int dataset = 0, int orbital = -1,

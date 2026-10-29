@@ -165,23 +165,16 @@ HistoryEntry readHistoryEntry(const QString &directory) {
         e.energy = summary["energy"].toDouble();
         e.energyMethod = summary["energy_method"].toString();
     } else if (QFileInfo::exists(QDir(e.directory).filePath("output.out"))) {
-        // Older records and unfinished runs: the last energy in the end of the log.
+        // Older records and unfinished runs: the last energy in the end of the log (whole lines only).
         try {
-            const auto text = historyText(e.directory, "output.out", true);
-            static const QRegularExpression energy(
-                R"((?:^|\n)\s*Total\s+(SCF|DFT|MP2|CCSD(?:\(T\))?)\s+energy\s*[:=]?\s*([-+0-9.eEdD]+)[ \t]*(?=\r?\n))",
-                QRegularExpression::CaseInsensitiveOption);
-            auto matches = energy.globalMatch(text);
-            while (matches.hasNext()) {
-                const auto match = matches.next();
-                auto value = match.captured(2);
-                value.replace(QChar('D'), QChar('E'), Qt::CaseInsensitive);
-                bool ok;
-                const double n = value.toDouble(&ok);
-                if (ok && std::isfinite(n)) {
-                    e.energy = n;
-                    e.energyMethod = match.captured(1).toUpper();
-                }
+            auto lines = historyText(e.directory, "output.out", true).split('\n');
+            lines.removeLast();
+            NwchemLog log;
+            for (const auto &line : std::as_const(lines))
+                log.add(line);
+            if (std::isfinite(log.energy)) {
+                e.energy = log.energy;
+                e.energyMethod = log.energyMethod;
             }
         } catch (const std::exception &error) {
             e.warnings << QString::fromUtf8(error.what());

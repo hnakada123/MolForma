@@ -1,4 +1,5 @@
 #include "editing/coordinates.h"
+#include "nwchem/history.h"
 #include "results/result_summary.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
@@ -49,6 +50,59 @@ class ResultsTest : public QObject {
                "[FR-NORM-COORD]\nvibration 1\n0 0 .5\n0 0 -.5\nvibration 2\n0 0 .1\n0 0 -.1\n"
                "[INT]\n10\n20\n";
     }
+    // Everything read from an NWChem log, for comparing readings of real logs: the result, the progress
+    // of a running job fed line by line and the energy summary of the history.
+    static QJsonObject logDigest(const QString &path) {
+        const auto r = readResult(path);
+        const auto vector = [](const Vec &v) { return QJsonArray{v.x(), v.y(), v.z()}; };
+        QJsonArray energies, steps, frames, orbitals, modes, excitations;
+        for (const auto &e : r.energies)
+            energies << QJsonArray{e.method, e.hartree, e.line};
+        for (const auto &s : r.steps)
+            steps << QJsonArray{s.step, s.energy, s.deltaE, s.gmax, s.grms, s.xrms, s.xmax, s.seconds};
+        for (const auto &f : r.frames) {
+            QJsonArray atoms;
+            for (const auto &a : f.molecule.atoms)
+                atoms << QJsonArray{a.element, a.position.x(), a.position.y(), a.position.z()};
+            frames << QJsonObject{{"label", f.label}, {"atoms", atoms}};
+        }
+        for (const auto &o : r.orbitals)
+            orbitals << QJsonArray{o.spin, o.number, o.energy, o.occupation, o.symmetry};
+        for (const auto &m : r.modes) {
+            QJsonArray displacement;
+            for (const auto &v : m.displacement)
+                displacement << vector(v);
+            modes << QJsonObject{
+                {"frequency", m.frequency}, {"intensity", m.intensity}, {"displacement", displacement}};
+        }
+        for (const auto &x : r.excitations)
+            excitations << QJsonArray{x.root, x.spin, x.symmetry, x.ev, x.oscillator, x.s2};
+        NwchemLog progress; // As the run panel feeds it.
+        for (const auto &line : readFile(path).split('\n'))
+            progress.add(QString::fromUtf8(line));
+        QJsonArray progressSteps;
+        for (const auto &s : progress.steps)
+            progressSteps << QJsonArray{s.step, s.energy};
+        return {{"status", r.status},
+                {"outcome", int(r.outcome)},
+                {"warnings", QJsonArray::fromStringList(r.warnings)},
+                {"properties", r.properties},
+                {"energies", energies},
+                {"steps", steps},
+                {"frames", frames},
+                {"orbitals", orbitals},
+                {"vibration_atoms", r.vibrationGeometry.atoms.size()},
+                {"modes", modes},
+                {"excitations", excitations},
+                {"progress", QJsonObject{{"started", progress.started},
+                                         {"step_task", progress.stepTask},
+                                         {"converged_task", progress.convergedTask},
+                                         {"steps", progressSteps},
+                                         {"thresholds", progress.thresholds},
+                                         {"energy", progress.energy},
+                                         {"ended", progress.ended}}},
+                {"history", nwchemLogSummary(path)}};
+    }
     template <typename T> static T *widget(MainWindow &w, const char *name) {
         auto *p = w.findChild<T *>(name);
         Q_ASSERT(p);
@@ -64,6 +118,26 @@ class ResultsTest : public QObject {
                            settings.path()); // MolForma uses NativeFormat.
         qputenv("XDG_CONFIG_HOME", settings.path().toUtf8());
         qputenv("XDG_DATA_HOME", settings.filePath("data").toUtf8());
+    }
+    void realNwchemLogs() {
+        // Logs of NWChem 7.3.1 for inputs MolForma generated (tests/fixtures/nwchem/README.md), and what
+        // MolForma reads from them. MOLFORMA_UPDATE_GOLDEN=1 records the readings anew.
+        const QDir dir(FIXTURE_DIR "/nwchem");
+        const auto logs = dir.entryList({"*.out"});
+        QVERIFY(logs.size() >= 11);
+        for (const auto &log : logs) {
+            // As written to the file: values that are not numbers (NaN) become null.
+            const auto digest = parseJson(QJsonDocument(logDigest(dir.filePath(log))).toJson());
+            const auto golden = dir.filePath(QFileInfo(log).completeBaseName() + ".json");
+            if (qEnvironmentVariableIsSet("MOLFORMA_UPDATE_GOLDEN")) {
+                writeFile(golden, QJsonDocument(digest).toJson());
+                continue;
+            }
+            const auto expected = parseJson(readFile(golden));
+            for (const auto &key : expected.keys())
+                QVERIFY2(digest[key] == expected[key], qPrintable(log + ": " + key));
+            QCOMPARE(digest.keys(), expected.keys());
+        }
     }
     void logGeometryEnergyAndFailure() {
         auto source = "NWChem\n" + geometry() +

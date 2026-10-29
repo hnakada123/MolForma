@@ -1,0 +1,134 @@
+{
+    "energies": [
+        [
+            "SCF",
+            -74.963023138843,
+            283
+        ],
+        [
+            "MP2",
+            -74.99856879048296,
+            414
+        ],
+        [
+            "CCSD",
+            -75.01246170381245,
+            472
+        ],
+        [
+            "CCSD(T)",
+            -75.01252911348989,
+            535
+        ]
+    ],
+    "excitations": [
+    ],
+    "frames": [
+        {
+            "atoms": [
+                [
+                    "O",
+                    0,
+                    0,
+                    0.1173
+                ],
+                [
+                    "H",
+                    0,
+                    0.7572,
+                    -0.4692
+                ],
+                [
+                    "H",
+                    0,
+                    -0.7572,
+                    -0.4692
+                ]
+            ],
+            "label": "ログ 行 93"
+        }
+    ],
+    "history": {
+        "energy": -75.01252911348989,
+        "energy_method": "CCSD(T)",
+        "energy_source": "final",
+        "normal_termination": true
+    },
+    "modes": [
+    ],
+    "orbitals": [
+        [
+            "Alpha",
+            2,
+            -1.268162,
+            2,
+            ""
+        ],
+        [
+            "Alpha",
+            3,
+            -0.6175645,
+            2,
+            ""
+        ],
+        [
+            "Alpha",
+            4,
+            -0.4530217,
+            2,
+            ""
+        ],
+        [
+            "Alpha",
+            5,
+            -0.3912368,
+            2,
+            ""
+        ],
+        [
+            "Alpha",
+            6,
+            0.6051719,
+            0,
+            ""
+        ],
+        [
+            "Alpha",
+            7,
+            0.7415975,
+            0,
+            ""
+        ]
+    ],
+    "outcome": 2,
+    "progress": {
+        "converged_task": -1,
+        "ended": true,
+        "energy": -75.01252911348989,
+        "started": 2,
+        "step_task": -1,
+        "steps": [
+        ],
+        "thresholds": {
+        }
+    },
+    "properties": {
+        "dipole": {
+            "debye": 1.725304463168251,
+            "x": 0,
+            "y": 0,
+            "z": -0.678787
+        },
+        "final_energy": {
+            "hartree": -75.01252911348989,
+            "method": "CCSD(T)",
+            "source": "final"
+        }
+    },
+    "status": "正常終了マーカーあり（各taskの結果は「概要」とログで確認）",
+    "steps": [
+    ],
+    "vibration_atoms": 0,
+    "warnings": [
+    ]
+}

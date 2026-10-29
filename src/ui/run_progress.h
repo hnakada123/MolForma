@@ -28,7 +28,7 @@ class RunProgress : public QWidget {
     QVBoxLayout *stageList;
     QWidget *criteria;
     QList<QLabel *> criterionLabels;
-    NwchemProgress progress;
+    NwchemLog progress;
     QString directory;
     qint64 offset = 0;
     QByteArray rest;

@@ -385,7 +385,7 @@ class ExecutionTest : public QObject {
         QVERIFY(!failed.checks[0].ok);
         QVERIFY(failed.errors.contains(failed.checks[0].error));
         // What a running log tells: tasks begun, DRIVER steps against thresholds, the energy.
-        NwchemProgress progress;
+        NwchemLog progress;
         for (const auto &line :
              QStringList{" NWChem Input Module", " NWChem Input Module",
                          "  maximum gradient threshold         (gmax) =   0.000450",
@@ -411,10 +411,10 @@ class ExecutionTest : public QObject {
         const auto input =
             QString("driver\n  maxiter 80\nend\ntask dft optimize\ntask dft frequencies numerical\n"
                     "task tddft energy\ntask dplot\n");
-        QCOMPARE(NwchemProgress::tasks(input),
+        QCOMPARE(NwchemLog::tasks(input),
                  (QStringList{"構造最適化", "振動数", "励起状態（TDDFT）", "CUBE出力"}));
-        QCOMPARE(NwchemProgress::driverSteps(input), 80);
-        QCOMPARE(NwchemProgress::driverSteps("task scf energy\n"), 0);
+        QCOMPARE(NwchemLog::driverSteps(input), 80);
+        QCOMPARE(NwchemLog::driverSteps("task scf energy\n"), 0);
     }
     void runningProgressAndHeader() {
         MainWindow w;

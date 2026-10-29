@@ -1,0 +1,60 @@
+{
+    "energies": [
+    ],
+    "excitations": [
+    ],
+    "frames": [
+        {
+            "atoms": [
+                [
+                    "O",
+                    0,
+                    0,
+                    0.1173
+                ],
+                [
+                    "H",
+                    0,
+                    0.7572,
+                    -0.4692
+                ],
+                [
+                    "H",
+                    0,
+                    -0.7572,
+                    -0.4692
+                ]
+            ],
+            "label": "ログ 行 93"
+        }
+    ],
+    "history": {
+        "normal_termination": false
+    },
+    "modes": [
+    ],
+    "orbitals": [
+    ],
+    "outcome": 3,
+    "progress": {
+        "converged_task": -1,
+        "ended": false,
+        "energy": null,
+        "started": 1,
+        "step_task": -1,
+        "steps": [
+        ],
+        "thresholds": {
+        }
+    },
+    "properties": {
+    },
+    "status": "NWChemエラー: bas_tag_lib: failed opening basis file",
+    "steps": [
+    ],
+    "vibration_atoms": 0,
+    "warnings": [
+        "行 167: NWChemエラー: bas_tag_lib: failed opening basis file",
+        "行 174: There is an error in the specified basis set"
+    ]
+}

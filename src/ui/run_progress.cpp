@@ -68,14 +68,14 @@ void RunProgress::setStages(const QStringList &stages) {
 }
 void RunProgress::read(const QString &path) {
     if (path != directory) {
-        progress = NwchemProgress();
+        progress = NwchemLog();
         directory = path;
         offset = 0;
         rest.clear();
         QFile input(QDir(path).filePath("input.nw"));
         const auto text = input.open(QIODevice::ReadOnly) ? QString::fromUtf8(input.readAll()) : QString();
-        tasks = NwchemProgress::tasks(text);
-        maxSteps = NwchemProgress::driverSteps(text);
+        tasks = NwchemLog::tasks(text);
+        maxSteps = NwchemLog::driverSteps(text);
     }
     if (path.isEmpty())
         return;
@@ -83,7 +83,7 @@ void RunProgress::read(const QString &path) {
     if (!file.open(QIODevice::ReadOnly) || file.size() == offset)
         return;
     if (file.size() < offset) { // A rewritten log: read it again.
-        progress = NwchemProgress();
+        progress = NwchemLog();
         offset = 0;
         rest.clear();
     }
