@@ -8,9 +8,6 @@
 
 namespace mf {
 namespace {
-QJsonObject type(const QString &name) {
-    return {{"type", name}};
-}
 QJsonObject integer(int lo, int hi) {
     return {{"type", "integer"}, {"minimum", lo}, {"maximum", hi}};
 }
@@ -54,54 +51,72 @@ bool appendPage(QJsonArray &items, const QJsonObject &item, qsizetype &bytes) {
     items.append(item);
     return true;
 }
-QJsonObject mcpTool(const QString &name, const QString &title, const QString &description,
-                    QJsonObject properties, QJsonArray required, bool mutation, bool readOnly,
-                    const QJsonObject &output, const QJsonObject &meta) {
-    properties["documentId"] = type("string");
-    required.append("documentId");
-    if (mutation) {
-        properties["expectedRevision"] = type("string");
-        required.append("expectedRevision");
+QJsonObject McpToolSpec::definition() const {
+    auto inputs = properties;
+    auto needed = required;
+    if (!global) {
+        inputs["documentId"] =
+            QJsonObject{{"type", "string"}, {"description", "ID returned by list_documents"}};
+        needed.append("documentId");
     }
+    if (mutation) {
+        inputs["expectedRevision"] =
+            QJsonObject{{"type", "string"}, {"description", "Revision from the most recent get_document"}};
+        needed.append("expectedRevision");
+    }
+    // The tools act on MolForma's own workspace and local files only.
     QJsonObject tool{{"name", name},
                      {"title", title},
                      {"description", description},
                      {"outputSchema", output},
                      {"inputSchema", QJsonObject{{"type", "object"},
-                                                 {"properties", properties},
-                                                 {"required", required},
+                                                 {"properties", inputs},
+                                                 {"required", needed},
                                                  {"additionalProperties", false}}},
                      {"annotations", QJsonObject{{"readOnlyHint", readOnly && !mutation},
                                                  {"destructiveHint", mutation || !readOnly},
-                                                 {"openWorldHint", true}}}};
+                                                 {"openWorldHint", false}}}};
     if (!meta.isEmpty())
         tool["_meta"] = meta;
     return tool;
 }
-QJsonObject resultsTool() {
-    return mcpTool(
-        "get_results", "Read results",
-        "Read the loaded result summary (properties from NWChem logs: thermochemistry, dipole, optimization "
-        "state, scan and irc paths with frame indices, bsse, solvation, mulliken/esp/resp charges per atom, "
-        "NMR shielding, polarizability in a.u.) or paginated frames/energies/orbitals/modes/excitations "
-        "(TDDFT)/steps (optimization)/log. mode_displacements returns one mode with its reference geometry. "
-        "Frequencies retain negative values for imaginary modes; rigid marks translations and rotations, "
-        "and significant marks imaginary frequencies below -10 cm-1 (smaller ones are often numerical "
-        "noise).",
-        {{"section", QJsonObject{{"type", "string"},
-                                 {"enum", QJsonArray{"summary", "frames", "energies", "orbitals", "modes",
-                                                     "excitations", "steps", "mode_displacements", "log"}}}},
-         {"offset", integer(0, 10000000)},
-         {"limit", integer(1, 65536)},
-         {"index", integer(0, 1000000)}},
-        {}, false, true, {}, {{"anthropic/maxResultSizeChars", McpLargeResultChars}});
+McpToolSpec resultsTool() {
+    return {
+        .name = "get_results",
+        .title = "Read results",
+        .description =
+            "Read the loaded result summary (properties from NWChem logs: thermochemistry, dipole, "
+            "optimization "
+            "state, scan and irc paths with frame indices, bsse, solvation, mulliken/esp/resp charges per "
+            "atom, "
+            "NMR shielding, polarizability in a.u.) or paginated frames/energies/orbitals/modes/excitations "
+            "(TDDFT)/steps (optimization)/log. mode_displacements returns one mode with its reference "
+            "geometry. "
+            "Frequencies retain negative values for imaginary modes; rigid marks translations and rotations, "
+            "and significant marks imaginary frequencies below -10 cm-1 (smaller ones are often numerical "
+            "noise).",
+        .properties = {{"section", QJsonObject{{"type", "string"},
+                                               {"enum", QJsonArray{"summary", "frames", "energies",
+                                                                   "orbitals", "modes", "excitations",
+                                                                   "steps", "mode_displacements", "log"}}}},
+                       {"offset", integer(0, 10000000)},
+                       {"limit", integer(1, 65536)},
+                       {"index", integer(0, 1000000)}},
+        .meta = {{"anthropic/maxResultSizeChars", McpLargeResultChars}},
+    };
 }
-QJsonObject calculationTool(const QString &description, const QJsonObject &output, bool confirm) {
-    return mcpTool(
-        "calculation", "Run NWChem", description,
-        {{"action", QJsonObject{{"type", "string"}, {"enum", QJsonArray{"start", "stop", "save_bundle"}}}}},
-        {"action"}, true, true, output,
-        confirm ? QJsonObject{{"anthropic/requiresUserInteraction", true}} : QJsonObject{});
+McpToolSpec calculationTool(const QString &description, const QJsonObject &output, bool confirm) {
+    return {
+        .name = "calculation",
+        .title = "Run NWChem",
+        .description = description,
+        .properties = {{"action", QJsonObject{{"type", "string"},
+                                              {"enum", QJsonArray{"start", "stop", "save_bundle"}}}}},
+        .required = {"action"},
+        .mutation = true,
+        .output = output,
+        .meta = confirm ? QJsonObject{{"anthropic/requiresUserInteraction", true}} : QJsonObject{},
+    };
 }
 QJsonObject calculationJson(const NwchemRun &run, const QString &savedBundle) {
     return {{"active", run.active()},     {"state", runStateKey(run.state())},

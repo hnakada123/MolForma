@@ -1,6 +1,7 @@
 #pragma once
 #include "editing/editor_session.h"
 #include "mcp/policy.h"
+#include "mcp/tools.h"
 #include <QDateTime>
 #include <QMap>
 #include <QObject>
@@ -80,6 +81,16 @@ class McpServer : public QObject {
     QString revision() const;
     void edit(const QString &name, const std::function<void(Document &)> &operation, bool preview);
     void history(const QString &action);
+    // A built-in tool: what tools/list says of it and what a call does. tools/list and tools/call both
+    // come from this list (and the editor's additional tools).
+    struct Tool {
+        McpToolSpec spec;
+        std::function<QJsonObject(const QJsonObject &args)> call;
+    };
+    QVector<Tool> builtIn;
+    void registerTools();
+    QJsonObject saveFile(const QJsonObject &args);
+    QString baseDirectory() const;
     QJsonArray toolList() const;
     QSet<QString> toolNames() const;
     QJsonArray resourceList() const;

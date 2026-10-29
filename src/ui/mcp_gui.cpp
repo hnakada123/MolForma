@@ -131,26 +131,6 @@ Qt::KeyboardModifiers modifiers(const QJsonObject &args) {
 QString plainButtonText(const QAbstractButton *button) {
     return QString(button->text()).remove('&');
 }
-QString toolTitle(const QString &name) {
-    static const QHash<QString, QString> titles{{"get_app_state", "Read application state"},
-                                                {"get_ui", "List GUI controls"},
-                                                {"get_ui_item", "Read GUI control"},
-                                                {"get_ui_command", "Poll GUI command"},
-                                                {"ui_activate", "Activate GUI control"},
-                                                {"ui_set_value", "Set GUI value"},
-                                                {"ui_select", "Select in GUI"},
-                                                {"ui_edit_cell", "Edit GUI cell"},
-                                                {"ui_input", "Send GUI input"},
-                                                {"ui_file_dialog", "Answer file dialog"},
-                                                {"capture_screenshot", "Capture screenshot"},
-                                                {"set_selection", "Select atoms"},
-                                                {"chemistry", "SMILES and refinement"},
-                                                {"calculation", "Run NWChem"},
-                                                {"get_results", "Read results"},
-                                                {"results_action", "Control result viewer"},
-                                                {"history_action", "Manage calculation history"}};
-    return titles.value(name);
-}
 QJsonObject commandSchema() {
     return {
         {"type", "object"},
@@ -208,8 +188,9 @@ McpEditor McpGui::editor() {
 }
 QJsonArray McpGui::tools() const {
     QJsonArray result;
-    auto add = [&](const QString &name, const QString &description, QJsonObject properties = {},
-                   QJsonArray required = {}, bool mutation = false, bool readOnly = true) {
+    auto add = [&](const QString &name, const QString &title, const QString &description,
+                   QJsonObject properties = {}, QJsonArray required = {}, bool mutation = false,
+                   bool readOnly = true) {
         QJsonObject output;
         if (mutation || name == "get_ui_command")
             output = commandSchema();
@@ -217,22 +198,29 @@ QJsonArray McpGui::tools() const {
             output = QJsonObject{{"type", "object"},
                                  {"required", QJsonArray{"selection", "candidate", "chemistryRunning",
                                                          "calculation", "results", "history"}}};
-        result.append(
-            mcpTool(name, toolTitle(name), description, properties, required, mutation, readOnly, output));
+        result.append(McpToolSpec{.name = name,
+                                  .title = title,
+                                  .description = description,
+                                  .properties = properties,
+                                  .required = required,
+                                  .mutation = mutation,
+                                  .readOnly = readOnly,
+                                  .output = output}
+                          .definition());
     };
     const auto target = type("string"), boolean = type("boolean"), number = type("number");
     const auto value = QJsonObject{{"type", QJsonArray{"string", "number", "boolean"}}};
     const auto rows = array(integer(0, 1000000), 10000);
-    add("get_app_state",
+    add("get_app_state", "Read application state",
         "Read GUI selection, candidate, chemistry worker, calculation, viewer and history status.");
-    add("get_ui",
+    add("get_ui", "List GUI controls",
         "Discover native widgets/actions including dialogs. Targets are returned opaque IDs or unique "
         "objectName. Paginate with offset/limit; includeHidden exposes controls on other tabs.",
         {{"includeHidden", boolean},
          {"offset", integer(0, 100000)},
          {"limit", integer(1, 2000)},
          {"query", type("string")}});
-    add("get_ui_item",
+    add("get_ui_item", "Read GUI control",
         "Read a control's text, choices or table/tree rows. offset/limit page text characters or model rows. "
         "parentRows addresses a tree parent. For the 3D views (moleculeView, resultsView) rows are atoms "
         "with their widget x/y for ui_input clicks, plus coordination-site and terminus markers. Does not "
@@ -242,20 +230,20 @@ QJsonArray McpGui::tools() const {
          {"limit", integer(1, 65536)},
          {"parentRows", rows}},
         {"target"});
-    add("get_ui_command",
+    add("get_ui_command", "Poll GUI command",
         "Poll a GUI command: queued/running/done/failed. A running command may be waiting for a modal "
         "dialog; inspect get_ui and answer explicitly. Background workers are polled with get_app_state.",
         {{"commandId", type("string")}}, {"commandId"});
-    add("ui_activate",
+    add("ui_activate", "Activate GUI control",
         "Activate a native button, menu action or shortcut. Returns immediately with commandId, including "
         "when a "
         "dialog opens. Disabled controls are rejected.",
         {{"target", target}}, {"target"}, true);
-    add("ui_set_value",
+    add("ui_set_value", "Set GUI value",
         "Set a native text, numeric, slider or checkable control. Text edits commit by default; commit=false "
         "leaves an edit pending. Uses the same GUI signals and validation.",
         {{"target", target}, {"value", value}, {"commit", boolean}}, {"target", "value"}, true);
-    add("ui_select",
+    add("ui_select", "Select in GUI",
         "Select tabs, combo entries, list/table/tree rows (zero-based). rows supports multiple selection; "
         "parentRows addresses tree children. expand optionally expands a tree row.",
         {{"target", target},
@@ -265,7 +253,7 @@ QJsonArray McpGui::tools() const {
          {"parentRows", rows},
          {"expand", boolean}},
         {"target"}, true);
-    add("ui_edit_cell",
+    add("ui_edit_cell", "Edit GUI cell",
         "Edit an editable model/table cell or its check state. Coordinates and environment tables use their "
         "normal validation and Undo.",
         {{"target", target},
@@ -274,7 +262,7 @@ QJsonArray McpGui::tools() const {
          {"value", value},
          {"parentRows", rows}},
         {"target", "row", "column", "value"}, true);
-    add("ui_input",
+    add("ui_input", "Send GUI input",
         "Send native Qt click/double_click/context/drag/wheel/key/drop_template input inside one widget. "
         "Coordinates are local pixels. key uses PortableText such as Return or Ctrl+A; text enters text. No "
         "OS automation is used.",
@@ -291,12 +279,12 @@ QJsonArray McpGui::tools() const {
          {"text", type("string")},
          {"templateId", type("string")}},
         {"target", "action"}, true);
-    add("ui_file_dialog",
+    add("ui_file_dialog", "Answer file dialog",
         "Choose a path/filter and accept or cancel a MolForma QFileDialog. Existing-file replacement still "
         "uses the GUI confirmation dialog; inspect get_ui. GUI MCP uses non-native dialogs.",
         {{"target", target}, {"path", type("string")}, {"filter", type("string")}, {"accept", boolean}},
         {"target", "accept"}, true);
-    add("capture_screenshot",
+    add("capture_screenshot", "Capture screenshot",
         "Return a PNG image of a native MolForma widget/window (including VTK). Optionally save to path; "
         "overwrite is opt-in. Does not capture other applications.",
         {{"target", target},
@@ -304,10 +292,10 @@ QJsonArray McpGui::tools() const {
          {"overwrite", boolean},
          {"maxWidth", integer(64, 4096)}},
         {}, false, false);
-    add("set_selection",
+    add("set_selection", "Select atoms",
         "Select editor atoms by stable IDs, without changing geometry. Empty ids clears selection.",
         {{"ids", array(type("string"))}}, {"ids"}, true);
-    add("chemistry",
+    add("chemistry", "SMILES and refinement",
         "Start cancellable SMILES/refine/regenerate/conformer-search work, or cancel it. smiles replaces the "
         "structure; fragment adds the SMILES molecule 3 Å beside the current one. moving limits refinement "
         "to "
@@ -317,13 +305,16 @@ QJsonArray McpGui::tools() const {
          {"smiles", type("string")},
          {"moving", array(type("string"))}},
         {"action"}, true);
-    result.append(calculationTool(
-        "Start/stop NWChem or save an immutable input bundle using the GUI execution settings. No shell "
-        "command is accepted; the executable, launcher and environment are those the user set in MolForma. "
-        "Poll get_app_state; exit zero alone does not establish convergence.",
-        commandSchema(), policy.allowExecutionSettings));
-    result.append(resultsTool());
-    add("results_action",
+    result.append(
+        calculationTool(
+            "Start/stop NWChem or save an immutable input bundle using the GUI execution settings. No shell "
+            "command is accepted; the executable, launcher and environment are those the user set in "
+            "MolForma. "
+            "Poll get_app_state; exit zero alone does not establish convergence.",
+            commandSchema(), policy.allowExecutionSettings)
+            .definition());
+    result.append(resultsTool().definition());
+    add("results_action", "Control result viewer",
         "Open/cancel/reload results; select frame/mode/orbital; play/stop vibration or trajectory; export "
         "current geometry. indices are zero-based. These change only the viewer, except apply_structure: it "
         "proposes the displayed geometry (same atoms in the same order, fixed atoms unmoved) as a candidate "
@@ -336,7 +327,7 @@ QJsonArray McpGui::tools() const {
          {"amplitude", QJsonObject{{"type", "number"}, {"minimum", .01}, {"maximum", 2}}},
          {"overwrite", boolean}},
         {"action"}, true);
-    add("history_action",
+    add("history_action", "Manage calculation history",
         "Scan/select/reuse/open/repair/trash saved calculations, cancel a scan, or export history CSV. "
         "Repair marks a record left running on this computer, whose process has ended, as interrupted. "
         "Reuse and trash retain the normal GUI confirmation dialogs. Poll get_app_state and get_ui.",

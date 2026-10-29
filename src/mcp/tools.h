@@ -14,13 +14,19 @@ constexpr qsizetype McpResourceChars = 100000;
 constexpr int McpLargeResultChars = 100000;
 bool appendPage(QJsonArray &items, const QJsonObject &item, qsizetype &bytes);
 
-// documentId is always required; mutations also require expectedRevision.
-QJsonObject mcpTool(const QString &name, const QString &title, const QString &description,
-                    QJsonObject properties, QJsonArray required = {}, bool mutation = false,
-                    bool readOnly = true, const QJsonObject &output = {}, const QJsonObject &meta = {});
-QJsonObject resultsTool();
+// A tool as tools/list describes it. documentId is required unless the tool is global; mutations also
+// require expectedRevision. A tool that writes files without being a mutation is not readOnly.
+struct McpToolSpec {
+    QString name, title, description;
+    QJsonObject properties = {};
+    QJsonArray required = {};
+    bool global = false, mutation = false, readOnly = true;
+    QJsonObject output = {}, meta = {};
+    QJsonObject definition() const;
+};
+McpToolSpec resultsTool();
 // confirm: Claude Code asks a person before every call (when MCP may choose the program).
-QJsonObject calculationTool(const QString &description, const QJsonObject &output, bool confirm);
+McpToolSpec calculationTool(const QString &description, const QJsonObject &output, bool confirm);
 
 QJsonObject calculationJson(const NwchemRun &run, const QString &savedBundle);
 // get_results: summary plus one paginated section of the loaded result.

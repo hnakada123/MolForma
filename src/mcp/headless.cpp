@@ -47,25 +47,36 @@ QJsonArray McpHeadless::tools() const {
     const QJsonObject work{{"type", "object"},
                            {"properties", QJsonObject{{"tool", text}, {"action", text}, {"workId", text}}},
                            {"required", QJsonArray{"tool", "action"}}};
+    const McpToolSpec state{
+        .name = "get_app_state",
+        .title = "Read application state",
+        .description = "Read the candidate flag, NWChem calculation state and result-loading state of this "
+                       "headless server.",
+        .output = {{"type", "object"}, {"required", QJsonArray{"candidate", "calculation", "results"}}},
+    };
+    const McpToolSpec load{
+        .name = "results_action",
+        .title = "Load results",
+        .description =
+            "Open a result file or calculation directory, reload it, or cancel loading. Loading runs "
+            "in a cancellable process and never changes the document; follow the task or poll "
+            "get_app_state.",
+        .properties = {{"action",
+                        QJsonObject{{"type", "string"},
+                                    {"enum", QJsonArray{"open_file", "open_directory", "reload", "cancel"}}}},
+                       {"path", text}},
+        .required = {"action"},
+        .mutation = true,
+        .output = work,
+    };
     return {
-        mcpTool("get_app_state", "Read application state",
-                "Read the candidate flag, NWChem calculation state and result-loading state of this headless "
-                "server.",
-                {}, {}, false, true,
-                {{"type", "object"}, {"required", QJsonArray{"candidate", "calculation", "results"}}}),
+        state.definition(),
         calculationTool("Start/stop NWChem or save an immutable input bundle with the document's execution "
                         "settings. start returns at once; follow the returned task or poll get_app_state. "
                         "Exit code zero alone does not establish convergence.",
-                        work, policy.allowExecutionSettings),
-        resultsTool(),
-        mcpTool(
-            "results_action", "Load results",
-            "Open a result file or calculation directory, reload it, or cancel loading. Loading runs in a "
-            "cancellable process and never changes the document; follow the task or poll get_app_state.",
-            {{"action", QJsonObject{{"type", "string"},
-                                    {"enum", QJsonArray{"open_file", "open_directory", "reload", "cancel"}}}},
-             {"path", text}},
-            {"action"}, true, true, work)};
+                        work, policy.allowExecutionSettings)
+            .definition(),
+        resultsTool().definition(), load.definition()};
 }
 QJsonObject McpHeadless::state() const {
     return {{"candidate", server && server->candidate().has_value()},
