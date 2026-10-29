@@ -60,7 +60,7 @@ def2系ではRb〜Xeに28電子、Cs〜Laに46電子、Hf〜Rnに60電子を除�
 
 - 「遷移状態探索」はDRIVERの `task … saddle` です。反応座標に沿って負の曲率を持つ初期構造から始め、「遷移状態探索 → 振動数」で虚振動が1つであることを確認します。
 - 「IRC（遷移状態からの反応経路）」はNWChemのGonzalez–Schlegel法（`mepgs` ブロックと `task … mepgs`）で、初めに遷移状態のHessianを計算し、前進・後退の両方向へ「IRCの点数（各方向、`maxmep`）」まで追跡します。刻み幅（`stride`）は質量加重座標のamu½·Bohrです。点数が足りず極小に達しない場合、NWChemはエラーで終了するため、点数は余裕をもって指定します。NWChem 7.3.1は経路の長さ（stotal）が1 amu½·Bohrを超えるまで極小に着いたと判定しないため、遷移状態から極小までが短い側は、極小に着いた後も小さな刻みを続けて点数の上限で「mepgs: could not optimize」となって止まり、残りの方向は計算されません（それまでの点は「経路・スキャン」で見られます）。そのときは「IRCの方向」（両方向・前進のみ・後退のみ、`mepgs` の `forward` / `backward`）で残りの方向だけを計算します。固定原子・ゴーストを含む構造には使えません。
-- 「内部座標の拘束（最適化）」は、「1 分子」で順に選んだ2〜4原子の距離・角度・二面角を、表の値に固定して最適化します（`zcoord` の `bond`・`angle`・`torsion` を `constant` で出力し、このとき `noautoz` を外します）。二面角の符号はMolFormaの測定値と同じ定義です。NWChemは内部座標と固定原子（Cartesianの拘束）を同時に扱えない（「cartesian constraints+internals」で停止）ため、固定原子・ゴーストとは併用できません。拘束した原子を削除すると、その拘束も削除します。
+- 「内部座標の拘束（最適化）」は構造最適化・遷移状態探索・緩和スキャンで使い、IRCでは使いません（「最適化収束」も同じで、IRCは反復数だけを使います）。「1 分子」で順に選んだ2〜4原子の距離・角度・二面角を、表の値に固定して最適化します（`zcoord` の `bond`・`angle`・`torsion` を `constant` で出力し、このとき `noautoz` を外します）。二面角の符号はMolFormaの測定値と同じ定義です。NWChemは内部座標と固定原子（Cartesianの拘束）を同時に扱えない（「cartesian constraints+internals」で停止）ため、固定原子・ゴーストとは併用できません。拘束した原子を削除すると、その拘束も削除します。
 - 「座標スキャン」は「選択中の原子を設定」で選んだ距離・角度・二面角を、開始値から終了値まで等間隔の点（2〜50点）で計算します。各点は名前付きの構造（`geometry scanN`）で、後に選んだ原子の側を動かした座標から始めます。「緩和スキャン」ではスキャン座標を `zcoord` で固定して他を最適化し、固定スキャンでは一点エネルギーを計算します。各点の `title` に `MolForma scan k/n` を書き、結果ビューアが点ごとのエネルギーと構造を読み取ります。緩和スキャンも固定原子・ゴーストと併用できません。
 
 ## 物性・BSSE・後続の一点計算
@@ -76,7 +76,7 @@ def2系ではRb〜Xeに28電子、Cs〜Laに46電子、Hf〜Rnに60電子を除�
 
 ## NWChem・Gaussian入力の取込み
 
-「ファイル → 開く」で `.nw` を開くと、最初のCartesian `geometry`（`units`、`bq` ゴースト、`mass`、`\` の継続行と `;` 区切り）、`charge`、`scf`/`dft` の多重度と参照、`xc`（一覧の汎関数に一致しなければ任意のxc）、分散補正・グリッド、`basis`（ライブラリ名が一覧にあるもの、元素別、`cd basis` によるRI-J、spherical/cartesian）、`cosmo`（誘電率・溶媒名・SMD）、`relativistic`、`tddft`、`driver` の反復数、`property`・`esp`・`bsse`・`mepgs`、`constraints` の `fix atom`、`task` の組合せ（最適化＋振動数、遷移状態探索、IRC等）を取り込みます。最初のtaskより後の計算条件（後続計算）、2番目以降のgeometry、`zcoord`、その他のブロックは取り込まず、一覧で知らせます。Z-matrix形式のgeometryは拒否します。実行設定は環境設定の既定値を使います。
+「ファイル → 開く」で `.nw` を開くと、最初のCartesian `geometry`（`units`（Bohrなら座標の出力単位もBohr）、`bq` ゴースト、`mass`、`\` の継続行と `;` 区切り）、`charge`、`scf`/`dft` の多重度と参照・SCF収束（`thresh`・`convergence` が標準・厳密・さらに厳密の値ならその設定、なければNWChem既定。それ以外の値は一覧で知らせます）、`xc`（一覧の汎関数に一致しなければ任意のxc）、分散補正・グリッド、`basis`（ライブラリ名が一覧にあるもの、元素別、`cd basis` によるRI-J、spherical/cartesian）、`cosmo`（誘電率・溶媒名・SMD）、`relativistic`、`tddft`、`ccsd` の反復数、`driver` の反復数、`property`・`esp`・`bsse`・`mepgs`、`constraints` の `fix atom`、`task` の組合せ（最適化＋振動数、遷移状態探索、IRC等。振動数の `numerical` は数値Hessianの指定）を取り込みます。最初のtaskより後の計算条件（後続計算）、2番目以降のgeometry、`zcoord`、その他のブロックは取り込まず、一覧で知らせます。Z-matrix形式のgeometryは拒否します。実行設定は環境設定の既定値を使います。
 
 Gaussian入力（`.gjf` / `.com`）はLink0とルート・タイトルを読み飛ばし、電荷・多重度とCartesian座標（`C(Fragment=1)`、原子番号、凍結フラグの列に対応）を取り込みます。Z-matrixや変数を使う入力は拒否します。ルートの手法・基底は取り込みません。
 

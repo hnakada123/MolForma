@@ -12,37 +12,78 @@
 
 namespace mf {
 namespace {
+// The calculations that the options of a group take part in, unless an option narrows them.
+NwchemScope groupScope(const QString &group) {
+    return group == "scf"           ? NwchemScope::ReferenceScf
+           : group == "dft"         ? NwchemScope::Dft
+           : group == "correlation" ? NwchemScope::Correlation
+           : group == "driver"      ? NwchemScope::Driver
+           : group == "frequency"   ? NwchemScope::Frequency
+           : group == "cosmo"       ? NwchemScope::Cosmo
+                                    : NwchemScope::Always;
+}
+AdvancedOption option(QString key, QString group, QString label, QString keyword, QString help,
+                      QString defaults, AdvancedKind kind, double minimum = 0, double maximum = 0,
+                      QVector<NwchemChoice> choices = {}) {
+    AdvancedOption o;
+    o.key = key;
+    o.group = group;
+    o.label = label;
+    o.keyword = keyword;
+    o.help = help;
+    o.defaultText = defaults;
+    o.kind = kind;
+    o.minimum = minimum;
+    o.maximum = maximum;
+    o.choices = choices;
+    o.scope = groupScope(group);
+    return o;
+}
 AdvancedOption numeric(QString key, QString group, QString label, QString keyword, QString help,
                        QString defaults, double minimum, double maximum, bool integer = false) {
-    return {key,
-            group,
-            label,
-            keyword,
-            help,
-            defaults,
-            integer ? AdvancedKind::Integer : AdvancedKind::Real,
-            minimum,
-            maximum,
-            {}};
+    return option(key, group, label, keyword, help, defaults,
+                  integer ? AdvancedKind::Integer : AdvancedKind::Real, minimum, maximum);
 }
 AdvancedOption choice(QString key, QString group, QString label, QString keyword, QString help,
                       QVector<NwchemChoice> values, QString defaults = QT_TR_NOOP("NWChem既定")) {
-    return {key, group, label, keyword, help, defaults, AdvancedKind::Choice, 0, 0, values};
+    return option(key, group, label, keyword, help, defaults, AdvancedKind::Choice, 0, 0, values);
 }
 AdvancedOption flag(QString key, QString group, QString label, QString keyword, QString help) {
-    return {key, group, label, keyword, help, QT_TR_NOOP("オフ（指定なし）"), AdvancedKind::Flag, 0, 0, {}};
+    return option(key, group, label, keyword, help, QT_TR_NOOP("オフ（指定なし）"), AdvancedKind::Flag);
 }
 AdvancedOption path(QString key, QString label, QString keyword, QString help) {
-    return {key, "files", label, keyword, help, QT_TR_NOOP("指定なし"), AdvancedKind::Path, 0, 0, {}};
+    return option(key, "files", label, keyword, help, QT_TR_NOOP("指定なし"), AdvancedKind::Path);
+}
+// Narrows an option to the calculations of scope.
+AdvancedOption within(NwchemScope scope, AdvancedOption option) {
+    option.scope = scope;
+    return option;
+}
+// An option that needs other advanced values: used while condition holds, as text says.
+AdvancedOption when(bool (*condition)(const QJsonObject &), const char *text, AdvancedOption option) {
+    option.condition = condition;
+    option.scopeText = text;
+    return option;
+}
+// Written by the input block that owns the option rather than as "keyword value".
+AdvancedOption owned(AdvancedOption option) {
+    option.written = false;
+    return option;
+}
+bool cubeOutput(const QJsonObject &a) {
+    return a["cube_output"].toBool();
+}
+bool cubeOrbital(const QJsonObject &a) {
+    return cubeOutput(a) && a["cube_type"] == "orbital";
+}
+bool blankAxis(const QJsonObject &a) {
+    return cubeOutput(a) && (!a.contains("cube_x") || !a.contains("cube_y") || !a.contains("cube_z"));
 }
 QString number(double value) {
     // Integer directives (iterations, scratchdisk, freeze, ...) reject exponent notation.
     if (std::isfinite(value) && std::floor(value) == value && std::abs(value) <= 1000000)
         return QString::number(value, 'f', 0);
     return QString::number(value, 'g', QLocale::FloatingPointShortest);
-}
-bool correlated(const QString &method) {
-    return method == "mp2" || method.startsWith("ccsd");
 }
 bool realNumber(const QString &text, double &number) {
     QString normalized = text;
@@ -59,8 +100,9 @@ bool realNumber(const QString &text, double &number) {
 // nwchemAdvancedOptions translates them.
 QVector<AdvancedOption> advancedOptionSources() {
     return {
-        numeric("scf_thresh", "scf", QT_TR_NOOP("波動関数の収束閾値"), "thresh",
-                QT_TR_NOOP("上の「SCF収束」を上書きします。"), QT_TR_NOOP("SCF収束に従う"), 1e-12, 1e-2),
+        owned(numeric("scf_thresh", "scf", QT_TR_NOOP("波動関数の収束閾値"), "thresh",
+                      QT_TR_NOOP("上の「SCF収束」を上書きします。"), QT_TR_NOOP("SCF収束に従う"), 1e-12,
+                      1e-2)),
         numeric("scf_tol2e", "scf", QT_TR_NOOP("積分の打切り閾値"), "tol2e",
                 QT_TR_NOOP("二電子積分のスクリーニング精度を指定します。"),
                 QT_TR_NOOP("NWChemがthreshから決定"), 1e-16, 1e-4),
@@ -69,17 +111,19 @@ QVector<AdvancedOption> advancedOptionSources() {
         choice("scf_solver", "scf", QT_TR_NOOP("SCF収束法"), "diis",
                QT_TR_NOOP("DIISは閉殻RHF専用です。開殻にはNWChem既定の収束法を使います。"),
                {{"diis", QT_TR_NOOP("DIIS（閉殻RHF）")}}),
-        numeric("scf_diisbas", "scf", QT_TR_NOOP("DIIS部分空間の大きさ"), "diisbas",
-                QT_TR_NOOP("上のSCF収束法でDIISを選んだ場合のみ使用します。"), "5", 2, 50, true),
-        numeric("dft_energy", "dft", QT_TR_NOOP("エネルギー収束閾値 / Hartree"), "convergence energy",
-                QT_TR_NOOP("上の「SCF収束」から決まるDFTのエネルギー収束を上書きします。"),
-                QT_TR_NOOP("SCF収束に従う"), 1e-12, 1e-2),
-        numeric("dft_density", "dft", QT_TR_NOOP("密度収束閾値"), "convergence density",
-                QT_TR_NOOP("DFT密度の収束閾値を個別に指定します。"), QT_TR_NOOP("SCF収束に従う"), 1e-12,
-                1e-2),
-        numeric("dft_gradient", "dft", QT_TR_NOOP("軌道勾配の収束閾値"), "convergence gradient",
-                QT_TR_NOOP("原子核の勾配ではなく、電子状態の軌道勾配です。"), QT_TR_NOOP("SCF収束に従う"),
-                1e-12, 1e-2),
+        when([](const QJsonObject &a) { return a["scf_solver"] == "diis"; },
+             QT_TR_NOOP("HF・MP2・CCSD（SCF収束法がDIISのとき）"),
+             numeric("scf_diisbas", "scf", QT_TR_NOOP("DIIS部分空間の大きさ"), "diisbas",
+                     QT_TR_NOOP("上のSCF収束法でDIISを選んだ場合のみ使用します。"), "5", 2, 50, true)),
+        owned(numeric("dft_energy", "dft", QT_TR_NOOP("エネルギー収束閾値 / Hartree"), "convergence energy",
+                      QT_TR_NOOP("上の「SCF収束」から決まるDFTのエネルギー収束を上書きします。"),
+                      QT_TR_NOOP("SCF収束に従う"), 1e-12, 1e-2)),
+        owned(numeric("dft_density", "dft", QT_TR_NOOP("密度収束閾値"), "convergence density",
+                      QT_TR_NOOP("DFT密度の収束閾値を個別に指定します。"), QT_TR_NOOP("SCF収束に従う"), 1e-12,
+                      1e-2)),
+        owned(numeric("dft_gradient", "dft", QT_TR_NOOP("軌道勾配の収束閾値"), "convergence gradient",
+                      QT_TR_NOOP("原子核の勾配ではなく、電子状態の軌道勾配です。"),
+                      QT_TR_NOOP("SCF収束に従う"), 1e-12, 1e-2)),
         numeric("dft_damp", "dft", QT_TR_NOOP("密度のダンピング / %"), "convergence damp",
                 QT_TR_NOOP("前反復の密度を混ぜる割合です。例: 70は前反復を70%使用します。"),
                 QT_TR_NOOP("NWChem既定"), 0, 99, true),
@@ -92,29 +136,33 @@ QVector<AdvancedOption> advancedOptionSources() {
                 true),
         flag("dft_direct", "dft", QT_TR_NOOP("DFT積分を毎回再計算"), "direct",
              QT_TR_NOOP("DFTの積分キャッシュを使用しません。")),
-        flag("dft_grid_nodisk", "dft", QT_TR_NOOP("グリッドをディスクに保存しない"), "grid nodisk",
-             QT_TR_NOOP("グリッド精度は上の「DFT積分グリッド」を使用します。")),
-        numeric(
+        owned(flag("dft_grid_nodisk", "dft", QT_TR_NOOP("グリッドをディスクに保存しない"), "grid nodisk",
+                   QT_TR_NOOP("グリッド精度は上の「DFT積分グリッド」を使用します。"))),
+        owned(numeric(
             "corr_freeze", "correlation", QT_TR_NOOP("凍結する占有軌道数"), "freeze",
             QT_TR_NOOP(
                 "上の「相関計算で内殻を凍結」（freeze atomic）を上書きします。0は凍結なし。最低エネルギー側"
                 "から数えます。"),
-            QT_TR_NOOP("内殻凍結の設定に従う"), 0, 100000, true),
-        flag("mp2_tight", "correlation", QT_TR_NOOP("MP2の精度を厳密にする"), "tight",
-             QT_TR_NOOP("MP2の積分・SCF・CPHF精度を厳密にします。")),
-        numeric("mp2_scratchdisk", "correlation", QT_TR_NOOP("MP2作業ディスク / MB・プロセス"), "scratchdisk",
-                QT_TR_NOOP("半直接MP2の積分変換用ディスク容量を制限します。"), QT_TR_NOOP("NWChem既定"), 1,
-                1000000, true),
-        numeric("cc_thresh", "correlation", QT_TR_NOOP("CC反復の収束閾値"), "thresh",
-                QT_TR_NOOP("CCSD/CCSD(T)のエネルギーと振幅の収束を制御します。"),
-                QT_TR_NOOP("1e-7（MolForma）"), 1e-12, 1e-3),
-        numeric("cc_tol2e", "correlation", QT_TR_NOOP("CC積分の打切り閾値"), "tol2e",
-                QT_TR_NOOP("NWChemのCCSDで調整可能な積分に適用します。"), QT_TR_NOOP("NWChem既定"), 1e-16,
-                1e-12),
-        numeric("cc_diisbas", "correlation", QT_TR_NOOP("CC DIIS部分空間"), "diisbas",
-                QT_TR_NOOP("大きくするとCC反復のメモリ使用量が増えます。"), "5", 2, 50, true),
-        flag("cc_nodisk", "correlation", QT_TR_NOOP("CC積分をディスクに保存しない"), "nodisk",
-             QT_TR_NOOP("必要な積分を再計算します。SCFのdirect設定とは独立です。")),
+            QT_TR_NOOP("内殻凍結の設定に従う"), 0, 100000, true)),
+        within(NwchemScope::Mp2, flag("mp2_tight", "correlation", QT_TR_NOOP("MP2の精度を厳密にする"),
+                                      "tight", QT_TR_NOOP("MP2の積分・SCF・CPHF精度を厳密にします。"))),
+        within(NwchemScope::Mp2,
+               numeric("mp2_scratchdisk", "correlation", QT_TR_NOOP("MP2作業ディスク / MB・プロセス"),
+                       "scratchdisk", QT_TR_NOOP("半直接MP2の積分変換用ディスク容量を制限します。"),
+                       QT_TR_NOOP("NWChem既定"), 1, 1000000, true)),
+        within(NwchemScope::Ccsd,
+               owned(numeric("cc_thresh", "correlation", QT_TR_NOOP("CC反復の収束閾値"), "thresh",
+                             QT_TR_NOOP("CCSD/CCSD(T)のエネルギーと振幅の収束を制御します。"),
+                             QT_TR_NOOP("1e-7（MolForma）"), 1e-12, 1e-3))),
+        within(NwchemScope::Ccsd, numeric("cc_tol2e", "correlation", QT_TR_NOOP("CC積分の打切り閾値"),
+                                          "tol2e", QT_TR_NOOP("NWChemのCCSDで調整可能な積分に適用します。"),
+                                          QT_TR_NOOP("NWChem既定"), 1e-16, 1e-12)),
+        within(NwchemScope::Ccsd,
+               numeric("cc_diisbas", "correlation", QT_TR_NOOP("CC DIIS部分空間"), "diisbas",
+                       QT_TR_NOOP("大きくするとCC反復のメモリ使用量が増えます。"), "5", 2, 50, true)),
+        within(NwchemScope::Ccsd,
+               flag("cc_nodisk", "correlation", QT_TR_NOOP("CC積分をディスクに保存しない"), "nodisk",
+                    QT_TR_NOOP("必要な積分を再計算します。SCFのdirect設定とは独立です。"))),
         numeric("driver_gmax", "driver", QT_TR_NOOP("勾配の最大成分 / Hartree・Bohr⁻¹"), "gmax",
                 QT_TR_NOOP("上の「最適化収束」を個別に上書きします。"), QT_TR_NOOP("最適化収束に従う"), 1e-9,
                 0.1),
@@ -131,29 +179,28 @@ QVector<AdvancedOption> advancedOptionSources() {
         numeric("driver_eprec", "driver", QT_TR_NOOP("エネルギーの計算精度 / Hartree"), "eprec",
                 QT_TR_NOOP("線形探索で想定するエネルギー精度です。収束条件そのものではありません。"),
                 QT_TR_NOOP("HF等: 1e-7 / DFT: 5e-6"), 1e-12, 1e-3),
-        flag("driver_xyz", "driver", QT_TR_NOOP("最適化の各構造をXYZに出力"), "xyz",
-             QT_TR_NOOP("「入力ファイル」の計算名をファイル名の接頭辞に使用します。")),
-        flag("driver_cartesian", "driver", QT_TR_NOOP("Cartesian座標で最適化（noautoz）"), "noautoz",
-             QT_TR_NOOP(
-                 "固定原子・ゴーストのない最適化は、NWChemの自動内部座標（autoz）で行います。弱く結合した"
-                 "錯体などで収束しにくい場合に、Cartesian座標へ切り替えます。")),
-        {"freq_temperatures",
-         "frequency",
-         QT_TR_NOOP("熱化学の温度 / K"),
-         "temp",
-         QT_TR_NOOP("空白区切りで1〜20個指定します。温度数は自動出力します。"),
-         "298.15",
-         AdvancedKind::Temperatures,
-         1,
-         10000,
-         {}},
-        numeric("freq_fd_delta", "frequency", QT_TR_NOOP("数値Hessianの差分幅 / Bohr"), "fd_delta",
-                QT_TR_NOOP("数値Hessianを使用する場合のみ有効です。解析Hessianでは保留します。"),
-                QT_TR_NOOP("DFT: 0.010 / その他: 0.001"), 1e-5, 0.1),
-        numeric("hessian_thresh", "frequency", QT_TR_NOOP("解析Hessianの波動関数精度"), "hessian thresh",
-                QT_TR_NOOP("解析Hessianに必要なSCF/DFTの精度を指定します。"), "1e-6", 1e-12, 1e-3),
-        flag("freq_animate", "frequency", QT_TR_NOOP("振動モードのXYZを出力"), "animate",
-             QT_TR_NOOP("各振動モードのアニメーション用XYZを生成します。計算名を接頭辞に使用します。")),
+        owned(flag("driver_xyz", "driver", QT_TR_NOOP("最適化の各構造をXYZに出力"), "xyz",
+                   QT_TR_NOOP("「入力ファイル」の計算名をファイル名の接頭辞に使用します。"))),
+        within(
+            NwchemScope::UnconstrainedOptimization,
+            owned(flag(
+                "driver_cartesian", "driver", QT_TR_NOOP("Cartesian座標で最適化（noautoz）"), "noautoz",
+                QT_TR_NOOP("固定原子・ゴーストのない最適化は、NWChemの自動内部座標（autoz）で行います。弱く結"
+                           "合した錯体などで収束しにくい場合に、Cartesian座標へ切り替えます。")))),
+        option("freq_temperatures", "frequency", QT_TR_NOOP("熱化学の温度 / K"), "temp",
+               QT_TR_NOOP("空白区切りで1〜20個指定します。温度数は自動出力します。"), "298.15",
+               AdvancedKind::Temperatures, 1, 10000),
+        within(NwchemScope::NumericalHessian,
+               numeric("freq_fd_delta", "frequency", QT_TR_NOOP("数値Hessianの差分幅 / Bohr"), "fd_delta",
+                       QT_TR_NOOP("数値Hessianを使用する場合のみ有効です。解析Hessianでは保留します。"),
+                       QT_TR_NOOP("DFT: 0.010 / その他: 0.001"), 1e-5, 0.1)),
+        within(NwchemScope::AnalyticHessian,
+               owned(numeric("hessian_thresh", "frequency", QT_TR_NOOP("解析Hessianの波動関数精度"),
+                             "hessian thresh", QT_TR_NOOP("解析Hessianに必要なSCF/DFTの精度を指定します。"),
+                             "1e-6", 1e-12, 1e-3))),
+        owned(
+            flag("freq_animate", "frequency", QT_TR_NOOP("振動モードのXYZを出力"), "animate",
+                 QT_TR_NOOP("各振動モードのアニメーション用XYZを生成します。計算名を接頭辞に使用します。"))),
         numeric("cosmo_minbem", "cosmo", QT_TR_NOOP("空洞表面の分割レベル"), "minbem",
                 QT_TR_NOOP("大きくすると表面分割が細かくなります。このUIでは0〜4を扱います。"), "2", 0, 4,
                 true),
@@ -167,21 +214,24 @@ QVector<AdvancedOption> advancedOptionSources() {
                 {"ideal", QT_TR_NOOP("完全導体（ideal）")}}),
         numeric("cosmo_zeta", "cosmo", QT_TR_NOOP("表面電荷の幅"), "zeta",
                 QT_TR_NOOP("York–Karplus COSMOのGaussian表面電荷幅を制御します。"), "0.98", 0.01, 10),
-        choice("vectors_guess", "files", QT_TR_NOOP("初期分子軌道"), "vectors input",
-               QT_TR_NOOP("相関計算では参照SCFに適用します。ファイル指定では原子順・基底との整合を実行時に確"
-                          "認してくださ"
-                          "い。"),
-               {{"atomic", QT_TR_NOOP("原子密度の重ね合わせ")},
-                {"hcore", QT_TR_NOOP("一電子Hamiltonian")},
-                {"file", QT_TR_NOOP("既存movecsファイル")}}),
-        path("vectors_input", QT_TR_NOOP("入力movecsファイル"), "vectors input",
-             QT_TR_NOOP("初期分子軌道がファイル指定のときに使用します。パスは計算実行先を基準とし、ここではフ"
-                        "ァイルを読"
-                        "みません。")),
-        path("vectors_output", QT_TR_NOOP("出力movecsファイル"), "vectors output",
-             QT_TR_NOOP(
-                 "相対パスはpermanent内、./で始めるとジョブ内に保存します。既存movecsを読む場合は入力とは別の"
-                 "出力先を指定してください。それ以外は空欄でNWChem既定です。")),
+        owned(choice(
+            "vectors_guess", "files", QT_TR_NOOP("初期分子軌道"), "vectors input",
+            QT_TR_NOOP("相関計算では参照SCFに適用します。ファイル指定では原子順・基底との整合を実行時に確"
+                       "認してくださ"
+                       "い。"),
+            {{"atomic", QT_TR_NOOP("原子密度の重ね合わせ")},
+             {"hcore", QT_TR_NOOP("一電子Hamiltonian")},
+             {"file", QT_TR_NOOP("既存movecsファイル")}})),
+        when(
+            [](const QJsonObject &a) { return a["vectors_guess"] == "file"; },
+            QT_TR_NOOP("初期分子軌道がファイル指定のとき"),
+            owned(path("vectors_input", QT_TR_NOOP("入力movecsファイル"), "vectors input",
+                       QT_TR_NOOP("初期分子軌道がファイル指定のときに使用します。パスは計算実行先を基準とし、"
+                                  "ここではファイルを読みません。")))),
+        owned(
+            path("vectors_output", QT_TR_NOOP("出力movecsファイル"), "vectors output",
+                 QT_TR_NOOP("相対パスはpermanent内、./で始めるとジョブ内に保存します。既存movecsを読む場合は"
+                            "入力とは別の出力先を指定してください。それ以外は空欄でNWChem既定です。"))),
         path("scratch_dir", QT_TR_NOOP("作業ファイルのディレクトリ"), "scratch_dir",
              QT_TR_NOOP("実行先に存在する、空白・:を含まないパスを指定します。MolFormaは作成しません。")),
         path("permanent_dir", QT_TR_NOOP("永続ファイルのディレクトリ"), "permanent_dir",
@@ -191,82 +241,71 @@ QVector<AdvancedOption> advancedOptionSources() {
         flag("molden_output", "visualization", QT_TR_NOOP("MOLDENファイルを出力"), "property moldenfile",
              QT_TR_NOOP(
                  "計算終了後のHF/KS分子軌道を〈計算名〉.moldenへ出力します。MP2/CCSDでは参照HFの軌道です。")),
-        choice("molden_norm", "visualization", QT_TR_NOOP("MOLDENの基底正規化"), "molden_norm",
-               QT_TR_NOOP("NWChem規約はプリミティブの正規化因子を含みます。標準MOLDENの係数を読むソフトでは"
-                          "NONEを選びます。"),
-               {{"nwchem", QT_TR_NOOP("NWChem規約")}, {"none", QT_TR_NOOP("未正規化（NONE）")}},
-               QT_TR_NOOP("NWChem規約")),
+        when(
+            [](const QJsonObject &a) { return a["molden_output"].toBool(); },
+            QT_TR_NOOP("MOLDEN出力がオンのとき"),
+            choice("molden_norm", "visualization", QT_TR_NOOP("MOLDENの基底正規化"), "molden_norm",
+                   QT_TR_NOOP("NWChem規約はプリミティブの正規化因子を含みます。標準MOLDENの係数を読むソフトで"
+                              "はNONEを選びます。"),
+                   {{"nwchem", QT_TR_NOOP("NWChem規約")}, {"none", QT_TR_NOOP("未正規化（NONE）")}},
+                   QT_TR_NOOP("NWChem規約"))),
         flag("cube_output", "visualization", QT_TR_NOOP("CUBEファイルを出力"), "dplot gaussian",
              QT_TR_NOOP(
                  "計算終了後のHF/KS電子密度または分子軌道を出力します。MP2/CCSDの相関密度は出力しません。")),
-        choice("cube_type", "visualization", QT_TR_NOOP("CUBEの内容"), "spin / orbitals view",
-               QT_TR_NOOP("密度は占有数を反映し、分子軌道は符号付きの軌道関数を出力します。"),
-               {{"density", QT_TR_NOOP("全電子密度（Alpha + Beta）")},
-                {"alpha_density", QT_TR_NOOP("Alpha電子密度")},
-                {"beta_density", QT_TR_NOOP("Beta電子密度")},
-                {"spin_density", QT_TR_NOOP("スピン密度（Alpha − Beta）")},
-                {"orbital", QT_TR_NOOP("分子軌道")}},
-               QT_TR_NOOP("全電子密度")),
-        choice("cube_spin", "visualization", QT_TR_NOOP("分子軌道のスピン"), "spin",
-               QT_TR_NOOP("Betaの軌道関数はUHF/UKSで指定できます。制限計算ではAlphaを使ってください。"),
-               {{"alpha", "Alpha"}, {"beta", QT_TR_NOOP("Beta（非制限計算）")}}, "Alpha"),
-        choice("cube_orbital", "visualization", QT_TR_NOOP("出力する分子軌道"), "orbitals view",
-               QT_TR_NOOP("HOMO/LUMOは電子数・多重度とスピンから番号を決めます。番号指定は1から数えます。"),
-               {{"homo", "HOMO"}, {"lumo", "LUMO"}, {"index", QT_TR_NOOP("軌道番号で指定")}}, "HOMO"),
-        numeric("cube_index", "visualization", QT_TR_NOOP("分子軌道番号"), "orbitals view; 1; index",
-                QT_TR_NOOP("番号指定時に必要です。軌道の総数は実行時の基底に依存し、NWChemが確認します。"),
-                QT_TR_NOOP("番号を指定してください"), 1, 100000, true),
-        {"cube_filename",
-         "visualization",
-         QT_TR_NOOP("CUBEファイル名"),
-         "output",
-         QT_TR_NOOP("英数字・_・-・.で指定し、拡張子は.cubeまたは."
-                    "cub。ディレクトリは永続ファイルの設定に従います。"),
-         QT_TR_NOOP("〈計算名〉_〈内容・軌道番号〉.cube"),
-         AdvancedKind::Path,
-         0,
-         0,
-         {}},
-        numeric("cube_padding", "visualization", QT_TR_NOOP("入力構造からの余白 / Å"),
-                "limitxyz units angstrom",
-                QT_TR_NOOP("空欄の軸範囲は入力構造の最小・最大座標にこの余白を加えます。最適化後の範囲を自動"
-                           "追跡しません。"),
-                "3", 0.1, 100),
-        numeric(
-            "cube_divisions", "visualization", QT_TR_NOOP("最長辺の分割数"), "limitxyz",
-            QT_TR_NOOP("格子間隔は全軸で同じで、最も長い辺をこの数で分割します（各軸の格子点数は分割数+1）。"
-                       "X/Y/Zの個別指定を優先します。全体で200万格子点まで。"),
-            "40", 1, 1000, true),
-        {"cube_x",
-         "visualization",
-         QT_TR_NOOP("X範囲・分割数"),
-         "limitxyz X",
-         QT_TR_NOOP("最小値 最大値 分割数を空白区切りで指定。座標はÅ。例: -3 3 40。"),
-         QT_TR_NOOP("入力構造＋余白・共通の格子間隔"),
-         AdvancedKind::GridAxis,
-         -100000,
-         100000,
-         {}},
-        {"cube_y",
-         "visualization",
-         QT_TR_NOOP("Y範囲・分割数"),
-         "limitxyz Y",
-         QT_TR_NOOP("最小値 最大値 分割数を空白区切りで指定。座標はÅ。例: -3 3 40。"),
-         QT_TR_NOOP("入力構造＋余白・共通の格子間隔"),
-         AdvancedKind::GridAxis,
-         -100000,
-         100000,
-         {}},
-        {"cube_z",
-         "visualization",
-         QT_TR_NOOP("Z範囲・分割数"),
-         "limitxyz Z",
-         QT_TR_NOOP("最小値 最大値 分割数を空白区切りで指定。座標はÅ。例: -3 3 40。"),
-         QT_TR_NOOP("入力構造＋余白・共通の格子間隔"),
-         AdvancedKind::GridAxis,
-         -100000,
-         100000,
-         {}}};
+        when(cubeOutput, QT_TR_NOOP("CUBE出力がオンのとき"),
+             choice("cube_type", "visualization", QT_TR_NOOP("CUBEの内容"), "spin / orbitals view",
+                    QT_TR_NOOP("密度は占有数を反映し、分子軌道は符号付きの軌道関数を出力します。"),
+                    {{"density", QT_TR_NOOP("全電子密度（Alpha + Beta）")},
+                     {"alpha_density", QT_TR_NOOP("Alpha電子密度")},
+                     {"beta_density", QT_TR_NOOP("Beta電子密度")},
+                     {"spin_density", QT_TR_NOOP("スピン密度（Alpha − Beta）")},
+                     {"orbital", QT_TR_NOOP("分子軌道")}},
+                    QT_TR_NOOP("全電子密度"))),
+        when(cubeOrbital, QT_TR_NOOP("CUBEの内容が分子軌道のとき"),
+             choice("cube_spin", "visualization", QT_TR_NOOP("分子軌道のスピン"), "spin",
+                    QT_TR_NOOP("Betaの軌道関数はUHF/UKSで指定できます。制限計算ではAlphaを使ってください。"),
+                    {{"alpha", "Alpha"}, {"beta", QT_TR_NOOP("Beta（非制限計算）")}}, "Alpha")),
+        when(cubeOrbital, QT_TR_NOOP("CUBEの内容が分子軌道のとき"),
+             choice(
+                 "cube_orbital", "visualization", QT_TR_NOOP("出力する分子軌道"), "orbitals view",
+                 QT_TR_NOOP("HOMO/LUMOは電子数・多重度とスピンから番号を決めます。番号指定は1から数えます。"),
+                 {{"homo", "HOMO"}, {"lumo", "LUMO"}, {"index", QT_TR_NOOP("軌道番号で指定")}}, "HOMO")),
+        when([](const QJsonObject &a) { return cubeOrbital(a) && a["cube_orbital"] == "index"; },
+             QT_TR_NOOP("CUBEで分子軌道を番号指定するとき"),
+             numeric(
+                 "cube_index", "visualization", QT_TR_NOOP("分子軌道番号"), "orbitals view; 1; index",
+                 QT_TR_NOOP("番号指定時に必要です。軌道の総数は実行時の基底に依存し、NWChemが確認します。"),
+                 QT_TR_NOOP("番号を指定してください"), 1, 100000, true)),
+        when(
+            cubeOutput, QT_TR_NOOP("CUBE出力がオンのとき"),
+            option("cube_filename", "visualization", QT_TR_NOOP("CUBEファイル名"), "output",
+                   QT_TR_NOOP("英数字・_・-・.で指定し、拡張子は.cubeまたは.cub。ディレクトリは永続ファイルの"
+                              "設定に従います。"),
+                   QT_TR_NOOP("〈計算名〉_〈内容・軌道番号〉.cube"), AdvancedKind::Path)),
+        when(blankAxis, QT_TR_NOOP("CUBE出力（X/Y/Zの範囲に空欄があるとき）"),
+             numeric("cube_padding", "visualization", QT_TR_NOOP("入力構造からの余白 / Å"),
+                     "limitxyz units angstrom",
+                     QT_TR_NOOP("空欄の軸範囲は入力構造の最小・最大座標にこの余白を加えます。最適化後の範囲を"
+                                "自動追跡しません。"),
+                     "3", 0.1, 100)),
+        when(blankAxis, QT_TR_NOOP("CUBE出力（X/Y/Zの範囲に空欄があるとき）"),
+             numeric(
+                 "cube_divisions", "visualization", QT_TR_NOOP("最長辺の分割数"), "limitxyz",
+                 QT_TR_NOOP("格子間隔は全軸で同じで、最も長い辺をこの数で分割します（各軸の格子点数は分割数+"
+                            "1）。X/Y/Zの個別指定を優先します。全体で200万格子点まで。"),
+                 "40", 1, 1000, true)),
+        when(cubeOutput, QT_TR_NOOP("CUBE出力がオンのとき"),
+             option("cube_x", "visualization", QT_TR_NOOP("X範囲・分割数"), "limitxyz X",
+                    QT_TR_NOOP("最小値 最大値 分割数を空白区切りで指定。座標はÅ。例: -3 3 40。"),
+                    QT_TR_NOOP("入力構造＋余白・共通の格子間隔"), AdvancedKind::GridAxis, -100000, 100000)),
+        when(cubeOutput, QT_TR_NOOP("CUBE出力がオンのとき"),
+             option("cube_y", "visualization", QT_TR_NOOP("Y範囲・分割数"), "limitxyz Y",
+                    QT_TR_NOOP("最小値 最大値 分割数を空白区切りで指定。座標はÅ。例: -3 3 40。"),
+                    QT_TR_NOOP("入力構造＋余白・共通の格子間隔"), AdvancedKind::GridAxis, -100000, 100000)),
+        when(cubeOutput, QT_TR_NOOP("CUBE出力がオンのとき"),
+             option("cube_z", "visualization", QT_TR_NOOP("Z範囲・分割数"), "limitxyz Z",
+                    QT_TR_NOOP("最小値 最大値 分割数を空白区切りで指定。座標はÅ。例: -3 3 40。"),
+                    QT_TR_NOOP("入力構造＋余白・共通の格子間隔"), AdvancedKind::GridAxis, -100000, 100000))};
 }
 QVector<AdvancedOption> translatedAdvancedOptions() {
     auto options = advancedOptionSources();
@@ -274,6 +313,7 @@ QVector<AdvancedOption> translatedAdvancedOptions() {
         o.label = translated(o.label);
         o.help = translated(o.help);
         o.defaultText = translated(o.defaultText);
+        o.scopeText = translated(o.scopeText);
         for (auto &c : o.choices)
             c.label = translated(c.label);
     }
@@ -301,90 +341,11 @@ QJsonObject nwchemAdvanced(const Document &d) {
     return d.data["nwchem"].toObject()["advanced"].toObject();
 }
 bool nwchemAdvancedApplies(const AdvancedOption &o, const Document &d) {
-    const auto s = nwchemSettings(d);
-    const auto a = nwchemAdvanced(d);
-    const auto method = s["method"].toString(), task = s["task"].toString();
-    if (o.group == "visualization") {
-        if (o.key == "cube_output" || o.key == "molden_output")
-            return true;
-        if (o.key == "molden_norm")
-            return a["molden_output"].toBool();
-        if (!a["cube_output"].toBool())
-            return false;
-        if (o.key == "cube_index")
-            return a["cube_type"] == "orbital" && a["cube_orbital"] == "index";
-        if (o.key == "cube_spin" || o.key == "cube_orbital")
-            return a["cube_type"] == "orbital";
-        if (o.key == "cube_padding" || o.key == "cube_divisions")
-            return !a.contains("cube_x") || !a.contains("cube_y") || !a.contains("cube_z");
-        return true;
-    }
-    if (o.key == "scf_diisbas")
-        return method != "dft" && a["scf_solver"] == "diis";
-    if (o.key == "vectors_input")
-        return a["vectors_guess"] == "file";
-    if (o.key == "freq_fd_delta")
-        return task.contains("frequencies") && nwchemNumericalFrequencies(d);
-    if (o.key == "hessian_thresh")
-        return task.contains("frequencies") && !nwchemNumericalFrequencies(d);
-    if (o.key == "driver_cartesian") // Constraints and relaxed scans need internal coordinates.
-        return nwchemDriverTask(s) && task != "scan" && s["constraints"].toArray().isEmpty();
-    if (o.group == "scf")
-        return method != "dft";
-    if (o.group == "dft")
-        return method == "dft";
-    if (o.group == "correlation")
-        return o.key.startsWith("mp2_")  ? method == "mp2"
-               : o.key.startsWith("cc_") ? method.startsWith("ccsd")
-                                         : correlated(method);
-    if (o.group == "driver")
-        return nwchemDriverTask(s);
-    if (o.group == "frequency")
-        return task.contains("frequencies");
-    if (o.group == "cosmo")
-        return s["solvent"] != "none" && (method == "hf" || method == "dft");
-    return true;
+    return nwchemScopeApplies(o.scope, nwchemSettings(d), &d) &&
+           (!o.condition || o.condition(nwchemAdvanced(d)));
 }
 QString nwchemAdvancedScope(const AdvancedOption &o) {
-    // In the order of nwchemAdvancedApplies.
-    if (o.group == "visualization") {
-        if (o.key == "cube_output" || o.key == "molden_output")
-            return tr("すべての計算");
-        if (o.key == "molden_norm")
-            return tr("MOLDEN出力がオンのとき");
-        if (o.key == "cube_index")
-            return tr("CUBEで分子軌道を番号指定するとき");
-        if (o.key == "cube_spin" || o.key == "cube_orbital")
-            return tr("CUBEの内容が分子軌道のとき");
-        if (o.key == "cube_padding" || o.key == "cube_divisions")
-            return tr("CUBE出力（X/Y/Zの範囲に空欄があるとき）");
-        return tr("CUBE出力がオンのとき");
-    }
-    if (o.key == "scf_diisbas")
-        return tr("HF・MP2・CCSD（SCF収束法がDIISのとき）");
-    if (o.key == "vectors_input")
-        return tr("初期分子軌道がファイル指定のとき");
-    if (o.key == "freq_fd_delta")
-        return tr("数値Hessianを使う振動数");
-    if (o.key == "hessian_thresh")
-        return tr("解析Hessianを使う振動数");
-    if (o.key == "driver_cartesian")
-        return tr("構造最適化・遷移状態探索（内部座標の拘束・スキャンなし）");
-    if (o.group == "scf")
-        return tr("HF・MP2・CCSD（参照SCF）");
-    if (o.group == "dft")
-        return tr("DFTの計算");
-    if (o.group == "correlation")
-        return o.key.startsWith("mp2_")  ? "MP2"
-               : o.key.startsWith("cc_") ? tr("CCSD・CCSD(T)")
-                                         : tr("MP2・CCSD・CCSD(T)");
-    if (o.group == "driver")
-        return tr("構造最適化・遷移状態探索・緩和スキャン");
-    if (o.group == "frequency")
-        return tr("振動数を含む計算");
-    if (o.group == "cosmo")
-        return tr("溶媒（COSMO・SMD）を使うHF・DFT");
-    return tr("すべての計算");
+    return o.scopeText.isEmpty() ? nwchemScopeText(o.scope) : o.scopeText;
 }
 QString nwchemAdvancedDefault(const AdvancedOption &o, const Document &d) {
     const auto s = nwchemSettings(d);
@@ -414,7 +375,7 @@ QString nwchemAdvancedDefault(const AdvancedOption &o, const Document &d) {
             return tr("%1（最適化収束: %2）")
                 .arg(QString(criteria[convergence][index]), label("opt_convergence", convergence));
     }
-    const bool dft = s["method"] == "dft";
+    const bool dft = NwchemCalculation(s).dft();
     if (o.key == "driver_eprec")
         return dft ? tr("5e-6（DFT）") : "1e-7";
     if (o.key == "freq_fd_delta")
@@ -425,9 +386,9 @@ QString nwchemAdvancedDefault(const AdvancedOption &o, const Document &d) {
     return number && o.group != "visualization" ? tr("%1（NWChem既定）").arg(o.defaultText) : o.defaultText;
 }
 QString nwchemAdvancedBlock(const AdvancedOption &o, const Document &d) {
-    const auto method = nwchemSettings(d)["method"].toString();
+    const NwchemCalculation calculation(nwchemSettings(d));
     if (o.key.startsWith("vectors_"))
-        return method == "dft" ? "dft" : "scf";
+        return calculation.dft() ? "dft" : "scf";
     if (o.key == "driver_cartesian")
         return "geometry";
     if (o.key == "hessian_thresh")
@@ -435,7 +396,7 @@ QString nwchemAdvancedBlock(const AdvancedOption &o, const Document &d) {
     if (o.group == "files")
         return o.keyword;
     if (o.group == "correlation")
-        return method == "mp2" ? "mp2" : "ccsd";
+        return calculation.method == NwchemMethod::Mp2 ? "mp2" : "ccsd";
     if (o.group == "frequency")
         return "freq";
     if (o.group == "visualization")
@@ -578,7 +539,7 @@ void validateNwchemAdvanced(const Document &d, NwchemValidation &r) {
     if (!pending.isEmpty())
         r.warning("advanced.pending", "advanced:" + pendingKeys.first(),
                   tr("現在の計算では保留（入力に出力しません）: %1").arg(pending.join(tr("、"))));
-    if (s["method"] != "dft" && a["scf_solver"] == "diis" && r.reference != "rhf")
+    if (!NwchemCalculation(s).dft() && a["scf_solver"] == "diis" && r.reference != "rhf")
         r.error("advanced.diis", "advanced:scf_solver",
                 tr("NWChemのSCF DIISは閉殻RHFでのみ使用できます。SCF収束法を既定へ戻してください。"));
     if (a["vectors_guess"] == "file") {
@@ -614,11 +575,7 @@ NwchemGeneratedInput nwchemAdvancedLines(const Document &d, const QString &group
             continue;
         if (!nwchemAdvancedError(o, a[o.key]).isEmpty())
             fail(tr("不正なNWChem詳細設定: %1").arg(o.key));
-        // These replace existing directives, or need structured output below.
-        if (QStringList{"scf_thresh", "dft_energy", "dft_density", "dft_gradient", "dft_grid_nodisk",
-                        "corr_freeze", "cc_thresh", "vectors_guess", "vectors_input", "vectors_output",
-                        "freq_animate", "hessian_thresh", "driver_xyz", "driver_cartesian"}
-                .contains(o.key))
+        if (!o.written) // Replaces an existing directive, or needs the structured output below.
             continue;
         QString text;
         if (o.kind == AdvancedKind::Flag) {

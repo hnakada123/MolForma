@@ -847,6 +847,113 @@ class CalculationTest : public QObject {
         QVERIFY(molden->isChecked());
         QVERIFY(w.findChild<QLabel *>("calculationOutputFiles")->text().contains(".molden"));
     }
+    void nwchemImportRoundTripEverySetting() {
+        // Every value of every setting reads back from the input MolForma writes for it, in a
+        // calculation that uses the setting. Not read from inputs: the settings of later tasks
+        // (follow-up calculations), scans (one geometry per point), point charges (bq) and the
+        // additional input.
+        const QStringList notImported{"followup",
+                                      "followup_method",
+                                      "followup_functional",
+                                      "followup_dispersion",
+                                      "followup_basis",
+                                      "task=scan",
+                                      "scan_start",
+                                      "scan_end",
+                                      "scan_steps",
+                                      "scan_relaxed",
+                                      "include_point_charges",
+                                      "extra_input",
+                                      "extra_tasks"};
+        using Context = QVector<std::pair<const char *, QJsonValue>>;
+        const QVector<Context> contexts{{},
+                                        {{"method", "dft"}},
+                                        {{"method", "dft"},
+                                         {"functional", "custom"},
+                                         {"xc_custom", "xpbe96 0.75 cpbe96 1.0 hfexch 0.25"}},
+                                        {{"method", "dft"}, {"tddft", true}},
+                                        {{"method", "mp2"}},
+                                        {{"method", "ccsd"}},
+                                        {{"task", "optimize"}},
+                                        {{"task", "frequencies"}},
+                                        {{"task", "irc"}},
+                                        {{"task", "scan"}, {"scan_atoms", "<atoms>"}},
+                                        {{"task", "optimize"}, {"followup", true}},
+                                        {{"solvent", "cosmo"}},
+                                        {{"basis", "x2c-svpall"}}};
+        QStringList failures;
+        for (const auto &spec : nwchemSettingSpecs()) {
+            if (spec.structural || notImported.contains(spec.key))
+                continue;
+            QVector<QJsonValue> values;
+            switch (spec.kind) {
+            case NwchemSettingKind::Choice:
+                for (const auto &c : spec.choices)
+                    if (c.value != spec.initial.toString())
+                        values << c.value;
+                break;
+            case NwchemSettingKind::Flag:
+                values << !spec.initial.toBool();
+                break;
+            case NwchemSettingKind::Integer:
+                values << int(spec.minimum) + 1;
+                break;
+            case NwchemSettingKind::Real:
+                values << spec.minimum + (spec.maximum - spec.minimum) / 4;
+                break;
+            case NwchemSettingKind::String:
+                values << QJsonValue(spec.key == "start"   ? "roundtrip"
+                                     : spec.key == "title" ? "Round trip"
+                                                           : "xpbe96 0.75 cpbe96 1.0 hfexch 0.25");
+                break;
+            case NwchemSettingKind::Object:
+            case NwchemSettingKind::Array:
+                continue;
+            }
+            for (const auto &value : values) {
+                const auto key = spec.key + "=" + nwchemAdvancedText(value);
+                if (notImported.contains(key))
+                    continue;
+                // Bases of heavy elements, and counterpoise monomers.
+                auto d = value.toString().startsWith("sarc-")
+                             ? Document::fromXyz("2\ngold\nAu 0 0 0\nAu 0 0 2.5\n")
+                         : spec.key == "bsse"
+                             ? Document::fromXyz("6\ndimer\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 "
+                                                 "0.504\nO 0 0 3\nH 0.758 0 3.504\nH -0.758 0 3.504\n")
+                             : water();
+                // The first of these calculations that uses the setting.
+                for (const auto &context : contexts) {
+                    auto next = d;
+                    for (const auto &[setting, contextValue] : context)
+                        set(next, setting,
+                            contextValue == "<atoms>" ? QJsonValue(QJsonArray{d.atoms[0].id, d.atoms[1].id})
+                                                      : contextValue);
+                    if (nwchemSettingApplies(spec, nwchemSettings(next))) {
+                        d = next;
+                        break;
+                    }
+                }
+                set(d, spec.key, value);
+                // Values that need another setting with them.
+                if (value == "custom")
+                    set(d, "xc_custom", "xpbe96 0.75 cpbe96 1.0 hfexch 0.25");
+                if (value == "zora" || value == "smd" || value == "sarc-zora")
+                    set(d, "method", "dft");
+                if (value == "smd")
+                    set(d, "solvent_name", "h2o");
+                if (value.toString().startsWith("sarc-"))
+                    set(d, "relativistic", value == "sarc-zora" ? "zora" : "dkh");
+                if (const auto errors = validateNwchem(d).errors; !errors.isEmpty()) {
+                    failures << key + " (invalid: " + errors.join(' ') + ")";
+                    continue;
+                }
+                const auto imported = nwchemSettings(importNwchemInput(nwchemInput(d)).document);
+                if (imported[spec.key] != value)
+                    failures << key + " (read " + nwchemAdvancedText(imported[spec.key]) + ")";
+            }
+        }
+        QVERIFY2(failures.isEmpty(), qPrintable(failures.join('\n')));
+    }
     void nwchemImportRoundTrip() {
         // MolForma's own inputs read back to the same structure and settings.
         auto d = water();

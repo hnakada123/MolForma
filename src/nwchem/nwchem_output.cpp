@@ -83,11 +83,12 @@ void validateNwchemOutput(const Document &d, NwchemValidation &v) {
     if (std::any_of(d.atoms.cbegin(), d.atoms.cend(), [](const auto &atom) { return atom.ghost; }))
         v.error("output.ghosts", "advanced:cube_output",
                 tr("CUBE・MOLDENのGUI出力はゴースト中心に対応していません。"));
-    if (s["method"] != "hf" && s["method"] != "dft")
+    const NwchemCalculation calculation(s);
+    if (calculation.method != NwchemMethod::Hf && !calculation.dft())
         v.warning(
             "output.reference", "advanced:cube_output",
             tr("CUBE・MOLDENは参照HFの軌道・密度を出力します。MP2/CCSDの相関密度・自然軌道ではありません。"));
-    if (s["task"].toString().contains("frequencies"))
+    if (calculation.frequencies())
         v.warning("output.frequencies", "advanced:cube_output",
                   tr("可視化ファイル出力前に、振動数計算後の基準構造でHF/DFTエネルギーを再計算します。"));
     if (cube) {
@@ -117,7 +118,7 @@ void validateNwchemOutput(const Document &d, NwchemValidation &v) {
                 v.error("cube.range", "advanced:cube_padding",
                         tr("CUBEの範囲が不正です。範囲・余白を確認してください。"));
         }
-        if (nwchemDriverTask(s))
+        if (calculation.driver())
             v.warning(
                 "cube.padding", "advanced:cube_padding",
                 tr("CUBEの格子範囲は入力構造から決めます。最適化後の構造に十分な余白を指定してください。"));
@@ -134,7 +135,8 @@ NwchemGeneratedInput nwchemOutputLines(const Document &d, const NwchemValidation
     const auto a = nwchemAdvanced(d), s = nwchemSettings(d);
     if (!a["cube_output"].toBool() && !a["molden_output"].toBool())
         return {};
-    const auto theory = s["method"] == "dft" ? QString("dft") : QString("scf");
+    const NwchemCalculation calculation(s);
+    const auto theory = calculation.dft() ? QString("dft") : QString("scf");
     // DPLOT resolves the same vector path repeatedly for orbital views. Explicit ./ or absolute
     // paths bypass that resolver, avoiding a repeated relative permanent_dir prefix (NWChem 7.3.1).
     auto vectors = nwchemPermanentFile(d, a["vectors_output"].toString(s["start"].toString() + ".movecs"));
@@ -142,7 +144,7 @@ NwchemGeneratedInput nwchemOutputLines(const Document &d, const NwchemValidation
         vectors.prepend("./");
     NwchemInputBuilder out;
     out.append("\n# Visualization of the " + theory + " reference orbitals\n");
-    if (s["task"].toString().contains("frequencies"))
+    if (calculation.frequencies())
         out.advancedBlock("task", "task " + theory + " energy\n", {"molden_output", "cube_output"},
                           "visualization");
     const bool properties =

@@ -10,33 +10,90 @@ struct NwchemPreset {
     QString name;
     QJsonObject settings;
 };
-enum class NwchemSettingKind { String, Choice, Integer, Real, Flag, Object, Array };
-enum class NwchemSettingScope {
-    Always,
-    Dft,
-    CustomXc,
-    Correlation,
-    Ccsd,
-    Driver,
-    Frequency,
+enum class NwchemMethod { Hf, Dft, Mp2, Ccsd, CcsdT, Unknown };
+enum class NwchemTask {
+    Energy,
+    Gradient,
+    Optimize,
+    Frequencies,
+    OptimizeFrequencies,
+    Saddle,
+    SaddleFrequencies,
     Irc,
     Scan,
-    FollowupToggle,
+    Unknown
+};
+// The kind of calculation that settings describe, read once from their "method" and "task"; values
+// MolForma does not offer are Unknown and take part in nothing.
+struct NwchemCalculation {
+    explicit NwchemCalculation(const QJsonObject &settings);
+    NwchemMethod method = NwchemMethod::Unknown;
+    NwchemTask task = NwchemTask::Unknown;
+    bool relaxedScan = false; // A scan that optimizes the other coordinates at each point.
+    bool dft() const {
+        return method == NwchemMethod::Dft;
+    }
+    // MP2, CCSD and CCSD(T), which correlate an SCF reference.
+    bool correlated() const {
+        return method == NwchemMethod::Mp2 || ccsd();
+    }
+    bool ccsd() const {
+        return method == NwchemMethod::Ccsd || method == NwchemMethod::CcsdT;
+    }
+    bool saddle() const {
+        return task == NwchemTask::Saddle || task == NwchemTask::SaddleFrequencies;
+    }
+    // Minimizations and saddle searches, alone or followed by frequencies.
+    bool optimization() const {
+        return task == NwchemTask::Optimize || task == NwchemTask::OptimizeFrequencies || saddle();
+    }
+    bool frequencies() const {
+        return task == NwchemTask::Frequencies || task == NwchemTask::OptimizeFrequencies ||
+               task == NwchemTask::SaddleFrequencies;
+    }
+    // Tasks that run NWChem's DRIVER optimizer: optimizations and relaxed scans.
+    bool driver() const {
+        return optimization() || (task == NwchemTask::Scan && relaxedScan);
+    }
+};
+// The calculations that a setting, a section of "2 計算条件" or an advanced option takes part in.
+enum class NwchemScope {
+    Always,
+    Dft,
+    ReferenceScf, // HF, MP2 and CCSD: an SCF, not DFT.
+    CustomXc,
+    Correlation,
+    Mp2,
+    Ccsd,
+    Driver,      // Optimizations and relaxed scans.
+    DriverOrIrc, // Also IRC, whose MEPGS takes DRIVER's iteration limit.
+    Optimization,
+    UnconstrainedOptimization, // Optimizations without internal-coordinate constraints.
+    Frequency,
+    NumericalHessian, // Frequencies from a numerical Hessian (needs the document).
+    AnalyticHessian,  // Frequencies from an analytic Hessian (needs the document).
+    Irc,
+    Scan,
     Followup,
     FollowupDft,
     Solvent,
     Dielectric,
+    Cosmo, // A solvent for HF or DFT.
     ExcitedToggle,
     Excited,
     Relativistic
 };
+bool nwchemScopeApplies(NwchemScope scope, const QJsonObject &settings, const Document *document = nullptr);
+// The calculations of the scopes of advanced options in words ("DFTの計算"); empty for the others.
+QString nwchemScopeText(NwchemScope scope);
+enum class NwchemSettingKind { String, Choice, Integer, Real, Flag, Object, Array };
 struct NwchemSettingSpec {
     QString key;
     NwchemSettingKind kind;
     QJsonValue initial;
     double minimum = 0, maximum = 0;
     int decimals = 0;
-    NwchemSettingScope scope = NwchemSettingScope::Always;
+    NwchemScope scope = NwchemScope::Always;
     // Structural settings (charge, multiplicity) are fields of the Document, not of its NWChem settings.
     bool structural = false, allowDisable = false, validateUnused = true, preset = true;
     QVector<NwchemChoice> choices{}; // Source-language labels, translated only at the UI boundary.
@@ -69,8 +126,6 @@ QString nwchemBasisLabel(const QJsonObject &settings);
 QString nwchemFunctionalLabel(const QJsonObject &settings);
 // The XC line MolForma writes for a functional choice (empty for "custom" or unknown values).
 QString nwchemFunctionalXc(const QString &value);
-// Tasks that run NWChem's DRIVER optimizer: minimizations, saddle searches and relaxed scans.
-bool nwchemDriverTask(const QJsonObject &settings);
 // Minimizations and saddle searches without fixed or ghost atoms run in NWChem's automatic internal
 // coordinates (AUTOZ), which usually take fewer steps; NWChem falls back to Cartesian coordinates
 // where it cannot build them (linear molecules). "driver_cartesian" (details) keeps Cartesian.

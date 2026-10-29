@@ -103,6 +103,9 @@ NwchemImport importNwchemInput(const QString &text) {
     QJsonObject overrides;
     QSet<int> fixedAtoms;
     QMap<int, int> atomOfCenter; // 1-based NWChem center number → MolForma atom index.
+    // The SCF thresholds of the scf block (thresh) and of the dft block (convergence energy, density
+    // and gradient), read once the method is known.
+    QStringList scfThresholds, dftThresholds;
     for (int i = 0; i < lines.size(); ++i) {
         auto w = words(lines[i]);
         const auto keyword = w.value(0).toLower();
@@ -169,6 +172,7 @@ NwchemImport importNwchemInput(const QString &text) {
                             : unit == "pm" || unit == "picometers"                   ? 0.01
                                                                                      : BohrToAngstrom;
                 }
+            settings["geometry_units"] = scale == BohrToAngstrom ? "bohr" : "angstrom";
             int depth = 0;
             int centers = 0; // NWChem numbers every center, including skipped point charges.
             for (const auto &line : body) {
@@ -268,6 +272,8 @@ NwchemImport importNwchemInput(const QString &text) {
                     multiplicity = row.value(1).toInt() + 1;
                 else if (option == "maxiter")
                     settings["scf_maxiter"] = row.value(1).toInt();
+                else if (option == "thresh")
+                    scfThresholds << row.value(1);
             }
         } else if (keyword == "dft") {
             for (const auto &line : body) {
@@ -293,6 +299,10 @@ NwchemImport importNwchemInput(const QString &text) {
                         if (QStringList{"coarse", "medium", "fine", "xfine", "huge"}.contains(
                                 value.toLower()))
                             settings["grid"] = value.toLower();
+                } else if (option == "convergence") {
+                    for (int k = 1; k + 1 < row.size(); ++k)
+                        if (QStringList{"energy", "density", "gradient"}.contains(row[k].toLower()))
+                            dftThresholds << row[k + 1];
                 } else if (option == "disp")
                     for (int k = 1; k + 1 < row.size(); ++k)
                         if (row[k].toLower() == "vdw")
@@ -308,6 +318,8 @@ NwchemImport importNwchemInput(const QString &text) {
             // "freeze atomic" (or "freeze core atomic") is the frozen-core choice; "freeze 0" is none.
             for (const auto &line : body) {
                 const auto row = words(line);
+                if (keyword == "ccsd" && row.value(0).toLower() == "maxiter")
+                    settings["cc_maxiter"] = row.value(1).toInt();
                 if (row.value(0).toLower() != "freeze")
                     continue;
                 double n;
@@ -434,9 +446,30 @@ NwchemImport importNwchemInput(const QString &text) {
             notes << tr("手法の異なるtask（%1）は取り込みません。").arg(task);
         if (operation != "property")
             operations << (operation.startsWith("freq") ? "frequencies" : operation);
+        if (operation.startsWith("freq") && parts.contains("numerical"))
+            settings["numerical_frequencies"] = true;
     }
     if (!theory.isEmpty())
         settings["method"] = theory == "scf" ? "hf" : theory;
+    // SCF convergence: the level whose thresholds the method's block sets; NWChem's own without any.
+    if (const auto &values = settings["method"] == "dft" ? dftThresholds : scfThresholds; values.isEmpty())
+        settings["scf_convergence"] = "default";
+    else {
+        QString level;
+        for (const auto *candidate : {"normal", "tight", "verytight"}) {
+            const double target = nwchemScfThreshold({{"scf_convergence", candidate}}).toDouble();
+            if (std::all_of(values.begin(), values.end(), [&](const QString &value) {
+                    double n;
+                    return number(value, n) && std::abs(n / target - 1) < 1e-9;
+                }))
+                level = candidate;
+        }
+        if (level.isEmpty())
+            notes << tr("SCFの収束閾値（%1）は取り込みません。「2 計算条件」の詳細設定で指定してください。")
+                         .arg(values.join(' '));
+        else
+            settings["scf_convergence"] = level;
+    }
     if (operations.contains("mepgs"))
         settings["task"] = "irc";
     else if (operations.contains("saddle"))

@@ -14,19 +14,26 @@
 #include <cmath>
 
 namespace mf {
+NwchemCalculation::NwchemCalculation(const QJsonObject &settings) {
+    static const QHash<QString, NwchemMethod> methods{{"hf", NwchemMethod::Hf},
+                                                      {"dft", NwchemMethod::Dft},
+                                                      {"mp2", NwchemMethod::Mp2},
+                                                      {"ccsd", NwchemMethod::Ccsd},
+                                                      {"ccsd(t)", NwchemMethod::CcsdT}};
+    static const QHash<QString, NwchemTask> tasks{{"energy", NwchemTask::Energy},
+                                                  {"gradient", NwchemTask::Gradient},
+                                                  {"optimize", NwchemTask::Optimize},
+                                                  {"frequencies", NwchemTask::Frequencies},
+                                                  {"optimize_frequencies", NwchemTask::OptimizeFrequencies},
+                                                  {"saddle", NwchemTask::Saddle},
+                                                  {"saddle_frequencies", NwchemTask::SaddleFrequencies},
+                                                  {"irc", NwchemTask::Irc},
+                                                  {"scan", NwchemTask::Scan}};
+    method = methods.value(settings["method"].toString(), NwchemMethod::Unknown);
+    task = tasks.value(settings["task"].toString(), NwchemTask::Unknown);
+    relaxedScan = settings["scan_relaxed"].toBool();
+}
 namespace {
-bool frequencyTask(const QString &task) {
-    return task == "frequencies" || task == "optimize_frequencies" || task == "saddle_frequencies";
-}
-bool saddleTask(const QString &task) {
-    return task == "saddle" || task == "saddle_frequencies";
-}
-bool optimizationTask(const QString &task) {
-    return task == "optimize" || task == "optimize_frequencies" || saddleTask(task);
-}
-bool correlated(const QString &method) {
-    return method == "mp2" || method.startsWith("ccsd");
-}
 // The offered NWChem library bases: element coverage from the "X_<name>" entries of the NWChem
 // 7.3.1 library files, and the ECP library their heavy elements need.
 struct LibraryBasis {
@@ -338,13 +345,9 @@ QString nwchemFunctionalXc(const QString &value) {
 }
 bool nwchemAutoz(const Document &d) {
     const auto s = nwchemSettings(d);
-    return optimizationTask(s["task"].toString()) && s["constraints"].toArray().isEmpty() &&
+    return NwchemCalculation(s).optimization() && s["constraints"].toArray().isEmpty() &&
            !nwchemAdvanced(d)["driver_cartesian"].toBool() &&
            std::none_of(d.atoms.begin(), d.atoms.end(), [](const Atom &a) { return a.fixed || a.ghost; });
-}
-bool nwchemDriverTask(const QJsonObject &settings) {
-    const auto task = settings["task"].toString();
-    return optimizationTask(task) || (task == "scan" && settings["scan_relaxed"].toBool());
 }
 QString nwchemCoordinateLabel(const Document &d, const Ids &ids) {
     QStringList numbers;
@@ -366,20 +369,24 @@ QString nwchemScfThreshold(const QJsonObject &s) {
                                      : "1e-9";
 }
 QString nwchemSectionUnused(const Document &d, const QString &section) {
+    // As the scopes of the section's settings: a section takes part when one of them does.
     const auto s = nwchemSettings(d);
-    const auto task = s["task"].toString(), method = s["method"].toString();
+    const auto applies = [&](NwchemScope scope) { return nwchemScopeApplies(scope, s, &d); };
     if (section == "path")
-        return task == "irc" || task == "scan" ? QString() : tr("使わない");
-    if (section == "constraints") // Optimizations and relaxed scans write them as zcoord.
-        return nwchemDriverTask(s) ? QString() : tr("最適化のみ");
+        return applies(NwchemScope::Irc) || applies(NwchemScope::Scan) ? QString() : tr("使わない");
+    if (section == "constraints")
+        return applies(NwchemScope::Driver) ? QString() : tr("最適化のみ");
     if (section == "optimization")
-        return nwchemDriverTask(s) || frequencyTask(task) || task == "irc" ? QString() : tr("使わない");
+        return applies(NwchemScope::DriverOrIrc) || applies(NwchemScope::Frequency) ? QString()
+                                                                                    : tr("使わない");
     if (section == "followup")
-        return optimizationTask(task) ? QString() : tr("最適化のみ");
+        return applies(NwchemScope::Optimization) ? QString() : tr("最適化のみ");
     if (section == "bsse")
         return bsseMonomers(d).size() >= 2 ? QString() : tr("単量体なし");
     if (section == "excited")
-        return method != "dft" ? tr("DFTのみ") : task != "energy" ? tr("一点計算のみ") : QString();
+        return !NwchemCalculation(s).dft()            ? tr("DFTのみ")
+               : !applies(NwchemScope::ExcitedToggle) ? tr("一点計算のみ")
+                                                      : QString();
     return {};
 }
 QJsonObject nwchemDefaults() {
@@ -472,14 +479,30 @@ QVector<ChoiceSource> choiceSources(const QString &key) {
 } // namespace
 const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
     using Kind = NwchemSettingKind;
-    using Scope = NwchemSettingScope;
-    static const QVector<NwchemSettingSpec> specs = [] {
+    using Scope = NwchemScope;
+    // Fields of the Document rather than of its NWChem settings.
+    const auto structural = [](NwchemSettingSpec spec) {
+        spec.structural = true;
+        spec.preset = false;
+        return spec;
+    };
+    // Atom references, free input and the identity of a run belong to a project, not a reusable method.
+    const auto project = [](NwchemSettingSpec spec) {
+        spec.preset = false;
+        return spec;
+    };
+    // Can still be switched off when the calculation does not use it.
+    const auto disableable = [](NwchemSettingSpec spec) {
+        spec.allowDisable = true;
+        return spec;
+    };
+    static const QVector<NwchemSettingSpec> specs = [=] {
         QVector<NwchemSettingSpec> list{
-            {"start", Kind::String, "molforma"},
-            {"title", Kind::String, "MolForma calculation"},
-            {"memory_mb", Kind::Integer, 1024, 64, 1048576},
-            {"charge", Kind::Integer, 0, -1000, 1000},
-            {"multiplicity", Kind::Integer, 1, 1, 1000},
+            project({"start", Kind::String, "molforma"}),
+            project({"title", Kind::String, "MolForma calculation"}),
+            project({"memory_mb", Kind::Integer, 1024, 64, 1048576}),
+            structural({"charge", Kind::Integer, 0, -1000, 1000}),
+            structural({"multiplicity", Kind::Integer, 1, 1, 1000}),
             {"method", Kind::Choice, "hf"},
             {"task", Kind::Choice, "energy"},
             {"basis", Kind::Choice, "sto-3g"},
@@ -489,13 +512,13 @@ const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
             {"dispersion", Kind::Choice, "none", 0, 0, 0, Scope::Dft},
             {"basis_functions", Kind::Choice, "auto"},
             {"basis_overrides", Kind::Object, QJsonObject()},
-            {"geometry_units", Kind::Choice, "angstrom"},
+            project({"geometry_units", Kind::Choice, "angstrom"}),
             {"scf_maxiter", Kind::Integer, 100, 1, 10000},
             {"scf_convergence", Kind::Choice, "tight"},
             {"grid", Kind::Choice, "fine", 0, 0, 0, Scope::Dft},
-            {"relativistic", Kind::Choice, "none", 0, 0, 0, Scope::Relativistic},
-            {"ri_j", Kind::Flag, false, 0, 0, 0, Scope::Dft},
-            {"opt_maxiter", Kind::Integer, 100, 1, 10000, 0, Scope::Driver},
+            disableable({"relativistic", Kind::Choice, "none", 0, 0, 0, Scope::Relativistic}),
+            disableable({"ri_j", Kind::Flag, false, 0, 0, 0, Scope::Dft}),
+            {"opt_maxiter", Kind::Integer, 100, 1, 10000, 0, Scope::DriverOrIrc},
             {"opt_convergence", Kind::Choice, "default", 0, 0, 0, Scope::Driver},
             {"numerical_frequencies", Kind::Flag, false, 0, 0, 0, Scope::Frequency},
             {"freeze_core", Kind::Flag, false, 0, 0, 0, Scope::Correlation},
@@ -504,21 +527,25 @@ const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
             {"solvent_name", Kind::Choice, "dielectric", 0, 0, 0, Scope::Solvent},
             {"dielectric", Kind::Real, 78.4, 1, 1000, 4, Scope::Dielectric},
             {"include_point_charges", Kind::Flag, false},
-            {"tddft", Kind::Flag, false, 0, 0, 0, Scope::ExcitedToggle},
+            disableable({"tddft", Kind::Flag, false, 0, 0, 0, Scope::ExcitedToggle}),
             {"tddft_roots", Kind::Integer, 10, 1, 100, 0, Scope::Excited},
             {"tddft_triplets", Kind::Flag, false, 0, 0, 0, Scope::Excited},
             {"tddft_tda", Kind::Flag, false, 0, 0, 0, Scope::Excited},
-            {"constraints", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Driver},
-            {"scan_atoms", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Scan},
-            {"scan_start", Kind::Real, 1.0, -180, 180, 4, Scope::Scan},
-            {"scan_end", Kind::Real, 2.0, -180, 180, 4, Scope::Scan},
-            {"scan_steps", Kind::Integer, 6, 2, 50, 0, Scope::Scan},
+            project({"constraints", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Driver}),
+            project({"scan_atoms", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Scan}),
+            project({"scan_start", Kind::Real, 1.0, -180, 180, 4, Scope::Scan}),
+            project({"scan_end", Kind::Real, 2.0, -180, 180, 4, Scope::Scan}),
+            // Checked only for scans: a range of points that other tasks do not use.
+            [](NwchemSettingSpec spec) {
+                spec.validateUnused = false;
+                return spec;
+            }({"scan_steps", Kind::Integer, 6, 2, 50, 0, Scope::Scan}),
             {"scan_relaxed", Kind::Flag, true, 0, 0, 0, Scope::Scan},
             {"irc_points", Kind::Integer, 30, 1, 500, 0, Scope::Irc},
             {"irc_stride", Kind::Real, 0.1, .01, 1, 3, Scope::Irc},
             {"irc_direction", Kind::Choice, "both", 0, 0, 0, Scope::Irc},
             {"bsse", Kind::Flag, false},
-            {"followup", Kind::Flag, false, 0, 0, 0, Scope::FollowupToggle},
+            disableable({"followup", Kind::Flag, false, 0, 0, 0, Scope::Optimization}),
             {"followup_method", Kind::Choice, "dft", 0, 0, 0, Scope::Followup},
             {"followup_functional", Kind::Choice, "b3lyp", 0, 0, 0, Scope::FollowupDft},
             {"followup_dispersion", Kind::Choice, "none", 0, 0, 0, Scope::FollowupDft},
@@ -527,21 +554,11 @@ const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
             {"prop_esp", Kind::Flag, false},
             {"prop_nmr", Kind::Flag, false},
             {"prop_polarizability", Kind::Flag, false},
-            {"extra_input", Kind::String, ""},
-            {"extra_tasks", Kind::String, ""}};
-        for (auto &spec : list) {
-            spec.structural = spec.key == "charge" || spec.key == "multiplicity";
-            spec.allowDisable = QStringList{"relativistic", "ri_j", "tddft", "followup"}.contains(spec.key);
-            spec.validateUnused = spec.key != "scan_steps";
-            // Atom references and free input belong to a project, not a reusable method.
-            spec.preset =
-                !spec.structural &&
-                !QStringList{"start",      "title",      "memory_mb", "geometry_units", "constraints",
-                             "scan_atoms", "scan_start", "scan_end",  "extra_input",    "extra_tasks"}
-                     .contains(spec.key);
+            project({"extra_input", Kind::String, ""}),
+            project({"extra_tasks", Kind::String, ""})};
+        for (auto &spec : list)
             for (const auto &choice : choiceSources(spec.key))
                 spec.choices << NwchemChoice{choice.value, choice.label};
-        }
         return list;
     }();
     return specs;
@@ -552,30 +569,42 @@ const NwchemSettingSpec &nwchemSettingSpec(const QString &key) {
             return spec;
     fail(tr("不明なNWChem設定: %1").arg(key));
 }
-bool nwchemSettingApplies(const NwchemSettingSpec &spec, const QJsonObject &s) {
-    const auto method = s["method"].toString(), task = s["task"].toString();
-    using Scope = NwchemSettingScope;
-    switch (spec.scope) {
+bool nwchemScopeApplies(NwchemScope scope, const QJsonObject &s, const Document *d) {
+    const NwchemCalculation c(s);
+    using Scope = NwchemScope;
+    switch (scope) {
     case Scope::Always:
         return true;
     case Scope::Dft:
-        return method == "dft";
+        return c.dft();
+    case Scope::ReferenceScf:
+        return !c.dft();
     case Scope::CustomXc:
-        return method == "dft" && s["functional"] == "custom";
+        return c.dft() && s["functional"] == "custom";
     case Scope::Correlation:
-        return correlated(method);
+        return c.correlated();
+    case Scope::Mp2:
+        return c.method == NwchemMethod::Mp2;
     case Scope::Ccsd:
-        return method.startsWith("ccsd");
+        return c.ccsd();
     case Scope::Driver:
-        return nwchemDriverTask(s) || task == "irc";
+        return c.driver();
+    case Scope::DriverOrIrc:
+        return c.driver() || c.task == NwchemTask::Irc;
+    case Scope::Optimization:
+        return c.optimization();
+    case Scope::UnconstrainedOptimization: // Constraints and relaxed scans need internal coordinates.
+        return c.optimization() && s["constraints"].toArray().isEmpty();
     case Scope::Frequency:
-        return frequencyTask(task);
+        return c.frequencies();
+    case Scope::NumericalHessian:
+        return c.frequencies() && d && nwchemNumericalFrequencies(*d);
+    case Scope::AnalyticHessian:
+        return c.frequencies() && d && !nwchemNumericalFrequencies(*d);
     case Scope::Irc:
-        return task == "irc";
+        return c.task == NwchemTask::Irc;
     case Scope::Scan:
-        return task == "scan";
-    case Scope::FollowupToggle:
-        return optimizationTask(task);
+        return c.task == NwchemTask::Scan;
     case Scope::Followup:
         return s["followup"].toBool();
     case Scope::FollowupDft:
@@ -584,14 +613,50 @@ bool nwchemSettingApplies(const NwchemSettingSpec &spec, const QJsonObject &s) {
         return s["solvent"] != "none";
     case Scope::Dielectric:
         return s["solvent"] == "cosmo" && s["solvent_name"] == "dielectric";
+    case Scope::Cosmo:
+        return s["solvent"] != "none" && (c.method == NwchemMethod::Hf || c.dft());
     case Scope::ExcitedToggle:
-        return method == "dft" && task == "energy";
+        return c.dft() && c.task == NwchemTask::Energy;
     case Scope::Excited:
-        return method == "dft" && s["tddft"].toBool();
+        return c.dft() && s["tddft"].toBool();
     case Scope::Relativistic:
-        return method == "hf" || method == "dft";
+        return c.method == NwchemMethod::Hf || c.dft();
     }
     return false;
+}
+QString nwchemScopeText(NwchemScope scope) {
+    using Scope = NwchemScope;
+    switch (scope) {
+    case Scope::Always:
+        return tr("すべての計算");
+    case Scope::Dft:
+        return tr("DFTの計算");
+    case Scope::ReferenceScf:
+        return tr("HF・MP2・CCSD（参照SCF）");
+    case Scope::Correlation:
+        return tr("MP2・CCSD・CCSD(T)");
+    case Scope::Mp2:
+        return "MP2";
+    case Scope::Ccsd:
+        return tr("CCSD・CCSD(T)");
+    case Scope::Driver:
+        return tr("構造最適化・遷移状態探索・緩和スキャン");
+    case Scope::UnconstrainedOptimization:
+        return tr("構造最適化・遷移状態探索（内部座標の拘束・スキャンなし）");
+    case Scope::Frequency:
+        return tr("振動数を含む計算");
+    case Scope::NumericalHessian:
+        return tr("数値Hessianを使う振動数");
+    case Scope::AnalyticHessian:
+        return tr("解析Hessianを使う振動数");
+    case Scope::Cosmo:
+        return tr("溶媒（COSMO・SMD）を使うHF・DFT");
+    default:
+        return {};
+    }
+}
+bool nwchemSettingApplies(const NwchemSettingSpec &spec, const QJsonObject &s) {
+    return nwchemScopeApplies(spec.scope, s);
 }
 bool nwchemSettingEditable(const NwchemSettingSpec &spec, const QJsonObject &settings) {
     return nwchemSettingApplies(spec, settings) || (spec.allowDisable && settings[spec.key] != spec.initial);
@@ -678,12 +743,13 @@ QString nwchemFunctionalLabel(const QJsonObject &settings) {
 }
 bool nwchemNumericalFrequencies(const Document &d) {
     const auto s = nwchemSettings(d);
+    const NwchemCalculation calc(s);
     const auto *f = functional(s["functional"].toString());
     // NWChem's analytic Hessian covers neither solvation, relativistic Hamiltonians nor CD fitting.
-    if (s["numerical_frequencies"].toBool() || s["method"] == "mp2" || s["reference"] == "rohf" ||
-        (s["method"] == "dft" && f && f->numericalHessian) ||
-        (s["reference"] == "auto" && s["method"] == "hf" && d.multiplicity > 1) || s["solvent"] != "none" ||
-        s["relativistic"] != "none" || (s["method"] == "dft" && s["ri_j"].toBool()))
+    if (s["numerical_frequencies"].toBool() || calc.method == NwchemMethod::Mp2 || s["reference"] == "rohf" ||
+        (calc.dft() && f && f->numericalHessian) ||
+        (s["reference"] == "auto" && calc.method == NwchemMethod::Hf && d.multiplicity > 1) ||
+        s["solvent"] != "none" || s["relativistic"] != "none" || (calc.dft() && s["ri_j"].toBool()))
         return true;
     for (const auto &atom : d.atoms)
         if (!atom.ghost) {
@@ -741,7 +807,8 @@ NwchemValidation validateNwchem(const Document &d) {
                      tr("タイトルは120文字以内で、改行・引用符・\\・;・#を含めず指定してください。"));
     if (outsideRange("dielectric"))
         result.error("dielectric.range", "dielectric", tr("誘電率は1〜1000で指定してください。"));
-    const auto method = str("method"), task = str("task"), basis = str("basis");
+    const auto basis = str("basis");
+    const NwchemCalculation calc(s);
     const int mult = d.multiplicity;
     const int charge = d.charge;
     int realAtoms = 0, fixed = 0, ghosts = 0, movable = 0;
@@ -783,7 +850,7 @@ NwchemValidation validateNwchem(const Document &d) {
                 ecpLibraries.insert(libraryBasis(own)->ecp);
             result.ecpElectrons += core;
             result.electrons += z - core;
-            if (!core && correlated(method) && s["freeze_core"].toBool())
+            if (!core && calc.correlated() && s["freeze_core"].toBool())
                 result.frozenOrbitals += atomicCoreOrbitals(z);
         }
     }
@@ -794,7 +861,7 @@ NwchemValidation validateNwchem(const Document &d) {
         result.error("geometry.empty", QString(),
                      tr("実原子を追加してください（ゴーストのみの計算はできません）。"), {}, 0);
     result.electrons -= charge;
-    if (correlated(method) && advanced.contains("corr_freeze"))
+    if (calc.correlated() && advanced.contains("corr_freeze"))
         result.frozenOrbitals = advanced["corr_freeze"].toInt();
     if (result.electrons < 1 || mult > result.electrons + 1 || (result.electrons - mult + 1) % 2 != 0)
         result.error(
@@ -809,18 +876,18 @@ NwchemValidation validateNwchem(const Document &d) {
     }
     result.reference = str("reference");
     if (result.reference == "auto")
-        result.reference = mult == 1 ? "rhf" : (method == "hf" ? "rohf" : "uhf");
+        result.reference = mult == 1 ? "rhf" : (calc.method == NwchemMethod::Hf ? "rohf" : "uhf");
     if (result.reference == "rhf" && mult != 1)
         result.error("reference.closed_shell", "reference",
                      tr("RHF / RKSは多重度1で使用してください。開殻には自動または非制限を選択してください。"),
                      DiagnosticFix{"reference", tr("参照波動関数を「自動」にする"), "auto"});
-    if ((method == "dft" || method == "mp2") && result.reference == "rohf")
+    if ((calc.dft() || calc.method == NwchemMethod::Mp2) && result.reference == "rohf")
         result.error("reference.rohf", "reference",
                      tr("このタブのDFT・MP2はROHF参照に対応しません。自動または非制限を選択してください。"));
-    if (method.startsWith("ccsd") && (result.reference != "rhf" || mult != 1 || task != "energy"))
+    if (calc.ccsd() && (result.reference != "rhf" || mult != 1 || calc.task != NwchemTask::Energy))
         result.error("correlation.reference", "method",
                      tr("CCSD / CCSD(T)は閉殻RHFの一点エネルギーに対応します。"));
-    if (method == "dft") {
+    if (calc.dft()) {
         const auto *f = functional(str("functional"));
         const auto custom = str("xc_custom").simplified();
         if (f && QString(f->value) == "custom") {
@@ -849,26 +916,26 @@ NwchemValidation validateNwchem(const Document &d) {
     }
     if (s["tddft"].toBool()) {
         const auto *f = functional(str("functional"));
-        if (method != "dft")
+        if (!calc.dft())
             result.error("tddft.method", "tddft", tr("TDDFTはDFTで使用してください。"));
         else if (f && f->metaGga)
             result.error("tddft.functional", "functional",
                          tr("NWChemのTDDFTはメタGGA（%1）に対応しません。B3LYP・PBE0・CAM-"
                             "B3LYP等を選んでください。")
                              .arg(tr(f->label)));
-        if (task != "energy")
+        if (calc.task != NwchemTask::Energy)
             result.error(
                 "tddft.task", "task",
                 tr("TDDFTは計算目的「一点エネルギー」で使用してください（励起状態の構造最適化は未対応）。"),
                 DiagnosticFix{"task", tr("計算目的を「一点エネルギー」にする"), "energy"});
     }
-    if (correlated(method) && result.electrons < 2)
+    if (calc.correlated() && result.electrons < 2)
         result.error("correlation.electrons", "method", tr("相関計算には2個以上の電子が必要です。"));
     if (result.frozenOrbitals &&
         (result.frozenOrbitals > result.beta || result.electrons - 2 * result.frozenOrbitals < 2))
         result.error("correlation.frozen", "freeze_core",
                      tr("内殻凍結後の相関電子が不足します。内殻凍結を解除してください。"));
-    if (correlated(method) && (s["freeze_core"].toBool() || advanced.contains("corr_freeze")))
+    if (calc.correlated() && (s["freeze_core"].toBool() || advanced.contains("corr_freeze")))
         result.warning("correlation.freeze_notice", "freeze_core",
                        tr("内殻凍結: %n 軌道。%1", nullptr, result.frozenOrbitals)
                            .arg(advanced.contains("corr_freeze")
@@ -877,9 +944,9 @@ NwchemValidation validateNwchem(const Document &d) {
     const auto solvent = str("solvent"), solventName = str("solvent_name");
     if (solvent != "none") {
         const QString model = solvent == "smd" ? "SMD" : "COSMO";
-        if (method != "hf" && method != "dft")
+        if (calc.method != NwchemMethod::Hf && !calc.dft())
             result.error("solvent.method", "solvent", tr("%1はHFまたはDFTで使用してください。").arg(model));
-        if (solvent == "smd" && method != "dft")
+        if (solvent == "smd" && !calc.dft())
             result.error("solvent.smd_method", "solvent",
                          tr("NWChemのSMDはDFT専用です。HFにはCOSMOを使用してください。"),
                          DiagnosticFix{"solvent", tr("溶媒モデルをCOSMOにする"), "cosmo"});
@@ -889,17 +956,17 @@ NwchemValidation validateNwchem(const Document &d) {
                          DiagnosticFix{"solvent_name", tr("溶媒を水にする"), "h2o"});
         if (ghosts)
             result.error("solvent.ghosts", "solvent", tr("ゴーストを含む%1入力は未対応です。").arg(model));
-        if (method == "hf" && result.reference == "uhf")
+        if (calc.method == NwchemMethod::Hf && result.reference == "uhf")
             result.error(
                 "solvent.uhf", "reference",
                 tr("NWChemのCOSMOはUHFに対応しません。参照を自動（ROHF）にするか、DFTを選択してください。"));
     }
     const auto relativistic = str("relativistic");
     if (relativistic != "none") {
-        if (method != "hf" && method != "dft")
+        if (calc.method != NwchemMethod::Hf && !calc.dft())
             result.error("relativistic.method", "relativistic",
                          tr("相対論ハミルトニアンはHFまたはDFTで使用してください。"));
-        if (relativistic == "zora" && method != "dft")
+        if (relativistic == "zora" && !calc.dft())
             result.error("relativistic.zora", "relativistic",
                          tr("NWChemのZORAはDFT専用です。HFにはDKHまたはX2Cを選んでください。"),
                          DiagnosticFix{"relativistic", tr("相対論をDKHにする"), "dkh"});
@@ -913,7 +980,7 @@ NwchemValidation validateNwchem(const Document &d) {
                               "SVPall・SARC等の相対論用の基底を推奨します。"));
     }
     if (s["ri_j"].toBool()) {
-        if (method != "dft")
+        if (!calc.dft())
             result.error("ri_j.method", "ri_j", tr("RI-J（Coulombフィッティング）はDFTで使用してください。"),
                          DiagnosticFix{"ri_j", tr("RI-Jをオフにする"), false});
         if (!unfitted.isEmpty())
@@ -938,7 +1005,7 @@ NwchemValidation validateNwchem(const Document &d) {
                          tr("拘束%1: %2").arg(QString::number(i + 1), error));
     }
     if (!constraints.isEmpty()) {
-        if (!optimizationTask(task) && !(task == "scan" && s["scan_relaxed"].toBool()))
+        if (!calc.optimization() && !(calc.task == NwchemTask::Scan && s["scan_relaxed"].toBool()))
             result.error("constraints.task", "constraints",
                          tr("内部座標の拘束は構造最適化・遷移状態探索・緩和スキャンで使用してください。"));
         if (fixed || ghosts)
@@ -950,12 +1017,12 @@ NwchemValidation validateNwchem(const Document &d) {
             "constraints.autoz", "constraints",
             tr("拘束付き最適化は内部座標（autoz）で行います。NWChemが内部座標を生成できない構造では"
                "拘束を適用できません。"));
-        if (frequencyTask(task))
+        if (calc.frequencies())
             result.warning(
                 "constraints.frequencies", "constraints",
                 tr("拘束した構造は停留点ではないため、振動数には虚振動や大きな誤差が出ることがあります。"));
     }
-    const bool scan = task == "scan";
+    const bool scan = calc.task == NwchemTask::Scan;
     if (scan) {
         const auto ids = idsFromJson(s["scan_atoms"]);
         if (ids.isEmpty())
@@ -993,7 +1060,7 @@ NwchemValidation validateNwchem(const Document &d) {
                 "scan.rigid", "scan_relaxed",
                 tr("固定スキャンでは、後に選択した原子の側を動かした構造で一点エネルギーを計算します。"));
     }
-    if (task == "irc") {
+    if (calc.task == NwchemTask::Irc) {
         if (fixed || ghosts)
             result.error("irc.fixed", "task", tr("IRCは固定原子・ゴーストを含む構造に対応しません。"));
         if (realAtoms < 3)
@@ -1010,12 +1077,13 @@ NwchemValidation validateNwchem(const Document &d) {
     }
     if (outsideRange("irc_stride"))
         result.error("irc.stride", "irc_stride", tr("IRCの刻み幅は0.01〜1で指定してください。"));
-    if (s["tddft"].toBool() && (scan || task == "irc"))
+    if (s["tddft"].toBool() && (scan || calc.task == NwchemTask::Irc))
         result.error("tddft.path", "tddft", tr("TDDFTはスキャン・IRCと併用できません。"));
     // Counterpoise correction of the bonded molecules as monomers.
     if (s["bsse"].toBool()) {
         const auto monomers = bsseMonomers(d);
-        if (!QStringList{"energy", "gradient", "optimize"}.contains(task))
+        if (calc.task != NwchemTask::Energy && calc.task != NwchemTask::Gradient &&
+            calc.task != NwchemTask::Optimize)
             result.error("bsse.task", "bsse",
                          tr("BSSE補正は一点エネルギー・勾配・構造最適化で使用してください。"));
         if (monomers.size() < 2)
@@ -1067,11 +1135,11 @@ NwchemValidation validateNwchem(const Document &d) {
     }
     // Molecular properties after the last calculation (the follow-up one if present).
     if (anyProperty(s)) {
-        const auto level = s["followup"].toBool() ? s["followup_method"].toString() : method;
+        const auto level = s["followup"].toBool() ? s["followup_method"].toString() : str("method");
         if (level != "hf" && level != "dft")
             result.error("properties.method", "prop_mulliken",
                          tr("物性計算は最後の計算レベルがHFまたはDFTのときに使用してください。"));
-        if (scan || task == "irc")
+        if (scan || calc.task == NwchemTask::Irc)
             result.error("properties.path", "prop_mulliken", tr("物性計算はスキャン・IRCと併用できません。"));
         if (ghosts && s["prop_esp"].toBool())
             result.error("esp.ghosts", "prop_esp", tr("ESP電荷はゴースト中心を含む構造に対応しません。"));
@@ -1085,7 +1153,7 @@ NwchemValidation validateNwchem(const Document &d) {
                    "使ってください。"));
     }
     if (s["followup"].toBool()) {
-        if (!optimizationTask(task))
+        if (!calc.optimization())
             result.error("followup.task", "followup",
                          tr("後続の一点計算は構造最適化・遷移状態探索の後に使用してください。"));
         if (s["tddft"].toBool())
@@ -1102,36 +1170,36 @@ NwchemValidation validateNwchem(const Document &d) {
             "extra.unchecked",
             extraInput.trimmed().isEmpty() ? QString("extra_tasks") : QString("extra_input"),
             tr("追加入力はMolFormaが検査せずにそのまま出力します。入力プレビューで内容を確認してください。"));
-    if (frequencyTask(task) && (ghosts || fixed))
+    if (calc.frequencies() && (ghosts || fixed))
         result.error("frequencies.fixed", "task",
                      tr("固定原子・ゴーストを含む振動数解析は未対応です。固定を解除し、実原子のみで設定してく"
                         "ださい。"));
-    if (frequencyTask(task) && realAtoms < 2)
+    if (calc.frequencies() && realAtoms < 2)
         result.error("frequencies.atoms", "task", tr("振動数解析には2個以上の実原子が必要です。"));
-    if (optimizationTask(task) && realAtoms && !movable)
+    if (calc.optimization() && realAtoms && !movable)
         result.error("optimization.fixed", "task",
                      tr("全原子が固定されています。最適化する原子の固定を解除してください。"));
-    if (optimizationTask(task) && ghosts)
+    if (calc.optimization() && ghosts)
         result.warning(
             "optimization.ghosts", "task",
             tr("ゴースト中心は核を持たないため、最適化中は固定します（constraints の fix atom）。"));
     const bool points = !d.data["point_charges"].toArray().isEmpty();
-    if (frequencyTask(task) && points && s["include_point_charges"].toBool())
+    if (calc.frequencies() && points && s["include_point_charges"].toBool())
         result.error("frequencies.point_charges", "include_point_charges",
                      tr("外部点電荷中の振動数解析は未対応です。"));
     result.numericalFrequencies = nwchemNumericalFrequencies(d);
-    if (frequencyTask(task) && result.numericalFrequencies)
+    if (calc.frequencies() && result.numericalFrequencies)
         result.warning("frequencies.numerical", "numerical_frequencies",
                        tr("振動数には数値Hessianを使用します。複数回の勾配計算を行います。"));
-    if (frequencyTask(task) && s["scf_convergence"] == "default")
+    if (calc.frequencies() && s["scf_convergence"] == "default")
         result.warning(
             "frequencies.convergence", "scf_convergence",
             tr("SCF収束がNWChem既定のため、振動数（特に数値Hessian）の精度が不足することがあります。"
                "「厳密」を推奨します。"));
-    if (task == "frequencies")
+    if (calc.task == NwchemTask::Frequencies)
         result.warning("frequencies.geometry", "task",
                        tr("現在の座標で振動数を計算します。極小構造の確認には先に最適化してください。"));
-    if (saddleTask(task))
+    if (calc.saddle())
         result.warning(
             "saddle.initial", "task",
             tr("遷移状態探索は、反応座標に沿って1方向だけ負の曲率を持つ初期構造から始めてください。"
@@ -1159,10 +1227,10 @@ NwchemValidation validateNwchem(const Document &d) {
                  : tr("基底 %1 は通常球面調和関数（5d）で使用します。文献値と比べる場合はd・f関数の形式を"
                       "「自動」にしてください。"))
                 .arg(basis));
-    if (s["tddft"].toBool() && method == "dft" && result.reference == "uhf" && s["tddft_triplets"].toBool())
+    if (s["tddft"].toBool() && calc.dft() && result.reference == "uhf" && s["tddft_triplets"].toBool())
         result.warning("tddft.open_shell", "tddft_triplets",
                        tr("開殻（UKS）のTDDFTは一重項・三重項を分けずに非制限の励起状態を求めます。"));
-    if (frequencyTask(task))
+    if (calc.frequencies())
         if (const int sigma = rotationalSymmetryNumber(d); sigma > 1)
             result.warning(
                 "frequencies.symmetry", "task",
@@ -1214,11 +1282,11 @@ NwchemValidation validateNwchem(const Document &d) {
                 "followup.ecp", "followup_basis",
                 tr("主計算のECPはNWChemの実行中に残るため、後続の一点計算にもECPを使う基底（def2系・LANL2DZ）"
                    "を選んでください。"));
-        result.warning(
-            "followup.notice", "followup",
-            tr("最適化した構造で %1 / %2 の一点エネルギーを計算します。")
-                .arg(ns["method"] == "dft" ? nwchemFunctionalLabel(ns) : ns["method"].toString().toUpper(),
-                     ns["basis"].toString()));
+        result.warning("followup.notice", "followup",
+                       tr("最適化した構造で %1 / %2 の一点エネルギーを計算します。")
+                           .arg(NwchemCalculation(ns).dft() ? nwchemFunctionalLabel(ns)
+                                                            : ns["method"].toString().toUpper(),
+                                ns["basis"].toString()));
     }
     errors.removeDuplicates();
     return result;
@@ -1235,6 +1303,7 @@ void geometryBlocks(NwchemInputBuilder &out, const Document &d, CoordinateUnit u
     out.block("constraints", part.constraints, {}, {}, {1});
 }
 void basisBlocks(NwchemInputBuilder &out, const Document &d, const QJsonObject &s, bool allGhosts) {
+    const NwchemCalculation calc(s);
     const auto basis = s["basis"].toString();
     const bool spherical = s["basis_functions"] == "spherical" ||
                            (s["basis_functions"] == "auto" && !cartesianByConvention(basis));
@@ -1259,7 +1328,7 @@ void basisBlocks(NwchemInputBuilder &out, const Document &d, const QJsonObject &
         text += QString("  bq%1 library %1 \"%2\"\n").arg(symbol, elementBasis(s, symbol));
     text += "end\n";
     out.block("basis", text, "basis", {}, {2}, perElement ? QString() : "basis \"" + basis + '"');
-    if (s["method"] == "dft" && s["ri_j"].toBool()) {
+    if (calc.dft() && s["ri_j"].toBool()) {
         text = "\nbasis \"cd basis\"" + type + "  * library \"weigend coulomb fitting\"\n";
         for (const auto &symbol : sorted(ghosts))
             text += QString("  bq%1 library %1 \"weigend coulomb fitting\"\n").arg(symbol);
@@ -1278,10 +1347,11 @@ void methodBlocks(NwchemInputBuilder &out, const Document &d, const QJsonObject 
     auto str = [&](const char *key) { return s[key].toString(); };
     auto integer = [&](const char *key) { return QString::number(s[key].toInt()); };
     const auto method = str("method");
+    const NwchemCalculation calc(s);
     const bool own = str("scf_convergence") == "default";
     const QString threshold = nwchemScfThreshold(s);
     NwchemInputBuilder body;
-    if (method == "dft") {
+    if (calc.dft()) {
         const auto *f = functional(str("functional"));
         body.append("\ndft\n  xc " +
                     (QString(f->value) == "custom" ? str("xc_custom").simplified() : QString(f->xc)) + '\n');
@@ -1322,21 +1392,22 @@ void methodBlocks(NwchemInputBuilder &out, const Document &d, const QJsonObject 
         body.append(nwchemAdvancedLines(d, "vectors"));
         body.append("end\n");
         out.block("scf", body.result, "method", "scf");
-        if (correlated(method)) {
+        if (calc.correlated()) {
             NwchemInputBuilder correlation;
-            correlation.append(method == "mp2" ? "\nmp2\n" : "\nccsd\n");
+            correlation.append(calc.method == NwchemMethod::Mp2 ? "\nmp2\n" : "\nccsd\n");
             correlation.sourced(
                 "  freeze " +
                     nwchemAdvancedNumber(d, "corr_freeze", s["freeze_core"].toBool() ? "atomic" : "0") + '\n',
                 {"corr_freeze"}, advanced.contains("corr_freeze"));
-            if (method != "mp2") {
+            if (calc.method != NwchemMethod::Mp2) {
                 correlation.append("  maxiter " + integer("cc_maxiter") + '\n');
                 correlation.sourced("  thresh " + nwchemAdvancedNumber(d, "cc_thresh", "1e-7") + '\n',
                                     {"cc_thresh"}, advanced.contains("cc_thresh"));
             }
             correlation.append(nwchemAdvancedLines(d, "correlation"));
             correlation.append("end\n");
-            out.block(method == "mp2" ? "mp2" : "ccsd", correlation.result, "method", "correlation");
+            out.block(calc.method == NwchemMethod::Mp2 ? "mp2" : "ccsd", correlation.result, "method",
+                      "correlation");
         }
     }
 }
@@ -1360,10 +1431,11 @@ NwchemGeneratedInput generateNwchemInput(const Document &d) {
     const auto s = nwchemSettings(d), advanced = nwchemAdvanced(d);
     auto str = [&](const char *key) { return s[key].toString(); };
     auto integer = [&](const char *key) { return QString::number(s[key].toInt()); };
-    const auto method = str("method"), task = str("task");
+    const auto method = str("method");
+    const NwchemCalculation calc(s);
     const auto unit = str("geometry_units") == "bohr" ? CoordinateUnit::Bohr : CoordinateUnit::Angstrom;
     const double scale = coordinateScale(unit);
-    const bool scan = task == "scan", relaxedScan = scan && s["scan_relaxed"].toBool();
+    const bool scan = calc.task == NwchemTask::Scan, relaxedScan = scan && s["scan_relaxed"].toBool();
     NwchemInputBuilder out;
     out.append("# Generated by MolForma for NWChem\n");
     out.block("start", "start " + str("start") + '\n', "start");
@@ -1375,15 +1447,15 @@ NwchemGeneratedInput generateNwchemInput(const Document &d) {
     out.append("\n");
     if (!scan) {
         Document geometry = d;
-        if (optimizationTask(task))
+        if (calc.optimization())
             for (auto &a : geometry.atoms)
                 a.fixed |= a.ghost;
         NwchemGeometryOptions options;
-        if (optimizationTask(task))
+        if (calc.optimization())
             options.zcoord = constraintLines(d, s, scale);
         options.autoz = nwchemAutoz(d);
         geometryBlocks(out, geometry, unit, options,
-                       advanced["driver_cartesian"].toBool() && optimizationTask(task));
+                       advanced["driver_cartesian"].toBool() && calc.optimization());
     }
     basisBlocks(out, d, s, s["bsse"].toBool());
     if (s["include_point_charges"].toBool() && !d.data["point_charges"].toArray().isEmpty()) {
@@ -1418,7 +1490,7 @@ NwchemGeneratedInput generateNwchemInput(const Document &d) {
         body.append("end\n");
         out.block("cosmo", body.result, "solvent", "cosmo");
     }
-    if (method == "dft" && s["tddft"].toBool()) {
+    if (calc.dft() && s["tddft"].toBool()) {
         QString text = "\ntddft\n  nroots " + integer("tddft_roots") + '\n';
         if (check.reference == "rhf" && !s["tddft_triplets"].toBool())
             text += "  notriplet\n";
@@ -1426,14 +1498,14 @@ NwchemGeneratedInput generateNwchemInput(const Document &d) {
             text += "  cis\n";
         out.block("tddft", text + "end\n", "tddft");
     }
-    if (nwchemDriverTask(s)) {
+    if (calc.driver()) {
         NwchemInputBuilder body;
         body.append("\ndriver\n  maxiter " + integer("opt_maxiter") + "\n  " + str("opt_convergence") + '\n');
         body.append(nwchemAdvancedLines(d, "driver"));
         body.append("end\n");
         out.block("driver", body.result, "opt_maxiter", "driver");
     }
-    if (frequencyTask(task)) {
+    if (calc.frequencies()) {
         const auto lines = nwchemAdvancedLines(d, "frequency");
         if (!lines.text.isEmpty()) {
             NwchemInputBuilder body;
@@ -1448,7 +1520,7 @@ NwchemGeneratedInput generateNwchemInput(const Document &d) {
                                   "\nend\n",
                               {"hessian_thresh"}, "frequency");
     }
-    if (task == "irc") {
+    if (calc.task == NwchemTask::Irc) {
         const auto direction = s["irc_direction"].toString();
         out.block("mepgs",
                   "\nmepgs\n  maxmep " + integer("irc_points") + "\n  maxiter " + integer("opt_maxiter") +
@@ -1496,21 +1568,21 @@ NwchemGeneratedInput generateNwchemInput(const Document &d) {
             out.block("set", "set geometry " + options.name + '\n', "scan_steps");
             taskLine("task " + theory + (relaxedScan ? " optimize\n" : " energy\n"));
         }
-    } else if (task == "irc")
+    } else if (calc.task == NwchemTask::Irc)
         taskLine("task " + theory + " mepgs\n");
     else {
-        if (optimizationTask(task))
-            taskLine("task " + theory + (saddleTask(task) ? " saddle\n" : " optimize\n"));
-        if (frequencyTask(task)) {
+        if (calc.optimization())
+            taskLine("task " + theory + (calc.saddle() ? " saddle\n" : " optimize\n"));
+        if (calc.frequencies()) {
             NwchemInputBuilder body;
             body.sourced("task " + theory + " frequencies" +
                              (check.numericalFrequencies ? " numerical" : "") + '\n',
                          {"numerical_frequencies"});
             out.block("task", body.result, "task");
-        } else if (method == "dft" && s["tddft"].toBool())
+        } else if (calc.dft() && s["tddft"].toBool())
             taskLine("task tddft energy\n");
-        else if (!optimizationTask(task))
-            taskLine("task " + theory + ' ' + task + '\n');
+        else if (!calc.optimization())
+            taskLine("task " + theory + ' ' + str("task") + '\n');
     }
     Document last = d;
     auto lastCheck = check;
@@ -1521,8 +1593,9 @@ NwchemGeneratedInput generateNwchemInput(const Document &d) {
         out.append("\n# Follow-up single point at the optimized structure\n");
         out.block("unset", "unset scf:*\n", "followup");
         out.block("unset", "unset dft:*\n", "followup");
-        if (correlated(ns["method"].toString()))
-            out.block("unset", ns["method"] == "mp2" ? QString("unset mp2:*\n") : QString("unset ccsd:*\n"),
+        if (const NwchemCalculation next(ns); next.correlated())
+            out.block("unset",
+                      next.method == NwchemMethod::Mp2 ? QString("unset mp2:*\n") : QString("unset ccsd:*\n"),
                       "followup");
         NwchemInputBuilder next;
         basisBlocks(next, last, ns, false);
