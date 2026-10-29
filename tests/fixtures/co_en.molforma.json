@@ -848,7 +848,6 @@
             0,
             1
           ],
-          "residual": 0.0027230749800326447,
           "twist": 0
         }
       },
@@ -872,7 +871,6 @@
           "sites": [
             2
           ],
-          "residual": 0,
           "twist": 0
         }
       },
@@ -896,7 +894,6 @@
           "sites": [
             3
           ],
-          "residual": 0,
           "twist": 0
         }
       },
@@ -920,7 +917,6 @@
           "sites": [
             4
           ],
-          "residual": 0,
           "twist": 0
         }
       },
@@ -944,7 +940,6 @@
           "sites": [
             5
           ],
-          "residual": 0,
           "twist": 0
         }
       }

@@ -143,13 +143,8 @@ void orient(Document &d, const Ids &ids) {
         r = rotation(Vec::UnitX(), -std::atan2(p.z(), p.y()) / rad) * r;
     }
     transform(d, d.ids(), r, -r * o);
-    QJsonArray charges;
-    for (auto v : d.data["point_charges"].toArray()) {
-        auto p = v.toObject();
-        p["position"] = vectorToJson(r * (vectorFromJson(p["position"]) - o));
-        charges.append(p);
-    }
-    d.data["point_charges"] = charges;
+    for (auto &q : d.pointCharges)
+        q.position = r * (q.position - o);
 }
 void centerMass(Document &d, const Ids &selection, bool principal) {
     auto ids = selection.isEmpty() ? d.ids() : selection;
@@ -181,6 +176,10 @@ void centerMass(Document &d, const Ids &selection, bool principal) {
             r.row(2) *= -1;
     }
     transform(d, ids, r, -r * center);
+    // Moving the whole structure moves its frame: the point charges go along, as with orient.
+    if (QSet<QString>(ids.begin(), ids.end()).size() == d.atoms.size())
+        for (auto &q : d.pointCharges)
+            q.position = r * (q.position - center);
 }
 Vec internalPoint(const Vec &a, const Vec &b, const Vec &c, double length, double angle, double dihedral) {
     Vec bc = unit(c - b), normal = unit((b - a).cross(bc)), tangent = normal.cross(bc);

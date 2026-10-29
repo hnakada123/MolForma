@@ -688,7 +688,7 @@ void MainWindow::refreshSummary() {
                          .arg(d.bonds.size())
                          .arg(d.charge)
                          .arg(d.multiplicity)
-                         .arg(d.data["point_charges"].toArray().size())
+                         .arg(d.pointCharges.size())
                          .arg(session.candidate() ? tr(" · 変更候補あり") : ""));
 }
 void MainWindow::refreshTitle() {

@@ -31,30 +31,25 @@ QStringList parseSequence(const QString &text) {
         fail(tr("配列を入力してください（AGS または Ala-Gly-Ser）。"));
     return result;
 }
-QJsonObject residue(const Document &d, const QString &id) {
-    for (auto v : d.data["residues"].toArray())
-        if (v.toObject()["id"] == id)
-            return v.toObject();
+Residue residue(const Document &d, const QString &id) {
+    if (const auto *r = d.findResidue(id))
+        return *r;
     fail(tr("残基を選択してください。"));
 }
 QString residueForAtom(const Document &d, const QString &id) {
-    for (auto v : d.data["residues"].toArray()) {
-        auto r = v.toObject();
-        for (auto a : r["atoms"].toObject())
-            if (a.toString() == id)
-                return r["id"].toString();
-    }
+    for (const auto &r : d.residues)
+        for (const auto &a : r.atoms)
+            if (a == id)
+                return r.id;
     return {};
 }
 QHash<QString, QString> atomPlaces(const Document &d) {
     QHash<QString, QString> places;
-    for (auto v : d.data["residues"].toArray()) {
-        const auto r = v.toObject();
-        const auto code = QString("%1 %2").arg(r["code"].toString()).arg(r["number"].toInt());
-        const auto names = r["atoms"].toObject();
-        for (auto it = names.begin(); it != names.end(); ++it)
-            if (const auto id = it.value().toString(); !places.contains(id))
-                places.insert(id, code + " · " + it.key());
+    for (const auto &r : d.residues) {
+        const auto code = QString("%1 %2").arg(r.code).arg(r.number);
+        for (auto it = r.atoms.begin(); it != r.atoms.end(); ++it)
+            if (!places.contains(it.value()))
+                places.insert(it.value(), code + " · " + it.key());
     }
     return places;
 }
@@ -63,25 +58,21 @@ QString atomPlace(const Document &d, const QString &atom) {
     if (rid.isEmpty())
         return {};
     const auto r = residue(d, rid);
-    const auto names = r["atoms"].toObject();
-    for (auto it = names.begin(); it != names.end(); ++it)
-        if (it.value().toString() == atom)
-            return QString("%1 %2 · %3").arg(r["code"].toString()).arg(r["number"].toInt()).arg(it.key());
+    for (auto it = r.atoms.begin(); it != r.atoms.end(); ++it)
+        if (it.value() == atom)
+            return QString("%1 %2 · %3").arg(r.code).arg(r.number).arg(it.key());
     return {};
 }
-void updateResidue(Document &d, const QJsonObject &r) {
-    auto rows = d.data["residues"].toArray();
-    for (int i = 0; i < rows.size(); ++i)
-        if (rows[i].toObject()["id"] == r["id"]) {
-            rows[i] = r;
-            d.data["residues"] = rows;
+void updateResidue(Document &d, const Residue &r) {
+    for (auto &row : d.residues)
+        if (row.id == r.id) {
+            row = r;
             return;
         }
-    rows.append(r);
-    d.data["residues"] = rows;
+    d.residues << r;
 }
-static QString named(const QJsonObject &r, const QString &name) {
-    auto id = r["atoms"].toObject()[name].toString();
+static QString named(const Residue &r, const QString &name) {
+    auto id = r.atoms.value(name);
     if (id.isEmpty())
         fail(tr("残基に原子 %1 がありません。").arg(name));
     return id;
@@ -143,30 +134,17 @@ static QString placeAmino(Document &d, const QString &code, const QString &state
             p += shift;
     }
     auto part = instantiate(d, t, points);
-    QJsonObject atomNames;
+    Residue r;
     for (auto it = names.begin(); it != names.end(); ++it)
-        atomNames[it.key()] = part.mapping[it.value()];
-    QString rid = newId(), cid = chain.isEmpty() ? newId() : chain;
-    QJsonObject r{{"id", rid},
-                  {"code", code},
-                  {"atoms", atomNames},
-                  {"chain", cid},
-                  {"number", number},
-                  {"insertion_code", ""},
-                  {"chirality", code == "GLY" ? "" : chirality},
-                  {"state", state},
-                  {"n_terminal", "neutral"},
-                  {"c_terminal", "neutral"},
-                  {"matched", true},
-                  {"modified", false},
-                  {"metadata", QJsonObject()}};
+        r.atoms[it.key()] = part.mapping[it.value()];
+    r.code = code;
+    r.chain = chain.isEmpty() ? newId() : chain;
+    r.number = number;
+    r.chirality = code == "GLY" ? "" : chirality;
+    r.state = state;
     updateResidue(d, r);
-    auto chains = d.data["chains"].toObject();
-    auto seq = chains[cid].toArray();
-    seq.append(rid);
-    chains[cid] = seq;
-    d.data["chains"] = chains;
-    return rid;
+    d.chains[r.chain] << r.id;
+    return r.id;
 }
 static QString addNamedAtom(Document &d, const QString &rid, const QString &parent, const QString &name,
                             const QString &symbol, const Vec &pos) {
@@ -176,27 +154,19 @@ static QString addNamedAtom(Document &d, const QString &rid, const QString &pare
     a.position = pos;
     d.atoms << a;
     d.setBond(parent, a.id, "single");
-    auto r = residue(d, rid), names = r["atoms"].toObject();
+    auto r = residue(d, rid);
     QString unique = name;
     int i = 1;
-    while (names.contains(unique))
+    while (r.atoms.contains(unique))
         unique = name + QString::number(++i);
     d.atom(a.id).name = unique;
-    names[unique] = a.id;
-    r["atoms"] = names;
+    r.atoms[unique] = a.id;
     updateResidue(d, r);
-    auto parts = d.data["parts"].toArray();
-    for (int j = 0; j < parts.size(); ++j) {
-        auto p = parts[j].toObject();
-        auto ids = idsFromJson(p["atoms"]);
-        if (ids.contains(parent)) {
-            ids << a.id;
-            p["atoms"] = idsToJson(ids);
-            parts[j] = p;
+    for (auto &p : d.parts)
+        if (p.atoms.contains(parent)) {
+            p.atoms << a.id;
             break;
         }
-    }
-    d.data["parts"] = parts;
     return a.id;
 }
 static void addH(Document &d, const QString &rid, const QString &parent, const QString &name) {
@@ -218,10 +188,10 @@ void setTerminals(Document &d, const QString &rid, const QString &n, const QStri
     }
     auto r = residue(d, rid);
     // Remove the complete cap before rebuilding the free terminal group.
-    for (auto key : {QString("n_terminal"), QString("c_terminal")}) {
-        if ((key == "n_terminal" ? n : c).isEmpty())
+    for (bool nTerminus : {true, false}) {
+        if ((nTerminus ? n : c).isEmpty())
             continue;
-        QString kind = r[key].toString();
+        QString kind = nTerminus ? r.nTerminal : r.cTerminal;
         if (kind != "ACE" && kind != "NME")
             continue;
         const auto parent = named(r, kind == "ACE" ? "N" : "C");
@@ -230,12 +200,9 @@ void setTerminals(Document &d, const QString &rid, const QString &n, const QStri
             if (capId.isEmpty() || capId == rid)
                 continue;
             auto cap = residue(d, capId);
-            if (cap["code"] != kind)
+            if (cap.code != kind)
                 continue;
-            Ids removed;
-            for (auto id : cap["atoms"].toObject())
-                removed << id.toString();
-            d.remove(removed);
+            d.remove(cap.atoms.values());
         }
     }
     if (!n.isEmpty()) {
@@ -243,7 +210,7 @@ void setTerminals(Document &d, const QString &rid, const QString &n, const QStri
             fail(tr("N末端状態が不正です。"));
         QString id = named(r, "N");
         int count = n == "charged" ? 3 : n == "neutral" ? 2 : 1;
-        if (r["code"] == "PRO")
+        if (r.code == "PRO")
             --count;
         auto hs = hydrogens(d, id);
         while (hs.size() > count)
@@ -252,14 +219,14 @@ void setTerminals(Document &d, const QString &rid, const QString &n, const QStri
             addH(d, rid, id, "HN" + QString::number(hydrogens(d, id).size() + 1));
         d.atom(id).charge = n == "charged" ? 1 : 0;
         r = residue(d, rid);
-        r["n_terminal"] = n;
+        r.nTerminal = n;
         updateResidue(d, r);
     }
     if (!c.isEmpty()) {
         if (!QStringList{"neutral", "charged", "internal"}.contains(c))
             fail(tr("C末端状態が不正です。"));
         r = residue(d, rid);
-        QString carbon = named(r, "C"), oxt = r["atoms"].toObject()["OXT"].toString();
+        QString carbon = named(r, "C"), oxt = r.atoms.value("OXT");
         if (c == "internal") {
             if (d.contains(oxt)) {
                 auto ids = hydrogens(d, oxt);
@@ -280,7 +247,7 @@ void setTerminals(Document &d, const QString &rid, const QString &n, const QStri
                 addH(d, rid, oxt, "HOXT1");
         }
         r = residue(d, rid);
-        r["c_terminal"] = c;
+        r.cTerminal = c;
         updateResidue(d, r);
     }
 }
@@ -290,7 +257,7 @@ void addCap(Document &d, const QString &rid, const QString &kind) {
     bool ace = kind == "ACE";
     if (!ace && kind != "NME")
         fail(tr("対応するキャップはACEとNMEです。"));
-    auto state = r[ace ? "n_terminal" : "c_terminal"].toString();
+    auto state = ace ? r.nTerminal : r.cTerminal;
     if (state == kind)
         return;
     if (state != "neutral" && state != "charged")
@@ -306,7 +273,7 @@ void addCap(Document &d, const QString &rid, const QString &kind) {
             n = d.atom(parent).position;
         if (d.atom(leaving).fixed)
             fail(tr("固定水素にキャップを付けられません。"));
-        d.atom(leaving).position = internalPoint(c, ca, n, 1.01, 121, r["chirality"] == "D" ? 135 : -135);
+        d.atom(leaving).position = internalPoint(c, ca, n, 1.01, 121, r.chirality == "D" ? 135 : -135);
     } else {
         setTerminals(d, rid, {}, "neutral");
         r = residue(d, rid);
@@ -324,7 +291,7 @@ void addCap(Document &d, const QString &rid, const QString &kind) {
     }
     auto part = attachPart(d, leaving, findTemplate(ace ? "substituent:acetyl" : "cap:NME"));
     QString connection = part.connections.first(), methyl, oxygen;
-    QJsonObject names;
+    QMap<QString, QString> names;
     int h = 0;
     for (auto id : part.atoms) {
         auto &a = d.atom(id);
@@ -350,30 +317,19 @@ void addCap(Document &d, const QString &rid, const QString &kind) {
                 n + 1.01 * unit(-unit(d.atom(parent).position - n) - unit(d.atom(methyl).position - n));
     } else
         orientAmideH(d, rid, connection); // The N–H left of the amino group, into the new amide plane.
-    QString capId = newId();
-    QJsonObject cap{{"id", capId},
-                    {"code", kind},
-                    {"atoms", names},
-                    {"chain", r["chain"]},
-                    {"number", r["number"].toInt() + (ace ? -1 : 1)},
-                    {"insertion_code", ""},
-                    {"chirality", ""},
-                    {"state", "default"},
-                    {"n_terminal", "internal"},
-                    {"c_terminal", "internal"},
-                    {"matched", true},
-                    {"modified", false},
-                    {"metadata", QJsonObject()}};
+    Residue cap;
+    cap.code = kind;
+    cap.atoms = names;
+    cap.chain = r.chain;
+    cap.number = r.number + (ace ? -1 : 1);
+    cap.chirality = "";
+    cap.nTerminal = cap.cTerminal = "internal";
     updateResidue(d, cap);
     r = residue(d, rid);
-    r[ace ? "n_terminal" : "c_terminal"] = kind;
+    (ace ? r.nTerminal : r.cTerminal) = kind;
     updateResidue(d, r);
-    auto chains = d.data["chains"].toObject();
-    auto seq = idsFromJson(chains[r["chain"].toString()]);
-    int index = seq.indexOf(rid);
-    seq.insert(index + (ace ? 0 : 1), capId);
-    chains[r["chain"].toString()] = idsToJson(seq);
-    d.data["chains"] = chains;
+    auto &seq = d.chains[r.chain];
+    seq.insert(seq.indexOf(rid) + (ace ? 0 : 1), cap.id);
 }
 static void orientAmideH(Document &d, const QString &rid, const QString &carbon) {
     auto r = residue(d, rid);
@@ -403,7 +359,7 @@ QString appendResidue(Document &d, const QString &code, const QString &previous,
         return result;
     }
     auto prev = residue(d, previous);
-    if (!QStringList{"neutral", "charged"}.contains(prev["c_terminal"].toString()))
+    if (!QStringList{"neutral", "charged"}.contains(prev.cTerminal))
         fail(tr("空いているC末端を選択してください。"));
     Vec ca = d.atom(named(prev, "CA")).position, c = d.atom(named(prev, "C")).position,
         o = d.atom(named(prev, "O")).position;
@@ -411,7 +367,7 @@ QString appendResidue(Document &d, const QString &code, const QString &previous,
         nc = internalPoint(c, nn, nca, 1.52, 111, -135 * sign),
         no = internalPoint(nn, nca, nc, 1.23, 120, -45 * sign);
     result = placeAmino(d, code, state, chirality, {{"N", nn}, {"CA", nca}, {"C", nc}, {"O", no}},
-                        Vec::Zero(), prev["chain"].toString(), prev["number"].toInt() + 1);
+                        Vec::Zero(), prev.chain, prev.number + 1);
     setTerminals(d, previous, {}, "internal");
     setTerminals(d, result, "internal", "internal");
     setTerminals(d, result, {}, cstate);
@@ -422,22 +378,19 @@ QString appendResidue(Document &d, const QString &code, const QString &previous,
 QString prependResidue(Document &d, const QString &code, const QString &following, const QString &state,
                        const QString &chirality, const QString &nstate) {
     auto next = residue(d, following);
-    if (!QStringList{"neutral", "charged"}.contains(next["n_terminal"].toString()))
+    if (!QStringList{"neutral", "charged"}.contains(next.nTerminal))
         fail(tr("空いているN末端を選択してください。"));
     Vec n = d.atom(named(next, "N")).position, ca = d.atom(named(next, "CA")).position,
         c = d.atom(named(next, "C")).position;
     double sign = chirality == "D" ? -1 : 1;
-    Vec nc = internalPoint(c, ca, n, 1.33, 121, next["chirality"] == "D" ? 135 : -135),
+    Vec nc = internalPoint(c, ca, n, 1.33, 121, next.chirality == "D" ? 135 : -135),
         nca = internalPoint(ca, n, nc, 1.52, 116, 180), nn = internalPoint(n, nc, nca, 1.46, 111, 135 * sign),
         no = nc + 1.23 * unit(-unit(nca - nc) - unit(n - nc));
     QString rid = placeAmino(d, code, state, chirality, {{"N", nn}, {"CA", nca}, {"C", nc}, {"O", no}},
-                             Vec::Zero(), next["chain"].toString(), next["number"].toInt() - 1);
-    auto chains = d.data["chains"].toObject();
-    auto seq = idsFromJson(chains[next["chain"].toString()]);
+                             Vec::Zero(), next.chain, next.number - 1);
+    auto &seq = d.chains[next.chain];
     seq.removeAll(rid);
     seq.prepend(rid);
-    chains[next["chain"].toString()] = idsToJson(seq);
-    d.data["chains"] = chains;
     setTerminals(d, rid, nstate, "internal");
     setTerminals(d, following, "internal", {});
     d.setBond(named(residue(d, rid), "C"), named(next, "N"), "single");
@@ -477,7 +430,7 @@ void buildPeptide(Document &d, const QStringList &codes, const QString &n, const
     });
 }
 void setChainTerminals(Document &d, const QString &rid, const QString &n, const QString &c) {
-    const auto chain = idsFromJson(d.data["chains"].toObject()[residue(d, rid)["chain"].toString()]);
+    const auto chain = d.chains.value(residue(d, rid).chain);
     if (chain.isEmpty())
         fail(tr("鎖情報がありません。"));
     followingCharge(d, [&] {
@@ -487,36 +440,35 @@ void setChainTerminals(Document &d, const QString &rid, const QString &n, const 
 }
 static void replaceResidue(Document &d, const QString &rid, const QString &code, const QString &state,
                            const QString &chirality) {
-    auto old = residue(d, rid);
+    const auto old = residue(d, rid);
+    const auto oldIds = old.atoms.values();
+    for (const auto &id : oldIds)
+        if (d.atom(id).fixed)
+            fail(tr("固定原子を削除できません。"));
     QMap<QString, Vec> targets;
     for (auto name : {"N", "CA", "C", "O"})
         targets[name] = d.atom(named(old, name)).position;
-    auto snapshot = d;
+    const auto snapshot = d;
     QString fresh = placeAmino(d, code, state, chirality, targets, Vec::Zero());
-    const auto n = old["n_terminal"].toString(), c = old["c_terminal"].toString();
-    setTerminals(d, fresh, n == "ACE" ? "internal" : n, c == "NME" ? "internal" : c);
+    const auto freshPart = d.parts.last().id;
+    setTerminals(d, fresh, old.nTerminal == "ACE" ? "internal" : old.nTerminal,
+                 old.cTerminal == "NME" ? "internal" : old.cTerminal);
+    // The new atoms with an old atom's name take its ID, so that bonds out of the residue, constraints
+    // and coordination sites keep referring to them; the old atoms without one are removed.
     auto replacement = residue(d, fresh);
-    auto freshNames = replacement["atoms"].toObject(), oldNames = old["atoms"].toObject();
-    QMap<QString, QString> preserved;
-    for (auto it = freshNames.begin(); it != freshNames.end(); ++it)
-        if (oldNames.contains(it.key()))
-            preserved[it.value().toString()] = oldNames[it.key()].toString();
-    Ids oldIds;
-    for (auto id : oldNames)
-        oldIds << id.toString();
-    d.remove(oldIds);
-    for (auto &a : d.atoms)
-        if (preserved.contains(a.id))
-            a.id = preserved[a.id];
-    for (auto &b : d.bonds) {
-        if (preserved.contains(b.a))
-            b.a = preserved[b.a];
-        if (preserved.contains(b.b))
-            b.b = preserved[b.b];
-    }
-    for (auto it = freshNames.begin(); it != freshNames.end(); ++it)
-        if (preserved.contains(it.value().toString()))
-            it.value() = preserved[it.value().toString()];
+    QHash<QString, QString> preserved;
+    for (auto it = replacement.atoms.begin(); it != replacement.atoms.end(); ++it)
+        if (old.atoms.contains(it.key()))
+            preserved[it.value()] = old.atoms[it.key()];
+    const auto kept = QSet<QString>(preserved.begin(), preserved.end());
+    Ids lost;
+    for (const auto &id : oldIds)
+        if (!kept.contains(id))
+            lost << id;
+    d.remove(lost);
+    d.atoms.removeIf([&](const Atom &a) { return kept.contains(a.id); });
+    d.bonds.removeIf([&](const Bond &b) { return kept.contains(b.a) || kept.contains(b.b); });
+    d.renameIds(preserved);
     for (const auto &b : snapshot.bonds)
         if (oldIds.contains(b.a) != oldIds.contains(b.b)) {
             if (d.contains(b.a) && d.contains(b.b))
@@ -524,35 +476,22 @@ static void replaceResidue(Document &d, const QString &rid, const QString &code,
             else
                 fail(tr("置換で失われる側鎖に外部結合があります。"));
         }
-    auto residues = d.data["residues"].toArray();
-    for (int i = residues.size() - 1; i >= 0; --i)
-        if (residues[i].toObject()["id"] == fresh)
-            residues.removeAt(i);
-    d.data["residues"] = residues;
-    replacement["id"] = rid;
-    replacement["chain"] = old["chain"];
-    replacement["number"] = old["number"];
-    replacement["n_terminal"] = n;
-    replacement["c_terminal"] = c;
-    replacement["atoms"] = freshNames;
+    // The old residue's place takes the new one, in its chain; the new atoms leave the old parts.
+    replacement = residue(d, fresh);
+    d.residues.removeIf([&](const Residue &r) { return r.id == fresh; });
+    d.chains.remove(replacement.chain);
+    replacement.id = rid;
+    replacement.chain = old.chain;
+    replacement.number = old.number;
+    replacement.nTerminal = old.nTerminal;
+    replacement.cTerminal = old.cTerminal;
     updateResidue(d, replacement);
-    d.data["chains"] = snapshot.data["chains"];
-    auto parts = d.data["parts"].toArray();
-    for (int i = 0; i < parts.size(); ++i) {
-        auto p = parts[i].toObject();
-        auto aa = idsFromJson(p["atoms"]);
-        for (auto &id : aa)
-            if (preserved.contains(id))
-                id = preserved[id];
-        p["atoms"] = idsToJson(aa);
-        auto cc = idsFromJson(p["connections"]);
-        for (auto &id : cc)
-            if (preserved.contains(id))
-                id = preserved[id];
-        p["connections"] = idsToJson(cc);
-        parts[i] = p;
-    }
-    d.data["parts"] = parts;
+    for (auto &p : d.parts)
+        if (p.id != freshPart) {
+            p.atoms.removeIf([&](const QString &id) { return oldIds.contains(id); });
+            p.connections.removeIf([&](const QString &id) { return oldIds.contains(id); });
+        }
+    d.parts.removeIf([](const Part &p) { return p.atoms.isEmpty(); });
     // Inside a chain the amide hydrogen goes into the peptide plane, as when a residue is added: the
     // template's is one of a free amino group and may point at the previous residue's carbonyl.
     const auto nitrogen = named(residue(d, rid), "N");
@@ -568,8 +507,8 @@ void mutateResidue(Document &d, const QString &rid, const QString &code, const Q
 }
 void deleteResidue(Document &d, const QString &rid) {
     auto r = residue(d, rid);
-    if (r["code"] == "ACE" || r["code"] == "NME") {
-        const bool ace = r["code"] == "ACE";
+    if (r.code == "ACE" || r.code == "NME") {
+        const bool ace = r.code == "ACE";
         auto connection = named(r, ace ? "C" : "N");
         for (auto neighbor : d.neighbors(connection)) {
             auto parent = residueForAtom(d, neighbor);
@@ -579,29 +518,24 @@ void deleteResidue(Document &d, const QString &rid) {
             }
         }
     }
-    if (r["n_terminal"] == "ACE")
+    if (r.nTerminal == "ACE")
         setTerminals(d, rid, "neutral", {});
-    if (r["c_terminal"] == "NME")
+    if (r.cTerminal == "NME")
         setTerminals(d, rid, {}, "neutral");
     r = residue(d, rid);
-    auto chain = r["chain"].toString();
-    auto sequence = idsFromJson(d.data["chains"].toObject()[chain]);
+    const auto chain = r.chain;
+    const auto sequence = d.chains.value(chain);
     int index = sequence.indexOf(rid);
-    Ids ids;
-    for (auto id : r["atoms"].toObject())
-        ids << id.toString();
-    d.remove(ids);
+    d.remove(r.atoms.values());
     if (index > 0)
         setTerminals(d, sequence[index - 1], {}, "neutral");
     if (index + 1 < sequence.size()) {
         QString nc = newId();
-        auto chains = d.data["chains"].toObject();
-        chains[chain] = idsToJson(sequence.mid(0, index));
-        chains[nc] = idsToJson(sequence.mid(index + 1));
-        d.data["chains"] = chains;
+        d.chains[chain] = sequence.mid(0, index);
+        d.chains[nc] = sequence.mid(index + 1);
         for (auto id : sequence.mid(index + 1)) {
             auto rr = residue(d, id);
-            rr["chain"] = nc;
+            rr.chain = nc;
             updateResidue(d, rr);
         }
         setTerminals(d, sequence[index + 1], "neutral", {});
@@ -609,7 +543,7 @@ void deleteResidue(Document &d, const QString &rid) {
 }
 void setResidueTorsion(Document &d, const QString &rid, const QString &kind, double angle) {
     auto r = residue(d, rid);
-    auto seq = idsFromJson(d.data["chains"].toObject()[r["chain"].toString()]);
+    auto seq = d.chains.value(r.chain);
     int i = seq.indexOf(rid);
     Ids ids;
     if (kind == "phi") {
@@ -624,7 +558,7 @@ void setResidueTorsion(Document &d, const QString &rid, const QString &kind, dou
                             : Ids{named(r, "CA"), named(r, "C"), named(next, "N"), named(next, "CA")};
     } else {
         QStringList names{"N", "CA", "CB"};
-        auto map = r["atoms"].toObject();
+        const auto &map = r.atoms;
         for (auto candidates :
              {QStringList{"CG", "CG1", "OG", "OG1", "SG"}, QStringList{"CD", "CD1", "OD1", "ND1", "SD"},
               QStringList{"CE", "CE1", "NE"}, QStringList{"NZ", "CZ"}, QStringList{"NH1"}}) {
@@ -646,35 +580,24 @@ void setResidueTorsion(Document &d, const QString &rid, const QString &kind, dou
 void registerResidue(Document &d, const Ids &ids, const QString &code) {
     if (ids.isEmpty())
         fail(tr("残基の原子を選択してください。"));
-    QJsonObject names;
+    Residue r;
     for (auto id : ids) {
         auto a = d.atom(id);
         QString name = a.name.isEmpty() ? a.element + QString::number(d.index(id) + 1) : a.name;
-        if (names.contains(name))
+        if (r.atoms.contains(name))
             fail(tr("原子名が重複しています。"));
-        names[name] = id;
+        r.atoms[name] = id;
     }
-    QString rid = newId(), chain = newId();
-    updateResidue(d, {{"id", rid},
-                      {"code", code},
-                      {"atoms", names},
-                      {"chain", chain},
-                      {"number", 1},
-                      {"insertion_code", ""},
-                      {"chirality", "L"},
-                      {"state", "default"},
-                      {"n_terminal", "neutral"},
-                      {"c_terminal", "neutral"},
-                      {"matched", false},
-                      {"modified", false},
-                      {"metadata", QJsonObject()}});
-    auto chains = d.data["chains"].toObject();
-    chains[chain] = QJsonArray{rid};
-    d.data["chains"] = chains;
+    r.code = code;
+    r.chain = newId();
+    r.number = 1;
+    r.matched = false;
+    updateResidue(d, r);
+    d.chains[r.chain] = {r.id};
 }
 void reconnectResidues(Document &d, const QString &left, const QString &right) {
     auto a = residue(d, left), b = residue(d, right);
-    if (a["chain"] == b["chain"] || a["c_terminal"] == "internal" || b["n_terminal"] == "internal")
+    if (a.chain == b.chain || a.cTerminal == "internal" || b.nTerminal == "internal")
         fail(tr("異なる鎖の空いたC末端、N末端を選んでください。"));
     double distance = (d.atom(named(a, "C")).position - d.atom(named(b, "N")).position).norm();
     if (distance < 1.1 || distance > 1.7)
@@ -684,16 +607,11 @@ void reconnectResidues(Document &d, const QString &left, const QString &right) {
     setTerminals(d, left, {}, "internal");
     setTerminals(d, right, "internal", {});
     d.setBond(named(a, "C"), named(b, "N"), "single");
-    auto chains = d.data["chains"].toObject();
-    auto seq = idsFromJson(chains[a["chain"].toString()]);
-    auto tail = idsFromJson(chains[b["chain"].toString()]);
-    seq += tail;
-    chains.remove(b["chain"].toString());
-    chains[a["chain"].toString()] = idsToJson(seq);
-    d.data["chains"] = chains;
+    const auto tail = d.chains.take(b.chain);
+    d.chains[a.chain] += tail;
     for (auto id : tail) {
         auto rr = residue(d, id);
-        rr["chain"] = a["chain"];
+        rr.chain = a.chain;
         updateResidue(d, rr);
     }
     orientAmideH(d, right, named(a, "C"));
@@ -703,19 +621,19 @@ QStringList residueDiagnostics(const Document &d, const QString &rid) {
     QStringList result;
     QJsonObject t;
     try {
-        t = aminoTemplate(r["code"].toString(), r["state"].toString("default"), r["chirality"].toString("L"));
+        t = aminoTemplate(r.code, r.state, r.chirality);
     } catch (const std::exception &) {
         return {tr("テンプレートがない残基です。手動で確認してください。")};
     }
-    auto names = r["atoms"].toObject();
+    const auto &names = r.atoms;
     for (auto v : t["atoms"].toArray()) {
         auto a = v.toObject();
         QString name = a["name"].toString();
-        if (a["element"] == "H" || (name == "OXT" && r["c_terminal"] == "internal"))
+        if (a["element"] == "H" || (name == "OXT" && r.cTerminal == "internal"))
             continue;
-        if (!names.contains(name) || !d.contains(names[name].toString()))
+        if (!names.contains(name) || !d.contains(names[name]))
             result << tr("欠損原子: %1").arg(name);
-        else if (d.atom(names[name].toString()).element != a["element"].toString())
+        else if (d.atom(names[name]).element != a["element"].toString())
             result << tr("原子名と元素が一致しません: %1").arg(name);
     }
     for (auto name : {"N", "CA", "C"})
@@ -730,19 +648,18 @@ void repairResidue(Document &d, const QString &rid) {
     QMap<QString, Vec> targets;
     for (auto name : {"N", "CA", "C"})
         targets[name] = d.atom(named(r, name)).position;
-    if (r["atoms"].toObject().contains("O"))
+    if (r.atoms.contains("O"))
         targets["O"] = d.atom(named(r, "O")).position;
     Document temp;
-    auto fresh = placeAmino(temp, r["code"].toString(), r["state"].toString("default"),
-                            r["chirality"].toString("L"), targets, Vec::Zero());
-    auto n = r["n_terminal"].toString("neutral"), c = r["c_terminal"].toString("neutral");
+    auto fresh = placeAmino(temp, r.code, r.state, r.chirality, targets, Vec::Zero());
+    const auto n = r.nTerminal, c = r.cTerminal;
     setTerminals(temp, fresh, n == "ACE" ? "internal" : n, c == "NME" ? "internal" : c);
     QMap<QString, QString> mapping;
-    auto names = r["atoms"].toObject();
+    auto &names = r.atoms;
     Ids heavy;
     for (const auto &a : temp.atoms)
         if (a.element != "H") {
-            QString old = names[a.name].toString();
+            QString old = names.value(a.name);
             if (d.contains(old)) {
                 if (d.atom(old).element != a.element)
                     fail(tr("原子名と元素の不一致を先に修正してください: %1").arg(a.name));
@@ -759,9 +676,8 @@ void repairResidue(Document &d, const QString &rid) {
     for (const auto &b : temp.bonds)
         if (mapping.contains(b.a) && mapping.contains(b.b))
             d.setBond(mapping[b.a], mapping[b.b], b.kind);
-    r["atoms"] = names;
-    r["matched"] = true;
-    r["modified"] = false;
+    r.matched = true;
+    r.modified = false;
     updateResidue(d, r);
     completeHydrogens(d, heavy);
 }

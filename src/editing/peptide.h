@@ -2,13 +2,13 @@
 #include "editing/operations.h"
 namespace mf {
 QStringList parseSequence(const QString &text);
-QJsonObject residue(const Document &d, const QString &id);
+Residue residue(const Document &d, const QString &id);
 QString residueForAtom(const Document &d, const QString &atom);
 // An atom's place in its residue, "GLY 2 · CA" (empty outside residues); atomPlaces gives the
 // places of all atoms at once by atom ID, for lists of many atoms.
 QString atomPlace(const Document &d, const QString &atom);
 QHash<QString, QString> atomPlaces(const Document &d);
-void updateResidue(Document &d, const QJsonObject &residue);
+void updateResidue(Document &d, const Residue &residue); // Replaces the residue with its ID, or adds it.
 QString appendResidue(Document &d, const QString &code, const QString &previous = {},
                       const QString &state = "default", const QString &chirality = "L",
                       const QString &n = "charged", const QString &c = "charged",

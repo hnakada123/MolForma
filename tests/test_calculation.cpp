@@ -1,5 +1,6 @@
 #include "editing/chemistry.h"
 #include "editing/coordinates.h"
+#include "editing/operations.h"
 #include "io/structure_io.h"
 #include "model/i18n.h"
 #include "nwchem/nwchem.h"
@@ -346,8 +347,7 @@ class CalculationTest : public QObject {
     }
     void solventAndExternalCharges() {
         auto d = water();
-        d.data["point_charges"] =
-            QJsonArray{QJsonObject{{"id", "q1"}, {"position", QJsonArray{0, 0, 5}}, {"charge", -0.5}}};
+        addPointCharge(d, Vec(0, 0, 5), -0.5);
         QVERIFY(validateNwchem(d).warnings.join('\n').contains("点電荷は入力に含めません"));
         QVERIFY(!nwchemInput(d).contains("\nbq units"));
         set(d, "include_point_charges", true);
@@ -1450,8 +1450,7 @@ class CalculationTest : public QObject {
         set(ghost, "dispersion", "d3bj");
         emitInput("ghost_dft", ghost);
         auto points = water();
-        points.data["point_charges"] =
-            QJsonArray{QJsonObject{{"id", "q1"}, {"position", QJsonArray{0, 0, 5}}, {"charge", -0.5}}};
+        addPointCharge(points, Vec(0, 0, 5), -0.5);
         set(points, "include_point_charges", true);
         emitInput("points", points);
         auto frozen = water();

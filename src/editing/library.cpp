@@ -70,13 +70,13 @@ PlacedPart instantiate(Document &d, const QJsonObject &t, const QVector<Vec> &po
     QJsonObject meta{{"name_ja", t["name_ja"]}, {"name_en", t["name_en"]}, {"category", t["category"]}};
     if (t["id"].toString().startsWith("my:"))
         meta["template_data"] = t;
-    auto parts = d.data["parts"].toArray();
-    parts.append(QJsonObject{{"id", p.id},
-                             {"template", t["id"]},
-                             {"atoms", idsToJson(p.atoms)},
-                             {"connections", idsToJson(p.connections)},
-                             {"metadata", meta}});
-    d.data["parts"] = parts;
+    Part part;
+    part.id = p.id;
+    part.templateId = t["id"].toString();
+    part.atoms = p.atoms;
+    part.connections = p.connections;
+    part.metadata = meta;
+    d.parts << part;
     return p;
 }
 PlacedPart placeTemplate(Document &d, const QJsonObject &t, const Vec &position) {

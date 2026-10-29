@@ -118,8 +118,8 @@ static void impliedCharge(Document &d, const QString &id) {
 }
 // A cap at the free end of a recognized chain: the acetyl C=O–CH3 on the first residue's N, or the
 // N-methylamide N(H)–CH3 on the last residue's C. Returns its atoms named as when built.
-static QJsonObject recognizedCap(const Document &d, const QString &end, bool ace,
-                                 const QSet<QString> &taken) {
+static QMap<QString, QString> recognizedCap(const Document &d, const QString &end, bool ace,
+                                            const QSet<QString> &taken) {
     const auto hydrogensOf = [&](const QString &id) {
         Ids out;
         for (const auto &h : d.neighbors(id, false))
@@ -145,7 +145,7 @@ static QJsonObject recognizedCap(const Document &d, const QString &end, bool ace
         if (methyl.isEmpty() || others || (ace && oxygen.isEmpty()) ||
             (!ace && hydrogensOf(first).size() != 1))
             continue;
-        QJsonObject names{{ace ? "C" : "N", first}, {"CH3", methyl}};
+        QMap<QString, QString> names{{ace ? "C" : "N", first}, {"CH3", methyl}};
         int index = 0;
         if (ace)
             names["O"] = oxygen;
@@ -171,7 +171,7 @@ static void assignResidues(Document &d) {
         return a["atoms"].toArray().size() > b["atoms"].toArray().size();
     });
     QSet<QString> assigned;
-    QJsonArray residues;
+    QVector<Residue> residues;
     for (auto t : amino) {
         Document pattern;
         instantiate(pattern, t);
@@ -198,7 +198,7 @@ static void assignResidues(Document &d) {
         params.useChirality = false;
         params.maxMatches = 10000;
         for (const auto &match : RDKit::SubstructMatch(*mol, *query, params)) {
-            QJsonObject names;
+            QMap<QString, QString> names;
             QSet<QString> members;
             bool overlap = false;
             for (auto pair : match) {
@@ -210,7 +210,7 @@ static void assignResidues(Document &d) {
             }
             if (overlap)
                 continue;
-            QString n = names["N"].toString(), c = names["C"].toString();
+            QString n = names.value("N"), c = names.value("C");
             bool boundary = true;
             for (auto id : members)
                 for (auto other : d.neighbors(id, false))
@@ -238,25 +238,24 @@ static void assignResidues(Document &d) {
                             names["HOXT" + QString::number(index++)] = h;
                 }
             for (auto it = names.begin(); it != names.end(); ++it) {
-                assigned.insert(it.value().toString());
-                d.atom(it.value().toString()).name = it.key();
+                assigned.insert(it.value());
+                d.atom(it.value()).name = it.key();
             }
             // Charges and side-chain states from the hydrogens present: the heavy atoms alone match
             // every state of a residue.
             for (auto it = names.begin(); it != names.end(); ++it)
-                if (d.atom(it.value().toString()).element != "H" && it.key() != "ND1" && it.key() != "NE2")
-                    impliedCharge(d, it.value().toString());
+                if (d.atom(it.value()).element != "H" && it.key() != "ND1" && it.key() != "NE2")
+                    impliedCharge(d, it.value());
             const auto code = t["code"].toString();
             const auto charged = [&](std::initializer_list<const char *> atoms, int sign) {
                 return std::any_of(atoms.begin(), atoms.end(), [&](const char *name) {
-                    return names.contains(name) && d.atom(names[name].toString()).charge * sign > 0;
+                    return names.contains(name) && d.atom(names.value(name)).charge * sign > 0;
                 });
             };
             const auto protonated = [&](const char *name) {
                 return names.contains(name) &&
-                       std::any_of(names.begin(), names.end(), [&](const QJsonValue &v) {
-                           return d.atom(v.toString()).element == "H" &&
-                                  d.bond(v.toString(), names[name].toString());
+                       std::any_of(names.begin(), names.end(), [&](const QString &id) {
+                           return d.atom(id).element == "H" && d.bond(id, names.value(name));
                        });
             };
             QString state = t["state"].toString();
@@ -269,32 +268,24 @@ static void assignResidues(Document &d) {
             else if (code == "HIS") {
                 state = protonated("ND1") && protonated("NE2") ? "HIP" : protonated("ND1") ? "HID" : "HIE";
                 if (state == "HIP")
-                    d.atom(names["ND1"].toString()).charge = 1;
+                    d.atom(names.value("ND1")).charge = 1;
             }
-            residues.append(QJsonObject{
-                {"id", newId()},
-                {"code", t["code"]},
-                {"atoms", names},
-                {"chain", ""},
-                {"number", 0},
-                {"insertion_code", ""},
-                {"chirality", "L"},
-                {"state", state},
-                {"n_terminal", d.atom(n).charge > 0 ? "charged" : "neutral"},
-                {"c_terminal",
-                 names.contains("OXT") && d.atom(names["OXT"].toString()).charge < 0 ? "charged" : "neutral"},
-                {"matched", true},
-                {"modified", false},
-                {"metadata", QJsonObject()}});
+            Residue residue;
+            residue.code = code;
+            residue.atoms = names;
+            residue.state = state;
+            residue.nTerminal = d.atom(n).charge > 0 ? "charged" : "neutral";
+            residue.cTerminal =
+                names.contains("OXT") && d.atom(names.value("OXT")).charge < 0 ? "charged" : "neutral";
+            residues << residue;
         }
     }
     if (residues.isEmpty())
         fail(tr("標準アミノ酸の結合構造を認識できません。結合次数を確認してください。"));
     QMap<QString, int> byN, byC;
     for (int i = 0; i < residues.size(); ++i) {
-        auto names = residues[i].toObject()["atoms"].toObject();
-        byN[names["N"].toString()] = i;
-        byC[names["C"].toString()] = i;
+        byN[residues[i].atoms.value("N")] = i;
+        byC[residues[i].atoms.value("C")] = i;
     }
     QMap<int, int> next, previous;
     for (auto b : d.bonds) {
@@ -307,26 +298,26 @@ static void assignResidues(Document &d) {
         }
     }
     QSet<int> seen;
-    QJsonObject chains;
-    QJsonArray ordered;
+    QMap<QString, Ids> chains;
+    QVector<Residue> ordered;
     for (int pass = 0; pass < 2; ++pass)
         for (int start = 0; start < residues.size(); ++start) {
             if (seen.contains(start) || (pass == 0 && previous.contains(start)))
                 continue;
             QString chain = newId();
-            QJsonArray seq;
+            Ids seq;
             int i = start, num = 1;
             while (!seen.contains(i)) {
                 seen.insert(i);
-                auto r = residues[i].toObject();
-                r["chain"] = chain;
-                r["number"] = num++;
+                auto r = residues[i];
+                r.chain = chain;
+                r.number = num++;
                 if (previous.contains(i))
-                    r["n_terminal"] = "internal";
+                    r.nTerminal = "internal";
                 if (next.contains(i))
-                    r["c_terminal"] = "internal";
-                seq.append(r["id"]);
-                ordered.append(r);
+                    r.cTerminal = "internal";
+                seq << r.id;
+                ordered << r;
                 if (!next.contains(i))
                     break;
                 i = next[i];
@@ -335,53 +326,44 @@ static void assignResidues(Document &d) {
         }
     // ACE and NME caps at the ends of each chain, numbered before the first and after the last residue.
     QSet<QString> taken;
-    for (const auto &v : std::as_const(ordered))
-        for (const auto &id : v.toObject()["atoms"].toObject())
-            taken.insert(id.toString());
+    for (const auto &r : std::as_const(ordered))
+        for (const auto &id : r.atoms)
+            taken.insert(id);
     const auto row = [&](const QString &rid) {
         for (int i = 0; i < ordered.size(); ++i)
-            if (ordered[i].toObject()["id"] == rid)
+            if (ordered[i].id == rid)
                 return i;
         return -1;
     };
     for (auto it = chains.begin(); it != chains.end(); ++it) {
-        auto seq = it.value().toArray();
+        auto seq = it.value();
         for (bool ace : {true, false}) {
-            const int at = row((ace ? seq.first() : seq.last()).toString());
-            auto end = ordered[at].toObject();
-            const auto names =
-                recognizedCap(d, end["atoms"].toObject()[ace ? "N" : "C"].toString(), ace, taken);
+            const int at = row(ace ? seq.first() : seq.last());
+            const auto names = recognizedCap(d, ordered[at].atoms.value(ace ? "N" : "C"), ace, taken);
             if (names.isEmpty())
                 continue;
             for (auto n = names.begin(); n != names.end(); ++n) {
-                taken.insert(n.value().toString());
-                d.atom(n.value().toString()).name = n.key();
+                taken.insert(n.value());
+                d.atom(n.value()).name = n.key();
             }
-            const QString cap = newId();
-            ordered.append(QJsonObject{{"id", cap},
-                                       {"code", ace ? "ACE" : "NME"},
-                                       {"atoms", names},
-                                       {"chain", it.key()},
-                                       {"number", end["number"].toInt() + (ace ? -1 : 1)},
-                                       {"insertion_code", ""},
-                                       {"chirality", ""},
-                                       {"state", "default"},
-                                       {"n_terminal", "internal"},
-                                       {"c_terminal", "internal"},
-                                       {"matched", true},
-                                       {"modified", false},
-                                       {"metadata", QJsonObject()}});
-            end[ace ? "n_terminal" : "c_terminal"] = ace ? "ACE" : "NME";
-            ordered[at] = end;
+            Residue cap;
+            cap.code = ace ? "ACE" : "NME";
+            cap.atoms = names;
+            cap.chain = it.key();
+            cap.number = ordered[at].number + (ace ? -1 : 1);
+            cap.chirality = "";
+            cap.nTerminal = cap.cTerminal = "internal";
+            (ace ? ordered[at].nTerminal : ordered[at].cTerminal) = ace ? "ACE" : "NME";
+            ordered << cap;
             if (ace)
-                seq.prepend(cap);
+                seq.prepend(cap.id);
             else
-                seq.append(cap);
+                seq.append(cap.id);
         }
         it.value() = seq;
     }
-    d.data["residues"] = ordered;
-    d.data["chains"] = chains;
+    d.residues = ordered;
+    d.chains = chains;
 #else
     Q_UNUSED(d);
     fail(tr("グラフからの残基認識にはRDKit C++ライブラリが必要です。"));

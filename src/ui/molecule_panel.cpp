@@ -396,12 +396,7 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
     sequenceLabel->setTextFormat(Qt::RichText);
     sequenceLabel->setTextInteractionFlags(Qt::LinksAccessibleByMouse);
     connect(sequenceLabel, &QLabel::linkActivated, this, [this](const QString &rid) {
-        safe([this, rid] {
-            Ids ids;
-            for (auto v : residue(displayDocument(), rid)["atoms"].toObject())
-                ids << v.toString();
-            setSelection(ids);
-        });
+        safe([this, rid] { setSelection(residue(displayDocument(), rid).atoms.values()); });
     });
     sequenceRow->addWidget(sequenceLabel);
     viewArea->addOverlay(sequenceChip, Qt::AlignTop | Qt::AlignLeft);
@@ -1021,26 +1016,23 @@ void MoleculePanel::refresh() {
     // Residue links colored in the markup, in the accent rather than the theme's link color.
     const auto link = ChromeColors(QWidget::palette()).accentText.name();
     // N → C by chain and number: caps added after the chain was built (ACE 0, NME n+1) take their place.
-    QVector<QJsonObject> residues;
+    auto residues = d.residues;
     QStringList chainOrder;
-    for (auto v : d.data["residues"].toArray()) {
-        residues << v.toObject();
-        if (!chainOrder.contains(residues.last()["chain"].toString()))
-            chainOrder << residues.last()["chain"].toString();
-    }
-    std::stable_sort(residues.begin(), residues.end(), [&](const QJsonObject &a, const QJsonObject &b) {
-        const auto ca = chainOrder.indexOf(a["chain"].toString()),
-                   cb = chainOrder.indexOf(b["chain"].toString());
-        return ca != cb ? ca < cb : a["number"].toInt() < b["number"].toInt();
+    for (const auto &r : std::as_const(residues))
+        if (!chainOrder.contains(r.chain))
+            chainOrder << r.chain;
+    std::stable_sort(residues.begin(), residues.end(), [&](const Residue &a, const Residue &b) {
+        const auto ca = chainOrder.indexOf(a.chain), cb = chainOrder.indexOf(b.chain);
+        return ca != cb ? ca < cb : a.number < b.number;
     });
     for (const auto &r : std::as_const(residues)) {
-        QString label = r["code"].toString() + " " + QString::number(r["number"].toInt());
+        QString label = r.code + " " + QString::number(r.number);
         seq << QString("<a href=\"%1\"><span style=\"color:%3\">%2</span></a>")
-                   .arg(r["id"].toString(), label.toHtmlEscaped(), link);
+                   .arg(r.id, label.toHtmlEscaped(), link);
         plain << label;
         // The free ends of the chain, in the words of the "N末端" and "C末端" choices of this page.
         QStringList ends;
-        const auto n = r["n_terminal"].toString(), c = r["c_terminal"].toString();
+        const auto n = r.nTerminal, c = r.cTerminal;
         if (n == "charged" || n == "neutral" || n == "ACE")
             ends << tr("N末端 %1").arg(n == "charged" ? tr("プロトン化") : n == "neutral" ? tr("非荷電") : n);
         if (c == "charged" || c == "neutral" || c == "NME")
@@ -1050,7 +1042,7 @@ void MoleculePanel::refresh() {
                                               : c);
         auto *item =
             new QListWidgetItem(ends.isEmpty() ? label : label + " · " + ends.join(" · "), residueList);
-        item->setData(Qt::UserRole, r["id"].toString());
+        item->setData(Qt::UserRole, r.id);
     }
     // Long chains show their first residues; the "残基" tab lists them all.
     if (const int count = seq.size(); count > 24) {
@@ -1069,18 +1061,16 @@ void MoleculePanel::refresh() {
     QString current = pointList->currentItem() ? pointList->currentItem()->data(Qt::UserRole).toString() : "";
     pointList->clear();
     int index = 0;
-    for (auto v : d.data["point_charges"].toArray()) {
-        auto q = v.toObject();
-        Vec p = vectorFromJson(q["position"]);
+    for (const auto &q : d.pointCharges) {
         auto *item = new QListWidgetItem(QString("%1: %2 e  (%3, %4, %5)")
                                              .arg(++index)
-                                             .arg(q["charge"].toDouble())
-                                             .arg(p.x(), 0, 'f', 2)
-                                             .arg(p.y(), 0, 'f', 2)
-                                             .arg(p.z(), 0, 'f', 2),
+                                             .arg(q.charge)
+                                             .arg(q.position.x(), 0, 'f', 2)
+                                             .arg(q.position.y(), 0, 'f', 2)
+                                             .arg(q.position.z(), 0, 'f', 2),
                                          pointList);
-        item->setData(Qt::UserRole, q["id"].toString());
-        if (q["id"] == current)
+        item->setData(Qt::UserRole, q.id);
+        if (q.id == current)
             pointList->setCurrentItem(item);
     }
     pointList->setVisible(index > 0);
@@ -1409,16 +1399,13 @@ Ids MoleculePanel::expandedSelection(const Ids &ids) const {
         else if (mode == "residue") {
             auto rid = residueForAtom(d, id);
             if (!rid.isEmpty())
-                for (auto a : residue(d, rid)["atoms"].toObject())
-                    group << a.toString();
+                group = residue(d, rid).atoms.values();
         } else if (mode == "part") {
-            for (auto v : d.data["parts"].toArray()) {
-                auto list = idsFromJson(v.toObject()["atoms"]);
-                if (list.contains(id)) {
-                    group = list;
+            for (const auto &p : d.parts)
+                if (p.atoms.contains(id)) {
+                    group = p.atoms;
                     break;
                 }
-            }
         }
         if (group.isEmpty())
             group << id;
@@ -1515,13 +1502,13 @@ void MoleculePanel::place(const QString &id, const Vec &position) {
                 auto rid = residueForAtom(document(), id);
                 if (rid.isEmpty())
                     fail(tr("ペプチドの末端の＋を選択してください。"));
-                auto r = residue(document(), rid), names = r["atoms"].toObject();
+                const auto names = residue(document(), rid).atoms;
                 QString parent = id;
                 if (document().atom(id).element == "H" && document().neighbors(id).size() == 1)
                     parent = document().neighbors(id).first();
-                if (parent == names["N"].toString())
+                if (parent == names.value("N"))
                     addAmino(rid, true);
-                else if (parent == names["C"].toString() || parent == names["OXT"].toString())
+                else if (parent == names.value("C") || parent == names.value("OXT"))
                     addAmino(rid, false);
                 else
                     fail(tr("N末端またはC末端を選択してください。"));

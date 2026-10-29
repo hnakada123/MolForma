@@ -68,15 +68,9 @@ void setCoordinateCell(Document &document, const QString &id, CoordinateColumn c
         atom.ghost |= ghost;
         if (atom.element != previous || atom.ghost != ghost) {
             atom.stereo.clear();
-            auto residues = document.data["residues"].toArray();
-            for (int i = 0; i < residues.size(); ++i) {
-                auto residue = residues[i].toObject();
-                for (const auto &v : residue["atoms"].toObject())
-                    if (v.toString() == id)
-                        residue["modified"] = true;
-                residues[i] = residue;
-            }
-            document.data["residues"] = residues;
+            for (auto &residue : document.residues)
+                if (std::find(residue.atoms.begin(), residue.atoms.end(), id) != residue.atoms.end())
+                    residue.modified = true;
         }
     } else if (column >= CoordinateColumn::X && column <= CoordinateColumn::Z) {
         const int axis = int(column) - 1;
@@ -135,8 +129,10 @@ void replaceCoordinateStructure(Document &document, const Document &structure) {
     document.remove(document.ids());
     document.atoms = structure.atoms;
     document.bonds = structure.bonds;
-    for (auto key : {"parts", "residues", "chains", "centers"})
-        document.data[key] = structure.data[key];
+    document.parts = structure.parts;
+    document.residues = structure.residues;
+    document.chains = structure.chains;
+    document.centers = structure.centers;
 }
 AtomChanges atomChanges(const Document &before, const Document &after) {
     AtomChanges changes;

@@ -6,8 +6,8 @@ QStringList geometryLabels();
 QVector<Vec> siteVectors(const QString &geometry);
 QString addCenter(Document &d, const QString &element, const QString &geometry, const Vec &position,
                   double distance, int oxidation);
-QJsonObject center(const Document &d, const QString &atom);
-void updateCenter(Document &d, const QJsonObject &c);
+Center center(const Document &d, const QString &atom);
+void updateCenter(Document &d, const Center &c); // Replaces the center of its atom, or adds it.
 // The oxidation state is structure preparation's: the total charge follows it (followingCharge).
 void setOxidation(Document &d, const QString &centerId, int oxidation);
 PlacedPart placeLigand(Document &d, const QString &centerId, const QList<int> &sites, const QJsonObject &t,

@@ -889,8 +889,7 @@
         "metadata": {
           "name_ja": "アラニン",
           "name_en": "Alanine",
-          "category": "amino",
-          "residue": "e360fae36d77419e96520e8962426122"
+          "category": "amino"
         }
       },
       {
@@ -912,8 +911,7 @@
         "metadata": {
           "name_ja": "グリシン",
           "name_en": "Glycine",
-          "category": "amino",
-          "residue": "43601e99454443bf904bd543f34f69c4"
+          "category": "amino"
         }
       },
       {
@@ -940,8 +938,7 @@
         "metadata": {
           "name_ja": "セリン",
           "name_en": "Serine",
-          "category": "amino",
-          "residue": "7deb86c37c24433db632c7ed1b7aa805"
+          "category": "amino"
         }
       }
     ],

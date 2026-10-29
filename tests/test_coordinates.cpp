@@ -537,11 +537,11 @@ class CoordinatesTest : public QObject {
     void labelsFilterAndSelectionBar() {
         MainWindow w;
         auto d = water();
-        d.data["residues"] = QJsonArray{QJsonObject{
-            {"id", "r1"},
-            {"code", "HOH"},
-            {"number", 1},
-            {"atoms", QJsonObject{{"O", d.atoms[0].id}, {"HA", d.atoms[1].id}, {"HB", d.atoms[2].id}}}}};
+        Residue water;
+        water.code = "HOH";
+        water.number = 1;
+        water.atoms = {{"O", d.atoms[0].id}, {"HA", d.atoms[1].id}, {"HB", d.atoms[2].id}};
+        d.residues = {water};
         w.loadDocument(d);
         w.showCoordinateTable();
         auto *t = table(w);

@@ -207,37 +207,20 @@ void completeHydrogens(Document &d, const Ids &selection) {
             h.position = d.atom(id).position + freeDirection(d, id) * (element(a.element).radius + .31);
             d.atoms << h;
             d.setBond(id, h.id, "single");
-            auto residues = d.data["residues"].toArray();
-            for (int j = 0; j < residues.size(); ++j) {
-                auto r = residues[j].toObject(), names = r["atoms"].toObject();
-                bool found = false;
-                for (auto v : names)
-                    if (v.toString() == id)
-                        found = true;
-                if (found) {
+            for (auto &r : d.residues)
+                if (std::find(r.atoms.begin(), r.atoms.end(), id) != r.atoms.end()) {
                     QString name = "H" + a.name + QString::number(i + 1);
                     int k = 1;
-                    while (names.contains(name))
+                    while (r.atoms.contains(name))
                         name = "H" + a.name + QString::number(++k);
                     d.atom(h.id).name = name;
-                    names[name] = h.id;
-                    r["atoms"] = names;
-                    residues[j] = r;
+                    r.atoms[name] = h.id;
                 }
-            }
-            d.data["residues"] = residues;
-            auto parts = d.data["parts"].toArray();
-            for (int j = 0; j < parts.size(); ++j) {
-                auto p = parts[j].toObject();
-                auto list = idsFromJson(p["atoms"]);
-                if (list.contains(id)) {
-                    list << h.id;
-                    p["atoms"] = idsToJson(list);
-                    parts[j] = p;
+            for (auto &p : d.parts)
+                if (p.atoms.contains(id)) {
+                    p.atoms << h.id;
                     break;
                 }
-            }
-            d.data["parts"] = parts;
         }
     }
 }
@@ -463,108 +446,62 @@ Ids duplicate(Document &d, const Ids &ids, const Vec &offset) {
         fail(tr("複製する原子を選択してください。"));
     if (offset.norm() < 1e-6)
         fail(tr("複製の間隔は0以外にしてください。"));
-    auto old = d;
-    QMap<QString, QString> mapping;
-    Ids added;
-    for (auto id : ids) {
-        auto a = old.atom(id);
-        a.id = newId();
+    // The copies, with the residues, parts, chains and coordination centers they hold entirely, take new
+    // IDs in every reference (renameIds).
+    Document copy;
+    copy.data = {};
+    QHash<QString, QString> renamed;
+    for (const auto &id : ids) {
+        auto a = d.atom(id);
+        renamed[id] = newId();
         a.position += offset;
         a.fixed = false;
-        mapping[id] = a.id;
-        added << a.id;
-        d.atoms << a;
+        copy.atoms << a;
     }
-    QMap<QString, QJsonArray> selectedRows;
-    for (auto key : {"parts", "residues"})
-        for (auto v : old.data[key].toArray()) {
-            auto o = v.toObject();
-            Ids members;
-            if (QString(key) == "parts")
-                members = idsFromJson(o["atoms"]);
-            else
-                for (auto id : o["atoms"].toObject())
-                    members << id.toString();
-            bool complete = !members.isEmpty();
-            for (auto id : members)
-                complete &= mapping.contains(id);
-            if (!complete)
-                continue;
-            mapping[o["id"].toString()] = newId();
-            if (QString(key) == "residues" && !mapping.contains(o["chain"].toString()))
-                mapping[o["chain"].toString()] = newId();
-            selectedRows[key].append(o);
-        }
-    std::function<QJsonValue(QJsonValue)> remap = [&](QJsonValue v) -> QJsonValue {
-        if (v.isString())
-            return mapping.contains(v.toString()) ? QJsonValue(mapping[v.toString()]) : v;
-        if (v.isArray()) {
-            QJsonArray out;
-            for (auto a : v.toArray())
-                out.append(remap(a));
-            return out;
-        }
-        if (v.isObject()) {
-            auto out = v.toObject();
-            for (auto it = out.begin(); it != out.end(); ++it)
-                it.value() = remap(it.value());
-            return out;
-        }
-        return v;
+    const auto copied = [&](const Ids &members) {
+        return !members.isEmpty() && std::all_of(members.begin(), members.end(),
+                                                 [&](const QString &id) { return renamed.contains(id); });
     };
-    for (auto b : old.bonds)
-        if (mapping.contains(b.a) && mapping.contains(b.b)) {
-            b.a = mapping[b.a];
-            b.b = mapping[b.b];
-            d.bonds << b;
-        }
-    for (auto key : {"parts", "residues"}) {
-        auto out = d.data[key].toArray();
-        for (auto v : selectedRows[key]) {
-            auto o = remap(v).toObject();
-            if (QString(key) == "parts") {
-                auto meta = o["metadata"].toObject();
-                auto original = v.toObject()["metadata"].toObject()["coordination_center"].toString();
-                if (!original.isEmpty() && !mapping.contains(original)) {
-                    meta.remove("coordination_center");
-                    meta.remove("sites");
-                }
-                o["metadata"] = meta;
+    for (const auto &b : d.bonds)
+        if (renamed.contains(b.a) && renamed.contains(b.b))
+            copy.bonds << b;
+    for (auto p : d.parts)
+        if (copied(p.atoms)) {
+            renamed[p.id] = newId();
+            if (!p.center().isEmpty() && !renamed.contains(p.center())) {
+                p.metadata.remove("coordination_center");
+                p.metadata.remove("sites");
             }
-            out.append(o);
+            copy.parts << p;
         }
-        d.data[key] = out;
-    }
-    auto chains = d.data["chains"].toObject();
-    auto oldChains = old.data["chains"].toObject();
-    for (auto it = oldChains.begin(); it != oldChains.end(); ++it)
-        if (mapping.contains(it.key())) {
-            QJsonArray seq;
-            for (auto id : idsFromJson(it.value()))
-                if (mapping.contains(id))
-                    seq.append(mapping[id]);
-            chains[mapping[it.key()]] = seq;
+    for (const auto &r : d.residues)
+        if (copied(r.atoms.values())) {
+            renamed[r.id] = newId();
+            if (!renamed.contains(r.chain))
+                renamed[r.chain] = newId();
+            copy.residues << r;
         }
-    d.data["chains"] = chains;
-    auto centers = d.data["centers"].toArray();
-    for (auto v : old.data["centers"].toArray()) {
-        auto c = v.toObject();
-        if (!mapping.contains(c["atom"].toString()))
-            continue;
-        QJsonArray sites;
-        for (auto x : c["sites"].toArray()) {
-            auto site = x.toObject();
-            if (!mapping.contains(site["donor"].toString())) {
-                site.remove("donor");
-                site.remove("part");
-            }
-            sites.append(remap(site));
+    for (auto it = d.chains.begin(); it != d.chains.end(); ++it)
+        if (renamed.contains(it.key())) {
+            auto sequence = it.value();
+            sequence.removeIf([&](const QString &id) { return !renamed.contains(id); });
+            copy.chains[it.key()] = sequence;
         }
-        c = remap(c).toObject();
-        c["sites"] = sites;
-        centers.append(c);
-    }
-    d.data["centers"] = centers;
+    for (auto c : d.centers)
+        if (renamed.contains(c.atom)) {
+            for (auto &site : c.sites)
+                if (!renamed.contains(site.donor))
+                    site.donor = site.part = QString();
+            copy.centers << c;
+        }
+    copy.renameIds(renamed);
+    Ids added = copy.ids();
+    d.atoms += copy.atoms;
+    d.bonds += copy.bonds;
+    d.parts += copy.parts;
+    d.residues += copy.residues;
+    d.chains.insert(copy.chains);
+    d.centers += copy.centers;
     return added;
 }
 void mirror(Document &d, const Ids &ids, int axis, const Vec &origin) {
@@ -625,22 +562,19 @@ void waterToCharges(Document &d, const Ids &ids) {
     }
     if (oxygen != 1 || hydrogen != 2 || d.component(oid).size() != 3)
         fail(tr("独立したH2O分子を選択してください。"));
-    auto charges = d.data["point_charges"].toArray();
     // O first, as in TIP3P, whatever order the atoms were selected in.
     Ids ordered{oid};
     for (const auto &id : ids)
         if (id != oid)
             ordered.append(id);
     for (const auto &id : ordered) {
-        const auto &a = d.atom(id);
-        charges.append(QJsonObject{{"id", newId()},
-                                   {"position", vectorToJson(a.position)},
-                                   {"charge", a.element == "O" ? -.834 : .417},
-                                   {"source", "TIP3P"},
-                                   {"source_unit", "angstrom"}});
+        PointCharge q;
+        q.position = d.atom(id).position;
+        q.charge = d.atom(id).element == "O" ? -.834 : .417;
+        q.source = "TIP3P";
+        d.pointCharges << q;
     }
     d.remove(ids);
-    d.data["point_charges"] = charges;
 }
 Ids insertFragment(Document &d, const Document &fragment) {
     if (fragment.atoms.isEmpty())
@@ -674,49 +608,29 @@ Ids insertFragment(Document &d, const Document &fragment) {
             added << a.id;
         }
         d.bonds += fragment.bonds;
-        for (auto key : {"parts", "residues", "centers"}) {
-            auto list = d.data[key].toArray();
-            for (const auto &v : fragment.data[key].toArray())
-                list.append(v);
-            d.data[key] = list;
-        }
-        auto chains = d.data["chains"].toObject();
-        const auto more = fragment.data["chains"].toObject();
-        for (auto it = more.begin(); it != more.end(); ++it)
-            chains[it.key()] = it.value();
-        d.data["chains"] = chains;
+        d.parts += fragment.parts;
+        d.residues += fragment.residues;
+        d.centers += fragment.centers;
+        d.chains.insert(fragment.chains);
     });
     return added;
 }
 QString addPointCharge(Document &d, const Vec &position, double charge) {
-    const auto id = newId();
-    auto charges = d.data["point_charges"].toArray();
-    charges.append(QJsonObject{{"id", id},
-                               {"position", vectorToJson(position)},
-                               {"charge", charge},
-                               {"source", "manual"},
-                               {"source_unit", "angstrom"}});
-    d.data["point_charges"] = charges;
-    return id;
+    PointCharge q;
+    q.position = position;
+    q.charge = charge;
+    d.pointCharges << q;
+    return q.id;
 }
 void setPointCharge(Document &d, const QString &id, const Vec &position, double charge) {
-    auto charges = d.data["point_charges"].toArray();
-    for (int i = 0; i < charges.size(); ++i) {
-        auto c = charges[i].toObject();
-        if (c["id"] == id) {
-            c["position"] = vectorToJson(position);
-            c["charge"] = charge;
-            charges[i] = c;
+    for (auto &q : d.pointCharges)
+        if (q.id == id) {
+            q.position = position;
+            q.charge = charge;
         }
-    }
-    d.data["point_charges"] = charges;
 }
 void removePointCharge(Document &d, const QString &id) {
-    auto charges = d.data["point_charges"].toArray();
-    for (int i = charges.size() - 1; i >= 0; --i)
-        if (charges[i].toObject()["id"] == id)
-            charges.removeAt(i);
-    d.data["point_charges"] = charges;
+    d.pointCharges.removeIf([&](const PointCharge &q) { return q.id == id; });
 }
 QString structureReport(const Document &d) {
     QStringList lines = d.validate();
@@ -748,15 +662,13 @@ QString structureReport(const Document &d) {
                          .arg(expected);
     }
     // Coordination centers: free sites, and the total charge their oxidation numbers suggest.
-    for (const auto &v : d.data["centers"].toArray()) {
-        const auto c = v.toObject();
-        const auto id = c["atom"].toString();
+    for (const auto &c : d.centers) {
+        const auto &id = c.atom;
         if (!d.contains(id))
             continue;
-        const auto sites = c["sites"].toArray();
-        const auto open = std::count_if(sites.begin(), sites.end(), [](const QJsonValue &s) {
-            return s.toObject()["donor"].toString().isEmpty();
-        });
+        const auto &sites = c.sites;
+        const auto open = std::count_if(sites.begin(), sites.end(),
+                                        [](const CoordinationSite &s) { return s.donor.isEmpty(); });
         if (open)
             lines << tr("%1%2: 配位サイト %3 のうち %n "
                         "が空いています（配位子を置くか、配位形状を変えてください）。",

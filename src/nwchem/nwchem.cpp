@@ -1098,7 +1098,7 @@ NwchemValidation validateNwchem(const Document &d) {
         if (solvent != "none" || s["tddft"].toBool() || anyProperty(s) || s["followup"].toBool())
             result.error("bsse.combination", "bsse",
                          tr("BSSE補正は溶媒・TDDFT・物性計算・後続の一点計算と併用できません。"));
-        if (!d.data["point_charges"].toArray().isEmpty() && s["include_point_charges"].toBool())
+        if (!d.pointCharges.isEmpty() && s["include_point_charges"].toBool())
             result.error("bsse.point_charges", "bsse", tr("BSSE補正は外部点電荷と併用できません。"));
         if (advanced["cube_output"].toBool() || advanced["molden_output"].toBool())
             result.error("bsse.output", "bsse", tr("BSSE補正の計算ではCUBE・MOLDENを出力できません。"));
@@ -1183,7 +1183,7 @@ NwchemValidation validateNwchem(const Document &d) {
         result.warning(
             "optimization.ghosts", "task",
             tr("ゴースト中心は核を持たないため、最適化中は固定します（constraints の fix atom）。"));
-    const bool points = !d.data["point_charges"].toArray().isEmpty();
+    const bool points = !d.pointCharges.isEmpty();
     if (calc.frequencies() && points && s["include_point_charges"].toBool())
         result.error("frequencies.point_charges", "include_point_charges",
                      tr("外部点電荷中の振動数解析は未対応です。"));
@@ -1458,15 +1458,12 @@ NwchemGeneratedInput generateNwchemInput(const Document &d) {
                        advanced["driver_cartesian"].toBool() && calc.optimization());
     }
     basisBlocks(out, d, s, s["bsse"].toBool());
-    if (s["include_point_charges"].toBool() && !d.data["point_charges"].toArray().isEmpty()) {
+    if (s["include_point_charges"].toBool() && !d.pointCharges.isEmpty()) {
         QString text = "\nbq units angstrom\n";
-        for (const auto &value : d.data["point_charges"].toArray()) {
-            const auto p = value.toObject();
-            const auto xyz = vectorFromJson(p["position"]);
+        for (const auto &q : d.pointCharges)
             text += QString("  %1 %2 %3 %4\n")
-                        .arg(shortest(xyz.x()), shortest(xyz.y()), shortest(xyz.z()),
-                             shortest(p["charge"].toDouble()));
-        }
+                        .arg(shortest(q.position.x()), shortest(q.position.y()), shortest(q.position.z()),
+                             shortest(q.charge));
         out.block("bq", text + "end\n", "include_point_charges", {}, {1, 2});
     }
     if (const auto relativistic = str("relativistic"); relativistic != "none")

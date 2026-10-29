@@ -71,22 +71,28 @@ QVector<Vec> siteVectors(const QString &g) {
         v.normalize();
     return out;
 }
-QJsonObject center(const Document &d, const QString &id) {
-    for (auto v : d.data["centers"].toArray())
-        if (v.toObject()["atom"] == id)
-            return v.toObject();
+Center center(const Document &d, const QString &id) {
+    if (const auto *c = d.findCenter(id))
+        return *c;
     fail(tr("配位中心を選択してください。"));
 }
-void updateCenter(Document &d, const QJsonObject &c) {
-    auto rows = d.data["centers"].toArray();
-    for (int i = 0; i < rows.size(); ++i)
-        if (rows[i].toObject()["atom"] == c["atom"]) {
-            rows[i] = c;
-            d.data["centers"] = rows;
+void updateCenter(Document &d, const Center &c) {
+    for (auto &row : d.centers)
+        if (row.atom == c.atom) {
+            row = c;
             return;
         }
-    rows.append(c);
-    d.data["centers"] = rows;
+    d.centers << c;
+}
+static QVector<CoordinationSite> sitesOf(const QString &geometry, double distance) {
+    QVector<CoordinationSite> sites;
+    for (const auto &direction : siteVectors(geometry)) {
+        CoordinationSite site;
+        site.direction = direction;
+        site.distance = distance;
+        sites << site;
+    }
+    return sites;
 }
 // Coordination edits keep the total charge in step with the oxidation states and the ligands' formal
 // charges (followingCharge).
@@ -98,36 +104,36 @@ QString addCenter(Document &d, const QString &symbol, const QString &geometry, c
     Atom a;
     a.element = symbol;
     a.position = d.atoms.isEmpty() ? Vec::Zero() : position;
-    QJsonArray sites;
-    for (auto direction : siteVectors(geometry))
-        sites.append(QJsonObject{{"direction", vectorToJson(direction)}, {"distance", distance}});
+    Center c;
+    c.atom = a.id;
+    c.geometry = geometry;
+    c.oxidation = oxidation;
+    c.sites = sitesOf(geometry, distance);
     followingCharge(d, [&] {
         d.atoms << a;
-        updateCenter(d, {{"atom", a.id}, {"geometry", geometry}, {"sites", sites}, {"oxidation", oxidation}});
+        updateCenter(d, c);
     });
     return a.id;
 }
 void setOxidation(Document &d, const QString &id, int oxidation) {
     auto c = center(d, id);
-    c["oxidation"] = oxidation;
+    c.oxidation = oxidation;
     followingCharge(d, [&] { updateCenter(d, c); });
 }
 static PlacedPart bindLigand(Document &d, const QString &id, const QList<int> &indices, const QJsonObject &t,
                              double twist) {
     auto c = center(d, id);
-    auto sites = c["sites"].toArray(), connections = t["connections"].toArray();
+    auto connections = t["connections"].toArray();
     if (indices.size() != connections.size() || indices.isEmpty() || indices.size() > 2)
         fail(tr("配位子の供与原子数に合う1〜2サイトを選択してください。"));
     QSet<int> distinct;
     QVector<Vec> targets, points, anchors;
     Vec origin = d.atom(id).position;
     for (int i : indices) {
-        if (i < 0 || i >= sites.size() || distinct.contains(i) ||
-            !sites[i].toObject()["donor"].toString().isEmpty())
+        if (i < 0 || i >= c.sites.size() || distinct.contains(i) || !c.sites[i].donor.isEmpty())
             fail(tr("サイトが占有済み、重複、または範囲外です。"));
         distinct.insert(i);
-        auto s = sites[i].toObject();
-        targets << origin + vectorFromJson(s["direction"]) * s["distance"].toDouble();
+        targets << origin + c.sites[i].direction * c.sites[i].distance;
     }
     for (auto v : t["atoms"].toArray())
         points << vectorFromJson(v.toObject()["position"]);
@@ -213,26 +219,19 @@ static PlacedPart bindLigand(Document &d, const QString &id, const QList<int> &i
                                            element(templateAtoms[i].toObject()["element"].toString()).radius)
             fail(tr("供与原子以外の原子が配位中心に近すぎます。サイト・距離・回転角を変更してください。"));
     auto p = instantiate(d, t, points);
-    auto parts = d.data["parts"].toArray();
-    auto last = parts.last().toObject(), meta = last["metadata"].toObject();
+    auto &meta = d.parts.last().metadata;
     QJsonArray selected;
     for (int i : indices)
         selected.append(i);
     meta["coordination_center"] = id;
     meta["sites"] = selected;
     meta["twist"] = twist;
-    last["metadata"] = meta;
-    parts[parts.size() - 1] = last;
-    d.data["parts"] = parts;
     for (int k = 0; k < indices.size(); ++k) {
-        auto s = sites[indices[k]].toObject();
-        QString donor = p.mapping[connections[k].toInt()];
-        s["donor"] = donor;
-        s["part"] = p.id;
-        sites[indices[k]] = s;
-        d.setBond(donor, id, "dative");
+        auto &site = c.sites[indices[k]];
+        site.donor = p.mapping[connections[k].toInt()];
+        site.part = p.id;
+        d.setBond(site.donor, id, "dative");
     }
-    c["sites"] = sites;
     updateCenter(d, c);
     return p;
 }
@@ -244,20 +243,18 @@ PlacedPart placeLigand(Document &d, const QString &id, const QList<int> &indices
 }
 static void refitCenter(Document &d, const QString &id) {
     auto c = center(d, id);
-    auto sites = c["sites"].toArray();
-    auto parts = d.data["parts"].toArray();
-    for (auto v : parts) {
-        auto p = v.toObject(), meta = p["metadata"].toObject();
-        if (meta["coordination_center"] != id)
+    const auto parts = d.parts;
+    for (const auto &p : parts) {
+        if (p.center() != id)
             continue;
         QList<int> idx;
-        for (auto s : meta["sites"].toArray()) {
+        for (auto s : p.metadata["sites"].toArray()) {
             int i = s.toInt();
-            if (i >= sites.size())
+            if (i >= c.sites.size())
                 fail(tr("占有サイトより少ない配位数には変更できません。"));
             idx << i;
         }
-        auto oldIds = idsFromJson(p["atoms"]);
+        const auto &oldIds = p.atoms;
         QJsonArray atoms, bonds;
         for (auto atomId : oldIds) {
             auto atom = d.atom(atomId).toJson();
@@ -274,7 +271,7 @@ static void refitCenter(Document &d, const QString &id) {
                       {"bonds", bonds},
                       {"leaving", QJsonValue()}};
         QJsonArray connections;
-        for (auto donor : idsFromJson(p["connections"]))
+        for (const auto &donor : p.connections)
             connections.append(oldIds.indexOf(donor));
         t["connections"] = connections;
         Document temp = d;
@@ -289,29 +286,21 @@ static void refitCenter(Document &d, const QString &id) {
             d.atom(oldIds[i]).position = target;
         }
         c = center(d, id);
-        sites = c["sites"].toArray();
         for (int k = 0; k < idx.size(); ++k) {
-            auto s = sites[idx[k]].toObject();
-            s["donor"] = p["connections"].toArray()[k];
-            s["part"] = p["id"];
-            sites[idx[k]] = s;
+            c.sites[idx[k]].donor = p.connections.value(k);
+            c.sites[idx[k]].part = p.id;
         }
-        c["sites"] = sites;
         updateCenter(d, c);
     }
 }
 void adjustCenter(Document &d, const QString &id, const QString &geometry, double distance, int oxidation) {
-    auto old = center(d, id);
-    auto directions = siteVectors(geometry);
-    QJsonArray sites;
-    for (auto v : directions)
-        sites.append(QJsonObject{{"direction", vectorToJson(v)}, {"distance", distance}});
+    auto c = center(d, id);
+    auto sites = sitesOf(geometry, distance);
     if (distance <= 0)
         fail(tr("配位距離は正の値にしてください。"));
-    auto c = old;
-    c["geometry"] = geometry;
-    c["sites"] = sites;
-    c["oxidation"] = oxidation;
+    c.geometry = geometry;
+    c.sites = sites;
+    c.oxidation = oxidation;
     followingCharge(d, [&] {
         updateCenter(d, c);
         refitCenter(d, id);
@@ -320,57 +309,42 @@ void adjustCenter(Document &d, const QString &id, const QString &geometry, doubl
 
 void moveLigand(Document &d, const QString &partId, const QList<int> &sites, const QJsonObject &replacement,
                 double twist) {
-    for (auto v : d.data["parts"].toArray()) {
-        auto p = v.toObject();
-        if (p["id"] != partId)
+    for (auto &p : d.parts) {
+        if (p.id != partId)
             continue;
-        auto meta = p["metadata"].toObject();
-        auto id = meta["coordination_center"].toString();
+        auto id = p.center();
         if (id.isEmpty())
             fail(tr("配位子を選択してください。"));
         QJsonObject t = replacement;
         if (t.isEmpty()) {
             auto c = center(d, id);
-            auto current = c["sites"].toArray();
-            if (sites.size() != p["connections"].toArray().size())
+            if (sites.size() != p.connections.size())
                 fail(tr("供与原子数と同じサイト数を指定してください。"));
             QSet<int> unique;
             for (int i : sites) {
-                if (i < 0 || i >= current.size() || unique.contains(i))
+                if (i < 0 || i >= c.sites.size() || unique.contains(i))
                     fail(tr("サイト番号が不正です。"));
                 unique.insert(i);
-                auto s = current[i].toObject();
-                if (!s["part"].toString().isEmpty() && s["part"] != partId)
+                if (!c.sites[i].part.isEmpty() && c.sites[i].part != partId)
                     fail(tr("移動先サイトは占有されています。"));
             }
-            for (int i = 0; i < current.size(); ++i) {
-                auto s = current[i].toObject();
-                if (s["part"] == partId) {
-                    s.remove("donor");
-                    s.remove("part");
-                    current[i] = s;
-                }
-            }
+            for (auto &site : c.sites)
+                if (site.part == partId)
+                    site.donor = site.part = QString();
             QJsonArray indices;
             for (int i : sites)
                 indices.append(i);
-            meta["sites"] = indices;
-            p["metadata"] = meta;
-            auto parts = d.data["parts"].toArray();
-            for (int i = 0; i < parts.size(); ++i)
-                if (parts[i].toObject()["id"] == partId)
-                    parts[i] = p;
-            d.data["parts"] = parts;
-            c["sites"] = current;
+            p.metadata["sites"] = indices;
             updateCenter(d, c);
             refitCenter(d, id);
             return;
         }
         if (t.isEmpty())
-            t = meta["template_data"].isObject() ? meta["template_data"].toObject()
-                                                 : findTemplate(p["template"].toString());
+            t = p.metadata["template_data"].isObject() ? p.metadata["template_data"].toObject()
+                                                       : findTemplate(p.templateId);
+        const auto atoms = p.atoms;
         followingCharge(d, [&] {
-            d.remove(idsFromJson(p["atoms"]));
+            d.remove(atoms);
             bindLigand(d, id, sites, t, twist);
         });
         return;
@@ -383,47 +357,31 @@ void setSiteDirection(Document &d, const QString &id, const QList<int> &indices,
         fail(tr("サイト番号と正の距離を指定してください。"));
     Vec dir = unit(direction);
     auto c = center(d, id);
-    auto sites = c["sites"].toArray();
     for (int i : indices) {
-        if (i < 0 || i >= sites.size())
+        if (i < 0 || i >= c.sites.size())
             fail(tr("サイト番号が範囲外です。"));
-        auto s = sites[i].toObject();
-        s["direction"] = vectorToJson(dir);
-        s["distance"] = distance;
-        sites[i] = s;
+        c.sites[i].direction = dir;
+        c.sites[i].distance = distance;
     }
-    c["sites"] = sites;
     updateCenter(d, c);
     refitCenter(d, id);
 }
 void swapLigands(Document &d, const QString &id, int first, int second) {
     auto c = center(d, id);
-    auto sites = c["sites"].toArray();
-    if (first < 0 || second < 0 || first >= sites.size() || second >= sites.size() || first == second)
+    if (first < 0 || second < 0 || first >= c.sites.size() || second >= c.sites.size() || first == second)
         fail(tr("異なる2サイトを指定してください。"));
-    QString a = sites[first].toObject()["part"].toString(), b = sites[second].toObject()["part"].toString();
+    QString a = c.sites[first].part, b = c.sites[second].part;
     if (a.isEmpty() || b.isEmpty() || a == b)
         fail(tr("異なる配位子で占有された2サイトが必要です。"));
-    auto parts = d.data["parts"].toArray();
-    for (int i = 0; i < parts.size(); ++i) {
-        auto p = parts[i].toObject();
-        if (p["id"] != a && p["id"] != b)
+    for (auto &p : d.parts) {
+        if (p.id != a && p.id != b)
             continue;
-        auto meta = p["metadata"].toObject();
-        if (meta["sites"].toArray().size() != 1)
+        if (p.metadata["sites"].toArray().size() != 1)
             fail(tr("サイト交換は2つの単座配位子で行ってください。"));
-        meta["sites"] = QJsonArray{p["id"] == a ? second : first};
-        p["metadata"] = meta;
-        parts[i] = p;
+        p.metadata["sites"] = QJsonArray{p.id == a ? second : first};
     }
-    for (int i : {first, second}) {
-        auto s = sites[i].toObject();
-        s.remove("donor");
-        s.remove("part");
-        sites[i] = s;
-    }
-    c["sites"] = sites;
-    d.data["parts"] = parts;
+    for (int i : {first, second})
+        c.sites[i].donor = c.sites[i].part = QString();
     updateCenter(d, c);
     refitCenter(d, id);
 }

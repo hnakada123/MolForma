@@ -464,9 +464,9 @@ void MoleculePanel::sortAtoms(const QString &mode) {
     edit(tr("原子を並べ替え"), [=](Document &d) {
         QMap<QString, int> ranks;
         int n = 0;
-        for (auto v : d.data["residues"].toArray())
-            for (auto id : v.toObject()["atoms"].toObject())
-                ranks[id.toString()] = n++;
+        for (const auto &r : d.residues)
+            for (const auto &id : r.atoms)
+                ranks[id] = n++;
         std::stable_sort(d.atoms.begin(), d.atoms.end(), [&](const Atom &a, const Atom &b) {
             if (mode == "element")
                 return element(a.element).number < element(b.element).number;
@@ -498,25 +498,19 @@ QString MoleculePanel::selectedResidue() const {
 }
 QString MoleculePanel::selectedPart() const {
     for (auto id : selected)
-        for (auto v : displayDocument().data["parts"].toArray())
-            if (idsFromJson(v.toObject()["atoms"]).contains(id))
-                return v.toObject()["id"].toString();
+        for (const auto &p : displayDocument().parts)
+            if (p.atoms.contains(id))
+                return p.id;
     fail(tr("部品を選択してください。"));
 }
 QString MoleculePanel::selectedCenter() const {
     const auto &d = displayDocument();
     for (auto id : selected) {
-        for (auto v : d.data["centers"].toArray())
-            if (v.toObject()["atom"] == id)
-                return id;
-        for (auto v : d.data["parts"].toArray()) {
-            auto p = v.toObject();
-            if (idsFromJson(p["atoms"]).contains(id)) {
-                auto center = p["metadata"].toObject()["coordination_center"].toString();
-                if (!center.isEmpty())
-                    return center;
-            }
-        }
+        if (d.findCenter(id))
+            return id;
+        for (const auto &p : d.parts)
+            if (p.atoms.contains(id) && !p.center().isEmpty())
+                return p.center();
     }
     fail(tr("配位中心または配位子を選択してください。"));
 }
@@ -743,10 +737,7 @@ void MoleculePanel::buildResiduePanel() {
     f->addRow(residueList);
     connect(residueList, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
         safe([this, item] {
-            Ids ids;
-            for (auto v : residue(displayDocument(), item->data(Qt::UserRole).toString())["atoms"].toObject())
-                ids << v.toString();
-            setSelection(ids);
+            setSelection(residue(displayDocument(), item->data(Qt::UserRole).toString()).atoms.values());
         });
     });
     button(f, tr("未登録の原子を選択"), [this] {
@@ -778,7 +769,7 @@ void MoleculePanel::buildResiduePanel() {
         for (int i = 0; i < document().atoms.size(); ++i) {
             const auto &a = document().atoms[i];
             auto rid = residueForAtom(document(), a.id);
-            QString name = rid.isEmpty() ? "" : residue(document(), rid)["code"].toString();
+            QString name = rid.isEmpty() ? "" : residue(document(), rid).code;
             csv += QString("%1,%2,%3,%4\n").arg(i + 1).arg(quote(a.element), quote(a.name), quote(name));
         }
         writeFile(p, csv.toUtf8());
@@ -869,15 +860,12 @@ void MoleculePanel::buildChargePanel() {
     chargeValue->setValue(.5);
     f->addRow(fieldsBox);
     connect(pointList, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
-        for (auto v : displayDocument().data["point_charges"].toArray()) {
-            auto q = v.toObject();
-            if (q["id"] == item->data(Qt::UserRole).toString()) {
-                Vec p = vectorFromJson(q["position"]);
+        for (const auto &q : displayDocument().pointCharges)
+            if (q.id == item->data(Qt::UserRole).toString()) {
                 for (int i = 0; i < 3; ++i)
-                    chargeFields[i]->setValue(p[i]);
-                chargeValue->setValue(q["charge"].toDouble());
+                    chargeFields[i]->setValue(q.position[i]);
+                chargeValue->setValue(q.charge);
             }
-        }
     });
     button(
         f, tr("点電荷を追加"),
@@ -923,15 +911,12 @@ void MoleculePanel::buildChargePanel() {
         if (p.isEmpty())
             return;
         QString text = "# MolForma point charges; units=angstrom; x y z q\n";
-        for (auto v : document().data["point_charges"].toArray()) {
-            auto q = v.toObject();
-            Vec xyz = vectorFromJson(q["position"]);
+        for (const auto &q : document().pointCharges)
             text += QString("%1 %2 %3 %4\n")
-                        .arg(xyz.x(), 0, 'f', 10)
-                        .arg(xyz.y(), 0, 'f', 10)
-                        .arg(xyz.z(), 0, 'f', 10)
-                        .arg(q["charge"].toDouble(), 0, 'g', 15);
-        }
+                        .arg(q.position.x(), 0, 'f', 10)
+                        .arg(q.position.y(), 0, 'f', 10)
+                        .arg(q.position.z(), 0, 'f', 10)
+                        .arg(q.charge, 0, 'g', 15);
         writeFile(p, text.toUtf8());
     });
 }
@@ -986,14 +971,10 @@ void MoleculePanel::pdbPreparation() {
     layout->addWidget(intro);
     auto *list = new QListWidget;
     layout->addWidget(list);
-    for (auto v : document().data["residues"].toArray()) {
-        auto r = v.toObject();
-        auto *item = new QListWidgetItem(QString("%1 %2  ·  %3 / %4")
-                                             .arg(r["code"].toString())
-                                             .arg(r["number"].toInt())
-                                             .arg(r["n_terminal"].toString(), r["c_terminal"].toString()),
-                                         list);
-        item->setData(Qt::UserRole, r["id"].toString());
+    for (const auto &r : document().residues) {
+        auto *item = new QListWidgetItem(
+            QString("%1 %2  ·  %3 / %4").arg(r.code).arg(r.number).arg(r.nTerminal, r.cTerminal), list);
+        item->setData(Qt::UserRole, r.id);
     }
     auto *report = new QPlainTextEdit;
     report->setReadOnly(true);
@@ -1018,11 +999,7 @@ void MoleculePanel::pdbPreparation() {
     add(tr("3Dで選択箇所を見る"), [&] {
         if (!list->currentItem())
             fail(tr("残基を選んでください。"));
-        Ids ids;
-        for (auto id :
-             residue(document(), list->currentItem()->data(Qt::UserRole).toString())["atoms"].toObject())
-            ids << id.toString();
-        setSelection(ids);
+        setSelection(residue(document(), list->currentItem()->data(Qt::UserRole).toString()).atoms.values());
         dialog.accept();
     });
     add(tr("修復候補を作成"), [&] {

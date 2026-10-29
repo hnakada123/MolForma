@@ -857,18 +857,18 @@ class EditorTest : public QObject {
         QTest::mouseClick(w.canvas(), Qt::LeftButton, Qt::NoModifier, w.canvas()->rect().center());
         QCOMPARE(w.document().atoms.size(), 1);
         QCOMPARE(w.document().atoms[0].element, QString("Zn"));
-        const auto centerRows = w.document().data["centers"].toArray();
-        QCOMPARE(centerRows.size(), 1);
-        const auto center = centerRows[0].toObject();
-        QCOMPARE(center["atom"].toString(), w.document().atoms[0].id);
-        QCOMPARE(center["geometry"].toString(), QString("octahedral"));
-        QCOMPARE(center["sites"].toArray().size(), 6);
+        const auto centerRows = w.document().toJson()["centers"].toArray();
+        QCOMPARE(w.document().centers.size(), 1);
+        const auto &center = w.document().centers[0];
+        QCOMPARE(center.atom, w.document().atoms[0].id);
+        QCOMPARE(center.geometry, QString("octahedral"));
+        QCOMPARE(center.sites.size(), 6);
         w.history()->undo();
         QVERIFY(w.document().atoms.isEmpty());
-        QVERIFY(w.document().data["centers"].toArray().isEmpty());
+        QVERIFY(w.document().centers.isEmpty());
         w.history()->redo();
         QCOMPARE(w.document().atoms[0].element, QString("Zn"));
-        QCOMPARE(w.document().data["centers"].toArray(), centerRows);
+        QCOMPARE(w.document().toJson()["centers"].toArray(), centerRows);
 
         search->clear();
         QCOMPARE(palette->currentItem()->data(Qt::UserRole).toString(), QString("center:Zn"));
@@ -1002,9 +1002,9 @@ class EditorTest : public QObject {
         w.show();
         QCOMPARE(w.document().charge, -1);
         QString his;
-        for (auto v : w.document().data["residues"].toArray())
-            if (v.toObject()["code"] == "HIS")
-                his = v.toObject()["atoms"].toObject()["CA"].toString();
+        for (const auto &r : w.document().residues)
+            if (r.code == "HIS")
+                his = r.atoms["CA"];
         w.setSelection({his});
         w.findChild<QToolButton *>("paletteCategory_amino")->click();
         auto *palette = w.findChild<QListWidget *>("templatePalette");
@@ -1058,10 +1058,7 @@ class EditorTest : public QObject {
         // Without point charges, their list says how to add one.
         QVERIFY(w.findChild<QListWidget *>("pointChargeList")->isHidden());
         QVERIFY(!w.findChild<QLabel *>("pointChargeEmpty")->isHidden());
-        w.edit("point", [](Document &next) {
-            next.data["point_charges"] =
-                QJsonArray{QJsonObject{{"id", "q1"}, {"charge", 0.5}, {"position", QJsonArray{3, 0, 0}}}};
-        });
+        w.edit("point", [](Document &next) { addPointCharge(next, Vec(3, 0, 0), 0.5); });
         QVERIFY(!w.findChild<QListWidget *>("pointChargeList")->isHidden());
         QVERIFY(w.findChild<QLabel *>("pointChargeEmpty")->isHidden());
     }
@@ -1223,7 +1220,7 @@ class EditorTest : public QObject {
         x->setValue(5);
         q->setValue(-.5);
         w.findChild<QPushButton *>("addPointCharge")->click();
-        QCOMPARE(w.document().data["point_charges"].toArray().size(), 1);
+        QCOMPARE(w.document().pointCharges.size(), 1);
         QVERIFY(!nwchemInput(w.document()).contains("\nbq units"));
         calculation->click();
         QCOMPARE(enabled->text(), QString("NWChem入力に含める"));
@@ -1243,18 +1240,18 @@ class EditorTest : public QObject {
 
         auto *list = w.findChild<QListWidget *>("pointChargeList");
         list->setCurrentRow(0);
-        const auto id = w.document().data["point_charges"].toArray()[0].toObject().value("id");
+        const auto id = w.document().pointCharges[0].id;
         x->setValue(6);
         q->setValue(.25);
         w.findChild<QPushButton *>("updatePointCharge")->click();
-        QCOMPARE(w.document().data["point_charges"].toArray()[0].toObject()["id"], id);
+        QCOMPARE(w.document().pointCharges[0].id, id);
         QVERIFY(nwchemInput(w.document()).contains("6 0 0 0.25"));
         w.findChild<QPushButton *>("deletePointCharge")->click();
-        QVERIFY(w.document().data["point_charges"].toArray().isEmpty());
+        QVERIFY(w.document().pointCharges.isEmpty());
         QVERIFY(!nwchemInput(w.document()).contains("\nbq units"));
         w.history()->undo();
         QVERIFY(nwchemInput(w.document()).contains("6 0 0 0.25"));
-        w.edit("candidate", [](Document &next) { next.data["point_charges"] = QJsonArray(); }, true);
+        w.edit("candidate", [](Document &next) { next.pointCharges.clear(); }, true);
         QVERIFY(!x->isEnabled());
         w.cancelCandidate();
         QVERIFY(x->isEnabled());
@@ -1465,7 +1462,7 @@ class EditorTest : public QObject {
         QVERIFY(w.findChild<QToolButton *>("quickElement_S")->isChecked());
         emit w.canvas()->blankClicked(Vec(10, 0, 0));
         QCOMPARE(w.document().atoms.last().element, QString("S"));
-        QCOMPARE(w.document().data["centers"].toArray().size(), 2);
+        QCOMPARE(w.document().centers.size(), 2);
         // The search under "配位中心" finds any element as a center.
         w.findChild<QLineEdit *>("paletteSearch")->setText("Xe");
         QCOMPARE(palette->item(0)->data(Qt::UserRole).toString(), QString("center:Xe"));

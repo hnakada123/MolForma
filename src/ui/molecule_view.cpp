@@ -317,15 +317,13 @@ void MoleculeView::fit() {
         points << a.position;
     for (const auto &triangle : std::as_const(surface))
         points << triangle.a << triangle.b << triangle.c;
-    for (auto v : doc.data["point_charges"].toArray())
-        points << vectorFromJson(v.toObject()["position"]);
-    for (auto v : doc.data["centers"].toArray()) {
-        auto c = v.toObject();
-        if (!doc.contains(c["atom"].toString()))
+    for (const auto &q : doc.pointCharges)
+        points << q.position;
+    for (const auto &c : doc.centers) {
+        if (!doc.contains(c.atom))
             continue;
-        for (auto s : c["sites"].toArray())
-            points << doc.atom(c["atom"].toString()).position +
-                          vectorFromJson(s.toObject()["direction"]) * s.toObject()["distance"].toDouble();
+        for (const auto &site : c.sites)
+            points << doc.atom(c.atom).position + site.direction * site.distance;
     }
     center = Vec::Zero();
     for (auto p : points)
@@ -351,8 +349,8 @@ void MoleculeView::keepInView() {
     bool fits = true;
     for (const auto &a : doc.atoms)
         fits &= !shown(a) || !outside(a.position);
-    for (const auto &v : doc.data["point_charges"].toArray())
-        fits &= !outside(vectorFromJson(v.toObject()["position"]));
+    for (const auto &q : doc.pointCharges)
+        fits &= !outside(q.position);
     if (!fits)
         fit();
 }
@@ -417,12 +415,10 @@ int MoleculeView::hitMarker(const QPointF &p) const {
 QColor MoleculeView::atomColor(const Atom &a) const {
     QString group;
     if (colorMode == "residue") {
-        for (auto v : doc.data["residues"].toArray()) {
-            auto r = v.toObject();
-            for (auto id : r["atoms"].toObject())
+        for (const auto &r : doc.residues)
+            for (const auto &id : r.atoms)
                 if (id == a.id)
-                    group = r["id"].toString();
-        }
+                    group = r.id;
     }
     if (!group.isEmpty())
         return QColor::fromHsv(int(qHash(group, 0) % 360), 135, 205);
@@ -446,8 +442,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
     QLinearGradient bg(0, 0, 0, height());
     bg.setColorAt(0, QColor("#f8fafc"));
     bg.setColorAt(1, QColor("#e9eff4"));
-    const bool empty =
-        doc.atoms.isEmpty() && surface.isEmpty() && doc.data["point_charges"].toArray().isEmpty();
+    const bool empty = doc.atoms.isEmpty() && surface.isEmpty() && doc.pointCharges.isEmpty();
     // Structures keep the light background in either theme; with nothing to show, a dark theme
     // has its own color here (over the VTK view too), not a bright box.
     const bool dark = empty && darkPalette(palette());
@@ -507,8 +502,8 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
     };
     QVector<Label> labels;
     QSet<QString> centers; // Coordination centers: their labels come before their ligands'.
-    for (const auto &v : doc.data["centers"].toArray())
-        centers.insert(v.toObject()["atom"].toString());
+    for (const auto &c : doc.centers)
+        centers.insert(c.atom);
     for (auto item : items) {
         if (item.kind == 2) {
             const auto &t = surface.at(item.index);
@@ -716,18 +711,16 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
         const double r = atomRadius(a) + 4;
         p.drawEllipse(project(a.position), r, r);
     }
-    for (auto v : doc.data["centers"].toArray()) {
-        auto c = v.toObject();
-        QString id = c["atom"].toString();
+    for (const auto &c : doc.centers) {
+        const auto &id = c.atom;
         if (!doc.contains(id))
             continue;
         Vec origin = doc.atom(id).position;
-        auto sites = c["sites"].toArray();
-        for (int i = 0; i < sites.size(); ++i) {
-            auto s = sites[i].toObject();
-            if (!s["donor"].toString().isEmpty())
+        for (int i = 0; i < c.sites.size(); ++i) {
+            const auto &s = c.sites[i];
+            if (!s.donor.isEmpty())
                 continue;
-            QPointF pos = project(origin + vectorFromJson(s["direction"]) * s["distance"].toDouble());
+            QPointF pos = project(origin + s.direction * s.distance);
             p.setPen(QPen(QColor("#9978bd"), 1, Qt::DashLine));
             p.drawLine(project(origin), pos);
             p.setBrush(QColor("#f1e8fc"));
@@ -739,11 +732,10 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
         }
     }
     if (aminoHandles)
-        for (auto v : doc.data["residues"].toArray()) {
-            auto res = v.toObject();
+        for (const auto &res : doc.residues) {
             for (bool n : {true, false}) {
-                auto state = res[n ? "n_terminal" : "c_terminal"].toString();
-                auto id = res["atoms"].toObject()[n ? "N" : "C"].toString();
+                const auto &state = n ? res.nTerminal : res.cTerminal;
+                const auto id = res.atoms.value(n ? "N" : "C");
                 if (!doc.contains(id) || !QStringList{"neutral", "charged"}.contains(state))
                     continue;
                 QPointF pos = project(doc.atom(id).position) + QPointF(n ? -38 : 38, -32);
@@ -752,20 +744,19 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
                 p.drawRoundedRect(QRectF(pos - QPointF(27, 12), QSizeF(54, 24)), 8, 8);
                 p.drawText(QRectF(pos - QPointF(27, 12), QSizeF(54, 24)), Qt::AlignCenter,
                            n ? tr("＋ N") : tr("＋ C"));
-                markers << Marker{pos, res["id"].toString(), -1, n};
+                markers << Marker{pos, res.id, -1, n};
             }
         }
-    for (auto v : doc.data["point_charges"].toArray()) {
-        auto q = v.toObject();
-        auto pos = project(vectorFromJson(q["position"]));
-        QColor c = q["charge"].toDouble() > 0 ? QColor("#c75162") : QColor("#407fcc");
+    for (const auto &q : doc.pointCharges) {
+        auto pos = project(q.position);
+        QColor c = q.charge > 0 ? QColor("#c75162") : QColor("#407fcc");
         p.setPen(QPen(c, 2));
         p.setBrush(Qt::NoBrush);
         p.drawEllipse(pos, 9, 9);
         p.drawLine(pos - QPointF(5, 0), pos + QPointF(5, 0));
-        if (q["charge"].toDouble() > 0)
+        if (q.charge > 0)
             p.drawLine(pos - QPointF(0, 5), pos + QPointF(0, 5));
-        p.drawText(pos + QPointF(12, 4), QString::number(q["charge"].toDouble(), 'g', 3));
+        p.drawText(pos + QPointF(12, 4), QString::number(q.charge, 'g', 3));
     }
     if (!hbonds.isEmpty()) {
         p.setPen(QPen(QColor("#2a7bd6"), 1.6, Qt::DashLine));

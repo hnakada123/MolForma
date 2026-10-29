@@ -143,8 +143,7 @@ class CoreTest : public QObject {
         Document d;
         buildPeptide(d, {"ALA"}, "neutral", "neutral");
         recordStereo(d);
-        auto r = d.data["residues"].toArray().first().toObject();
-        auto ca = r["atoms"].toObject()["CA"].toString();
+        auto ca = d.residues.first().atoms["CA"];
         QCOMPARE(d.atom(ca).stereo, QString("S"));
         invertCenter(d, ca);
         recordStereo(d);
@@ -158,15 +157,15 @@ class CoreTest : public QObject {
             QSKIP("RDKit C++ backend not installed");
         Document d;
         buildPeptide(d, {"ALA", "GLY", "SER"}, "charged", "charged");
-        d.data["residues"] = QJsonArray();
-        d.data["chains"] = QJsonObject();
+        d.residues.clear();
+        d.chains.clear();
         for (auto &a : d.atoms)
             a.name.clear();
         recognizeResidues(d);
-        QCOMPARE(d.data["residues"].toArray().size(), 3);
+        QCOMPARE(d.residues.size(), 3);
         QStringList codes;
-        for (auto v : d.data["residues"].toArray())
-            codes << v.toObject()["code"].toString();
+        for (const auto &r : d.residues)
+            codes << r.code;
         QCOMPARE(codes, QStringList({"ALA", "GLY", "SER"}));
         QVERIFY(d.validate().isEmpty());
         // From XYZ, which has neither charges nor residues: the caps, the charges the hydrogens imply
@@ -182,10 +181,8 @@ class CoreTest : public QObject {
         const auto states = [](const Document &doc) {
             QStringList out;
             QMap<int, QString> byNumber;
-            for (auto v : doc.data["residues"].toArray())
-                byNumber[v.toObject()["number"].toInt()] =
-                    v.toObject()["code"].toString() + ":" + v.toObject()["state"].toString() + ":" +
-                    v.toObject()["n_terminal"].toString() + "/" + v.toObject()["c_terminal"].toString();
+            for (const auto &r : doc.residues)
+                byNumber[r.number] = r.code + ":" + r.state + ":" + r.nTerminal + "/" + r.cTerminal;
             return byNumber.values();
         };
         auto [built, read] = fromXyz("AHE", "ACE", "NME", "default");
@@ -194,7 +191,7 @@ class CoreTest : public QObject {
         QCOMPARE(states(read), QStringList({"ACE:default:internal/internal", "ALA:default:ACE/internal",
                                             "HIS:HIE:internal/internal", "GLU:default:internal/NME",
                                             "NME:default:internal/internal"}));
-        QCOMPARE(read.data["chains"].toObject().begin()->toArray().size(), 5);
+        QCOMPARE(read.chains.first().size(), 5);
         // HIP: an imidazolium ring, whose bond orders from XYZ differ from the template's.
         for (const auto &[n, c] : {std::pair{"ACE", "NME"}, {"charged", "charged"}}) {
             Document hip;
@@ -212,9 +209,9 @@ class CoreTest : public QObject {
     void missingSidechainRepair() {
         Document d;
         buildPeptide(d, {"ALA"}, "charged", "charged");
-        auto r = d.data["residues"].toArray().first().toObject();
-        QString rid = r["id"].toString(), cb = r["atoms"].toObject()["CB"].toString();
-        auto ca = r["atoms"].toObject()["CA"].toString();
+        const auto r = d.residues.first();
+        QString rid = r.id, cb = r.atoms["CB"];
+        auto ca = r.atoms["CA"];
         Vec original = d.atom(ca).position;
         Ids removed{cb};
         for (auto n : d.neighbors(cb))
@@ -231,31 +228,31 @@ class CoreTest : public QObject {
         Document d;
         buildPeptide(d, {"ALA", "GLY", "SER"}, "ACE", "NME");
         QCOMPARE(d.formula(), QString("C11H20N4O5"));
-        QCOMPARE(d.data["residues"].toArray().size(), 5);
+        QCOMPARE(d.residues.size(), 5);
         QVERIFY2(d.validate().isEmpty(), qPrintable(d.validate().join(';')));
         duplicate(d, d.ids(), Vec(30, 0, 0));
-        QCOMPARE(d.data["chains"].toObject().size(), 2);
-        for (auto sequence : d.data["chains"].toObject())
-            QCOMPARE(sequence.toArray().size(), 5);
+        QCOMPARE(d.chains.size(), 2);
+        for (const auto &sequence : d.chains)
+            QCOMPARE(sequence.size(), 5);
         QVERIFY(d.validate().isEmpty());
     }
     void cappedResidueEdits() {
         Document d;
         buildPeptide(d, {"ALA"}, "ACE", "NME");
         QString rid;
-        for (auto value : d.data["residues"].toArray())
-            if (value.toObject()["code"] == "ALA")
-                rid = value.toObject()["id"].toString();
+        for (const auto &r : d.residues)
+            if (r.code == "ALA")
+                rid = r.id;
         mutateResidue(d, rid, "GLY", "default", "L");
-        QCOMPARE(d.data["residues"].toArray().size(), 3);
+        QCOMPARE(d.residues.size(), 3);
         QCOMPARE(d.formula(), QString("C5H10N2O2"));
         QVERIFY2(d.validate().isEmpty(), qPrintable(d.validate().join(';')));
         auto copy = d;
         deleteResidue(copy, rid);
         QVERIFY(copy.atoms.isEmpty());
-        QVERIFY(copy.data["chains"].toObject().isEmpty());
+        QVERIFY(copy.chains.isEmpty());
         setTerminals(d, rid, "charged", "charged");
-        QCOMPARE(d.data["residues"].toArray().size(), 1);
+        QCOMPARE(d.residues.size(), 1);
         QCOMPARE(d.formula(), QString("C2H5NO2"));
         QCOMPARE(d.formalCharge(), 0);
         QVERIFY2(d.validate().isEmpty(), qPrintable(d.validate().join(';')));
@@ -266,12 +263,11 @@ class CoreTest : public QObject {
             Document p;
             buildPeptide(p, parseSequence("AHE"), "ACE", "NME");
             QString his;
-            for (auto value : p.data["residues"].toArray())
-                if (value.toObject()["code"] == "HIS")
-                    his = value.toObject()["id"].toString();
+            for (const auto &r : p.residues)
+                if (r.code == "HIS")
+                    his = r.id;
             mutateResidue(p, his, code, "default", "L");
-            const auto r = residue(p, his);
-            const auto n = r["atoms"].toObject()["N"].toString();
+            const auto n = residue(p, his).atoms["N"];
             QString previous;
             for (const auto &neighbor : p.neighbors(n))
                 if (p.atom(neighbor).element == "C" && residueForAtom(p, neighbor) != his)
@@ -281,17 +277,16 @@ class CoreTest : public QObject {
                 if (p.atom(h).element == "H")
                     QVERIFY2((p.atom(h).position - p.atom(previous).position).norm() > 1.8, code);
             // Every amide N–H of the chain, the one next to the ACE cap included.
-            for (auto value : p.data["residues"].toArray()) {
-                const auto atoms = value.toObject()["atoms"].toObject();
-                if (!atoms.contains("N") || !atoms.contains("CA"))
+            for (const auto &r : p.residues) {
+                if (!r.atoms.contains("N") || !r.atoms.contains("CA"))
                     continue;
-                const auto nitrogen = atoms["N"].toString();
+                const auto nitrogen = r.atoms["N"];
                 for (const auto &c : p.neighbors(nitrogen))
-                    if (p.atom(c).element == "C" && c != atoms["CA"].toString())
+                    if (p.atom(c).element == "C" && c != r.atoms["CA"])
                         for (const auto &h : p.neighbors(nitrogen))
                             if (p.atom(h).element == "H")
                                 QVERIFY2((p.atom(h).position - p.atom(c).position).norm() > 1.8,
-                                         qPrintable(value.toObject()["code"].toString()));
+                                         qPrintable(r.code));
             }
         }
     }
@@ -303,7 +298,7 @@ class CoreTest : public QObject {
         exportStructure(d, path);
         auto copy = importStructure(path);
         QCOMPARE(copy.atoms.size(), 31);
-        QCOMPARE(copy.data["residues"].toArray().size(), 3);
+        QCOMPARE(copy.residues.size(), 3);
         QVERIFY(copy.validate().isEmpty());
     }
     void templateLibrary() {
@@ -395,16 +390,125 @@ class CoreTest : public QObject {
             QCOMPARE(saved.keys(), QStringList({"coordinate_units", "document", "format", "version"}));
             QCOMPARE(saved["document"].toObject()["charge"].toInt(), QString(name) == "co_en" ? 3 : 0);
             QCOMPARE(saved["document"].toObject()["multiplicity"].toInt(), 1);
+            // The typed document writes back what it read.
+            QCOMPARE(saved["document"].toObject(),
+                     parseJson(readFile(QString(FIXTURE_DIR) + "/" + name + ".molforma.json"))["document"]
+                         .toObject());
             auto copy = Document::load(file);
             QCOMPARE(copy.ids(), d.ids());
             QCOMPARE(copy.bonds.size(), d.bonds.size());
-            QCOMPARE(copy.data["residues"], d.data["residues"]);
-            QCOMPARE(copy.data["centers"], d.data["centers"]);
+            QCOMPARE(copy.toJson()["residues"], d.toJson()["residues"]);
+            QCOMPARE(copy.toJson()["centers"], d.toJson()["centers"]);
             QCOMPARE(copy.charge, d.charge);
             QCOMPARE(copy.multiplicity, d.multiplicity);
             for (int i = 0; i < d.atoms.size(); ++i)
                 QVERIFY((copy.atoms[i].position - d.atoms[i].position).norm() < 1e-12);
         }
+    }
+    void samplesWriteBack() {
+        // The practice files of the recipes are in the current format: the typed document writes back what
+        // it read.
+        for (const auto &file : QDir(RECIPES_DIR).entryInfoList({"*.molforma.json"}))
+            QVERIFY2(Document::load(file.filePath()).project() == parseJson(readFile(file.filePath())),
+                     qPrintable(file.fileName()));
+    }
+    void structureReferences() {
+        // Fields MolForma does not know survive in residues, parts, centers, sites and point charges.
+        auto project = parseJson(readFile(QString(FIXTURE_DIR) + "/co_en.molforma.json"));
+        auto doc = project["document"].toObject();
+        const auto mark = [](QJsonArray rows, const char *key) {
+            auto row = rows[0].toObject();
+            row["future_field"] = key;
+            if (QString(key) == "centers") {
+                auto sites = row["sites"].toArray();
+                auto site = sites[0].toObject();
+                site["future_field"] = "site";
+                sites[0] = site;
+                row["sites"] = sites;
+            }
+            rows[0] = row;
+            return rows;
+        };
+        doc["parts"] = mark(doc["parts"].toArray(), "parts");
+        doc["centers"] = mark(doc["centers"].toArray(), "centers");
+        doc["point_charges"] = QJsonArray{QJsonObject{{"id", "q1"},
+                                                      {"position", QJsonArray{0, 0, 9}},
+                                                      {"charge", 1.0},
+                                                      {"source", "manual"},
+                                                      {"source_unit", "angstrom"},
+                                                      {"future_field", "point_charges"}}};
+        project["document"] = doc;
+        auto d = Document::fromProject(project);
+        QCOMPARE(d.project()["document"].toObject(), doc);
+        QCOMPARE(d.parts[0].extra["future_field"].toString(), QString("parts"));
+        QCOMPARE(d.centers[0].sites[0].extra["future_field"].toString(), QString("site"));
+
+        // Renaming reaches every reference: bonds, parts and their center, sites, settings.
+        const auto cobalt = d.centers[0].atom, donor = d.centers[0].sites[0].donor, part = d.parts[0].id;
+        auto settings = d.data["nwchem"].toObject();
+        settings["constraints"] =
+            QJsonArray{QJsonObject{{"type", "bond"}, {"atoms", QJsonArray{cobalt, donor}}, {"value", 2.0}}};
+        settings["scan_atoms"] = QJsonArray{donor, cobalt};
+        d.data["nwchem"] = settings;
+        auto renamed = d;
+        renamed.renameIds({{cobalt, "co"}, {donor, "n1"}, {part, "en1"}});
+        QVERIFY2(renamed.validate().isEmpty(), qPrintable(renamed.validate().join(';')));
+        QCOMPARE(renamed.centers[0].atom, QString("co"));
+        QCOMPARE(renamed.centers[0].sites[0].donor, QString("n1"));
+        QCOMPARE(renamed.centers[0].sites[0].part, QString("en1"));
+        QCOMPARE(renamed.parts[0].id, QString("en1"));
+        QCOMPARE(renamed.parts[0].center(), QString("co"));
+        QVERIFY(renamed.parts[0].atoms.contains("n1"));
+        QVERIFY(renamed.bond("co", "n1"));
+        QCOMPARE(renamed.data["nwchem"].toObject()["scan_atoms"].toArray(), (QJsonArray{"n1", "co"}));
+        QCOMPARE(renamed.data["nwchem"].toObject()["constraints"].toArray()[0].toObject()["atoms"].toArray(),
+                 (QJsonArray{"co", "n1"}));
+        // Removing the center leaves its ligands unplaced and drops the coordinates that used it.
+        auto removed = d;
+        removed.remove({cobalt});
+        QVERIFY(removed.centers.isEmpty());
+        for (const auto &p : removed.parts)
+            QVERIFY(p.center().isEmpty() && !p.metadata.contains("sites"));
+        QVERIFY(removed.data["nwchem"].toObject()["constraints"].toArray().isEmpty());
+        QVERIFY(removed.data["nwchem"].toObject()["scan_atoms"].toArray().isEmpty());
+    }
+    void mutationKeepsReferences() {
+        // A mutated residue keeps its place and the IDs of the atoms it keeps by name, and with them the
+        // constraints and the scan coordinate on its backbone.
+        Document d;
+        buildPeptide(d, parseSequence("AGA"), "charged", "charged");
+        const auto gly = d.residues[1];
+        auto settings = d.data["nwchem"].toObject();
+        settings["constraints"] = QJsonArray{QJsonObject{
+            {"type", "bond"}, {"atoms", QJsonArray{gly.atoms["N"], gly.atoms["CA"]}}, {"value", 1.46}}};
+        settings["scan_atoms"] = QJsonArray{gly.atoms["C"], gly.atoms["CA"]};
+        d.data["nwchem"] = settings;
+        mutateResidue(d, gly.id, "SER", "default", "L");
+        QVERIFY2(d.validate().isEmpty(), qPrintable(d.validate().join(';')));
+        QCOMPARE(d.residues[1].id, gly.id);
+        QCOMPARE(d.residues[1].code, QString("SER"));
+        for (const auto *name : {"N", "CA", "C", "O"})
+            QCOMPARE(d.residues[1].atoms[name], gly.atoms[name]);
+        QCOMPARE(d.data["nwchem"].toObject()["constraints"].toArray().size(), 1);
+        QCOMPARE(d.data["nwchem"].toObject()["scan_atoms"].toArray(),
+                 (QJsonArray{gly.atoms["C"], gly.atoms["CA"]}));
+        // The template parts of the old residue no longer hold its atoms.
+        int holders = 0;
+        for (const auto &p : d.parts)
+            holders += p.atoms.contains(gly.atoms["CA"]);
+        QCOMPARE(holders, 1);
+    }
+    void centerOfMassMovesFrame() {
+        // Centering the whole structure moves the point charges with it, as orienting does.
+        Document d;
+        placeTemplate(d, findTemplate("skeleton:water"), Vec(3, 0, 0));
+        addPointCharge(d, Vec(3, 0, 5), -0.5);
+        const Vec offset = d.pointCharges[0].position - centroid(d, d.ids());
+        centerMass(d, d.ids(), false);
+        QVERIFY((centroid(d, d.ids()) + offset - d.pointCharges[0].position).norm() < 1e-9);
+        const Vec before = d.pointCharges[0].position;
+        centerMass(d, {d.atoms[0].id}, false);
+        QVERIFY((d.pointCharges[0].position - before).norm() < 1e-12);
     }
     void xyzValidation() {
         auto d = Document::fromXyz("3\nwater\nO 0 0 0\nD .96 0 0\nH -.24 .93 0\n");
@@ -830,8 +934,8 @@ class CoreTest : public QObject {
             const auto formula = d.formula();
             completeHydrogens(d);
             QCOMPARE(d.formula(), formula);
-            for (auto v : d.data["residues"].toArray())
-                repairResidue(d, v.toObject()["id"].toString());
+            for (const auto &r : Document(d).residues)
+                repairResidue(d, r.id);
             QCOMPARE(d.formula(), formula);
         }
     }
@@ -913,15 +1017,15 @@ class CoreTest : public QObject {
         QCOMPARE(d.formula(), QString("C8H15N3O5"));
         QCOMPARE(d.atoms.size(), 31);
         QCOMPARE(d.formalCharge(), 0);
-        QCOMPARE(d.data["residues"].toArray().size(), 3);
+        QCOMPARE(d.residues.size(), 3);
         QVERIFY(d.validate().isEmpty());
-        auto seq = idsFromJson(d.data["chains"].toObject().begin().value());
+        auto seq = d.chains.first();
         QCOMPARE(seq.size(), 3);
         setResidueTorsion(d, seq[1], "phi", -60);
         setResidueTorsion(d, seq[1], "psi", -40);
         QVERIFY(d.validate().isEmpty());
         auto next = appendResidue(d, "ALA", seq.last());
-        QCOMPARE(d.data["residues"].toArray().size(), 4);
+        QCOMPARE(d.residues.size(), 4);
         QVERIFY(!next.isEmpty());
         auto before = d.atoms.size();
         setTerminals(d, seq.first(), "neutral", {});
@@ -931,14 +1035,14 @@ class CoreTest : public QObject {
     void peptidePrependMutateDelete() {
         Document d;
         buildPeptide(d, {"ALA"}, "charged", "charged");
-        auto r = d.data["residues"].toArray().first().toObject()["id"].toString();
+        auto r = d.residues.first().id;
         auto first = prependResidue(d, "GLY", r);
         QCOMPARE(d.formula(), QString("C5H10N2O3"));
         mutateResidue(d, r, "SER", "default", "L");
         QCOMPARE(d.formula(), QString("C5H10N2O4"));
         QVERIFY2(d.validate().isEmpty(), qPrintable(d.validate().join(';')));
         deleteResidue(d, first);
-        QCOMPARE(d.data["residues"].toArray().size(), 1);
+        QCOMPARE(d.residues.size(), 1);
         QVERIFY(d.validate().isEmpty());
     }
     void coordination() {
@@ -1017,11 +1121,11 @@ class CoreTest : public QObject {
         std::reverse(ids.begin(), ids.end());
         waterToCharges(d, ids);
         QVERIFY(d.atoms.isEmpty());
-        QCOMPARE(d.data["point_charges"].toArray().size(), 3);
-        QCOMPARE(d.data["point_charges"].toArray()[0].toObject()["charge"].toDouble(), -.834);
+        QCOMPARE(d.pointCharges.size(), 3);
+        QCOMPARE(d.pointCharges[0].charge, -.834);
         double sum = 0;
-        for (auto q : d.data["point_charges"].toArray())
-            sum += q.toObject()["charge"].toDouble();
+        for (const auto &q : d.pointCharges)
+            sum += q.charge;
         QVERIFY(std::abs(sum) < 1e-12);
     }
     void totalChargeFollowsStructure() {
@@ -1030,7 +1134,7 @@ class CoreTest : public QObject {
         Document d;
         buildPeptide(d, {"LYS"}, "charged", "charged");
         QCOMPARE(d.charge, 1);
-        const auto lys = d.data["residues"].toArray().first().toObject()["id"].toString();
+        const auto lys = d.residues.first().id;
         const auto zinc = addCenter(d, "Zn", "tetrahedral", Vec(20, 0, 0), 2.3, 2);
         QCOMPARE(d.charge, 3);
         // With a center the formal charges alone (here 1) no longer equal the total charge.

@@ -46,18 +46,15 @@ static OBMol toOB(const Document &d) {
     }
     mol.EndModify();
     QMap<QString, char> chainNames;
-    for (auto v : d.data["residues"].toArray()) {
-        auto r = v.toObject();
-        QString chain = r["chain"].toString();
-        if (!chainNames.contains(chain))
-            chainNames[chain] = char('A' + chainNames.size() % 26);
+    for (const auto &r : d.residues) {
+        if (!chainNames.contains(r.chain))
+            chainNames[r.chain] = char('A' + chainNames.size() % 26);
         auto *residue = mol.NewResidue();
-        residue->SetName(r["code"].toString().toStdString());
-        residue->SetNum(r["number"].toInt());
-        residue->SetChain(chainNames[chain]);
-        auto names = r["atoms"].toObject();
-        for (auto it = names.begin(); it != names.end(); ++it) {
-            int index = indices.value(it.value().toString());
+        residue->SetName(r.code.toStdString());
+        residue->SetNum(r.number);
+        residue->SetChain(chainNames[r.chain]);
+        for (auto it = r.atoms.begin(); it != r.atoms.end(); ++it) {
+            int index = indices.value(it.value());
             if (!index)
                 continue;
             auto *atom = mol.GetAtom(index);
@@ -65,7 +62,7 @@ static OBMol toOB(const Document &d) {
             residue->SetAtomID(atom, it.key().toStdString());
         }
     }
-    if (!d.data["residues"].toArray().isEmpty())
+    if (!d.residues.isEmpty())
         mol.SetChainsPerceived();
     mol.SetDimension(3);
     mol.SetTotalCharge(d.charge);
@@ -75,7 +72,7 @@ static OBMol toOB(const Document &d) {
 static Document fromOB(OBMol &mol, bool readResidues = false) {
     Document d;
     QMap<unsigned int, QString> ids;
-    QMap<OBResidue *, QJsonObject> residues;
+    QMap<OBResidue *, Residue> residues;
     QMap<QString, QString> chains;
     for (unsigned int i = 1; i <= mol.NumAtoms(); ++i) {
         auto *o = mol.GetAtom(i);
@@ -95,27 +92,18 @@ static Document fromOB(OBMol &mol, bool readResidues = false) {
             if (!chains.contains(chain))
                 chains[chain] = newId();
             if (!residues.contains(r)) {
-                residues[r] = {{"id", newId()},
-                               {"code", QString::fromStdString(r->GetName()).trimmed()},
-                               {"atoms", QJsonObject()},
-                               {"chain", chains[chain]},
-                               {"number", r->GetNum()},
-                               {"insertion_code", ""},
-                               {"chirality", "L"},
-                               {"state", "default"},
-                               {"n_terminal", "neutral"},
-                               {"c_terminal", "neutral"},
-                               {"matched", false},
-                               {"modified", false},
-                               {"metadata", QJsonObject{{"pdb_chain", chain}}}};
+                Residue residue;
+                residue.code = QString::fromStdString(r->GetName()).trimmed();
+                residue.chain = chains[chain];
+                residue.number = r->GetNum();
+                residue.matched = false;
+                residue.metadata = {{"pdb_chain", chain}};
+                residues[r] = residue;
             }
-            auto rr = residues[r];
-            auto names = rr["atoms"].toObject();
+            auto &names = residues[r].atoms;
             if (names.contains(a.name))
                 fail(tr("PDBに原子名の重複があります。MODELとALTLOCを選び直してください。"));
             names[a.name] = a.id;
-            rr["atoms"] = names;
-            residues[r] = rr;
         }
         d.atoms << a;
     }
@@ -129,42 +117,27 @@ static Document fromOB(OBMol &mol, bool readResidues = false) {
     }
     // Iterate residues in atom order; pointers are only lookup keys, never ordering keys.
     QSet<QString> seen;
-    QJsonObject chainMap;
     for (const auto &a : d.atoms)
         for (const auto &r : residues) {
-            bool member = false;
-            for (auto id : r["atoms"].toObject())
-                if (id == a.id)
-                    member = true;
-            if (!member || seen.contains(r["id"].toString()))
+            const bool member = std::find(r.atoms.begin(), r.atoms.end(), a.id) != r.atoms.end();
+            if (!member || seen.contains(r.id))
                 continue;
-            seen.insert(r["id"].toString());
+            seen.insert(r.id);
             updateResidue(d, r);
-            auto seq = chainMap[r["chain"].toString()].toArray();
-            seq.append(r["id"]);
-            chainMap[r["chain"].toString()] = seq;
+            d.chains[r.chain] << r.id;
         }
-    d.data["chains"] = chainMap;
-    auto rr = d.data["residues"].toArray();
-    for (int i = 0; i < rr.size(); ++i) {
-        auto r = rr[i].toObject();
-        auto names = r["atoms"].toObject();
+    for (auto &r : d.residues)
         for (auto side : {"N", "C"})
-            if (names.contains(side)) {
-                QString own = names[side].toString();
-                for (auto n : d.neighbors(own)) {
+            if (r.atoms.contains(side))
+                for (auto n : d.neighbors(r.atoms[side])) {
                     QString other = residueForAtom(d, n);
-                    if (!other.isEmpty() && other != r["id"].toString()) {
+                    if (!other.isEmpty() && other != r.id) {
                         if (QString(side) == "N" && d.atom(n).name == "C")
-                            r["n_terminal"] = "internal";
+                            r.nTerminal = "internal";
                         if (QString(side) == "C" && d.atom(n).name == "N")
-                            r["c_terminal"] = "internal";
+                            r.cTerminal = "internal";
                     }
                 }
-            }
-        rr[i] = r;
-    }
-    d.data["residues"] = rr;
     d.charge = mol.GetTotalCharge();
     d.multiplicity = int(mol.GetTotalSpinMultiplicity());
     auto meta = d.data["metadata"].toObject();
