@@ -80,10 +80,7 @@ class ResultsTest : public QObject {
             excitations << QJsonArray{x.root, x.spin, x.symmetry, x.ev, x.oscillator, x.s2};
         NwchemLog progress; // As the run panel feeds it.
         for (const auto &line : readFile(path).split('\n'))
-            progress.add(QString::fromUtf8(line));
-        QJsonArray progressSteps;
-        for (const auto &s : progress.steps)
-            progressSteps << QJsonArray{s.step, s.energy};
+            progress.addBytes(line);
         return {{"status", r.status},
                 {"outcome", int(r.outcome)},
                 {"warnings", QJsonArray::fromStringList(r.warnings)},
@@ -95,14 +92,20 @@ class ResultsTest : public QObject {
                 {"vibration_atoms", r.vibrationGeometry.atoms.size()},
                 {"modes", modes},
                 {"excitations", excitations},
-                {"progress", QJsonObject{{"started", progress.started},
-                                         {"step_task", progress.stepTask},
-                                         {"converged_task", progress.convergedTask},
-                                         {"steps", progressSteps},
-                                         {"thresholds", progress.thresholds},
-                                         {"energy", progress.energy},
-                                         {"ended", progress.ended}}},
+                {"progress", progressDigest(progress)},
                 {"history", nwchemLogSummary(path)}};
+    }
+    static QJsonObject progressDigest(const NwchemLog &progress) {
+        QJsonArray steps;
+        for (const auto &s : progress.steps)
+            steps << QJsonArray{s.step, s.energy};
+        return {{"started", progress.started},
+                {"step_task", progress.stepTask},
+                {"converged_task", progress.convergedTask},
+                {"steps", steps},
+                {"thresholds", progress.thresholds},
+                {"energy", progress.energy},
+                {"ended", progress.ended}};
     }
     template <typename T> static T *widget(MainWindow &w, const char *name) {
         auto *p = w.findChild<T *>(name);
@@ -119,6 +122,27 @@ class ResultsTest : public QObject {
                            settings.path()); // MolForma uses NativeFormat.
         qputenv("XDG_CONFIG_HOME", settings.path().toUtf8());
         qputenv("XDG_DATA_HOME", settings.filePath("data").toUtf8());
+    }
+    void progressFromBytes() {
+        // The run panel passes over the lines that change no progress without decoding them: it reads
+        // the same progress and energy summary as from the whole text.
+        const QDir dir(FIXTURE_DIR "/nwchem");
+        for (const auto &log : dir.entryList({"*.out"})) {
+            NwchemLog text, bytes;
+            for (const auto &line : readFile(dir.filePath(log)).split('\n')) {
+                text.add(QString::fromUtf8(line));
+                bytes.addBytes(line);
+            }
+            QCOMPARE(progressDigest(bytes), progressDigest(text));
+            QCOMPARE(bytes.summary().energy(), text.summary().energy());
+            QCOMPARE(bytes.summary().bsse(), text.summary().bsse());
+            QCOMPARE(bytes.summary().normalTermination(), text.summary().normalTermination());
+        }
+        // Total energies are found in any case; other lines are passed over.
+        NwchemLog log;
+        log.addBytes("         Total DFT ENERGY =     -76.4");
+        log.addBytes("  iter       energy          gnorm     gmax       time");
+        QCOMPARE(log.energy, -76.4);
     }
     void realNwchemLogs() {
         // Logs of NWChem 7.3.1 for inputs MolForma generated (tests/fixtures/nwchem/README.md), and what

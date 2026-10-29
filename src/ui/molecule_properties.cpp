@@ -671,10 +671,11 @@ void MoleculePanel::buildResiduePanel() {
                         shift = std::max(shift, a.position.x() + 6);
                     buildPeptide(d, codes, n, c, ch, state);
                     if (!old.isEmpty()) {
+                        const QSet<QString> before(old.begin(), old.end());
                         Ids added;
-                        for (auto id : d.ids())
-                            if (!old.contains(id))
-                                added << id;
+                        for (const auto &a : d.atoms)
+                            if (!before.contains(a.id))
+                                added << a.id;
                         transform(d, added, Mat::Identity(), Vec(shift, 0, 0));
                     }
                     if (clear)
@@ -742,9 +743,10 @@ void MoleculePanel::buildResiduePanel() {
         });
     });
     button(f, tr("未登録の原子を選択"), [this] {
+        const auto residues = atomResidues(document());
         Ids ids;
         for (const auto &a : document().atoms)
-            if (residueForAtom(document(), a.id).isEmpty())
+            if (!residues.contains(a.id))
                 ids << a.id;
         setSelection(ids);
     });
@@ -767,10 +769,14 @@ void MoleculePanel::buildResiduePanel() {
             s.replace('"', "\"\"");
             return '"' + s + '"';
         };
+        const auto residues = atomResidues(document());
+        QHash<QString, QString> codes;
+        for (const auto &r : document().residues)
+            if (!codes.contains(r.id))
+                codes.insert(r.id, r.code);
         for (int i = 0; i < document().atoms.size(); ++i) {
             const auto &a = document().atoms[i];
-            auto rid = residueForAtom(document(), a.id);
-            QString name = rid.isEmpty() ? "" : residue(document(), rid).code;
+            QString name = codes.value(residues.value(a.id));
             csv += QString("%1,%2,%3,%4\n").arg(i + 1).arg(quote(a.element), quote(a.name), quote(name));
         }
         writeFile(p, csv.toUtf8());

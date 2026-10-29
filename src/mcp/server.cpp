@@ -7,6 +7,7 @@
 #include "io/structure_io.h"
 #include "mcp/tools.h"
 #include "model/geometry.h"
+#include "model/topology.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
@@ -368,13 +369,19 @@ QJsonObject McpServer::summary() const {
         else
             truncated = true;
     };
-    for (const auto &a : c->atoms)
-        if (!d.contains(a.id))
-            note(added, a.id);
-        else if (d.atom(a.id) != a)
-            note(changed, a.id);
+    QHash<QString, const Atom *> before;
     for (const auto &a : d.atoms)
-        if (!c->contains(a.id))
+        before.insert(a.id, &a);
+    QSet<QString> after;
+    for (const auto &a : c->atoms) {
+        after.insert(a.id);
+        if (const auto *old = before.value(a.id); !old)
+            note(added, a.id);
+        else if (*old != a)
+            note(changed, a.id);
+    }
+    for (const auto &a : d.atoms)
+        if (!after.contains(a.id))
             note(removed, a.id);
     out["candidate"] =
         QJsonObject{{"formula", c->formula()}, {"atomCount", c->atoms.size()}, {"addedIds", added},
@@ -558,10 +565,7 @@ void McpServer::registerTools() {
             return summary();
         });
     };
-    const auto requireAtoms = [](const Document &d, const Ids &ids) {
-        for (const auto &atomId : ids)
-            d.atom(atomId);
-    };
+    const auto requireAtoms = [](const Document &d, const Ids &ids) { d.indices(ids); };
 
     add({.name = "list_documents",
          .title = "List documents",
@@ -663,13 +667,14 @@ void McpServer::registerTools() {
           .required = {"positions"}},
          [](Document &next, const QJsonObject &args) {
              QSet<QString> seen;
+             const Topology topology(next);
              for (auto v : args["positions"].toArray()) {
                  auto o = v.toObject();
                  auto atomId = o["id"].toString();
                  if (seen.contains(atomId))
                      fail("Duplicate atom ID in positions.");
                  seen.insert(atomId);
-                 auto &a = next.atom(atomId);
+                 auto &a = topology.atom(next, atomId);
                  auto p = vectorFromJson(o["position"]);
                  if (a.fixed && a.position != p)
                      fail("Fixed atoms cannot move.");
@@ -707,8 +712,9 @@ void McpServer::registerTools() {
           .required = {"ids", "offset"}},
          [](Document &next, const QJsonObject &args) {
              const auto ids = idsFromJson(args["ids"]);
+             const Topology topology(next);
              for (const auto &atomId : ids)
-                 if (next.atom(atomId).fixed)
+                 if (topology.atom(next, atomId).fixed)
                      fail("Fixed atoms cannot move.");
              transform(next, ids, Mat::Identity(), vectorFromJson(args["offset"]));
          });

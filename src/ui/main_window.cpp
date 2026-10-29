@@ -123,14 +123,19 @@ void MainWindow::announceHistory(const QString &verb, const QString &name, const
                                  const Document &to) {
     // One Undo/Redo covers the molecule and the settings of every tab: say which tab changed,
     // so undoing in "1 分子" does not silently revert a setting the user cannot see.
-    const auto structure = [](const Document &d) {
-        auto o = d.toJson();
+    // Compared member by member: the lists the edit left alone are shared and compare at once.
+    const auto rest = [](QJsonObject data) {
         for (const auto *key : {"nwchem", "nwchem_execution", "job"})
-            o.remove(key);
-        return o;
+            data.remove(key);
+        return data;
     };
+    const bool structure = from.atoms != to.atoms || from.bonds != to.bonds || from.residues != to.residues ||
+                           from.parts != to.parts || from.centers != to.centers ||
+                           from.pointCharges != to.pointCharges || from.chains != to.chains ||
+                           from.charge != to.charge || from.multiplicity != to.multiplicity ||
+                           rest(from.data) != rest(to.data);
     QWidget *page = nullptr;
-    if (structure(from) != structure(to))
+    if (structure)
         page = moleculePage;
     else if (from.data["nwchem_execution"] != to.data["nwchem_execution"])
         page = execution;

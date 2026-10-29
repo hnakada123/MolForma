@@ -30,6 +30,7 @@ add_library(molforma_model STATIC
     src/model/document.cpp
     src/model/geometry.cpp
     src/model/i18n.cpp
+    src/model/topology.cpp
     assets/resources.qrc)
 target_include_directories(molforma_model PUBLIC src)
 target_compile_definitions(molforma_model PUBLIC MOLFORMA_VERSION="${PROJECT_VERSION}")

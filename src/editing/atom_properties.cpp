@@ -58,17 +58,19 @@ Atom withAtomProperties(Atom atom, const AtomProperties &p) {
     if (p.fixed)
         atom.fixed = *p.fixed;
     if (p.name) {
-        if (p.name->size() > 16 || p.name->contains(QRegularExpression("[\\x00-\\x1f\\x7f]")))
+        static const QRegularExpression control("[\\x00-\\x1f\\x7f]");
+        if (p.name->size() > 16 || p.name->contains(control))
             fail(tr("原子名は制御文字を含まない16文字以内で指定してください。"));
         atom.name = *p.name;
     }
     return atom;
 }
 void setAtomProperties(Document &document, const Ids &ids, const AtomProperties &p) {
+    const auto atoms = document.indices(ids);
     QVector<Atom> changed;
-    for (const auto &id : ids)
-        changed << withAtomProperties(document.atom(id), p);
-    for (const auto &atom : changed)
-        document.atom(atom.id) = atom;
+    for (int i : atoms)
+        changed << withAtomProperties(document.atoms[i], p);
+    for (int k = 0; k < atoms.size(); ++k)
+        document.atoms[atoms[k]] = changed[k];
 }
 } // namespace mf

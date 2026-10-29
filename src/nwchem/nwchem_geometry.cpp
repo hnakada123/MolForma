@@ -1,13 +1,23 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "nwchem/nwchem_geometry.h"
 #include "model/i18n.h"
+#include "model/memo.h"
 #include <QLocale>
 #include <cmath>
 #include <openbabel/elements.h>
 
 namespace mf {
+static NwchemGeometryFragment geometryFragment(const Document &document, CoordinateUnit unit,
+                                               const NwchemGeometryOptions &options);
 NwchemGeometryFragment nwchemGeometryFragment(const Document &document, CoordinateUnit unit,
                                               const NwchemGeometryOptions &options) {
+    // The coordinates table checks it on every change, and the input generation writes the same block.
+    thread_local Memo<std::tuple<Document, CoordinateUnit, NwchemGeometryOptions>, NwchemGeometryFragment>
+        memo;
+    return memo.get({document, unit, options}, [&] { return geometryFragment(document, unit, options); });
+}
+static NwchemGeometryFragment geometryFragment(const Document &document, CoordinateUnit unit,
+                                               const NwchemGeometryOptions &options) {
     auto errors = document.validate();
     if (!errors.isEmpty())
         fail(errors.join('\n'));

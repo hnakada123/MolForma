@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "model/document.h"
 #include "model/i18n.h"
+#include "model/memo.h"
+#include "model/topology.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -9,6 +11,7 @@
 #include <QSet>
 #include <QUuid>
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 
 static void initResources() {
@@ -78,9 +81,15 @@ QString Element::name() const {
     return english() ? nameEn : nameJa;
 }
 const Element &element(const QString &s) {
-    for (const auto &e : elements())
-        if (e.symbol == s)
-            return e;
+    static const auto index = [] {
+        QHash<QString, int> symbols;
+        for (int i = 0; i < elements().size(); ++i)
+            if (!symbols.contains(elements()[i].symbol))
+                symbols.insert(elements()[i].symbol, i);
+        return symbols;
+    }();
+    if (const int i = index.value(s, -1); i >= 0)
+        return elements()[i];
     fail(tr("未知の元素: %1").arg(s));
 }
 QJsonObject Atom::toJson() const {
@@ -270,6 +279,26 @@ int Document::index(const QString &id) const {
             return i;
     return -1;
 }
+QVector<int> Document::indices(const Ids &ids) const {
+    QHash<QString, int> found;
+    found.reserve(ids.size());
+    for (const auto &id : ids)
+        found.insert(id, -1);
+    qsizetype missing = found.size();
+    for (int i = 0; i < atoms.size() && missing; ++i)
+        if (auto it = found.find(atoms[i].id); it != found.end() && *it < 0) {
+            *it = i;
+            --missing;
+        }
+    QVector<int> out;
+    out.reserve(ids.size());
+    for (const auto &id : ids) {
+        out << found.value(id);
+        if (out.last() < 0)
+            atom(id); // Fails.
+    }
+    return out;
+}
 bool Document::contains(const QString &id) const {
     return index(id) >= 0;
 }
@@ -340,19 +369,14 @@ const Center *Document::findCenter(const QString &atom) const {
     return nullptr;
 }
 Ids Document::component(const QString &root, const QString &ca, const QString &cb) const {
-    if (!contains(root))
+    const Topology topology(*this);
+    const int i = topology.index(root);
+    if (i < 0)
         fail(tr("原子を選択してください。"));
-    Ids todo{root}, seen;
-    while (!todo.isEmpty()) {
-        auto id = todo.takeFirst();
-        if (seen.contains(id))
-            continue;
-        seen << id;
-        for (const auto &n : neighbors(id))
-            if (!((id == ca && n == cb) || (id == cb && n == ca)))
-                todo << n;
-    }
-    return seen;
+    Ids out;
+    for (int j : topology.component(i, topology.index(ca), topology.index(cb)))
+        out << atoms[j].id;
+    return out;
 }
 Ids Document::bondSide(const QString &a, const QString &b) const {
     if (!bond(a, b))
@@ -472,20 +496,41 @@ void Document::renameIds(const QHash<QString, QString> &renamed) {
         data["nwchem"] = nwchem;
     }
 }
-QStringList Document::validate() const {
+namespace {
+// What Document::validate checks: everything but the chains, settings and envelope.
+struct Structure {
+    QVector<Atom> atoms;
+    QVector<Bond> bonds;
+    QVector<Residue> residues;
+    QVector<Part> parts;
+    QVector<Center> centers;
+    QVector<PointCharge> pointCharges;
+    bool operator==(const Structure &) const = default;
+};
+// The coordinates written to 10 decimals (0 for −0, as QString::arg writes it), as the key of a position.
+QByteArray positionKey(const Vec &p) {
+    char text[3 * 340];
+    char *end = text;
+    for (int axis = 0; axis < 3; ++axis) {
+        if (axis)
+            *end++ = ',';
+        end = std::to_chars(end, text + sizeof text, p[axis] + 0., std::chars_format::fixed, 10).ptr;
+    }
+    return QByteArray(text, end - text);
+}
+QStringList validateStructure(const Document &d) {
+    const auto &[atoms, bonds, residues, parts, centers, pointCharges] =
+        std::tie(d.atoms, d.bonds, d.residues, d.parts, d.centers, d.pointCharges);
     QStringList errors;
     QSet<QString> seen;
-    QSet<QString> positions;
+    QSet<QByteArray> positions;
     for (const auto &a : atoms) {
         if (a.id.isEmpty() || seen.contains(a.id))
             errors << tr("原子IDが空または重複しています。");
         seen.insert(a.id);
         if (!a.position.allFinite() || !std::isfinite(a.mass) || a.mass < 0 || a.isotope < 0 || a.radical < 0)
             errors << tr("原子の座標・属性が不正です。");
-        QString pos = QString("%1,%2,%3")
-                          .arg(a.position.x(), 0, 'f', 10)
-                          .arg(a.position.y(), 0, 'f', 10)
-                          .arg(a.position.z(), 0, 'f', 10);
+        const auto pos = positionKey(a.position);
         if (positions.contains(pos))
             errors << tr("2つの原子が同じ位置に重なっています。");
         positions.insert(pos);
@@ -524,7 +569,8 @@ QStringList Document::validate() const {
         if (pairs.contains(pair))
             errors << tr("結合が重複しています。");
         pairs.insert(pair);
-        if (!QStringList{"single", "double", "triple", "aromatic", "dative"}.contains(b.kind))
+        static const QStringList kinds{"single", "double", "triple", "aromatic", "dative"};
+        if (!kinds.contains(b.kind))
             errors << tr("結合種類が不正です。");
     }
     for (const auto &q : pointCharges) {
@@ -534,6 +580,13 @@ QStringList Document::validate() const {
             errors << tr("点電荷が不正です。");
     }
     return errors;
+}
+} // namespace
+QStringList Document::validate() const {
+    // Settings edits leave the structure shared, and its checks need not run again.
+    thread_local Memo<Structure, QStringList, 2> memo;
+    const Structure structure{atoms, bonds, residues, parts, centers, pointCharges};
+    return memo.get(structure, [&] { return validateStructure(*this); });
 }
 QString Document::formula() const {
     QMap<QString, int> counts;
@@ -723,22 +776,36 @@ Document Document::fromXyz(const QString &text) {
 void Document::inferBonds() {
     bonds.clear();
     // Spatial cells keep PDB-size structures from doing an all-pairs distance search.
-    QHash<QString, QVector<int>> cells;
-    auto key = [](int x, int y, int z) { return QString("%1,%2,%3").arg(x).arg(y).arg(z); };
+    // Cells by their packed coordinates (21 bits each: neighboring cells never share a key).
+    QHash<quint64, QVector<int>> cells;
+    auto key = [](int x, int y, int z) {
+        return (quint64(quint32(x) & 0x1fffff) << 42) | (quint64(quint32(y) & 0x1fffff) << 21) |
+               quint64(quint32(z) & 0x1fffff);
+    };
+    // Covalent radii, looked up when a pair first needs them (an unknown element fails there).
+    QVector<double> radii(atoms.size(), -1);
+    const auto radius = [&](int k) {
+        if (radii[k] < 0)
+            radii[k] = element(atoms[k].element).radius;
+        return radii[k];
+    };
     double width = 6.0;
     for (int i = 0; i < atoms.size(); ++i) {
         const auto &a = atoms[i];
         Vec p = (a.position / width).array().floor();
         for (int x = -1; x <= 1; ++x)
             for (int y = -1; y <= 1; ++y)
-                for (int z = -1; z <= 1; ++z)
-                    for (int j : cells.value(key(int(p.x()) + x, int(p.y()) + y, int(p.z()) + z))) {
+                for (int z = -1; z <= 1; ++z) {
+                    const auto cell = cells.constFind(key(int(p.x()) + x, int(p.y()) + y, int(p.z()) + z));
+                    if (cell == cells.cend())
+                        continue;
+                    for (int j : *cell) {
                         const auto &b = atoms[j];
                         double dist = (a.position - b.position).norm();
-                        if (!a.ghost && !b.ghost && dist > .25 &&
-                            dist < 1.22 * (element(a.element).radius + element(b.element).radius))
+                        if (!a.ghost && !b.ghost && dist > .25 && dist < 1.22 * (radius(i) + radius(j)))
                             bonds.append({b.id, a.id, "single", {}, "distance"});
                     }
+                }
         cells[key(int(p.x()), int(p.y()), int(p.z()))].append(i);
     }
 }

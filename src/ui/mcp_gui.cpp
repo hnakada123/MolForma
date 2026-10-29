@@ -708,7 +708,10 @@ void McpGui::answer(const QString &key, const QString &choice) {
 }
 QJsonObject McpGui::call(const QString &name, const QJsonObject &args) {
     checkPaths(name, args);
-    window.refreshStalePanels(); // Hidden tabs must show the current document before they are read.
+    // Hidden tabs must show the current document before their widgets are read. The state and results
+    // calls read none, and the actions refresh them in execute.
+    if (name == "get_ui" || name == "get_ui_item" || name == "capture_screenshot")
+        window.refreshStalePanels();
     if (name == "get_app_state")
         return state();
     if (name == "get_results")

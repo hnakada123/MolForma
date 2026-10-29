@@ -21,6 +21,7 @@ UniformGrid uniformGrid(const Vec &low, const Vec &high, int divisions);
 // Geometric center (unweighted mean position) of the atoms.
 Vec centroid(const Document &d, const Ids &ids);
 double measure(const Document &d, const Ids &ids);
+double measure(const QVector<Vec> &positions); // Distance, angle or dihedral of 2–4 points.
 void setDimension(Document &d, const Ids &ids, double value);
 void orient(Document &d, const Ids &ids);
 void centerMass(Document &d, const Ids &ids, bool principal);

@@ -4,6 +4,7 @@
 #include "editing/stereochemistry.h"
 #include "model/geometry.h"
 #include "model/i18n.h"
+#include "model/topology.h"
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <openbabel/atom.h>
@@ -74,6 +75,7 @@ static Document fromOB(OBMol &mol, bool readResidues = false) {
     Document d;
     QMap<unsigned int, QString> ids;
     QMap<OBResidue *, Residue> residues;
+    QVector<OBResidue *> residueOf; // By atom index.
     QMap<QString, QString> chains;
     for (unsigned int i = 1; i <= mol.NumAtoms(); ++i) {
         auto *o = mol.GetAtom(i);
@@ -106,6 +108,7 @@ static Document fromOB(OBMol &mol, bool readResidues = false) {
                 fail(tr("PDBに原子名の重複があります。MODELとALTLOCを選び直してください。"));
             names[a.name] = a.id;
         }
+        residueOf << (readResidues ? o->GetResidue() : nullptr);
         d.atoms << a;
     }
     for (unsigned int i = 0; i < mol.NumBonds(); ++i) {
@@ -117,25 +120,25 @@ static Document fromOB(OBMol &mol, bool readResidues = false) {
         d.bonds.append({ids[b->GetBeginAtomIdx()], ids[b->GetEndAtomIdx()], kind, {}, "import"});
     }
     // Iterate residues in atom order; pointers are only lookup keys, never ordering keys.
-    QSet<QString> seen;
-    for (const auto &a : d.atoms)
-        for (const auto &r : residues) {
-            const bool member = std::find(r.atoms.begin(), r.atoms.end(), a.id) != r.atoms.end();
-            if (!member || seen.contains(r.id))
-                continue;
-            seen.insert(r.id);
+    QSet<OBResidue *> seen;
+    for (auto *key : residueOf)
+        if (key && residues.contains(key) && !seen.contains(key)) {
+            seen.insert(key);
+            const auto &r = residues[key];
             updateResidue(d, r);
             d.chains[r.chain] << r.id;
         }
+    const Topology topology(d);
+    const auto residueIds = atomResidues(d);
     for (auto &r : d.residues)
         for (auto side : {"N", "C"})
-            if (r.atoms.contains(side))
-                for (auto n : d.neighbors(r.atoms[side])) {
-                    QString other = residueForAtom(d, n);
+            if (const int atom = topology.index(r.atoms.value(side)); atom >= 0)
+                for (int n : topology.neighbors(atom)) {
+                    QString other = residueIds.value(d.atoms[n].id);
                     if (!other.isEmpty() && other != r.id) {
-                        if (QString(side) == "N" && d.atom(n).name == "C")
+                        if (QString(side) == "N" && d.atoms[n].name == "C")
                             r.nTerminal = "internal";
-                        if (QString(side) == "C" && d.atom(n).name == "N")
+                        if (QString(side) == "C" && d.atoms[n].name == "N")
                             r.cTerminal = "internal";
                     }
                 }

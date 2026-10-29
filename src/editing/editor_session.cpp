@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/editor_session.h"
 #include "model/i18n.h"
+#include <algorithm>
 
 namespace mf {
 class SessionCommand : public QUndoCommand {
@@ -40,11 +41,20 @@ void EditorSession::reset(const Document &d, bool remote) {
     emit changed();
 }
 void EditorSession::validateEdit(const Document &next) const {
-    for (const auto &atom : current.atoms)
-        if (atom.fixed && next.contains(atom.id) && next.atom(atom.id).position != atom.position)
-            fail(tr("固定原子は移動できません。"));
-    for (const auto &atom : next.atoms)
-        element(atom.element);
+    // Settings edits share the atoms with the current document: none of them moved or changed.
+    if (next.atoms.constData() != current.atoms.constData() || next.atoms.size() != current.atoms.size()) {
+        QHash<QString, const Atom *> after;
+        if (std::any_of(current.atoms.begin(), current.atoms.end(), [](const Atom &a) { return a.fixed; }))
+            for (const auto &atom : next.atoms)
+                if (!after.contains(atom.id))
+                    after.insert(atom.id, &atom);
+        for (const auto &atom : current.atoms)
+            if (const auto *moved = atom.fixed ? after.value(atom.id) : nullptr;
+                moved && moved->position != atom.position)
+                fail(tr("固定原子は移動できません。"));
+        for (const auto &atom : next.atoms)
+            element(atom.element);
+    }
     const auto errors = next.validate();
     if (!errors.isEmpty())
         fail(errors.join('\n'));

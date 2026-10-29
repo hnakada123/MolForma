@@ -42,7 +42,8 @@ Document gaussianStructure(const QString &text) {
         blank += lines[i].isEmpty(); // Route section, then the title section.
     if (i >= lines.size())
         fail(tr("Gaussian入力の電荷・多重度の行がありません。"));
-    const auto header = lines[i++].split(QRegularExpression("[\\s,]+"), Qt::SkipEmptyParts);
+    static const QRegularExpression separators("[\\s,]+");
+    const auto header = lines[i++].split(separators, Qt::SkipEmptyParts);
     bool chargeOk, multiplicityOk;
     const int charge = header.value(0).toInt(&chargeOk),
               multiplicity = header.value(1).toInt(&multiplicityOk);
@@ -51,7 +52,7 @@ Document gaussianStructure(const QString &text) {
     QString xyz;
     int count = 0;
     for (; i < lines.size() && !lines[i].isEmpty(); ++i) {
-        auto row = lines[i].split(QRegularExpression("[\\s,]+"), Qt::SkipEmptyParts);
+        auto row = lines[i].split(separators, Qt::SkipEmptyParts);
         // "C", "C(Fragment=1)", "C-CA-0.1" (ONIOM) or the atomic number; an optional freeze code.
         auto tag = row.value(0).section('(', 0, 0).section('-', 0, 0);
         bool numeric;

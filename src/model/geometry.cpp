@@ -44,14 +44,15 @@ std::pair<Mat, Vec> fitPoints(const QVector<Vec> &p, const QVector<Vec> &q) {
     return {r, cq - r * cp};
 }
 void transform(Document &d, const Ids &ids, const Mat &r, const Vec &shift, const Vec &origin) {
-    for (const auto &id : ids) {
-        const auto &a = d.atom(id);
+    const auto atoms = d.indices(ids);
+    for (int i : atoms) {
+        const auto &a = d.atoms[i];
         Vec p = origin + r * (a.position - origin) + shift;
         if (a.fixed && (p - a.position).norm() > 1e-7)
             fail(tr("固定原子を動かす操作です。固定を解除してください。"));
     }
-    for (const auto &id : ids) {
-        auto &a = d.atom(id);
+    for (int i : atoms) {
+        auto &a = d.atoms[i];
         a.position = origin + r * (a.position - origin) + shift;
     }
 }
@@ -77,6 +78,9 @@ double measure(const Document &d, const Ids &ids) {
     QVector<Vec> p;
     for (const auto &id : ids)
         p << d.atom(id).position;
+    return measure(p);
+}
+double measure(const QVector<Vec> &p) {
     if (p.size() == 2)
         return (p[1] - p[0]).norm();
     if (p.size() == 3)
@@ -150,10 +154,11 @@ void centerMass(Document &d, const Ids &selection, bool principal) {
     auto ids = selection.isEmpty() ? d.ids() : selection;
     if (ids.isEmpty())
         fail(tr("分子が空です。"));
+    const auto atoms = d.indices(ids);
     Vec center = Vec::Zero();
     double total = 0;
-    for (const auto &id : ids) {
-        const auto &a = d.atom(id);
+    for (int i : atoms) {
+        const auto &a = d.atoms[i];
         double m = a.mass > 0 ? a.mass : a.isotope ? a.isotope : element(a.element).mass;
         center += m * a.position;
         total += m;
@@ -162,8 +167,8 @@ void centerMass(Document &d, const Ids &selection, bool principal) {
     Mat r = Mat::Identity();
     if (principal) {
         Mat inertia = Mat::Zero();
-        for (const auto &id : ids) {
-            const auto &a = d.atom(id);
+        for (int i : atoms) {
+            const auto &a = d.atoms[i];
             Vec p = a.position - center;
             double m = a.mass > 0 ? a.mass : a.isotope ? a.isotope : element(a.element).mass;
             inertia += m * (p.squaredNorm() * Mat::Identity() - p * p.transpose());

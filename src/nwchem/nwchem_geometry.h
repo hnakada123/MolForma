@@ -9,6 +9,7 @@ struct NwchemGeometryOptions {
     QStringList zcoord;      // ZCOORD internal coordinates; switches AUTOZ on so they can be constrained.
     bool autoz = false;      // Leave AUTOZ on without ZCOORD (optimizations in internal coordinates).
     bool constraints = true; // CONSTRAINTS block with the fixed atoms.
+    bool operator==(const NwchemGeometryOptions &) const = default;
 };
 struct NwchemGeometryFragment {
     QString geometry, constraints, comments;

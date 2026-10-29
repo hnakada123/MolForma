@@ -121,6 +121,8 @@ struct Document {
     const Atom &atom(const QString &id) const;
     bool contains(const QString &id) const;
     int index(const QString &id) const;
+    // The indices of these atoms in the same order, found in one pass; fails for an unknown atom.
+    QVector<int> indices(const Ids &ids) const;
     Ids ids() const;
     Ids neighbors(const QString &id, bool includeDative = true) const;
     Ids component(const QString &id, const QString &cutA = {}, const QString &cutB = {}) const;

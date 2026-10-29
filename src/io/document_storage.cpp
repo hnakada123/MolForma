@@ -66,20 +66,20 @@ void DocumentStorage::autosave(const Document &document, bool dirty) {
         removeAutosave();
         return;
     }
-    auto project = document.project();
-    const auto identity = QJsonDocument(project).toJson(QJsonDocument::Compact);
-    if (identity == savedIdentity && QFileInfo::exists(autosavePath))
+    // The copy last written; while unchanged it shares its data with the document and compares at once.
+    if (saved && *saved == document && QFileInfo::exists(autosavePath))
         return;
+    auto project = document.project();
     project["molforma_autosave"] =
         QJsonObject{{"path", projectPath}, {"time", QDateTime::currentDateTime().toString(Qt::ISODate)}};
     // writeFile uses QSaveFile: the previous copy survives a failed replacement.
     writeFile(autosavePath, QJsonDocument(project).toJson(QJsonDocument::Compact));
-    savedIdentity = identity;
+    saved = document;
 }
 void DocumentStorage::removeAutosave() {
     if (!autosavePath.isEmpty())
         QFile::remove(autosavePath);
-    savedIdentity.clear();
+    saved.reset();
 }
 void DocumentStorage::close() {
     timer.stop();

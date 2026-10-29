@@ -64,6 +64,10 @@ Key cross-cutting designs:
   serializes to the `.molforma.json` project envelope (format `molforma-project`, version 1). Atom references are
   stored by stable ID and only
   translated to indices at export (NWChem input, XYZ). Coordinates are doubles in Å; camera/view never edits them.
+  `Document::atom`/`index`/`neighbors`/`bond` scan the document: loops over many atoms (proteins of 10k+ atoms)
+  look atoms up once through `Document::indices` or `Topology` (`model/topology.*`: ID → index and adjacency).
+  `validateNwchem`, `generateNwchemInput`, `nwchemGeometryFragment` and `Document::validate` keep their last
+  results (`model/memo.h`); documents compare cheaply while copies share their data.
 - **Edit → candidate → commit**: UI edits operate on a copy of the document and commit only after validation.
   Operations such as ligand placement, sequence building, deletion and refinement produce a *candidate* shown
   separately until the user confirms ("変更を確定"); Esc discards it, Ctrl+Z undoes committed edits. The MCP server

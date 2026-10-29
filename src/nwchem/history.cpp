@@ -184,8 +184,13 @@ QJsonObject nwchemLogSummary(const QString &path) {
     if (!f.open(QIODevice::ReadOnly))
         fail(info.fileName() + ": " + f.errorString());
     NwchemEnergySummary energy;
+    // Lines of at most 64 KiB, as readLine(64 * 1024) gives them, read into one buffer.
+    QByteArray buffer(64 * 1024 + 1, Qt::Uninitialized);
     while (!f.atEnd()) {
-        const auto line = f.readLine(64 * 1024);
+        const qint64 size = f.readLine(buffer.data(), buffer.size());
+        if (size < 0)
+            break;
+        const QByteArrayView line(buffer.constData(), size);
         if (NwchemEnergySummary::relevant(line))
             energy.add(QString::fromLatin1(line).trimmed());
     }
@@ -352,10 +357,11 @@ QString historyCsv(const QVector<HistoryEntry> &entries) {
                            e.directory,
                            e.formula,
                            e.memo};
+        static const QRegularExpression formula("^[\\s]*[=+@-]");
         for (int i = 0; i < values.size(); ++i) {
             auto &v = values[i];
             // Text columns must remain text when a spreadsheet opens the exported CSV.
-            if (i != 6 && i != 7 && QRegularExpression("^[\\s]*[=+@-]").match(v).hasMatch())
+            if (i != 6 && i != 7 && formula.match(v).hasMatch())
                 v.prepend('\'');
             v.replace('"', "\"\"");
             v = '"' + v + '"';

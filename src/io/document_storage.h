@@ -6,6 +6,7 @@
 #include <QSettings>
 #include <QTimer>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace mf {
@@ -44,6 +45,6 @@ class DocumentStorage : public QObject {
     QString projectPath, autosavePath;
     QTimer timer;
     std::unique_ptr<QLockFile> lock;
-    QByteArray savedIdentity;
+    std::optional<Document> saved;
 };
 } // namespace mf

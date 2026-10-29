@@ -53,15 +53,23 @@ struct VtkMoleculeRenderer::Scene {
     vtkNew<vtkActor> atomActor;
     vtkNew<vtkFloatArray> radii;
     std::array<Mesh, 2> surfaces;
-    Mesh bonds, arrows;
+    Mesh plain, bonds, arrows; // Bonds that look the same from every side, and camera-facing ones.
     Document document;
     QHash<QString, int> atomIndices;
+    struct DrawnBond {
+        int a, b;
+        const BondStyle *style;
+    };
+    QVector<DrawnBond> drawnBonds; // The bonds shown, between shown atoms.
+    // Per shown atom: 0 heavy, 1 hydrogen, 2 without a bond (wireframe); and the van der Waals radius.
+    QVector<char> radiusKind;
+    QVector<double> vdw;
     QVector<int> visibleAtoms;
     QVector<QColor> colors;
     QSet<QString> bonded; // Atoms with a bond: drawn as lines only in the wireframe style.
     QString style = "ball_and_stick";
     QSet<QString> hidden;
-    bool hydrogens = true, bondsDirty = true;
+    bool hydrogens = true, bondsDirty = true, plainDirty = true;
     double atomScale = -1;
     Mat bondRotation = Mat::Zero();
     double bondScale = -1;
@@ -127,12 +135,13 @@ VtkMoleculeRenderer::VtkMoleculeRenderer(QWidget *parent)
         property->SetOpacity(150. / 255);
         s.renderer->AddActor(s.surfaces[i].actor);
     }
-    for (auto *mesh : {&s.bonds, &s.arrows}) {
+    for (auto *mesh : {&s.plain, &s.bonds, &s.arrows}) {
         mesh->mapper->SetScalarModeToUseCellData();
         mesh->mapper->SetColorModeToDirectScalars();
         mesh->actor->GetProperty()->LightingOff();
         s.renderer->AddActor(mesh->actor);
     }
+    s.plain.actor->GetProperty()->RenderLinesAsTubesOn();
     s.bonds.actor->GetProperty()->RenderLinesAsTubesOn();
 }
 VtkMoleculeRenderer::~VtkMoleculeRenderer() {
@@ -150,10 +159,13 @@ void VtkMoleculeRenderer::setMolecule(const Document &document, const QVector<QC
     s.bonded.clear();
     for (const auto &bond : document.bonds)
         s.bonded << bond.a << bond.b;
+    s.plain.actor->SetVisibility(style != "spacefill");
     s.bonds.actor->SetVisibility(style != "spacefill");
     s.arrows.actor->SetVisibility(style == "ball_and_stick");
     s.visibleAtoms.clear();
     s.atomIndices.clear();
+    s.radiusKind.clear();
+    s.vdw.clear();
     vtkNew<vtkPoints> points;
     points->SetDataTypeToDouble();
     vtkNew<vtkUnsignedCharArray> rgb;
@@ -167,11 +179,42 @@ void VtkMoleculeRenderer::setMolecule(const Document &document, const QVector<QC
         s.visibleAtoms << i;
         points->InsertNextPoint(atom.position.data());
         appendColor(rgb, colors[i]);
+        s.radiusKind << (style == "wireframe" && !s.bonded.contains(atom.id) ? 2
+                         : atom.element == "H"                               ? 1
+                                                                             : 0);
+        double radius = 1.7;
+        if (style == "spacefill")
+            try {
+                radius = OpenBabel::OBElements::GetVdwRad(element(atom.element).number);
+            } catch (const std::exception &) {
+            }
+        s.vdw << radius;
+    }
+    s.drawnBonds.clear();
+    for (const auto &bond : document.bonds) {
+        const int ai = s.atomIndices.value(bond.a, -1), bi = s.atomIndices.value(bond.b, -1);
+        if (ai < 0 || bi < 0)
+            continue;
+        const auto &a = document.atoms[ai], &b = document.atoms[bi];
+        if ((!hydrogens && (a.element == "H" || b.element == "H")) || hidden.contains(a.id) ||
+            hidden.contains(b.id))
+            continue;
+        s.drawnBonds.append({ai, bi, &bondStyle(bond.kind)});
     }
     s.atoms->SetPoints(points);
     s.atoms->GetPointData()->SetScalars(rgb);
     s.atomScale = -1;
-    s.bondsDirty = true;
+    s.bondsDirty = s.plainDirty = true;
+    s.updateBounds();
+}
+void VtkMoleculeRenderer::setPositions(const Document &document) {
+    auto &s = *scene;
+    s.document = document;
+    auto *points = s.atoms->GetPoints();
+    for (int k = 0; k < s.visibleAtoms.size(); ++k)
+        points->SetPoint(k, document.atoms[s.visibleAtoms[k]].position.data());
+    points->Modified();
+    s.bondsDirty = s.plainDirty = true;
     s.updateBounds();
 }
 void VtkMoleculeRenderer::setSurface(const QVector<SurfaceTriangle> &triangles) {
@@ -254,24 +297,20 @@ void VtkMoleculeRenderer::setCamera(const Mat &rotation, const Vec &center, doub
     camera->SetViewUp(up.data());
     camera->SetParallelScale(std::max(1, height()) / (2 * scale));
     camera->SetClippingRange(.01, 4 * radius);
-    if (scale != s.atomScale) {
-        s.radii->SetNumberOfValues(s.visibleAtoms.size());
-        for (int i = 0; i < s.visibleAtoms.size(); ++i) {
-            const auto &atom = s.document.atoms[s.visibleAtoms[i]];
-            const bool h = atom.element == "H";
-            double radius = std::clamp(scale * (h ? .12 : .20), h ? 5. : 8., h ? 11. : 20.) / scale;
+    // Spacefill radii are fixed in Å; the others are sizes on the screen, by kind of atom.
+    if (scale != s.atomScale && !(s.style == "spacefill" && s.atomScale > 0)) {
+        double radius[3];
+        for (int kind = 0; kind < 3; ++kind) {
+            const bool h = kind == 1;
+            radius[kind] = std::clamp(scale * (h ? .12 : .20), h ? 5. : 8., h ? 11. : 20.) / scale;
             if (s.style == "stick")
-                radius = std::clamp(scale * .1, 3., 7.) / scale;
+                radius[kind] = std::clamp(scale * .1, 3., 7.) / scale;
             else if (s.style == "wireframe") // Isolated atoms (ions) stay visible as small dots.
-                radius = s.bonded.contains(atom.id) ? 0 : std::clamp(scale * .12, 4., 8.) / scale;
-            else if (s.style == "spacefill")
-                try {
-                    radius = OpenBabel::OBElements::GetVdwRad(element(atom.element).number);
-                } catch (const std::exception &) {
-                    radius = 1.7;
-                }
-            s.radii->SetValue(i, radius);
+                radius[kind] = kind == 2 ? std::clamp(scale * .12, 4., 8.) / scale : 0;
         }
+        s.radii->SetNumberOfValues(s.visibleAtoms.size());
+        for (int i = 0; i < s.visibleAtoms.size(); ++i)
+            s.radii->SetValue(i, s.style == "spacefill" ? s.vdw[i] : radius[int(s.radiusKind[i])]);
         s.radii->Modified();
         s.atomScale = scale;
     }
@@ -280,51 +319,76 @@ void VtkMoleculeRenderer::setCamera(const Mat &rotation, const Vec &center, doub
                                                 : s.style == "wireframe" ? 2.
                                                                          : 3.5) *
                                                devicePixelRatioF());
+    s.plain.actor->GetProperty()->SetLineWidth(s.bonds.actor->GetProperty()->GetLineWidth());
+    struct Lines {
+        vtkNew<vtkPoints> points;
+        vtkNew<vtkCellArray> cells;
+        vtkNew<vtkUnsignedCharArray> colors;
+        Lines() {
+            points->SetDataTypeToDouble();
+            colors->SetNumberOfComponents(3);
+        }
+        void add(const Vec &a, const Vec &b, const QColor &color) {
+            const vtkIdType indices[] = {points->InsertNextPoint(a.data()),
+                                         points->InsertNextPoint(b.data())};
+            cells->InsertNextCell(2, indices);
+            appendColor(colors, color);
+        }
+        void show(Mesh &mesh) {
+            mesh.data->SetPoints(points);
+            mesh.data->SetLines(cells);
+            mesh.data->GetCellData()->SetScalars(colors);
+        }
+    };
+    // Half bonds and plain single bonds look the same from every side: they are built again only
+    // when the molecule changes, not on every turn or zoom.
+    const auto plain = [&](const Scene::DrawnBond &bond) { return halves || plainBond(*bond.style); };
+    if (s.plainDirty) {
+        Lines fixed;
+        for (const auto &bond : std::as_const(s.drawnBonds)) {
+            if (!plain(bond))
+                continue;
+            const auto &a = s.document.atoms[bond.a].position, &b = s.document.atoms[bond.b].position;
+            if (halves) {
+                // Half bonds in the atom colors, one line per bond.
+                const Vec middle = (a + b) / 2;
+                fixed.add(a, middle, s.colors.value(bond.a));
+                fixed.add(middle, b, s.colors.value(bond.b));
+            } else
+                fixed.add(a, b, bond.style->color);
+        }
+        fixed.show(s.plain);
+        s.plainDirty = false;
+    }
     if (!s.bondsDirty && scale == s.bondScale && rotation == s.bondRotation)
         return;
     // Only the small camera-facing bond strokes change on rotation, never the isosurface.
-    vtkNew<vtkPoints> points, arrowPoints;
-    points->SetDataTypeToDouble();
+    Lines facing;
+    vtkNew<vtkPoints> arrowPoints;
     arrowPoints->SetDataTypeToDouble();
-    vtkNew<vtkCellArray> lines, arrowCells;
-    vtkNew<vtkUnsignedCharArray> colors, arrowColors;
-    colors->SetNumberOfComponents(3);
+    vtkNew<vtkCellArray> arrowCells;
+    vtkNew<vtkUnsignedCharArray> arrowColors;
     arrowColors->SetNumberOfComponents(3);
-    auto line = [&](const Vec &a, const Vec &b, const QColor &color) {
-        const vtkIdType indices[] = {points->InsertNextPoint(a.data()), points->InsertNextPoint(b.data())};
-        lines->InsertNextCell(2, indices);
-        appendColor(colors, color);
-    };
-    for (const auto &bond : s.document.bonds) {
-        const int ai = s.atomIndices.value(bond.a, -1), bi = s.atomIndices.value(bond.b, -1);
-        if (ai < 0 || bi < 0)
+    for (const auto &bond : std::as_const(s.drawnBonds)) {
+        if (plain(bond))
             continue;
-        const auto &a = s.document.atoms[ai], &b = s.document.atoms[bi];
-        if ((!s.hydrogens && (a.element == "H" || b.element == "H")) || s.hidden.contains(a.id) ||
-            s.hidden.contains(b.id))
-            continue;
-        if (halves) {
-            // Half bonds in the atom colors, one line per bond.
-            const Vec middle = (a.position + b.position) / 2;
-            line(a.position, middle, s.colors.value(ai));
-            line(middle, b.position, s.colors.value(bi));
-            continue;
-        }
+        const auto &a = s.document.atoms[bond.a], &b = s.document.atoms[bond.b];
         const Vec delta = rotation * (b.position - a.position);
         const double length = std::hypot(delta.x(), delta.y());
         if (length * scale < 1)
             continue;
         const Vec normal = rotation.transpose() * Vec(-delta.y(), delta.x(), 0) / (length * scale);
-        const auto style = bondStyle(bond.kind);
+        const auto &style = *bond.style;
         const auto color = style.color;
         for (const double offset : style.offsets)
-            line(a.position + normal * offset, b.position + normal * offset, color);
+            facing.add(a.position + normal * offset, b.position + normal * offset, color);
         if (style.dashed) {
             const Vec beside = normal * BondStyle::DashOffset;
             const int segments = std::clamp(int(length * scale / 7), 1, 256);
             for (int j = 0; j < segments; j += 2)
-                line(a.position + (b.position - a.position) * (double(j) / segments) + beside,
-                     a.position + (b.position - a.position) * (double(j + 1) / segments) + beside, color);
+                facing.add(a.position + (b.position - a.position) * (double(j) / segments) + beside,
+                           a.position + (b.position - a.position) * (double(j + 1) / segments) + beside,
+                           color);
         }
         if (style.arrow) {
             const Vec head = a.position + (b.position - a.position) * BondStyle::ArrowAt;
@@ -339,9 +403,7 @@ void VtkMoleculeRenderer::setCamera(const Mat &rotation, const Vec &center, doub
             appendColor(arrowColors, color);
         }
     }
-    s.bonds.data->SetPoints(points);
-    s.bonds.data->SetLines(lines);
-    s.bonds.data->GetCellData()->SetScalars(colors);
+    facing.show(s.bonds);
     s.arrows.data->SetPoints(arrowPoints);
     s.arrows.data->SetPolys(arrowCells);
     s.arrows.data->GetCellData()->SetScalars(arrowColors);

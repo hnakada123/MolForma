@@ -5,6 +5,9 @@ namespace mf {
 QStringList parseSequence(const QString &text);
 Residue residue(const Document &d, const QString &id);
 QString residueForAtom(const Document &d, const QString &atom);
+// The residue of every atom in one (the first residue that holds it) by atom ID: residueForAtom of
+// all atoms at once, for loops over many atoms.
+QHash<QString, QString> atomResidues(const Document &d);
 // An atom's place in its residue, "GLY 2 · CA" (empty outside residues); atomPlaces gives the
 // places of all atoms at once by atom ID, for lists of many atoms.
 QString atomPlace(const Document &d, const QString &atom);

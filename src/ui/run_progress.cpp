@@ -147,7 +147,7 @@ void RunProgress::read(const QString &path) {
     if (end < 0)
         return;
     for (const auto &line : rest.left(end).split('\n'))
-        progress.add(QString::fromUtf8(line));
+        progress.addBytes(line);
     rest.remove(0, end + 1);
 }
 void RunProgress::showRun(const QString &path, RunState state) {

@@ -14,6 +14,7 @@
 #include <QRegularExpression>
 #include <QTextStream>
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <numeric>
 #include <optional>
@@ -22,16 +23,45 @@ namespace mf {
 namespace {
 constexpr qint64 maxBytes = 128 * 1024 * 1024;
 constexpr int maxAtoms = 2000, maxFrames = 2000, maxPoints = 2000000, maxTriangles = 500000;
-QStringList words(const QString &line) {
-    static const QRegularExpression whitespace("\\s+");
-    return line.split(whitespace, Qt::SkipEmptyParts);
+// The words of a line between ASCII whitespace, as a split at "\\s+" gives them (logs have millions).
+QStringList words(QStringView line) {
+    const auto space = [](QChar c) { return c == ' ' || (c >= '\t' && c <= '\r'); };
+    QStringList out;
+    for (qsizetype i = 0; i < line.size();) {
+        while (i < line.size() && space(line[i]))
+            ++i;
+        const qsizetype start = i;
+        while (i < line.size() && !space(line[i]))
+            ++i;
+        if (i > start)
+            out << line.mid(start, i - start).toString();
+    }
+    return out;
 }
-double number(const QString &text) {
-    if (const auto n = fortranNumber(text))
+// A number of a result file. Plain decimal numbers (nearly all) are read without a QString; the
+// others, such as Fortran exponents ("1.5D-03") or a leading '+', as fortranNumber reads them.
+std::optional<double> resultNumber(QStringView text) {
+    char ascii[64];
+    if (text.size() > 0 && text.size() < qsizetype(sizeof ascii)) {
+        qsizetype n = 0;
+        while (n < text.size() && text[n].unicode() < 128) {
+            ascii[n] = char(text[n].unicode());
+            ++n;
+        }
+        double value;
+        if (n == text.size())
+            if (const auto [end, error] = std::from_chars(ascii, ascii + n, value);
+                error == std::errc() && end == ascii + n)
+                return std::isfinite(value) ? std::optional(value) : std::nullopt;
+    }
+    return fortranNumber(text.toString());
+}
+double number(QStringView text) {
+    if (const auto n = resultNumber(text))
         return *n;
     fail(tr("結果ファイルの数値が不正です: %1").arg(text.left(80)));
 }
-int integer(const QString &text, int lo, int hi) {
+int integer(QStringView text, int lo, int hi) {
     const double n = number(text);
     if (n < lo || n > hi || n != std::floor(n))
         fail(tr("結果ファイルの整数・個数が範囲外です: %1").arg(text.left(80)));
@@ -61,7 +91,8 @@ Atom atom(QString tag, const Vec &p) {
         a.ghost = true;
         tag = tag.mid(2);
     }
-    const auto match = QRegularExpression("^([A-Za-z]{1,2})[0-9_]*$").match(tag);
+    static const QRegularExpression symbol("^([A-Za-z]{1,2})[0-9_]*$");
+    const auto match = symbol.match(tag);
     if (!match.hasMatch())
         fail(tr("未対応の原子タグです: %1").arg(tag.left(80)));
     tag = match.captured(1).toLower();
@@ -118,7 +149,7 @@ std::optional<std::pair<QString, QString>> totalEnergy(const QString &line) {
     static const QRegularExpression total(
         R"(\bTotal\s+(SCF|DFT|MP2|CCSD(?:\(T\))?)\s+energy\s*[:=]?\s*([-+0-9.eEdD]+))",
         QRegularExpression::CaseInsensitiveOption);
-    if (!line.contains("energy", Qt::CaseInsensitive))
+    if (!line.contains(u"energy", Qt::CaseInsensitive))
         return std::nullopt;
     const auto m = total.match(line);
     if (!m.hasMatch())
@@ -137,24 +168,27 @@ void NwchemEnergySummary::add(const QString &line) {
     static const QRegularExpression bsseError(R"(^\s*BSSE error\s*=\s*([-+0-9.eEdD]+)\s*$)");
     static const QRegularExpression monomers(R"(^\s*number of monomers\s*=\s*(\d+)\s*$)");
     const auto read = [](const QString &text, double &value) {
-        const auto n = fortranNumber(text);
+        const auto n = resultNumber(text);
         value = n.value_or(0);
         return n.has_value();
     };
     auto &task = tasks.last();
     double value;
-    if (line.contains("NWChem Input Module")) {
+    if (line.contains(u"NWChem Input Module")) {
         if (task.energy || task.frequency)
             tasks.append(Task{});
-    } else if (line.contains("NWChem Nuclear Hessian and Frequency Analysis"))
+    } else if (line.contains(u"NWChem Nuclear Hessian and Frequency Analysis"))
         task.frequency = true;
-    else if (line.contains("Total times  cpu:"))
+    else if (line.contains(u"Total times  cpu:"))
         ended = true;
-    else if (const auto n = monomers.match(line); n.hasMatch())
+    else if (const auto n =
+                 line.contains(u"number of monomers") ? monomers.match(line) : QRegularExpressionMatch();
+             n.hasMatch())
         task.monomers = std::min(n.captured(1).toInt(), 1000);
-    else if (const auto e = bsseError.match(line); e.hasMatch() && read(e.captured(1), value))
+    else if (const auto e = line.contains(u"BSSE error") ? bsseError.match(line) : QRegularExpressionMatch();
+             e.hasMatch() && read(e.captured(1), value))
         task.nwchemError = value;
-    else if (!line.contains("energy"))
+    else if (!line.contains(u"energy"))
         return;
     else if (const auto m = totalEnergy(line); m && read(m->second, value)) {
         if (!task.energy) {
@@ -241,7 +275,7 @@ const QRegularExpression &thresholdLine() {
     return pattern;
 }
 double logNumber(const QString &text) {
-    return fortranNumber(text).value_or(std::numeric_limits<double>::quiet_NaN());
+    return resultNumber(text).value_or(std::numeric_limits<double>::quiet_NaN());
 }
 ResultStep resultStep(const QRegularExpressionMatch &m) {
     const auto columns = words(m.captured(2));
@@ -255,14 +289,16 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
     QString current;
     const QRegularExpression section("^\\s*\\[([^]]+)\\](.*)$");
     for (const auto &line : lines) {
-        auto match = section.match(line);
+        // Only a line that begins with '[' can be a section header: the others skip the expression.
+        const auto trimmed = QStringView(line).trimmed();
+        auto match = trimmed.startsWith('[') ? section.match(line) : QRegularExpressionMatch();
         if (match.hasMatch()) {
             current = match.captured(1).trimmed().toUpper();
             if (blocks.contains(current))
                 fail(tr("MOLDENのセクションが重複しています: %1").arg(current));
             blocks[current] = {};
             headers[current] = match.captured(2).trimmed().toUpper();
-        } else if (!current.isEmpty() && !line.trimmed().isEmpty())
+        } else if (!current.isEmpty() && !trimmed.isEmpty())
             blocks[current] << line;
     }
     if (!blocks.contains("MOLDEN FORMAT"))
@@ -271,7 +307,7 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
         const auto units = headers["ATOMS"];
         if (units != "ANGS" && units != "AU" && units != "(ANGS)" && units != "(AU)")
             fail(tr("MOLDEN [Atoms] の単位はAngsまたはAUを指定してください。"));
-        const double scale = units.contains("ANGS") ? 1 : BohrToAngstrom;
+        const double scale = units.contains(u"ANGS") ? 1 : BohrToAngstrom;
         Document d;
         for (const auto &line : blocks["ATOMS"]) {
             auto row = words(line);
@@ -292,7 +328,7 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
             if (line.trimmed().startsWith('[')) {
                 if (active)
                     break;
-                active = line.contains("[GEOMETRIES]", Qt::CaseInsensitive);
+                active = line.contains(u"[GEOMETRIES]", Qt::CaseInsensitive);
             } else if (active)
                 geometry << line;
         }
@@ -326,9 +362,10 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
         orbital = {};
         fields.clear();
     };
-    for (const auto &line : blocks["MO"]) {
-        const auto pair = line.split('=');
-        if (pair.size() != 2) {
+    for (const auto &line : std::as_const(blocks["MO"])) {
+        // "Key= value" with one '='; anything else is a coefficient line.
+        const qsizetype equals = line.indexOf('=');
+        if (equals < 0 || line.indexOf('=', equals + 1) >= 0) {
             const auto row = words(line);
             if (row.size() != 2 || fields.isEmpty())
                 fail(tr("MOLDENのMO係数の行が不正です。"));
@@ -341,7 +378,7 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
             mo[ao] = number(row[1]);
             continue;
         }
-        const QString key = pair[0].trimmed().toUpper(), value = pair[1].trimmed();
+        const QString key = line.left(equals).trimmed().toUpper(), value = line.mid(equals + 1).trimmed();
         if (key == "SYM" || fields.contains(key))
             finishOrbital();
         fields.insert(key);
@@ -609,12 +646,18 @@ void cube(ResultData &r, QString text) {
         number(row[1]); // Nuclear charge may differ from Z when an ECP is used.
     }
     addFrame(r, d, tr("CUBE原子座標"));
+    // The values follow as whitespace-separated words (up to millions): read in place.
+    const QStringView all(text);
+    qsizetype at = stream.pos();
     auto token = [&] {
-        QString value;
-        stream >> value;
-        if (value.isEmpty())
+        while (at < all.size() && all[at].isSpace())
+            ++at;
+        const qsizetype start = at;
+        while (at < all.size() && !all[at].isSpace())
+            ++at;
+        if (at == start)
             fail(tr("CUBEデータが途中で切れています。"));
-        return value;
+        return all.mid(start, at - start);
     };
     if (count < 0) {
         channels = integer(token(), 1, 256);
@@ -637,7 +680,7 @@ void cube(ResultData &r, QString text) {
             if (channel == r.dataset)
                 values << value;
         }
-    if (!stream.readAll().trimmed().isEmpty())
+    if (!all.mid(at).trimmed().isEmpty())
         fail(tr("CUBE格子数とデータ数が一致しません。"));
     auto bounds = std::minmax_element(values.begin(), values.end());
     r.minimum = *bounds.first;
@@ -672,15 +715,39 @@ void NwchemLog::add(const QString &line) {
     if (recent.size() > 4)
         recent.removeFirst();
 }
+void NwchemLog::addBytes(QByteArrayView line) {
+    // What progress() and the energy summary look for (a DRIVER step begins with '@'; total energies
+    // are found case-insensitively).
+    const auto energy = [&] {
+        static constexpr char word[] = "energy";
+        for (qsizetype i = 0; i + 6 <= line.size(); ++i) {
+            qsizetype k = 0;
+            while (k < 6 && (line[i + k] | 0x20) == word[k])
+                ++k;
+            if (k == 6)
+                return true;
+        }
+        return false;
+    };
+    if (!result && !line.startsWith('@') && !line.contains("threshold") &&
+        !line.contains("Optimization converged") && !line.contains("NWChem Input Module") &&
+        !line.contains("Total times") && !line.contains("Frequency Analysis") &&
+        !line.contains("number of monomers") && !line.contains("BSSE error") && !energy()) {
+        ++lineNumber;
+        return;
+    }
+    add(QString::fromUtf8(line));
+}
 void NwchemLog::progress(const QString &line) {
-    if (line.contains("NWChem Input Module")) {
+    if (line.contains(u"NWChem Input Module")) {
         // NWChem reads the input again before each task; repeated banners start no new task.
         if (started == 0 || busy)
             ++started;
         busy = false;
-    } else if (line.contains("Total times  cpu:"))
+    } else if (line.contains(u"Total times  cpu:"))
         ended = true;
-    else if (const auto m = stepLine().match(line); m.hasMatch()) {
+    else if (const auto m = line.startsWith('@') ? stepLine().match(line) : QRegularExpressionMatch();
+             m.hasMatch()) {
         const auto s = resultStep(m);
         // The converged step is printed twice; a new step 0 starts another optimization.
         if (s.step == 0 || stepTask != started - 1)
@@ -691,10 +758,12 @@ void NwchemLog::progress(const QString &line) {
             steps << s;
         stepTask = started - 1;
         busy = true;
-    } else if (const auto t = thresholdLine().match(line); t.hasMatch()) {
+    } else if (const auto t =
+                   line.contains(u"threshold") ? thresholdLine().match(line) : QRegularExpressionMatch();
+               t.hasMatch()) {
         thresholds[t.captured(1)] = logNumber(t.captured(2));
         busy = true;
-    } else if (line.contains("Optimization converged")) {
+    } else if (line.contains(u"Optimization converged")) {
         convergedTask = started - 1;
         busy = true;
     } else if (const auto e = totalEnergy(line)) {
@@ -703,7 +772,7 @@ void NwchemLog::progress(const QString &line) {
             energyMethod = e->first;
         }
         busy = true;
-    } else if (line.contains("Frequency Analysis"))
+    } else if (line.contains(u"Frequency Analysis"))
         busy = true;
 }
 void NwchemLog::read(const QString &line) {
@@ -714,6 +783,8 @@ void NwchemLog::read(const QString &line) {
         "This error has not yet been assigned|This type of error is most commonly associated|"
         "Received an Error in Communication",
         QRegularExpression::CaseInsensitiveOption);
+    // Every message of `error` contains one of these words.
+    static constexpr QStringView errorWords[] = {u"fail", u"error", u"converged", u"mpi_abort"};
     static const QRegularExpression code(R"(\s+-?\d+\s*$)");
     static const QRegularExpression root(
         R"(^\s*Root\s+(\d+)\s+(?:(singlet|triplet)\s+)?(\S+)\s+(-?[\d.]+)\s+a\.u\.\s+(-?[\d.]+)\s+eV)");
@@ -728,24 +799,31 @@ void NwchemLog::read(const QString &line) {
     // Lenient numbers for the summaries: one odd line must not reject the whole log.
     const auto value = [](const QString &text) { return logNumber(text); };
     const int i = lineNumber;
-    recognized |= line.contains("NWChem");
+    // Each expression below matches only lines with a word or first character checked before it.
+    const auto has = [&](QStringView word) { return line.contains(word); };
+    const auto unmatched = QRegularExpressionMatch();
+    recognized |= line.contains(u"NWChem");
     // errquit prints its message, framed by dashes, just above "current input line :".
-    if (line.trimmed().startsWith("current input line") && abort.isEmpty())
+    if (QStringView(line).trimmed().startsWith(u"current input line") && abort.isEmpty())
         for (int j = recent.size() - 1; j >= 0; --j) {
             const auto text = recent[j].trimmed();
-            if (text.isEmpty() || text.startsWith("----"))
+            if (text.isEmpty() || text.startsWith(u"----"))
                 continue;
             abort = QString(text).remove(code).left(200);
             fatal = true;
             r.warnings << tr("行 %1: NWChemエラー: %2").arg(i - recent.size() + j).arg(abort);
             break;
         }
-    if (error.match(line).hasMatch()) {
+    const bool troubled = std::any_of(std::begin(errorWords), std::end(errorWords), [&](QStringView word) {
+        return line.contains(word, Qt::CaseInsensitive);
+    });
+    if (troubled && error.match(line).hasMatch()) {
         fatal = true;
         if (r.warnings.size() < 30)
             r.warnings << tr("行 %1: %2").arg(i).arg(line.trimmed().left(250));
     }
-    if (auto m = scanMark.match(line); m.hasMatch() && m.captured(1).toInt() > scanPoint) {
+    if (auto m = has(u"MolForma scan") ? scanMark.match(line) : unmatched;
+        m.hasMatch() && m.captured(1).toInt() > scanPoint) {
         scanPoint = m.captured(1).toInt();
         if (scan.size() < 1000)
             scan[scanPoint] = QJsonObject{{"point", scanPoint},
@@ -753,17 +831,18 @@ void NwchemLog::read(const QString &line) {
                                           {"coordinate", m.captured(3)},
                                           {"value", value(m.captured(4))}};
     }
-    if (line.contains("Forward IRC optimization") || line.contains("Backward IRC optimization")) {
+    if (line.contains(u"Forward IRC optimization") || line.contains(u"Backward IRC optimization")) {
         if (ircDirection.isEmpty()) {
             // The transition state: its energy and structure were computed before the path.
             if (!r.energies.isEmpty())
                 irc["ts_energy"] = r.energies.last().hartree;
             irc["ts_frame"] = r.frames.size() - 1;
         }
-        ircDirection = line.contains("Forward") ? "forward" : "backward";
+        ircDirection = line.contains(u"Forward") ? "forward" : "backward";
     }
-    ircConverged += line.contains("IRC Optimization converged");
-    if (auto m = ircPoint.match(line); m.hasMatch() && !ircDirection.isEmpty() && ircPoints.size() < 5000) {
+    ircConverged += line.contains(u"IRC Optimization converged");
+    if (auto m = line.startsWith('&') ? ircPoint.match(line) : unmatched;
+        m.hasMatch() && !ircDirection.isEmpty() && ircPoints.size() < 5000) {
         const auto columns = words(m.captured(2));
         ircPoints << QJsonObject{{"direction", ircDirection},
                                  {"point", m.captured(1).toInt()},
@@ -774,14 +853,14 @@ void NwchemLog::read(const QString &line) {
     const auto field = [&](const char *label) {
         return value(words(line.section(label, 1).section('=', 1)).value(0));
     };
-    if (line.contains("gas phase energy =") || line.contains("sol phase energy ="))
-        solvation[line.contains("gas phase") ? "gas" : "solution"] = field("energy");
-    if (line.contains("fixed-concentration free energy of solvation ="))
+    if (line.contains(u"gas phase energy =") || line.contains(u"sol phase energy ="))
+        solvation[line.contains(u"gas phase") ? "gas" : "solution"] = field("energy");
+    if (line.contains(u"fixed-concentration free energy of solvation ="))
         solvation["smd_dg"] = field("solvation");
-    if (line.contains("total free energy in solvent including G(SMD-CDS) ="))
+    if (line.contains(u"total free energy in solvent including G(SMD-CDS) ="))
         solvation["smd_total"] = field("G(SMD-CDS)");
     // Mulliken charges of the PROPERTY module (nuclear charge minus gross population).
-    if (line.contains("Total      gross population on atoms"))
+    if (line.contains(u"Total      gross population on atoms"))
         sections << [&r, value, charges = QJsonArray(), left = 1 + maxAtoms](const QString *row) mutable {
             const auto m = row ? atomRow.match(*row) : QRegularExpressionMatch();
             if (row && --left >= 0) {
@@ -797,7 +876,7 @@ void NwchemLog::read(const QString &line) {
             return false;
         };
     // ESP (and RESP with "restrain") charges of the ESP module.
-    if (line.contains("Atom") && line.contains("Coordinates") && line.contains("Charge"))
+    if (line.contains(u"Atom") && line.contains(u"Coordinates") && line.contains(u"Charge"))
         sections << [&r, value, esp = QJsonArray(), resp = QJsonArray(),
                      left = 7 + maxAtoms](const QString *text) mutable {
             if (text && --left >= 0) {
@@ -822,25 +901,25 @@ void NwchemLog::read(const QString &line) {
             return false;
         };
     // GIAO shielding tensors: "Atom:  n  X" followed by "isotropic =" and "anisotropy =".
-    if (const auto t = line.trimmed(); t.startsWith("Atom:")) {
+    if (const auto t = QStringView(line).trimmed(); t.startsWith(u"Atom:")) {
         const auto w = words(t);
         shieldingAtom = w.value(1).toInt();
         shieldingElement = w.value(2);
     }
-    if (shieldingAtom > 0 && line.contains("isotropic =")) {
+    if (shieldingAtom > 0 && line.contains(u"isotropic =")) {
         if (shieldingAtom == 1)
             shielding = {}; // A later NMR calculation replaces the earlier one.
         shielding << QJsonObject{{"atom", shieldingAtom},
                                  {"element", shieldingElement},
                                  {"isotropic", value(words(line.section('=', 1)).value(0))}};
     }
-    if (shieldingAtom > 0 && line.contains("anisotropy =") && !shielding.isEmpty()) {
+    if (shieldingAtom > 0 && line.contains(u"anisotropy =") && !shielding.isEmpty()) {
         auto last = shielding.last().toObject();
         last["anisotropy"] = value(words(line.section('=', 1)).value(0));
         shielding[shielding.size() - 1] = last;
         shieldingAtom = 0;
     }
-    if (line.contains("Linear Response polarizability / au"))
+    if (line.contains(u"Linear Response polarizability / au"))
         sections << [&r, value, tensor = QJsonArray(), polarizability = QJsonObject(),
                      left = 15](const QString *text) mutable {
             if (text && --left >= 0) {
@@ -856,13 +935,13 @@ void NwchemLog::read(const QString &line) {
                     polarizability["frequency"] = value(words(text->section('=', 1)).value(0));
                 return true;
             }
-            if (tensor.size() == 9 && polarizability.contains("isotropic")) {
+            if (tensor.size() == 9 && polarizability.contains(u"isotropic")) {
                 polarizability["tensor"] = tensor;
                 r.properties["polarizability"] = polarizability;
             }
             return false;
         };
-    if (auto m = root.match(line); m.hasMatch() && r.excitations.size() < 2000) {
+    if (auto m = has(u"Root") ? root.match(line) : unmatched; m.hasMatch() && r.excitations.size() < 2000) {
         ResultExcitation x{m.captured(1).toInt(), m.captured(2), m.captured(3), value(m.captured(5))};
         if (x.root == 1 && std::any_of(r.excitations.begin(), r.excitations.end(),
                                        [&](const auto &e) { return e.root == 1 && e.spin == x.spin; }))
@@ -881,17 +960,18 @@ void NwchemLog::read(const QString &line) {
             return false;
         };
     }
-    if (line.contains("Optimization converged"))
+    if (line.contains(u"Optimization converged"))
         r.properties["optimization"] = "converged";
-    if (auto m = orbitalHeader.match(line); m.hasMatch()) {
+    if (auto m = has(u"Molecular Orbital Analysis") ? orbitalHeader.match(line) : unmatched; m.hasMatch()) {
         orbitalSpin = m.captured(1).trimmed() == "Beta" ? "Beta" : "Alpha";
         if (orbitalSpin == "Alpha")
             orbitals.clear(); // Keep the last analysis (after optimization steps etc.).
     }
-    if (auto m = vector.match(line); m.hasMatch() && !orbitalSpin.isEmpty() && orbitals.size() < 20000)
+    if (auto m = has(u"Vector") ? vector.match(line) : unmatched;
+        m.hasMatch() && !orbitalSpin.isEmpty() && orbitals.size() < 20000)
         orbitals << ResultOrbital{m.captured(4), orbitalSpin, value(m.captured(3)), value(m.captured(2)),
                                   m.captured(1).toInt()};
-    if (line.contains("Multipole analysis of the density"))
+    if (line.contains(u"Multipole analysis of the density"))
         sections << [&r, value, dipole = QJsonObject(), left = 11](const QString *text) mutable {
             if (text && --left >= 0) {
                 const auto row = words(*text);
@@ -908,7 +988,8 @@ void NwchemLog::read(const QString &line) {
             }
             return false;
         };
-    if (line.trimmed().startsWith("Temperature") && line.contains('=') && line.trimmed().endsWith('K'))
+    if (QStringView(line).trimmed().startsWith(u"Temperature") && line.contains('=') &&
+        QStringView(line).trimmed().endsWith('K'))
         sections << [this, value,
                      t = QJsonObject{{"temperature", value(line.section('=', 1).trimmed().chopped(1))}},
                      left = 15](const QString *text) mutable {
@@ -926,11 +1007,11 @@ void NwchemLog::read(const QString &line) {
                     t["symmetry_number"] = value(text->section('=', -1).remove(')').trimmed());
                 return true;
             }
-            if (t.contains("enthalpy_kcal") && t.contains("entropy_cal") && thermochemistry.size() < 20)
+            if (t.contains(u"enthalpy_kcal") && t.contains(u"entropy_cal") && thermochemistry.size() < 20)
                 thermochemistry << t;
             return false;
         };
-    if (line.contains("Optimization converged"))
+    if (line.contains(u"Optimization converged"))
         r.warnings << tr("最適化の収束メッセージを検出しました。");
     if (const auto e = totalEnergy(line)) {
         if (r.energies.size() >= 20000)
@@ -939,8 +1020,8 @@ void NwchemLog::read(const QString &line) {
         if (scanPoint > 0 && scan.contains(scanPoint))
             scan[scanPoint]["energy"] = r.energies.last().hartree;
     }
-    if (line.contains("Output coordinates in ")) {
-        const double scale = line.contains("angstroms") ? 1 : line.contains("a.u.") ? BohrToAngstrom : 0;
+    if (line.contains(u"Output coordinates in ")) {
+        const double scale = line.contains(u"angstroms") ? 1 : line.contains(u"a.u.") ? BohrToAngstrom : 0;
         if (!scale) {
             r.warnings << tr("未対応の座標単位を読み飛ばしました。");
             return;
@@ -983,12 +1064,12 @@ void NwchemLog::read(const QString &line) {
             return false;
         };
     }
-    if (line.contains("(Projected Frequencies expressed")) {
+    if (line.contains(u"(Projected Frequencies expressed")) {
         r.modes.clear();
         if (!r.frames.isEmpty())
             r.vibrationGeometry = r.frames.last().molecule;
     }
-    if (line.trimmed().startsWith("P.Frequency") && !r.vibrationGeometry.atoms.isEmpty()) {
+    if (QStringView(line).trimmed().startsWith(u"P.Frequency") && !r.vibrationGeometry.atoms.isEmpty()) {
         QVector<ResultMode> modes;
         for (const auto &f : words(line).mid(1))
             modes.append({number(f), std::numeric_limits<double>::quiet_NaN(),
@@ -1015,7 +1096,7 @@ void NwchemLog::read(const QString &line) {
             return false;
         };
     }
-    if (line.contains("Projected Infra Red Intensities"))
+    if (line.contains(u"Projected Infra Red Intensities"))
         sections << [&r, after = 0](const QString *text) mutable {
             if (!text)
                 return false;
@@ -1150,16 +1231,19 @@ ResultData readResult(const QString &path, double iso, int dataset, int orbital,
     r.log = QString::fromUtf8(bytes.right(128 * 1024));
     if (bytes.size() > 128 * 1024)
         r.log.prepend(tr("…末尾128 KiBを表示しています。\n"));
-    auto lines = text.split('\n');
-    for (auto &line : lines)
-        if (line.endsWith('\r'))
-            line.chop(1);
     const auto suffix = QFileInfo(path).suffix().toLower();
+    QStringList lines; // CUBE files are read as a stream of words instead.
+    if (suffix != "cube" && suffix != "cub") {
+        lines = text.split('\n');
+        for (auto &line : lines)
+            if (line.endsWith('\r'))
+                line.chop(1);
+    }
     r.status = tr("ファイルを読み込みました（計算の成否は判定しません）");
     if (suffix == "cube" || suffix == "cub") {
         r.format = "CUBE";
         cube(r, text);
-    } else if (text.trimmed().startsWith("[Molden Format]", Qt::CaseInsensitive)) {
+    } else if (QStringView(text).trimmed().startsWith(u"[Molden Format]", Qt::CaseInsensitive)) {
         r.format = "MOLDEN";
         molden(r, lines, orbital);
     } else if (suffix == "xyz") {

@@ -10,6 +10,9 @@ by responsibility, with paired headers and implementations in the same directory
   `diagnostic.h` defines diagnostics with stable codes, setting targets and typed fixes, and
   `ValidationFailure`, which throws a refused report whole. `units.h` owns coordinate units and
   physical conversion constants; `numbers.h` reads numbers with Fortran exponents ("1.5D-03").
+  `topology.*` indexes a document's atoms by ID with their bonded neighbors for loops over many atoms
+  (`Document::atom`/`index`/`neighbors`/`bond` scan the whole document), and `memo.h` keeps the last
+  results of checks that several panels run on the same document.
 - `src/editing/`: `library.*`, `operations.*`, `peptide.*` and `coordination.*`
   implement editing. `editor_session.*` owns document edits, candidates and undo for both GUI and MCP,
   and the revision that stale checks and the MCP `revision` compare (never serialize documents for that).

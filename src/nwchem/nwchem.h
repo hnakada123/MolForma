@@ -133,8 +133,8 @@ QString nwchemFunctionalXc(const QString &value);
 bool nwchemAutoz(const Document &document);
 // "距離 1–2" / "角度 1–2–3" / "二面角 1–2–3–4" with the current 1-based atom numbers.
 QString nwchemCoordinateLabel(const Document &document, const Ids &ids);
-// The bonded molecules that act as counterpoise (BSSE) monomers, in atom order.
-QVector<Ids> nwchemBsseMonomers(const Document &document);
+// The bonded molecules that act as counterpoise (BSSE) monomers, as atom indices in atom order.
+QVector<QVector<int>> nwchemBsseMonomers(const Document &document);
 // The SCF/DFT convergence threshold written for scf_convergence ("1e-7"); empty for "default",
 // which leaves NWChem's own thresholds.
 QString nwchemScfThreshold(const QJsonObject &settings);

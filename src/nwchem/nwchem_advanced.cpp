@@ -88,9 +88,8 @@ QString number(double value) {
     return QString::number(value, 'g', QLocale::FloatingPointShortest);
 }
 bool realNumber(const QString &text, double &number) {
-    if (!QRegularExpression("^[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eEdD][+-]?[0-9]+)?$")
-             .match(text)
-             .hasMatch())
+    static const QRegularExpression real("^[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eEdD][+-]?[0-9]+)?$");
+    if (!real.match(text).hasMatch())
         return false;
     const auto value = fortranNumber(text);
     number = value.value_or(0);

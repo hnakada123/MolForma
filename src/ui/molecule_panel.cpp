@@ -9,6 +9,7 @@
 #include "editing/stereochemistry.h"
 #include "io/structure_io.h"
 #include "model/i18n.h"
+#include "model/topology.h"
 #include "nwchem/nwchem.h"
 #include "ui/candidate_controls.h"
 #include "ui/coordinates_panel.h"
@@ -698,10 +699,18 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
     const auto moving = [this](const QString &id) {
         auto ids = selected.contains(id) ? selected : expandedSelection({id});
         const auto &d = displayDocument();
+        const Topology topology(d);
+        QVector<bool> carried(d.atoms.size());
+        for (const auto &atom : ids)
+            if (const int i = topology.index(atom); i >= 0)
+                carried[i] = true;
         for (const auto &atom : Ids(ids))
-            for (const auto &n : d.neighbors(atom))
-                if (!ids.contains(n) && d.atom(n).element == "H" && d.neighbors(n).size() == 1)
-                    ids << n;
+            if (const int i = topology.index(atom); i >= 0)
+                for (int n : topology.neighbors(i))
+                    if (!carried[n] && d.atoms[n].element == "H" && topology.neighbors(n).size() == 1) {
+                        carried[n] = true;
+                        ids << d.atoms[n].id;
+                    }
         return ids;
     };
     connect(view, &MoleculeView::dragStarted, this,
@@ -715,9 +724,12 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
     connect(view, &MoleculeView::rectangleSelected, this, [this](Ids ids, bool append) {
         safe([this, ids, append] {
             auto next = append ? selected : Ids();
-            for (auto id : expandedSelection(ids))
-                if (!next.contains(id))
+            QSet<QString> listed(next.begin(), next.end());
+            for (const auto &id : expandedSelection(ids))
+                if (!listed.contains(id)) {
+                    listed.insert(id);
                     next << id;
+                }
             setSelection(next);
         });
     });
@@ -979,22 +991,25 @@ void MoleculePanel::refresh() {
     // The same changes listed atom by atom in the "編集" tab, beside the selection.
     candidateCard->setVisible(session.candidate().has_value());
     if (session.candidate()) {
+        // The first 8 changes are described; the rest are only counted.
         QStringList lines;
-        int listed = 0, total = 0;
+        const int total = changes.removed.size() + addedAtoms.size() + (movedAtoms.isEmpty() ? 0 : 1);
+        const auto full = [&] { return lines.size() >= 8; };
         const auto line = [&](const char *color, const QString &mark, const QString &name,
                               const QString &text) {
-            if (++total > 8)
-                return;
-            ++listed;
             lines << QString("%1&nbsp; <b>%2</b>&nbsp; %3")
                          .arg(marker(color, mark), name.toHtmlEscaped(), text.toHtmlEscaped());
         };
         for (const auto &a : changes.removed) {
+            if (full())
+                break;
             const auto place = atomPlace(document(), a.id);
             line("#d23c3c", "×", atomName(document(), a.id),
                  place.isEmpty() ? tr("削除", "change") : tr("%1　削除").arg(place));
         }
-        for (const auto &a : session.candidate()->atoms)
+        for (const auto &a : session.candidate()->atoms) {
+            if (full())
+                break;
             if (addedAtoms.contains(a.id)) {
                 QString partner;
                 for (const auto &n : session.candidate()->neighbors(a.id))
@@ -1005,10 +1020,11 @@ void MoleculePanel::refresh() {
                 line("#25a35a", "○", a.element,
                      partner.isEmpty() ? tr("追加", "change") : tr("%1 に結合　追加").arg(partner));
             }
-        if (!movedAtoms.isEmpty())
+        }
+        if (!movedAtoms.isEmpty() && !full())
             line("#e08a1e", "○", tr("%n 原子", nullptr, movedAtoms.size()), tr("移動", "change"));
-        if (total > listed)
-            lines << tr("ほか %n 件", nullptr, total - listed);
+        if (total > lines.size())
+            lines << tr("ほか %n 件", nullptr, total - int(lines.size()));
         candidateChanges->setText(lines.join("<br>"));
     }
     topRow->setCurrentIndex(session.candidate() ? 1 : 0);
@@ -1390,29 +1406,47 @@ Ids MoleculePanel::expandedSelection(const Ids &ids) const {
     QString mode = selectionUnit();
     if (mode == "atom" || mode == "bond" || ids.isEmpty())
         return ids;
+    if (mode == "all")
+        return d.ids();
+    // The unit of each atom is looked up once per call, and a unit already taken adds nothing.
+    std::optional<Topology> topology;
+    if (mode == "component")
+        topology.emplace(d);
+    QHash<QString, int> unitOf; // The residue or part holding each atom: the first one.
+    if (mode == "residue")
+        for (int r = d.residues.size() - 1; r >= 0; --r)
+            for (const auto &atom : d.residues[r].atoms)
+                unitOf.insert(atom, r);
+    if (mode == "part")
+        for (int p = d.parts.size() - 1; p >= 0; --p)
+            for (const auto &atom : d.parts[p].atoms)
+                unitOf.insert(atom, p);
     Ids out;
-    for (auto id : ids) {
+    QSet<QString> listed;
+    QSet<int> units;
+    for (const auto &id : ids) {
         Ids group;
-        if (mode == "all")
-            return d.ids();
-        if (mode == "component")
-            group = d.component(id);
-        else if (mode == "residue") {
-            auto rid = residueForAtom(d, id);
-            if (!rid.isEmpty())
-                group = residue(d, rid).atoms.values();
-        } else if (mode == "part") {
-            for (const auto &p : d.parts)
-                if (p.atoms.contains(id)) {
-                    group = p.atoms;
-                    break;
-                }
+        if (mode == "component") {
+            const int i = topology->index(id);
+            if (i < 0)
+                fail(tr("原子を選択してください。"));
+            if (listed.contains(id))
+                continue;
+            for (int j : topology->component(i))
+                group << d.atoms[j].id;
+        } else if (const int unit = unitOf.value(id, -1); unit >= 0) {
+            if (units.contains(unit))
+                continue;
+            units.insert(unit);
+            group = mode == "residue" ? d.residues[unit].atoms.values() : d.parts[unit].atoms;
         }
         if (group.isEmpty())
             group << id;
-        for (auto a : group)
-            if (!out.contains(a))
+        for (const auto &a : group)
+            if (!listed.contains(a)) {
+                listed.insert(a);
                 out << a;
+            }
     }
     return out;
 }
@@ -1437,12 +1471,15 @@ void MoleculePanel::atomClicked(const QString &id, Qt::KeyboardModifiers mods) {
         }
         auto next = selected;
         if (next.contains(id)) {
-            for (auto a : group)
-                next.removeAll(a);
+            const QSet<QString> removed(group.begin(), group.end());
+            next.removeIf([&](const QString &a) { return removed.contains(a); });
         } else {
-            for (auto a : group)
-                if (!next.contains(a))
+            QSet<QString> listed(next.begin(), next.end());
+            for (const auto &a : group)
+                if (!listed.contains(a)) {
+                    listed.insert(a);
                     next << a;
+                }
         }
         setSelection(next);
     } else if (mode == EditorTool::Bond) {

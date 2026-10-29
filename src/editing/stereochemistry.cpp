@@ -3,6 +3,7 @@
 #include "editing/library.h"
 #include "editing/peptide.h"
 #include "model/i18n.h"
+#include "model/topology.h"
 #include <algorithm>
 #include <memory>
 #ifdef MOLFORMA_HAS_RDKIT
@@ -82,8 +83,9 @@ void recordStereo(Document &d) {
         meta["chiral_tag"] = int(a->getChiralTag());
         d.atoms[i].extra["metadata"] = meta;
     }
+    const Topology topology(d);
     for (auto &b : d.bonds) {
-        auto *bond = mol->getBondBetweenAtoms(d.index(b.a), d.index(b.b));
+        auto *bond = mol->getBondBetweenAtoms(topology.index(b.a), topology.index(b.b));
         auto stereo = bond->getStereo();
         b.stereo = stereo == RDKit::Bond::STEREOE || stereo == RDKit::Bond::STEREOTRANS ? "E"
                    : stereo == RDKit::Bond::STEREOZ || stereo == RDKit::Bond::STEREOCIS ? "Z"
@@ -98,19 +100,22 @@ void recordStereo(Document &d) {
 // The formal charge a structure read without charges (XYZ) implies from its hydrogens and bonds: a
 // carboxylate, phenolate or thiolate O/S with one bond and no hydrogen (−1), and an ammonium or
 // iminium N with four bonds (+1). Aromatic rings are left to the caller (histidine).
-static void impliedCharge(Document &d, const QString &id) {
-    auto &a = d.atom(id);
+static void impliedCharge(Document &d, const Topology &topology, const QString &id) {
+    auto &a = topology.atom(d, id);
     if (a.charge || a.radical)
         return;
     double order = 0;
     int hydrogens = 0;
-    for (const auto &b : d.bonds) {
-        if ((b.a != id && b.b != id) || b.kind == "dative")
+    const int i = topology.index(id);
+    const auto neighbors = topology.neighbors(i), bonds = topology.bonds(i);
+    for (size_t k = 0; k < bonds.size(); ++k) {
+        const auto &b = d.bonds[bonds[k]];
+        if (b.kind == "dative")
             continue;
         if (b.kind == "aromatic")
             return;
         order += b.order();
-        hydrogens += d.atom(b.a == id ? b.b : b.a).element == "H";
+        hydrogens += d.atoms[neighbors[k]].element == "H";
     }
     if ((a.element == "O" || a.element == "S") && order == 1 && !hydrogens)
         a.charge = -1;
@@ -119,26 +124,27 @@ static void impliedCharge(Document &d, const QString &id) {
 }
 // A cap at the free end of a recognized chain: the acetyl C=O–CH3 on the first residue's N, or the
 // N-methylamide N(H)–CH3 on the last residue's C. Returns its atoms named as when built.
-static QMap<QString, QString> recognizedCap(const Document &d, const QString &end, bool ace,
-                                            const QSet<QString> &taken) {
+static QMap<QString, QString> recognizedCap(const Document &d, const Topology &topology, const QString &end,
+                                            bool ace, const QSet<QString> &taken) {
     const auto hydrogensOf = [&](const QString &id) {
         Ids out;
-        for (const auto &h : d.neighbors(id, false))
-            if (d.atom(h).element == "H")
+        for (const auto &h : topology.neighbors(d, id, false))
+            if (topology.atom(d, h).element == "H")
                 out << h;
         return out;
     };
-    for (const auto &first : d.neighbors(end, false)) {
-        if (taken.contains(first) || d.atom(first).element != (ace ? "C" : "N"))
+    for (const auto &first : topology.neighbors(d, end, false)) {
+        if (taken.contains(first) || topology.atom(d, first).element != (ace ? "C" : "N"))
             continue;
         QString oxygen, methyl;
         int others = 0;
-        for (const auto &other : d.neighbors(first, false)) {
-            if (other == end || d.atom(other).element == "H")
+        for (const auto &other : topology.neighbors(d, first, false)) {
+            if (other == end || topology.atom(d, other).element == "H")
                 continue;
-            if (ace && d.atom(other).element == "O" && d.bond(first, other)->kind == "double")
+            if (ace && topology.atom(d, other).element == "O" &&
+                topology.bond(d, first, other)->kind == "double")
                 oxygen = other;
-            else if (d.atom(other).element == "C" && hydrogensOf(other).size() == 3)
+            else if (topology.atom(d, other).element == "C" && hydrogensOf(other).size() == 3)
                 methyl = other;
             else
                 ++others;
@@ -162,6 +168,8 @@ static QMap<QString, QString> recognizedCap(const Document &d, const QString &en
 static void assignResidues(Document &d) {
 #ifdef MOLFORMA_HAS_RDKIT
     auto mol = rdMol(d);
+    // Residue recognition names atoms and sets charges but keeps the atoms and bonds.
+    const Topology topology(d);
     QVector<QJsonObject> amino;
     for (auto v : templates()) {
         auto t = v.toObject();
@@ -214,8 +222,9 @@ static void assignResidues(Document &d) {
             QString n = names.value("N"), c = names.value("C");
             bool boundary = true;
             for (auto id : members)
-                for (auto other : d.neighbors(id, false))
-                    if (!members.contains(other) && d.atom(other).element != "H" && id != n && id != c)
+                for (auto other : topology.neighbors(d, id, false))
+                    if (!members.contains(other) && topology.atom(d, other).element != "H" && id != n &&
+                        id != c)
                         boundary = false;
             if (!boundary)
                 continue;
@@ -225,38 +234,39 @@ static void assignResidues(Document &d) {
                 for (auto it = names.begin(); it != names.end(); ++it)
                     if (it.value() == id)
                         parentName = it.key();
-                for (auto h : d.neighbors(id, false))
-                    if (d.atom(h).element == "H")
+                for (auto h : topology.neighbors(d, id, false))
+                    if (topology.atom(d, h).element == "H")
                         names["H" + parentName + QString::number(index++)] = h;
             }
-            for (auto other : d.neighbors(c, false))
-                if (!members.contains(other) && d.atom(other).element == "O" &&
-                    d.bond(c, other)->kind == "single") {
+            for (auto other : topology.neighbors(d, c, false))
+                if (!members.contains(other) && topology.atom(d, other).element == "O" &&
+                    topology.bond(d, c, other)->kind == "single") {
                     names["OXT"] = other;
                     int index = 1;
-                    for (auto h : d.neighbors(other, false))
-                        if (d.atom(h).element == "H")
+                    for (auto h : topology.neighbors(d, other, false))
+                        if (topology.atom(d, h).element == "H")
                             names["HOXT" + QString::number(index++)] = h;
                 }
             for (auto it = names.begin(); it != names.end(); ++it) {
                 assigned.insert(it.value());
-                d.atom(it.value()).name = it.key();
+                topology.atom(d, it.value()).name = it.key();
             }
             // Charges and side-chain states from the hydrogens present: the heavy atoms alone match
             // every state of a residue.
             for (auto it = names.begin(); it != names.end(); ++it)
-                if (d.atom(it.value()).element != "H" && it.key() != "ND1" && it.key() != "NE2")
-                    impliedCharge(d, it.value());
+                if (topology.atom(d, it.value()).element != "H" && it.key() != "ND1" && it.key() != "NE2")
+                    impliedCharge(d, topology, it.value());
             const auto code = t["code"].toString();
             const auto charged = [&](std::initializer_list<const char *> atoms, int sign) {
                 return std::any_of(atoms.begin(), atoms.end(), [&](const char *name) {
-                    return names.contains(name) && d.atom(names.value(name)).charge * sign > 0;
+                    return names.contains(name) && topology.atom(d, names.value(name)).charge * sign > 0;
                 });
             };
             const auto protonated = [&](const char *name) {
                 return names.contains(name) &&
                        std::any_of(names.begin(), names.end(), [&](const QString &id) {
-                           return d.atom(id).element == "H" && d.bond(id, names.value(name));
+                           return topology.atom(d, id).element == "H" &&
+                                  topology.bond(d, id, names.value(name));
                        });
             };
             QString state = t["state"].toString();
@@ -269,15 +279,16 @@ static void assignResidues(Document &d) {
             else if (code == "HIS") {
                 state = protonated("ND1") && protonated("NE2") ? "HIP" : protonated("ND1") ? "HID" : "HIE";
                 if (state == "HIP")
-                    d.atom(names.value("ND1")).charge = 1;
+                    topology.atom(d, names.value("ND1")).charge = 1;
             }
             Residue residue;
             residue.code = code;
             residue.atoms = names;
             residue.state = state;
-            residue.nTerminal = d.atom(n).charge > 0 ? "charged" : "neutral";
-            residue.cTerminal =
-                names.contains("OXT") && d.atom(names.value("OXT")).charge < 0 ? "charged" : "neutral";
+            residue.nTerminal = topology.atom(d, n).charge > 0 ? "charged" : "neutral";
+            residue.cTerminal = names.contains("OXT") && topology.atom(d, names.value("OXT")).charge < 0
+                                    ? "charged"
+                                    : "neutral";
             residues << residue;
         }
     }
@@ -340,12 +351,13 @@ static void assignResidues(Document &d) {
         auto seq = it.value();
         for (bool ace : {true, false}) {
             const int at = row(ace ? seq.first() : seq.last());
-            const auto names = recognizedCap(d, ordered[at].atoms.value(ace ? "N" : "C"), ace, taken);
+            const auto names =
+                recognizedCap(d, topology, ordered[at].atoms.value(ace ? "N" : "C"), ace, taken);
             if (names.isEmpty())
                 continue;
             for (auto n = names.begin(); n != names.end(); ++n) {
                 taken.insert(n.value());
-                d.atom(n.value()).name = n.key();
+                topology.atom(d, n.value()).name = n.key();
             }
             Residue cap;
             cap.code = ace ? "ACE" : "NME";

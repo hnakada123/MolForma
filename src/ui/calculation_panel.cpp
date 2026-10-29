@@ -861,10 +861,10 @@ void CalculationPanel::refreshConstraints(const QJsonObject &s) {
     const auto scan = idsFromJson(s["scan_atoms"]);
     scanCoordinate->setText(scan.isEmpty() ? tr("未設定") : nwchemCoordinateLabel(d, scan));
     QStringList parts;
-    for (const auto &ids : nwchemBsseMonomers(d)) {
+    for (const auto &atoms : nwchemBsseMonomers(d)) {
         QMap<QString, int> counts;
-        for (const auto &id : ids)
-            ++counts[d.atom(id).element];
+        for (int i : atoms)
+            ++counts[d.atoms[i].element];
         QString formula;
         for (const auto &symbol : counts.keys())
             formula += symbol + (counts[symbol] > 1 ? QString::number(counts[symbol]) : QString());

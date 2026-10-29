@@ -17,6 +17,10 @@ double real(const QString &text) {
         return *value;
     fail(tr("MOLDEN基底の数値が不正です。"));
 }
+const QRegularExpression &whitespace() {
+    static const QRegularExpression pattern("\\s+");
+    return pattern;
+}
 int count(const QString &text, int maximum) {
     const double n = real(text);
     if (n < 1 || n > maximum || n != std::floor(n))
@@ -199,7 +203,7 @@ MoldenWavefunction moldenWavefunction(const QMap<QString, QStringList> &blocks, 
     int atom = -1, basisCount = 0, primitiveCount = 0;
     QSet<int> centers;
     for (int i = 0; i < lines.size();) {
-        auto row = lines[i++].split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+        auto row = lines[i++].split(whitespace(), Qt::SkipEmptyParts);
         if (row.isEmpty())
             continue;
         if (row[0][0].isDigit()) {
@@ -224,7 +228,7 @@ MoldenWavefunction moldenWavefunction(const QMap<QString, QStringList> &blocks, 
         for (int j = 0; j < n; ++j) {
             if (i >= lines.size())
                 fail(tr("MOLDEN基底のプリミティブが不足しています。"));
-            const auto primitive = lines[i++].split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+            const auto primitive = lines[i++].split(whitespace(), Qt::SkipEmptyParts);
             if (primitive.size() != (label == "sp" ? 3 : 2))
                 fail(tr("MOLDEN基底の指数・収縮係数が不足しています。"));
             const double exponent = real(primitive[0]);

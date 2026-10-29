@@ -1,31 +1,40 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/operations.h"
 #include "model/i18n.h"
+#include "model/topology.h"
 #include <algorithm>
 #include <cmath>
 #include <functional>
 #include <limits>
 namespace mf {
 void deleteAtoms(Document &d, const Ids &chosen, AtomDeletionOptions options) {
-    for (const auto &id : chosen)
-        d.atom(id);
-    Ids ids = chosen;
+    const Topology topology(d);
+    const auto chosenAtoms = d.indices(chosen);
+    QVector<int> atoms = chosenAtoms;
+    QVector<bool> deleted(d.atoms.size());
+    for (int i : atoms)
+        deleted[i] = true;
     if (options.includeAttachedHydrogens)
-        for (const auto &id : chosen)
-            for (const auto &n : d.neighbors(id))
-                if (d.atom(n).element == "H" && !ids.contains(n)) {
-                    const auto partners = d.neighbors(n);
-                    if (std::all_of(partners.begin(), partners.end(),
-                                    [&](const auto &p) { return ids.contains(p); }))
-                        ids << n;
+        for (int i : chosenAtoms)
+            for (int n : topology.neighbors(i))
+                if (d.atoms[n].element == "H" && !deleted[n]) {
+                    const auto partners = topology.neighbors(n);
+                    if (std::all_of(partners.begin(), partners.end(), [&](int p) { return deleted[p]; })) {
+                        deleted[n] = true;
+                        atoms << n;
+                    }
                 }
-    Ids cut;
-    if (options.capCutBonds)
-        for (const auto &id : ids)
-            if (d.atom(id).element != "H")
-                for (const auto &n : d.neighbors(id))
-                    if (!ids.contains(n) && !cut.contains(n))
-                        cut << n;
+    Ids ids, cut;
+    QVector<bool> capped(d.atoms.size());
+    for (int i : atoms) {
+        ids << d.atoms[i].id;
+        if (options.capCutBonds && d.atoms[i].element != "H")
+            for (int n : topology.neighbors(i))
+                if (!deleted[n] && !capped[n]) {
+                    capped[n] = true;
+                    cut << d.atoms[n].id;
+                }
+    }
     followingCharge(d, [&] {
         d.remove(ids);
         // Deleting a hydrogen must not add it back. An empty selection would cap the whole molecule.
@@ -131,25 +140,19 @@ static QSet<QString> aromaticDoubleBonds(const Document &d) {
     return paired;
 }
 // Bond-order sum for valence checks, with aromatic bonds in their Kekulé form.
-static double valenceUsed(const Document &d, const QString &id, const QSet<QString> &doubles) {
+template <typename Bonds>
+static double valenceUsed(const Document &d, const QString &id, const Bonds &bonds,
+                          const QSet<QString> &doubles) {
     double used = doubles.contains(id) ? 1 : 0;
-    for (const auto &b : d.bonds)
-        if (b.a == id || b.b == id)
-            used += b.kind == "aromatic" ? 1 : b.order();
+    for (int k : bonds)
+        used += d.bonds[k].kind == "aromatic" ? 1 : d.bonds[k].order();
     return used;
 }
-Vec freeDirection(const Document &d, const QString &id) {
-    const Vec origin = d.atom(id).position;
-    QVector<Vec> directions;
-    for (const auto &n : d.neighbors(id, false))
-        directions << unit(d.atom(n).position - origin);
+// The direction that matches tetrahedral/trigonal/linear bond angles (from the highest bond order)
+// while avoiding the directions of the bonded atoms.
+static Vec freeDirection(const QVector<Vec> &directions, double maxOrder) {
     if (directions.isEmpty())
         return Vec(1, 1, 1).normalized();
-    // Match tetrahedral/trigonal/linear bond angles while avoiding existing atoms.
-    double maxOrder = 1;
-    for (const auto &b : d.bonds)
-        if (b.a == id || b.b == id)
-            maxOrder = std::max(maxOrder, b.order());
     double target = maxOrder >= 3 ? -1 : maxOrder >= 1.5 ? -.5 : -1. / 3;
     Vec best = Vec::UnitZ();
     double bestScore = 1e100;
@@ -166,6 +169,17 @@ Vec freeDirection(const Document &d, const QString &id) {
     }
     return best;
 }
+Vec freeDirection(const Document &d, const QString &id) {
+    const Vec origin = d.atom(id).position;
+    QVector<Vec> directions;
+    for (const auto &n : d.neighbors(id, false))
+        directions << unit(d.atom(n).position - origin);
+    double maxOrder = 1;
+    for (const auto &b : d.bonds)
+        if (b.a == id || b.b == id)
+            maxOrder = std::max(maxOrder, b.order());
+    return freeDirection(directions, maxOrder);
+}
 void changeBond(Document &d, const QString &a, const QString &b, const QString &kind, bool hydrogen) {
     d.setBond(a, b, kind);
     if (hydrogen)
@@ -174,53 +188,102 @@ void changeBond(Document &d, const QString &a, const QString &b, const QString &
 void completeHydrogens(Document &d, const Ids &selection) {
     Ids ids = selection.isEmpty() ? d.ids() : selection;
     const auto doubles = aromaticDoubleBonds(d);
+    // The atom indices, the bonds of each atom, and the residues and part of each atom: kept current
+    // as hydrogens are added at the end, and rebuilt after one is removed.
+    QHash<QString, int> index;
+    QVector<QVector<int>> bondsOf;
+    QHash<QString, QVector<int>> residuesOf;
+    QHash<QString, int> partOf;
+    const auto rebuild = [&] {
+        index.clear();
+        for (int i = 0; i < d.atoms.size(); ++i)
+            if (!index.contains(d.atoms[i].id))
+                index.insert(d.atoms[i].id, i);
+        bondsOf = QVector<QVector<int>>(d.atoms.size());
+        for (int k = 0; k < d.bonds.size(); ++k) {
+            const int a = index.value(d.bonds[k].a, -1), b = index.value(d.bonds[k].b, -1);
+            if (a >= 0 && b >= 0) {
+                bondsOf[a] << k;
+                bondsOf[b] << k;
+            }
+        }
+        residuesOf.clear();
+        for (int r = 0; r < d.residues.size(); ++r)
+            for (const auto &atom : std::as_const(d.residues[r].atoms))
+                if (auto &list = residuesOf[atom]; list.isEmpty() || list.last() != r)
+                    list << r;
+        partOf.clear();
+        for (int p = d.parts.size() - 1; p >= 0; --p) // The first part of an atom wins.
+            for (const auto &atom : std::as_const(d.parts[p].atoms))
+                partOf.insert(atom, p);
+    };
+    const auto other = [&](int k, const QString &id) {
+        return index.value(d.bonds[k].a == id ? d.bonds[k].b : d.bonds[k].a, -1);
+    };
+    rebuild();
     for (const auto &id : ids) {
-        if (!d.contains(id))
+        if (!index.contains(id))
             continue;
-        Atom a = d.atom(id);
+        Atom a = d.atoms[index[id]];
         if (a.ghost || a.element == "H")
             continue;
-        const double used = valenceUsed(d, id, doubles);
+        const double used = valenceUsed(d, id, bondsOf[index[id]], doubles);
         int expected = valence(a, used);
         if (expected < 0)
             continue;
         int difference = int(std::floor(expected - used + .1));
         if (difference < 0) {
             Ids removable;
-            for (const auto &n : d.neighbors(id, false)) {
-                const auto &h = d.atom(n);
+            for (int k : bondsOf[index[id]]) {
+                const int n = other(k, id);
+                if (d.bonds[k].kind == "dative" || n < 0)
+                    continue;
+                const auto &h = d.atoms[n];
                 if (h.element == "H" && !h.fixed && !h.ghost && !h.isotope && h.mass == 0 && h.charge == 0 &&
-                    h.radical == 0 && d.neighbors(n).size() == 1)
-                    removable << n;
+                    h.radical == 0 && bondsOf[n].size() == 1)
+                    removable << h.id;
             }
             while (difference < 0 && !removable.isEmpty()) {
                 d.remove({removable.takeLast()});
                 ++difference;
+                rebuild();
             }
         }
         if (difference < 0)
-            fail(tr("原子価を超えています: %1%2").arg(a.element).arg(d.index(id) + 1));
+            fail(tr("原子価を超えています: %1%2").arg(a.element).arg(index[id] + 1));
         for (int i = 0; i < difference; ++i) {
+            const int heavy = index[id];
+            const Vec origin = d.atoms[heavy].position;
+            QVector<Vec> directions;
+            double maxOrder = 1;
+            for (int k : bondsOf[heavy]) {
+                if (const int n = other(k, id); n >= 0 && d.bonds[k].kind != "dative")
+                    directions << unit(d.atoms[n].position - origin);
+                maxOrder = std::max(maxOrder, d.bonds[k].order());
+            }
             Atom h;
             h.element = "H";
             h.automaticH = true;
-            h.position = d.atom(id).position + freeDirection(d, id) * (element(a.element).radius + .31);
+            h.position = origin + freeDirection(directions, maxOrder) * (element(a.element).radius + .31);
+            const int hydrogen = d.atoms.size();
+            for (int r : residuesOf.value(id)) {
+                auto &residue = d.residues[r];
+                QString name = "H" + a.name + QString::number(i + 1);
+                int k = 1;
+                while (residue.atoms.contains(name))
+                    name = "H" + a.name + QString::number(++k);
+                h.name = name;
+                residue.atoms[name] = h.id;
+            }
+            if (const int p = partOf.value(id, -1); p >= 0)
+                d.parts[p].atoms << h.id;
             d.atoms << h;
-            d.setBond(id, h.id, "single");
-            for (auto &r : d.residues)
-                if (std::find(r.atoms.begin(), r.atoms.end(), id) != r.atoms.end()) {
-                    QString name = "H" + a.name + QString::number(i + 1);
-                    int k = 1;
-                    while (r.atoms.contains(name))
-                        name = "H" + a.name + QString::number(++k);
-                    d.atom(h.id).name = name;
-                    r.atoms[name] = h.id;
-                }
-            for (auto &p : d.parts)
-                if (p.atoms.contains(id)) {
-                    p.atoms << h.id;
-                    break;
-                }
+            index.insert(h.id, hydrogen);
+            // A new atom has no bond yet, so this is what setBond would add.
+            d.bonds.append({id, h.id, "single", {}, "explicit"});
+            const int bond = d.bonds.size() - 1;
+            bondsOf.append(QVector<int>{bond});
+            bondsOf[heavy] << bond;
         }
     }
 }
@@ -269,13 +332,14 @@ QString addAtom(Document &d, const QString &symbol, const Vec &position, const Q
 }
 QString insertAtom(Document &d, QString a, QString b, const QString &symbol, bool hydrogen) {
     element(symbol);
-    if (!d.bond(a, b))
+    const Topology topology(d);
+    const int ia = topology.index(a), ib = topology.index(b);
+    if (!d.bond(a, b) || ia < 0 || ib < 0)
         fail(tr("結合の両端を選択してください。"));
-    Ids sideA = d.component(a, a, b), sideB = d.component(b, a, b);
-    const bool ring = sideB.contains(a);
-    const auto movable = [&](const Ids &side) {
-        return !ring &&
-               std::none_of(side.begin(), side.end(), [&](const QString &id) { return d.atom(id).fixed; });
+    auto sideA = topology.component(ia, ia, ib), sideB = topology.component(ib, ia, ib);
+    const bool ring = sideB.contains(ia);
+    const auto movable = [&](const QVector<int> &side) {
+        return !ring && std::none_of(side.begin(), side.end(), [&](int i) { return d.atoms[i].fixed; });
     };
     // The smaller side moves out to make room.
     if (movable(sideA) && (!movable(sideB) || sideA.size() < sideB.size())) {
@@ -301,8 +365,8 @@ QString insertAtom(Document &d, QString a, QString b, const QString &symbol, boo
         const double tilt = (180 - 109.47) / 2 * M_PI / 180;
         x = pa + ra * (std::cos(tilt) * u + std::sin(tilt) * w);
         const Vec shift = x + rb * (std::cos(tilt) * u - std::sin(tilt) * w) - pb;
-        for (const auto &id : sideB)
-            d.atom(id).position += shift;
+        for (int i : sideB)
+            d.atoms[i].position += shift;
     } else {
         // A ring bond, or fixed atoms on both sides: nothing else moves, and the new atom sits off
         // the bond line (on it the force field cannot open the 180° angle).
@@ -324,8 +388,8 @@ void replaceElement(Document &d, const Ids &ids, const QString &symbol, bool hyd
     element(symbol);
     if (ids.isEmpty())
         fail(tr("原子を選択してください。"));
-    for (const auto &id : ids) {
-        auto &a = d.atom(id);
+    for (int i : d.indices(ids)) {
+        auto &a = d.atoms[i];
         a.element = symbol;
         a.isotope = 0;
         a.mass = 0;
@@ -426,16 +490,17 @@ PlacedPart replacePart(Document &d, Ids ids, const QJsonObject &t, double twist)
     Ids replacements = p.atoms;
     replacements.removeAll(p.mapping[donor]);
     replacements.prepend(p.mapping[donor]);
+    const QSet<QString> replaced(ids.begin(), ids.end());
+    Ids order;
+    for (const auto &id : previousOrder)
+        if (!replaced.contains(id))
+            order << id;
+        else if (!replacements.isEmpty())
+            order << replacements.takeFirst();
+    order += replacements;
     QVector<Atom> ordered;
-    for (auto id : previousOrder) {
-        if (ids.contains(id)) {
-            if (!replacements.isEmpty())
-                ordered << d.atom(replacements.takeFirst());
-        } else
-            ordered << d.atom(id);
-    }
-    for (auto id : replacements)
-        ordered << d.atom(id);
+    for (int i : d.indices(order))
+        ordered << d.atoms[i];
     d.atoms = ordered;
     if (omit.isEmpty())
         d.atom(p.mapping[donor]).radical = std::max(0, d.atom(p.mapping[donor]).radical - int(bond.order()));
@@ -451,8 +516,10 @@ Ids duplicate(Document &d, const Ids &ids, const Vec &offset) {
     Document copy;
     copy.data = {};
     QHash<QString, QString> renamed;
-    for (const auto &id : ids) {
-        auto a = d.atom(id);
+    const auto atoms = d.indices(ids);
+    for (int i = 0; i < ids.size(); ++i) {
+        const auto &id = ids[i];
+        auto a = d.atoms[atoms[i]];
         renamed[id] = newId();
         a.position += offset;
         a.fixed = false;
@@ -507,16 +574,22 @@ Ids duplicate(Document &d, const Ids &ids, const Vec &offset) {
 void mirror(Document &d, const Ids &ids, int axis, const Vec &origin) {
     if (ids.isEmpty() || axis < 0 || axis > 2)
         fail(tr("鏡映する分子を選択してください。"));
-    QSet<QString> selected(ids.begin(), ids.end());
-    for (const auto &id : ids)
-        for (const auto &n : d.neighbors(id))
-            if (!selected.contains(n))
-                fail(tr("分子全体を選択して鏡映してください。"));
+    const auto atoms = d.indices(ids);
+    {
+        const Topology topology(d);
+        QVector<bool> selected(d.atoms.size());
+        for (int i : atoms)
+            selected[i] = true;
+        for (int i : atoms)
+            for (int n : topology.neighbors(i))
+                if (!selected[n])
+                    fail(tr("分子全体を選択して鏡映してください。"));
+    }
     Mat r = Mat::Identity();
     r(axis, axis) = -1;
     transform(d, ids, r, Vec::Zero(), origin);
-    for (const auto &id : ids) {
-        auto &a = d.atom(id);
+    for (int i : atoms) {
+        auto &a = d.atoms[i];
         if (a.stereo == "R")
             a.stereo = "S";
         else if (a.stereo == "S")
@@ -599,12 +672,16 @@ Ids insertFragment(Document &d, const Document &fragment) {
         offset = Vec(right + 3 - left, center.y() - own.y(), center.z() - own.z());
     }
     Ids added;
+    QSet<QString> existing;
+    for (const auto &a : d.atoms)
+        existing.insert(a.id);
     followingCharge(d, [&] {
         for (auto a : fragment.atoms) {
-            if (d.contains(a.id))
+            if (existing.contains(a.id))
                 fail(tr("断片の原子IDが重複しています。"));
             a.position += offset;
             d.atoms << a;
+            existing.insert(a.id);
             added << a.id;
         }
         d.bonds += fragment.bonds;
@@ -651,15 +728,13 @@ QString structureReport(const Document &d) {
     if (!d.hasCenters() && d.formalCharge() != d.charge)
         lines << tr("形式電荷の合計と設定電荷が異なります。");
     const auto doubles = aromaticDoubleBonds(d);
-    for (const auto &a : d.atoms) {
-        const double used = valenceUsed(d, a.id, doubles);
+    const Topology topology(d);
+    for (int i = 0; i < d.atoms.size(); ++i) {
+        const auto &a = d.atoms[i];
+        const double used = valenceUsed(d, a.id, topology.bonds(i), doubles);
         int expected = valence(a, used);
         if (!a.ghost && expected >= 0 && std::abs(used - expected) > .1)
-            lines << tr("%1%2: 結合次数合計 %3（目安 %4）")
-                         .arg(a.element)
-                         .arg(d.index(a.id) + 1)
-                         .arg(used)
-                         .arg(expected);
+            lines << tr("%1%2: 結合次数合計 %3（目安 %4）").arg(a.element).arg(i + 1).arg(used).arg(expected);
     }
     // Coordination centers: free sites, and the total charge their oxidation numbers suggest.
     for (const auto &c : d.centers) {

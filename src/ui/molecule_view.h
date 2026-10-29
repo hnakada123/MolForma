@@ -25,7 +25,7 @@ class MoleculeView : public QWidget {
     // Arrows drawn over the molecule: (origin, vector) in Å, e.g. normal-mode displacements.
     void setArrows(const QVector<std::pair<Vec, Vec>> &list) {
         arrows = list;
-        scheduleRender();
+        scheduleOverlay();
     }
     // Renders pending changes at once, so the widget can be grabbed as an image and the markers
     // match the molecule.
@@ -43,7 +43,7 @@ class MoleculeView : public QWidget {
     // Measurements kept on screen: 2–4 ordered atom IDs each, drawn with their current value.
     void setMonitors(const QVector<Ids> &list) {
         monitors = list;
-        scheduleRender();
+        scheduleOverlay();
     }
     QVector<Ids> monitorList() const {
         return monitors;
@@ -79,7 +79,7 @@ class MoleculeView : public QWidget {
     // Overlapping labels are left out, front atoms and selected atoms first.
     void setLabelMode(const QString &mode) {
         labelMode = mode;
-        scheduleRender();
+        scheduleOverlay();
     }
     QString labels() const {
         return labelMode;
@@ -90,7 +90,7 @@ class MoleculeView : public QWidget {
         removedAtoms = removed;
         addedAtoms = added;
         movedAtoms = moved;
-        scheduleRender();
+        scheduleOverlay();
     }
     void setTool(EditorTool t) {
         tool = t;
@@ -106,7 +106,7 @@ class MoleculeView : public QWidget {
     }
     void setShowIndices(bool value) {
         showIndices = value;
-        scheduleRender();
+        scheduleOverlay();
     }
     void setColorMode(const QString &mode) {
         colorMode = mode;
@@ -118,7 +118,7 @@ class MoleculeView : public QWidget {
     }
     void setAminoHandles(bool value) {
         aminoHandles = value;
-        scheduleRender();
+        scheduleOverlay();
     }
     QPointF atomScreenPosition(const QString &id) const;
     Vec worldPosition(const QPointF &p) const;
@@ -196,7 +196,7 @@ class MoleculeView : public QWidget {
     bool shown(const Atom &a) const {
         return !hidden.contains(a.id);
     }
-    double atomRadius(const Atom &a) const;
+    double atomRadius(int atom) const;
     bool positiveSurface = true, negativeSurface = true;
     int surfaceOpacity = 150;
     QString emptyMessage;
@@ -207,9 +207,17 @@ class MoleculeView : public QWidget {
     bool fitPending = false; // fit() ran while hidden; repeat it once the view has its size.
     QTimer renderTimer;
     bool moleculeDirty = true, surfaceDirty = true;
+    bool positionsDirty = false; // Only atom positions changed since the scene was built.
     QVector<QColor> atomColors;
     QHash<QString, int> atomIndices;
+    QVector<std::pair<int, int>> bondEnds; // The atom indices of each bond (−1: no such atom).
+    QVector<bool> bondedAtoms;             // Wireframe draws atoms only where no bond line shows them.
+    QVector<double> vdwRadii;              // Van der Waals radii (Å), for the spacefill style.
+    QVector<int> dragMoving;               // The atoms a move-tool drag carries, by index.
+    bool dragFixed = false;                // The drag includes a fixed atom, so nothing moves.
+    void indexAtoms();
     void scheduleRender();
+    void scheduleOverlay();
     void renderScene();
     void refreshColors();
     void updateRendererStatus();
@@ -219,7 +227,6 @@ class MoleculeView : public QWidget {
     QString hitAtom(const QPointF &p) const;
     const Bond *hitBond(const QPointF &p) const;
     int hitMarker(const QPointF &p) const;
-    QColor atomColor(const Atom &a) const;
 };
 } // namespace mf
 Q_DECLARE_METATYPE(mf::Vec)

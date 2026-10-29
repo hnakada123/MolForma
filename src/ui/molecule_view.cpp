@@ -121,6 +121,13 @@ void MoleculeView::scheduleRender() {
         update();
     }
 }
+// Selection, labels, monitors and markers are drawn over the 3D scene: they need no new frame of it.
+void MoleculeView::scheduleOverlay() {
+    if (renderer && overlay && !renderTimer.isActive())
+        overlay->update();
+    else
+        scheduleRender();
+}
 void MoleculeView::renderNow() {
     renderTimer.stop();
     if (renderer) {
@@ -147,7 +154,7 @@ void MoleculeView::setHidden(const QSet<QString> &ids) {
 void MoleculeView::setHydrogenBonds(bool on) {
     showHydrogenBonds = on;
     findHydrogenBonds();
-    scheduleRender();
+    scheduleOverlay();
 }
 void MoleculeView::findHydrogenBonds() {
     hbonds.clear();
@@ -158,16 +165,25 @@ void MoleculeView::findHydrogenBonds() {
     for (int i = 0; i < doc.atoms.size(); ++i)
         if (!doc.atoms[i].ghost && polar(doc.atoms[i].element))
             acceptors << i;
-    for (const auto &h : doc.atoms) {
-        if (h.element != "H" || h.ghost)
+    // The donor of each hydrogen: the other end of its only bond (dative bonds left out).
+    QVector<int> degree(doc.atoms.size()), partner(doc.atoms.size(), -1);
+    for (const auto &b : doc.bonds) {
+        const int ai = atomIndices.value(b.a, -1), bi = atomIndices.value(b.b, -1);
+        if (b.kind == "dative" || ai < 0 || bi < 0)
             continue;
-        const auto neighbors = doc.neighbors(h.id, false);
-        if (neighbors.size() != 1 || !polar(doc.atom(neighbors[0]).element))
+        ++degree[ai];
+        ++degree[bi];
+        partner[ai] = bi;
+        partner[bi] = ai;
+    }
+    for (int k = 0; k < doc.atoms.size(); ++k) {
+        const auto &h = doc.atoms[k];
+        if (h.element != "H" || h.ghost || degree[k] != 1 || !polar(doc.atoms[partner[k]].element))
             continue;
-        const Vec donor = doc.atom(neighbors[0]).position;
+        const Vec donor = doc.atoms[partner[k]].position;
         for (int i : acceptors) {
             const auto &a = doc.atoms[i];
-            if (a.id == neighbors[0])
+            if (i == partner[k])
                 continue;
             const double distance = (a.position - h.position).norm();
             // H···A 1.5–2.6 Å and D–H···A at least 120°.
@@ -180,16 +196,10 @@ void MoleculeView::findHydrogenBonds() {
         }
     }
 }
-double MoleculeView::atomRadius(const Atom &a) const {
-    const bool hydrogen = a.element == "H";
-    if (displayStyle == "spacefill") {
-        double vdw = 1.7;
-        try {
-            vdw = OpenBabel::OBElements::GetVdwRad(element(a.element).number);
-        } catch (const std::exception &) {
-        }
-        return std::max(2., vdw * scale);
-    }
+double MoleculeView::atomRadius(int atom) const {
+    const bool hydrogen = doc.atoms[atom].element == "H";
+    if (displayStyle == "spacefill")
+        return std::max(2., vdwRadii.value(atom, 1.7) * scale);
     if (displayStyle == "stick")
         return std::clamp(scale * .1, 3., 7.);
     if (displayStyle == "wireframe")
@@ -197,10 +207,19 @@ double MoleculeView::atomRadius(const Atom &a) const {
     return std::clamp(scale * (hydrogen ? .12 : .20), hydrogen ? 5. : 8., hydrogen ? 11. : 20.);
 }
 void MoleculeView::refreshColors() {
+    // Colored by residue: a hue for each residue, the last one that holds the atom.
+    QHash<QString, QString> residueOf;
+    if (colorMode == "residue")
+        for (const auto &r : doc.residues)
+            for (const auto &id : r.atoms)
+                residueOf.insert(id, r.id);
     atomColors.clear();
     atomColors.reserve(doc.atoms.size());
-    for (const auto &atom : doc.atoms)
-        atomColors << atomColor(atom);
+    for (const auto &atom : doc.atoms) {
+        const auto group = residueOf.value(atom.id);
+        atomColors << (group.isEmpty() ? element(atom.element).color
+                                       : QColor::fromHsv(int(qHash(group, 0) % 360), 135, 205));
+    }
     moleculeDirty = true;
 }
 void MoleculeView::renderScene() {
@@ -209,7 +228,10 @@ void MoleculeView::renderScene() {
         return;
     if (moleculeDirty) {
         renderer->setMolecule(doc, atomColors, showHydrogens, displayStyle, hidden);
-        moleculeDirty = false;
+        moleculeDirty = positionsDirty = false;
+    } else if (positionsDirty) {
+        renderer->setPositions(doc);
+        positionsDirty = false;
     }
     if (surfaceDirty) {
         renderer->setSurface(surface);
@@ -252,11 +274,58 @@ void MoleculeView::showEvent(QShowEvent *event) {
         });
     scheduleRender();
 }
-void MoleculeView::setDocument(const Document &d) {
-    doc = d;
+void MoleculeView::indexAtoms() {
     atomIndices.clear();
     for (int i = 0; i < doc.atoms.size(); ++i)
         atomIndices.insert(doc.atoms[i].id, i);
+    bondEnds.clear();
+    bondedAtoms.fill(false, doc.atoms.size());
+    for (const auto &b : doc.bonds) {
+        bondEnds.append({atomIndices.value(b.a, -1), atomIndices.value(b.b, -1)});
+        for (int i : {bondEnds.last().first, bondEnds.last().second})
+            if (i >= 0)
+                bondedAtoms[i] = true;
+    }
+    vdwRadii.clear();
+    for (const auto &a : doc.atoms) {
+        double vdw = 1.7;
+        try {
+            vdw = OpenBabel::OBElements::GetVdwRad(element(a.element).number);
+        } catch (const std::exception &) {
+        }
+        vdwRadii << vdw;
+    }
+}
+void MoleculeView::setDocument(const Document &d) {
+    // The window refreshes for changes elsewhere too (settings, the project path): the same atoms,
+    // bonds and residues need no new scene.
+    const auto shared = [](const auto &a, const auto &b) {
+        return a.constData() == b.constData() && a.size() == b.size();
+    };
+    if (shared(doc.atoms, d.atoms) && shared(doc.bonds, d.bonds) && shared(doc.residues, d.residues)) {
+        const bool drawn = shared(doc.centers, d.centers) && shared(doc.pointCharges, d.pointCharges);
+        doc = d;
+        if (!drawn)
+            scheduleRender();
+        return;
+    }
+    // The same atoms elsewhere (a move, a vibration frame) move the scene's atoms: nothing drawn
+    // from their other properties changes.
+    const bool moved =
+        shared(doc.bonds, d.bonds) && shared(doc.residues, d.residues) &&
+        doc.atoms.size() == d.atoms.size() &&
+        std::equal(doc.atoms.begin(), doc.atoms.end(), d.atoms.begin(), [](const Atom &a, const Atom &b) {
+            return a.id == b.id && a.element == b.element && a.ghost == b.ghost && a.isotope == b.isotope &&
+                   a.charge == b.charge && a.fixed == b.fixed && a.stereo == b.stereo;
+        });
+    doc = d;
+    if (moved) {
+        positionsDirty = true;
+        findHydrogenBonds();
+        scheduleRender();
+        return;
+    }
+    indexAtoms();
     const auto absent = [&](const QString &id) { return !atomIndices.contains(id); };
     selected.removeIf(absent);
     selectedIds = QSet<QString>(selected.begin(), selected.end());
@@ -269,7 +338,7 @@ void MoleculeView::setDocument(const Document &d) {
 void MoleculeView::setSelection(const Ids &ids) {
     selected = ids;
     selectedIds = QSet<QString>(ids.begin(), ids.end());
-    scheduleRender();
+    scheduleOverlay();
 }
 void MoleculeView::setSurface(const QVector<SurfaceTriangle> &triangles) {
     // Result-frame navigation can supply the same implicitly shared mesh repeatedly.
@@ -311,7 +380,8 @@ Vec MoleculeView::worldPosition(const QPointF &p) const {
                                                -(p.y() - height() * .5 - pan.y()) / scale, depth);
 }
 QPointF MoleculeView::atomScreenPosition(const QString &id) const {
-    return project(doc.atom(id).position);
+    const int i = atomIndices.value(id, -1);
+    return project(i >= 0 ? doc.atoms[i].position : doc.atom(id).position);
 }
 void MoleculeView::fit() {
     QVector<Vec> points;
@@ -369,10 +439,11 @@ QString MoleculeView::hitAtom(const QPointF &p) const {
     QString result;
     double front = -1e100;
     Mat r = camera();
-    for (const auto &a : doc.atoms) {
+    for (int i = 0; i < doc.atoms.size(); ++i) {
+        const auto &a = doc.atoms[i];
         if (!shown(a))
             continue;
-        double radius = displayStyle == "spacefill" ? atomRadius(a)
+        double radius = displayStyle == "spacefill" ? atomRadius(i)
                         : a.element == "H"          ? showHydrogens ? 10 : 6
                                                     : 14;
         double dist = QLineF(project(a.position), p).length();
@@ -413,18 +484,6 @@ int MoleculeView::hitMarker(const QPointF &p) const {
         if (QLineF(p, markers[i].point).length() < (markers[i].site < 0 ? 27 : 15))
             return i;
     return -1;
-}
-QColor MoleculeView::atomColor(const Atom &a) const {
-    QString group;
-    if (colorMode == "residue") {
-        for (const auto &r : doc.residues)
-            for (const auto &id : r.atoms)
-                if (id == a.id)
-                    group = r.id;
-    }
-    if (!group.isEmpty())
-        return QColor::fromHsv(int(qHash(group, 0) % 360), 135, 205);
-    return element(a.element).color;
 }
 void MoleculeView::paintEvent(QPaintEvent *) {
 #ifdef MOLFORMA_HAS_VTK
@@ -471,18 +530,25 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
         int index;
     };
     QVector<Item> items;
-    QSet<QString> bonded; // Wireframe draws atoms only where no bond line shows them.
-    if (displayStyle == "wireframe")
-        for (const auto &b : doc.bonds)
-            bonded << b.a << b.b;
     Mat r = camera();
-    for (int i = 0; i < doc.atoms.size(); ++i)
-        if (shown(doc.atoms[i]))
+    // Atoms well outside the view (a zoomed-in protein) are left out: their spheres, rings and
+    // labels cannot reach into it.
+    QVector<QPointF> screen(doc.atoms.size());
+    const QRectF reach = QRectF(rect()).adjusted(-100, -100, 100, 100);
+    for (int i = 0; i < doc.atoms.size(); ++i) {
+        screen[i] = project(doc.atoms[i].position);
+        const double margin = displayStyle == "spacefill" ? atomRadius(i) : 0;
+        if (reach.adjusted(-margin, -margin, margin, margin).contains(screen[i]) && shown(doc.atoms[i]))
             items << Item{(r * (doc.atoms[i].position - center)).z(), true, i};
+    }
+    const auto crosses = [&](const QPointF &a, const QPointF &b) {
+        return std::max(a.x(), b.x()) >= reach.left() && std::min(a.x(), b.x()) <= reach.right() &&
+               std::max(a.y(), b.y()) >= reach.top() && std::min(a.y(), b.y()) <= reach.bottom();
+    };
     for (int i = 0; !overlayOnly && displayStyle != "spacefill" && i < doc.bonds.size(); ++i) {
-        const auto &b = doc.bonds[i];
-        const int ai = atomIndices.value(b.a, -1), bi = atomIndices.value(b.b, -1);
-        if (ai >= 0 && bi >= 0 && shown(doc.atoms[ai]) && shown(doc.atoms[bi]))
+        const auto [ai, bi] = bondEnds.value(i, {-1, -1});
+        if (ai >= 0 && bi >= 0 && shown(doc.atoms[ai]) && shown(doc.atoms[bi]) &&
+            crosses(screen[ai], screen[bi]))
             items << Item{(r * ((doc.atoms[ai].position + doc.atoms[bi].position) * .5 - center)).z(), false,
                           i};
     }
@@ -519,10 +585,11 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             p.drawPolygon(QPolygonF{project(t.a), project(t.b), project(t.c)});
         } else if (item.kind == 0) {
             const auto &b = doc.bonds[item.index];
-            const auto &a = doc.atoms[atomIndices.value(b.a)], &c = doc.atoms[atomIndices.value(b.b)];
+            const auto [ai, bi] = bondEnds[item.index];
+            const auto &a = doc.atoms[ai], &c = doc.atoms[bi];
             if (!showHydrogens && (a.element == "H" || c.element == "H"))
                 continue;
-            QPointF from = project(a.position), to = project(c.position), v = to - from;
+            QPointF from = screen[ai], to = screen[bi], v = to - from;
             double len = QLineF(from, to).length();
             if (len < 1)
                 continue;
@@ -531,13 +598,13 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
                 // Half bonds in the atom colors; multiple bonds as one line.
                 const double width = displayStyle == "stick" ? std::clamp(scale * .2, 5., 12.) : 2.;
                 const QPointF middle = (from + to) / 2;
-                p.setPen(QPen(atomColors[atomIndices.value(b.a)], width, Qt::SolidLine, Qt::RoundCap));
+                p.setPen(QPen(atomColors[ai], width, Qt::SolidLine, Qt::RoundCap));
                 p.drawLine(from, middle);
-                p.setPen(QPen(atomColors[atomIndices.value(b.b)], width, Qt::SolidLine, Qt::RoundCap));
+                p.setPen(QPen(atomColors[bi], width, Qt::SolidLine, Qt::RoundCap));
                 p.drawLine(middle, to);
                 continue;
             }
-            const auto style = bondStyle(b.kind);
+            const auto &style = bondStyle(b.kind);
             p.setPen(QPen(style.color, 3.5, Qt::SolidLine, Qt::RoundCap));
             for (const double offset : style.offsets)
                 p.drawLine(from + normal * offset, to + normal * offset);
@@ -554,7 +621,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             }
         } else {
             const auto &a = doc.atoms[item.index];
-            QPointF pos = project(a.position);
+            QPointF pos = screen[item.index];
             bool hydrogen = a.element == "H";
             if (hydrogen && !showHydrogens) {
                 p.setPen(QPen(QColor("#4c9a6c"), 1.5));
@@ -562,7 +629,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
                 p.drawEllipse(pos, 4, 4);
                 continue;
             }
-            const double radius = atomRadius(a);
+            const double radius = atomRadius(item.index);
             QColor color = atomColors[item.index];
             if (selectedIds.contains(a.id)) {
                 p.setPen(QPen(QColor("#de9c25"), 3));
@@ -570,7 +637,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
                 p.drawEllipse(pos, radius + 5, radius + 5);
             }
             if ((!overlayOnly || a.ghost) &&
-                (displayStyle != "wireframe" || a.ghost || !bonded.contains(a.id))) {
+                (displayStyle != "wireframe" || a.ghost || !bondedAtoms.value(item.index))) {
                 QRadialGradient sphere(pos - QPointF(radius * .35, radius * .4), radius * 1.5);
                 sphere.setColorAt(0, color.lighter(160));
                 sphere.setColorAt(.6, color);
@@ -579,21 +646,23 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
                 p.setPen(QPen(color.darker(150), a.ghost ? 2 : 1, a.ghost ? Qt::DashLine : Qt::SolidLine));
                 p.drawEllipse(pos, radius, radius);
             }
-            QString label = a.isotope == 2 && hydrogen ? "D"
-                            : a.isotope == 3 && hydrogen
-                                ? "T"
-                                : (a.isotope ? QString::number(a.isotope) : "") + a.element;
-            if (showIndices)
-                label += QString::number(item.index + 1);
-            if (a.charge)
-                label += QString("(%1%2)").arg(a.charge > 0 ? "+" : "").arg(a.charge);
-            if (a.stereo == "R" || a.stereo == "S") // The recorded configuration of a stereocenter.
-                label += " (" + a.stereo + ")";
             const bool chosen = selectedIds.contains(a.id);
-            if (labelMode != "none" && (labelMode == "all" || chosen || (labelMode == "heavy" && !hydrogen)))
+            if (labelMode != "none" &&
+                (labelMode == "all" || chosen || (labelMode == "heavy" && !hydrogen))) {
+                QString label = a.isotope == 2 && hydrogen ? "D"
+                                : a.isotope == 3 && hydrogen
+                                    ? "T"
+                                    : (a.isotope ? QString::number(a.isotope) : "") + a.element;
+                if (showIndices)
+                    label += QString::number(item.index + 1);
+                if (a.charge)
+                    label += QString("(%1%2)").arg(a.charge > 0 ? "+" : "").arg(a.charge);
+                if (a.stereo == "R" || a.stereo == "S") // The recorded configuration of a stereocenter.
+                    label += " (" + a.stereo + ")";
                 // Placed after all atoms, so labels stay readable in front of the drawing.
                 labels << Label{pos,       radius, label, item.z, chosen, hydrogen, centers.contains(a.id),
                                 item.index};
+            }
             if (a.fixed) {
                 p.setPen(QColor("#c47b12"));
                 p.drawText(pos + QPointF(-radius, radius + 14), "■");
@@ -602,10 +671,12 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
     }
     // The recorded E/Z of double bonds, at the middle of the bond (after the atom labels).
     if (labelMode != "none")
-        for (const auto &b : doc.bonds) {
-            const int ai = atomIndices.value(b.a, -1), bi = atomIndices.value(b.b, -1);
-            if ((b.stereo == "E" || b.stereo == "Z") && ai >= 0 && bi >= 0 && shown(doc.atoms[ai]) &&
-                shown(doc.atoms[bi]))
+        for (int i = 0; i < doc.bonds.size(); ++i) {
+            const auto &b = doc.bonds[i];
+            if (b.stereo != "E" && b.stereo != "Z")
+                continue;
+            const auto [ai, bi] = bondEnds.value(i, {-1, -1});
+            if (ai >= 0 && bi >= 0 && shown(doc.atoms[ai]) && shown(doc.atoms[bi]))
                 labels << Label{project((doc.atoms[ai].position + doc.atoms[bi].position) / 2),
                                 2,
                                 "(" + b.stereo + ")",
@@ -635,8 +706,8 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
         for (const auto &item : std::as_const(items))
             if (item.kind == 1) {
                 const auto &a = doc.atoms[item.index];
-                const double radius = a.element == "H" && !showHydrogens ? 4 : atomRadius(a);
-                disks[item.index] = {project(a.position), radius};
+                const double radius = a.element == "H" && !showHydrogens ? 4 : atomRadius(item.index);
+                disks[item.index] = {screen[item.index], radius};
                 grid[QPoint(int(std::floor(disks[item.index].first.x() / cell)),
                             int(std::floor(disks[item.index].first.y() / cell)))]
                     << item.index;
@@ -658,11 +729,31 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
                 }
         return false;
     };
+    // The labels placed so far, by the screen cells they cover, so each test stays local too.
     QVector<QRectF> placed;
+    QHash<QPoint, QVector<int>> placedCells;
+    const auto cells = [&](const QRectF &box, const auto &visit) {
+        for (int x = int(std::floor(box.left() / cell)); x <= int(std::floor(box.right() / cell)); ++x)
+            for (int y = int(std::floor(box.top() / cell)); y <= int(std::floor(box.bottom() / cell)); ++y)
+                if (visit(QPoint(x, y)))
+                    return true;
+        return false;
+    };
+    const auto coversLabel = [&](const QRectF &box) {
+        return cells(box, [&](const QPoint &c) {
+            const auto it = placedCells.constFind(c);
+            return it != placedCells.cend() &&
+                   std::any_of(it->begin(), it->end(), [&](int i) { return placed[i].intersects(box); });
+        });
+    };
     const auto metrics = p.fontMetrics();
+    QHash<QString, QRectF> extents; // Most labels repeat ("C", "H"); measure each text once.
     p.setPen(QColor("#20364b"));
     for (const auto &label : labels) {
-        const QRectF text = metrics.boundingRect(label.text);
+        auto extent = extents.constFind(label.text);
+        if (extent == extents.cend())
+            extent = extents.insert(label.text, metrics.boundingRect(label.text));
+        const QRectF text = *extent;
         const double r = label.radius;
         const QPointF corners[]{{r + 3, -r - 1},
                                 {r + 3, r + metrics.ascent()},
@@ -673,7 +764,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             const QPointF at = label.center + corner;
             // Two pixels apart, so neighbouring labels never read as one ("H17N14").
             const QRectF box = text.translated(at).adjusted(-2, -1, 2, 1);
-            if (std::any_of(placed.begin(), placed.end(), [&](const QRectF &q) { return q.intersects(box); }))
+            if (coversLabel(box))
                 continue;
             if (!coversAtom(box, label.atom)) {
                 chosen = at;
@@ -687,6 +778,10 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
         if (!chosen)
             continue;
         placed << text.translated(*chosen).adjusted(-2, -1, 2, 1);
+        cells(placed.last(), [&](const QPoint &c) {
+            placedCells[c] << int(placed.size()) - 1;
+            return false;
+        });
         p.drawText(*chosen, label.text);
     }
     // Candidate changes: removed atoms at their old place (red), added (green) and moved (orange).
@@ -700,20 +795,21 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
         p.drawLine(at + QPointF(-6, 6), at + QPointF(6, -6));
         p.drawText(at + QPointF(13, 13), symbol);
     }
-    for (const auto &a : doc.atoms) {
+    for (int i = 0; (!addedAtoms.isEmpty() || !movedAtoms.isEmpty()) && i < doc.atoms.size(); ++i) {
+        const auto &a = doc.atoms[i];
         const bool added = addedAtoms.contains(a.id), moved = movedAtoms.contains(a.id);
         if ((!added && !moved) || !shown(a))
             continue;
         p.setPen(QPen(added ? QColor("#25a35a") : QColor("#e08a1e"), 2.5));
         p.setBrush(Qt::NoBrush);
-        const double r = atomRadius(a) + 4;
+        const double r = atomRadius(i) + 4;
         p.drawEllipse(project(a.position), r, r);
     }
     for (const auto &c : doc.centers) {
         const auto &id = c.atom;
-        if (!doc.contains(id))
+        if (!atomIndices.contains(id))
             continue;
-        Vec origin = doc.atom(id).position;
+        Vec origin = doc.atoms[atomIndices[id]].position;
         for (int i = 0; i < c.sites.size(); ++i) {
             const auto &s = c.sites[i];
             if (!s.donor.isEmpty())
@@ -733,10 +829,12 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
         for (const auto &res : doc.residues) {
             for (bool n : {true, false}) {
                 const auto &state = n ? res.nTerminal : res.cTerminal;
-                const auto id = res.atoms.value(n ? "N" : "C");
-                if (!doc.contains(id) || !QStringList{"neutral", "charged"}.contains(state))
+                if (state != "neutral" && state != "charged")
                     continue;
-                QPointF pos = project(doc.atom(id).position) + QPointF(n ? -38 : 38, -32);
+                const int atom = atomIndices.value(res.atoms.value(n ? "N" : "C"), -1);
+                if (atom < 0)
+                    continue;
+                QPointF pos = project(doc.atoms[atom].position) + QPointF(n ? -38 : 38, -32);
                 p.setPen(QPen(QColor("#168473"), 1.5));
                 p.setBrush(QColor("#e2f6ee"));
                 p.drawRoundedRect(QRectF(pos - QPointF(27, 12), QSizeF(54, 24)), 8, 8);
@@ -759,10 +857,10 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
     if (!hbonds.isEmpty()) {
         p.setPen(QPen(QColor("#2a7bd6"), 1.6, Qt::DashLine));
         for (const auto &[h, acceptor] : hbonds) {
-            if (!doc.contains(h) || !doc.contains(acceptor) || !shown(doc.atom(h)) ||
-                !shown(doc.atom(acceptor)))
+            const int hi = atomIndices.value(h, -1), ai = atomIndices.value(acceptor, -1);
+            if (hi < 0 || ai < 0 || !shown(doc.atoms[hi]) || !shown(doc.atoms[ai]))
                 continue;
-            p.drawLine(project(doc.atom(h).position), project(doc.atom(acceptor).position));
+            p.drawLine(project(doc.atoms[hi].position), project(doc.atoms[ai].position));
         }
     }
     for (const auto &ids : monitors) {
@@ -857,22 +955,31 @@ void MoleculeView::mouseMoveEvent(QMouseEvent *e) {
         } else if (pressedButton == Qt::LeftButton) {
             // The atoms follow the cursor while dragging; the edit itself happens on release. A
             // drag that includes a fixed atom is refused then, so nothing moves meanwhile either.
-            if (!dragOrigin)
+            // The carried atoms are found once; each move then sets only their positions.
+            if (!dragOrigin) {
                 dragOrigin = doc;
-            doc = *dragOrigin;
-            const auto moves = [&](const Atom &a) { return dragAtoms.contains(a.id) || a.id == pressedAtom; };
-            if (std::none_of(doc.atoms.begin(), doc.atoms.end(),
-                             [&](const Atom &a) { return a.fixed && moves(a); })) {
-                const Vec shift = worldPosition(e->position()) - worldPosition(press);
-                for (auto &a : doc.atoms)
-                    if (moves(a))
-                        a.position += shift;
+                dragMoving.clear();
+                for (int i = 0; i < doc.atoms.size(); ++i)
+                    if (dragAtoms.contains(doc.atoms[i].id) || doc.atoms[i].id == pressedAtom)
+                        dragMoving << i;
+                dragFixed = std::any_of(dragMoving.begin(), dragMoving.end(),
+                                        [&](int i) { return doc.atoms[i].fixed; });
             }
-            moleculeDirty = true;
+            if (doc.atoms.size() != dragOrigin->atoms.size()) // Replaced during the drag.
+                doc = *dragOrigin;
+            if (!dragFixed) {
+                const Vec shift = worldPosition(e->position()) - worldPosition(press);
+                for (int i : dragMoving)
+                    doc.atoms[i].position = dragOrigin->atoms[i].position + shift;
+            }
+            positionsDirty = true;
         }
     }
     last = e->position();
-    scheduleRender();
+    if (boxing)
+        scheduleOverlay(); // Only the rectangle moved.
+    else if (dragging)
+        scheduleRender();
 }
 void MoleculeView::mouseReleaseEvent(QMouseEvent *e) {
     auto button = pressedButton;
@@ -880,7 +987,7 @@ void MoleculeView::mouseReleaseEvent(QMouseEvent *e) {
     if (dragOrigin) { // The edit replaces the preview (or the document stays as it was).
         doc = *dragOrigin;
         dragOrigin.reset();
-        moleculeDirty = true;
+        positionsDirty = true;
         scheduleRender();
     }
     if (dragging) {
@@ -892,7 +999,7 @@ void MoleculeView::mouseReleaseEvent(QMouseEvent *e) {
                     ids << a.id;
             emit rectangleSelected(ids, pressModifiers.testFlag(Qt::ControlModifier));
             boxing = false;
-            scheduleRender();
+            scheduleOverlay();
         } else if (button == Qt::LeftButton && tool == EditorTool::Move && !pressedAtom.isEmpty() &&
                    !pressModifiers.testFlag(Qt::AltModifier))
             emit atomDragged(pressedAtom, worldPosition(e->position()) - worldPosition(press));

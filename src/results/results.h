@@ -110,6 +110,9 @@ class NwchemLog {
     // below and the energy summary are read.
     explicit NwchemLog(ResultData *result = nullptr);
     void add(const QString &line);
+    // A line as read from the file (UTF-8). Without a result, the lines that change neither the
+    // progress nor the energy summary are passed over without decoding them.
+    void addBytes(QByteArrayView line);
     // The log ends: sections still open are incomplete. Completes the result.
     void finish();
     const NwchemEnergySummary &summary() const {

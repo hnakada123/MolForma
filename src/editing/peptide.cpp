@@ -43,6 +43,14 @@ QString residueForAtom(const Document &d, const QString &id) {
                 return r.id;
     return {};
 }
+QHash<QString, QString> atomResidues(const Document &d) {
+    QHash<QString, QString> residues;
+    for (const auto &r : d.residues)
+        for (const auto &a : r.atoms)
+            if (!residues.contains(a))
+                residues.insert(a, r.id);
+    return residues;
+}
 QHash<QString, QString> atomPlaces(const Document &d) {
     QHash<QString, QString> places;
     for (const auto &r : d.residues) {
@@ -414,15 +422,52 @@ void buildPeptide(Document &d, const QStringList &codes, const QString &n, const
     QString prev, first;
     QString nt = n == "ACE" ? "neutral" : n, ct = c == "NME" ? "neutral" : c;
     followingCharge(d, [&] {
+        // The chain grows in a working document that keeps only the newest residue and the bond to it:
+        // the residues before it are finished and move to d in order, so a residue costs the same
+        // however long the chain is. Adding a residue reads only the previous one and its C side.
+        Document work;
+        const auto finish = [&](const QString &kept) {
+            QSet<QString> keep;
+            if (const auto *r = work.findResidue(kept))
+                keep = QSet<QString>(r->atoms.begin(), r->atoms.end());
+            const auto moves = [&](const QString &id) { return !keep.contains(id); };
+            for (const auto &a : std::as_const(work.atoms))
+                if (moves(a.id))
+                    d.atoms << a;
+            work.atoms.removeIf([&](const Atom &a) { return moves(a.id); });
+            const auto finished = [&](const Bond &b) { return moves(b.a) && moves(b.b); };
+            for (const auto &b : std::as_const(work.bonds))
+                if (finished(b))
+                    d.bonds << b;
+            work.bonds.removeIf(finished);
+            const auto done = [&](const Part &p) {
+                return std::all_of(p.atoms.begin(), p.atoms.end(), moves);
+            };
+            for (const auto &p : std::as_const(work.parts))
+                if (done(p))
+                    d.parts << p;
+            work.parts.removeIf(done);
+            for (const auto &r : std::as_const(work.residues))
+                if (r.id != kept) {
+                    d.residues << r;
+                    d.chains[r.chain] << r.id;
+                }
+            work.residues.removeIf([&](const Residue &r) { return r.id != kept; });
+            for (auto &sequence : work.chains)
+                sequence.removeIf([&](const QString &id) { return id != kept; });
+            work.chains.removeIf([](const auto &it) { return it.value().isEmpty(); });
+        };
         for (const auto &code : codes) {
             if (codes.size() == 1) {
-                prev = placeAmino(d, code, state, chirality, {}, Vec::Zero());
-                setTerminals(d, prev, nt, ct);
+                prev = placeAmino(work, code, state, chirality, {}, Vec::Zero());
+                setTerminals(work, prev, nt, ct);
             } else
-                prev = appendResidue(d, code, prev, state, chirality, nt, ct);
+                prev = appendResidue(work, code, prev, state, chirality, nt, ct);
             if (first.isEmpty())
                 first = prev;
+            finish(prev);
         }
+        finish({});
         if (n == "ACE")
             addCap(d, first, "ACE");
         if (c == "NME")

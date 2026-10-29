@@ -4,6 +4,7 @@
 #include "model/geometry.h"
 #include "model/i18n.h"
 #include "model/numbers.h"
+#include "model/topology.h"
 #include <QRegularExpression>
 #include <cmath>
 
@@ -199,7 +200,7 @@ QVector<ZMatrixRow> zMatrix(const Document &d) {
     const int n = d.atoms.size();
     QVector<ZMatrixRow> rows(n);
     const auto position = [&](int i) { return d.atoms[i].position; };
-    const auto bonded = [&](int a, int b) { return d.bond(d.atoms[a].id, d.atoms[b].id) != nullptr; };
+    const Topology topology(d);
     // Angle at b between a and c, in degrees.
     const auto angle = [&](int a, int b, int c) {
         const Vec u = (position(a) - position(b)).normalized(), v = (position(c) - position(b)).normalized();
@@ -208,17 +209,29 @@ QVector<ZMatrixRow> zMatrix(const Document &d) {
     // An earlier atom, preferring one bonded to `to`, then the nearest; never in `excluded`, and
     // not collinear with `line` (angle within 2° of 0° or 180°).
     const auto reference = [&](int before, int to, QVector<int> excluded, int line) {
+        const auto usable = [&](int k) {
+            if (k >= before || excluded.contains(k))
+                return false;
+            const double a = line >= 0 ? angle(line, to, k) : 90;
+            return !(a < 2 || a > 178);
+        };
+        // An atom bonded to `to` scores below 1000 Å, ahead of every atom that is not bonded.
         int best = -1;
         double bestScore = 1e300;
-        for (int k = 0; k < before; ++k) {
-            if (excluded.contains(k))
-                continue;
-            if (line >= 0) {
-                const double a = angle(line, to, k);
-                if (a < 2 || a > 178)
-                    continue;
+        for (int k : topology.neighbors(to))
+            if (const double score = (position(k) - position(to)).norm();
+                usable(k) && (score < bestScore || (score == bestScore && k < best))) {
+                bestScore = score;
+                best = k;
             }
-            const double score = (bonded(k, to) ? 0 : 1000) + (position(k) - position(to)).norm();
+        if (best >= 0 && bestScore < 1000)
+            return best;
+        best = -1;
+        bestScore = 1e300;
+        for (int k = 0; k < before; ++k) {
+            if (!usable(k))
+                continue;
+            const double score = (topology.bonded(k, to) ? 0 : 1000) + (position(k) - position(to)).norm();
             if (score < bestScore) {
                 bestScore = score;
                 best = k;
@@ -243,7 +256,7 @@ QVector<ZMatrixRow> zMatrix(const Document &d) {
         row.dihedral = reference(i, row.angle, {i, row.bond, row.angle}, row.bond);
         if (row.dihedral >= 0)
             row.dihedralValue = measure(
-                d, {d.atoms[i].id, d.atoms[row.bond].id, d.atoms[row.angle].id, d.atoms[row.dihedral].id});
+                QVector<Vec>{position(i), position(row.bond), position(row.angle), position(row.dihedral)});
     }
     return rows;
 }

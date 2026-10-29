@@ -88,7 +88,9 @@ class InputEditor : public QPlainTextEdit {
     void resizeEvent(QResizeEvent *event) override {
         QPlainTextEdit::resizeEvent(event);
         updateGutter();
+        updateMarks();
     }
+    std::pair<int, int> marked; // The first line and the number of lines of the tinted block.
 
   public:
     QSet<int> advanced, extra;
@@ -98,16 +100,28 @@ class InputEditor : public QPlainTextEdit {
         setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
         setFrameShape(QFrame::NoFrame);
         connect(this, &QPlainTextEdit::blockCountChanged, this, [this] { updateGutter(); });
-        connect(this, &QPlainTextEdit::updateRequest, gutter, [this] { gutter->update(); });
+        connect(this, &QPlainTextEdit::updateRequest, gutter, [this](const QRect &, int dy) {
+            gutter->update();
+            if (dy)
+                updateMarks();
+        });
         connect(this, &QPlainTextEdit::cursorPositionChanged, gutter, [this] { gutter->update(); });
         highlightInput(document());
         updateGutter();
     }
-    // A tint behind the lines of a block (from 0), stronger on the cursor's line.
+    // A tint behind the lines of a block (from 0), stronger on the cursor's line. Only the lines in
+    // view carry it, as a geometry block can have thousands; scrolling and resizing renew them.
     void markBlock(int first, int count) {
+        marked = {first, count};
+        updateMarks();
+    }
+    void updateMarks() {
         QList<QTextEdit::ExtraSelection> selections;
         auto color = ChromeColors(palette()).accent;
-        for (int line = first; line < first + count; ++line) {
+        const int top = firstVisibleBlock().blockNumber(),
+                  shown = viewport()->height() / std::max(1, fontMetrics().lineSpacing()) + 2;
+        for (int line = std::max(marked.first, top);
+             line < std::min(marked.first + marked.second, top + shown); ++line) {
             QTextEdit::ExtraSelection s;
             s.cursor = QTextCursor(document()->findBlockByNumber(line));
             color.setAlpha(line == textCursor().blockNumber() ? 46 : 20);
@@ -439,7 +453,7 @@ void InputPreviewPanel::followCursor() {
         outlineList->setCurrentRow(found);
     }
     if (found < 0 || contents.isEmpty()) {
-        input->setExtraSelections({});
+        input->markBlock(0, 0);
         sourceChip->hide();
         return;
     }

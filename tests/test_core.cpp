@@ -8,6 +8,7 @@
 #include "editing/stereochemistry.h"
 #include "io/structure_io.h"
 #include "model/geometry.h"
+#include "model/topology.h"
 #include "nwchem/nwchem.h"
 #include <QJsonDocument>
 #include <QTemporaryDir>
@@ -52,6 +53,95 @@ class CoreTest : public QObject {
         session.reset(d);
         QVERIFY(session.history().isClean());
         QVERIFY(!session.history().canUndo());
+    }
+
+    void topologyMatchesDocumentLookups() {
+        Document d;
+        buildPeptide(d, {"ALA", "SER"}, "charged", "charged");
+        auto water = Document::fromXyz("3\n\nO 0 0 20\nH .76 0 20.6\nH -.76 0 20.6\n");
+        d.atoms += water.atoms;
+        d.bonds += water.bonds;
+        d.bonds.last().kind = "dative";
+        const Topology topology(d);
+        QCOMPARE(topology.size(), d.atoms.size());
+        QCOMPARE(topology.index("missing"), -1);
+        for (int i = 0; i < d.atoms.size(); ++i) {
+            const auto &id = d.atoms[i].id;
+            QCOMPARE(topology.index(id), d.index(id));
+            QCOMPARE(topology.neighbors(d, id), d.neighbors(id));
+            QCOMPARE(topology.neighbors(d, id, false), d.neighbors(id, false));
+            QCOMPARE(topology.neighbors(i).size(), size_t(d.neighbors(id).size()));
+            for (const auto &n : d.neighbors(id)) {
+                QCOMPARE(topology.bond(d, id, n), d.bond(id, n));
+                QVERIFY(topology.bonded(i, d.index(n)));
+            }
+        }
+        QCOMPARE(topology.bond(d, d.atoms[0].id, d.atoms.last().id), nullptr);
+        // Breadth-first order from the root, as Document::component, and the far side of a bond.
+        const auto chain = topology.component(0);
+        QCOMPARE(chain.size(), d.atoms.size() - 3);
+        Ids ids;
+        for (int i : chain)
+            ids << d.atoms[i].id;
+        QCOMPARE(d.component(d.atoms[0].id), ids);
+        const auto &n = d.residues[1].atoms["N"], &c = d.residues[0].atoms["C"];
+        const auto side = d.bondSide(c, n);
+        QCOMPARE(side.size(), d.residues[1].atoms.size());
+        QCOMPARE(QSet<QString>(side.begin(), side.end()),
+                 QSet<QString>(d.residues[1].atoms.begin(), d.residues[1].atoms.end()));
+        const auto molecule = topology.molecules();
+        QCOMPARE(molecule.first(), 0);
+        QCOMPARE(molecule.last(), 1);
+        QCOMPARE(std::count(molecule.begin(), molecule.end(), 1), 3);
+        // Indices of a list of atoms keep its order; an unknown atom fails.
+        QCOMPARE(d.indices({d.atoms[4].id, d.atoms[1].id, d.atoms[4].id}), (QVector<int>{4, 1, 4}));
+        QVERIFY_EXCEPTION_THROWN(d.indices({d.atoms[1].id, "missing"}), std::runtime_error);
+    }
+
+    void counterpoiseMonomersInAtomOrder() {
+        // A ghost atom bonded to a molecule belongs to its monomer; a molecule of ghosts only is none.
+        auto d = Document::fromXyz("7\n\nO 0 0 0\nH .76 0 .6\nO 0 0 5\nH .76 0 5.6\nH -.76 0 .6\n"
+                                   "H -.76 0 5.6\nHe 0 0 9\n");
+        d.atoms[4].ghost = true;
+        d.atoms[6].ghost = true;
+        d.setBond(d.atoms[0].id, d.atoms[4].id, "single");
+        QCOMPARE(nwchemBsseMonomers(d), (QVector<QVector<int>>{{0, 1, 4}, {2, 3, 5}}));
+    }
+
+    void largeStructureEdits() {
+        // A 500-residue chain: building it and editing it stay linear in its size.
+        QStringList codes;
+        for (int i = 0; i < 500; ++i)
+            codes << QStringList{"ALA", "GLY", "SER", "LYS", "GLU"}[i % 5];
+        Document d;
+        QElapsedTimer timer;
+        timer.start();
+        buildPeptide(d, codes, "charged", "charged");
+        QVERIFY(d.validate().isEmpty());
+        QCOMPARE(d.residues.size(), 500);
+        QCOMPARE(d.chains.size(), 1);
+        QCOMPARE(d.chains.first().size(), 500);
+        for (int i = 0; i < d.residues.size(); ++i) {
+            QCOMPARE(d.residues[i].number, i + 1);
+            QCOMPARE(d.chains.first()[i], d.residues[i].id);
+        }
+        QCOMPARE(d.residues.first().nTerminal, QString("charged"));
+        QCOMPARE(d.residues.last().cTerminal, QString("charged"));
+        QCOMPARE(d.residues[250].nTerminal, QString("internal"));
+        QCOMPARE(d.parts.size(), 500);
+        QCOMPARE(d.component(d.atoms.first().id).size(), d.atoms.size());
+        QCOMPARE(nwchemBsseMonomers(d).size(), 1);
+        auto stripped = d;
+        Ids hydrogens;
+        for (const auto &a : stripped.atoms)
+            if (a.element == "H")
+                hydrogens << a.id;
+        stripped.remove(hydrogens);
+        completeHydrogens(stripped);
+        QCOMPARE(stripped.atoms.size(), d.atoms.size());
+        QCOMPARE(zMatrix(d).size(), d.atoms.size());
+        // Generous: the quadratic versions took minutes here.
+        QVERIFY2(timer.elapsed() < 60000, qPrintable(QString::number(timer.elapsed())));
     }
 
     void atomDeletionPolicies() {

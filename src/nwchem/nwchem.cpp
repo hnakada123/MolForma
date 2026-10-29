@@ -2,6 +2,8 @@
 #include "nwchem/nwchem.h"
 #include "model/geometry.h"
 #include "model/i18n.h"
+#include "model/memo.h"
+#include "model/topology.h"
 #include "nwchem/input_builder.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_geometry.h"
@@ -267,26 +269,25 @@ Document scanGeometry(const Document &d, const QJsonObject &s, int step) {
     setDimension(point, idsFromJson(s["scan_atoms"]), scanValue(s, step));
     return point;
 }
-// Counterpoise monomers: the bonded molecules of the real atoms, in atom order.
-QVector<Ids> bsseMonomers(const Document &d) {
-    QVector<Ids> monomers;
-    QSet<QString> seen;
-    for (const auto &a : d.atoms) {
-        if (a.ghost || seen.contains(a.id))
-            continue;
-        auto part = d.component(a.id);
-        std::sort(part.begin(), part.end(),
-                  [&](const auto &x, const auto &y) { return d.index(x) < d.index(y); });
-        for (const auto &id : part)
-            seen.insert(id);
-        monomers << part;
-    }
+// Counterpoise monomers: the bonded molecules of the real atoms, in atom order (atom indices).
+QVector<QVector<int>> bsseMonomers(const Document &d) {
+    const auto molecule = Topology(d).molecules();
+    QVector<int> monomer(d.atoms.size(), -1); // By molecule; molecules of ghosts only are none.
+    QVector<QVector<int>> monomers;
+    for (int i = 0; i < d.atoms.size(); ++i)
+        if (!d.atoms[i].ghost && monomer[molecule[i]] < 0) {
+            monomer[molecule[i]] = monomers.size();
+            monomers.append(QVector<int>());
+        }
+    for (int i = 0; i < d.atoms.size(); ++i)
+        if (const int m = monomer[molecule[i]]; m >= 0)
+            monomers[m] << i;
     return monomers;
 }
-int monomerCharge(const Document &d, const Ids &ids) {
+int monomerCharge(const Document &d, const QVector<int> &atoms) {
     int charge = 0;
-    for (const auto &id : ids)
-        charge += d.atom(id).charge;
+    for (int i : atoms)
+        charge += d.atoms[i].charge;
     return charge;
 }
 // The follow-up single point as a calculation of its own: the optimized structure at another
@@ -359,7 +360,7 @@ QString nwchemCoordinateLabel(const Document &d, const Ids &ids) {
            : ids.size() == 3 ? tr("角度 %1").arg(atoms)
                              : tr("二面角 %1").arg(atoms);
 }
-QVector<Ids> nwchemBsseMonomers(const Document &d) {
+QVector<QVector<int>> nwchemBsseMonomers(const Document &d) {
     return bsseMonomers(d);
 }
 QString nwchemScfThreshold(const QJsonObject &s) {
@@ -763,7 +764,12 @@ bool nwchemNumericalFrequencies(const Document &d) {
         }
     return false;
 }
+static NwchemValidation validation(const Document &d);
 NwchemValidation validateNwchem(const Document &d) {
+    thread_local Memo<Document, NwchemValidation, 8> memo;
+    return memo.get(d, [&] { return validation(d); });
+}
+static NwchemValidation validation(const Document &d) {
     NwchemValidation result;
     for (const auto &message : d.validate())
         result.error("geometry.validation", {}, message, {}, 0);
@@ -1109,10 +1115,10 @@ NwchemValidation validateNwchem(const Document &d) {
             const int q = monomerCharge(d, monomer);
             total += q;
             int electrons = -q;
-            for (const auto &id : monomer)
+            for (int i : monomer)
                 try {
-                    const int z = element(d.atom(id).element).number;
-                    electrons += z - ecpCore(elementBasis(s, d.atom(id).element), z);
+                    const int z = element(d.atoms[i].element).number;
+                    electrons += z - ecpCore(elementBasis(s, d.atoms[i].element), z);
                 } catch (const std::exception &) {
                     // Document validation reports unknown elements.
                 }
@@ -1425,7 +1431,12 @@ void extraInput(NwchemInputBuilder &out, const QString &text, const QString &key
     out.block("additional", body.result, key, {}, {2}, text.trimmed().section('\n', 0, 0));
 }
 } // namespace
+static NwchemGeneratedInput generation(const Document &d);
 NwchemGeneratedInput generateNwchemInput(const Document &d) {
+    thread_local Memo<Document, NwchemGeneratedInput> memo;
+    return memo.get(d, [&] { return generation(d); });
+}
+static NwchemGeneratedInput generation(const Document &d) {
     const auto check = validateNwchem(d);
     if (!check.errors.isEmpty())
         throw ValidationFailure(check);
@@ -1531,8 +1542,8 @@ NwchemGeneratedInput generateNwchemInput(const Document &d) {
         const auto monomers = bsseMonomers(d);
         for (int i = 0; i < monomers.size(); ++i) {
             QStringList numbers, lines;
-            for (const auto &id : monomers[i])
-                numbers << QString::number(d.index(id) + 1);
+            for (int atom : monomers[i])
+                numbers << QString::number(atom + 1);
             for (int k = 0; k < numbers.size(); k += 16)
                 lines << numbers.mid(k, 16).join(' ');
             text += QString("  mon m%1 %2\n  charge %3\n  mult 1\n")
