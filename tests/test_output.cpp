@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "model/units.h"
 #include "nwchem/nwchem_output.h"
 #include "results/molden_orbitals.h"

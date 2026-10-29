@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/periodic_table.h"
 #include "model/document.h"
 #include "model/i18n.h"

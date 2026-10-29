@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordination.h"
 #include "editing/library.h"
 #include "mcp/headless.h"

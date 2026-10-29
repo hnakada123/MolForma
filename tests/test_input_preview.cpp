@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
 #include "ui/input_preview_panel.h"

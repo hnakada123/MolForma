@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "nwchem/nwchem_import.h"
 #include "editing/chemistry.h"
 #include "model/i18n.h"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/stereochemistry.h"
 #include "editing/library.h"
 #include "editing/peptide.h"

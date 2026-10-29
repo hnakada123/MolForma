@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordinates.h"
 #include "nwchem/history.h"
 #include "results/result_summary.h"

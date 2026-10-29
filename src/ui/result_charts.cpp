@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/result_charts.h"
 #include "model/units.h"
 #include "results/molden_orbitals.h"

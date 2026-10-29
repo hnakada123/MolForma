@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/mcp_gui.h"
 #include "mcp/tools.h"
 #include "ui/execution_panel.h"

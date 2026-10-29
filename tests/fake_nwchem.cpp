@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 // Deterministic native process fixture: no NWChem, MPI, shell or network required.
 #include <QCoreApplication>
 #include <QDir>

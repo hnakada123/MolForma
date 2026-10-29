@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "mcp/headless.h"
 #include "mcp/tools.h"
 #include "results/result_summary.h"

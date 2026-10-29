@@ -230,6 +230,20 @@ class TranslationsTest : public QObject {
         }
         QVERIFY2(unmarked.isEmpty(), qPrintable("Unmarked Japanese text:\n" + unmarked.join('\n')));
     }
+    // Every source file of the program and its tests starts with its license (GPL-2.0-or-later).
+    void sourcesNameTheirLicense() {
+        QStringList missing;
+        for (const auto *folder : {"/src", "/tests"})
+            for (QDirIterator it(SOURCE_DIR + QString(folder), {"*.cpp", "*.h"}, QDir::Files,
+                                 QDirIterator::Subdirectories);
+                 it.hasNext();) {
+                QFile file(it.next());
+                if (file.open(QIODevice::ReadOnly) &&
+                    file.readLine().trimmed() != "// SPDX-License-Identifier: GPL-2.0-or-later")
+                    missing << QDir(SOURCE_DIR).relativeFilePath(file.fileName());
+            }
+        QVERIFY2(missing.isEmpty(), qPrintable("No SPDX line:\n" + missing.join('\n')));
+    }
     // Every marked text has an English translation with the same placeholders; the catalog holds
     // no translation that the sources no longer use.
     void catalogMatchesSources() {

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "results/result_loader.h"
 #include "results/result_summary.h"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "results/results.h"
 #include "model/geometry.h"
 #include "model/i18n.h"

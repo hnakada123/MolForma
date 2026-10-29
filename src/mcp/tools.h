@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "nwchem/nwchem_execution.h"
 #include "results/results.h"

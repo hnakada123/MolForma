@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/main_window.h"
 #include "ui/molecule_view.h"
 #include "ui/theme.h"

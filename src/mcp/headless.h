@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "mcp/policy.h"
 #include "mcp/server.h"

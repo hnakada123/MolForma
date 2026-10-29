@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "nwchem/nwchem_geometry.h"
 #include "model/i18n.h"
 #include <QLocale>

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "io/structure_io.h"
 #include "editing/chemistry.h"
 #include "model/i18n.h"

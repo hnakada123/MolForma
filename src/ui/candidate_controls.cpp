@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/candidate_controls.h"
 #include "ui/editor_chrome.h"
 #include <QLabel>

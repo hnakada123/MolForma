@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/workspace_controller.h"
 #include "nwchem/history.h"
 #include "ui/execution_panel.h"

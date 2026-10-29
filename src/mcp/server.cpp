@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "mcp/server.h"
 #include "editing/atom_properties.h"
 #include "editing/chemistry.h"

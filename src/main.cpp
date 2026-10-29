@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/chemistry_job.h"
 #include "mcp/headless.h"
 #include "mcp/server.h"

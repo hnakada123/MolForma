@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/vtk_molecule_renderer.h"
 #include <Eigen/Geometry>
 #include <QOpenGLContext>

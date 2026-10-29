@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "mcp/stdio_transport.h"
 #include "mcp/server.h"
 #include <QJsonDocument>

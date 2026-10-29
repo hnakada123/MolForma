@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordinates.h"
 #include "results/molden_orbitals.h"
 #include "ui/main_window.h"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "nwchem/history.h"
 #include "model/i18n.h"
 #include "nwchem/nwchem.h"

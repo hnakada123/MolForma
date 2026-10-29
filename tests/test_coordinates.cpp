@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/atom_properties.h"
 #include "editing/peptide.h"
 #include "model/geometry.h"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 namespace mf {
 inline constexpr double BohrToAngstrom = 0.529177210903;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "results/results.h"
