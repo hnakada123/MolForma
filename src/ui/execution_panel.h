@@ -62,8 +62,12 @@ class ExecutionPanel : public QWidget {
     QString savedDirectory() const {
         return saved.directory;
     }
+    void setResultSummary(const QString &directory, const QString &summary);
   signals:
     void bundleChanged(QString directory);
+    void historyRequested(QString directory);
+    void resultsRequested(QString directory);
+    void runFinished(QString directory, bool openResults);
 
   protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -101,8 +105,7 @@ class ExecutionPanel : public QWidget {
     QStringDecoder logDecoder{QStringDecoder::Utf8};
     QToolButton *runStatus; // Permanent status-bar entry for the current or last run.
     // The finished run whose log is loading into the result viewer, and that log's outcome.
-    QString summaryDirectory, resultSummary;
-    void showResultSummary();
+    QString resultSummary;
     void appendLog();
     void change(const QString &key, const QJsonValue &value);
     void editEnvironment();

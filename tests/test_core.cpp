@@ -438,6 +438,30 @@ class CoreTest : public QObject {
         d.setBond(a, b, "none");
         QCOMPARE(d.bonds.size(), 1);
     }
+    void bondEditingValidatesTransaction() {
+        Document d;
+        placeTemplate(d, findTemplate("skeleton:ethane"), Vec::Zero());
+        Ids carbons;
+        for (auto &a : d.atoms)
+            if (a.element == "C")
+                carbons << a.id;
+            else
+                a.fixed = true;
+        d.data["assignments"] = QJsonObject{{"legacy", QJsonObject{{"status", "confirmed"}}}};
+        EditorSession session;
+        session.reset(d);
+        QVERIFY_EXCEPTION_THROWN(
+            session.edit("double",
+                         [&](Document &next) { changeBond(next, carbons[0], carbons[1], "double", true); }),
+            std::runtime_error);
+        QCOMPARE(session.document().project(), d.project());
+        QCOMPARE(session.history().count(), 0);
+        session.edit("double", [&](Document &next) { changeBond(next, carbons[0], carbons[1], "double"); });
+        QCOMPARE(session.document().data["assignments"].toObject()["legacy"].toObject()["status"].toString(),
+                 QString("candidate"));
+        QVERIFY(!session.edit("same",
+                              [&](Document &next) { changeBond(next, carbons[0], carbons[1], "double"); }));
+    }
     void xyzBondOrders() {
         // XYZ has no bond orders; perceived orders keep neutral organic templates saturated as drawn.
         int checked = 0;

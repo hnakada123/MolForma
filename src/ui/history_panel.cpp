@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/history_panel.h"
 #include "model/i18n.h"
-#include "ui/calculation_panel.h"
+#include "nwchem/nwchem_execution.h"
 #include "ui/editor_chrome.h"
-#include "ui/execution_panel.h"
 #include "ui/main_window.h"
-#include "ui/results_panel.h"
 #include "ui/run_progress.h"
 #include <QtWidgets>
 #include <algorithm>
@@ -350,7 +348,8 @@ class JobDelegate : public QStyledItemDelegate {
 };
 } // namespace
 
-HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), scan(this) {
+HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
+    : QWidget(owner), window(owner), run(activeRun), scan(this) {
     setObjectName("historyTab");
     setAttribute(Qt::WA_StyledBackground);
     auto *outer = new QVBoxLayout(this);
@@ -832,7 +831,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
             setRoot(p);
     });
     connect(executionRootAction, &QAction::triggered, this, [this] {
-        window->executionPanel()->commitPendingEdits();
+        emit executionCommitRequested();
         setRoot(executionRoot(), false);
     });
     connect(copyRoot, &QAction::triggered, this, [this] { QApplication::clipboard()->setText(root); });
@@ -933,7 +932,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
     });
     connect(stop, &QPushButton::clicked, this, [this] {
         if (!selectedDirectory().isEmpty() && selectedDirectory() == activeDirectory())
-            window->executionPanel()->confirmStop();
+            emit stopRequested();
     });
     connect(setReference, &QPushButton::clicked, this, [this] {
         const auto *e = selectedEntry();
@@ -946,7 +945,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner) : QWidget(owner), window(owner), s
         else
             setComparing(true);
     });
-    connect(showExecution, &QPushButton::clicked, this, [this] { window->executionPanel()->showRunPanel(); });
+    connect(showExecution, &QPushButton::clicked, this, [this] { emit runPanelRequested(); });
     connect(stopComparing, &QPushButton::clicked, this, [this] { setComparing(false); });
     connect(repair, &QPushButton::clicked, this, [this] { window->safe([this] { repairSelected(); }); });
     connect(trash, &QPushButton::clicked, this, [this] { window->safe([this] { trashSelected(); }); });
@@ -1090,7 +1089,6 @@ const HistoryEntry *HistoryPanel::selectedEntry() const {
     return entry(selectedDirectory());
 }
 QString HistoryPanel::activeDirectory() const {
-    const auto &run = window->executionPanel()->currentRun();
     return run.active() ? run.plan().directory : QString();
 }
 QVector<HistoryEntry> HistoryPanel::visibleEntries() const {
@@ -1612,7 +1610,7 @@ void HistoryPanel::showFacts(const HistoryEntry &e, bool owned) {
     else
         text("started", tr("開始"), started.isValid() ? dayAndTime(started) : QString("—"));
     if (owned && pending(e.status))
-        text("elapsed", tr("経過"), elapsedClock(window->executionPanel()->currentRun().elapsedSeconds()));
+        text("elapsed", tr("経過"), elapsedClock(run.elapsedSeconds()));
     else if (e.status != "prepared") {
         QString end = finished.isValid() ? (finished.toLocalTime().date() == started.toLocalTime().date()
                                                 ? finished.toLocalTime().toString("HH:mm")
@@ -1695,7 +1693,6 @@ void HistoryPanel::updateLive() {
     const auto *e = selectedEntry();
     if (!e || e->directory != activeDirectory() || !detail->isVisible())
         return;
-    const auto &run = window->executionPanel()->currentRun();
     progress->showRun(e->directory, run.state(), run.active());
     const qint64 seconds = run.elapsedSeconds();
     progressTiming->setText(
@@ -1723,7 +1720,7 @@ void HistoryPanel::updateActions() {
     viewer->setEnabled(exists && !resultFiles(e->directory).isEmpty());
     folder->setEnabled(exists);
     reuse->setEnabled(exists && e->valid && !window->hasCandidate() && !window->chemistryRunning());
-    stop->setEnabled(exists && owned && window->executionPanel()->currentRun().state() != "stopping");
+    stop->setEnabled(exists && owned && run.state() != "stopping");
     const bool unfinished = e && pending(e->status);
     repair->setEnabled(exists && e->valid && e->orphaned && !owned);
     repairBox->setVisible(e && e->orphaned && !owned && !comparing);
@@ -1748,8 +1745,8 @@ void HistoryPanel::notifyJob(const QString &path) {
     }
     auto next = readHistoryEntry(path);
     if (path == activeDirectory()) {
-        next.status = window->executionPanel()->currentRun().state();
-        next.seconds = window->executionPanel()->currentRun().elapsedSeconds();
+        next.status = run.state();
+        next.seconds = run.elapsedSeconds();
     }
     for (auto &e : entries)
         if (e.directory == path) {
@@ -1798,29 +1795,13 @@ void HistoryPanel::reuseSelected() {
     const auto directory = selectedDirectory();
     if (directory.isEmpty())
         return;
-    window->checkMcpPath(directory);
-    if (window->hasCandidate() || window->chemistryRunning())
-        fail(tr("候補を確定・取消し、整形の終了後に再利用してください。"));
-    const auto next = historyDocument(directory);
-    if (!window->confirmDiscard())
-        return;
-    window->clearProjectPath();
-    window->loadDocument(next);
-    window->history()->resetClean();
-    window->showPanel(window->calculationPanel());
-    window->statusBar()->showMessage(
-        tr("履歴から新しい未保存プロジェクトを作成しました。実行前に条件・参照ファイルを確認してください。"),
-        15000);
+    emit reuseRequested(directory);
 }
 void HistoryPanel::openResult() {
     const auto directory = selectedDirectory();
     if (directory.isEmpty())
         return;
-    window->checkMcpPath(directory);
-    if (resultFiles(directory).isEmpty())
-        return;
-    window->showPanel(window->resultsPanel());
-    window->resultsPanel()->openDirectory(directory);
+    emit resultsRequested(directory);
 }
 void HistoryPanel::trashSelected() {
     const auto directory = selectedDirectory();

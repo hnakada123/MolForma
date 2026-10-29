@@ -167,6 +167,15 @@ Vec freeDirection(const Document &d, const QString &id) {
     }
     return best;
 }
+void changeBond(Document &d, const QString &a, const QString &b, const QString &kind, bool hydrogen) {
+    const auto *old = d.bond(a, b);
+    const bool changed = (old ? old->kind : QString("none")) != kind;
+    d.setBond(a, b, kind);
+    if (hydrogen)
+        completeHydrogens(d, {a, b});
+    else if (changed)
+        d.invalidateAssignments();
+}
 void completeHydrogens(Document &d, const Ids &selection) {
     Ids ids = selection.isEmpty() ? d.ids() : selection;
     const auto doubles = aromaticDoubleBonds(d);

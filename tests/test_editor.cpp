@@ -64,6 +64,7 @@ class EditorTest : public QObject {
     void initTestCase() {
         // Autosave copies go to the data directory: keep them out of the user's home.
         qputenv("XDG_DATA_HOME", settingsHome.filePath("data").toUtf8());
+        qputenv("XDG_CONFIG_HOME", settingsHome.path().toUtf8());
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsHome.path());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
@@ -1353,6 +1354,71 @@ class EditorTest : public QObject {
         emit w.canvas()->atomClicked(carbons[0], Qt::NoModifier);
         emit w.canvas()->atomClicked(carbons[1], Qt::NoModifier);
         QCOMPARE(w.document().bond(carbons[0], carbons[1])->kind, QString("double"));
+    }
+    void bondEditingRoutes_data() {
+        QTest::addColumn<QString>("route");
+        QTest::addColumn<bool>("hydrogens");
+        for (const auto &route : {"menu", "context", "tool", "panel", "shortcut"})
+            for (bool hydrogens : {false, true})
+                QTest::newRow(qPrintable(QString("%1-%2").arg(route).arg(hydrogens)))
+                    << QString(route) << hydrogens;
+    }
+    void bondEditingRoutes() {
+        QFETCH(QString, route);
+        QFETCH(bool, hydrogens);
+        MainWindow w;
+        Document d;
+        placeTemplate(d, findTemplate("skeleton:ethane"), Vec::Zero());
+        w.loadDocument(d);
+        Ids carbons;
+        for (const auto &a : d.atoms)
+            if (a.element == "C")
+                carbons << a.id;
+        for (auto *box : w.findChildren<QCheckBox *>())
+            if (box->text() == "水素自動補完")
+                box->setChecked(hydrogens);
+        w.setSelection(carbons);
+        if (route == "menu")
+            w.findChild<QAction *>("bondOrder2Action")->trigger();
+        else if (route == "shortcut")
+            emit w.canvas()->shortcut(Qt::Key_2);
+        else if (route == "context") {
+            bool triggered = false;
+            QTimer::singleShot(0, &w, [&] {
+                auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+                if (!menu)
+                    return;
+                for (auto *action : menu->actions())
+                    if (auto *sub = action->menu())
+                        for (auto *bond : sub->actions())
+                            if (bond->text() == "二重結合") {
+                                bond->trigger();
+                                triggered = true;
+                            }
+                menu->close();
+            });
+            emit w.canvas()->contextRequested(QPoint(10, 10), carbons[0]);
+            QVERIFY(triggered);
+        } else {
+            auto *kind = w.findChild<QComboBox *>("toolBondKind");
+            kind->setCurrentIndex(kind->findData("double"));
+            if (route == "tool") {
+                w.findChild<QToolButton *>("tool_bond")->click();
+                w.setSelection({carbons[0]});
+                emit w.canvas()->atomClicked(carbons[1], Qt::NoModifier);
+            } else
+                for (auto *button : w.findChildren<QPushButton *>())
+                    if (button->text() == "選択した2原子を結合")
+                        button->click();
+        }
+        QCOMPARE(w.document().bond(carbons[0], carbons[1])->kind, QString("double"));
+        QCOMPARE(w.document().formula(), hydrogens ? QString("C2H4") : QString("C2H6"));
+        QCOMPARE(w.history()->count(), 1);
+        const auto changed = w.document().project();
+        w.history()->undo();
+        QCOMPARE(w.document().project(), d.project());
+        w.history()->redo();
+        QCOMPARE(w.document().project(), changed);
     }
     void paletteElementsAndCenters() {
         // What the palette highlights is what a click places: element buttons leave a part category

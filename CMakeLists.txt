@@ -91,7 +91,9 @@ add_library(molforma_ui STATIC
     src/ui/coordinates_panel.cpp
     src/ui/diagnostics_list.cpp
     src/ui/editor_chrome.cpp
-    src/ui/editor_panels.cpp
+    src/ui/molecule_panel.cpp
+    src/ui/molecule_properties.cpp
+    src/ui/candidate_controls.cpp
     src/ui/execution_panel.cpp
     src/ui/history_panel.cpp
     src/ui/input_highlighter.cpp
@@ -102,6 +104,8 @@ add_library(molforma_ui STATIC
     src/ui/periodic_table.cpp
     src/ui/result_charts.cpp
     src/ui/results_panel.cpp
+    src/ui/structure_import.cpp
+    src/ui/workspace_controller.cpp
     src/ui/run_progress.cpp
     src/ui/template_delegate.cpp
     src/ui/translations.cpp

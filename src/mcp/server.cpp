@@ -911,8 +911,7 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                 next.atom(b);
                 if (a == b)
                     fail("A bond requires two different atoms.");
-                next.setBond(a, b, args["kind"].toString());
-                next.invalidateAssignments();
+                changeBond(next, a, b, args["kind"].toString());
             } else if (name == "set_dimension") {
                 const auto ids = idsFromJson(args["ids"]);
                 for (const auto &atomId : ids)

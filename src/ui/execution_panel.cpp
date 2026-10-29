@@ -1,12 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/execution_panel.h"
 #include "nwchem/nwchem.h"
-#include "ui/calculation_panel.h"
 #include "ui/editor_chrome.h"
-#include "ui/history_panel.h"
-#include "ui/input_preview_panel.h"
 #include "ui/main_window.h"
-#include "ui/results_panel.h"
 #include "ui/run_progress.h"
 #include "ui/theme.h"
 #include <QtWidgets>
@@ -454,15 +450,8 @@ void ExecutionPanel::buildRunPanel() {
     runCard->body()->addLayout(actions);
     connect(openFolder, &QPushButton::clicked, this,
             [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(saved.directory)); });
-    connect(history, &QPushButton::clicked, this, [this] {
-        window->showPanel(window->historyPanel());
-        if (!saved.directory.isEmpty())
-            window->historyPanel()->selectDirectory(saved.directory);
-    });
-    connect(viewResults, &QPushButton::clicked, this, [this] {
-        window->showPanel(window->resultsPanel());
-        window->resultsPanel()->openDirectory(saved.directory);
-    });
+    connect(history, &QPushButton::clicked, this, [this] { emit historyRequested(saved.directory); });
+    connect(viewResults, &QPushButton::clicked, this, [this] { emit resultsRequested(saved.directory); });
     panel->addWidget(runCard);
 
     auto *logCard = new SettingsCard(tr("ログ"));
@@ -1026,7 +1015,7 @@ void ExecutionPanel::runEnded() {
     const auto message = QString("%1: %2").arg(names.value(run.state(), tr("計算が終了しました")),
                                                QFileInfo(directory).fileName());
     // The run status at the right of the status bar says how it ended; a message at the left only
-    // adds what the log says once it is read (showResultSummary).
+    // adds what the log says once it is read (setResultSummary).
     QApplication::alert(window); // Taskbar attention while MolForma is in the background.
     if (!window->isActiveWindow() && QSystemTrayIcon::isSystemTrayAvailable() &&
         QSystemTrayIcon::supportsMessages()) {
@@ -1045,22 +1034,12 @@ void ExecutionPanel::runEnded() {
         QTimer::singleShot(15000, tray, &QSystemTrayIcon::hide);
     }
     resultSummary.clear();
-    if (openResults->isChecked() && run.state() == "finished" && !resultFiles(directory).isEmpty() &&
-        !window->resultsPanel()->loading()) {
-        summaryDirectory = directory;
-        connect(window->resultsPanel(), &ResultsPanel::loaded, this, &ExecutionPanel::showResultSummary,
-                Qt::UniqueConnection);
-        window->resultsPanel()->openDirectory(directory);
-    }
+    emit runFinished(directory, openResults->isChecked() && run.state() == "finished");
 }
-void ExecutionPanel::showResultSummary() {
-    // Only the log of the run that just ended, not files the user opens later.
-    const auto source = window->resultsPanel()->result().source;
-    if (summaryDirectory.isEmpty() ||
-        QFileInfo(source).absolutePath() != QFileInfo(summaryDirectory).absoluteFilePath())
+void ExecutionPanel::setResultSummary(const QString &directory, const QString &summary) {
+    if (directory != run.plan().directory)
         return;
-    summaryDirectory.clear();
-    resultSummary = window->resultsPanel()->briefSummary();
+    resultSummary = summary;
     updateRun();
     if (!resultSummary.isEmpty())
         window->statusBar()->showMessage(tr("計算が終了しました: %1").arg(resultSummary), 60000);

@@ -8,6 +8,7 @@
 #include "ui/editor_chrome.h"
 #include "ui/main_window.h"
 #include "ui/periodic_table.h"
+#include "ui/structure_import.h"
 #include "ui/theme.h"
 #include <QtWidgets>
 
@@ -985,30 +986,12 @@ void CoordinatesPanel::importPath(const QString &path) {
     if (!editable())
         fail(tr("候補を確定・取消し、実行中の整形を終了してから読み込んでください。"));
     const auto base = window->document().toJson();
-    int model = 1;
-    QString altloc;
-    if (path.endsWith(".pdb", Qt::CaseInsensitive) || path.endsWith(".ent", Qt::CaseInsensitive)) {
-        const auto text = QString::fromUtf8(readFile(path));
-        const auto models = pdbModels(text);
-        bool ok;
-        if (models.size() > 1) {
-            model = QInputDialog::getItem(this, "PDB MODEL", tr("モデル"), models, 0, false, &ok).toInt();
-            if (!ok)
-                return;
-        } else if (!models.isEmpty())
-            model = models.first().toInt();
-        if (text.contains(QRegularExpression("(?m)^(ATOM  |HETATM).{10}[A-Z]"))) {
-            altloc = QInputDialog::getItem(this, "PDB ALTLOC", tr("代替位置"), {tr("自動"), "A", "B", "C"}, 0,
-                                           true, &ok);
-            if (!ok)
-                return;
-            if (altloc == tr("自動"))
-                altloc.clear();
-        }
-    }
+    const auto options = chooseStructureImport(this, path);
+    if (!options)
+        return;
     if (base != window->document().toJson())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
-    previewStructure(importStructure(path, model, altloc));
+    previewStructure(importStructure(path, options->model, options->altloc, options->frame));
     window->setPreference("directory", QFileInfo(path).absolutePath());
 }
 void CoordinatesPanel::dragEnterEvent(QDragEnterEvent *event) {

@@ -4,6 +4,7 @@
 #include "nwchem/nwchem_geometry.h"
 #include "ui/coordinates_panel.h"
 #include "ui/main_window.h"
+#include "ui/structure_import.h"
 #include <QtTest>
 #include <QtWidgets>
 using namespace mf;
@@ -34,10 +35,111 @@ class CoordinatesTest : public QObject {
   private slots:
     void initTestCase() {
         QVERIFY(settingsDir.isValid());
+        qputenv("XDG_CONFIG_HOME", settingsDir.path().toUtf8());
+        qputenv("XDG_DATA_HOME", settingsDir.filePath("data").toUtf8());
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
                            settingsDir.path()); // MolForma uses NativeFormat.
+    }
+    void multiFrameImport_data() {
+        QTest::addColumn<bool>("replace");
+        QTest::addColumn<QString>("choice");
+        for (bool replace : {false, true})
+            for (const auto &choice : {"last", "first", "cancel", "stale"})
+                QTest::newRow(qPrintable(QString("%1-%2").arg(replace).arg(choice)))
+                    << replace << QString(choice);
+    }
+    void sharedPdbImportChoices() {
+        QTemporaryDir dir;
+        const auto path = dir.filePath("models.pdb");
+        writeFile(path, "MODEL        2\n"
+                        "ATOM      1  CA AALA A   1       0.000   0.000   0.000  0.60 20.00           C\n"
+                        "ENDMDL\nMODEL        7\n"
+                        "ATOM      1  CA BALA A   1       1.000   0.000   0.000  0.40 20.00           C\n"
+                        "ENDMDL\n");
+        QWidget parent;
+        QTimer choose;
+        int prompts = 0;
+        connect(&choose, &QTimer::timeout, &parent, [&] {
+            auto *dialog = qobject_cast<QInputDialog *>(QApplication::activeModalWidget());
+            if (!dialog)
+                return;
+            if (dialog->windowTitle() == "PDB MODEL")
+                dialog->findChild<QComboBox *>()->setCurrentIndex(1);
+            else if (dialog->windowTitle() == "PDB ALTLOC")
+                dialog->setTextValue("B");
+            ++prompts;
+            dialog->accept();
+        });
+        choose.start(0);
+        const auto options = chooseStructureImport(&parent, path);
+        choose.stop();
+        QVERIFY(options);
+        QCOMPARE(prompts, 2);
+        QCOMPARE(options->model, 7);
+        QCOMPARE(options->altloc, QString("B"));
+        QTimer::singleShot(0, &parent, [] {
+            if (auto *dialog = qobject_cast<QInputDialog *>(QApplication::activeModalWidget()))
+                dialog->reject();
+        });
+        QVERIFY(!chooseStructureImport(&parent, path));
+    }
+    void multiFrameImport() {
+        QFETCH(bool, replace);
+        QFETCH(QString, choice);
+        QTemporaryDir dir;
+        const auto path = dir.filePath("trajectory.xyz");
+        writeFile(path, "1\nfirst\nHe 0 0 0\n1\nlast\nNe 1 0 0\n");
+        MainWindow w;
+        w.loadDocument(water());
+        const auto before = w.document();
+        bool prompted = false;
+        QTimer::singleShot(0, &w, [&] {
+            auto *dialog = qobject_cast<QInputDialog *>(QApplication::activeModalWidget());
+            if (!dialog)
+                return;
+            prompted = true;
+            if (choice == "cancel") {
+                dialog->reject();
+                return;
+            }
+            if (choice == "first")
+                dialog->findChild<QComboBox *>()->setCurrentIndex(0);
+            if (choice == "stale")
+                w.edit("intervening edit", [](Document &d) { d.setJobValue("charge", 1); });
+            dialog->accept();
+        });
+        const auto load = [&] {
+            if (replace)
+                w.findChild<CoordinatesPanel *>()->importPath(path);
+            else
+                w.loadPath(path);
+        };
+        if (choice == "stale") {
+            QVERIFY_EXCEPTION_THROWN(load(), std::runtime_error);
+            QCOMPARE(w.document().job()["charge"].toInt(), 1);
+            QCOMPARE(w.document().ids(), before.ids());
+            QVERIFY(!w.hasCandidate());
+        } else {
+            load();
+            if (choice == "cancel") {
+                QCOMPARE(w.document().project(), before.project());
+                QVERIFY(!w.hasCandidate());
+                QCOMPARE(w.history()->count(), 0);
+            } else if (replace) {
+                QVERIFY(w.hasCandidate());
+                QCOMPARE(w.document().project(), before.project());
+                QCOMPARE(w.displayDocument().formula(), choice == "first" ? QString("He") : QString("Ne"));
+                QCOMPARE(w.displayDocument().envelope, before.envelope);
+                QCOMPARE(w.displayDocument().job(), before.job());
+                w.confirmCandidate();
+                w.history()->undo();
+                QCOMPARE(w.document().project(), before.project());
+            } else
+                QCOMPARE(w.document().formula(), choice == "first" ? QString("He") : QString("Ne"));
+        }
+        QVERIFY(prompted);
     }
     void atomPropertiesAreAtomicAcrossSelection() {
         auto d = Document::fromXyz("2\nmixed\nH 0 0 0\nC 1.5 0 0\n");

@@ -4,6 +4,9 @@
 namespace mf {
 Vec freeDirection(const Document &d, const QString &id);
 void completeHydrogens(Document &d, const Ids &selection = {});
+// Changes a bond and invalidates old fragment assignments. Hydrogen adjustment is explicit;
+// callers apply this to an EditorSession copy so failed valence checks leave the document intact.
+void changeBond(Document &d, const QString &a, const QString &b, const QString &kind, bool hydrogen = false);
 struct AtomDeletionOptions {
     bool includeAttachedHydrogens = false;
     bool capCutBonds = false;

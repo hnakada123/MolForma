@@ -23,6 +23,7 @@ class QTreeWidgetItem;
 class QVBoxLayout;
 namespace mf {
 class MainWindow;
+class NwchemRun;
 class ChoiceButtons;
 class ElidedLabel;
 class RunProgress;
@@ -35,7 +36,7 @@ class ToolbarFit;
 class HistoryPanel : public QWidget {
     Q_OBJECT
   public:
-    explicit HistoryPanel(MainWindow *owner);
+    HistoryPanel(MainWindow *owner, const NwchemRun &run);
     void refresh();
     void setRoot(const QString &path, bool remember = true);
     QString rootDirectory() const {
@@ -67,6 +68,13 @@ class HistoryPanel : public QWidget {
     void trashSelected();
     void repairSelected();
 
+  signals:
+    void reuseRequested(QString directory);
+    void resultsRequested(QString directory);
+    void executionCommitRequested();
+    void stopRequested();
+    void runPanelRequested();
+
   protected:
     void showEvent(QShowEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
@@ -80,6 +88,7 @@ class HistoryPanel : public QWidget {
         QString note;                // Why there is no ΔE.
     };
     MainWindow *window;
+    const NwchemRun &run;
     HistoryScan scan;
     QTimer timer, memoTimer;
     QVector<HistoryEntry> entries;

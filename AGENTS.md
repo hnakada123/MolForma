@@ -32,8 +32,14 @@ by responsibility, with paired headers and implementations in the same directory
   bounded isosurfaces; `molden_orbitals.*` evaluates normalized Gaussian MOs with
   Cartesian/spherical s–g bases. `result_loader.*` owns cancellable reader processes and source
   freshness checks shared by GUI and headless MCP.
-- `src/ui/`: `main_window.*` and `editor_panels.cpp` provide the Qt UI, candidate
-  controls backed by `EditorSession`. `molecule_view.*` owns camera/input, Qt annotations and
+- `src/ui/`: `main_window.*` owns the application window, project lifecycle and shared editor context.
+  `molecule_panel.*` and `molecule_properties.cpp` own the molecular workspace, selection, palette,
+  tools and property pages; document transactions still go through `EditorSession`.
+  `candidate_controls.*` shares the candidate controls across workspace tabs.
+  `structure_import.*` shares the interactive XYZ frame and PDB MODEL/ALTLOC choices.
+  `workspace_controller.*` coordinates history reuse, navigation and loading completed runs;
+  panels emit requests instead of directly accessing sibling panels. The molecular workspace
+  composes its coordinate table. `molecule_view.*` owns camera/input, Qt annotations and
   the QPainter fallback; `vtk_molecule_renderer.*` provides optional retained
   native VTK/OpenGL rendering. `editor_chrome.*` holds the window header, tool rail,
   wrapping option bar layout, 3D-view overlays and palette-derived chrome colors.

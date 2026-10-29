@@ -8,7 +8,7 @@
 #include "model/i18n.h"
 #include "nwchem/nwchem.h"
 #include "ui/editor_chrome.h"
-#include "ui/main_window.h"
+#include "ui/molecule_panel.h"
 #include <QJsonDocument>
 #include <QtWidgets>
 namespace mf {
@@ -39,7 +39,7 @@ static QFormLayout *formLayout(QWidget *parent) {
     form->setVerticalSpacing(8);
     return form;
 }
-QFormLayout *MainWindow::panel(const QString &title) {
+QFormLayout *MoleculePanel::panel(const QString &title) {
     // The cards of section() under what comes before them, on the background of the settings tabs.
     auto *page = new QWidget;
     page->setProperty("canvas", true);
@@ -60,8 +60,8 @@ QFormLayout *MainWindow::panel(const QString &title) {
     pageCards[form] = cards;
     return form;
 }
-QPushButton *MainWindow::button(QFormLayout *f, const QString &text, const std::function<void()> &slot,
-                                const QString &name) {
+QPushButton *MoleculePanel::button(QFormLayout *f, const QString &text, const std::function<void()> &slot,
+                                   const QString &name) {
     auto *b = new QPushButton(text);
     if (!name.isEmpty())
         b->setObjectName(name);
@@ -78,7 +78,8 @@ QPushButton *MainWindow::button(QFormLayout *f, const QString &text, const std::
     connect(b, &QPushButton::clicked, this, [this, slot] { safe(slot); });
     return b;
 }
-QDoubleSpinBox *MainWindow::number(QFormLayout *f, const QString &label, double v, double min, double max) {
+QDoubleSpinBox *MoleculePanel::number(QFormLayout *f, const QString &label, double v, double min,
+                                      double max) {
     auto *n = new QDoubleSpinBox;
     n->setDecimals(5);
     n->setRange(min, max);
@@ -87,15 +88,15 @@ QDoubleSpinBox *MainWindow::number(QFormLayout *f, const QString &label, double 
     f->addRow(label, n);
     return n;
 }
-QComboBox *MainWindow::choices(QFormLayout *f, const QString &label, const QStringList &labels,
-                               const QStringList &values) {
+QComboBox *MoleculePanel::choices(QFormLayout *f, const QString &label, const QStringList &labels,
+                                  const QStringList &values) {
     auto *box = new QComboBox;
     for (int i = 0; i < labels.size(); ++i)
         box->addItem(labels[i], values.isEmpty() ? labels[i] : values[i]);
     f->addRow(label, box);
     return box;
 }
-SettingsCard *MainWindow::section(QFormLayout *&f, const QString &title, int open) {
+SettingsCard *MoleculePanel::section(QFormLayout *&f, const QString &title, int open) {
     // A card per section on the page of the form; the rows that follow go into it. The title is the
     // source text (QT_TR_NOOP): it names the card in every language and is shown translated.
     auto *cards = pageCards.value(f);
@@ -113,7 +114,7 @@ SettingsCard *MainWindow::section(QFormLayout *&f, const QString &title, int ope
     f = form;
     return card;
 }
-void MainWindow::buildEditPanel() {
+void MoleculePanel::buildEditPanel() {
     auto *outer = panel(tr("編集"));
     // A pending candidate atom by atom, then the selection in click order, above the edit pages.
     candidateCard = new QFrame;
@@ -251,11 +252,8 @@ void MainWindow::buildEditPanel() {
                                    auto ids = requireSelection(2);
                                    auto kind = value(bondKind);
                                    bool h = autoH->isChecked();
-                                   edit(tr("結合を変更"), [=](Document &d) {
-                                       d.setBond(ids[0], ids[1], kind);
-                                       if (h)
-                                           completeHydrogens(d, ids);
-                                   });
+                                   edit(tr("結合を変更"),
+                                        [=](Document &d) { changeBond(d, ids[0], ids[1], kind, h); });
                                }),
                         2, 2);
     auto *side = button(f, tr("結合の片側を選択"), [this] {
@@ -477,7 +475,7 @@ void MainWindow::buildEditPanel() {
     // beside "全体整形" and the settings held on reading in the menu "ファイル": this page holds the
     // attributes of atoms only.
 }
-void MainWindow::sortAtoms(const QString &mode) {
+void MoleculePanel::sortAtoms(const QString &mode) {
     const auto ids = selected;
     edit(tr("原子を並べ替え"), [=](Document &d) {
         QMap<QString, int> ranks;
@@ -494,7 +492,7 @@ void MainWindow::sortAtoms(const QString &mode) {
         });
     });
 }
-void MainWindow::removePart() {
+void MoleculePanel::removePart() {
     auto t = currentTemplate();
     if (!t["id"].toString().startsWith("my:"))
         fail(tr("マイ部品をパレットで選択してください。"));
@@ -504,7 +502,7 @@ void MainWindow::removePart() {
     settings.setValue("parts", customParts);
     refreshPalette();
 }
-void MainWindow::showHeldSettings() {
+void MoleculePanel::showHeldSettings() {
     QDialog dialog(this);
     dialog.setWindowTitle(tr("原子参照と保留設定"));
     dialog.resize(680, 500);
@@ -520,7 +518,7 @@ void MainWindow::showHeldSettings() {
     connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     dialog.exec();
 }
-QString MainWindow::selectedResidue() const {
+QString MoleculePanel::selectedResidue() const {
     for (auto id : selected) {
         auto rid = residueForAtom(displayDocument(), id);
         if (!rid.isEmpty())
@@ -530,14 +528,14 @@ QString MainWindow::selectedResidue() const {
         return residueList->currentItem()->data(Qt::UserRole).toString();
     fail(tr("対象の残基を選択してください。"));
 }
-QString MainWindow::selectedPart() const {
+QString MoleculePanel::selectedPart() const {
     for (auto id : selected)
         for (auto v : displayDocument().data["parts"].toArray())
             if (idsFromJson(v.toObject()["atoms"]).contains(id))
                 return v.toObject()["id"].toString();
     fail(tr("部品を選択してください。"));
 }
-QString MainWindow::selectedCenter() const {
+QString MoleculePanel::selectedCenter() const {
     const auto &d = displayDocument();
     for (auto id : selected) {
         for (auto v : d.data["centers"].toArray())
@@ -554,13 +552,13 @@ QString MainWindow::selectedCenter() const {
     }
     fail(tr("配位中心または配位子を選択してください。"));
 }
-QList<int> MainWindow::sites() const {
+QList<int> MoleculePanel::sites() const {
     auto indices = integers(siteInput->text());
     for (auto &i : indices)
         --i;
     return indices;
 }
-void MainWindow::buildCoordinationPanel() {
+void MoleculePanel::buildCoordinationPanel() {
     auto *f = panel(tr("配位"));
     // The notes in the cards, as on the other pages.
     section(f, QT_TR_NOOP("配位形状"));
@@ -654,7 +652,7 @@ void MainWindow::buildCoordinationPanel() {
             true);
     });
 }
-void MainWindow::addAmino(const QString &rid, bool n) {
+void MoleculePanel::addAmino(const QString &rid, bool n) {
     auto t = currentTemplate();
     if (t["category"] != "amino")
         fail(tr("アミノ酸をパレットで選択してください。"));
@@ -671,10 +669,10 @@ void MainWindow::addAmino(const QString &rid, bool n) {
     growthN = n;
     view->keepInView();
 }
-void MainWindow::buildResiduePanel() {
+void MoleculePanel::buildResiduePanel() {
     auto *f = panel(tr("残基"));
     section(f, QT_TR_NOOP("PDB・残基の認識"));
-    button(f, tr("PDBを読み込む…"), [this] { open(); });
+    button(f, tr("PDBを読み込む…"), [this] { emit openRequested(); });
     button(f, tr("PDBの診断・修復…"), [this] { pdbPreparation(); }, "preparePdb");
     button(f, tr("構造を検査…"), [this] { showReport(); });
     button(f, tr("結合グラフから残基を認識"), [this] {
@@ -860,7 +858,7 @@ void MainWindow::buildResiduePanel() {
         writeFile(p, csv.toUtf8());
     });
 }
-void MainWindow::buildChargePanel() {
+void MoleculePanel::buildChargePanel() {
     auto *f = panel(tr("電荷"));
     chargeEditor = f->parentWidget()->parentWidget();
     // The total charge and multiplicity are settings of "2 計算条件": here they are shown with the
@@ -1038,7 +1036,7 @@ void MainWindow::buildChargePanel() {
         writeFile(p, text.toUtf8());
     });
 }
-void MainWindow::refreshChargePanel() {
+void MoleculePanel::refreshChargePanel() {
     const auto &d = displayDocument();
     chargeState->setText(
         tr("%1 · 多重度 %2").arg(d.job()["charge"].toInt()).arg(d.job()["multiplicity"].toInt(1)));
@@ -1076,7 +1074,7 @@ void MainWindow::refreshChargePanel() {
         repolish(inputState);
     }
 }
-void MainWindow::pdbPreparation() {
+void MoleculePanel::pdbPreparation() {
     if (session.candidate())
         fail(tr("先に候補を確定または取消してください。"));
     if (document().atoms.isEmpty())
