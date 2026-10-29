@@ -39,11 +39,11 @@ Numbers accept exponent notation such as `1e-8` / `1D-8`. A blank value or “De
 
 ### Saving advanced settings and compatibility
 
-Only explicit settings are saved in `document.nwchem.advanced`. Merely opening the advanced settings does not add default values to the project. Unknown advanced fields are kept, reported as unsupported and excluded from the output. The old-format `job.sections` and the project's run and result references are kept as well.
+Only explicit settings are saved in `document.nwchem.advanced`. Merely opening the advanced settings does not add default values to the project. Unknown advanced fields are kept, reported as unsupported and excluded from the output. Unknown fields of the project are kept as well.
 
 User presets include the advanced settings except “Orbitals and files” and “CUBE / MOLDEN output”. When a built-in or old-format preset has no advanced settings, applying it clears these overrides so that the preset's basic settings take effect. The orbital, storage location, echo and visualization file output settings and unknown fields are kept, and the whole preset application can be reverted with a single undo.
 
-The advanced settings do not offer custom keyword input, fine cache tuning of semi-direct SCF, RODFT/CDFT and fractional occupations, arbitrary orbital occupations, TCE, relativistic Hamiltonians, distance and angle constraints, scans, transition states, IRC, MD, periodic systems and the like. Old-format settings are not converted to these NWChem directives automatically. Neither NWChem nor Python is needed to edit or save advanced settings or to generate input.
+The advanced settings do not offer custom keyword input, fine cache tuning of semi-direct SCF, RODFT/CDFT and fractional occupations, arbitrary orbital occupations, TCE, relativistic Hamiltonians, distance and angle constraints, scans, transition states, IRC, MD, periodic systems and the like. Neither NWChem nor Python is needed to edit or save advanced settings or to generate input.
 
 References: [HF](https://nwchemgit.github.io/Hartree-Fock-Theory-for-Molecules.html), [DFT](https://nwchemgit.github.io/Density-Functional-Theory-for-Molecules.html), [MP2](https://nwchemgit.github.io/MP2.html), [CCSD](https://nwchemgit.github.io/CCSD.html), [DRIVER](https://nwchemgit.github.io/Geometry-Optimization.html), [Hessians and frequencies](https://nwchemgit.github.io/Hessians-and-Vibrational-Frequencies.html), [COSMO](https://nwchemgit.github.io/COSMO-Solvation-Model.html), [Scratch directory](https://nwchemgit.github.io/Scratch_Dir.html).
 

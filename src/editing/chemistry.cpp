@@ -68,8 +68,8 @@ static OBMol toOB(const Document &d) {
     if (!d.data["residues"].toArray().isEmpty())
         mol.SetChainsPerceived();
     mol.SetDimension(3);
-    mol.SetTotalCharge(d.job()["charge"].toInt(d.formalCharge()));
-    mol.SetTotalSpinMultiplicity(d.job()["multiplicity"].toInt(1));
+    mol.SetTotalCharge(d.charge);
+    mol.SetTotalSpinMultiplicity(d.multiplicity);
     return mol;
 }
 static Document fromOB(OBMol &mol, bool readResidues = false) {
@@ -165,8 +165,8 @@ static Document fromOB(OBMol &mol, bool readResidues = false) {
         rr[i] = r;
     }
     d.data["residues"] = rr;
-    d.setJobValue("charge", mol.GetTotalCharge());
-    d.setJobValue("multiplicity", int(mol.GetTotalSpinMultiplicity()));
+    d.charge = mol.GetTotalCharge();
+    d.multiplicity = int(mol.GetTotalSpinMultiplicity());
     auto meta = d.data["metadata"].toObject();
     meta["source_dimension"] = mol.GetDimension();
     d.data["metadata"] = meta;

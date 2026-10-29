@@ -303,7 +303,7 @@ class McpTest : public QObject {
         QTRY_COMPARE(get()["state"].toString(), "failed");
         QCOMPARE(w.findChild<QDoubleSpinBox *>("dimensionValue")->value(), 2.15);
         command = data(change(s, "ui_set_value", {{"target", target}, {"value", 3.0}}));
-        w.edit("Concurrent GUI edit", [](Document &d) { d.setJobValue("charge", -1); });
+        w.edit("Concurrent GUI edit", [](Document &d) { d.charge = -1; });
         QTRY_COMPARE(get()["state"].toString(), "failed");
         QVERIFY(get()["error"].toString().contains("Document changed"));
         auto *temporary = new QPushButton("temporary", &w);
@@ -843,14 +843,14 @@ class McpTest : public QObject {
         Document d;
         const auto sodium = addCenter(d, "Na", "tetrahedral", Vec::Zero(), 2.4, 1);
         placeTemplate(d, findTemplate("skeleton:water"), Vec(5, 0, 0));
-        QCOMPARE(d.job()["charge"].toInt(), 1);
+        QCOMPARE(d.charge, 1);
         QVERIFY(!failed(change(server, "import_document",
                                {{"format", "project"},
                                 {"text", QString::fromUtf8(QJsonDocument(d.project()).toJson())},
                                 {"preview", false}})));
         QVERIFY(!failed(change(server, "delete_atoms", {{"ids", QJsonArray{sodium}}, {"preview", false}})));
         QCOMPARE(committed(server).formula(), QString("H2O"));
-        QCOMPARE(committed(server).job()["charge"].toInt(), 0);
+        QCOMPARE(committed(server).charge, 0);
     }
     void atomicEditsAndFixedAtoms() {
         McpServer server;
@@ -943,7 +943,7 @@ class McpTest : public QObject {
         QVERIFY(!failed(change(server, "open_file", {{"path", nw}, {"preview", false}})));
         const auto opened = committed(server);
         QCOMPARE(opened.formula(), QString("HO"));
-        QCOMPARE(opened.job()["charge"].toInt(), 1);
+        QCOMPARE(opened.charge, 1);
         QCOMPARE(nwchemSettings(opened)["basis"].toString(), QString("cc-pvdz"));
         QCOMPARE(nwchemSettings(opened)["task"].toString(), QString("optimize"));
         QCOMPARE(executionSettings(opened)["mpi_ranks"].toInt(), 5);

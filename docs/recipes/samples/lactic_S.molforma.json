@@ -1,93 +1,6 @@
 {
-    "atoms": [
-        {
-            "mass": "",
-            "symbol": "C",
-            "x": 0.7394642079027856,
-            "y": -0.04505064921437064,
-            "z": -0.004412729295535713
-        },
-        {
-            "mass": "",
-            "symbol": "C",
-            "x": -0.7791555477258338,
-            "y": 0.05559764445102521,
-            "z": -0.002628949313209174
-        },
-        {
-            "mass": "",
-            "symbol": "C",
-            "x": 1.290532589932203,
-            "y": 0.0523900356265869,
-            "z": 1.4246601307865565
-        },
-        {
-            "mass": "",
-            "symbol": "O",
-            "x": 1.1043311544488814,
-            "y": -1.2330086037190053,
-            "z": -0.6975326199895842
-        },
-        {
-            "mass": "",
-            "symbol": "H",
-            "x": 1.1580910550355656,
-            "y": 0.7989788514359197,
-            "z": -0.5652433458722876
-        },
-        {
-            "mass": "",
-            "symbol": "H",
-            "x": -1.1181117510795482,
-            "y": 0.9967686325361355,
-            "z": 0.44135749027772797
-        },
-        {
-            "mass": "",
-            "symbol": "H",
-            "x": -1.2236103900113107,
-            "y": -0.7689287590225814,
-            "z": 0.5650895424566886
-        },
-        {
-            "mass": "",
-            "symbol": "H",
-            "x": -1.170875452839399,
-            "y": -0.0111480167257978,
-            "z": -1.0221568794327751
-        },
-        {
-            "mass": "",
-            "symbol": "O",
-            "x": 0.7684037643247535,
-            "y": 0.6104884656938891,
-            "z": 2.373802877315474
-        },
-        {
-            "mass": "",
-            "symbol": "O",
-            "x": 2.49825179700827,
-            "y": -0.5357263817456728,
-            "z": 1.565369059690229
-        },
-        {
-            "mass": "",
-            "symbol": "H",
-            "x": 2.750978148361385,
-            "y": -0.3551795497253877,
-            "z": 2.4946323017310794
-        },
-        {
-            "mass": "",
-            "symbol": "H",
-            "x": 0.8284422575181207,
-            "y": -1.9861001294548966,
-            "z": -0.14842173169591552
-        }
-    ],
     "coordinate_units": "angstrom",
     "document": {
-        "assignments": {},
         "atoms": [
             {
                 "auto_hydrogen": false,
@@ -423,30 +336,14 @@
         ],
         "centers": [],
         "chains": {},
+        "charge": 0,
         "id": "af3ec8e549a64ed6ba4fb9ecf0b372b3",
-        "invalid_settings": [],
-        "job": {
-            "alpha_occupations": "",
-            "basis": "STO-3G",
-            "beta_occupations": "",
-            "bohr": false,
-            "charge": 0,
-            "dispersion": "none",
-            "fractional_occupations": false,
-            "functional": "",
-            "method": "hf",
-            "multiplicity": 1,
-            "relativistic": "none",
-            "runtype": "energy",
-            "scftype": "RHF",
-            "sections": {},
-            "spherical": true
-        },
         "metadata": {
             "accept_2d": true,
             "molforma_energy": 14.192155295786623,
             "molforma_force_field": "MMFF94"
         },
+        "multiplicity": 1,
         "parts": [
             {
                 "atoms": [
@@ -502,30 +399,9 @@
             }
         ],
         "point_charges": [],
-        "references": [],
         "residues": [],
-        "revision": 0,
         "units": "angstrom"
     },
-    "execution": null,
     "format": "molforma-project",
-    "job": {
-        "alpha_occupations": "",
-        "basis": "STO-3G",
-        "beta_occupations": "",
-        "bohr": false,
-        "charge": 0,
-        "dispersion": "none",
-        "fractional_occupations": false,
-        "functional": "",
-        "method": "hf",
-        "multiplicity": 1,
-        "relativistic": "none",
-        "runtype": "energy",
-        "scftype": "RHF",
-        "sections": {},
-        "spherical": true
-    },
-    "result_reference": null,
     "version": 1
 }

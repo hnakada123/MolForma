@@ -256,7 +256,7 @@ void setHistoryMemo(const QString &directory, const QString &text) {
 }
 HistoryMolecule historyMolecule(const QString &directory) {
     const auto d = Document::fromProject(parseJson(bytes(directory, "project.molforma.json", projectLimit)));
-    return {int(d.atoms.size()), d.job()["charge"].toInt(), d.job()["multiplicity"].toInt(1)};
+    return {int(d.atoms.size()), d.charge, d.multiplicity};
 }
 QString historyIncomparable(const HistoryEntry &e, const HistoryEntry &reference) {
     if (e.formula.isEmpty() || e.formula != reference.formula)

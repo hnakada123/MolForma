@@ -295,13 +295,6 @@ class CoreTest : public QObject {
             }
         }
     }
-    void optionalJobSections() {
-        Document d;
-        const auto sections = d.emittedJob()["sections"].toObject();
-        QVERIFY(!sections.contains("qmmm"));
-        for (auto value : sections)
-            QVERIFY(value.isObject());
-    }
     void pdbRoundTrip() {
         Document d;
         buildPeptide(d, {"ALA", "GLY", "SER"}, "charged", "charged");
@@ -366,8 +359,8 @@ class CoreTest : public QObject {
             const auto d = Document::load(QString(RECIPES_DIR) + "/" + s.name + ".molforma.json");
             QVERIFY2(d.formula() == s.formula, s.name);
             QVERIFY2(d.atoms.size() == s.atoms, s.name);
-            QVERIFY2(d.job()["charge"].toInt() == s.charge, s.name);
-            QVERIFY2(d.job()["multiplicity"].toInt() == s.multiplicity, s.name);
+            QVERIFY2(d.charge == s.charge, s.name);
+            QVERIFY2(d.multiplicity == s.multiplicity, s.name);
             QVERIFY2(validateNwchem(d).errors.isEmpty(),
                      qPrintable(QString(s.name) + ": " + validateNwchem(d).errors.join(';')));
             QVERIFY2(nwchemInput(d).contains(s.input), s.name);
@@ -399,12 +392,16 @@ class CoreTest : public QObject {
             const auto saved = parseJson(readFile(file));
             QCOMPARE(saved["format"].toString(), QString("molforma-project"));
             QCOMPARE(saved["version"].toInt(), 1);
+            QCOMPARE(saved.keys(), QStringList({"coordinate_units", "document", "format", "version"}));
+            QCOMPARE(saved["document"].toObject()["charge"].toInt(), QString(name) == "co_en" ? 3 : 0);
+            QCOMPARE(saved["document"].toObject()["multiplicity"].toInt(), 1);
             auto copy = Document::load(file);
             QCOMPARE(copy.ids(), d.ids());
             QCOMPARE(copy.bonds.size(), d.bonds.size());
             QCOMPARE(copy.data["residues"], d.data["residues"]);
             QCOMPARE(copy.data["centers"], d.data["centers"]);
-            QCOMPARE(copy.data["assignments"], d.data["assignments"]);
+            QCOMPARE(copy.charge, d.charge);
+            QCOMPARE(copy.multiplicity, d.multiplicity);
             for (int i = 0; i < d.atoms.size(); ++i)
                 QVERIFY((copy.atoms[i].position - d.atoms[i].position).norm() < 1e-12);
         }
@@ -447,7 +444,6 @@ class CoreTest : public QObject {
                 carbons << a.id;
             else
                 a.fixed = true;
-        d.data["assignments"] = QJsonObject{{"legacy", QJsonObject{{"status", "confirmed"}}}};
         EditorSession session;
         session.reset(d);
         QVERIFY_EXCEPTION_THROWN(
@@ -456,9 +452,8 @@ class CoreTest : public QObject {
             std::runtime_error);
         QCOMPARE(session.document().project(), d.project());
         QCOMPARE(session.history().count(), 0);
-        session.edit("double", [&](Document &next) { changeBond(next, carbons[0], carbons[1], "double"); });
-        QCOMPARE(session.document().data["assignments"].toObject()["legacy"].toObject()["status"].toString(),
-                 QString("candidate"));
+        QVERIFY(session.edit("double",
+                             [&](Document &next) { changeBond(next, carbons[0], carbons[1], "double"); }));
         QVERIFY(!session.edit("same",
                               [&](Document &next) { changeBond(next, carbons[0], carbons[1], "double"); }));
     }
@@ -516,7 +511,7 @@ class CoreTest : public QObject {
         auto chloride = Document::fromXyz("1\nchloride\nCl 0 0 0\n");
         chloride.atoms[0].charge = -1;
         insertFragment(d, chloride);
-        QCOMPARE(d.job()["charge"].toInt(), -1);
+        QCOMPARE(d.charge, -1);
         // Skeleton parts are whole molecules without connection points, placed by clicking.
         Document water;
         placeTemplate(water, findTemplate("skeleton:water"), Vec::Zero());
@@ -786,18 +781,18 @@ class CoreTest : public QObject {
         Document water;
         instantiate(water, findTemplate("skeleton:water"));
         QVERIFY(structureReport(water).endsWith("問題は見つかりませんでした。"));
-        water.setJobValue("multiplicity", 2);
+        water.multiplicity = 2;
         QVERIFY(!structureReport(water).contains("問題は見つかりませんでした"));
         // Complexes: free coordination sites, and a charge that disagrees with the oxidation number.
         Document zinc;
         addCenter(zinc, "Zn", "tetrahedral", Vec::Zero(), 2.1, 2);
-        QCOMPARE(zinc.job()["charge"].toInt(), 2); // The total charge followed the oxidation number.
-        zinc.setJobValue("charge", 0);
+        QCOMPARE(zinc.charge, 2); // The total charge followed the oxidation number.
+        zinc.charge = 0;
         auto report = structureReport(zinc);
         QVERIFY2(report.contains("Zn1: 配位サイト 4 のうち 4 が空いています"), qPrintable(report));
         QVERIFY(report.contains("見込まれる全電荷は 2"));
         QVERIFY(!report.contains("形式電荷の合計と設定電荷が異なります")); // The center line says it.
-        zinc.setJobValue("charge", 2);
+        zinc.charge = 2;
         QVERIFY(!structureReport(zinc).contains("見込まれる全電荷"));
         // Without its N–H, pyrrole gets the hydrogen back on nitrogen rather than an sp3 carbon.
         for (const auto &[id, element] : {std::pair{"skeleton:pyrrole", "N"}, {"skeleton:imidazole", "N"}}) {
@@ -912,23 +907,6 @@ class CoreTest : public QObject {
         QVERIFY_EXCEPTION_THROWN(replacePart(d, d.ids(), findTemplate("substituent:methyl")),
                                  std::runtime_error);
     }
-    void ionFragmentMerge() {
-        Document d;
-        placeTemplate(d, findTemplate("skeleton:water"), Vec::Zero());
-        auto sodium = addAtom(d, "Na", Vec(0, 0, 2.4), {}, "single", false);
-        d.atom(sodium).charge = 1;
-        placeTemplate(d, findTemplate("skeleton:water"), Vec(20, 0, 0));
-        proposeFragments(d, "fmo", "component");
-        const auto before = d.xyz();
-        const auto bonds = d.bonds.size();
-        mergeIonContacts(d);
-        auto a = d.data["assignments"].toObject()["fmo"].toObject();
-        QCOMPARE(a["charges"].toObject().size(), 2);
-        QCOMPARE(a["members"].toObject()[sodium], a["members"].toObject()[d.atoms.first().id]);
-        QCOMPARE(d.job()["charge"].toInt(), 1);
-        QCOMPARE(d.xyz(), before);
-        QCOMPARE(d.bonds.size(), bonds);
-    }
     void peptide() {
         Document d;
         buildPeptide(d, parseSequence("AGS"), "charged", "charged");
@@ -983,14 +961,14 @@ class CoreTest : public QObject {
             QVERIFY(std::abs((d.atom(b.a).position - d.atom(zinc).position).norm() - 2.5) < 1e-8);
         QVERIFY(d.validate().isEmpty());
         // [ZnCl4]2−: the total charge followed Zn(II) and the chlorides; it keeps a chosen value.
-        QCOMPARE(d.job()["charge"].toInt(), -2);
+        QCOMPARE(d.charge, -2);
         QCOMPARE(d.expectedCharge(), -2);
         QCOMPARE(d.formalCharge(), -4);
         adjustCenter(d, zinc, "tetrahedral", 2.5, 3);
-        QCOMPARE(d.job()["charge"].toInt(), -1);
-        d.setJobValue("charge", 5);
+        QCOMPARE(d.charge, -1);
+        d.charge = 5;
         adjustCenter(d, zinc, "tetrahedral", 2.5, 2);
-        QCOMPARE(d.job()["charge"].toInt(), 5);
+        QCOMPARE(d.charge, 5);
         // trans-[Co(en)2Cl2]+ and SF6 (a main-group center).
         Document co;
         auto cobalt = addCenter(co, "Co", "octahedral", Vec::Zero(), 2.0, 3);
@@ -999,14 +977,14 @@ class CoreTest : public QObject {
         placeLigand(co, cobalt, {4}, findTemplate("ligand:chloride"));
         placeLigand(co, cobalt, {5}, findTemplate("ligand:chloride"));
         QCOMPARE(co.formula(), QString("C4H16Cl2CoN4"));
-        QCOMPARE(co.job()["charge"].toInt(), 1);
+        QCOMPARE(co.charge, 1);
         QVERIFY(validateNwchem(co).warnings.filter("見込まれる").isEmpty());
         Document sf6;
         auto sulfur = addCenter(sf6, "S", "octahedral", Vec::Zero(), 1.56, 6);
         for (int i = 0; i < 6; ++i)
             placeLigand(sf6, sulfur, {i}, findTemplate("ligand:fluoride"));
         QCOMPARE(sf6.formula(), QString("F6S"));
-        QCOMPARE(sf6.job()["charge"].toInt(), 0);
+        QCOMPARE(sf6.charge, 0);
     }
     void coordinationSiteEdits() {
         Document d;
@@ -1032,44 +1010,6 @@ class CoreTest : public QObject {
         QCOMPARE(en.connections.size(), 2);
         QVERIFY(d.validate().isEmpty());
     }
-    void fragmentAssignments() {
-        Document d;
-        buildPeptide(d, {"ALA", "GLY", "SER"}, "charged", "charged");
-        proposeFragments(d, "fmo", "residue2");
-        auto a = d.data["assignments"].toObject()["fmo"].toObject();
-        QCOMPARE(a["charges"].toObject().size(), 2);
-        QCOMPARE(a["cuts"].toArray().size(), 1);
-        auto cut = idsFromJson(a["cuts"].toArray().first());
-        QCOMPARE(d.atom(cut[0]).name, QString("CA"));
-        QCOMPARE(d.atom(cut[1]).name, QString("C"));
-        QCOMPARE(a["charges"].toObject()["1"].toInt(), 1);
-        QCOMPARE(a["charges"].toObject()["2"].toInt(), -1);
-        auto sections = d.emittedJob()["sections"].toObject();
-        QVERIFY(!sections["fmo"].toObject()["fragments"].toString().isEmpty());
-        Document water;
-        placeTemplate(water, findTemplate("skeleton:water"), Vec::Zero());
-        duplicate(water, water.ids(), Vec(0, 0, 4));
-        proposeFragments(water, "counterpoise", "component");
-        QCOMPARE(water.data["assignments"].toObject()["counterpoise"].toObject()["charges"].toObject().size(),
-                 2);
-    }
-    void referenceRemapping() {
-        Document d;
-        placeTemplate(d, findTemplate("skeleton:water"), Vec::Zero());
-        auto ids = d.ids();
-        addReference(d, {ids[0], ids[1]}, "constraint", .96);
-        addReference(d, {ids[1]}, "freeze");
-        addReference(d, {ids[1], ids[0], ids[2]}, "scan", 100, 120, 10);
-        std::reverse(d.atoms.begin(), d.atoms.end());
-        auto sections = d.emittedJob()["sections"].toObject();
-        QVERIFY(sections["constraint"].toObject()["list"].toString().contains("bond=3,2"));
-        QCOMPARE(sections["constraint"].toObject()["freeze"].toString(), QString("2"));
-        QCOMPARE(sections["scan"].toObject()["angle"].toString(), QString("2,3,1"));
-        d.remove({ids[1]});
-        QVERIFY(!d.data["invalid_settings"].toArray().isEmpty());
-        QVERIFY(!d.emittedJob()["sections"].toObject()["constraint"].toObject().contains("freeze"));
-        QVERIFY(!d.emittedJob()["sections"].toObject()["constraint"].toObject().contains("list"));
-    }
     void charges() {
         Document d;
         placeTemplate(d, findTemplate("skeleton:water"), Vec::Zero());
@@ -1083,12 +1023,6 @@ class CoreTest : public QObject {
         for (auto q : d.data["point_charges"].toArray())
             sum += q.toObject()["charge"].toDouble();
         QVERIFY(std::abs(sum) < 1e-12);
-        auto j = d.job();
-        j["sections"] = QJsonObject{{"qmmm", QJsonObject{{"enabled", "t"}}}};
-        d.data["job"] = j;
-        QCOMPARE(
-            d.emittedJob()["sections"].toObject()["qmmm"].toObject()["charges"].toString().split(';').size(),
-            3);
     }
     void smilesAndRefine() {
         auto d = fromSmiles("CCO");

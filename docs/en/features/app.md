@@ -30,14 +30,14 @@ Use `ctest --test-dir build --output-on-failure`.
 - Generating and reloading all 101 templates, round trips of the 4 projects in `tests/fixtures/`.
 - Invalid XYZ, isotopes, adding hydrogens, attaching, numeric dimensions, refusing fixed atoms and ring bonds.
 - Peptide composition, termini, replacement and caps; coordination distances and bidentate site conditions.
-- Keeping legacy fragment assignments, constraints and scan references and renumbering them (the creation UI is removed), TIP3P.
+- Converting water to TIP3P point charges.
 - Adding hydrogens to all templates including aromatic rings, bond order estimation for XYZ, rotational symmetry numbers.
 - SMILES, cleanup with fixed atoms, SDF/PDB round trips.
 - GUI click placement, Delete/Esc, building from a sequence, confirming and discarding candidates, Undo/Redo, keeping the original state on failure.
 - The workflow in the header linked to the tabs, showing input errors, the two-row layout in narrow windows, the arrangement of the 3D view and coordinate table in “1 Molecule” (3D / 3D + table / table) and updating a hidden table, the tool settings row on the 3D view (the 3D view does not move with tools or candidates), the sequence and measurement display on the 3D view, the selection and candidate lists, the tile layout of the palette, the colors of the dark theme.
 - Click selection and adding with Shift+click, unified deletion (removing hydrogens, capping), the candidate banner and the atom counts of the difference, the key list, Ctrl+C/V, syncing the trackball and sliders, zooming at the cursor position, label selection, fixes and search from diagnostics, the run state in the status bar, composition and notes in history, the vibration animation summary, colors derived from the palette.
 - Showing skeleton thumbnails and placing after search, distinct names of residue states, updating My parts thumbnails and HiDPI display.
-- Replacing and deleting capped residues and switching termini, part replacement, merging metal-adjacent fragments for legacy fragment data.
+- Replacing and deleting capped residues and switching termini, part replacement.
 - Point groups (C2v, C3v, Td, D∞h, D2h, D6h, Cs, Oh, Ih, D2d, C∞v, C2, C1, Ci) and symmetrization, Z-matrix references and values, conformer search and superposition.
 - Input generation and checks for solvent, relativistic, RI-J, properties, transition-state search, IRC, constraints, scans, BSSE, follow-up calculations and additional input, round-trip import of NWChem input, Gaussian input, multi-frame XYZ.
 - Reading scans, IRC, properties, BSSE and solvation from results, translation/rotation detection, the path table, ΔE, measurements, comparison, warnings on the termination state, summary cards and switching the action panel of the result viewer, the ΔE column of history, loading results when a calculation ends.

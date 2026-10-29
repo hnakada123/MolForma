@@ -110,7 +110,7 @@ bool ChemistryJob::propose(const ChemistryResult &result, int conformer) {
             return false;
     } else if (mode == "smiles") {
         replaceCoordinateStructure(next, result.document);
-        next.setJobValue("charge", next.formalCharge());
+        next.charge = next.formalCharge();
     } else if (mode == "fragment")
         insertFragment(next, result.document);
     else {

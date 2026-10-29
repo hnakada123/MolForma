@@ -225,9 +225,9 @@ class CalculationTest : public QObject {
     }
     void spinAndReferenceCompatibility() {
         auto d = water();
-        d.setJobValue("charge", 1);
+        d.charge = 1;
         QVERIFY(errorContains(d, "整合しません"));
-        d.setJobValue("multiplicity", 2);
+        d.multiplicity = 2;
         QCOMPARE(validateNwchem(d).electrons, 9);
         QCOMPARE(validateNwchem(d).alpha, 5);
         QCOMPARE(validateNwchem(d).beta, 4);
@@ -244,8 +244,8 @@ class CalculationTest : public QObject {
         set(d, "reference", "auto");
         set(d, "method", "ccsd");
         QVERIFY(errorContains(d, "閉殻RHF"));
-        d.setJobValue("charge", 0);
-        d.setJobValue("multiplicity", 1);
+        d.charge = 0;
+        d.multiplicity = 1;
         for (const auto &method : {"ccsd", "ccsd(t)"}) {
             set(d, "method", method);
             const auto text = nwchemInput(d);
@@ -259,13 +259,13 @@ class CalculationTest : public QObject {
         QVERIFY(nwchemInput(d).contains("mp2\n  freeze atomic\nend"));
         set(d, "task", "frequencies");
         QVERIFY(nwchemInput(d).endsWith("task mp2 frequencies numerical\n"));
-        d.setJobValue("multiplicity", 12);
+        d.multiplicity = 12;
         QVERIFY(errorContains(d, "整合しません"));
     }
     void basisCoverageAndEcp() {
         auto d = Document::fromXyz("1\nrubidium ion\nRb 0 0 0\n");
         set(d, "basis", "def2-svp");
-        d.setJobValue("charge", 1);
+        d.charge = 1;
         QCOMPARE(validateNwchem(d).ecpElectrons, 28);
         QCOMPARE(validateNwchem(d).electrons, 8);
         QVERIFY(nwchemInput(d).contains("ecp\n  Rb library \"def2-ecp\"\nend"));
@@ -276,25 +276,25 @@ class CalculationTest : public QObject {
         set(d, "freeze_core", false);
         QVERIFY(validateNwchem(d).errors.isEmpty());
         d.atoms[0].element = "Hf";
-        d.setJobValue("charge", 0);
+        d.charge = 0;
         QCOMPARE(validateNwchem(d).ecpElectrons, 60);
         QCOMPARE(validateNwchem(d).electrons, 12);
         d.atoms[0].element = "La";
-        d.setJobValue("charge", 1);
+        d.charge = 1;
         QCOMPARE(validateNwchem(d).ecpElectrons, 46);
         QCOMPARE(validateNwchem(d).electrons, 10);
         d.atoms[0].element = "Ce";
         QVERIFY(errorContains(d, "対応元素"));
         for (const auto &symbol : {"U", "Og"}) {
             d.atoms[0].element = symbol;
-            d.setJobValue("charge", 0);
+            d.charge = 0;
             QCOMPARE(validateNwchem(d).electrons, element(symbol).number);
             QVERIFY(nwchemGeometry(d, CoordinateUnit::Angstrom).contains(QString(symbol) + " "));
             QVERIFY(errorContains(d, "対応元素"));
             QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
         }
         d.atoms[0].element = "Kr";
-        d.setJobValue("charge", 0);
+        d.charge = 0;
         set(d, "basis", "6-31g");
         QVERIFY(errorContains(d, "対応元素"));
         set(d, "basis", "6-31g*");
@@ -303,7 +303,7 @@ class CalculationTest : public QObject {
         set(d, "basis", "cc-pvdz");
         QVERIFY(errorContains(d, "対応元素"));
         d = Document::fromXyz("1\nlithium ion\nLi 0 0 0\n");
-        d.setJobValue("charge", 1);
+        d.charge = 1;
         set(d, "method", "mp2");
         set(d, "freeze_core", true);
         QVERIFY(errorContains(d, "相関電子が不足"));
@@ -391,8 +391,9 @@ class CalculationTest : public QObject {
         d.data["nwchem"] = "invalid";
         QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
         d = water();
-        d.setJobValue("charge", 0.5);
+        d.charge = 2000;
         QVERIFY(errorContains(d, "整数"));
+        QVERIFY_EXCEPTION_THROWN(setNwchemSetting(d, "charge", 0.5), std::runtime_error);
         QVERIFY_EXCEPTION_THROWN(nwchemInput(Document()), std::runtime_error);
     }
     void tddftInput() {
@@ -409,8 +410,8 @@ class CalculationTest : public QObject {
         QVERIFY(nwchemInput(d).contains("\ntddft\n  nroots 5\n  cis\nend\n"));
         // Open shells: unrestricted excited states, no singlet/triplet keywords.
         auto cation = d;
-        cation.setJobValue("charge", 1);
-        cation.setJobValue("multiplicity", 2);
+        cation.charge = 1;
+        cation.multiplicity = 2;
         QVERIFY(nwchemInput(cation).contains("  odft\n"));
         QVERIFY(nwchemInput(cation).contains("\ntddft\n  nroots 5\n  cis\nend\n"));
         QVERIFY(validateNwchem(cation).warnings.join('\n').contains("一重項・三重項を分けずに"));
@@ -581,7 +582,7 @@ class CalculationTest : public QObject {
         set(dimer, "task", "frequencies");
         QVERIFY(errorContains(dimer, "BSSE補正は一点エネルギー"));
         set(dimer, "task", "energy");
-        dimer.setJobValue("multiplicity", 3);
+        dimer.multiplicity = 3;
         QVERIFY(errorContains(dimer, "閉殻の単量体"));
         auto single = water();
         set(single, "bsse", true);
@@ -720,7 +721,7 @@ class CalculationTest : public QObject {
         for (int i = 0; i < list->count(); ++i)
             if (list->item(i)->text().contains("多重度"))
                 emit list->itemDoubleClicked(list->item(i));
-        QCOMPARE(w.document().job()["multiplicity"].toInt(), 2);
+        QCOMPARE(w.document().multiplicity, 2);
         // Searching a detailed option shows it in the details of its section.
         auto *search = w.findChild<QLineEdit *>("calculationSearch");
         search->setText("DIIS部分空間");
@@ -820,8 +821,8 @@ class CalculationTest : public QObject {
             s["geometry_units"] = "bohr";
             s["method"] = "dft";
             next.data["nwchem"] = s;
-            next.setJobValue("charge", 1);
-            next.setJobValue("multiplicity", 2);
+            next.charge = 1;
+            next.multiplicity = 2;
         });
         button(w, "calculationResetAll")->click();
         const auto reset = nwchemSettings(w.document());
@@ -829,7 +830,7 @@ class CalculationTest : public QObject {
         QCOMPARE(reset["basis"].toString(), QString("sto-3g"));
         QCOMPARE(reset["start"].toString(), QString("kept"));
         QCOMPARE(reset["geometry_units"].toString(), QString("bohr"));
-        QCOMPARE(w.document().job()["charge"].toInt(), 1);
+        QCOMPARE(w.document().charge, 1);
         QCOMPARE(w.history()->undoText(), QString("計算条件をすべて既定に戻す"));
         w.history()->undo();
         QCOMPARE(nwchemSettings(w.document())["basis"].toString(), QString("6-31g*"));
@@ -849,8 +850,8 @@ class CalculationTest : public QObject {
     void nwchemImportRoundTrip() {
         // MolForma's own inputs read back to the same structure and settings.
         auto d = water();
-        d.setJobValue("charge", 1);
-        d.setJobValue("multiplicity", 2);
+        d.charge = 1;
+        d.multiplicity = 2;
         for (const auto &[key, value] : {std::pair<const char *, QJsonValue>{"method", "dft"},
                                          {"functional", "pbe0"},
                                          {"dispersion", "d3bj"},
@@ -871,8 +872,8 @@ class CalculationTest : public QObject {
         QCOMPARE(r.atoms.size(), d.atoms.size());
         for (int i = 0; i < d.atoms.size(); ++i)
             QVERIFY((r.atoms[i].position - d.atoms[i].position).norm() < 1e-9);
-        QCOMPARE(r.job()["charge"].toInt(), 1);
-        QCOMPARE(r.job()["multiplicity"].toInt(), 2);
+        QCOMPARE(r.charge, 1);
+        QCOMPARE(r.multiplicity, 2);
         const auto a = nwchemSettings(d), b = nwchemSettings(r);
         for (const auto *key :
              {"method", "functional", "dispersion", "basis", "task", "solvent", "solvent_name", "grid",
@@ -898,7 +899,7 @@ class CalculationTest : public QObject {
         QCOMPARE(os["basis_overrides"].toObject()["O"].toString(), QString("cc-pvdz"));
         QCOMPARE(os["basis_functions"].toString(), QString("cartesian"));
         QCOMPARE(os["reference"].toString(), QString("uhf"));
-        QCOMPARE(o.job()["multiplicity"].toInt(), 3);
+        QCOMPARE(o.multiplicity, 3);
         QCOMPARE(os["task"].toString(), QString("optimize_frequencies"));
         QVERIFY(os["prop_esp"].toBool());
         QVERIFY(other.notes.join('\n').contains("nwpw"));
@@ -940,8 +941,8 @@ class CalculationTest : public QObject {
         QCOMPARE(g.atoms.size(), 3);
         QCOMPARE(g.atoms[2].element, QString("H"));
         QCOMPARE(g.atoms[2].position.x(), -0.758);
-        QCOMPARE(g.job()["charge"].toInt(), -1);
-        QCOMPARE(g.job()["multiplicity"].toInt(), 2);
+        QCOMPARE(g.charge, -1);
+        QCOMPARE(g.multiplicity, 2);
         QVERIFY_THROWS_EXCEPTION(std::exception, gaussianStructure("#p hf\n\nzmat\n\n0 1\nO\nH 1 0.96\n\n"));
         // ONIOM rows: freeze code, coordinates, then the layer.
         const auto oniom = gaussianStructure("#p oniom(b3lyp/6-31g*:uff)\n\nlayers\n\n0 1\n"
@@ -1074,8 +1075,8 @@ class CalculationTest : public QObject {
                  QString("cartesian"));
         // NWChem's COSMO has no UHF energy; ROHF (the automatic HF choice) and UKS work.
         auto open = water();
-        open.setJobValue("charge", 1);
-        open.setJobValue("multiplicity", 2);
+        open.charge = 1;
+        open.multiplicity = 2;
         set(open, "solvent", "cosmo");
         QVERIFY(validateNwchem(open).errors.isEmpty());
         set(open, "reference", "uhf");
@@ -1099,18 +1100,17 @@ class CalculationTest : public QObject {
     void projectAndPresetPreservation() {
         auto d = water();
         d.envelope["result_reference"] = QJsonObject{{"path", "existing.out"}};
-        d.setJobValue("method", "caspt2");
-        d.setJobValue("basis", "legacy-specific");
-        d.setJobValue("sections", QJsonObject{{"custom", QJsonObject{{"future", "keep"}}}});
+        d.charge = 2; // Presets leave the structure's charge and multiplicity.
+        d.multiplicity = 1;
         set(d, "future", QJsonObject{{"engine", 99}});
         set(d, "start", "saved_name");
         set(d, "title", "saved title");
         set(d, "memory_mb", 2048);
         set(d, "geometry_units", "bohr");
-        const auto job = d.job();
         const auto atoms = d.toJson().value("atoms");
         applyNwchemPreset(d, nwchemPresets()[1].settings);
-        QCOMPARE(d.job(), job);
+        QCOMPARE(d.charge, 2);
+        QCOMPARE(d.multiplicity, 1);
         QCOMPARE(d.toJson()["atoms"], atoms);
         QCOMPARE(nwchemSettings(d)["start"].toString(), "saved_name");
         QCOMPARE(nwchemSettings(d)["title"].toString(), "saved title");
@@ -1120,10 +1120,10 @@ class CalculationTest : public QObject {
         const auto restored = Document::fromProject(d.project());
         QCOMPARE(restored.data["nwchem"], d.data["nwchem"]);
         QCOMPARE(restored.envelope["result_reference"], d.envelope["result_reference"]);
+        QCOMPARE(restored.charge, 2);
         QCOMPARE(nwchemInput(restored), nwchemInput(d));
-        QVERIFY(validateNwchem(d).warnings.join('\n').contains("旧形式"));
+        QVERIFY(nwchemInput(d).contains("charge 2\n"));
         QVERIFY(nwchemInput(d).contains("task dft optimize"));
-        QVERIFY(!nwchemInput(d).contains("caspt2"));
     }
     void nativeTabUndoValidationAndSync() {
         MainWindow w;
@@ -1150,7 +1150,7 @@ class CalculationTest : public QObject {
         auto *charge = w.findChild<QSpinBox *>("nwchem_charge");
         auto *mult = w.findChild<QSpinBox *>("nwchem_multiplicity");
         charge->setValue(1);
-        QCOMPARE(w.document().job()["charge"].toInt(), 1);
+        QCOMPARE(w.document().charge, 1);
         QVERIFY(status->text().contains("生成できません"));
         QVERIFY(!button(w, "inputPreviewCopy")->isEnabled());
         mult->setValue(2);
@@ -1198,8 +1198,8 @@ class CalculationTest : public QObject {
         QVERIFY(button(w, "inputPreviewCopy")->isEnabled());
         QCOMPARE(w.document().toJson(), d.toJson());
         w.edit("別タブの電荷変更", [](Document &next) {
-            next.setJobValue("charge", 1);
-            next.setJobValue("multiplicity", 2);
+            next.charge = 1;
+            next.multiplicity = 2;
         });
         QCOMPARE(w.findChild<QSpinBox *>("nwchem_charge")->value(), 1);
         QCOMPARE(w.findChild<QSpinBox *>("nwchem_multiplicity")->value(), 2);
@@ -1321,12 +1321,12 @@ class CalculationTest : public QObject {
         set(cosmo, "solvent", "cosmo");
         emitInput("cosmo", cosmo);
         auto open = Document::fromXyz("1\nhydrogen atom\nH 0 0 0\n");
-        open.setJobValue("multiplicity", 2);
+        open.multiplicity = 2;
         emitInput("rohf", open);
         set(open, "method", "dft");
         emitInput("odft", open);
         auto ecp = Document::fromXyz("1\nrubidium ion\nRb 0 0 0\n");
-        ecp.setJobValue("charge", 1);
+        ecp.charge = 1;
         set(ecp, "basis", "def2-svp");
         emitInput("ecp", ecp);
         set(ecp, "method", "mp2");

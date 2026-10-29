@@ -39,11 +39,11 @@ NWChemの各ブロックへ直接指定する8グループ・56項目は、関�
 
 ### 詳細設定の保存と互換性
 
-明示指定だけを `document.nwchem.advanced` に保存します。詳細設定を開いただけでは既定値をプロジェクトへ追加しません。未知の詳細フィールドは保持し、未対応であることを表示して出力から除外します。旧形式の `job.sections` やプロジェクトの実行・結果参照も保持します。
+明示指定だけを `document.nwchem.advanced` に保存します。詳細設定を開いただけでは既定値をプロジェクトへ追加しません。未知の詳細フィールドは保持し、未対応であることを表示して出力から除外します。プロジェクトの未知のフィールドも保持します。
 
 ユーザープリセットには「軌道・ファイル」と「可視化ファイル出力」以外の詳細設定を含めます。組込みプリセットや旧形式のプリセットに詳細指定がない場合は、これらの上書きを解除してプリセットの基本条件を有効にします。軌道・保存先・echo・可視化ファイル出力の設定と未知フィールドは保持し、プリセット適用全体をUndo一回で戻せます。
 
-任意のキーワード入力、SCF半直接計算の細かなキャッシュ調整、RODFT/CDFT・部分占有、任意の軌道占有、TCE、相対論、距離・角度拘束、スキャン、遷移状態、IRC、MD、周期系などは未対応です。旧形式の設定をこれらのNWChem指示へ自動変換しません。NWChem本体やPythonは、詳細設定の編集・保存・入力生成には不要です。
+任意のキーワード入力、SCF半直接計算の細かなキャッシュ調整、RODFT/CDFT・部分占有、任意の軌道占有、TCE、相対論、距離・角度拘束、スキャン、遷移状態、IRC、MD、周期系などは未対応です。NWChem本体やPythonは、詳細設定の編集・保存・入力生成には不要です。
 
 仕様の参照: [HF](https://nwchemgit.github.io/Hartree-Fock-Theory-for-Molecules.html)、[DFT](https://nwchemgit.github.io/Density-Functional-Theory-for-Molecules.html)、[MP2](https://nwchemgit.github.io/MP2.html)、[CCSD](https://nwchemgit.github.io/CCSD.html)、[DRIVER](https://nwchemgit.github.io/Geometry-Optimization.html)、[Hessian・振動数](https://nwchemgit.github.io/Hessians-and-Vibrational-Frequencies.html)、[COSMO](https://nwchemgit.github.io/COSMO-Solvation-Model.html)、[Scratch directory](https://nwchemgit.github.io/Scratch_Dir.html)。
 

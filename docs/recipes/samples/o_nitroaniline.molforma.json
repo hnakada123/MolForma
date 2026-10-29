@@ -1,121 +1,6 @@
 {
-    "atoms": [
-        {
-            "mass": "",
-            "symbol": "C",
-            "x": 1.3306186703812934,
-            "y": 0.43780854444072925,
-            "z": -0.06087889329936705
-        },
-        {
-            "mass": "",
-            "symbol": "C",
-            "x": 1.0905246655956382,
-            "y": -0.8925448752312096,
-            "z": 0.05461634455504519
-        },
-        {
-            "mass": "",
-            "symbol": "C",
-            "x": -0.17258803215327886,
-            "y": -1.3785175533791971,
-            "z": 0.09748307378618873
-        },
-        {
-            "mass": "",
-            "symbol": "C",
-            "x": -1.212918184349881,
-            "y": -0.5239489639239583,
-            "z": 0.031518343862517784
-        },
-        {
-            "mass": "",
-            "symbol": "C",
-            "x": -0.9919660701813906,
-            "y": 0.7971390033571679,
-            "z": -0.07293030516552128
-        },
-        {
-            "mass": "",
-            "symbol": "C",
-            "x": 0.26776761219711004,
-            "y": 1.2731341101537335,
-            "z": -0.12311454688141238
-        },
-        {
-            "mass": "",
-            "symbol": "N",
-            "x": 2.619814293137336,
-            "y": 1.0461188823798473,
-            "z": -0.118632527004603
-        },
-        {
-            "mass": "",
-            "symbol": "N",
-            "x": 2.1861832414619777,
-            "y": -1.8787368130379891,
-            "z": 0.11627455890151046
-        },
-        {
-            "mass": "",
-            "symbol": "H",
-            "x": -0.3815762928230058,
-            "y": -2.4404185945714265,
-            "z": 0.1808358576799578
-        },
-        {
-            "mass": "",
-            "symbol": "H",
-            "x": -2.232187789412829,
-            "y": -0.9043554135765502,
-            "z": 0.0658674855358865
-        },
-        {
-            "mass": "",
-            "symbol": "H",
-            "x": -1.8320988671858056,
-            "y": 1.4868745130839456,
-            "z": -0.11634895919720971
-        },
-        {
-            "mass": "",
-            "symbol": "H",
-            "x": 0.41383565068539296,
-            "y": 2.347370976997971,
-            "z": -0.19790848022897786
-        },
-        {
-            "mass": "",
-            "symbol": "H",
-            "x": 3.4093955046048134,
-            "y": 0.4076377589451647,
-            "z": -0.24108949339133556
-        },
-        {
-            "mass": "",
-            "symbol": "H",
-            "x": 2.713644805995614,
-            "y": 1.8836631946665263,
-            "z": -0.684191239581718
-        },
-        {
-            "mass": "",
-            "symbol": "O",
-            "x": 1.8820543700160814,
-            "y": -3.0783457845744415,
-            "z": 0.2215599522431294
-        },
-        {
-            "mass": "",
-            "symbol": "O",
-            "x": 3.3619953495417474,
-            "y": -1.4844937202395156,
-            "z": 0.04131064177169782
-        }
-    ],
     "coordinate_units": "angstrom",
     "document": {
-        "assignments": {},
         "atoms": [
             {
                 "auto_hydrogen": false,
@@ -570,30 +455,14 @@
         ],
         "centers": [],
         "chains": {},
+        "charge": 0,
         "id": "2a2977a096124c8e8d2399208ceb4944",
-        "invalid_settings": [],
-        "job": {
-            "alpha_occupations": "",
-            "basis": "STO-3G",
-            "beta_occupations": "",
-            "bohr": false,
-            "charge": 0,
-            "dispersion": "none",
-            "fractional_occupations": false,
-            "functional": "",
-            "method": "hf",
-            "multiplicity": 1,
-            "relativistic": "none",
-            "runtype": "energy",
-            "scftype": "RHF",
-            "sections": {},
-            "spherical": true
-        },
         "metadata": {
             "accept_2d": true,
             "molforma_energy": 73.7102124639696,
             "molforma_force_field": "MMFF94"
         },
+        "multiplicity": 1,
         "nwchem": {
             "basis": "6-31g*",
             "basis_functions": "auto",
@@ -706,30 +575,9 @@
             }
         ],
         "point_charges": [],
-        "references": [],
         "residues": [],
-        "revision": 0,
         "units": "angstrom"
     },
-    "execution": null,
     "format": "molforma-project",
-    "job": {
-        "alpha_occupations": "",
-        "basis": "STO-3G",
-        "beta_occupations": "",
-        "bohr": false,
-        "charge": 0,
-        "dispersion": "none",
-        "fractional_occupations": false,
-        "functional": "",
-        "method": "hf",
-        "multiplicity": 1,
-        "relativistic": "none",
-        "runtype": "energy",
-        "scftype": "RHF",
-        "sections": {},
-        "spherical": true
-    },
-    "result_reference": null,
     "version": 1
 }

@@ -107,7 +107,7 @@ class CoordinatesTest : public QObject {
             if (choice == "first")
                 dialog->findChild<QComboBox *>()->setCurrentIndex(0);
             if (choice == "stale")
-                w.edit("intervening edit", [](Document &d) { d.setJobValue("charge", 1); });
+                w.edit("intervening edit", [](Document &d) { d.charge = 1; });
             dialog->accept();
         });
         const auto load = [&] {
@@ -118,7 +118,7 @@ class CoordinatesTest : public QObject {
         };
         if (choice == "stale") {
             QVERIFY_EXCEPTION_THROWN(load(), std::runtime_error);
-            QCOMPARE(w.document().job()["charge"].toInt(), 1);
+            QCOMPARE(w.document().charge, 1);
             QCOMPARE(w.document().ids(), before.ids());
             QVERIFY(!w.hasCandidate());
         } else {
@@ -132,7 +132,8 @@ class CoordinatesTest : public QObject {
                 QCOMPARE(w.document().project(), before.project());
                 QCOMPARE(w.displayDocument().formula(), choice == "first" ? QString("He") : QString("Ne"));
                 QCOMPARE(w.displayDocument().envelope, before.envelope);
-                QCOMPARE(w.displayDocument().job(), before.job());
+                QCOMPARE(w.displayDocument().charge, before.charge);
+                QCOMPARE(w.displayDocument().multiplicity, before.multiplicity);
                 w.confirmCandidate();
                 w.history()->undo();
                 QCOMPARE(w.document().project(), before.project());
@@ -686,16 +687,12 @@ class CoordinatesTest : public QObject {
         QVERIFY(w.findChild<QWidget *>("coordinateSelectionBar")->isHidden());
         QVERIFY(w.findChild<QLabel *>("coordinateEmptyNote")->text().contains("ドロップ"));
     }
-    void importPreservesEnvelopeAndInvalidatesReferences() {
+    void importPreservesEnvelopeAndSettings() {
         MainWindow w;
         auto d = water();
-        d.setJobValue("basis", "cc-pVDZ");
+        d.charge = 1;
+        d.multiplicity = 2;
         d.data["nwchem"] = QJsonObject{{"geometry_units", "bohr"}, {"future", 42}};
-        d.data["references"] = QJsonArray{QJsonObject{{"section", "optimize"},
-                                                      {"key", "freeze"},
-                                                      {"text", "2"},
-                                                      {"ids", QJsonArray{d.atoms[1].id}},
-                                                      {"span", QJsonArray{0, 1}}}};
         w.loadDocument(d);
         auto *panel = w.findChild<CoordinatesPanel *>();
         auto imported = Document::fromXyz("2\nH2\nH 0 0 0\nH 0 0 0.74\n");
@@ -705,9 +702,8 @@ class CoordinatesTest : public QObject {
         w.confirmCandidate();
         QCOMPARE(w.document().atoms.size(), 2);
         QCOMPARE(w.document().envelope, d.envelope);
-        QCOMPARE(w.document().job()["basis"], QJsonValue("cc-pVDZ"));
-        QVERIFY(w.document().data["references"].toArray().isEmpty());
-        QVERIFY(!w.document().data["invalid_settings"].toArray().isEmpty());
+        QCOMPARE(w.document().charge, 1);
+        QCOMPARE(w.document().multiplicity, 2);
         QCOMPARE(w.document().data["nwchem"], d.data["nwchem"]);
         auto roundtrip = Document::fromProject(w.document().project());
         QCOMPARE(roundtrip.data["nwchem"], d.data["nwchem"]);

@@ -486,9 +486,6 @@ void MainWindow::buildMenus() {
     auto *saveAsAction =
         action(file, tr("名前を付けて保存…"), QKeySequence::SaveAs, "saveAs", [this] { save(true); });
     action(file, tr("構造を書き出す…"), {}, "export", [this] { exportFile(); });
-    action(file, tr("読込時に保留した設定を確認…"), {}, "held", [this] {
-        moleculePage->showHeldSettings();
-    })->setObjectName("heldSettingsAction");
     action(file, tr("分子全体をXYZでコピー"), {}, "copy", [this] {
         if (resolveCandidate())
             QApplication::clipboard()->setText(document().xyz());
@@ -689,8 +686,8 @@ void MainWindow::refreshSummary() {
                          .arg(d.atoms.isEmpty() ? tr("原子なし") : d.formula())
                          .arg(d.atoms.size())
                          .arg(d.bonds.size())
-                         .arg(d.job()["charge"].toInt())
-                         .arg(d.job()["multiplicity"].toInt(1))
+                         .arg(d.charge)
+                         .arg(d.multiplicity)
                          .arg(d.data["point_charges"].toArray().size())
                          .arg(session.candidate() ? tr(" · 変更候補あり") : ""));
 }

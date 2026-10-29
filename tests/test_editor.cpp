@@ -485,7 +485,7 @@ class EditorTest : public QObject {
         // The input preview tab still shows when the input cannot be generated.
         const int preview = 3;
         QCOMPARE(tabs->tabText(preview), QString("4 入力プレビュー"));
-        w.edit("multiplicity", [](Document &d) { d.setJobValue("multiplicity", 2); });
+        w.edit("multiplicity", [](Document &d) { d.multiplicity = 2; });
         QVERIFY(tabs->tabBar()->tabTextColor(preview).isValid());
         QVERIFY(tabs->tabToolTip(preview).contains("エラー"));
         w.history()->undo();
@@ -975,10 +975,10 @@ class EditorTest : public QObject {
         MainWindow w;
         Document d;
         buildPeptide(d, parseSequence("AHE"), "ACE", "NME", "L", "default");
-        d.setJobValue("charge", d.formalCharge());
+        d.charge = d.formalCharge();
         w.loadDocument(d);
         w.show();
-        QCOMPARE(w.document().job()["charge"].toInt(), -1);
+        QCOMPARE(w.document().charge, -1);
         QString his;
         for (auto v : w.document().data["residues"].toArray())
             if (v.toObject()["code"] == "HIS")
@@ -996,7 +996,7 @@ class EditorTest : public QObject {
         QVERIFY(w.hasCandidate());
         w.findChild<QPushButton *>("confirmCandidate")->click();
         QCOMPARE(w.document().formula(), QString("C17H26N6O6"));
-        QCOMPARE(w.document().job()["charge"].toInt(), 0);
+        QCOMPARE(w.document().charge, 0);
     }
     void attributePageHoldsAttributes() {
         MainWindow w;
@@ -1027,13 +1027,12 @@ class EditorTest : public QObject {
         QVERIFY(w.findChild<QPushButton *>("savePart")->isEnabled());
         w.findChild<QToolButton *>("paletteCategory_all")->click();
         QVERIFY(myParts->isHidden());
-        // Refining the selection beside "全体整形"; regenerating and the held settings in the menus.
+        // Refining the selection beside "全体整形"; regenerating in the menus.
         auto *local = w.findChild<QPushButton *>("refineSelectionButton");
         QVERIFY(local->isEnabled());
         w.setSelection({});
         QVERIFY(!local->isEnabled());
         QVERIFY(w.findChild<QAction *>("regenerateAction"));
-        QVERIFY(w.findChild<QAction *>("heldSettingsAction"));
         // Without point charges, their list says how to add one.
         QVERIFY(w.findChild<QListWidget *>("pointChargeList")->isHidden());
         QVERIFY(!w.findChild<QLabel *>("pointChargeEmpty")->isHidden());
@@ -1071,7 +1070,7 @@ class EditorTest : public QObject {
         QVERIFY(!w.findChild<QPushButton *>("setNwchemOptimization"));
         w.findChild<QToolButton *>("nwchem_task_optimize")->click();
         QVERIFY(nwchemInput(w.document()).endsWith("task scf optimize\n"));
-        QCOMPARE(w.document().job(), d.job());
+        QCOMPARE(w.document().charge, d.charge);
         QCOMPARE(w.findChild<QComboBox *>("nwchem_task")->currentData().toString(), "optimize");
         w.history()->undo();
         QVERIFY(nwchemInput(w.document()).endsWith("task scf energy\n"));
@@ -1123,7 +1122,7 @@ class EditorTest : public QObject {
         QVERIFY(charge && mult && state && summary && input);
         QCOMPARE(state->text(), QString("0 · 多重度 1"));
         charge->setValue(1);
-        QCOMPARE(w.document().job()["charge"].toInt(), 1);
+        QCOMPARE(w.document().charge, 1);
         QCOMPARE(state->text(), QString("1 · 多重度 1"));
         QVERIFY(summary->text().contains("整合しません"));
         QVERIFY(input->text().contains("生成できません"));
@@ -1142,7 +1141,7 @@ class EditorTest : public QObject {
         w.findChild<QPushButton *>("moleculeChargeLink")->click();
         QCOMPARE(w.findChild<QTabWidget *>("workspaceTabs")->currentIndex(), 1);
         auto *page = w.findChild<QPushButton *>("applyMoleculeFormalCharge");
-        w.edit("candidate", [](Document &next) { next.setJobValue("charge", 2); }, true);
+        w.edit("candidate", [](Document &next) { next.charge = 2; }, true);
         QVERIFY(!page->isEnabled());
         QCOMPARE(state->text(), QString("2 · 多重度 1"));
         QVERIFY(summary->text().contains("未確定候補"));
@@ -1157,7 +1156,7 @@ class EditorTest : public QObject {
         d.data["nwchem"] = QJsonObject{{"basis", "def2-svp"}};
         w.loadDocument(d);
         w.findChild<QPushButton *>("applyMoleculeFormalCharge")->click();
-        QCOMPARE(w.document().job()["charge"].toInt(), 1);
+        QCOMPARE(w.document().charge, 1);
         QVERIFY(summary->text().contains("電子数 8（ECP適用後）"));
         QVERIFY(summary->text().contains("α 4 / β 4"));
         QVERIFY(validateNwchem(w.document()).errors.isEmpty());
@@ -1186,9 +1185,7 @@ class EditorTest : public QObject {
     void moleculePointChargesAndCompatibility() {
         MainWindow w;
         auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");
-        addReference(d, {d.atoms[0].id}, "freeze");
-        d.data["assignments"] = QJsonObject{{"legacy", QJsonObject{{"note", "preserve"}}}};
-        d.setJobValue("sections", QJsonObject{{"qmmm", QJsonObject{{"enabled", "t"}}}});
+        d.data["future_document"] = QJsonObject{{"note", "preserve"}};
         d.envelope["external_field"] = "preserve";
         d.data["nwchem"] = QJsonObject{{"geometry_units", "bohr"}, {"future_setting", 42}};
         w.loadDocument(d);
@@ -1200,7 +1197,7 @@ class EditorTest : public QObject {
         auto *x = w.findChild<QDoubleSpinBox *>("pointChargeX");
         auto *q = w.findChild<QDoubleSpinBox *>("pointChargeValue");
         QVERIFY(enabled && calculation && x && q);
-        QCOMPARE(enabled->text(), QString("NWChem入力に含めない")); // A legacy QM/MM flag is no switch.
+        QCOMPARE(enabled->text(), QString("NWChem入力に含めない"));
         x->setValue(5);
         q->setValue(-.5);
         w.findChild<QPushButton *>("addPointCharge")->click();
@@ -1211,9 +1208,8 @@ class EditorTest : public QObject {
         QVERIFY(nwchemInput(w.document()).contains("\nbq units angstrom\n"));
         QVERIFY(nwchemInput(w.document()).contains("5 0 0 -0.5"));
         QCOMPARE(validateNwchem(w.document()).electrons, 10);
-        QCOMPARE(w.document().job(), d.job());
-        QCOMPARE(w.document().data["references"], d.data["references"]);
-        QCOMPARE(w.document().data["assignments"], d.data["assignments"]);
+        QCOMPARE(w.document().charge, d.charge);
+        QCOMPARE(w.document().data["future_document"], d.data["future_document"]);
         QCOMPARE(w.document().data["nwchem"].toObject()["future_setting"].toInt(), 42);
         w.history()->undo();
         QCOMPARE(enabled->text(), QString("NWChem入力に含めない"));
@@ -1628,18 +1624,18 @@ class EditorTest : public QObject {
         const auto sodium = addCenter(d, "Na", "tetrahedral", Vec::Zero(), 2.4, 1);
         placeTemplate(d, findTemplate("skeleton:water"), Vec(5, 0, 0));
         w.loadDocument(d);
-        QCOMPARE(w.document().job()["charge"].toInt(), 1);
+        QCOMPARE(w.document().charge, 1);
         w.setSelection({sodium});
         w.findChild<QAction *>("deleteAction")->trigger();
         w.confirmCandidate();
         QCOMPARE(w.document().formula(), QString("H2O"));
-        QCOMPARE(w.document().job()["charge"].toInt(), 0);
+        QCOMPARE(w.document().charge, 0);
         w.history()->undo();
-        w.edit("全電荷", [](Document &d) { d.setJobValue("charge", 2); });
+        w.edit("全電荷", [](Document &d) { d.charge = 2; });
         w.setSelection({sodium});
         w.findChild<QAction *>("deleteAction")->trigger();
         w.confirmCandidate();
-        QCOMPARE(w.document().job()["charge"].toInt(), 2);
+        QCOMPARE(w.document().charge, 2);
     }
     void selectionFieldsFollowSelection() {
         MainWindow w;
@@ -1790,7 +1786,7 @@ class EditorTest : public QObject {
         // An input that cannot be generated marks its step as on the hidden tab.
         auto *step4 = w.findChild<QToolButton *>("workflowStep_4");
         QVERIFY(!step4->property("failed").toBool());
-        w.edit("multiplicity", [](Document &x) { x.setJobValue("multiplicity", 2); });
+        w.edit("multiplicity", [](Document &x) { x.multiplicity = 2; });
         QVERIFY(step4->property("failed").toBool());
         QVERIFY(step4->toolTip().contains("エラー"));
         w.history()->undo();

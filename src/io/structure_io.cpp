@@ -80,8 +80,8 @@ Document gaussianStructure(const QString &text) {
     if (!count)
         fail(tr("Gaussian入力に原子がありません。"));
     auto d = xyzStructure(QString("%1\nGaussian input\n").arg(count) + xyz);
-    d.setJobValue("charge", charge);
-    d.setJobValue("multiplicity", multiplicity);
+    d.charge = charge;
+    d.multiplicity = multiplicity;
     return d;
 }
 Document importStructure(const QString &path, int model, const QString &altloc, int xyzFrame) {

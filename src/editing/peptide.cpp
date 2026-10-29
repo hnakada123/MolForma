@@ -463,7 +463,7 @@ void buildPeptide(Document &d, const QStringList &codes, const QString &n, const
         addCap(d, first, "ACE");
     if (c == "NME")
         addCap(d, prev, "NME");
-    d.setJobValue("charge", d.formalCharge());
+    d.charge = d.formalCharge();
 }
 void mutateResidue(Document &d, const QString &rid, const QString &code, const QString &state,
                    const QString &chirality) {
@@ -740,6 +740,5 @@ void repairResidue(Document &d, const QString &rid) {
     r["modified"] = false;
     updateResidue(d, r);
     completeHydrogens(d, heavy);
-    d.invalidateAssignments();
 }
 } // namespace mf

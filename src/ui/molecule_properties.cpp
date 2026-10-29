@@ -471,9 +471,8 @@ void MoleculePanel::buildEditPanel() {
         b->setToolTip(tr("編集時の移動・削除を防ぎ、NWChemの構造最適化でも座標を固定します。"));
         enableWithSelection(b, 1);
     }
-    // Sorting is in the menu "構造" of the coordinate table, the user's parts in the palette, refining
-    // beside "全体整形" and the settings held on reading in the menu "ファイル": this page holds the
-    // attributes of atoms only.
+    // Sorting is in the menu "構造" of the coordinate table, the user's parts in the palette and refining
+    // beside "全体整形": this page holds the attributes of atoms only.
 }
 void MoleculePanel::sortAtoms(const QString &mode) {
     const auto ids = selected;
@@ -501,22 +500,6 @@ void MoleculePanel::removePart() {
             customParts.removeAt(i);
     settings.setValue("parts", customParts);
     refreshPalette();
-}
-void MoleculePanel::showHeldSettings() {
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("原子参照と保留設定"));
-    dialog.resize(680, 500);
-    auto *l = new QVBoxLayout(&dialog);
-    auto *text = new QPlainTextEdit(QString::fromUtf8(
-        QJsonDocument(QJsonObject{{"references", document().data["references"]},
-                                  {"invalid_settings", document().data["invalid_settings"]}})
-            .toJson()));
-    text->setReadOnly(true);
-    l->addWidget(text);
-    auto *close = new QDialogButtonBox(QDialogButtonBox::Close);
-    l->addWidget(close);
-    connect(close, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    dialog.exec();
 }
 QString MoleculePanel::selectedResidue() const {
     for (auto id : selected) {
@@ -593,12 +576,12 @@ void MoleculePanel::buildCoordinationPanel() {
         auto id = selectedCenter();
         int ox = oxidation->value();
         edit(tr("酸化数を変更"), [=](Document &d) {
-            const bool follows = d.job()["charge"].toInt() == d.expectedCharge();
+            const bool follows = d.charge == d.expectedCharge();
             auto c = center(d, id);
             c["oxidation"] = ox;
             updateCenter(d, c);
             if (follows)
-                d.setJobValue("charge", d.expectedCharge());
+                d.charge = d.expectedCharge();
         });
     });
     section(f, QT_TR_NOOP("配位子の配置"));
@@ -662,8 +645,8 @@ void MoleculePanel::addAmino(const QString &rid, bool n) {
         int before = d.formalCharge();
         result =
             n ? prependResidue(d, code, rid, state, ch, nt) : appendResidue(d, code, rid, state, ch, nt, ct);
-        if (d.job()["charge"].toInt() == before)
-            d.setJobValue("charge", d.formalCharge());
+        if (d.charge == before)
+            d.charge = d.formalCharge();
     });
     growthResidue = result;
     growthN = n;
@@ -682,8 +665,8 @@ void MoleculePanel::buildResiduePanel() {
             [](Document &d) {
                 const int before = d.expectedCharge();
                 recognizeResidues(d);
-                if (d.job()["charge"].toInt() == before)
-                    d.setJobValue("charge", d.expectedCharge());
+                if (d.charge == before)
+                    d.charge = d.expectedCharge();
             },
             true);
     })->setEnabled(hasStereochemistryBackend());
@@ -736,7 +719,7 @@ void MoleculePanel::buildResiduePanel() {
                         transform(d, added, Mat::Identity(), Vec(shift, 0, 0));
                     }
                     if (clear)
-                        d.setJobValue("charge", d.formalCharge());
+                        d.charge = d.formalCharge();
                 },
                 true);
             view->keepInView();
@@ -759,8 +742,8 @@ void MoleculePanel::buildResiduePanel() {
             [=](Document &d) {
                 const int before = d.expectedCharge();
                 mutateResidue(d, rid, code, state, ch);
-                if (d.job()["charge"].toInt() == before)
-                    d.setJobValue("charge", d.expectedCharge());
+                if (d.charge == before)
+                    d.charge = d.expectedCharge();
             },
             true);
     });
@@ -777,8 +760,8 @@ void MoleculePanel::buildResiduePanel() {
                 int old = d.formalCharge();
                 setTerminals(d, seq.first(), n, {});
                 setTerminals(d, seq.last(), {}, c);
-                if (d.job()["charge"].toInt() == old)
-                    d.setJobValue("charge", d.formalCharge());
+                if (d.charge == old)
+                    d.charge = d.formalCharge();
             },
             true);
     });
@@ -887,9 +870,7 @@ void MoleculePanel::buildChargePanel() {
     // With coordination centers, their oxidation numbers take the place of the centers' formal charges.
     button(
         f, tr("形式電荷の合計を全電荷に適用"),
-        [this] {
-            edit(tr("全電荷を合わせる"), [](Document &d) { d.setJobValue("charge", d.expectedCharge()); });
-        },
+        [this] { edit(tr("全電荷を合わせる"), [](Document &d) { d.charge = d.expectedCharge(); }); },
         "applyMoleculeFormalCharge")
         ->setToolTip(
             tr("原子の形式電荷の合計（配位中心は酸化数）を、計算の全電荷（「2 計算条件」）にします。"));
@@ -1038,8 +1019,7 @@ void MoleculePanel::buildChargePanel() {
 }
 void MoleculePanel::refreshChargePanel() {
     const auto &d = displayDocument();
-    chargeState->setText(
-        tr("%1 · 多重度 %2").arg(d.job()["charge"].toInt()).arg(d.job()["multiplicity"].toInt(1)));
+    chargeState->setText(tr("%1 · 多重度 %2").arg(d.charge).arg(d.multiplicity));
     pointChargeState->setText(nwchemSettings(d)["include_point_charges"].toBool()
                                   ? tr("NWChem入力に含める")
                                   : tr("NWChem入力に含めない"));

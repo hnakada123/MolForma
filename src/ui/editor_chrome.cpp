@@ -231,11 +231,6 @@ QPainterPath iconPath(const QString &name, bool &filled) {
         line({{14, 3}, {14, 8}, {19, 8}});
         line({{12.5, 11}, {12.5, 18}});
         line({{9, 14.5}, {16, 14.5}});
-    } else if (name == "held") { // A document on hold.
-        line({{6, 3}, {14, 3}, {19, 8}, {19, 21}, {6, 21}}, true);
-        line({{14, 3}, {14, 8}, {19, 8}});
-        line({{10.5, 11.5}, {10.5, 17.5}});
-        line({{14.5, 11.5}, {14.5, 17.5}});
     } else if (name == "ring") { // An aromatic ring.
         line({{12, 3.5}, {19.4, 7.75}, {19.4, 16.25}, {12, 20.5}, {4.6, 16.25}, {4.6, 7.75}}, true);
         circle({12, 12}, 4);
@@ -1242,8 +1237,7 @@ void CalculationSummary::update(const Document &d) {
                            .arg(check.electrons)
                            .arg(check.alpha)
                            .arg(check.beta));
-    const auto charges = QString::number(d.job()["charge"].toInt()),
-               multiplicity = QString::number(d.job()["multiplicity"].toInt(1));
+    const auto charges = QString::number(d.charge), multiplicity = QString::number(d.multiplicity);
     charge->setText(reference.isEmpty() ? QString("%1 · %2").arg(charges, multiplicity)
                                         : tr("%1 · %2（%3）").arg(charges, multiplicity, reference));
     // The link on a line of its own, never split.

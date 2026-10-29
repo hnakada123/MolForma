@@ -915,10 +915,8 @@ bool CalculationPanel::editable() const {
 void CalculationPanel::change(const QString &key, const QJsonValue &value) {
     if (busy || !editable())
         return;
-    const bool shared = nwchemSettingSpec(key).job;
-    const QJsonValue current =
-        shared ? window->document().job().value(key) : nwchemSettings(window->document()).value(key);
-    if (current == value)
+    const auto &current = window->document();
+    if (nwchemSettingValue(current, nwchemSettings(current), key) == value)
         return;
     window->safe([&] {
         window->edit(tr("NWChem計算条件を変更"), [&](Document &d) { setNwchemSetting(d, key, value); });
@@ -1256,8 +1254,7 @@ void CalculationPanel::refresh() {
     const auto &d = window->displayDocument();
     const auto s = nwchemSettings(d);
     for (auto it = fields.begin(); it != fields.end(); ++it) {
-        const auto value =
-            it.key() == "charge" || it.key() == "multiplicity" ? d.job()[it.key()] : s[it.key()];
+        const auto value = nwchemSettingValue(d, s, it.key());
         auto *w = it.value();
         const QSignalBlocker blocker(w);
         if (auto *c = qobject_cast<QComboBox *>(w)) {

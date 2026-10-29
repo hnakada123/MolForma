@@ -77,7 +77,6 @@ PlacedPart instantiate(Document &d, const QJsonObject &t, const QVector<Vec> &po
                              {"connections", idsToJson(p.connections)},
                              {"metadata", meta}});
     d.data["parts"] = parts;
-    d.invalidateAssignments();
     return p;
 }
 PlacedPart placeTemplate(Document &d, const QJsonObject &t, const Vec &position) {

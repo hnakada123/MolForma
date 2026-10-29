@@ -91,11 +91,11 @@ void updateCenter(Document &d, const QJsonObject &c) {
 // Coordination edits keep the total charge in step with the charge the centers and ligands suggest
 // when the two matched before, as residue and fragment edits do with the formal charges.
 static bool chargeFollows(const Document &d) {
-    return d.job()["charge"].toInt() == d.expectedCharge();
+    return d.charge == d.expectedCharge();
 }
 static void followCharge(Document &d, bool follows) {
     if (follows)
-        d.setJobValue("charge", d.expectedCharge());
+        d.charge = d.expectedCharge();
 }
 QString addCenter(Document &d, const QString &symbol, const QString &geometry, const Vec &position,
                   double distance, int oxidation) {
@@ -112,7 +112,6 @@ QString addCenter(Document &d, const QString &symbol, const QString &geometry, c
         sites.append(QJsonObject{{"direction", vectorToJson(direction)}, {"distance", distance}});
     updateCenter(d, {{"atom", a.id}, {"geometry", geometry}, {"sites", sites}, {"oxidation", oxidation}});
     followCharge(d, follows);
-    d.invalidateAssignments();
     return a.id;
 }
 PlacedPart placeLigand(Document &d, const QString &id, const QList<int> &indices, const QJsonObject &t,

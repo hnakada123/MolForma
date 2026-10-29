@@ -68,7 +68,6 @@ void setCoordinateCell(Document &document, const QString &id, CoordinateColumn c
         atom.ghost |= ghost;
         if (atom.element != previous || atom.ghost != ghost) {
             atom.stereo.clear();
-            document.invalidateAssignments();
             auto residues = document.data["residues"].toArray();
             for (int i = 0; i < residues.size(); ++i) {
                 auto residue = residues[i].toObject();
@@ -138,7 +137,6 @@ void replaceCoordinateStructure(Document &document, const Document &structure) {
     document.bonds = structure.bonds;
     for (auto key : {"parts", "residues", "chains", "centers"})
         document.data[key] = structure.data[key];
-    document.invalidateAssignments();
 }
 AtomChanges atomChanges(const Document &before, const Document &after) {
     AtomChanges changes;

@@ -4,8 +4,8 @@
 namespace mf {
 Vec freeDirection(const Document &d, const QString &id);
 void completeHydrogens(Document &d, const Ids &selection = {});
-// Changes a bond and invalidates old fragment assignments. Hydrogen adjustment is explicit;
-// callers apply this to an EditorSession copy so failed valence checks leave the document intact.
+// Changes a bond. Hydrogen adjustment is explicit; callers apply this to an EditorSession copy so
+// failed valence checks leave the document intact.
 void changeBond(Document &d, const QString &a, const QString &b, const QString &kind, bool hydrogen = false);
 struct AtomDeletionOptions {
     bool includeAttachedHydrogens = false;
@@ -31,12 +31,6 @@ Ids insertFragment(Document &d, const Document &fragment);
 void mirror(Document &d, const Ids &ids, int axis, const Vec &origin = Vec::Zero());
 void invertCenter(Document &d, const QString &id);
 void switchEZ(Document &d, const Ids &ids);
-void proposeFragments(Document &d, const QString &target, const QString &mode);
-void mergeIonContacts(Document &d);
-void assignFragments(Document &d, const QString &target, const QList<int> &members, const QList<int> &charges,
-                     const QList<int> &multiplicities, const QList<QPair<int, int>> &cuts);
 void waterToCharges(Document &d, const Ids &ids);
-void addReference(Document &d, const Ids &ids, const QString &kind, double value = 0, double end = 0,
-                  int steps = 10);
 QString structureReport(const Document &d);
 } // namespace mf

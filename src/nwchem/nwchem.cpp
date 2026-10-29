@@ -385,7 +385,7 @@ QString nwchemSectionUnused(const Document &d, const QString &section) {
 QJsonObject nwchemDefaults() {
     QJsonObject defaults;
     for (const auto &spec : nwchemSettingSpecs())
-        if (!spec.job)
+        if (!spec.structural)
             defaults[spec.key] = spec.initial;
     return defaults;
 }
@@ -530,12 +530,12 @@ const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
             {"extra_input", Kind::String, ""},
             {"extra_tasks", Kind::String, ""}};
         for (auto &spec : list) {
-            spec.job = spec.key == "charge" || spec.key == "multiplicity";
+            spec.structural = spec.key == "charge" || spec.key == "multiplicity";
             spec.allowDisable = QStringList{"relativistic", "ri_j", "tddft", "followup"}.contains(spec.key);
             spec.validateUnused = spec.key != "scan_steps";
             // Atom references and free input belong to a project, not a reusable method.
             spec.preset =
-                !spec.job &&
+                !spec.structural &&
                 !QStringList{"start",      "title",      "memory_mb", "geometry_units", "constraints",
                              "scan_atoms", "scan_start", "scan_end",  "extra_input",    "extra_tasks"}
                      .contains(spec.key);
@@ -596,11 +596,22 @@ bool nwchemSettingApplies(const NwchemSettingSpec &spec, const QJsonObject &s) {
 bool nwchemSettingEditable(const NwchemSettingSpec &spec, const QJsonObject &settings) {
     return nwchemSettingApplies(spec, settings) || (spec.allowDisable && settings[spec.key] != spec.initial);
 }
+QJsonValue nwchemSettingValue(const Document &d, const QJsonObject &settings, const QString &key) {
+    if (key == "charge")
+        return d.charge;
+    if (key == "multiplicity")
+        return d.multiplicity;
+    return settings[key];
+}
 void setNwchemSetting(Document &d, const QString &key, const QJsonValue &value) {
     const auto &spec = nwchemSettingSpec(key);
-    if (spec.job)
-        d.setJobValue(key, value);
-    else {
+    if (spec.structural) {
+        const double n = value.toDouble();
+        if (!value.isDouble() || !std::isfinite(n) || std::floor(n) != n || n < spec.minimum ||
+            n > spec.maximum)
+            fail(tr("%1 は %2〜%3 の整数で指定してください。").arg(key).arg(spec.minimum).arg(spec.maximum));
+        (key == "charge" ? d.charge : d.multiplicity) = int(n);
+    } else {
         auto settings = d.data["nwchem"].toObject();
         settings[key] = value;
         d.data["nwchem"] = settings;
@@ -671,8 +682,8 @@ bool nwchemNumericalFrequencies(const Document &d) {
     // NWChem's analytic Hessian covers neither solvation, relativistic Hamiltonians nor CD fitting.
     if (s["numerical_frequencies"].toBool() || s["method"] == "mp2" || s["reference"] == "rohf" ||
         (s["method"] == "dft" && f && f->numericalHessian) ||
-        (s["reference"] == "auto" && s["method"] == "hf" && d.job()["multiplicity"].toInt(1) > 1) ||
-        s["solvent"] != "none" || s["relativistic"] != "none" || (s["method"] == "dft" && s["ri_j"].toBool()))
+        (s["reference"] == "auto" && s["method"] == "hf" && d.multiplicity > 1) || s["solvent"] != "none" ||
+        s["relativistic"] != "none" || (s["method"] == "dft" && s["ri_j"].toBool()))
         return true;
     for (const auto &atom : d.atoms)
         if (!atom.ghost) {
@@ -696,7 +707,7 @@ NwchemValidation validateNwchem(const Document &d) {
     if (d.data.contains("nwchem") && !d.data["nwchem"].isObject())
         result.error("settings.object", "nwchem", tr("NWChem設定はオブジェクトである必要があります。"));
     for (const auto &spec : nwchemSettingSpecs()) {
-        const auto value = spec.job ? d.job()[spec.key] : s[spec.key];
+        const auto value = nwchemSettingValue(d, s, spec.key);
         if (value.type() != spec.initial.type())
             result.error("settings.type", spec.key, tr("設定 %1 の型が不正です。").arg(spec.key));
         if (!spec.choices.isEmpty() &&
@@ -731,8 +742,8 @@ NwchemValidation validateNwchem(const Document &d) {
     if (outsideRange("dielectric"))
         result.error("dielectric.range", "dielectric", tr("誘電率は1〜1000で指定してください。"));
     const auto method = str("method"), task = str("task"), basis = str("basis");
-    const int mult = d.job()["multiplicity"].toInt(1);
-    const int charge = d.job()["charge"].toInt();
+    const int mult = d.multiplicity;
+    const int charge = d.charge;
     int realAtoms = 0, fixed = 0, ghosts = 0, movable = 0;
     QSet<QString> unsupported, ecpLibraries, unfitted;
     const auto overrides = s["basis_overrides"].toObject();
@@ -1174,13 +1185,6 @@ NwchemValidation validateNwchem(const Document &d) {
     if (points && !s["include_point_charges"].toBool())
         result.warning("point_charges.omitted", "include_point_charges",
                        tr("保存された点電荷は入力に含めません。必要なら外部点電荷を有効にしてください。"));
-    if (!d.data["references"].toArray().isEmpty() || !d.data["invalid_settings"].toArray().isEmpty() ||
-        !d.data["assignments"].toObject().isEmpty() || !d.job()["sections"].toObject().isEmpty())
-        result.warning(
-            "legacy.settings", QString(),
-            tr("旧形式の詳細・拘束・断片設定は変換しません。NWChem計算条件と原子の固定フラグを使用し"
-               "ます。"),
-            {}, 0);
     try {
         if (!d.atoms.isEmpty())
             nwchemGeometry(d,
@@ -1283,7 +1287,7 @@ void methodBlocks(NwchemInputBuilder &out, const Document &d, const QJsonObject 
                     (QString(f->value) == "custom" ? str("xc_custom").simplified() : QString(f->xc)) + '\n');
         if (*f->extra)
             body.append(QString("  ") + f->extra + '\n');
-        body.append("  mult " + QString::number(d.job()["multiplicity"].toInt()) + '\n');
+        body.append("  mult " + QString::number(d.multiplicity) + '\n');
         if (check.reference == "uhf")
             body.append("  odft\n");
         QString convergence;
@@ -1309,9 +1313,8 @@ void methodBlocks(NwchemInputBuilder &out, const Document &d, const QJsonObject 
         body.append("end\n");
         out.block("dft", body.result, "method", "dft");
     } else {
-        body.append("\nscf\n  " + check.reference + "\n  nopen " +
-                    QString::number(d.job()["multiplicity"].toInt() - 1) + "\n  maxiter " +
-                    integer("scf_maxiter") + '\n');
+        body.append("\nscf\n  " + check.reference + "\n  nopen " + QString::number(d.multiplicity - 1) +
+                    "\n  maxiter " + integer("scf_maxiter") + '\n');
         if (!own || advanced.contains("scf_thresh"))
             body.sourced("  thresh " + nwchemAdvancedNumber(d, "scf_thresh", threshold) + '\n',
                          {"scf_thresh"}, advanced.contains("scf_thresh"));
@@ -1368,7 +1371,7 @@ NwchemGeneratedInput generateNwchemInput(const Document &d) {
         out.block("title", "title \"" + str("title") + "\"\n", "title");
     out.block("memory", "memory total " + integer("memory_mb") + " mb\n", "memory_mb", {}, {3});
     out.append(nwchemAdvancedLines(d, "files"));
-    out.block("charge", "charge " + QString::number(d.job()["charge"].toInt()) + '\n', "charge");
+    out.block("charge", "charge " + QString::number(d.charge) + '\n', "charge");
     out.append("\n");
     if (!scan) {
         Document geometry = d;

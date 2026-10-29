@@ -37,13 +37,16 @@ struct NwchemSettingSpec {
     double minimum = 0, maximum = 0;
     int decimals = 0;
     NwchemSettingScope scope = NwchemSettingScope::Always;
-    bool job = false, allowDisable = false, validateUnused = true, preset = true;
+    // Structural settings (charge, multiplicity) are fields of the Document, not of its NWChem settings.
+    bool structural = false, allowDisable = false, validateUnused = true, preset = true;
     QVector<NwchemChoice> choices{}; // Source-language labels, translated only at the UI boundary.
 };
 const QVector<NwchemSettingSpec> &nwchemSettingSpecs();
 const NwchemSettingSpec &nwchemSettingSpec(const QString &key);
 bool nwchemSettingApplies(const NwchemSettingSpec &spec, const QJsonObject &settings);
 bool nwchemSettingEditable(const NwchemSettingSpec &spec, const QJsonObject &settings);
+// The value of a setting: from `settings` (nwchemSettings), or from the document for structural ones.
+QJsonValue nwchemSettingValue(const Document &document, const QJsonObject &settings, const QString &key);
 // These edit only the named field; unknown fields and the project envelope are preserved.
 void setNwchemSetting(Document &document, const QString &key, const QJsonValue &value);
 struct NwchemValidation : ValidationReport {

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "model/document.h"
 #include "model/i18n.h"
-#include "model/units.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -131,29 +130,7 @@ QJsonObject Bond::toJson() const {
     return {{"a", a}, {"b", b}, {"kind", kind}, {"source", source}, {"stereo", stereo}};
 }
 Document::Document() {
-    data = {{"id", newId()},
-            {"revision", 0},
-            {"units", "angstrom"},
-            {"metadata", QJsonObject()},
-            {"chains", QJsonObject()},
-            {"assignments", QJsonObject()},
-            {"references", QJsonArray()},
-            {"invalid_settings", QJsonArray()},
-            {"job", QJsonObject{{"runtype", "energy"},
-                                {"method", "hf"},
-                                {"functional", ""},
-                                {"dispersion", "none"},
-                                {"relativistic", "none"},
-                                {"basis", "STO-3G"},
-                                {"scftype", "RHF"},
-                                {"charge", 0},
-                                {"multiplicity", 1},
-                                {"spherical", true},
-                                {"bohr", false},
-                                {"fractional_occupations", false},
-                                {"alpha_occupations", ""},
-                                {"beta_occupations", ""},
-                                {"sections", QJsonObject()}}}};
+    data = {{"id", newId()}, {"units", "angstrom"}, {"metadata", QJsonObject()}, {"chains", QJsonObject()}};
     for (auto key : {"parts", "residues", "centers", "point_charges"})
         data[key] = QJsonArray();
 }
@@ -242,18 +219,6 @@ Ids Document::bondSide(const QString &a, const QString &b) const {
     if (side.contains(a))
         fail(tr("環内の結合は片側だけ動かせません。全体を回転・移動するか、整形を使用してください。"));
     return side;
-}
-void Document::invalidateAssignments() {
-    auto assignments = data["assignments"].toObject();
-    for (auto it = assignments.begin(); it != assignments.end(); ++it) {
-        auto a = it.value().toObject();
-        a["status"] = "candidate";
-        // Saved in Japanese with the project; structureReport() translates it when shown.
-        a["issues"] = QJsonArray{
-            QT_TR_NOOP("原子構成が変更されたため、旧形式の断片割当は無効です（NWChem入力には使いません）。")};
-        it.value() = a;
-    }
-    data["assignments"] = assignments;
 }
 void Document::remove(const Ids &removed) {
     QSet<QString> gone(removed.begin(), removed.end());
@@ -349,55 +314,6 @@ void Document::remove(const Ids &removed) {
         centers.append(c);
     }
     data["centers"] = centers;
-    auto assignments = data["assignments"].toObject();
-    for (auto it = assignments.begin(); it != assignments.end(); ++it) {
-        auto a = it.value().toObject(), members = a["members"].toObject();
-        for (const auto &id : gone)
-            members.remove(id);
-        a["members"] = members;
-        QJsonArray cuts;
-        for (auto cut : a["cuts"].toArray()) {
-            auto pair = idsFromJson(cut);
-            if (pair.size() == 2 && !gone.contains(pair[0]) && !gone.contains(pair[1]))
-                cuts.append(cut);
-        }
-        a["cuts"] = cuts;
-        it.value() = a;
-    }
-    data["assignments"] = assignments;
-    QJsonArray refs, invalid = data["invalid_settings"].toArray();
-    QMap<QString, QJsonArray> grouped;
-    for (auto v : data["references"].toArray()) {
-        auto r = v.toObject();
-        grouped[r["section"].toString() + "/" + r["key"].toString()].append(r);
-    }
-    auto settings = job(), sections = settings["sections"].toObject();
-    for (auto group : grouped) {
-        bool missing = false;
-        for (auto v : group)
-            for (auto id : idsFromJson(v.toObject()["ids"]))
-                if (gone.contains(id))
-                    missing = true;
-        if (missing) {
-            auto first = group.first().toObject();
-            QString section = first["section"].toString(), key = first["key"].toString();
-            invalid.append(QJsonObject{{"section", section},
-                                       {"key", key},
-                                       {"value", first["text"]},
-                                       {"reason", "atom correspondence lost"},
-                                       {"references", group}});
-            auto values = sections[section].toObject();
-            values.remove(key);
-            sections[section] = values;
-        } else
-            for (auto v : group)
-                refs.append(v);
-    }
-    settings["sections"] = sections;
-    data["job"] = settings;
-    data["references"] = refs;
-    data["invalid_settings"] = invalid;
-    invalidateAssignments();
 }
 QStringList Document::validate() const {
     QStringList errors;
@@ -517,118 +433,6 @@ int Document::expectedCharge() const {
             n += a.charge;
     return n;
 }
-QJsonObject Document::job() const {
-    return data["job"].toObject();
-}
-QJsonObject Document::emittedJob() const {
-    auto result = job();
-    auto sections = result["sections"].toObject();
-    QMap<QString, QJsonArray> groups;
-    for (auto v : data["references"].toArray()) {
-        auto r = v.toObject();
-        groups[r["section"].toString() + "/" + r["key"].toString()].append(r);
-    }
-    for (auto refs : groups) {
-        auto first = refs.first().toObject();
-        auto section = first["section"].toString(), key = first["key"].toString();
-        QString text = first["text"].toString();
-        QVector<QJsonObject> records;
-        for (auto v : refs)
-            records << v.toObject();
-        std::sort(records.begin(), records.end(), [](auto a, auto b) {
-            return a["span"].toArray().first().toInt() > b["span"].toArray().first().toInt();
-        });
-        bool valid = true;
-        for (auto r : records) {
-            QStringList numbers;
-            for (auto id : idsFromJson(r["ids"])) {
-                int n = index(id);
-                if (n < 0)
-                    valid = false;
-                numbers << QString::number(n + 1);
-            }
-            auto span = r["span"].toArray();
-            if (span.size() == 2)
-                text.replace(span[0].toInt(), span[1].toInt() - span[0].toInt(), numbers.join(','));
-            else
-                text = numbers.join(',');
-        }
-        auto values = sections[section].toObject();
-        if (valid)
-            values[key] = text;
-        else
-            values.remove(key);
-        sections[section] = values;
-    }
-    auto assignments = data["assignments"].toObject();
-    for (auto it = assignments.begin(); it != assignments.end(); ++it) {
-        auto a = it.value().toObject(), members = a["members"].toObject(), charges = a["charges"].toObject();
-        QStringList groups, mm, qq, ss, cuts;
-        bool complete = true;
-        for (const auto &atom : atoms) {
-            auto group = members[atom.id].toString();
-            if (group.isEmpty()) {
-                complete = false;
-                break;
-            }
-            if (!groups.contains(group))
-                groups << group;
-            mm << QString::number(groups.indexOf(group) + 1);
-        }
-        if (!complete)
-            continue;
-        for (const auto &group : groups) {
-            qq << QString::number(charges[group].toDouble());
-            ss << QString::number(a["multiplicities"].toObject()[group].toInt(1));
-        }
-        for (auto v : a["cuts"].toArray()) {
-            auto pair = idsFromJson(v);
-            if (pair.size() == 2 && contains(pair[0]) && contains(pair[1]))
-                cuts << QString("%1:%2").arg(index(pair[0]) + 1).arg(index(pair[1]) + 1);
-        }
-        auto values = sections[it.key()].toObject();
-        values["fragments"] = mm.join(',');
-        values["charges"] = qq.join(',');
-        values["multiplicities"] = ss.join(',');
-        if (!cuts.isEmpty()) {
-            values["bda_pair"] = cuts.join(',');
-            values["covalent"] = "hop";
-        } else {
-            values.remove("bda_pair");
-            values.remove("covalent");
-        }
-        sections[it.key()] = values;
-    }
-    auto qmmm = sections.value("qmmm").toObject();
-    if (qmmm.value("enabled") == "t" || qmmm.contains("charges")) {
-        QStringList charges;
-        bool bohr = qmmm.value("units") == "bohr";
-        for (auto v : data["point_charges"].toArray()) {
-            auto q = v.toObject();
-            Vec p = vectorFromJson(q["position"]);
-            if (bohr)
-                p /= BohrToAngstrom;
-            charges << QString("%1,%2,%3,%4")
-                           .arg(p.x(), 0, 'g', 15)
-                           .arg(p.y(), 0, 'g', 15)
-                           .arg(p.z(), 0, 'g', 15)
-                           .arg(q["charge"].toDouble(), 0, 'g', 15);
-        }
-        qmmm["units"] = bohr ? "bohr" : "angstrom";
-        if (charges.isEmpty())
-            qmmm.remove("charges");
-        else
-            qmmm["charges"] = charges.join(';');
-        sections["qmmm"] = qmmm;
-    }
-    result["sections"] = sections;
-    return result;
-}
-void Document::setJobValue(const QString &k, const QJsonValue &v) {
-    auto j = job();
-    j[k] = v;
-    data["job"] = j;
-}
 QJsonObject Document::toJson() const {
     auto o = data;
     QJsonArray aa, bb;
@@ -638,6 +442,8 @@ QJsonObject Document::toJson() const {
         bb.append(b.toJson());
     o["atoms"] = aa;
     o["bonds"] = bb;
+    o["charge"] = charge;
+    o["multiplicity"] = multiplicity;
     return o;
 }
 Document Document::fromJson(const QJsonObject &o) {
@@ -645,8 +451,10 @@ Document Document::fromJson(const QJsonObject &o) {
         fail(tr("プロジェクトの座標単位はangstromである必要があります。"));
     Document d;
     d.data = o;
-    d.data.remove("atoms");
-    d.data.remove("bonds");
+    for (auto key : {"atoms", "bonds", "charge", "multiplicity"})
+        d.data.remove(key);
+    d.charge = o["charge"].toInt();
+    d.multiplicity = o["multiplicity"].toInt(1);
     for (auto a : o["atoms"].toArray())
         d.atoms.append(Atom::fromJson(a.toObject()));
     for (auto v : o["bonds"].toArray()) {
@@ -664,24 +472,7 @@ QJsonObject Document::project() const {
     o["format"] = "molforma-project";
     o["version"] = 1;
     o["coordinate_units"] = "angstrom";
-    auto document = toJson();
-    document["job"] = emittedJob();
-    o["document"] = document;
-    o["job"] = emittedJob();
-    QJsonArray aa;
-    for (const auto &a : atoms)
-        aa.append(QJsonObject{{"symbol", (a.ghost ? "@" : "") + a.element},
-                              {"x", a.position.x()},
-                              {"y", a.position.y()},
-                              {"z", a.position.z()},
-                              {"mass", a.isotope    ? QString::number(a.isotope)
-                                       : a.mass > 0 ? QString::number(a.mass, 'g', 16)
-                                                    : ""}});
-    o["atoms"] = aa;
-    if (!o.contains("execution"))
-        o["execution"] = QJsonValue();
-    if (!o.contains("result_reference"))
-        o["result_reference"] = QJsonValue();
+    o["document"] = toJson();
     return o;
 }
 Document Document::fromProject(const QJsonObject &o) {

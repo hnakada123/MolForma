@@ -827,8 +827,8 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
         return {{"settings", nwchemSettings(d)},
                 {"defaults", nwchemDefaults()},
                 {"choices", choices},
-                {"charge", d.job()["charge"]},
-                {"multiplicity", d.job()["multiplicity"]},
+                {"charge", d.charge},
+                {"multiplicity", d.multiplicity},
                 {"errors", QJsonArray::fromStringList(validation.errors)},
                 {"warnings", QJsonArray::fromStringList(validation.warnings)}};
     }
@@ -980,10 +980,10 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                 else {
                     const auto imported = importStructure(path, 1, {}, frame);
                     replaceCoordinateStructure(next, imported);
-                    if (QStringList{"nw", "nwinp", "gjf", "com", "gau"}.contains(suffix))
-                        for (const auto *key : {"charge", "multiplicity"})
-                            if (imported.job().contains(key))
-                                next.setJobValue(key, imported.job()[key]);
+                    if (QStringList{"nw", "nwinp", "gjf", "com", "gau"}.contains(suffix)) {
+                        next.charge = imported.charge;
+                        next.multiplicity = imported.multiplicity;
+                    }
                     if (suffix == "nw" || suffix == "nwinp") {
                         auto settings = imported.data["nwchem"].toObject();
                         const auto current = next.data["nwchem"].toObject();

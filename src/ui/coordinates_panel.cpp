@@ -945,10 +945,7 @@ void CoordinatesPanel::addAtom() {
         return;
     if (base != window->document().toJson() || !editable())
         fail(tr("入力中に分子が変更されました。原子を追加し直してください。"));
-    window->edit(tr("座標から原子を追加"), [&](Document &d) {
-        d.atoms << *atom;
-        d.invalidateAssignments();
-    });
+    window->edit(tr("座標から原子を追加"), [&](Document &d) { d.atoms << *atom; });
     window->setSelection({atom->id});
     table->scrollToItem(table->item(table->rowCount() - 1, 0));
     window->canvas()->keepInView();

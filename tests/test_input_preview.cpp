@@ -100,7 +100,7 @@ class InputPreviewTest : public QObject {
         w.confirmCandidate();
         QCOMPARE(text(w)->toPlainText(), nwchemInput(w.document()));
         QVERIFY(widget<QPushButton>(w, "inputPreviewSave")->isEnabled());
-        w.edit("invalid spin", [](Document &d) { d.setJobValue("multiplicity", 2); });
+        w.edit("invalid spin", [](Document &d) { d.multiplicity = 2; });
         QVERIFY(text(w)->toPlainText().isEmpty());
         QVERIFY(!widget<QPushButton>(w, "inputPreviewSave")->isEnabled());
         QVERIFY(widget<QTextBrowser>(w, "inputPreviewDiagnostics")->toPlainText().contains("多重度"));

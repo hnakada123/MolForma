@@ -423,9 +423,7 @@ QColor MoleculeView::atomColor(const Atom &a) const {
                 if (id == a.id)
                     group = r["id"].toString();
         }
-    } else if (colorMode != "element")
-        group =
-            doc.data["assignments"].toObject()[colorMode].toObject()["members"].toObject()[a.id].toString();
+    }
     if (!group.isEmpty())
         return QColor::fromHsv(int(qHash(group, 0) % 360), 135, 205);
     return element(a.element).color;

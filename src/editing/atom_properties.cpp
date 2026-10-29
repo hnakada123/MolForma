@@ -69,7 +69,5 @@ void setAtomProperties(Document &document, const Ids &ids, const AtomProperties 
         changed << withAtomProperties(document.atom(id), p);
     for (const auto &atom : changed)
         document.atom(atom.id) = atom;
-    if (p.charge || p.radical || p.ghost)
-        document.invalidateAssignments();
 }
 } // namespace mf

@@ -134,7 +134,7 @@ NwchemImport importNwchemInput(const QString &text) {
         } else if (keyword == "charge") {
             double q;
             if (number(w.value(1), q) && q == std::floor(q))
-                d.setJobValue("charge", int(q));
+                d.charge = int(q);
         } else if (keyword == "memory") {
             // memory [total] <n> <unit> [heap <n> <unit>] [stack ...] [global ...]: MolForma keeps the
             // total in MB; without "total", heap + stack + global.
@@ -450,7 +450,7 @@ NwchemImport importNwchemInput(const QString &text) {
     if (!overrides.isEmpty())
         settings["basis_overrides"] = overrides;
     if (multiplicity > 0)
-        d.setJobValue("multiplicity", multiplicity);
+        d.multiplicity = multiplicity;
     // Store only values that differ from the defaults, as the calculation tab does.
     QJsonObject stored;
     const auto defaults = nwchemDefaults();

@@ -382,7 +382,6 @@ void recognizeResidues(Document &d) {
     }
     d.data["residues"] = ordered;
     d.data["chains"] = chains;
-    d.invalidateAssignments();
 #else
     Q_UNUSED(d);
     fail(tr("グラフからの残基認識にはRDKit C++ライブラリが必要です。"));

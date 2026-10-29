@@ -48,8 +48,9 @@ const Element &element(const QString &symbol);
 struct Document {
     QVector<Atom> atoms;
     QVector<Bond> bonds;
-    QJsonObject data;     // Project metadata, stable-ID references, residues, parts and settings.
-    QJsonObject envelope; // Preserves execution/result fields on project round trips.
+    int charge = 0, multiplicity = 1; // Total charge and spin multiplicity of the structure.
+    QJsonObject data;                 // Project metadata, stable-ID references, residues, parts and settings.
+    QJsonObject envelope;             // Preserves unknown top-level fields on project round trips.
     Document();
     Atom &atom(const QString &id);
     const Atom &atom(const QString &id) const;
@@ -78,10 +79,6 @@ struct Document {
     QString xyz() const;
     static Document fromXyz(const QString &text);
     void inferBonds();
-    void invalidateAssignments();
-    QJsonObject job() const;
-    QJsonObject emittedJob() const;
-    void setJobValue(const QString &key, const QJsonValue &value);
 };
 QByteArray readFile(const QString &path);
 void writeFile(const QString &path, const QByteArray &bytes);

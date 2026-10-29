@@ -62,7 +62,6 @@ class MoleculePanel : public QWidget {
     void addViewActions(QMenu *menu);
     void showCoordinateTable();
     void sortAtoms(const QString &mode);
-    void showHeldSettings();
     void importSmiles(const QString &initial = {});
     void addFragmentFromSmiles(const QString &initial = {});
     void addFragmentFromFile();

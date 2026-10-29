@@ -225,8 +225,8 @@ class OutputTest : public QObject {
         setNwchemAdvanced(d, "cube_spin", "beta");
         QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
         base(d, "reference", "uhf");
-        d.setJobValue("charge", 1);
-        d.setJobValue("multiplicity", 2);
+        d.charge = 1;
+        d.multiplicity = 2;
         setNwchemAdvanced(d, "cube_orbital", "homo");
         QVERIFY(nwchemInput(d).contains("spin beta\n  orbitals view; 1; 4"));
         setNwchemAdvanced(d, "cube_orbital", "index");
@@ -245,7 +245,7 @@ class OutputTest : public QObject {
             QVERIFY(nwchemInput(d).contains("spin " + it.value()));
         }
         auto h = Document::fromXyz("1\nH\nH 0 0 0\n");
-        h.setJobValue("multiplicity", 2);
+        h.multiplicity = 2;
         base(h, "reference", "uhf");
         both(h);
         setNwchemAdvanced(h, "cube_type", "orbital");
@@ -431,8 +431,8 @@ class OutputTest : public QObject {
         auto dft = water();
         base(dft, "method", "dft");
         base(dft, "functional", "pbe");
-        dft.setJobValue("charge", 1);
-        dft.setJobValue("multiplicity", 2);
+        dft.charge = 1;
+        dft.multiplicity = 2;
         setNwchemAdvanced(dft, "cube_type", "orbital");
         setNwchemAdvanced(dft, "cube_spin", "beta");
         setNwchemAdvanced(dft, "permanent_dir", "permanent");
@@ -468,8 +468,8 @@ class OutputTest : public QObject {
         }
         for (const auto &reference : {"rohf", "uhf"}) {
             auto d = water();
-            d.setJobValue("charge", 1);
-            d.setJobValue("multiplicity", 2);
+            d.charge = 1;
+            d.multiplicity = 2;
             base(d, "reference", reference);
             for (const auto &type : {"alpha_density", "beta_density", "spin_density"}) {
                 setNwchemAdvanced(d, "cube_type", type);

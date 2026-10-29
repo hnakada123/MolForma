@@ -89,8 +89,8 @@ class AdvancedTest : public QObject {
         QCOMPARE(text.count("  thresh "), 1);
         QVERIFY(text.contains("  thresh 1e-08\n"));
         QVERIFY(text.contains("  direct\n  diis\n  diisbas 7\n"));
-        d.setJobValue("charge", 1);
-        d.setJobValue("multiplicity", 2);
+        d.charge = 1;
+        d.multiplicity = 2;
         QVERIFY(errors(d, "閉殻RHF"));
         base(d, "method", "dft");
         values(d, {{"dft_energy", 1e-8},
@@ -216,8 +216,7 @@ class AdvancedTest : public QObject {
     void inactiveAndUnknownDataSurvive() {
         auto d = water();
         d.envelope["future_result"] = QJsonObject{{"id", "result-1"}};
-        d.setJobValue("sections", QJsonObject{{"scf", QJsonObject{{"future", 99}}}});
-        const auto job = d.job();
+        d.data["future_document"] = QJsonObject{{"scf", QJsonObject{{"future", 99}}}};
         values(d,
                {{"future", QJsonObject{{"option", "keep"}}}, {"dft_damp", "invalid"}, {"scf_thresh", 1e-8}});
         QVERIFY(validateNwchem(d).errors.isEmpty());
@@ -228,12 +227,13 @@ class AdvancedTest : public QObject {
         auto restored = Document::fromProject(d.project());
         QCOMPARE(nwchemAdvanced(restored), nwchemAdvanced(d));
         QCOMPARE(restored.envelope["future_result"], d.envelope["future_result"]);
+        QCOMPARE(restored.data["future_document"], d.data["future_document"]);
         resetNwchemAdvanced(d, "scf");
         QVERIFY(nwchemAdvanced(d).contains("dft_damp"));
         resetNwchemAdvanced(d);
         QCOMPARE(nwchemAdvanced(d).size(), 1);
         QCOMPARE(nwchemAdvanced(d)["future"].toObject()["option"].toString(), "keep");
-        QCOMPARE(d.job(), job);
+        QCOMPARE(d.data["future_document"].toObject()["scf"].toObject()["future"].toInt(), 99);
         base(d, "advanced", "malformed");
         QVERIFY(errors(d, "オブジェクト"));
     }
