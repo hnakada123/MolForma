@@ -1,6 +1,6 @@
 #pragma once
+#include "editing/editor_session.h"
 #include "mcp/policy.h"
-#include "model/document.h"
 #include <QDateTime>
 #include <QMap>
 #include <QObject>
@@ -55,10 +55,7 @@ class McpServer : public QObject {
     McpEditor editor;
     McpPolicy policy;
     QString id = newId();
-    Document memory;
-    std::optional<Document> pending;
-    QVector<Document> undo{memory};
-    int undoIndex = 0;
+    EditorSession session;
     enum class LegacyState { None, Initializing, Ready };
     LegacyState legacy = LegacyState::None;
     // Per-request input of the request being dispatched (multi round-trip requests).
@@ -83,7 +80,6 @@ class McpServer : public QObject {
     QString revision() const;
     void edit(const QString &name, const std::function<void(Document &)> &operation, bool preview);
     void history(const QString &action);
-    void commit(const Document &next);
     QJsonArray toolList() const;
     QSet<QString> toolNames() const;
     QJsonArray resourceList() const;

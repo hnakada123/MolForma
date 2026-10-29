@@ -60,17 +60,6 @@ QString shownFixed(double value, int decimals) {
     return fixed(value, decimals).replace('-', "−");
 }
 constexpr double HartreeToKcal = 627.509474, HartreeToEv = 27.211386245988, EvNanometer = 1239.84198;
-QString sourceStamp(const QFileInfo &file) {
-    if (!file.exists() || !file.isFile())
-        return {};
-    return QString::fromUtf8(
-        QJsonDocument(
-            QJsonArray{
-                file.absoluteFilePath(), file.canonicalFilePath(), QString::number(file.size()),
-                QString::number(file.lastModified().toMSecsSinceEpoch()),
-                QString::number(file.fileTime(QFileDevice::FileMetadataChangeTime).toMSecsSinceEpoch())})
-            .toJson(QJsonDocument::Compact));
-}
 // "bond 1 2" (MolForma's scan title) in the words of the calculation tab.
 QString coordinateText(const QString &coordinate) {
     const auto words = coordinate.split(' ', Qt::SkipEmptyParts);
@@ -766,7 +755,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         if (ok && data.selectedOrbital == orbitals->currentRow() && iso == data.isovalue &&
             orbitalGrid->value() == data.orbitalDivisions &&
             orbitalNorm->currentData().toString() == data.normalizationRequest &&
-            sourceStamp(QFileInfo(data.source)) == orbitalCacheSource)
+            resultSourceStamp(data.source) == orbitalCacheSource)
             return;
         renderOrbital(orbitals->currentRow());
     };
@@ -1217,16 +1206,8 @@ void ResultsPanel::error(const QString &message) {
     emit loadFailed(message);
 }
 void ResultsPanel::cancelLoad() {
-    if (!process)
+    if (!loader.cancel())
         return;
-    auto *p = process;
-    process = nullptr;
-    p->disconnect(this);
-    p->kill();
-    p->waitForFinished(2000);
-    p->deleteLater();
-    work.reset();
-    pendingPath.clear();
     status->setPlainText(tr("読込を中止しました。前の結果を保持しています。"));
     updateActions();
 }
@@ -1243,18 +1224,14 @@ void ResultsPanel::openFile(const QString &path) {
 }
 void ResultsPanel::openDirectory(const QString &path) {
     cancelLoad();
-    QDir dir(path);
-    if (!dir.exists()) {
-        error(tr("フォルダーが見つかりません。"));
-        return;
+    try {
+        const auto first = preferredResultFile(path);
+        folder = QFileInfo(first).absolutePath();
+        fillFiles(QFileInfo(first).fileName());
+        openEntry(files->currentData().toString());
+    } catch (const std::exception &e) {
+        error(QString::fromUtf8(e.what()));
     }
-    folder = dir.absolutePath();
-    fillFiles("output.out");
-    if (files->currentIndex() < 0) {
-        error(tr("対応する結果ファイルがありません。"));
-        return;
-    }
-    window->safe([&] { openEntry(files->currentData().toString()); });
 }
 void ResultsPanel::fillFiles(const QString &selected) {
     const QSignalBlocker guard(files);
@@ -1299,7 +1276,11 @@ void ResultsPanel::fillFiles(const QString &selected) {
                                 QString::number(list.size())),
                        key);
     }
-    int index = files->findData(selected);
+    QString entry = selected;
+    for (auto it = animationFrames.cbegin(); it != animationFrames.cend(); ++it)
+        if (it.value().contains(selected))
+            entry = it.key();
+    int index = files->findData(entry);
     if (index < 0 && !selected.isEmpty() && !selected.startsWith("animation:")) {
         files->addItem(selected, selected);
         index = files->count() - 1;
@@ -1373,8 +1354,7 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
     stopAnimation();
     if (path.isEmpty())
         return;
-    const QFileInfo before(path);
-    const auto stamp = sourceStamp(before);
+    const auto stamp = resultSourceStamp(path);
     const bool sameSource = !stamp.isEmpty() && stamp == orbitalCacheSource;
     if (!reuseOrbital || !sameSource) {
         orbitalCache.clear();
@@ -1398,102 +1378,59 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
             return;
         }
     }
-    work = std::make_unique<QTemporaryDir>();
-    if (!work->isValid()) {
-        error(tr("一時フォルダーを作成できません。"));
-        return;
-    }
-    pendingPath = before.absoluteFilePath();
-    const QString request = work->filePath("request.json"), response = work->filePath("result.bin");
-    try {
-        writeFile(request, QJsonDocument(QJsonObject{{"path", pendingPath},
-                                                     {"isovalue", iso},
-                                                     {"dataset", channel},
-                                                     {"orbital", orbital},
-                                                     {"normalization", normalization},
-                                                     {"orbital_divisions", divisions}})
-                               .toJson());
-    } catch (const std::exception &e) {
-        error(QString::fromUtf8(e.what()));
-        work.reset();
-        return;
-    }
-    process = new QProcess(this);
-    auto *p = process;
-    p->setProgram(QCoreApplication::applicationFilePath());
-    p->setArguments({"--result-worker", request, response});
-    p->setStandardOutputFile(QProcess::nullDevice());
-    p->setStandardErrorFile(QProcess::nullDevice());
-    connect(p, &QProcess::errorOccurred, this, [this, p](QProcess::ProcessError e) {
-        if (process != p || e != QProcess::FailedToStart)
-            return;
-        const auto message = p->errorString();
-        process = nullptr;
-        p->deleteLater();
-        work.reset();
+    loader.disconnect(this);
+    connect(&loader, &ResultLoader::failed, this, [this](const QString &message) {
         pendingOrbital = {};
         updateActions();
         error(message);
     });
-    connect(
-        p, &QProcess::finished, this,
-        [this, p, before, stamp, response, reuseOrbital, sameSource](int code, QProcess::ExitStatus state) {
-            if (process != p)
-                return;
-            process = nullptr;
-            p->deleteLater();
-            QString failure;
-            int follow = -1; // The log's orbital in the job's MOLDEN file, to show next.
-            const auto wanted = std::exchange(pendingOrbital, {});
-            try {
-                if (code != 0 || state != QProcess::NormalExit) {
-                    const QString e = QFileInfo::exists(response + ".error")
-                                          ? QString::fromUtf8(readFile(response + ".error"))
-                                          : tr("結果の読込プロセスが失敗しました。");
-                    fail(e);
+    connect(&loader, &ResultLoader::loaded, this,
+            [this, reuseOrbital, sameSource](ResultData next, const QString &stamp) {
+                QString failure;
+                int follow = -1; // The log's orbital in the job's MOLDEN file, to show next.
+                const auto wanted = std::exchange(pendingOrbital, {});
+                try {
+                    const bool newSource = data.source != next.source;
+                    data = std::move(next);
+                    orbitalCacheSource = stamp;
+                    cacheOrbital();
+                    display(reuseOrbital && sameSource && !newSource);
+                    if (newSource && data.format == "MOLDEN" && !data.orbitals.isEmpty())
+                        details->setCurrentIndex(2);
+                    else if (newSource && data.format == "NWChem" && !data.energies.isEmpty())
+                        details->setCurrentIndex(1);
+                    if (newSource) {
+                        // The source path and the selected details tab can resize the view.
+                        layout()->activate();
+                        view->fit();
+                    }
+                    if (data.format == "MOLDEN" && !wanted.path.isEmpty() &&
+                        QFileInfo(data.source).absoluteFilePath() == wanted.path)
+                        for (int i = 0; i < data.orbitals.size(); ++i)
+                            if (data.orbitals[i].spin == wanted.spin &&
+                                data.orbitals[i].number == wanted.number) {
+                                follow = i != data.selectedOrbital ? i : -1;
+                                break;
+                            }
+                } catch (const std::exception &e) {
+                    failure = QString::fromUtf8(e.what());
                 }
-                const QFileInfo after(before.absoluteFilePath());
-                if (stamp.isEmpty() || sourceStamp(after) != stamp)
-                    fail(tr("読込中にファイルが更新されました。再読込してください。"));
-                auto next = loadResultData(response);
-                const bool newSource = data.source != next.source;
-                data = std::move(next);
-                orbitalCacheSource = stamp;
-                cacheOrbital();
-                display(reuseOrbital && sameSource && !newSource);
-                if (newSource && data.format == "MOLDEN" && !data.orbitals.isEmpty())
-                    details->setCurrentIndex(2);
-                else if (newSource && data.format == "NWChem" && !data.energies.isEmpty())
-                    details->setCurrentIndex(1);
-                if (newSource) {
-                    // The source path and the selected details tab can resize the view.
-                    layout()->activate();
-                    view->fit();
-                }
-                if (data.format == "MOLDEN" && !wanted.path.isEmpty() &&
-                    QFileInfo(data.source).absoluteFilePath() == wanted.path)
-                    for (int i = 0; i < data.orbitals.size(); ++i)
-                        if (data.orbitals[i].spin == wanted.spin &&
-                            data.orbitals[i].number == wanted.number) {
-                            follow = i != data.selectedOrbital ? i : -1;
-                            break;
-                        }
-            } catch (const std::exception &e) {
-                failure = QString::fromUtf8(e.what());
-            }
-            pendingPath.clear();
-            work.reset();
-            updateActions();
-            if (failure.isEmpty())
-                emit loaded();
-            else
-                error(failure);
-            if (follow >= 0)
-                orbitals->setCurrentCell(follow, 0); // Renders it like a choice in the list.
-        });
-    status->setPlainText(tr("読込中: %1\n完了まで前の結果を表示します。").arg(pendingPath));
+                updateActions();
+                if (failure.isEmpty())
+                    emit loaded();
+                else
+                    error(failure);
+                if (follow >= 0)
+                    orbitals->setCurrentCell(follow, 0); // Renders it like a choice in the list.
+            });
+    try {
+        loader.start({path, iso, channel, orbital, normalization, divisions});
+        status->setPlainText(tr("読込中: %1\n完了まで前の結果を表示します。").arg(loader.pendingPath()));
+    } catch (const std::exception &e) {
+        pendingOrbital = {};
+        error(QString::fromUtf8(e.what()));
+    }
     updateActions();
-    p->start();
 }
 void ResultsPanel::cacheOrbital() {
     if (data.format != "MOLDEN" || data.selectedOrbital < 0 || orbitalCacheSource.isEmpty())

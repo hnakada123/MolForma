@@ -1,4 +1,5 @@
 #pragma once
+#include "model/diagnostic.h"
 #include "model/document.h"
 
 namespace mf {
@@ -9,8 +10,43 @@ struct NwchemPreset {
     QString name;
     QJsonObject settings;
 };
-struct NwchemValidation {
-    QStringList errors, warnings;
+enum class NwchemSettingKind { String, Choice, Integer, Real, Flag, Object, Array };
+enum class NwchemSettingScope {
+    Always,
+    Dft,
+    CustomXc,
+    Correlation,
+    Ccsd,
+    Driver,
+    Frequency,
+    Irc,
+    Scan,
+    FollowupToggle,
+    Followup,
+    FollowupDft,
+    Solvent,
+    Dielectric,
+    ExcitedToggle,
+    Excited,
+    Relativistic
+};
+struct NwchemSettingSpec {
+    QString key;
+    NwchemSettingKind kind;
+    QJsonValue initial;
+    double minimum = 0, maximum = 0;
+    int decimals = 0;
+    NwchemSettingScope scope = NwchemSettingScope::Always;
+    bool job = false, allowDisable = false, validateUnused = true, preset = true;
+    QVector<NwchemChoice> choices{}; // Source-language labels, translated only at the UI boundary.
+};
+const QVector<NwchemSettingSpec> &nwchemSettingSpecs();
+const NwchemSettingSpec &nwchemSettingSpec(const QString &key);
+bool nwchemSettingApplies(const NwchemSettingSpec &spec, const QJsonObject &settings);
+bool nwchemSettingEditable(const NwchemSettingSpec &spec, const QJsonObject &settings);
+// These edit only the named field; unknown fields and the project envelope are preserved.
+void setNwchemSetting(Document &document, const QString &key, const QJsonValue &value);
+struct NwchemValidation : ValidationReport {
     int electrons = 0, alpha = 0, beta = 0, ecpElectrons = 0, frozenOrbitals = 0;
     QString reference;
     bool numericalFrequencies = false;
@@ -54,14 +90,19 @@ struct NwchemInputBlock {
     QString keyword, title;  // "dft", and its header line as shown ("geometry（3 原子）").
     QList<int> tabs;         // The workspace tabs that set it, by number (1 分子 … 3 実行設定).
     QString setting, group;  // A setting key, and a group of the details of "2 計算条件", if any.
+    bool operator==(const NwchemInputBlock &) const = default;
 };
 struct NwchemInputOutline {
     QVector<NwchemInputBlock> blocks;
     // Lines (from 0) that the details and the additional input of "2 計算条件" add or change.
     QSet<int> advanced, extra;
+    QHash<QString, QSet<int>> settings; // Setting/advanced keys to their generated lines.
+    bool operator==(const NwchemInputOutline &) const = default;
 };
-// The outline of an input generated for the document (nwchemInput, or the input of an execution
-// plan). A line comes from the details (or the additional input) when the input generated without
-// those settings lacks it; blocks take their tabs from their keyword and from such lines.
-NwchemInputOutline nwchemInputOutline(const Document &document, const QString &input);
+// Text and provenance are emitted together; line numbers always refer to this exact text.
+struct NwchemGeneratedInput {
+    QString text;
+    NwchemInputOutline outline;
+};
+NwchemGeneratedInput generateNwchemInput(const Document &document);
 } // namespace mf

@@ -325,6 +325,8 @@ GUI変更は `documentId` と `expectedRevision` を必要とし、`queued` の 
 
 計算から行う場合は、先に `set_nwchem` / `set_advanced` / `set_execution` で設定を確定し、`calculation(action: "start")` を呼びます。NWChemの実行ファイルなどは利用者がMolFormaで設定します。`get_app_state.calculation.directory` が保存された実行フォルダーです。終了後に `results_action(action: "open_directory", path: ...)` で結果を開けます。
 
+`open_directory` はGUI付き・ヘッドレスともに `output.out` を優先し、なければ対応する結果ファイルの一覧の先頭を開きます。XYZだけのフォルダーも開けます。読込の失敗・取消では直前の結果を保持します。
+
 ## 新仕様の通信例
 
 初期化ハンドシェイクなしで次の1行を標準入力に送信できます。

@@ -7,16 +7,20 @@
 #include <QJsonDocument>
 
 namespace mf {
-namespace {
-QString fileStamp(const QFileInfo &info) {
-    return QString::number(info.size()) + ':' + QString::number(info.lastModified().toMSecsSinceEpoch());
-}
-} // namespace
 McpHeadless::McpHeadless(McpPolicy p, QJsonObject trustedExecution, QObject *parent)
     : QObject(parent), policy(std::move(p)), trusted(std::move(trustedExecution)) {
     connect(&run, &NwchemRun::changed, this, [this] {
         if (!run.active() && !runWork.isEmpty() && !finished.contains(runWork))
             finish(runWork, "calculation", "start", "calculation");
+    });
+    connect(&loader, &ResultLoader::loaded, this, [this](ResultData next, const QString &) {
+        data = std::move(next);
+        loadMessage = "Loaded " + data.source;
+        finish(loadWork, "results_action", loadAction, "results");
+    });
+    connect(&loader, &ResultLoader::failed, this, [this](const QString &error) {
+        loadMessage = error;
+        finish(loadWork, "results_action", loadAction, "results");
     });
 }
 McpHeadless::~McpHeadless() {
@@ -65,9 +69,9 @@ QJsonArray McpHeadless::tools() const {
 QJsonObject McpHeadless::state() const {
     return {{"candidate", server && server->candidate().has_value()},
             {"calculation", calculationJson(run, saved.directory)},
-            {"results", QJsonObject{{"loading", loader != nullptr},
+            {"results", QJsonObject{{"loading", loader.active()},
                                     {"source", data.source},
-                                    {"pendingPath", pendingPath},
+                                    {"pendingPath", loader.pendingPath()},
                                     {"message", loadMessage}}}};
 }
 QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
@@ -119,15 +123,8 @@ QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
     } else if (path.isEmpty())
         fail("Specify path.");
     policy.checkPath(path);
-    if (action == "open_directory") {
-        const QDir dir(path);
-        if (!dir.exists())
-            fail("Folder not found: " + path);
-        const auto files = resultFiles(dir.absolutePath());
-        if (files.isEmpty())
-            fail("The folder has no supported result file.");
-        path = dir.filePath(files.contains("output.out") ? "output.out" : files.first());
-    }
+    if (action == "open_directory")
+        path = preferredResultFile(path);
     load(path, action);
     return {{"tool", name}, {"action", action}, {"workId", loadWork}, {"results", state()["results"]}};
 }
@@ -136,75 +133,18 @@ void McpHeadless::load(const QString &path, const QString &action) {
     if (!before.isFile())
         fail("Result file not found: " + path);
     cancelLoad("Superseded by a newer load.");
-    scratch = std::make_unique<QTemporaryDir>();
-    if (!scratch->isValid())
-        fail("Cannot create a temporary folder.");
-    pendingPath = before.absoluteFilePath();
-    const QString request = scratch->filePath("request.json"), response = scratch->filePath("result.bin");
-    writeFile(request, QJsonDocument(QJsonObject{{"path", pendingPath},
-                                                 {"isovalue", .03},
-                                                 {"dataset", 0},
-                                                 {"orbital", -1},
-                                                 {"normalization", "auto"},
-                                                 {"orbital_divisions", 40}})
-                           .toJson());
     loadWork = "results-" + QString::number(++nextWork);
     loadAction = action;
-    loadMessage = "Loading " + pendingPath;
-    auto *p = loader = new QProcess(this);
-    p->setProgram(QCoreApplication::applicationFilePath());
-    p->setArguments({"--result-worker", request, response});
-    p->setStandardOutputFile(QProcess::nullDevice());
-    p->setStandardErrorFile(QProcess::nullDevice());
-    const auto work = loadWork, source = pendingPath, stamp = fileStamp(before);
-    connect(p, &QProcess::errorOccurred, this, [this, p, work](QProcess::ProcessError e) {
-        if (loader != p || e != QProcess::FailedToStart)
-            return;
-        loader = nullptr;
-        p->deleteLater();
-        scratch.reset();
-        pendingPath.clear();
-        loadMessage = "The result reader failed to start: " + p->errorString();
-        finish(work, "results_action", loadAction, "results");
-    });
-    connect(p, &QProcess::finished, this,
-            [this, p, work, source, stamp, response](int code, QProcess::ExitStatus status) {
-                if (loader != p)
-                    return;
-                loader = nullptr;
-                p->deleteLater();
-                try {
-                    if (code != 0 || status != QProcess::NormalExit)
-                        fail(QFileInfo::exists(response + ".error")
-                                 ? QString::fromUtf8(readFile(response + ".error"))
-                                 : "The result reader failed.");
-                    if (fileStamp(QFileInfo(source)) != stamp)
-                        fail("The file changed while it was read; reload it.");
-                    data = loadResultData(response);
-                    loadMessage = "Loaded " + source;
-                } catch (const std::exception &e) {
-                    loadMessage = QString::fromUtf8(e.what());
-                }
-                scratch.reset();
-                pendingPath.clear();
-                finish(work, "results_action", loadAction, "results");
-            });
-    p->start();
+    loader.start({path});
+    loadMessage = "Loading " + loader.pendingPath();
 }
 void McpHeadless::cancelLoad(const QString &message) {
-    if (!loader)
+    if (!loader.cancel())
         return;
-    auto *p = loader;
-    loader = nullptr;
-    p->disconnect(this);
-    p->kill();
-    p->waitForFinished(2000);
-    p->deleteLater();
-    scratch.reset();
-    pendingPath.clear();
     loadMessage = message;
     finish(loadWork, "results_action", loadAction, "results");
 }
+
 void McpHeadless::finish(const QString &work, const QString &tool, const QString &action,
                          const QString &section) {
     finished[work] = QJsonObject{{"tool", tool},
@@ -218,8 +158,8 @@ void McpHeadless::finish(const QString &work, const QString &tool, const QString
 std::optional<QJsonObject> McpHeadless::task(const QString &work) const {
     if (work == runWork && run.active())
         return QJsonObject{{"state", "running"}, {"message", "NWChem is " + run.state() + "."}};
-    if (work == loadWork && loader)
-        return QJsonObject{{"state", "running"}, {"message", "Loading " + pendingPath}};
+    if (work == loadWork && loader.active())
+        return QJsonObject{{"state", "running"}, {"message", "Loading " + loader.pendingPath()}};
     if (finished.contains(work))
         return QJsonObject{{"state", "done"}, {"result", finished[work]}};
     return std::nullopt;
@@ -229,7 +169,7 @@ bool McpHeadless::cancel(const QString &work) {
         run.stop();
         return true;
     }
-    if (work == loadWork && loader) {
+    if (work == loadWork && loader.active()) {
         cancelLoad("Loading was cancelled; the previous result is kept.");
         return true;
     }

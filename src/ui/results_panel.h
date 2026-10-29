@@ -1,7 +1,6 @@
 #pragma once
-#include "results/results.h"
+#include "results/result_loader.h"
 #include <QCache>
-#include <QProcess>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QWidget>
@@ -38,7 +37,7 @@ class ResultsPanel : public QWidget {
     void openDirectory(const QString &path);
     void cancelLoad();
     bool loading() const {
-        return process != nullptr;
+        return loader.active();
     }
     const ResultData &result() const {
         return data;
@@ -62,12 +61,11 @@ class ResultsPanel : public QWidget {
     friend class McpGui;
     MainWindow *window;
     ResultData data;
-    QProcess *process = nullptr;
-    std::unique_ptr<QTemporaryDir> work;
+    ResultLoader loader;
     QTimer animation;
     double phase = 0;
     bool modeDisplayed = false;
-    QString folder, pendingPath;
+    QString folder;
     // An orbital of a log (spin, number) to show once the job's MOLDEN file has loaded.
     struct PendingOrbital {
         QString path, spin;

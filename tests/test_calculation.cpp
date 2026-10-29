@@ -1,5 +1,6 @@
 #include "editing/chemistry.h"
 #include "editing/coordinates.h"
+#include "model/i18n.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_import.h"
@@ -61,6 +62,74 @@ class CalculationTest : public QObject {
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
                            settingsDir.path()); // MolForma uses NativeFormat.
+    }
+    void diagnosticIdentityDoesNotDependOnLanguage() {
+        auto d = water();
+        set(d, "method", "dft");
+        set(d, "functional", "scan");
+        set(d, "dispersion", "d3");
+        const auto japanese = validateNwchem(d);
+        struct ResetLanguage {
+            ~ResetLanguage() {
+                setEnglish(false);
+            }
+        } reset;
+        setEnglish(true);
+        const auto english = validateNwchem(d);
+        QCOMPARE(japanese.diagnostics.size(), english.diagnostics.size());
+        bool found = false;
+        for (int i = 0; i < japanese.diagnostics.size(); ++i) {
+            const auto &a = japanese.diagnostics[i], &b = english.diagnostics[i];
+            QCOMPARE(a.identity(), b.identity());
+            QCOMPARE(a.tab, b.tab);
+            QCOMPARE(a.severity, b.severity);
+            if (a.code == "dispersion.parameters") {
+                found = true;
+                QVERIFY(a.fix && b.fix);
+                QCOMPARE(a.fix->setting, QString("dispersion"));
+                QCOMPARE(a.fix->value, b.fix->value);
+                QVERIFY(a.message != b.message);
+            }
+        }
+        QVERIFY(found);
+    }
+    void sharedSettingRulesAndInvalidToggleRecovery() {
+        auto d = water();
+        d.envelope["future_envelope"] = QJsonObject{{"keep", 42}};
+        set(d, "future_setting", QJsonObject{{"keep", true}});
+        const auto envelope = d.envelope;
+        setNwchemSetting(d, "scf_maxiter", 10001);
+        const auto check = validateNwchem(d);
+        QVERIFY(std::any_of(check.diagnostics.begin(), check.diagnostics.end(), [](const auto &item) {
+            return item.code == "settings.integer" && item.setting == "scf_maxiter";
+        }));
+        setNwchemSetting(d, "scf_maxiter", 100);
+        setNwchemSetting(d, "ri_j", true); // HF does not use it; the user must still be able to clear it.
+        const auto stored = nwchemSettings(d);
+        const auto fitting = nwchemSettingSpec("ri_j");
+        QVERIFY(!nwchemSettingApplies(fitting, stored));
+        QVERIFY(nwchemSettingEditable(fitting, stored));
+        MainWindow w;
+        w.loadDocument(d);
+        auto *toggle = w.findChild<QCheckBox *>("nwchem_ri_j");
+        QVERIFY(toggle && toggle->isEnabled() && toggle->isChecked());
+        toggle->click();
+        QVERIFY(!nwchemSettings(w.document())["ri_j"].toBool());
+        QVERIFY(!toggle->isEnabled());
+        auto *iterations = w.findChild<QSpinBox *>("nwchem_scf_maxiter");
+        QVERIFY(iterations);
+        QCOMPARE(iterations->maximum(), 10000);
+        QCOMPARE(w.document().envelope, envelope);
+        QCOMPARE(nwchemSettings(w.document())["future_setting"], stored["future_setting"]);
+        w.history()->undo();
+        QVERIFY(toggle->isEnabled() && toggle->isChecked());
+        // A choice with source-language labels must not freeze the language at first use.
+        const auto japanese = nwchemChoices("task");
+        setEnglish(true);
+        const auto english = nwchemChoices("task");
+        setEnglish(false);
+        QCOMPARE(japanese[0].value, english[0].value);
+        QVERIFY(japanese[0].label != english[0].label);
     }
     void completeHfInput() {
         const auto d = water();

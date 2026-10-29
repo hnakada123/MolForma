@@ -208,7 +208,8 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     memoryLayout->addWidget(caption(tr("メモリ / MPIプロセス")));
     memory = new QSpinBox;
     memory->setObjectName("execution_memory");
-    memory->setRange(64, 1048576);
+    const auto memorySpec = nwchemSettingSpec("memory_mb");
+    memory->setRange(memorySpec.minimum, memorySpec.maximum);
     memory->setSuffix(" MB");
     memory->setKeyboardTracking(false);
     memory->setToolTip(tr("NWChemの memory 指定です（「2 計算条件」と「4 入力プレビュー」の要約にも表示）。"
@@ -219,11 +220,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
         if (busy || window->hasCandidate() || window->worker)
             return;
         window->safe([&] {
-            window->edit(tr("NWChemメモリを変更"), [&](Document &d) {
-                auto s = d.data.value("nwchem").toObject();
-                s["memory_mb"] = n;
-                d.data["nwchem"] = s;
-            });
+            window->edit(tr("NWChemメモリを変更"), [&](Document &d) { setNwchemSetting(d, "memory_mb", n); });
         });
     });
     grid->addWidget(integer(tr("制限時間（0: なし）"), "timeout_seconds", 0, 604800, tr(" 秒")), 1, 2);

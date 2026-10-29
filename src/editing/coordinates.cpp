@@ -227,8 +227,8 @@ std::pair<double, double> applyResultGeometry(Document &document, const Document
             document.atoms[i].position = result.atoms[i].position;
     return {document.atoms.isEmpty() ? 0 : std::sqrt(squares / document.atoms.size()), largest};
 }
-QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragmentComments,
-                       const NwchemGeometryOptions &options) {
+NwchemGeometryFragment nwchemGeometryFragment(const Document &document, CoordinateUnit unit,
+                                              const NwchemGeometryOptions &options) {
     auto errors = document.validate();
     if (!errors.isEmpty())
         fail(errors.join('\n'));
@@ -236,9 +236,8 @@ QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragm
         fail(tr("原子を追加するとNWChem座標を表示します。"));
     // The shortest text that reads back as the same double: 0.758, not 0.75800000000000001.
     auto number = [](double value) { return QString::number(value, 'g', QLocale::FloatingPointShortest); };
-    QString text = fragmentComments
-                       ? "# MolForma: geometry fragment; add basis, charge, method and task separately.\n"
-                       : QString();
+    NwchemGeometryFragment result;
+    QString &text = result.geometry;
     text += QString("geometry %1units %2 nocenter noautosym%3")
                 .arg(options.name.isEmpty() ? QString() : options.name + ' ',
                      unit == CoordinateUnit::Bohr ? "au" : "angstrom",
@@ -272,18 +271,26 @@ QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragm
         text += "  zcoord\n    " + options.zcoord.join("\n    ") + "\n  end\n";
     text += "end\n";
     if (options.constraints) {
-        text += "\nconstraints\n  clear\n";
+        result.constraints += "\nconstraints\n  clear\n";
         // Keep lines short for NWChem's input parser, even for large structures.
         for (int i = 0; i < fixed.size(); i += 12)
-            text += "  fix atom " + fixed.mid(i, 12).join(' ') + '\n';
-        text += "end\n";
+            result.constraints += "  fix atom " + fixed.mid(i, 12).join(' ') + '\n';
+        result.constraints += "end\n";
     }
     auto symbols = ghosts.values();
     std::sort(symbols.begin(), symbols.end());
-    if (fragmentComments)
-        for (const auto &symbol : symbols)
-            text += QString("# Ghost basis required in BASIS: bq%1 library %1 <basis-name>\n").arg(symbol);
-    return text;
+    for (const auto &symbol : symbols)
+        result.comments +=
+            QString("# Ghost basis required in BASIS: bq%1 library %1 <basis-name>\n").arg(symbol);
+    return result;
+}
+QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragmentComments,
+                       const NwchemGeometryOptions &options) {
+    const auto result = nwchemGeometryFragment(document, unit, options);
+    return (fragmentComments
+                ? QString("# MolForma: geometry fragment; add basis, charge, method and task separately.\n")
+                : QString()) +
+           result.geometry + result.constraints + (fragmentComments ? result.comments : QString());
 }
 QVector<ZMatrixRow> zMatrix(const Document &d) {
     const int n = d.atoms.size();

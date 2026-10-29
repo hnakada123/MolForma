@@ -1,6 +1,7 @@
 #include "editing/chemistry.h"
 #include "editing/coordinates.h"
 #include "editing/coordination.h"
+#include "editing/editor_session.h"
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
 #include "model/geometry.h"
@@ -12,6 +13,44 @@ using namespace mf;
 class CoreTest : public QObject {
     Q_OBJECT
   private slots:
+    void sessionTransactionsAndProvenance() {
+        EditorSession session;
+        auto d = Document::fromXyz("2\nH2\nH 0 0 0\nH 0 0 .74\n");
+        d.atoms[0].fixed = true;
+        d.envelope["future_field"] = "preserved";
+        session.reset(d);
+        QSignalSpy applied(&session, &EditorSession::applied);
+        const auto before = session.document().project();
+        QVERIFY_EXCEPTION_THROWN(
+            session.edit("invalid", [](Document &next) { next.atoms[0].position.x() = 1; }),
+            std::runtime_error);
+        QCOMPARE(session.document().project(), before);
+        QCOMPARE(session.history().count(), 0);
+        QVERIFY(!session.candidate());
+        QVERIFY(session.edit("move", [](Document &next) { next.atoms[1].position.z() = 1; }, true, true));
+        QCOMPARE(session.document().project(), before);
+        QVERIFY(session.candidateRemote());
+        QVERIFY_EXCEPTION_THROWN(session.edit("blocked", [](Document &) {}), std::runtime_error);
+        QVERIFY(session.confirm());
+        QCOMPARE(session.document().envelope, d.envelope);
+        QCOMPARE(session.history().count(), 1);
+        session.navigate("undo");
+        QCOMPARE(session.document().project(), before);
+        session.navigate("redo");
+        QCOMPARE(session.document().atoms[1].position.z(), 1.0);
+        QCOMPARE(applied.size(), 3);
+        for (const auto &event : applied)
+            QVERIFY(event[2].toBool()); // Confirmation and undo/redo keep remote provenance.
+        QVERIFY(!session.edit("no-op", [](Document &) {}));
+        QCOMPARE(session.history().count(), 1);
+        QVERIFY(session.edit("candidate", [](Document &next) { next.atoms[1].position.z() = 2; }, true));
+        session.cancel();
+        QCOMPARE(session.document().atoms[1].position.z(), 1.0);
+        session.reset(d);
+        QVERIFY(session.history().isClean());
+        QVERIFY(!session.history().canUndo());
+    }
+
     void namedElements() {
         QCOMPARE(elements().size(), 118);
         QCOMPARE(elements().first().symbol, QString("H"));

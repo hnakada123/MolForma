@@ -1,5 +1,6 @@
 #include "nwchem/nwchem_advanced.h"
 #include "model/i18n.h"
+#include "nwchem/input_builder.h"
 #include "nwchem/nwchem_output.h"
 #include <QHash>
 #include <QJsonDocument>
@@ -553,8 +554,8 @@ void resetNwchemAdvanced(Document &d, const QString &group) {
 void validateNwchemAdvanced(const Document &d, NwchemValidation &r) {
     const auto s = nwchemSettings(d), a = nwchemAdvanced(d);
     if (s.contains("advanced") && !s["advanced"].isObject())
-        r.errors << tr("NWChem詳細設定はオブジェクトである必要があります。");
-    QStringList pending;
+        r.error("advanced.object", "advanced", tr("NWChem詳細設定はオブジェクトである必要があります。"));
+    QStringList pending, pendingKeys;
     QSet<QString> known;
     for (const auto &o : nwchemAdvancedOptions()) {
         known.insert(o.key);
@@ -562,42 +563,50 @@ void validateNwchemAdvanced(const Document &d, NwchemValidation &r) {
             continue;
         if (!nwchemAdvancedApplies(o, d)) {
             pending << o.label;
+            pendingKeys << o.key;
             continue;
         }
         const auto error = nwchemAdvancedError(o, a[o.key]);
         if (!error.isEmpty())
-            r.errors << tr("詳細設定「%1」: %2").arg(o.label, error);
+            r.error("advanced.value", "advanced:" + o.key, tr("詳細設定「%1」: %2").arg(o.label, error));
     }
     for (auto it = a.begin(); it != a.end(); ++it)
         if (!known.contains(it.key()))
-            r.warnings << tr("未対応の詳細設定を保持していますが出力しません: %1").arg(it.key());
+            r.warning("advanced.unknown", "advanced:" + it.key(),
+                      tr("未対応の詳細設定を保持していますが出力しません: %1").arg(it.key()));
     if (!pending.isEmpty())
-        r.warnings << tr("現在の計算では保留（入力に出力しません）: %1").arg(pending.join(tr("、")));
+        r.warning("advanced.pending", "advanced:" + pendingKeys.first(),
+                  tr("現在の計算では保留（入力に出力しません）: %1").arg(pending.join(tr("、"))));
     if (s["method"] != "dft" && a["scf_solver"] == "diis" && r.reference != "rhf")
-        r.errors << tr("NWChemのSCF DIISは閉殻RHFでのみ使用できます。SCF収束法を既定へ戻してください。");
+        r.error("advanced.diis", "advanced:scf_solver",
+                tr("NWChemのSCF DIISは閉殻RHFでのみ使用できます。SCF収束法を既定へ戻してください。"));
     if (a["vectors_guess"] == "file") {
         if (!a.contains("vectors_input"))
-            r.errors << tr("初期分子軌道のmovecsファイルを指定してください。");
+            r.error("vectors.missing", "advanced:vectors_input",
+                    tr("初期分子軌道のmovecsファイルを指定してください。"));
         else
-            r.warnings << tr(
-                "初期軌道ファイルは計算実行先に必要です。原子順・基底との整合を確認してください。");
+            r.warning("vectors.notice", "advanced:vectors_input",
+                      tr("初期軌道ファイルは計算実行先に必要です。原子順・基底との整合を確認してください。"));
         if (!a.contains("vectors_output"))
-            r.errors << tr("初期軌道を上書きしないよう、別の出力movecsファイルを指定してください。");
+            r.error("vectors.output_missing", "advanced:vectors_output",
+                    tr("初期軌道を上書きしないよう、別の出力movecsファイルを指定してください。"));
     }
     if (a.contains("vectors_input") && a["vectors_guess"] == "file" &&
         a["vectors_input"] == a["vectors_output"])
-        r.errors << tr("入力・出力movecsには別のファイル名を指定してください。");
+        r.error("vectors.same_path", "advanced:vectors_output",
+                tr("入力・出力movecsには別のファイル名を指定してください。"));
     if (s["solvent"] != "none" && a["cosmo_screen"] == "ideal")
-        r.warnings << tr("COSMOのideal指定により、比誘電率の設定は使用しません。");
+        r.warning("cosmo.ideal", "advanced:cosmo_screen",
+                  tr("COSMOのideal指定により、比誘電率の設定は使用しません。"));
     validateNwchemOutput(d, r);
 }
 QString nwchemAdvancedNumber(const Document &d, const QString &key, const QString &fallback) {
     const auto a = nwchemAdvanced(d);
     return a.contains(key) ? number(a[key].toDouble()) : fallback;
 }
-QString nwchemAdvancedLines(const Document &d, const QString &group) {
+NwchemGeneratedInput nwchemAdvancedLines(const Document &d, const QString &group) {
     const auto a = nwchemAdvanced(d), s = nwchemSettings(d);
-    QString text;
+    NwchemInputBuilder output;
     for (const auto &o : nwchemAdvancedOptions()) {
         if (o.group == "visualization" || o.group != group || !a.contains(o.key) ||
             !nwchemAdvancedApplies(o, d))
@@ -610,6 +619,7 @@ QString nwchemAdvancedLines(const Document &d, const QString &group) {
                         "freq_animate", "hessian_thresh", "driver_xyz", "driver_cartesian"}
                 .contains(o.key))
             continue;
+        QString text;
         if (o.kind == AdvancedKind::Flag) {
             if (a[o.key].toBool())
                 text += "  " + o.keyword + '\n';
@@ -622,6 +632,10 @@ QString nwchemAdvancedLines(const Document &d, const QString &group) {
             text += "  diis\n";
         else
             text += "  " + o.keyword + ' ' + nwchemAdvancedText(a[o.key]) + '\n';
+        if (group == "files")
+            output.advancedBlock(o.keyword, text, {o.key}, group);
+        else
+            output.sourced(text, {o.key}, true);
     }
     if (group == "vectors") {
         const auto guess = a["vectors_guess"].toString();
@@ -631,13 +645,14 @@ QString nwchemAdvancedLines(const Document &d, const QString &group) {
         if (a.contains("vectors_output"))
             line += " output \"" + a["vectors_output"].toString() + "\"";
         if (!line.isEmpty())
-            text += "  vectors" + line + '\n';
+            output.sourced("  vectors" + line + '\n', {"vectors_guess", "vectors_input", "vectors_output"},
+                           true);
     }
     if (group == "frequency" && a["freq_animate"].toBool())
-        text += "  animate\n  filename " + s["start"].toString() + "_vib\n";
+        output.sourced("  animate\n  filename " + s["start"].toString() + "_vib\n", {"freq_animate"}, true);
     if (group == "driver" && a["driver_xyz"].toBool())
-        text += "  xyz " + s["start"].toString() + "_opt\n";
-    return text;
+        output.sourced("  xyz " + s["start"].toString() + "_opt\n", {"driver_xyz"}, true);
+    return output.result;
 }
 QJsonObject nwchemAdvancedPreset(const QJsonObject &settings) {
     QJsonObject result;

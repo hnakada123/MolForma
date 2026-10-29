@@ -13,5 +13,5 @@ QString nwchemPermanentFile(const Document &document, const QString &name);
 NwchemCubeGrid nwchemCubeGrid(const Document &document);
 void validateNwchemOutput(const Document &document, NwchemValidation &validation);
 QStringList nwchemOutputFiles(const Document &document, const NwchemValidation &validation);
-QString nwchemOutputLines(const Document &document, const NwchemValidation &validation);
+NwchemGeneratedInput nwchemOutputLines(const Document &document, const NwchemValidation &validation);
 } // namespace mf

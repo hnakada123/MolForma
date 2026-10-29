@@ -1,5 +1,6 @@
 #include "nwchem/nwchem_advanced.h"
 #include "ui/calculation_panel.h"
+#include "ui/diagnostics_list.h"
 #include "ui/editor_chrome.h"
 #include "ui/main_window.h"
 #include <QtTest>
@@ -368,19 +369,22 @@ class AdvancedTest : public QObject {
         QCOMPARE(w.findChild<QPlainTextEdit *>("inputPreviewText")->textCursor().block().text(),
                  QString("  thresh 1e-08"));
         tabs->setCurrentWidget(calculation);
-        // A diagnostic naming an option shows and chooses it.
-        QCOMPARE(calculation->fieldFor("詳細設定「密度のダンピング / %」: 範囲外です"),
-                 QString("advanced:dft_damp"));
-        QCOMPARE(calculation->fieldFor(
-                     "現在の計算では保留（入力に出力しません）: 密度のダンピング / %、DIISのFock行列数"),
-                 QString("advanced:dft_damp"));
-        QCOMPARE(
-            calculation->fieldFor("初期軌道を上書きしないよう、別の出力movecsファイルを指定してください。"),
-            QString("advanced:vectors_output"));
-        auto *diagnostics = w.findChild<QListWidget *>("calculationValidation");
-        QMetaObject::invokeMethod(diagnostics, "messageClicked",
-                                  Q_ARG(QString, "詳細設定「密度のダンピング / %」: 範囲外です"),
-                                  Q_ARG(bool, true));
+        // Routing uses the diagnostic's target, independently of its display text.
+        auto invalid = w.document();
+        auto settings = nwchemSettings(invalid);
+        settings["method"] = "dft";
+        invalid.data["nwchem"] = settings;
+        setNwchemAdvanced(invalid, "dft_damp", 200);
+        const auto report = validateNwchem(invalid);
+        auto *diagnostics = w.findChild<DiagnosticsList *>("calculationValidation");
+        diagnostics->setDiagnostics(report.diagnostics);
+        QListWidgetItem *damping = nullptr;
+        for (int i = 0; i < diagnostics->count(); ++i)
+            if (diagnostics->item(i)->data(DiagnosticsList::SettingRole) == "advanced:dft_damp")
+                damping = diagnostics->item(i);
+        QVERIFY(damping);
+        damping->setText("Display wording is irrelevant");
+        emit diagnostics->itemClicked(damping);
         QCOMPARE(w.findChild<QLabel *>("calculationDetailTitle")->text(), option("dft_damp").label);
         QVERIFY(damp->isVisibleTo(&w));
         w.edit("candidate", [](Document &next) { next.atoms[1].position.x() += 0.1; }, true);

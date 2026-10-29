@@ -215,7 +215,7 @@ QJsonObject NwchemEnergySummary::bsse() const {
     return {};
 }
 namespace {
-// The status lines of an NWChem log, translated where they are set; resultOutcome() tells them apart.
+// Display text only; the outcome is stored separately from the translated status.
 const char *const IncompleteStatus = QT_TR_NOOP("正常終了マーカーなし（実行中・中断・不完全なログの可能性）"),
                   *const ErrorStatus = QT_TR_NOOP("NWChemエラー: %1"),
                   *const MessageStatus = QT_TR_NOOP("エラー・未収束メッセージあり（ログを確認）"),
@@ -243,6 +243,7 @@ ResultStep resultStep(const QRegularExpressionMatch &m) {
 }
 void nwchem(ResultData &r, const QStringList &lines) {
     r.status = tr(IncompleteStatus);
+    r.outcome = ResultOutcome::Incomplete;
     bool fatal = false, ended = false, recognized = false;
     static const QRegularExpression energy(
         R"(\bTotal\s+(SCF|DFT|MP2|CCSD(?:\(T\))?)\s+energy\s*[:=]?\s*([-+0-9.eEdD]+))",
@@ -623,6 +624,7 @@ void nwchem(ResultData &r, const QStringList &lines) {
         r.properties["solvation"] = solvation;
     if (!r.steps.isEmpty() && !r.properties.contains("optimization"))
         r.properties["optimization"] = "not_converged";
+    r.outcome = fatal ? ResultOutcome::Error : ended ? ResultOutcome::Normal : ResultOutcome::Incomplete;
     if (!abort.isEmpty())
         r.status = tr(ErrorStatus).arg(abort);
     else if (fatal)
@@ -1181,7 +1183,8 @@ void saveResultData(const QString &path, const ResultData &r) {
     QByteArray bytes;
     QDataStream s(&bytes, QIODevice::WriteOnly);
     s.setVersion(QDataStream::Qt_6_4);
-    s << QString("MolFormaResult5") << r.source << r.format << r.status << r.log << r.warnings;
+    s << QString("MolFormaResult6") << r.source << r.format << r.status << r.log << r.warnings
+      << qint32(r.outcome);
     s << r.orbitalBasis << qint32(r.selectedOrbital) << qint32(r.orbitalFrame) << qint32(r.orbitalDivisions)
       << r.orbitalError << r.orbitalNormalization << r.normalizationRequest;
     auto doc = [&](const Document &d) { s << QJsonDocument(d.toJson()).toJson(QJsonDocument::Compact); };
@@ -1233,10 +1236,15 @@ ResultData loadResultData(const QString &path) {
     s.setVersion(QDataStream::Qt_6_4);
     QString magic;
     s >> magic;
-    if (magic != "MolFormaResult5")
+    if (magic != "MolFormaResult6")
         fail(tr("結果の転送形式が不正です。"));
     ResultData r;
     s >> r.source >> r.format >> r.status >> r.log >> r.warnings;
+    qint32 outcome = 0;
+    s >> outcome;
+    if (outcome < int(ResultOutcome::NotApplicable) || outcome > int(ResultOutcome::Error))
+        fail(tr("結果の転送形式が不正です。"));
+    r.outcome = ResultOutcome(outcome);
     qint32 orbital, orbitalFrame, divisions;
     s >> r.orbitalBasis >> orbital >> orbitalFrame >> divisions >> r.orbitalError >> r.orbitalNormalization >>
         r.normalizationRequest;
@@ -1349,20 +1357,17 @@ int resultWorker(const QString &request, const QString &response) {
     }
 }
 QString resultOutcome(const ResultData &data) {
-    if (data.format != "NWChem")
-        return {};
-    // The status as read: in the interface language, or in the source language (a result read
-    // before the language changed).
-    const auto is = [&](const char *status) {
-        return data.status == tr(status) || data.status == QString::fromUtf8(status);
-    };
-    if (is(NormalStatus))
+    switch (data.outcome) {
+    case ResultOutcome::Normal:
         return "normal";
-    if (is(IncompleteStatus))
+    case ResultOutcome::Incomplete:
         return "incomplete";
-    const bool error = data.status.startsWith(tr(ErrorStatus).arg(QString())) ||
-                       data.status.startsWith(QString::fromUtf8(ErrorStatus).arg(QString()));
-    return error || is(MessageStatus) ? "error" : QString();
+    case ResultOutcome::Error:
+        return "error";
+    case ResultOutcome::NotApplicable:
+        return {};
+    }
+    return {};
 }
 QStringList resultFiles(const QString &directory) {
     auto files = QDir(directory).entryList(

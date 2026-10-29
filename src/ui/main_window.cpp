@@ -69,26 +69,6 @@ class PageRows : public QObject {
         }
     }
 };
-class DocumentCommand : public QUndoCommand {
-    MainWindow *window;
-    Document before, after;
-    bool remote;         // Made or confirmed over MCP: undo/redo never make its execution settings trusted.
-    bool pushed = false; // QUndoStack::push() runs redo() once to apply the edit itself.
-
-  public:
-    DocumentCommand(MainWindow *w, const QString &name, const Document &next, bool remote)
-        : QUndoCommand(name), window(w), before(w->doc), after(next), remote(remote) {}
-    void undo() override {
-        window->setState(before, !remote);
-        window->announceHistory(tr("元に戻しました"), text(), after, before);
-    }
-    void redo() override {
-        window->setState(after, !remote);
-        if (pushed)
-            window->announceHistory(tr("やり直しました"), text(), before, after);
-        pushed = true;
-    }
-};
 class PaletteList : public QListWidget {
   public:
     using QListWidget::QListWidget;
@@ -127,13 +107,26 @@ MainWindow::MainWindow(QWidget *parent)
     buildMenus();
     // Commands change the document in undo()/redo(); refresh once the stack index (and so the
     // Undo/Redo texts) has moved. Saving only changes the title.
-    undo.setUndoLimit(100);
-    connect(&undo, &QUndoStack::indexChanged, this, [this] { refresh(); });
+    connect(&session, &EditorSession::changed, this, &MainWindow::refresh);
+    connect(&session, &EditorSession::applied, this,
+            [this](const Document &before, const Document &after, bool remote) {
+                if (!remote)
+                    trackExecution(before, after);
+                const auto ids = after.ids();
+                const QSet<QString> present(ids.begin(), ids.end());
+                selected.removeIf([&](const auto &id) { return !present.contains(id); });
+            });
+    connect(&session, &EditorSession::historyMoved, this,
+            [this](bool undo, const QString &name, const Document &before, const Document &after) {
+                announceHistory(undo ? tr("元に戻しました") : tr("やり直しました"), name, before, after);
+            });
     connect(&undo, &QUndoStack::cleanChanged, this, &MainWindow::refreshTitle);
+    Document initial;
     if (settings.value("startupWater", false).toBool())
-        placeTemplate(doc, findTemplate("skeleton:water"), Vec::Zero());
-    applyExecutionPreferences(doc);
-    mcp.trustedExecution = protectedExecution(doc);
+        placeTemplate(initial, findTemplate("skeleton:water"), Vec::Zero());
+    applyExecutionPreferences(initial);
+    session.reset(initial);
+    mcp.trustedExecution = protectedExecution(document());
     refresh();
     QTimer::singleShot(0, view, &MoleculeView::fit);
     auto saved = settings.value("geometry").toByteArray();
@@ -149,6 +142,7 @@ MainWindow::~MainWindow() {
     execution->stopEditing();
     execution->shutdown();
     cancelWorker();
+    session.disconnect(this);
     undo.disconnect(this); // ~QUndoStack signals while clearing, after later members are gone.
 }
 void MainWindow::safe(const std::function<void()> &operation) {
@@ -169,24 +163,10 @@ void MainWindow::checkMcpPath(const QString &path) const {
     if (mcp.policy && mcp.depth > 0)
         mcp.policy->checkPath(path);
 }
-void MainWindow::setState(const Document &d, bool trusted) {
-    if (trusted)
-        trackExecution(doc, d);
-    doc = d;
-    candidate.reset();
-    const auto ids = doc.ids();
-    const QSet<QString> present(ids.begin(), ids.end());
-    selected.removeIf([&](const auto &id) { return !present.contains(id); });
-}
 void MainWindow::loadDocument(const Document &d) {
     cancelWorker();
-    candidate.reset();
     selected.clear();
-    trackExecution(doc, d);
-    doc = d;
-    undo.clear();
-    undo.setClean();
-    refresh();
+    session.reset(d, mcp.depth > 0);
     view->fit();
 }
 void MainWindow::announceHistory(const QString &verb, const QString &name, const Document &from,
@@ -213,76 +193,43 @@ void MainWindow::announceHistory(const QString &verb, const QString &name, const
                                  : QString("%1: %2").arg(verb, name),
                              elsewhere ? 10000 : 5000);
 }
-bool MainWindow::commit(const QString &name, const Document &next, bool remote) {
-    auto errors = next.validate();
-    if (!errors.isEmpty())
-        fail(errors.join('\n'));
-    if (identity(doc) == identity(next))
-        return false;
-    undo.push(new DocumentCommand(this, name, next, remote || mcp.depth > 0));
-    if (!keepSelection->isChecked())
-        setSelection({});
-    statusBar()->showMessage(name, 5000);
-    return true;
-}
 void MainWindow::edit(const QString &name, const std::function<void(Document &)> &operation, bool preview) {
     if (worker)
         fail(tr("整形処理の完了または中止後に編集してください。"));
-    if (candidate)
-        fail(tr("先に変更候補を確定するか、取消してください。"));
-    Document next = doc;
-    operation(next);
-    if (!preview) {
-        commit(name, next);
+    if (!session.edit(name, operation, preview, mcp.depth > 0))
         return;
+    if (preview)
+        statusBar()->showMessage(tr("候補を確認して確定してください。"), 8000);
+    else {
+        if (!keepSelection->isChecked())
+            setSelection({});
+        statusBar()->showMessage(name, 5000);
     }
-    auto errors = next.validate();
-    if (!errors.isEmpty())
-        fail(errors.join('\n'));
-    if (identity(next) == identity(doc))
-        return;
-    candidate = next;
-    candidateName = name;
-    candidateRemote = mcp.depth > 0;
-    refresh();
-    statusBar()->showMessage(tr("候補を確認して確定してください。"), 8000);
 }
 void MainWindow::confirmCandidate() {
-    if (!candidate)
-        return;
-    const Document next = *candidate;
-    // A person confirming an MCP candidate does not make the settings it carries trusted. The
-    // command clears the candidate; one that fails validation stays for the user to cancel.
-    if (!commit(candidateName, next, candidateRemote)) {
-        candidate.reset(); // Same as the document: nothing to record.
-        refresh();
+    const auto name = session.candidateName();
+    if (session.confirm(mcp.depth > 0)) {
+        if (!keepSelection->isChecked())
+            setSelection({});
+        statusBar()->showMessage(name, 5000);
     }
 }
 void MainWindow::cancelCandidate() {
-    candidate.reset();
-    refresh();
+    session.cancel();
     statusBar()->showMessage(tr("変更候補を取り消しました。"), 4000);
 }
 void MainWindow::remoteHistory(const QString &action) {
     if (worker)
         fail(tr("整形処理の完了または中止後に操作してください。"));
     if (action == "confirm" || action == "cancel") {
-        if (!candidate)
+        if (!hasCandidate())
             fail(tr("変更候補がありません。"));
         if (action == "confirm")
             confirmCandidate();
         else
             cancelCandidate();
-        return;
-    }
-    if (candidate)
-        fail(tr("先に変更候補を確定するか、取消してください。"));
-    if (action == "undo" && undo.canUndo())
-        undo.undo();
-    else if (action == "redo" && undo.canRedo())
-        undo.redo();
-    else
-        fail(tr("対応する編集履歴がありません。"));
+    } else
+        session.navigate(action);
 }
 void MainWindow::buildUi() {
     auto *central = new QWidget;
@@ -855,7 +802,8 @@ void MainWindow::buildUi() {
     candidateControls(banner, candidateTitle, bannerLabel, "confirmCandidate", "cancelCandidate");
     bannerLabel->setObjectName("candidateBannerText");
     connect(workspaceTabs, &QTabWidget::currentChanged, this, [this] {
-        candidateBar->setVisible(candidate.has_value() && workspaceTabs->currentWidget() != moleculePage);
+        candidateBar->setVisible(session.candidate().has_value() &&
+                                 workspaceTabs->currentWidget() != moleculePage);
     });
     // The document in brief at the left of the status bar; a message takes its place while shown.
     summary = new QLabel;
@@ -975,8 +923,9 @@ void MainWindow::buildUi() {
                 if (indices.size() == t["connections"].toArray().size()) {
                     // The next site continues the placement: the ligand placed before is confirmed. A
                     // person's click never confirms an MCP candidate, but MCP may continue its own.
-                    const bool chained = candidate && candidateName == tr("配位子を配置") &&
-                                         (!candidateRemote || mcp.depth > 0);
+                    const bool chained = session.candidate() &&
+                                         session.candidateName() == tr("配位子を配置") &&
+                                         (!session.candidateRemote() || mcp.depth > 0);
                     if (chained)
                         confirmCandidate();
                     edit(tr("配位子を配置"), [=](Document &d) { placeLigand(d, c, indices, t); }, true);
@@ -1021,7 +970,7 @@ void MainWindow::buildUi() {
     connect(view, &MoleculeView::shortcut, this, [this](int key) {
         safe([this, key] {
             if (key == Qt::Key_Escape) {
-                if (candidate)
+                if (session.candidate())
                     cancelCandidate();
                 else
                     setSelection({});
@@ -1168,7 +1117,7 @@ void MainWindow::buildHeader() {
     undoButton = history(tr("元に戻す"), "undo", "editorUndo");
     connect(undoButton, &QPushButton::clicked, this, [this] {
         safe([this] {
-            if (candidate)
+            if (session.candidate())
                 cancelCandidate();
             else
                 undo.undo();
@@ -1177,7 +1126,7 @@ void MainWindow::buildHeader() {
     redoButton = history(tr("やり直す"), "redo", "editorRedo");
     connect(redoButton, &QPushButton::clicked, this, [this] {
         safe([this] {
-            if (!candidate)
+            if (!session.candidate())
                 undo.redo();
         });
     });
@@ -1242,7 +1191,7 @@ void MainWindow::buildMenus() {
     })->setObjectName("heldSettingsAction");
     action(file, tr("分子全体をXYZでコピー"), {}, "copy", [this] {
         if (resolveCandidate())
-            QApplication::clipboard()->setText(doc.xyz());
+            QApplication::clipboard()->setText(document().xyz());
     });
     action(file, tr("XYZを貼り付けて置き換え…"), {}, "paste", [this] {
         bool ok;
@@ -1261,14 +1210,14 @@ void MainWindow::buildMenus() {
     action(file, tr("終了"), QKeySequence::Quit, "quit", [this] { close(); });
     auto *editMenu = menuBar()->addMenu(tr("編集"));
     undoAction = action(editMenu, tr("元に戻す"), QKeySequence::Undo, "undo", [this] {
-        if (candidate)
+        if (session.candidate())
             cancelCandidate();
         else
             undo.undo();
     });
     undoAction->setObjectName("undoAction");
     auto *redo = redoAction = action(editMenu, tr("やり直す"), QKeySequence::Redo, "redo", [this] {
-        if (!candidate)
+        if (!session.candidate())
             undo.redo();
     });
     redo->setObjectName("redoAction");
@@ -1276,7 +1225,7 @@ void MainWindow::buildMenus() {
     // Candidate keys work in every tab; editing keys only while the focus is in "1 分子", so text
     // fields keep their own keys and Delete in other tables never deletes atoms.
     confirmAction = action(editMenu, tr("変更を確定"), QKeySequence("Ctrl+Return"), "check", [this] {
-        if (!candidate)
+        if (!session.candidate())
             fail(tr("確定する変更候補がありません。"));
         confirmCandidate();
     });
@@ -1284,7 +1233,7 @@ void MainWindow::buildMenus() {
     // Listed as Ctrl+Enter like the candidate buttons; the main Return key works the same.
     confirmAction->setShortcuts({QKeySequence("Ctrl+Enter"), QKeySequence("Ctrl+Return")});
     action(editMenu, tr("候補を取消・選択を解除"), QKeySequence(Qt::Key_Escape), "close", [this] {
-        if (candidate)
+        if (session.candidate())
             cancelCandidate();
         else
             setSelection({});
@@ -1789,7 +1738,7 @@ void MainWindow::paletteChosen() {
     if (id.startsWith("smiles:")) {
         const auto smiles = id.mid(7);
         search->clear();
-        runWorker(doc.atoms.isEmpty() ? "smiles" : "fragment", smiles);
+        runWorker(document().atoms.isEmpty() ? "smiles" : "fragment", smiles);
         return;
     }
     if (id.startsWith("atom:")) {
@@ -1801,7 +1750,7 @@ void MainWindow::paletteChosen() {
         showProperties(tr("配位"));
     } else if (currentTemplate()["category"] == "amino") {
         showProperties(tr("残基"));
-        if (growth->isChecked() && !growthResidue.isEmpty() && !candidate)
+        if (growth->isChecked() && !growthResidue.isEmpty() && !session.candidate())
             addAmino(growthResidue, growthN);
     }
     // The replace tool keeps working with whatever is chosen: it replaces atoms with that part.
@@ -1912,7 +1861,7 @@ void MainWindow::atomClicked(const QString &id, Qt::KeyboardModifiers mods) {
                 completeHydrogens(d, {a, id});
         });
     } else {
-        place(id, doc.atom(id).position);
+        place(id, document().atom(id).position);
         if (mods.testFlag(Qt::ShiftModifier))
             return;
     }
@@ -1969,13 +1918,13 @@ void MainWindow::place(const QString &id, const Vec &position) {
         double angle = twist->value();
         if (t["category"] == "amino") {
             if (!id.isEmpty()) {
-                auto rid = residueForAtom(doc, id);
+                auto rid = residueForAtom(document(), id);
                 if (rid.isEmpty())
                     fail(tr("ペプチドの末端の＋を選択してください。"));
-                auto r = residue(doc, rid), names = r["atoms"].toObject();
+                auto r = residue(document(), rid), names = r["atoms"].toObject();
                 QString parent = id;
-                if (doc.atom(id).element == "H" && doc.neighbors(id).size() == 1)
-                    parent = doc.neighbors(id).first();
+                if (document().atom(id).element == "H" && document().neighbors(id).size() == 1)
+                    parent = document().neighbors(id).first();
                 if (parent == names["N"].toString())
                     addAmino(rid, true);
                 else if (parent == names["C"].toString() || parent == names["OXT"].toString())
@@ -2022,7 +1971,7 @@ void MainWindow::refresh() {
     });
     view->setMonitors(monitors);
     // Candidate changes: atoms removed (shown where they were), added and moved.
-    const auto changes = candidate ? atomChanges(doc, *candidate) : AtomChanges{};
+    const auto changes = session.candidate() ? atomChanges(document(), *session.candidate()) : AtomChanges{};
     const auto &addedAtoms = changes.added, &movedAtoms = changes.moved;
     QVector<std::pair<Vec, QString>> removedAtoms;
     for (const auto &a : changes.removed)
@@ -2036,7 +1985,7 @@ void MainWindow::refresh() {
         return QString("<span style=\"color:%1\"><b>%2</b></span>").arg(color, mark);
     };
     // The counts with the marks the 3D view uses for them.
-    candidateTitle->setText(tr("変更候補: %1").arg(candidateName));
+    candidateTitle->setText(tr("変更候補: %1").arg(session.candidateName()));
     bannerLabel->setText(tr("%1 追加 %2　%3 削除 %4　%5 移動 %6 原子")
                              .arg(marker("#25a35a", "○"))
                              .arg(addedAtoms.size())
@@ -2044,13 +1993,14 @@ void MainWindow::refresh() {
                              .arg(removedAtoms.size())
                              .arg(marker("#e08a1e", "○"))
                              .arg(movedAtoms.size()));
-    candidateLabel->setText(tr("<b>変更候補: %1</b>　%2").arg(candidateName.toHtmlEscaped(), counts));
+    candidateLabel->setText(
+        tr("<b>変更候補: %1</b>　%2").arg(session.candidateName().toHtmlEscaped(), counts));
     for (auto *label : {candidateLabel, bannerLabel})
         label->setToolTip(
             tr("3D画面の印: 緑の円は追加、赤の×は削除（元の位置）、橙の円は移動する原子です。"));
     // The same changes listed atom by atom in the "編集" tab, beside the selection.
-    candidateCard->setVisible(candidate.has_value());
-    if (candidate) {
+    candidateCard->setVisible(session.candidate().has_value());
+    if (session.candidate()) {
         QStringList lines;
         int listed = 0, total = 0;
         const auto line = [&](const char *color, const QString &mark, const QString &name,
@@ -2062,16 +2012,16 @@ void MainWindow::refresh() {
                          .arg(marker(color, mark), name.toHtmlEscaped(), text.toHtmlEscaped());
         };
         for (const auto &a : changes.removed) {
-            const auto place = atomPlace(doc, a.id);
-            line("#d23c3c", "×", atomName(doc, a.id),
+            const auto place = atomPlace(document(), a.id);
+            line("#d23c3c", "×", atomName(document(), a.id),
                  place.isEmpty() ? tr("削除", "change") : tr("%1　削除").arg(place));
         }
-        for (const auto &a : candidate->atoms)
+        for (const auto &a : session.candidate()->atoms)
             if (addedAtoms.contains(a.id)) {
                 QString partner;
-                for (const auto &n : candidate->neighbors(a.id))
-                    if (doc.contains(n)) {
-                        partner = atomName(doc, n);
+                for (const auto &n : session.candidate()->neighbors(a.id))
+                    if (document().contains(n)) {
+                        partner = atomName(document(), n);
                         break;
                     }
                 line("#25a35a", "○", a.element,
@@ -2083,23 +2033,24 @@ void MainWindow::refresh() {
             lines << tr("ほか %n 件", nullptr, total - listed);
         candidateChanges->setText(lines.join("<br>"));
     }
-    candidateBar->setVisible(candidate.has_value() && workspaceTabs->currentWidget() != moleculePage);
-    topRow->setCurrentIndex(candidate ? 1 : 0);
+    candidateBar->setVisible(session.candidate().has_value() &&
+                             workspaceTabs->currentWidget() != moleculePage);
+    topRow->setCurrentIndex(session.candidate() ? 1 : 0);
     // Undo/Redo show the operation they act on, and are off while there is none.
-    undoButton->setEnabled(candidate || undo.canUndo());
-    redoButton->setEnabled(!candidate && undo.canRedo());
-    undoButton->setToolTip(candidate        ? tr("候補を取消")
-                           : undo.canUndo() ? tr("元に戻す: %1").arg(undo.undoText())
-                                            : tr("元に戻す操作はありません"));
+    undoButton->setEnabled(session.candidate() || undo.canUndo());
+    redoButton->setEnabled(!session.candidate() && undo.canRedo());
+    undoButton->setToolTip(session.candidate() ? tr("候補を取消")
+                           : undo.canUndo()    ? tr("元に戻す: %1").arg(undo.undoText())
+                                               : tr("元に戻す操作はありません"));
     redoButton->setToolTip(undo.canRedo() ? tr("やり直す: %1").arg(undo.redoText())
                                           : tr("やり直す操作はありません"));
     if (undoAction) {
-        undoAction->setEnabled(candidate || undo.canUndo());
-        redoAction->setEnabled(!candidate && undo.canRedo());
-        confirmAction->setEnabled(candidate.has_value());
-        undoAction->setText(candidate        ? tr("候補を取消")
-                            : undo.canUndo() ? tr("元に戻す: %1").arg(undo.undoText())
-                                             : tr("元に戻す"));
+        undoAction->setEnabled(session.candidate() || undo.canUndo());
+        redoAction->setEnabled(!session.candidate() && undo.canRedo());
+        confirmAction->setEnabled(session.candidate().has_value());
+        undoAction->setText(session.candidate() ? tr("候補を取消")
+                            : undo.canUndo()    ? tr("元に戻す: %1").arg(undo.undoText())
+                                                : tr("元に戻す"));
         redoAction->setText(undo.canRedo() ? tr("やり直す: %1").arg(undo.redoText()) : tr("やり直す"));
     }
     refreshSummary();
@@ -2190,11 +2141,11 @@ void MainWindow::refreshSummary() {
                          .arg(d.job()["charge"].toInt())
                          .arg(d.job()["multiplicity"].toInt(1))
                          .arg(d.data["point_charges"].toArray().size())
-                         .arg(candidate ? tr(" · 変更候補あり") : ""));
+                         .arg(session.candidate() ? tr(" · 変更候補あり") : ""));
 }
 void MainWindow::refreshTitle() {
     const auto name = path.isEmpty() ? tr("新規分子") : QFileInfo(path).fileName();
-    const auto mark = undo.isClean() && !candidate ? "" : " *";
+    const auto mark = undo.isClean() && !session.candidate() ? "" : " *";
     setWindowTitle(QString("%1%2 — MolForma").arg(name, mark));
     if (documentButton) {
         documentButton->setText(documentButton->fontMetrics().elidedText(name, Qt::ElideMiddle, 220) + mark);
@@ -2505,7 +2456,7 @@ void MainWindow::refreshSelection() {
         coordinates->refreshSelection();
 }
 bool MainWindow::resolveCandidate() {
-    if (!candidate)
+    if (!session.candidate())
         return true;
     QMessageBox box(QMessageBox::Question, tr("変更候補があります"),
                     tr("保存・読込の前に候補の扱いを選択してください。"), QMessageBox::NoButton, this);
@@ -2621,15 +2572,15 @@ void MainWindow::loadPath(const QString &p) {
     refresh();
     // A three-dimensional structure is seen at an angle like in the result viewer, so atoms behind
     // each other along an axis stay visible; flat molecules keep the front view for editing.
-    if (doc.atoms.size() >= 4) {
+    if (document().atoms.size() >= 4) {
         Vec mean = Vec::Zero();
-        for (const auto &a : doc.atoms)
+        for (const auto &a : document().atoms)
             mean += a.position;
-        mean /= doc.atoms.size();
+        mean /= document().atoms.size();
         Mat spread = Mat::Zero();
-        for (const auto &a : doc.atoms)
+        for (const auto &a : document().atoms)
             spread += (a.position - mean) * (a.position - mean).transpose();
-        if (Eigen::SelfAdjointEigenSolver<Mat>(spread / doc.atoms.size()).eigenvalues()(0) > 0.1) {
+        if (Eigen::SelfAdjointEigenSolver<Mat>(spread / document().atoms.size()).eigenvalues()(0) > 0.1) {
             view->setAngles(-25, 25, 0);
             view->fit();
             emit view->orientationChanged(); // The rotation sliders follow.
@@ -2648,14 +2599,16 @@ bool MainWindow::save(bool as) {
     if (as || p.isEmpty())
         p = QFileDialog::getSaveFileName(
             this, tr("プロジェクトを保存"),
-            p.isEmpty() ? (doc.atoms.isEmpty() ? QString("molecule") : doc.formula()) + ".molforma.json" : p,
+            p.isEmpty()
+                ? (document().atoms.isEmpty() ? QString("molecule") : document().formula()) + ".molforma.json"
+                : p,
             tr("MolFormaプロジェクト (*.molforma.json)"));
     if (p.isEmpty())
         return false;
     if (!p.endsWith(".json", Qt::CaseInsensitive))
         p += ".molforma.json";
     checkMcpPath(p); // Ctrl+S reuses the project path without a file dialog.
-    doc.save(p);
+    document().save(p);
     path = p;
     undo.setClean();
     addRecent(p);
@@ -2694,7 +2647,7 @@ void MainWindow::exportFile() {
                                              tr("XYZ (*.xyz);;SDF (*.sdf);;MOL (*.mol);;Mol2 (*.mol2);;CML "
                                                 "(*.cml);;PDB (*.pdb);;Gaussian入力 (*.gjf)"));
     if (!p.isEmpty())
-        exportStructure(doc, p);
+        exportStructure(document(), p);
 }
 QString MainWindow::askSmiles(const QString &title, const QString &label, const QString &initial) {
     QInputDialog dialog(this);
@@ -2736,10 +2689,10 @@ void MainWindow::importSmiles(const QString &initial) {
         runWorker("smiles", smiles);
 }
 void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids &moving, int count) {
-    if (worker || candidate)
+    if (worker || session.candidate())
         fail(tr("処理中または変更候補があります。先に完了・取消してください。"));
     if (mode == "smiles") {
-        Document replaced = doc; // Fail before starting when fixed atoms block the replacement.
+        Document replaced = document(); // Fail before starting when fixed atoms block the replacement.
         replaced.remove(replaced.ids());
     }
     workdir = std::make_unique<QTemporaryDir>();
@@ -2750,9 +2703,9 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
                         {"smiles", smiles},
                         {"moving", idsToJson(moving)},
                         {"count", count},
-                        {"document", doc.toJson()}};
+                        {"document", document().toJson()}};
     writeFile(input, QJsonDocument(request).toJson());
-    workerBase = identity(doc);
+    workerBase = identity(document());
     workerRemote = mcp.depth > 0;
     worker = new QProcess(this);
     auto *running = worker;
@@ -2770,9 +2723,9 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
                 auto response = parseJson(readFile(output));
                 if (code != 0 || status != QProcess::NormalExit || response.contains("error"))
                     fail(response["error"].toString(tr("整形に失敗しました。")));
-                if (workerBase != identity(doc))
+                if (workerBase != identity(document()))
                     fail(tr("分子が変更されたため整形結果を破棄しました。"));
-                Document next = doc;
+                Document next = document();
                 if (mode == "conformers") {
                     const auto list = response["conformers"].toArray();
                     if (list.isEmpty())
@@ -2799,17 +2752,16 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
                     applyResultGeometry(next,
                                         Document::fromJson(list[chosen].toObject()["document"].toObject()));
                     double moved = 0;
-                    for (int i = 0; i < next.atoms.size() && i < doc.atoms.size(); ++i)
-                        moved = std::max(moved, (next.atoms[i].position - doc.atoms[i].position).norm());
+                    for (int i = 0; i < next.atoms.size() && i < document().atoms.size(); ++i)
+                        moved =
+                            std::max(moved, (next.atoms[i].position - document().atoms[i].position).norm());
                     if (moved < 1e-3) {
                         // Nothing to confirm: say so instead of an empty candidate.
                         statusBar()->showMessage(tr("配座探索: 別の配座は見つからず、現在の構造のままです"
                                                     "（回転できる結合がない分子など）。"),
                                                  10000);
                     } else {
-                        candidate = next;
-                        candidateName = tr("配座を適用");
-                        candidateRemote = workerRemote;
+                        session.propose(tr("配座を適用"), next, workerRemote);
                         statusBar()->showMessage(
                             tr("配座 %1/%2 を候補にしました。「変更を確定」で適用します。")
                                 .arg(chosen + 1)
@@ -2826,14 +2778,13 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
                         insertFragment(next, result);
                     else {
                         next = result;
-                        next.envelope = doc.envelope;
+                        next.envelope = document().envelope;
                     }
-                    candidate = next;
-                    candidateName = mode == "smiles"       ? tr("SMILESから分子を作成")
-                                    : mode == "fragment"   ? tr("SMILESから断片を追加")
-                                    : mode == "regenerate" ? tr("3Dを再生成")
-                                                           : tr("構造を整形");
-                    candidateRemote = workerRemote;
+                    const auto name = mode == "smiles"       ? tr("SMILESから分子を作成")
+                                      : mode == "fragment"   ? tr("SMILESから断片を追加")
+                                      : mode == "regenerate" ? tr("3Dを再生成")
+                                                             : tr("構造を整形");
+                    session.propose(name, next, workerRemote);
                 }
             } catch (const std::exception &e) {
                 error = QString::fromUtf8(e.what());
@@ -2853,7 +2804,7 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
                 if (mode != "conformers")
                     statusBar()->showMessage(
                         tr("「%1」の候補を作成しました。確認して「変更を確定」してください。")
-                            .arg(candidateName),
+                            .arg(session.candidateName()),
                         10000);
                 return;
             }
@@ -3038,11 +2989,11 @@ void MainWindow::autosave() {
         return;
     }
     // Compare the content: undo followed by a new edit returns to the same undo index.
-    const auto current = identity(doc);
+    const auto current = identity(document());
     if (current == autosavedIdentity && QFileInfo::exists(autosavePath))
         return;
     try {
-        auto project = doc.project();
+        auto project = document().project();
         project["molforma_autosave"] =
             QJsonObject{{"path", path}, {"time", QDateTime::currentDateTime().toString(Qt::ISODate)}};
         writeFile(autosavePath + ".tmp", QJsonDocument(project).toJson(QJsonDocument::Compact));
@@ -3146,10 +3097,10 @@ void MainWindow::selectAll() {
 void MainWindow::copySelection() {
     if (!resolveCandidate())
         return;
-    Document part = doc;
+    Document part = document();
     if (!selected.isEmpty()) {
         Ids others;
-        for (const auto &a : doc.atoms)
+        for (const auto &a : document().atoms)
             if (!selected.contains(a.id))
                 others << a.id;
         for (auto &a : part.atoms)
@@ -3537,7 +3488,7 @@ void MainWindow::compareDialog() {
     checkMcpPath(p);
     const auto reference =
         importStructure(p, 1, {}, p.endsWith(".xyz", Qt::CaseInsensitive) ? chooseXyzFrame(p) : -1);
-    const auto fit = superpose(doc, reference);
+    const auto fit = superpose(document(), reference);
     QMessageBox box(QMessageBox::Information, tr("構造の比較"),
                     tr("%1\n\nRMSD（座標そのまま）: %2 Å\n重ね合わせ後のRMSD: %3 Å（水素以外 %4 Å）\n"
                        "重ね合わせ後の最大のずれ: %5 Å")
@@ -3583,7 +3534,7 @@ void MainWindow::zMatrixDialog() {
     bool filling = false;
     const auto fill = [&] {
         QScopedValueRollback guard(filling, true);
-        rows = zMatrix(doc);
+        rows = zMatrix(document());
         table->setRowCount(rows.size());
         for (int i = 0; i < rows.size(); ++i) {
             const auto &r = rows[i];
@@ -3599,9 +3550,9 @@ void MainWindow::zMatrixDialog() {
                                         : Qt::ItemIsEnabled | Qt::ItemIsSelectable);
             };
             const auto atom = [&](int k) {
-                return k >= 0 ? doc.atoms[k].element + QString::number(k + 1) : QString();
+                return k >= 0 ? document().atoms[k].element + QString::number(k + 1) : QString();
             };
-            cell(0, doc.atoms[i].element + QString::number(i + 1), false);
+            cell(0, document().atoms[i].element + QString::number(i + 1), false);
             cell(1, atom(r.bond), false);
             cell(2, r.bond >= 0 ? QLocale().toString(r.distance, 'f', 4) : QString(), r.bond >= 0);
             cell(3, atom(r.angle), false);
@@ -3617,7 +3568,7 @@ void MainWindow::zMatrixDialog() {
         if (filling || item->row() >= rows.size())
             return;
         const auto &r = rows[item->row()];
-        const auto id = [&](int k) { return doc.atoms[k].id; };
+        const auto id = [&](int k) { return document().atoms[k].id; };
         Ids ids;
         if (item->column() == 2)
             ids = {id(r.bond), id(item->row())};
@@ -3635,7 +3586,7 @@ void MainWindow::zMatrixDialog() {
         fill(); // Other references move with the edited side.
     });
     connect(copy, &QPushButton::clicked, &dialog, [&] {
-        QApplication::clipboard()->setText(zMatrixText(doc));
+        QApplication::clipboard()->setText(zMatrixText(document()));
         statusBar()->showMessage(tr("Z-matrixをコピーしました。"), 5000);
     });
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -3865,7 +3816,7 @@ void MainWindow::preferences() {
     auto *current = buttons->addButton(tr("現在の実行設定を読み込む"), QDialogButtonBox::ResetRole);
     layout->addWidget(buttons);
     connect(current, &QPushButton::clicked, &dialog, [&] {
-        const auto s = executionSettings(doc);
+        const auto s = executionSettings(document());
         executable->setText(s["executable"].toString());
         mode->setCurrentIndex(std::max(0, mode->findData(s["mode"].toString())));
         launcher->setText(s["launcher"].toString());
@@ -3931,7 +3882,7 @@ void MainWindow::savePart() {
         this, tr("部品の種類"), tr("種類（置換基・配位子は接続点の原子を最初に選択）"), kinds, 0, false, &ok);
     if (!ok)
         return;
-    auto t = makePart(doc, ids, name,
+    auto t = makePart(document(), ids, name,
                       kind == kinds[1]   ? "ligand"
                       : kind == kinds[2] ? "skeleton"
                                          : "substituent");

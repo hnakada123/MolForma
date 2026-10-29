@@ -1,4 +1,5 @@
 #pragma once
+#include "model/diagnostic.h"
 #include <QListWidget>
 
 namespace mf {
@@ -9,17 +10,16 @@ class DiagnosticsList : public QListWidget {
   public:
     static constexpr int MessageRole = Qt::UserRole, ErrorRole = Qt::UserRole + 1, FixRole = Qt::UserRole + 2;
     explicit DiagnosticsList(QWidget *parent = nullptr);
-    // fixes: message → description of the quick fix offered for it. Without errors, an ok text
-    // (when not empty) takes the first row.
-    void setMessages(const QStringList &errors, const QStringList &warnings, const QString &ok,
-                     const QMap<QString, QString> &fixes = {});
+    static constexpr int CodeRole = Qt::UserRole + 3, SettingRole = Qt::UserRole + 4,
+                         TabRole = Qt::UserRole + 5;
+    void setDiagnostics(const QVector<Diagnostic> &diagnostics);
     QStringList messages() const;
     // As tall as its rows for the width it gets, up to maximum (then it scrolls).
     void setFitContents(int maximum);
     QSize sizeHint() const override;
   signals:
-    void messageClicked(QString message, bool error);
-    void fixRequested(QString message);
+    void diagnosticClicked(QString setting, int tab);
+    void fixRequested(QString code, QString setting);
 
   protected:
     void resizeEvent(QResizeEvent *event) override;

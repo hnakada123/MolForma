@@ -42,7 +42,6 @@ class CalculationPanel : public QWidget {
     // Shows a detailed option (opening its section's details), or the details of a group ("dft").
     void showDetail(const QString &key);
     void showDetailGroup(const QString &group);
-    QString fieldFor(const QString &message) const;
     // The title of the section that holds a setting ("基本設定"), or empty.
     QString sectionTitle(const QString &key) const;
     // Stop focus-out callbacks before the owner's document and undo stack are destroyed.
@@ -134,9 +133,8 @@ class CalculationPanel : public QWidget {
     // Segments (or chips) for a choice with few items; the combo box holds the value.
     void buttons(QFormLayout *form, const QString &label, const QString &key, bool chips,
                  const QStringList &texts = {});
-    void integer(QFormLayout *form, const QString &label, const QString &key, int minimum, int maximum);
-    void real(QFormLayout *form, const QString &label, const QString &key, double minimum, double maximum,
-              int decimals);
+    void integer(QFormLayout *form, const QString &label, const QString &key);
+    void real(QFormLayout *form, const QString &label, const QString &key);
     void flag(QFormLayout *form, const QString &label, const QString &key);
     void help(QFormLayout *form, const QString &text);
     void change(const QString &key, const QJsonValue &value);
@@ -170,8 +168,7 @@ class CalculationPanel : public QWidget {
     QWidget *readOnlyRow(QLabel *value, QPushButton *link);
     void showSection(const QString &key);
     void followScroll();
-    QMap<QString, QString> fixes(const QStringList &errors) const;
-    void applyFix(const QString &message);
+    void applyFix(const QString &code, const QString &setting);
     QString valueText(const QString &key, const QJsonValue &value) const;
     void searchSettings(const QString &text);
 };

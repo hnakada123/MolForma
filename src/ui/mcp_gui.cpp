@@ -172,7 +172,7 @@ McpGui::~McpGui() {
 McpEditor McpGui::editor() {
     McpEditor e;
     e.document = [this] { return window.document(); };
-    e.candidate = [this]() -> std::optional<Document> { return window.candidate; };
+    e.candidate = [this]() -> std::optional<Document> { return window.session.candidate(); };
     e.edit = [this](const QString &name, const auto &operation, bool preview) {
         if (QApplication::activeModalWidget())
             fail("Handle the active modal dialog before editing the document.");
@@ -500,9 +500,10 @@ QJsonObject McpGui::describe(QObject *o) {
     return item;
 }
 QByteArray McpGui::documentState() const {
-    return QJsonDocument(QJsonArray{window.doc.project(), window.candidate
-                                                              ? QJsonValue(window.candidate->project())
-                                                              : QJsonValue()})
+    return QJsonDocument(
+               QJsonArray{window.document().project(), window.session.candidate()
+                                                           ? QJsonValue(window.session.candidate()->project())
+                                                           : QJsonValue()})
         .toJson(QJsonDocument::Compact);
 }
 QJsonObject McpGui::state() const {
@@ -518,7 +519,7 @@ QJsonObject McpGui::state() const {
             {"calculation", calculationJson(run, window.execution->saved.directory)},
             {"results", QJsonObject{{"loading", r->loading()},
                                     {"source", r->data.source},
-                                    {"pendingPath", r->pendingPath},
+                                    {"pendingPath", r->loader.pendingPath()},
                                     {"message", r->message()},
                                     {"playing", r->animation.isActive()},
                                     {"animation", r->animation.isActive()
@@ -1131,7 +1132,7 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
         else {
             const auto moving = idsFromJson(args["moving"]);
             for (const auto &id : moving)
-                window.doc.atom(id);
+                window.document().atom(id);
             if ((action == "smiles" || action == "fragment") && args["smiles"].toString().trimmed().isEmpty())
                 fail("Specify SMILES.");
             window.runWorker(action, args["smiles"].toString(), moving);

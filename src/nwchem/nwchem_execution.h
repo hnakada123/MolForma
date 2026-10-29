@@ -1,5 +1,6 @@
 #pragma once
 #include "model/document.h"
+#include "nwchem/nwchem.h"
 #include <QElapsedTimer>
 #include <QProcess>
 #include <QTimer>
@@ -24,8 +25,7 @@ struct ExecutionCheck {
     QString label, detail, error;
     bool ok = true;
 };
-struct ExecutionValidation {
-    QStringList errors, warnings;
+struct ExecutionValidation : ValidationReport {
     QString executable, launcher, referenceDirectory;
     QMap<QString, QString> environment; // Only explicit overrides, never the inherited environment.
     QVector<ExecutionCheck> checks;     // With checkLocal: programs, folders and the NWChem input.
@@ -34,6 +34,7 @@ ExecutionValidation validateExecution(const Document &document, const QString &p
                                       bool checkLocal = true);
 struct ExecutionPlan {
     QString directory, program, input;
+    NwchemInputOutline inputOutline;
     QStringList arguments;
     QMap<QString, QString> environment;
     QJsonObject manifest;

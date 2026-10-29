@@ -325,6 +325,8 @@ After loading completes, rows with `frequency < 0` are imaginary frequencies. Ro
 
 To start from a calculation, first set the settings with `set_nwchem` / `set_advanced` / `set_execution`, then call `calculation(action: "start")`. The user sets the NWChem executable and similar settings in MolForma. `get_app_state.calculation.directory` is the saved run folder. After the run ends, open the results with `results_action(action: "open_directory", path: ...)`.
 
+In both GUI and headless mode, `open_directory` prefers `output.out`; if it is absent, it opens the first supported result file in the listing. A directory containing only XYZ files is supported. Failed or cancelled loads keep the previous result.
+
 ## Message examples for the new specification
 
 Without an initialization handshake, you can send the following single line to standard input.

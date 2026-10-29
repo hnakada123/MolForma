@@ -28,6 +28,7 @@ add_library(molforma_core STATIC
     src/model/geometry.cpp
     src/model/i18n.cpp
     src/editing/chemistry.cpp
+    src/editing/editor_session.cpp
     src/editing/coordinates.cpp
     src/editing/coordination.cpp
     src/editing/library.cpp
@@ -41,6 +42,7 @@ add_library(molforma_core STATIC
     src/nwchem/nwchem_import.cpp
     src/nwchem/nwchem_output.cpp
     src/results/molden_orbitals.cpp
+    src/results/result_loader.cpp
     src/results/results.cpp
     assets/resources.qrc)
 target_include_directories(molforma_core PUBLIC src)

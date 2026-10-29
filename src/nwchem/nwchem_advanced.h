@@ -29,7 +29,7 @@ void resetNwchemAdvanced(Document &document, const QString &group = {});
 void validateNwchemAdvanced(const Document &document, NwchemValidation &result);
 QString nwchemAdvancedNumber(const Document &document, const QString &key, const QString &fallback);
 // Additional, validated directives for a module; replacement values are handled by nwchemInput.
-QString nwchemAdvancedLines(const Document &document, const QString &group);
+NwchemGeneratedInput nwchemAdvancedLines(const Document &document, const QString &group);
 QJsonObject nwchemAdvancedPreset(const QJsonObject &settings);
 void applyNwchemAdvancedPreset(Document &document, const QJsonObject &settings);
 } // namespace mf

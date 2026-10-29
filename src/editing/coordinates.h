@@ -44,6 +44,11 @@ struct NwchemGeometryOptions {
     bool autoz = false;      // Leave AUTOZ on without ZCOORD (optimizations in internal coordinates).
     bool constraints = true; // CONSTRAINTS block with the fixed atoms.
 };
+struct NwchemGeometryFragment {
+    QString geometry, constraints, comments;
+};
+NwchemGeometryFragment nwchemGeometryFragment(const Document &document, CoordinateUnit unit,
+                                              const NwchemGeometryOptions &options = {});
 // NWChem input fragment, not a complete calculation (basis/method/task are configured separately).
 QString nwchemGeometry(const Document &document, CoordinateUnit unit, bool fragmentComments = true,
                        const NwchemGeometryOptions &options = {});

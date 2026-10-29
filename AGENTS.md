@@ -7,21 +7,26 @@ by responsibility, with paired headers and implementations in the same directory
 
 - `src/model/`: `document.*` owns the stable-ID document and the `.molforma.json`
   project serialization (format `molforma-project`, version 1); `geometry.*` owns double-precision geometry.
+  `diagnostic.h` defines diagnostics with stable codes, setting targets and typed fixes.
 - `src/editing/`: `library.*`, `operations.*`, `peptide.*` and `coordination.*`
-  implement editing. `chemistry.*` uses the Open Babel C++ API.
+  implement editing. `editor_session.*` owns document edits, candidates and undo for both GUI and MCP.
+  `chemistry.*` uses the Open Babel C++ API.
   `stereochemistry.*` optionally uses native RDKit for CIP and residue recognition.
   `coordinates.*` implements coordinate edits and NWChem geometry fragments.
 - `src/nwchem/`: `nwchem.*` validates computational settings and generates complete
-  NWChem input; `nwchem_advanced.*` defines typed overrides and their applicability.
+  NWChem input. Its setting specifications share defaults, types, ranges, choices and applicability
+  with the UI. `input_builder.h` records source lines as input is generated; do not infer them
+  by diffing or parsing generated text. `nwchem_advanced.*` defines typed overrides and applicability.
   `nwchem_output.*` validates visualization settings and generates CUBE/MOLDEN output
   tasks. `nwchem_execution.*` validates launch settings, saves immutable run bundles
   and controls cancellable NWChem processes. `history.*` scans saved bundles and
   validates snapshots.
 - `src/results/`: `results.*` reads NWChem logs, XYZ, CUBE and MOLDEN and generates
   bounded isosurfaces; `molden_orbitals.*` evaluates normalized Gaussian MOs with
-  Cartesian/spherical s–g bases.
+  Cartesian/spherical s–g bases. `result_loader.*` owns cancellable reader processes and source
+  freshness checks shared by GUI and headless MCP.
 - `src/ui/`: `main_window.*` and `editor_panels.cpp` provide the Qt UI, candidate
-  edits and undo history. `molecule_view.*` owns camera/input, Qt annotations and
+  controls backed by `EditorSession`. `molecule_view.*` owns camera/input, Qt annotations and
   the QPainter fallback; `vtk_molecule_renderer.*` provides optional retained
   native VTK/OpenGL rendering. `editor_chrome.*` holds the window header, tool rail,
   wrapping option bar layout, 3D-view overlays and palette-derived chrome colors.

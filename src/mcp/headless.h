@@ -2,10 +2,7 @@
 #include "mcp/policy.h"
 #include "mcp/server.h"
 #include "nwchem/nwchem_execution.h"
-#include "results/results.h"
-#include <QProcess>
-#include <QTemporaryDir>
-#include <memory>
+#include "results/result_loader.h"
 
 namespace mf {
 // NWChem runs and result reading for the headless MCP server, using the same core execution
@@ -29,9 +26,8 @@ class McpHeadless : public QObject {
     // Without a GUI only the user's saved defaults are trusted: MCP cannot pick another program.
     QJsonObject trusted;
     ResultData data;
-    QProcess *loader = nullptr;
-    std::unique_ptr<QTemporaryDir> scratch;
-    QString pendingPath, loadMessage, loadAction, runWork, loadWork;
+    ResultLoader loader;
+    QString loadMessage, loadAction, runWork, loadWork;
     QMap<QString, QJsonObject> finished;
     QStringList finishedOrder;
     quint64 nextWork = 0;

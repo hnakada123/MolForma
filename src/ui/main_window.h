@@ -1,4 +1,5 @@
 #pragma once
+#include "editing/editor_session.h"
 #include "mcp/policy.h"
 #include "ui/molecule_view.h"
 #include <QHash>
@@ -46,13 +47,13 @@ class MainWindow : public QMainWindow {
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
     const Document &document() const {
-        return doc;
+        return session.document();
     }
     const Document &displayDocument() const {
-        return candidate ? *candidate : doc;
+        return session.displayDocument();
     }
     bool hasCandidate() const {
-        return candidate.has_value();
+        return session.candidate().has_value();
     }
     void edit(const QString &name, const std::function<void(Document &)> &operation, bool preview = false);
     void confirmCandidate();
@@ -93,7 +94,6 @@ class MainWindow : public QMainWindow {
     void dropEvent(QDropEvent *) override;
 
   private:
-    friend class DocumentCommand;
     friend class CoordinatesPanel;
     friend class CalculationPanel;
     friend class ExecutionPanel;
@@ -101,8 +101,7 @@ class MainWindow : public QMainWindow {
     friend class ResultsPanel;
     friend class HistoryPanel;
     friend class McpGui;
-    Document doc;
-    std::optional<Document> candidate;
+    EditorSession session;
     // MCP access, set by McpGui. A calculation started over MCP may only use the executable,
     // launcher and environment that were last changed outside MCP (trustedExecution).
     struct McpAccess {
@@ -110,8 +109,8 @@ class MainWindow : public QMainWindow {
         int depth = 0; // > 0 while an MCP request or GUI command is being applied
         QJsonObject trustedExecution;
     } mcp;
-    QString candidateName, path;
-    bool candidateRemote = false, workerRemote = false; // Candidate or worker started over MCP.
+    QString path;
+    bool workerRemote = false; // Worker started over MCP.
     Ids selected;
     QVector<Ids> monitors; // Measurements kept on screen (view state, not saved).
     QMenu *recentMenu = nullptr;
@@ -119,7 +118,7 @@ class MainWindow : public QMainWindow {
     QString autosavePath;
     std::unique_ptr<QLockFile> autosaveLock;
     QByteArray autosavedIdentity; // Content of the last recovery copy.
-    QUndoStack undo;
+    QUndoStack &undo = session.history();
     QSettings settings;
     QProcess *worker = nullptr;
     std::unique_ptr<QTemporaryDir> workdir;
@@ -269,13 +268,11 @@ class MainWindow : public QMainWindow {
     void place(const QString &atom, const Vec &position);
     void atomClicked(const QString &id, Qt::KeyboardModifiers modifiers);
     Ids expandedSelection(const Ids &ids) const;
-    void setState(const Document &d, bool trusted = true);
     // Status bar note after Undo/Redo, naming the tab whose content changed.
     void announceHistory(const QString &verb, const QString &name, const Document &from, const Document &to);
     // Paths reached by an MCP-driven GUI action obey --mcp-allow-dir like the semantic tools.
     void checkMcpPath(const QString &path) const;
     void trackExecution(const Document &before, const Document &after);
-    bool commit(const QString &name, const Document &next, bool remote = false);
     void newDocument();
     void open();
     bool save(bool as = false);

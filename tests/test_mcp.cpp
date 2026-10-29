@@ -1744,6 +1744,41 @@ class McpTest : public QObject {
             QCOMPARE(resourceText(*runtimeServer, "molforma://results/log"), QString("No result is loaded."));
         }
     }
+    void resultDirectorySelection_data() {
+        QTest::addColumn<QString>("mode");
+        QTest::newRow("headless") << QString("--mcp");
+        QTest::newRow("gui") << QString("--mcp-gui");
+    }
+    void resultDirectorySelection() {
+        QFETCH(QString, mode);
+        QTemporaryDir directory;
+        const auto xyz = directory.filePath("structure.xyz");
+        writeFile(xyz, "2\nhydrogen\nH 0 0 0\nH 0 0 .74\n");
+        QProcess process;
+        startProcess(process, mode);
+        QVERIFY(process.waitForStarted());
+        const auto open = [&] {
+            const QJsonObject args{{"action", "open_directory"}, {"path", directory.path()}};
+            return mode == "--mcp-gui" ? processCommand(process, "results_action", args)["state"] == "done"
+                                       : !failed(processCall(process, "results_action", args, true));
+        };
+        const auto state = [&] { return data(processCall(process, "get_app_state"))["results"].toObject(); };
+        QVERIFY(open());
+        QTRY_COMPARE_WITH_TIMEOUT(state()["source"].toString(), xyz, 10000);
+        QVERIFY(!state()["loading"].toBool());
+        // output.out wins once present, and a failed reload keeps the previous result.
+        const auto log = directory.filePath("output.out");
+        writeFile(log, "NWChem\nTotal SCF energy = -1.1\nTotal times  cpu: 1\n");
+        QVERIFY(open());
+        QTRY_COMPARE_WITH_TIMEOUT(state()["source"].toString(), log, 10000);
+        writeFile(log, "not a result\n");
+        QVERIFY(open());
+        QTRY_VERIFY_WITH_TIMEOUT(!state()["loading"].toBool(), 10000);
+        QCOMPARE(state()["source"].toString(), log);
+        process.closeWriteChannel();
+        QVERIFY(process.waitForFinished(10000));
+        QCOMPARE(process.exitCode(), 0);
+    }
     void headlessCalculationAndResults() {
         QTemporaryDir files;
         const auto modes = files.filePath("modes.molden");

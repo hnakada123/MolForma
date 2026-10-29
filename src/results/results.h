@@ -42,7 +42,9 @@ struct ResultStep {
     int step = 0;
     double energy = 0, deltaE = 0, gmax = 0, grms = 0, xrms = 0, xmax = 0, seconds = 0;
 };
+enum class ResultOutcome { NotApplicable, Incomplete, Normal, Error };
 struct ResultData {
+    ResultOutcome outcome = ResultOutcome::NotApplicable;
     QString source, format, status, log;
     QStringList warnings;
     QVector<ResultFrame> frames;

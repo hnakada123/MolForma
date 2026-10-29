@@ -261,7 +261,7 @@ void MainWindow::buildEditPanel() {
                         2, 2);
     auto *side = button(f, tr("結合の片側を選択"), [this] {
         auto ids = requireSelection(2);
-        setSelection(doc.bondSide(ids[0], ids[1]));
+        setSelection(document().bondSide(ids[0], ids[1]));
     });
     side->setToolTip(tr("2原子の結合で分子を切り分け、後に選んだ原子の側をすべて選択します。"));
     enableWithSelection(side, 2, 2);
@@ -322,16 +322,19 @@ void MainWindow::buildEditPanel() {
         edit(tr("立体配置を記録"), [](Document &d) { recordStereo(d); });
         // The 3D view labels them too: "C1 (S)", "(E)" on the double bond.
         QStringList found;
-        for (int i = 0; i < doc.atoms.size(); ++i)
-            if (!doc.atoms[i].stereo.isEmpty())
-                found << QString("%1%2: %3").arg(doc.atoms[i].element).arg(i + 1).arg(doc.atoms[i].stereo);
-        for (const auto &b : doc.bonds)
+        for (int i = 0; i < document().atoms.size(); ++i)
+            if (!document().atoms[i].stereo.isEmpty())
+                found << QString("%1%2: %3")
+                             .arg(document().atoms[i].element)
+                             .arg(i + 1)
+                             .arg(document().atoms[i].stereo);
+        for (const auto &b : document().bonds)
             if (!b.stereo.isEmpty())
                 found << QString("%1%2=%3%4: %5")
-                             .arg(doc.atom(b.a).element)
-                             .arg(doc.index(b.a) + 1)
-                             .arg(doc.atom(b.b).element)
-                             .arg(doc.index(b.b) + 1)
+                             .arg(document().atom(b.a).element)
+                             .arg(document().index(b.a) + 1)
+                             .arg(document().atom(b.b).element)
+                             .arg(document().index(b.b) + 1)
                              .arg(b.stereo);
         statusBar()->showMessage(found.isEmpty() ? tr("記録する不斉中心・E/Zの二重結合はありません。")
                                                  : tr("立体配置を記録しました: %1").arg(found.join(", ")),
@@ -520,10 +523,10 @@ void MainWindow::showHeldSettings() {
     dialog.setWindowTitle(tr("原子参照と保留設定"));
     dialog.resize(680, 500);
     auto *l = new QVBoxLayout(&dialog);
-    auto *text = new QPlainTextEdit(
-        QString::fromUtf8(QJsonDocument(QJsonObject{{"references", doc.data["references"]},
-                                                    {"invalid_settings", doc.data["invalid_settings"]}})
-                              .toJson()));
+    auto *text = new QPlainTextEdit(QString::fromUtf8(
+        QJsonDocument(QJsonObject{{"references", document().data["references"]},
+                                  {"invalid_settings", document().data["invalid_settings"]}})
+            .toJson()));
     text->setReadOnly(true);
     l->addWidget(text);
     auto *close = new QDialogButtonBox(QDialogButtonBox::Close);
@@ -802,7 +805,7 @@ void MainWindow::buildResiduePanel() {
     button(f, tr("選択した2末端を再連結"), [this] {
         Ids residues;
         for (auto id : requireSelection()) {
-            auto rid = residueForAtom(doc, id);
+            auto rid = residueForAtom(document(), id);
             if (!rid.isEmpty() && !residues.contains(rid))
                 residues << rid;
         }
@@ -838,8 +841,8 @@ void MainWindow::buildResiduePanel() {
     });
     button(f, tr("未登録の原子を選択"), [this] {
         Ids ids;
-        for (const auto &a : doc.atoms)
-            if (residueForAtom(doc, a.id).isEmpty())
+        for (const auto &a : document().atoms)
+            if (residueForAtom(document(), a.id).isEmpty())
                 ids << a.id;
         setSelection(ids);
     });
@@ -862,10 +865,10 @@ void MainWindow::buildResiduePanel() {
             s.replace('"', "\"\"");
             return '"' + s + '"';
         };
-        for (int i = 0; i < doc.atoms.size(); ++i) {
-            const auto &a = doc.atoms[i];
-            auto rid = residueForAtom(doc, a.id);
-            QString name = rid.isEmpty() ? "" : residue(doc, rid)["code"].toString();
+        for (int i = 0; i < document().atoms.size(); ++i) {
+            const auto &a = document().atoms[i];
+            auto rid = residueForAtom(document(), a.id);
+            QString name = rid.isEmpty() ? "" : residue(document(), rid)["code"].toString();
             csv += QString("%1,%2,%3,%4\n").arg(i + 1).arg(quote(a.element), quote(a.name), quote(name));
         }
         writeFile(p, csv.toUtf8());
@@ -1043,7 +1046,7 @@ void MainWindow::buildChargePanel() {
         if (p.isEmpty())
             return;
         QString text = "# MolForma point charges; units=angstrom; x y z q\n";
-        for (auto v : doc.data["point_charges"].toArray()) {
+        for (auto v : document().data["point_charges"].toArray()) {
             auto q = v.toObject();
             Vec xyz = vectorFromJson(q["position"]);
             text += QString("%1 %2 %3 %4\n")
@@ -1062,7 +1065,7 @@ void MainWindow::refreshChargePanel() {
     pointChargeState->setText(nwchemSettings(d)["include_point_charges"].toBool()
                                   ? tr("NWChem入力に含める")
                                   : tr("NWChem入力に含めない"));
-    chargeEditor->setEnabled(!candidate && !worker);
+    chargeEditor->setEnabled(!session.candidate() && !worker);
     if (auto *apply = findChild<QPushButton *>("applyMoleculeFormalCharge"))
         apply->setText(d.hasCenters()
                            ? tr("酸化数と形式電荷の合計（%1）を全電荷に適用").arg(d.expectedCharge())
@@ -1078,7 +1081,7 @@ void MainWindow::refreshChargePanel() {
         text << tr("エラー: %1").arg(error);
     for (const auto &warning : check.warnings)
         text << tr("確認: %1").arg(warning);
-    if (candidate)
+    if (session.candidate())
         text.prepend(tr("未確定候補です。確定・取消後に設定を変更できます。"));
     else if (worker)
         text.prepend(tr("分子の整形中です。終了後に設定を変更できます。"));
@@ -1094,9 +1097,9 @@ void MainWindow::refreshChargePanel() {
     }
 }
 void MainWindow::pdbPreparation() {
-    if (candidate)
+    if (session.candidate())
         fail(tr("先に候補を確定または取消してください。"));
-    if (doc.atoms.isEmpty())
+    if (document().atoms.isEmpty())
         fail(tr("PDBファイルを開いてから診断してください。"));
     QDialog dialog(this);
     dialog.setWindowTitle(tr("PDBの診断・修復"));
@@ -1107,7 +1110,7 @@ void MainWindow::pdbPreparation() {
     layout->addWidget(intro);
     auto *list = new QListWidget;
     layout->addWidget(list);
-    for (auto v : doc.data["residues"].toArray()) {
+    for (auto v : document().data["residues"].toArray()) {
         auto r = v.toObject();
         auto *item = new QListWidgetItem(QString("%1 %2  ·  %3 / %4")
                                              .arg(r["code"].toString())
@@ -1118,13 +1121,14 @@ void MainWindow::pdbPreparation() {
     }
     auto *report = new QPlainTextEdit;
     report->setReadOnly(true);
-    report->setPlainText(structureReport(doc));
+    report->setPlainText(structureReport(document()));
     layout->addWidget(report, 1);
     connect(list, &QListWidget::currentItemChanged, &dialog, [&](QListWidgetItem *item) {
         if (!item)
             return;
         safe([&] {
-            report->setPlainText(residueDiagnostics(doc, item->data(Qt::UserRole).toString()).join('\n'));
+            report->setPlainText(
+                residueDiagnostics(document(), item->data(Qt::UserRole).toString()).join('\n'));
         });
     });
     auto *actions = new QHBoxLayout;
@@ -1139,7 +1143,8 @@ void MainWindow::pdbPreparation() {
         if (!list->currentItem())
             fail(tr("残基を選んでください。"));
         Ids ids;
-        for (auto id : residue(doc, list->currentItem()->data(Qt::UserRole).toString())["atoms"].toObject())
+        for (auto id :
+             residue(document(), list->currentItem()->data(Qt::UserRole).toString())["atoms"].toObject())
             ids << id.toString();
         setSelection(ids);
         dialog.accept();

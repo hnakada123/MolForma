@@ -35,11 +35,15 @@ QJsonObject capabilities(bool tasks = false) {
 // Settings tools refuse only the errors their change brings in. Problems already there (an empty
 // molecule, a multiplicity still to be chosen) are listed by get_nwchem/get_execution and keep other
 // settings editable, as in the GUI.
-void failOnAddedErrors(const QStringList &before, const QStringList &after) {
+void failOnAddedErrors(const ValidationReport &before, const ValidationReport &after) {
+    QSet<QString> existing;
+    for (const auto &d : before.diagnostics)
+        if (d.severity == DiagnosticSeverity::Error)
+            existing.insert(d.identity());
     QStringList added;
-    for (const auto &error : after)
-        if (!before.contains(error))
-            added << error;
+    for (const auto &d : after.diagnostics)
+        if (d.severity == DiagnosticSeverity::Error && !existing.contains(d.identity()))
+            added << d.message;
     if (!added.isEmpty())
         fail(added.join('\n'));
 }
@@ -390,19 +394,16 @@ McpServer::McpServer(McpEditor hooks, McpPolicy rules, QObject *parent)
         fail("Incomplete MCP task hooks");
 }
 void McpServer::resetDocument(const Document &initial) {
-    memory = initial;
-    pending.reset();
-    undo = {memory};
-    undoIndex = 0;
+    session.reset(initial);
 }
 QString McpServer::documentId() const {
     return id;
 }
 Document McpServer::document() const {
-    return editor.document ? editor.document() : memory;
+    return editor.document ? editor.document() : session.document();
 }
 std::optional<Document> McpServer::candidate() const {
-    return editor.candidate ? editor.candidate() : pending;
+    return editor.candidate ? editor.candidate() : session.candidate();
 }
 QString McpServer::revision() const {
     auto c = candidate();
@@ -538,64 +539,21 @@ QJsonObject McpServer::taskResult(const QString &taskId) {
     out["pollIntervalMs"] = 500;
     return out;
 }
-void McpServer::commit(const Document &next) {
-    if (QJsonDocument(memory.project()) == QJsonDocument(next.project()))
-        return;
-    undo.resize(undoIndex + 1);
-    undo.append(next);
-    if (undo.size() > 101)
-        undo.removeFirst();
-    undoIndex = undo.size() - 1;
-    memory = next;
-}
 void McpServer::edit(const QString &name, const std::function<void(Document &)> &operation, bool preview) {
-    auto checked = [&](Document &d) {
-        const auto before = d;
+    const auto checked = [&](Document &d) {
         operation(d);
-        for (const auto &atom : before.atoms)
-            if (atom.fixed && d.contains(atom.id) && d.atom(atom.id).position != atom.position)
-                fail("Fixed atoms cannot move.");
-        validateDocument(d);
+        validateDocument(d); // MCP's input size limits apply in both frontends.
     };
-    if (editor.edit) {
+    if (editor.edit)
         editor.edit(name, checked, preview);
-        return;
-    }
-    if (pending)
-        fail("Confirm or cancel the existing candidate before editing.");
-    Document next = memory;
-    checked(next);
-    if (QJsonDocument(next.project()) == QJsonDocument(memory.project()))
-        return;
-    if (preview)
-        pending = next;
     else
-        commit(next);
+        session.edit(name, checked, preview, true);
 }
 void McpServer::history(const QString &action) {
-    if (editor.history) {
+    if (editor.history)
         editor.history(action);
-        return;
-    }
-    if (action == "confirm") {
-        if (!pending)
-            fail("No candidate to confirm.");
-        commit(*pending);
-        pending.reset();
-    } else if (action == "cancel") {
-        if (!pending)
-            fail("No candidate to cancel.");
-        pending.reset();
-    } else {
-        if (pending)
-            fail("Confirm or cancel the existing candidate before undo/redo.");
-        if (action == "undo" && undoIndex > 0)
-            memory = undo[--undoIndex];
-        else if (action == "redo" && undoIndex + 1 < undo.size())
-            memory = undo[++undoIndex];
-        else
-            fail("No history entry for " + action);
-    }
+    else
+        session.navigate(action);
 }
 QJsonArray McpServer::toolList() const {
     QJsonArray list;
@@ -1048,7 +1006,7 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                 }
             } else if (name == "set_advanced") {
                 const auto settings = args["settings"].toObject();
-                const auto before = validateNwchem(next).errors;
+                const auto before = validateNwchem(next);
                 for (auto it = settings.begin(); it != settings.end(); ++it) {
                     if (std::none_of(nwchemAdvancedOptions().cbegin(), nwchemAdvancedOptions().cend(),
                                      [&](const auto &o) { return o.key == it.key(); }))
@@ -1066,12 +1024,12 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                     setNwchemAdvanced(next, it.key(),
                                       it.value().isNull() ? QJsonValue(QJsonValue::Undefined) : it.value());
                 }
-                failOnAddedErrors(before, validateNwchem(next).errors);
+                failOnAddedErrors(before, validateNwchem(next));
             } else if (name == "set_execution") {
                 const auto settings = args["settings"].toObject();
                 const auto current = executionSettings(next);
                 const auto base = editor.baseDirectory ? editor.baseDirectory() : QDir::currentPath();
-                const auto before = validateExecution(next, base, false).errors;
+                const auto before = validateExecution(next, base, false);
                 for (auto it = settings.begin(); it != settings.end(); ++it) {
                     if (!executionDefaults().contains(it.key()))
                         fail("Unknown execution setting: " + it.key());
@@ -1085,10 +1043,10 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                         policy.checkPath(it.value().toString(), base);
                     setExecutionSetting(next, it.key(), it.value());
                 }
-                failOnAddedErrors(before, validateExecution(next, base, false).errors);
+                failOnAddedErrors(before, validateExecution(next, base, false));
             } else if (name == "set_nwchem") {
-                auto settings = nwchemSettings(next), defaults = nwchemDefaults();
-                const auto before = validateNwchem(next).errors;
+                const auto settings = nwchemSettings(next), defaults = nwchemDefaults();
+                const auto before = validateNwchem(next);
                 const auto requested = args["settings"].toObject();
                 for (auto it = requested.begin(); it != requested.end(); ++it) {
                     if (!defaults.contains(it.key()) || defaults[it.key()].type() != it.value().type())
@@ -1098,13 +1056,12 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                         fail(it.key() + " is additional NWChem input that MolForma does not check; only the "
                                         "user can change it in the calculation tab. Start the server with "
                                         "--mcp-allow-execution-settings to permit it.");
-                    settings[it.key()] = it.value();
+                    setNwchemSetting(next, it.key(), it.value());
                 }
-                next.data["nwchem"] = settings;
                 for (const auto &key : {"charge", "multiplicity"})
                     if (args.contains(key))
-                        next.setJobValue(key, args[key]);
-                failOnAddedErrors(before, validateNwchem(next).errors);
+                        setNwchemSetting(next, key, args[key]);
+                failOnAddedErrors(before, validateNwchem(next));
             }
         },
         args["preview"].toBool(true));

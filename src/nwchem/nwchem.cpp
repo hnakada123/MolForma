@@ -2,6 +2,7 @@
 #include "editing/coordinates.h"
 #include "model/geometry.h"
 #include "model/i18n.h"
+#include "nwchem/input_builder.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_import.h"
 #include "nwchem/nwchem_output.h"
@@ -382,58 +383,11 @@ QString nwchemSectionUnused(const Document &d, const QString &section) {
     return {};
 }
 QJsonObject nwchemDefaults() {
-    return {{"start", "molforma"},
-            {"title", "MolForma calculation"},
-            {"memory_mb", 1024},
-            {"method", "hf"},
-            {"task", "energy"},
-            {"basis", "sto-3g"},
-            {"reference", "auto"},
-            {"functional", "b3lyp"},
-            {"xc_custom", ""},
-            {"dispersion", "none"},
-            {"basis_functions", "auto"},
-            {"basis_overrides", QJsonObject()},
-            {"geometry_units", "angstrom"},
-            {"scf_maxiter", 100},
-            {"scf_convergence", "tight"},
-            {"grid", "fine"},
-            {"relativistic", "none"},
-            {"ri_j", false},
-            {"opt_maxiter", 100},
-            {"opt_convergence", "default"},
-            {"numerical_frequencies", false},
-            {"freeze_core", false},
-            {"cc_maxiter", 50},
-            {"solvent", "none"},
-            {"solvent_name", "dielectric"},
-            {"dielectric", 78.4},
-            {"include_point_charges", false},
-            {"tddft", false},
-            {"tddft_roots", 10},
-            {"tddft_triplets", false},
-            {"tddft_tda", false},
-            {"constraints", QJsonArray()},
-            {"scan_atoms", QJsonArray()},
-            {"scan_start", 1.0},
-            {"scan_end", 2.0},
-            {"scan_steps", 6},
-            {"scan_relaxed", true},
-            {"irc_points", 30},
-            {"irc_stride", 0.1},
-            {"irc_direction", "both"},
-            {"bsse", false},
-            {"followup", false},
-            {"followup_method", "dft"},
-            {"followup_functional", "b3lyp"},
-            {"followup_dispersion", "none"},
-            {"followup_basis", "def2-tzvp"},
-            {"prop_mulliken", false},
-            {"prop_esp", false},
-            {"prop_nmr", false},
-            {"prop_polarizability", false},
-            {"extra_input", ""},
-            {"extra_tasks", ""}};
+    QJsonObject defaults;
+    for (const auto &spec : nwchemSettingSpecs())
+        if (!spec.job)
+            defaults[spec.key] = spec.initial;
+    return defaults;
 }
 QJsonObject nwchemSettings(const Document &d) {
     auto settings = nwchemDefaults();
@@ -516,10 +470,146 @@ QVector<ChoiceSource> choiceSources(const QString &key) {
     return {};
 }
 } // namespace
+const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
+    using Kind = NwchemSettingKind;
+    using Scope = NwchemSettingScope;
+    static const QVector<NwchemSettingSpec> specs = [] {
+        QVector<NwchemSettingSpec> list{
+            {"start", Kind::String, "molforma"},
+            {"title", Kind::String, "MolForma calculation"},
+            {"memory_mb", Kind::Integer, 1024, 64, 1048576},
+            {"charge", Kind::Integer, 0, -1000, 1000},
+            {"multiplicity", Kind::Integer, 1, 1, 1000},
+            {"method", Kind::Choice, "hf"},
+            {"task", Kind::Choice, "energy"},
+            {"basis", Kind::Choice, "sto-3g"},
+            {"reference", Kind::Choice, "auto"},
+            {"functional", Kind::Choice, "b3lyp", 0, 0, 0, Scope::Dft},
+            {"xc_custom", Kind::String, "", 0, 0, 0, Scope::CustomXc},
+            {"dispersion", Kind::Choice, "none", 0, 0, 0, Scope::Dft},
+            {"basis_functions", Kind::Choice, "auto"},
+            {"basis_overrides", Kind::Object, QJsonObject()},
+            {"geometry_units", Kind::Choice, "angstrom"},
+            {"scf_maxiter", Kind::Integer, 100, 1, 10000},
+            {"scf_convergence", Kind::Choice, "tight"},
+            {"grid", Kind::Choice, "fine", 0, 0, 0, Scope::Dft},
+            {"relativistic", Kind::Choice, "none", 0, 0, 0, Scope::Relativistic},
+            {"ri_j", Kind::Flag, false, 0, 0, 0, Scope::Dft},
+            {"opt_maxiter", Kind::Integer, 100, 1, 10000, 0, Scope::Driver},
+            {"opt_convergence", Kind::Choice, "default", 0, 0, 0, Scope::Driver},
+            {"numerical_frequencies", Kind::Flag, false, 0, 0, 0, Scope::Frequency},
+            {"freeze_core", Kind::Flag, false, 0, 0, 0, Scope::Correlation},
+            {"cc_maxiter", Kind::Integer, 50, 1, 10000, 0, Scope::Ccsd},
+            {"solvent", Kind::Choice, "none"},
+            {"solvent_name", Kind::Choice, "dielectric", 0, 0, 0, Scope::Solvent},
+            {"dielectric", Kind::Real, 78.4, 1, 1000, 4, Scope::Dielectric},
+            {"include_point_charges", Kind::Flag, false},
+            {"tddft", Kind::Flag, false, 0, 0, 0, Scope::ExcitedToggle},
+            {"tddft_roots", Kind::Integer, 10, 1, 100, 0, Scope::Excited},
+            {"tddft_triplets", Kind::Flag, false, 0, 0, 0, Scope::Excited},
+            {"tddft_tda", Kind::Flag, false, 0, 0, 0, Scope::Excited},
+            {"constraints", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Driver},
+            {"scan_atoms", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Scan},
+            {"scan_start", Kind::Real, 1.0, -180, 180, 4, Scope::Scan},
+            {"scan_end", Kind::Real, 2.0, -180, 180, 4, Scope::Scan},
+            {"scan_steps", Kind::Integer, 6, 2, 50, 0, Scope::Scan},
+            {"scan_relaxed", Kind::Flag, true, 0, 0, 0, Scope::Scan},
+            {"irc_points", Kind::Integer, 30, 1, 500, 0, Scope::Irc},
+            {"irc_stride", Kind::Real, 0.1, .01, 1, 3, Scope::Irc},
+            {"irc_direction", Kind::Choice, "both", 0, 0, 0, Scope::Irc},
+            {"bsse", Kind::Flag, false},
+            {"followup", Kind::Flag, false, 0, 0, 0, Scope::FollowupToggle},
+            {"followup_method", Kind::Choice, "dft", 0, 0, 0, Scope::Followup},
+            {"followup_functional", Kind::Choice, "b3lyp", 0, 0, 0, Scope::FollowupDft},
+            {"followup_dispersion", Kind::Choice, "none", 0, 0, 0, Scope::FollowupDft},
+            {"followup_basis", Kind::Choice, "def2-tzvp", 0, 0, 0, Scope::Followup},
+            {"prop_mulliken", Kind::Flag, false},
+            {"prop_esp", Kind::Flag, false},
+            {"prop_nmr", Kind::Flag, false},
+            {"prop_polarizability", Kind::Flag, false},
+            {"extra_input", Kind::String, ""},
+            {"extra_tasks", Kind::String, ""}};
+        for (auto &spec : list) {
+            spec.job = spec.key == "charge" || spec.key == "multiplicity";
+            spec.allowDisable = QStringList{"relativistic", "ri_j", "tddft", "followup"}.contains(spec.key);
+            spec.validateUnused = spec.key != "scan_steps";
+            // Atom references and free input belong to a project, not a reusable method.
+            spec.preset =
+                !spec.job &&
+                !QStringList{"start",      "title",      "memory_mb", "geometry_units", "constraints",
+                             "scan_atoms", "scan_start", "scan_end",  "extra_input",    "extra_tasks"}
+                     .contains(spec.key);
+            for (const auto &choice : choiceSources(spec.key))
+                spec.choices << NwchemChoice{choice.value, choice.label};
+        }
+        return list;
+    }();
+    return specs;
+}
+const NwchemSettingSpec &nwchemSettingSpec(const QString &key) {
+    for (const auto &spec : nwchemSettingSpecs())
+        if (spec.key == key)
+            return spec;
+    fail(tr("不明なNWChem設定: %1").arg(key));
+}
+bool nwchemSettingApplies(const NwchemSettingSpec &spec, const QJsonObject &s) {
+    const auto method = s["method"].toString(), task = s["task"].toString();
+    using Scope = NwchemSettingScope;
+    switch (spec.scope) {
+    case Scope::Always:
+        return true;
+    case Scope::Dft:
+        return method == "dft";
+    case Scope::CustomXc:
+        return method == "dft" && s["functional"] == "custom";
+    case Scope::Correlation:
+        return correlated(method);
+    case Scope::Ccsd:
+        return method.startsWith("ccsd");
+    case Scope::Driver:
+        return nwchemDriverTask(s) || task == "irc";
+    case Scope::Frequency:
+        return frequencyTask(task);
+    case Scope::Irc:
+        return task == "irc";
+    case Scope::Scan:
+        return task == "scan";
+    case Scope::FollowupToggle:
+        return optimizationTask(task);
+    case Scope::Followup:
+        return s["followup"].toBool();
+    case Scope::FollowupDft:
+        return s["followup"].toBool() && s["followup_method"] == "dft";
+    case Scope::Solvent:
+        return s["solvent"] != "none";
+    case Scope::Dielectric:
+        return s["solvent"] == "cosmo" && s["solvent_name"] == "dielectric";
+    case Scope::ExcitedToggle:
+        return method == "dft" && task == "energy";
+    case Scope::Excited:
+        return method == "dft" && s["tddft"].toBool();
+    case Scope::Relativistic:
+        return method == "hf" || method == "dft";
+    }
+    return false;
+}
+bool nwchemSettingEditable(const NwchemSettingSpec &spec, const QJsonObject &settings) {
+    return nwchemSettingApplies(spec, settings) || (spec.allowDisable && settings[spec.key] != spec.initial);
+}
+void setNwchemSetting(Document &d, const QString &key, const QJsonValue &value) {
+    const auto &spec = nwchemSettingSpec(key);
+    if (spec.job)
+        d.setJobValue(key, value);
+    else {
+        auto settings = d.data["nwchem"].toObject();
+        settings[key] = value;
+        d.data["nwchem"] = settings;
+    }
+}
 QVector<NwchemChoice> nwchemChoices(const QString &key) {
     QVector<NwchemChoice> result;
-    for (const auto &c : choiceSources(key))
-        result << NwchemChoice{c.value, tr(c.label)};
+    for (const auto &c : nwchemSettingSpec(key).choices)
+        result << NwchemChoice{c.value, translated(c.label)};
     return result;
 }
 QVector<NwchemPreset> nwchemPresets() {
@@ -541,13 +631,9 @@ QVector<NwchemPreset> nwchemPresets() {
 QJsonObject nwchemPresetSettings(const QJsonObject &stored) {
     const auto settings = withBasisFunctions(stored);
     QJsonObject preset;
-    const auto defaults = nwchemDefaults();
-    // Atom references and free input belong to one project, not to a reusable method.
-    const QStringList excluded{"start",      "title",      "memory_mb", "geometry_units", "constraints",
-                               "scan_atoms", "scan_start", "scan_end",  "extra_input",    "extra_tasks"};
-    for (auto it = defaults.begin(); it != defaults.end(); ++it)
-        if (!excluded.contains(it.key()))
-            preset[it.key()] = settings.contains(it.key()) ? settings[it.key()] : it.value();
+    for (const auto &spec : nwchemSettingSpecs())
+        if (spec.preset)
+            preset[spec.key] = settings.contains(spec.key) ? settings[spec.key] : spec.initial;
     preset["advanced"] = nwchemAdvancedPreset(settings["advanced"].toObject());
     return preset;
 }
@@ -601,44 +687,49 @@ bool nwchemNumericalFrequencies(const Document &d) {
 }
 NwchemValidation validateNwchem(const Document &d) {
     NwchemValidation result;
-    result.errors = d.validate();
+    for (const auto &message : d.validate())
+        result.error("geometry.validation", {}, message, {}, 0);
     auto &errors = result.errors;
-    auto &warnings = result.warnings;
     const auto s = nwchemSettings(d);
     const auto advanced = nwchemAdvanced(d);
     auto str = [&](const char *key) { return s[key].toString(); };
-    const auto defaults = nwchemDefaults();
     if (d.data.contains("nwchem") && !d.data["nwchem"].isObject())
-        errors << tr("NWChem設定はオブジェクトである必要があります。");
-    for (auto it = defaults.begin(); it != defaults.end(); ++it) {
-        const auto value = s[it.key()];
-        if (value.type() != it.value().type())
-            errors << tr("設定 %1 の型が不正です。").arg(it.key());
-        const auto choices = choiceSources(it.key());
-        if (!choices.isEmpty() && std::none_of(choices.begin(), choices.end(),
-                                               [&](const auto &c) { return value.toString() == c.value; }))
-            errors << tr("設定 %1 の値「%2」は未対応です。").arg(it.key(), value.toString());
+        result.error("settings.object", "nwchem", tr("NWChem設定はオブジェクトである必要があります。"));
+    for (const auto &spec : nwchemSettingSpecs()) {
+        const auto value = spec.job ? d.job()[spec.key] : s[spec.key];
+        if (value.type() != spec.initial.type())
+            result.error("settings.type", spec.key, tr("設定 %1 の型が不正です。").arg(spec.key));
+        if (!spec.choices.isEmpty() &&
+            std::none_of(spec.choices.begin(), spec.choices.end(),
+                         [&](const auto &c) { return value.toString() == c.value; }))
+            result.error("settings.choice", spec.key,
+                         tr("設定 %1 の値「%2」は未対応です。").arg(spec.key, value.toString()));
+        if (spec.kind == NwchemSettingKind::Integer &&
+            (spec.validateUnused || nwchemSettingApplies(spec, s))) {
+            const double n = value.toDouble();
+            if (!value.isDouble() || !std::isfinite(n) || n < spec.minimum || n > spec.maximum ||
+                std::floor(n) != n)
+                result.error("settings.integer", spec.key,
+                             tr("%1 は %2〜%3 の整数で指定してください。")
+                                 .arg(spec.key)
+                                 .arg(spec.minimum)
+                                 .arg(spec.maximum));
+        }
     }
-    auto integer = [&](const QJsonObject &object, const char *key, int minimum, int maximum) {
-        const auto value = object[key];
-        double n = value.toDouble();
-        if (!value.isDouble() || !std::isfinite(n) || n < minimum || n > maximum || std::floor(n) != n)
-            errors << tr("%1 は %2〜%3 の整数で指定してください。").arg(key).arg(minimum).arg(maximum);
+    const auto outsideRange = [&](const QString &key) {
+        const auto &spec = nwchemSettingSpec(key);
+        const auto value = s[key];
+        const double n = value.toDouble();
+        return !value.isDouble() || !std::isfinite(n) || n < spec.minimum || n > spec.maximum;
     };
-    integer(s, "memory_mb", 64, 1048576);
-    integer(s, "scf_maxiter", 1, 10000);
-    integer(s, "opt_maxiter", 1, 10000);
-    integer(s, "cc_maxiter", 1, 10000);
-    integer(s, "tddft_roots", 1, 100);
-    integer(d.job(), "charge", -1000, 1000);
-    integer(d.job(), "multiplicity", 1, 1000);
     if (!QRegularExpression("^[A-Za-z][A-Za-z0-9_-]{0,63}$").match(str("start")).hasMatch())
-        errors << tr("計算名は英字で始まる英数字・_・- の64文字以内で指定してください。");
+        result.error("start.syntax", "start",
+                     tr("計算名は英字で始まる英数字・_・- の64文字以内で指定してください。"));
     if (str("title").size() > 120 || str("title").contains(QRegularExpression("[\\x00-\\x1f\\x7f\"\\\\;#]")))
-        errors << tr("タイトルは120文字以内で、改行・引用符・\\・;・#を含めず指定してください。");
-    double dielectric = s["dielectric"].toDouble();
-    if (!std::isfinite(dielectric) || dielectric < 1 || dielectric > 1000)
-        errors << tr("誘電率は1〜1000で指定してください。");
+        result.error("title.syntax", "title",
+                     tr("タイトルは120文字以内で、改行・引用符・\\・;・#を含めず指定してください。"));
+    if (outsideRange("dielectric"))
+        result.error("dielectric.range", "dielectric", tr("誘電率は1〜1000で指定してください。"));
     const auto method = str("method"), task = str("task"), basis = str("basis");
     const int mult = d.job()["multiplicity"].toInt(1);
     const int charge = d.job()["charge"].toInt();
@@ -653,7 +744,8 @@ NwchemValidation validateNwchem(const Document &d) {
             known = false;
         }
         if (!known || !libraryBasis(it.value().toString()))
-            errors << tr("元素別の基底「%1: %2」は未対応です。").arg(it.key(), it.value().toString());
+            result.error("basis.override", "basis_overrides",
+                         tr("元素別の基底「%1: %2」は未対応です。").arg(it.key(), it.value().toString()));
     }
     bool nonRelativisticBasis = false;
     for (const auto &a : d.atoms) {
@@ -685,16 +777,21 @@ NwchemValidation validateNwchem(const Document &d) {
         }
     }
     if (!unsupported.isEmpty())
-        errors << tr("基底 %1 の対応元素に含まれません: %2").arg(basis, sorted(unsupported).join(", "));
+        result.error("basis.coverage", "basis",
+                     tr("基底 %1 の対応元素に含まれません: %2").arg(basis, sorted(unsupported).join(", ")));
     if (!realAtoms)
-        errors << tr("実原子を追加してください（ゴーストのみの計算はできません）。");
+        result.error("geometry.empty", QString(),
+                     tr("実原子を追加してください（ゴーストのみの計算はできません）。"), {}, 0);
     result.electrons -= charge;
     if (correlated(method) && advanced.contains("corr_freeze"))
         result.frozenOrbitals = advanced["corr_freeze"].toInt();
     if (result.electrons < 1 || mult > result.electrons + 1 || (result.electrons - mult + 1) % 2 != 0)
-        errors << tr("電子数 %1 と多重度 %2 が整合しません。全電荷または多重度を変更してください。")
-                      .arg(result.electrons)
-                      .arg(mult);
+        result.error(
+            "spin.electrons", "multiplicity",
+            tr("電子数 %1 と多重度 %2 が整合しません。全電荷または多重度を変更してください。")
+                .arg(result.electrons)
+                .arg(mult),
+            DiagnosticFix{"multiplicity", tr("電子数に合う多重度にする"), result.electrons % 2 ? 2 : 1});
     else {
         result.alpha = (result.electrons + mult - 1) / 2;
         result.beta = (result.electrons - mult + 1) / 2;
@@ -703,11 +800,15 @@ NwchemValidation validateNwchem(const Document &d) {
     if (result.reference == "auto")
         result.reference = mult == 1 ? "rhf" : (method == "hf" ? "rohf" : "uhf");
     if (result.reference == "rhf" && mult != 1)
-        errors << tr("RHF / RKSは多重度1で使用してください。開殻には自動または非制限を選択してください。");
+        result.error("reference.closed_shell", "reference",
+                     tr("RHF / RKSは多重度1で使用してください。開殻には自動または非制限を選択してください。"),
+                     DiagnosticFix{"reference", tr("参照波動関数を「自動」にする"), "auto"});
     if ((method == "dft" || method == "mp2") && result.reference == "rohf")
-        errors << tr("このタブのDFT・MP2はROHF参照に対応しません。自動または非制限を選択してください。");
+        result.error("reference.rohf", "reference",
+                     tr("このタブのDFT・MP2はROHF参照に対応しません。自動または非制限を選択してください。"));
     if (method.startsWith("ccsd") && (result.reference != "rhf" || mult != 1 || task != "energy"))
-        errors << tr("CCSD / CCSD(T)は閉殻RHFの一点エネルギーに対応します。");
+        result.error("correlation.reference", "method",
+                     tr("CCSD / CCSD(T)は閉殻RHFの一点エネルギーに対応します。"));
     if (method == "dft") {
         const auto *f = functional(str("functional"));
         const auto custom = str("xc_custom").simplified();
@@ -716,172 +817,212 @@ NwchemValidation validateNwchem(const Document &d) {
             if (custom.isEmpty() || custom.size() > 200 ||
                 str("xc_custom").contains(QRegularExpression("[\\x00-\\x1f\\x7f]")) ||
                 !QRegularExpression("^[A-Za-z0-9_.+\\- ]+$").match(custom).hasMatch())
-                errors << tr("任意のxcは英数字・_・.・+・- と空白の200文字以内で指定してください（例: "
-                             "xpbe96 0.75 cpbe96 1.0 hfexch 0.25）。");
+                result.error("functional.custom", "xc_custom",
+                             tr("任意のxcは英数字・_・.・+・- と空白の200文字以内で指定してください（例: "
+                                "xpbe96 0.75 cpbe96 1.0 hfexch 0.25）。"));
             if (str("dispersion") != "none")
-                errors << tr(
-                    "任意のxcでは分散補正を選べません。NWChemにパラメータがない場合があるためです。");
+                result.error(
+                    "dispersion.custom", "dispersion",
+                    tr("任意のxcでは分散補正を選べません。NWChemにパラメータがない場合があるためです。"),
+                    DiagnosticFix{"dispersion", tr("分散補正を「なし」にする"), "none"});
         } else if (f && ((str("dispersion") == "d3" && !f->d3) || (str("dispersion") == "d3bj" && !f->d3bj)))
-            errors << tr("%1 の%2はNWChemの公表パラメータと一致しないか、パラメータがありません。%3")
-                          .arg(tr(f->label), str("dispersion") == "d3" ? "D3" : "D3(BJ)",
-                               QString(f->value) == "wb97x-d3"
-                                   ? tr("ωB97X-D3はD3を含むため、分散補正は「なし」にしてください。")
-                               : f->d3   ? tr("D3または補正なしを選んでください。")
-                               : f->d3bj ? tr("D3(BJ)または補正なしを選んでください。")
-                                         : tr("補正なしを選んでください。"));
+            result.error("dispersion.parameters", "dispersion",
+                         tr("%1 の%2はNWChemの公表パラメータと一致しないか、パラメータがありません。%3")
+                             .arg(tr(f->label), str("dispersion") == "d3" ? "D3" : "D3(BJ)",
+                                  QString(f->value) == "wb97x-d3"
+                                      ? tr("ωB97X-D3はD3を含むため、分散補正は「なし」にしてください。")
+                                  : f->d3   ? tr("D3または補正なしを選んでください。")
+                                  : f->d3bj ? tr("D3(BJ)または補正なしを選んでください。")
+                                            : tr("補正なしを選んでください。")),
+                         DiagnosticFix{"dispersion", tr("分散補正を「なし」にする"), "none"});
     }
     if (s["tddft"].toBool()) {
         const auto *f = functional(str("functional"));
         if (method != "dft")
-            errors << tr("TDDFTはDFTで使用してください。");
+            result.error("tddft.method", "tddft", tr("TDDFTはDFTで使用してください。"));
         else if (f && f->metaGga)
-            errors << tr("NWChemのTDDFTはメタGGA（%1）に対応しません。B3LYP・PBE0・CAM-"
-                         "B3LYP等を選んでください。")
-                          .arg(tr(f->label));
+            result.error("tddft.functional", "functional",
+                         tr("NWChemのTDDFTはメタGGA（%1）に対応しません。B3LYP・PBE0・CAM-"
+                            "B3LYP等を選んでください。")
+                             .arg(tr(f->label)));
         if (task != "energy")
-            errors << tr(
-                "TDDFTは計算目的「一点エネルギー」で使用してください（励起状態の構造最適化は未対応）。");
+            result.error(
+                "tddft.task", "task",
+                tr("TDDFTは計算目的「一点エネルギー」で使用してください（励起状態の構造最適化は未対応）。"),
+                DiagnosticFix{"task", tr("計算目的を「一点エネルギー」にする"), "energy"});
     }
     if (correlated(method) && result.electrons < 2)
-        errors << tr("相関計算には2個以上の電子が必要です。");
+        result.error("correlation.electrons", "method", tr("相関計算には2個以上の電子が必要です。"));
     if (result.frozenOrbitals &&
         (result.frozenOrbitals > result.beta || result.electrons - 2 * result.frozenOrbitals < 2))
-        errors << tr("内殻凍結後の相関電子が不足します。内殻凍結を解除してください。");
+        result.error("correlation.frozen", "freeze_core",
+                     tr("内殻凍結後の相関電子が不足します。内殻凍結を解除してください。"));
     if (correlated(method) && (s["freeze_core"].toBool() || advanced.contains("corr_freeze")))
-        warnings << tr("内殻凍結: %n 軌道。%1", nullptr, result.frozenOrbitals)
-                        .arg(advanced.contains("corr_freeze")
-                                 ? tr("詳細設定の明示的な軌道数を使用します。")
-                                 : tr("ECP中心とゴーストはfreeze atomicの対象外です。"));
+        result.warning("correlation.freeze_notice", "freeze_core",
+                       tr("内殻凍結: %n 軌道。%1", nullptr, result.frozenOrbitals)
+                           .arg(advanced.contains("corr_freeze")
+                                    ? tr("詳細設定の明示的な軌道数を使用します。")
+                                    : tr("ECP中心とゴーストはfreeze atomicの対象外です。")));
     const auto solvent = str("solvent"), solventName = str("solvent_name");
     if (solvent != "none") {
         const QString model = solvent == "smd" ? "SMD" : "COSMO";
         if (method != "hf" && method != "dft")
-            errors << tr("%1はHFまたはDFTで使用してください。").arg(model);
+            result.error("solvent.method", "solvent", tr("%1はHFまたはDFTで使用してください。").arg(model));
         if (solvent == "smd" && method != "dft")
-            errors << tr("NWChemのSMDはDFT専用です。HFにはCOSMOを使用してください。");
+            result.error("solvent.smd_method", "solvent",
+                         tr("NWChemのSMDはDFT専用です。HFにはCOSMOを使用してください。"),
+                         DiagnosticFix{"solvent", tr("溶媒モデルをCOSMOにする"), "cosmo"});
         if (solvent == "smd" && solventName == "dielectric")
-            errors << tr("SMDでは溶媒名を選んでください（誘電率だけでは非静電項を決められません）。");
+            result.error("solvent.smd_name", "solvent_name",
+                         tr("SMDでは溶媒名を選んでください（誘電率だけでは非静電項を決められません）。"),
+                         DiagnosticFix{"solvent_name", tr("溶媒を水にする"), "h2o"});
         if (ghosts)
-            errors << tr("ゴーストを含む%1入力は未対応です。").arg(model);
+            result.error("solvent.ghosts", "solvent", tr("ゴーストを含む%1入力は未対応です。").arg(model));
         if (method == "hf" && result.reference == "uhf")
-            errors << tr(
-                "NWChemのCOSMOはUHFに対応しません。参照を自動（ROHF）にするか、DFTを選択してください。");
+            result.error(
+                "solvent.uhf", "reference",
+                tr("NWChemのCOSMOはUHFに対応しません。参照を自動（ROHF）にするか、DFTを選択してください。"));
     }
     const auto relativistic = str("relativistic");
     if (relativistic != "none") {
         if (method != "hf" && method != "dft")
-            errors << tr("相対論ハミルトニアンはHFまたはDFTで使用してください。");
+            result.error("relativistic.method", "relativistic",
+                         tr("相対論ハミルトニアンはHFまたはDFTで使用してください。"));
         if (relativistic == "zora" && method != "dft")
-            errors << tr("NWChemのZORAはDFT専用です。HFにはDKHまたはX2Cを選んでください。");
+            result.error("relativistic.zora", "relativistic",
+                         tr("NWChemのZORAはDFT専用です。HFにはDKHまたはX2Cを選んでください。"),
+                         DiagnosticFix{"relativistic", tr("相対論をDKHにする"), "dkh"});
         if (result.ecpElectrons)
-            errors << tr(
-                "相対論ハミルトニアンはECPと併用できません。x2c-SVPall等の全電子基底を選んでください。");
+            result.error(
+                "relativistic.ecp", "basis",
+                tr("相対論ハミルトニアンはECPと併用できません。x2c-SVPall等の全電子基底を選んでください。"));
         else if (nonRelativisticBasis)
-            warnings << tr(
-                "重元素に非相対論の基底を使用しています。x2c-SVPall・SARC等の相対論用の基底を推奨します。");
+            result.warning("relativistic.basis", "basis",
+                           tr("重元素に非相対論の基底を使用しています。x2c-"
+                              "SVPall・SARC等の相対論用の基底を推奨します。"));
     }
     if (s["ri_j"].toBool()) {
         if (method != "dft")
-            errors << tr("RI-J（Coulombフィッティング）はDFTで使用してください。");
+            result.error("ri_j.method", "ri_j", tr("RI-J（Coulombフィッティング）はDFTで使用してください。"),
+                         DiagnosticFix{"ri_j", tr("RI-Jをオフにする"), false});
         if (!unfitted.isEmpty())
-            errors << tr("Weigendのフィッティング基底の対応元素に含まれません: %1")
-                          .arg(sorted(unfitted).join(", "));
-        warnings << tr("RI-J（weigend coulomb fitting）でCoulomb項を近似します。全エネルギーは通常の計算と"
-                       "わずかに異なります。");
+            result.error("ri_j.coverage", "ri_j",
+                         tr("Weigendのフィッティング基底の対応元素に含まれません: %1")
+                             .arg(sorted(unfitted).join(", ")));
+        result.warning("ri_j.approximation", "ri_j",
+                       tr("RI-J（weigend coulomb fitting）でCoulomb項を近似します。全エネルギーは通常の計算と"
+                          "わずかに異なります。"));
     }
     // Internal-coordinate constraints (ZCOORD), scans and reaction paths.
     const auto constraints = s["constraints"].toArray();
     if (constraints.size() > 50)
-        errors << tr("内部座標の拘束は50個までです。");
+        result.error("constraints.count", "constraints", tr("内部座標の拘束は50個までです。"));
     for (int i = 0; i < constraints.size(); ++i) {
         const auto c = constraints[i].toObject();
         const auto ids = idsFromJson(c["atoms"]);
         const auto error = c["value"].isDouble() ? coordinateError(d, ids, c["value"].toDouble())
                                                  : tr("値を数値で指定してください。");
         if (!error.isEmpty())
-            errors << tr("拘束%1: %2").arg(QString::number(i + 1), error);
+            result.error("constraints.coordinate", "constraints",
+                         tr("拘束%1: %2").arg(QString::number(i + 1), error));
     }
     if (!constraints.isEmpty()) {
         if (!optimizationTask(task) && !(task == "scan" && s["scan_relaxed"].toBool()))
-            errors << tr("内部座標の拘束は構造最適化・遷移状態探索・緩和スキャンで使用してください。");
+            result.error("constraints.task", "constraints",
+                         tr("内部座標の拘束は構造最適化・遷移状態探索・緩和スキャンで使用してください。"));
         if (fixed || ghosts)
-            errors << tr(
-                "内部座標の拘束は固定原子・ゴーストと併用できません（NWChemはCartesianの固定と内部座標"
-                "を同時に扱えません）。固定を解除してください。");
-        warnings << tr("拘束付き最適化は内部座標（autoz）で行います。NWChemが内部座標を生成できない構造では"
-                       "拘束を適用できません。");
+            result.error(
+                "constraints.fixed", "constraints",
+                tr("内部座標の拘束は固定原子・ゴーストと併用できません（NWChemはCartesianの固定と内部座標"
+                   "を同時に扱えません）。固定を解除してください。"));
+        result.warning(
+            "constraints.autoz", "constraints",
+            tr("拘束付き最適化は内部座標（autoz）で行います。NWChemが内部座標を生成できない構造では"
+               "拘束を適用できません。"));
         if (frequencyTask(task))
-            warnings << tr(
-                "拘束した構造は停留点ではないため、振動数には虚振動や大きな誤差が出ることがあります。");
+            result.warning(
+                "constraints.frequencies", "constraints",
+                tr("拘束した構造は停留点ではないため、振動数には虚振動や大きな誤差が出ることがあります。"));
     }
     const bool scan = task == "scan";
     if (scan) {
         const auto ids = idsFromJson(s["scan_atoms"]);
-        integer(s, "scan_steps", 2, 50);
         if (ids.isEmpty())
-            errors << tr("スキャンする座標を「1 分子」で2〜4原子選択して指定してください。");
+            result.error("scan.selection", "scan_atoms",
+                         tr("スキャンする座標を「1 分子」で2〜4原子選択して指定してください。"));
         else
             for (const char *key : {"scan_start", "scan_end"}) {
                 const auto error = coordinateError(d, ids, s[key].toDouble());
                 if (!error.isEmpty())
-                    errors << (key == QString("scan_start") ? tr("スキャン開始値: %1")
-                                                            : tr("スキャン終了値: %1"))
-                                  .arg(error);
+                    result.error(
+                        "scan.range", QString::fromLatin1(key),
+                        (key == QString("scan_start") ? tr("スキャン開始値: %1") : tr("スキャン終了値: %1"))
+                            .arg(error));
             }
         if (errors.isEmpty()) {
             try {
                 for (int step = 0; step < s["scan_steps"].toInt(); ++step)
                     scanGeometry(d, s, step);
             } catch (const std::exception &e) {
-                errors << tr("スキャン: %1").arg(QString::fromUtf8(e.what()));
+                result.error("scan.geometry", "scan_atoms",
+                             tr("スキャン: %1").arg(QString::fromUtf8(e.what())));
             }
         }
         if (s["scan_relaxed"].toBool() && (fixed || ghosts))
-            errors << tr(
-                "緩和スキャンは固定原子・ゴーストと併用できません。固定を解除するか、固定スキャンにして"
-                "ください。");
+            result.error(
+                "scan.fixed", "scan_relaxed",
+                tr("緩和スキャンは固定原子・ゴーストと併用できません。固定を解除するか、固定スキャンにして"
+                   "ください。"));
         if (s["scan_relaxed"].toBool())
-            warnings << tr("緩和スキャンでは各点でスキャン座標を固定して最適化します（内部座標・autoz）。");
+            result.warning(
+                "scan.relaxed", "scan_relaxed",
+                tr("緩和スキャンでは各点でスキャン座標を固定して最適化します（内部座標・autoz）。"));
         else
-            warnings << tr(
-                "固定スキャンでは、後に選択した原子の側を動かした構造で一点エネルギーを計算します。");
+            result.warning(
+                "scan.rigid", "scan_relaxed",
+                tr("固定スキャンでは、後に選択した原子の側を動かした構造で一点エネルギーを計算します。"));
     }
     if (task == "irc") {
         if (fixed || ghosts)
-            errors << tr("IRCは固定原子・ゴーストを含む構造に対応しません。");
+            result.error("irc.fixed", "task", tr("IRCは固定原子・ゴーストを含む構造に対応しません。"));
         if (realAtoms < 3)
-            errors << tr("IRCには3個以上の実原子が必要です。");
-        warnings << (str("irc_direction") == "both"
-                         ? tr("IRCは遷移状態の構造から始めてください（遷移状態探索と振動数で虚振動が1つである"
-                              "ことを確認）。"
-                              "初めに遷移状態のHessianを計算し、両方向へ経路を追跡します。")
-                         : tr("IRCは遷移状態の構造から始めてください（遷移状態探索と振動数で虚振動が1つである"
-                              "ことを確認）。"
-                              "初めに遷移状態のHessianを計算し、指定した方向だけ経路を追跡します。"));
+            result.error("irc.atoms", "task", tr("IRCには3個以上の実原子が必要です。"));
+        result.warning(
+            "irc.initial", "irc_direction",
+            (str("irc_direction") == "both"
+                 ? tr("IRCは遷移状態の構造から始めてください（遷移状態探索と振動数で虚振動が1つである"
+                      "ことを確認）。"
+                      "初めに遷移状態のHessianを計算し、両方向へ経路を追跡します。")
+                 : tr("IRCは遷移状態の構造から始めてください（遷移状態探索と振動数で虚振動が1つである"
+                      "ことを確認）。"
+                      "初めに遷移状態のHessianを計算し、指定した方向だけ経路を追跡します。")));
     }
-    integer(s, "irc_points", 1, 500);
-    const double stride = s["irc_stride"].toDouble();
-    if (!std::isfinite(stride) || stride < 0.01 || stride > 1)
-        errors << tr("IRCの刻み幅は0.01〜1で指定してください。");
+    if (outsideRange("irc_stride"))
+        result.error("irc.stride", "irc_stride", tr("IRCの刻み幅は0.01〜1で指定してください。"));
     if (s["tddft"].toBool() && (scan || task == "irc"))
-        errors << tr("TDDFTはスキャン・IRCと併用できません。");
+        result.error("tddft.path", "tddft", tr("TDDFTはスキャン・IRCと併用できません。"));
     // Counterpoise correction of the bonded molecules as monomers.
     if (s["bsse"].toBool()) {
         const auto monomers = bsseMonomers(d);
         if (!QStringList{"energy", "gradient", "optimize"}.contains(task))
-            errors << tr("BSSE補正は一点エネルギー・勾配・構造最適化で使用してください。");
+            result.error("bsse.task", "bsse",
+                         tr("BSSE補正は一点エネルギー・勾配・構造最適化で使用してください。"));
         if (monomers.size() < 2)
-            errors << tr("BSSE補正には結合していない2個以上の分子（単量体）が必要です。");
+            result.error("bsse.monomers", "bsse",
+                         tr("BSSE補正には結合していない2個以上の分子（単量体）が必要です。"));
         if (monomers.size() > 20)
-            errors << tr("BSSE補正の単量体は20個までです。");
+            result.error("bsse.count", "bsse", tr("BSSE補正の単量体は20個までです。"));
         if (ghosts)
-            errors << tr("BSSE補正は単量体ごとのゴーストを自動で作るため、ゴースト中心と併用できません。");
+            result.error(
+                "bsse.ghosts", "bsse",
+                tr("BSSE補正は単量体ごとのゴーストを自動で作るため、ゴースト中心と併用できません。"));
         if (solvent != "none" || s["tddft"].toBool() || anyProperty(s) || s["followup"].toBool())
-            errors << tr("BSSE補正は溶媒・TDDFT・物性計算・後続の一点計算と併用できません。");
+            result.error("bsse.combination", "bsse",
+                         tr("BSSE補正は溶媒・TDDFT・物性計算・後続の一点計算と併用できません。"));
         if (!d.data["point_charges"].toArray().isEmpty() && s["include_point_charges"].toBool())
-            errors << tr("BSSE補正は外部点電荷と併用できません。");
+            result.error("bsse.point_charges", "bsse", tr("BSSE補正は外部点電荷と併用できません。"));
         if (advanced["cube_output"].toBool() || advanced["molden_output"].toBool())
-            errors << tr("BSSE補正の計算ではCUBE・MOLDENを出力できません。");
+            result.error("bsse.output", "bsse", tr("BSSE補正の計算ではCUBE・MOLDENを出力できません。"));
         int total = 0;
         bool openShell = false;
         for (const auto &monomer : monomers) {
@@ -898,127 +1039,163 @@ NwchemValidation validateNwchem(const Document &d) {
             openShell |= electrons % 2 != 0;
         }
         if (monomers.size() >= 2 && total != charge)
-            errors << tr("BSSE補正の単量体の電荷は原子の形式電荷から決めます。全電荷 %1 を形式電荷の合計 %2 "
-                         "に合わせてください。")
-                          .arg(charge)
-                          .arg(total);
+            result.error(
+                "bsse.charge", "charge",
+                tr("BSSE補正の単量体の電荷は原子の形式電荷から決めます。全電荷 %1 を形式電荷の合計 %2 "
+                   "に合わせてください。")
+                    .arg(charge)
+                    .arg(total));
         if (openShell || mult != 1)
-            errors << tr("BSSE補正は閉殻の単量体からなる一重項に対応します。");
+            result.error("bsse.spin", "multiplicity",
+                         tr("BSSE補正は閉殻の単量体からなる一重項に対応します。"));
         if (monomers.size() >= 2)
-            warnings << tr("BSSE補正（counterpoise）: 単量体 %n 個。単量体ごとに相手の基底をゴーストとして"
-                           "計算します。",
-                           nullptr, int(monomers.size()));
+            result.warning("bsse.notice", "bsse",
+                           tr("BSSE補正（counterpoise）: 単量体 %n 個。単量体ごとに相手の基底をゴーストとして"
+                              "計算します。",
+                              nullptr, int(monomers.size())));
     }
     // Molecular properties after the last calculation (the follow-up one if present).
     if (anyProperty(s)) {
         const auto level = s["followup"].toBool() ? s["followup_method"].toString() : method;
         if (level != "hf" && level != "dft")
-            errors << tr("物性計算は最後の計算レベルがHFまたはDFTのときに使用してください。");
+            result.error("properties.method", "prop_mulliken",
+                         tr("物性計算は最後の計算レベルがHFまたはDFTのときに使用してください。"));
         if (scan || task == "irc")
-            errors << tr("物性計算はスキャン・IRCと併用できません。");
+            result.error("properties.path", "prop_mulliken", tr("物性計算はスキャン・IRCと併用できません。"));
         if (ghosts && s["prop_esp"].toBool())
-            errors << tr("ESP電荷はゴースト中心を含む構造に対応しません。");
+            result.error("esp.ghosts", "prop_esp", tr("ESP電荷はゴースト中心を含む構造に対応しません。"));
         if ((s["prop_nmr"].toBool() || s["prop_polarizability"].toBool()) && result.reference == "rohf")
-            errors << tr("NMR・分極率はROHFに対応しません。自動（UHF）またはDFTを選んでください。");
+            result.error("properties.rohf", "reference",
+                         tr("NMR・分極率はROHFに対応しません。自動（UHF）またはDFTを選んでください。"));
         if (s["prop_nmr"].toBool())
-            warnings << tr(
-                "NMR遮蔽定数（GIAO）を計算します。化学シフトには同じ条件の基準物質（TMS等）の値との差を"
-                "使ってください。");
+            result.warning(
+                "nmr.reference", "prop_nmr",
+                tr("NMR遮蔽定数（GIAO）を計算します。化学シフトには同じ条件の基準物質（TMS等）の値との差を"
+                   "使ってください。"));
     }
     if (s["followup"].toBool()) {
         if (!optimizationTask(task))
-            errors << tr("後続の一点計算は構造最適化・遷移状態探索の後に使用してください。");
+            result.error("followup.task", "followup",
+                         tr("後続の一点計算は構造最適化・遷移状態探索の後に使用してください。"));
         if (s["tddft"].toBool())
-            errors << tr("後続の一点計算とTDDFTは併用できません。");
+            result.error("followup.tddft", "followup", tr("後続の一点計算とTDDFTは併用できません。"));
     }
     const QString extraInput = str("extra_input"), extraTasks = str("extra_tasks");
-    for (const auto &[label, text] :
-         {std::pair{tr("追加入力（タスク前）: %1"), extraInput}, {tr("追加入力（末尾）: %1"), extraTasks}})
+    for (const auto &[key, label, text] :
+         {std::tuple{QString("extra_input"), tr("追加入力（タスク前）: %1"), extraInput},
+          std::tuple{QString("extra_tasks"), tr("追加入力（末尾）: %1"), extraTasks}})
         if (const auto error = extraInputError(text); !error.isEmpty())
-            errors << label.arg(error);
+            result.error("extra.syntax", key, label.arg(error));
     if (!extraInput.trimmed().isEmpty() || !extraTasks.trimmed().isEmpty())
-        warnings << tr(
-            "追加入力はMolFormaが検査せずにそのまま出力します。入力プレビューで内容を確認してください。");
+        result.warning(
+            "extra.unchecked",
+            extraInput.trimmed().isEmpty() ? QString("extra_tasks") : QString("extra_input"),
+            tr("追加入力はMolFormaが検査せずにそのまま出力します。入力プレビューで内容を確認してください。"));
     if (frequencyTask(task) && (ghosts || fixed))
-        errors << tr(
-            "固定原子・ゴーストを含む振動数解析は未対応です。固定を解除し、実原子のみで設定してください。");
+        result.error("frequencies.fixed", "task",
+                     tr("固定原子・ゴーストを含む振動数解析は未対応です。固定を解除し、実原子のみで設定してく"
+                        "ださい。"));
     if (frequencyTask(task) && realAtoms < 2)
-        errors << tr("振動数解析には2個以上の実原子が必要です。");
+        result.error("frequencies.atoms", "task", tr("振動数解析には2個以上の実原子が必要です。"));
     if (optimizationTask(task) && realAtoms && !movable)
-        errors << tr("全原子が固定されています。最適化する原子の固定を解除してください。");
+        result.error("optimization.fixed", "task",
+                     tr("全原子が固定されています。最適化する原子の固定を解除してください。"));
     if (optimizationTask(task) && ghosts)
-        warnings << tr("ゴースト中心は核を持たないため、最適化中は固定します（constraints の fix atom）。");
+        result.warning(
+            "optimization.ghosts", "task",
+            tr("ゴースト中心は核を持たないため、最適化中は固定します（constraints の fix atom）。"));
     const bool points = !d.data["point_charges"].toArray().isEmpty();
     if (frequencyTask(task) && points && s["include_point_charges"].toBool())
-        errors << tr("外部点電荷中の振動数解析は未対応です。");
+        result.error("frequencies.point_charges", "include_point_charges",
+                     tr("外部点電荷中の振動数解析は未対応です。"));
     result.numericalFrequencies = nwchemNumericalFrequencies(d);
     if (frequencyTask(task) && result.numericalFrequencies)
-        warnings << tr("振動数には数値Hessianを使用します。複数回の勾配計算を行います。");
+        result.warning("frequencies.numerical", "numerical_frequencies",
+                       tr("振動数には数値Hessianを使用します。複数回の勾配計算を行います。"));
     if (frequencyTask(task) && s["scf_convergence"] == "default")
-        warnings << tr("SCF収束がNWChem既定のため、振動数（特に数値Hessian）の精度が不足することがあります。"
-                       "「厳密」を推奨します。");
+        result.warning(
+            "frequencies.convergence", "scf_convergence",
+            tr("SCF収束がNWChem既定のため、振動数（特に数値Hessian）の精度が不足することがあります。"
+               "「厳密」を推奨します。"));
     if (task == "frequencies")
-        warnings << tr("現在の座標で振動数を計算します。極小構造の確認には先に最適化してください。");
+        result.warning("frequencies.geometry", "task",
+                       tr("現在の座標で振動数を計算します。極小構造の確認には先に最適化してください。"));
     if (saddleTask(task))
-        warnings << tr("遷移状態探索は、反応座標に沿って1方向だけ負の曲率を持つ初期構造から始めてください。"
-                       "振動数で虚振動が1つであることを確認してください。");
+        result.warning(
+            "saddle.initial", "task",
+            tr("遷移状態探索は、反応座標に沿って1方向だけ負の曲率を持つ初期構造から始めてください。"
+               "振動数で虚振動が1つであることを確認してください。"));
     if (result.ecpElectrons)
-        warnings << tr("ECP（%1）を自動指定します（除去する内殻電子: %2）。")
-                        .arg(sorted(ecpLibraries).join(tr("・")), QString::number(result.ecpElectrons));
+        result.warning("basis.ecp", "basis",
+                       tr("ECP（%1）を自動指定します（除去する内殻電子: %2）。")
+                           .arg(sorted(ecpLibraries).join(tr("・")), QString::number(result.ecpElectrons)));
     QSet<bool> conventions{cartesianByConvention(basis)};
     for (const auto &a : d.atoms)
         conventions.insert(cartesianByConvention(elementBasis(s, a.element)));
     if (conventions.size() > 1)
-        warnings << tr("元素別の基底に、共通の基底とd関数の慣例（Cartesian / 球面）が異なるものがあります。"
-                       "basis指示は全元素に共通のため、d・f関数の形式を確認してください。");
+        result.warning(
+            "basis.mixed_convention", "basis_overrides",
+            tr("元素別の基底に、共通の基底とd関数の慣例（Cartesian / 球面）が異なるものがあります。"
+               "basis指示は全元素に共通のため、d・f関数の形式を確認してください。"));
     const auto functions = str("basis_functions");
     if (functions != "auto" && basis != "sto-3g" &&
         (functions == "cartesian") != cartesianByConvention(basis))
-        warnings
-            << (cartesianByConvention(basis)
-                    ? tr("基底 %1 は通常Cartesian（6d）で使用します。文献値と比べる場合はd・f関数の形式を"
-                         "「自動」にしてください。")
-                    : tr("基底 %1 は通常球面調和関数（5d）で使用します。文献値と比べる場合はd・f関数の形式を"
-                         "「自動」にしてください。"))
-                   .arg(basis);
+        result.warning(
+            "basis.convention", "basis_functions",
+            (cartesianByConvention(basis)
+                 ? tr("基底 %1 は通常Cartesian（6d）で使用します。文献値と比べる場合はd・f関数の形式を"
+                      "「自動」にしてください。")
+                 : tr("基底 %1 は通常球面調和関数（5d）で使用します。文献値と比べる場合はd・f関数の形式を"
+                      "「自動」にしてください。"))
+                .arg(basis));
     if (s["tddft"].toBool() && method == "dft" && result.reference == "uhf" && s["tddft_triplets"].toBool())
-        warnings << tr("開殻（UKS）のTDDFTは一重項・三重項を分けずに非制限の励起状態を求めます。");
+        result.warning("tddft.open_shell", "tddft_triplets",
+                       tr("開殻（UKS）のTDDFTは一重項・三重項を分けずに非制限の励起状態を求めます。"));
     if (frequencyTask(task))
         if (const int sigma = rotationalSymmetryNumber(d); sigma > 1)
-            warnings << tr("回転対称数σ=%1と推定されます。noautosymのためNWChemの熱化学はσ=1で計算されます。"
-                           "エントロピーを R ln σ = %2 cal/(mol·K) 小さく、自由エネルギーを RT ln σ = %3 "
-                           "kcal/mol（298.15 K）大きく補正してください。")
-                            .arg(sigma)
-                            .arg(1.987204 * std::log(sigma), 0, 'f', 3)
-                            .arg(0.0019872043 * 298.15 * std::log(sigma), 0, 'f', 3);
+            result.warning(
+                "frequencies.symmetry", "task",
+                tr("回転対称数σ=%1と推定されます。noautosymのためNWChemの熱化学はσ=1で計算されます。"
+                   "エントロピーを R ln σ = %2 cal/(mol·K) 小さく、自由エネルギーを RT ln σ = %3 "
+                   "kcal/mol（298.15 K）大きく補正してください。")
+                    .arg(sigma)
+                    .arg(1.987204 * std::log(sigma), 0, 'f', 3)
+                    .arg(0.0019872043 * 298.15 * std::log(sigma), 0, 'f', 3));
     if (d.hasCenters() && charge != d.expectedCharge())
-        warnings
-            << tr("全電荷 %1 は配位中心の酸化数（補助）と配位子の形式電荷から見込まれる %2 と異なります。")
-                   .arg(charge)
-                   .arg(d.expectedCharge());
+        result.warning(
+            "charge.centers", "charge",
+            tr("全電荷 %1 は配位中心の酸化数（補助）と配位子の形式電荷から見込まれる %2 と異なります。")
+                .arg(charge)
+                .arg(d.expectedCharge()));
     else if (!d.hasCenters() && charge != d.formalCharge())
-        warnings
-            << tr("全電荷 %1 は原子の形式電荷の合計 %2 と異なります。").arg(charge).arg(d.formalCharge());
+        result.warning(
+            "charge.formal", "charge",
+            tr("全電荷 %1 は原子の形式電荷の合計 %2 と異なります。").arg(charge).arg(d.formalCharge()));
     if (points && !s["include_point_charges"].toBool())
-        warnings << tr("保存された点電荷は入力に含めません。必要なら外部点電荷を有効にしてください。");
+        result.warning("point_charges.omitted", "include_point_charges",
+                       tr("保存された点電荷は入力に含めません。必要なら外部点電荷を有効にしてください。"));
     if (!d.data["references"].toArray().isEmpty() || !d.data["invalid_settings"].toArray().isEmpty() ||
         !d.data["assignments"].toObject().isEmpty() || !d.job()["sections"].toObject().isEmpty())
-        warnings << tr("旧形式の詳細・拘束・断片設定は変換しません。NWChem計算条件と原子の固定フラグを使用し"
-                       "ます。");
+        result.warning(
+            "legacy.settings", QString(),
+            tr("旧形式の詳細・拘束・断片設定は変換しません。NWChem計算条件と原子の固定フラグを使用し"
+               "ます。"),
+            {}, 0);
     try {
         if (!d.atoms.isEmpty())
             nwchemGeometry(d,
                            CoordinateUnit::Angstrom); // Also validate isotope masses before enabling export.
     } catch (const std::exception &e) {
-        errors << QString::fromUtf8(e.what());
+        result.error("geometry.invalid", QString(), QString::fromUtf8(e.what()), {}, 0);
     }
     validateNwchemAdvanced(d, result);
     if (s["followup"].toBool() && errors.isEmpty()) {
         const auto next = followupDocument(d);
         const auto check = validateNwchem(next);
-        for (const auto &error : check.errors)
-            if (!errors.contains(error))
-                errors << tr("後続の一点計算: %1").arg(error);
+        for (const auto &diagnostic : check.diagnostics)
+            if (diagnostic.severity == DiagnosticSeverity::Error)
+                result.error("followup." + diagnostic.code, "followup",
+                             tr("後続の一点計算: %1").arg(diagnostic.message));
         const auto ns = nwchemSettings(next);
         QSet<QString> mainEcp, nextEcp;
         for (const auto &a : d.atoms)
@@ -1029,21 +1206,31 @@ NwchemValidation validateNwchem(const Document &d) {
                     nextEcp.insert(a.element);
             }
         if (!mainEcp.isEmpty() && nextEcp.isEmpty())
-            errors << tr(
-                "主計算のECPはNWChemの実行中に残るため、後続の一点計算にもECPを使う基底（def2系・LANL2DZ）"
-                "を選んでください。");
-        warnings << tr("最適化した構造で %1 / %2 の一点エネルギーを計算します。")
-                        .arg(ns["method"] == "dft" ? nwchemFunctionalLabel(ns)
-                                                   : ns["method"].toString().toUpper(),
-                             ns["basis"].toString());
+            result.error(
+                "followup.ecp", "followup_basis",
+                tr("主計算のECPはNWChemの実行中に残るため、後続の一点計算にもECPを使う基底（def2系・LANL2DZ）"
+                   "を選んでください。"));
+        result.warning(
+            "followup.notice", "followup",
+            tr("最適化した構造で %1 / %2 の一点エネルギーを計算します。")
+                .arg(ns["method"] == "dft" ? nwchemFunctionalLabel(ns) : ns["method"].toString().toUpper(),
+                     ns["basis"].toString()));
     }
     errors.removeDuplicates();
     return result;
 }
 namespace {
-// BASIS (and RI-J fitting) blocks for the real and ghost centers, and the ECP block. With
-// allGhosts every element also gets a "bq" entry, for the ghosts NWChem's BSSE module creates.
-QString basisBlocks(const Document &d, const QJsonObject &s, bool allGhosts) {
+void geometryBlocks(NwchemInputBuilder &out, const Document &d, CoordinateUnit unit,
+                    const NwchemGeometryOptions &options, bool cartesianOverride) {
+    const auto part = nwchemGeometryFragment(d, unit, options);
+    NwchemInputBuilder body;
+    const auto end = part.geometry.indexOf('\n') + 1;
+    body.sourced(part.geometry.left(end), {"driver_cartesian"}, cartesianOverride);
+    body.append(part.geometry.mid(end));
+    out.block("geometry", body.result, {}, "driver", {1}, tr("geometry（%n 原子）", nullptr, d.atoms.size()));
+    out.block("constraints", part.constraints, {}, {}, {1});
+}
+void basisBlocks(NwchemInputBuilder &out, const Document &d, const QJsonObject &s, bool allGhosts) {
     const auto basis = s["basis"].toString();
     const bool spherical = s["basis_functions"] == "spherical" ||
                            (s["basis_functions"] == "auto" && !cartesianByConvention(basis));
@@ -1057,8 +1244,6 @@ QString basisBlocks(const Document &d, const QJsonObject &s, bool allGhosts) {
         ghosts.unite(real);
     const auto type = spherical ? QString(" spherical\n") : QString(" cartesian\n");
     QString text = "\nbasis" + type;
-    // With per-element bases every element gets its own line: NWChem would add, not replace,
-    // the shells of a second library entry for an element already covered by "*".
     const bool perElement = std::any_of(real.begin(), real.end(),
                                         [&](const auto &symbol) { return elementBasis(s, symbol) != basis; });
     if (perElement)
@@ -1069,110 +1254,137 @@ QString basisBlocks(const Document &d, const QJsonObject &s, bool allGhosts) {
     for (const auto &symbol : sorted(ghosts))
         text += QString("  bq%1 library %1 \"%2\"\n").arg(symbol, elementBasis(s, symbol));
     text += "end\n";
+    out.block("basis", text, "basis", {}, {2}, perElement ? QString() : "basis \"" + basis + '"');
     if (s["method"] == "dft" && s["ri_j"].toBool()) {
-        text += "\nbasis \"cd basis\"" + type + "  * library \"weigend coulomb fitting\"\n";
+        text = "\nbasis \"cd basis\"" + type + "  * library \"weigend coulomb fitting\"\n";
         for (const auto &symbol : sorted(ghosts))
             text += QString("  bq%1 library %1 \"weigend coulomb fitting\"\n").arg(symbol);
-        text += "end\n";
+        out.block("basis", text + "end\n", "ri_j");
     }
     if (!ecps.isEmpty()) {
-        text += "\necp\n";
+        text = "\necp\n";
         for (const auto &symbol : sorted(ecps))
             text += QString("  %1 library \"%2\"\n").arg(symbol, libraryBasis(elementBasis(s, symbol))->ecp);
-        text += "end\n";
+        out.block("ecp", text + "end\n", "basis");
     }
-    return text;
 }
-// The SCF/DFT block and, for correlated methods, the MP2/CCSD block.
-QString methodBlocks(const Document &d, const QJsonObject &s, const NwchemValidation &check) {
+void methodBlocks(NwchemInputBuilder &out, const Document &d, const QJsonObject &s,
+                  const NwchemValidation &check) {
     const auto advanced = nwchemAdvanced(d);
     auto str = [&](const char *key) { return s[key].toString(); };
     auto integer = [&](const char *key) { return QString::number(s[key].toInt()); };
     const auto method = str("method");
-    // "default" leaves NWChem's own thresholds, apart from those set in the details.
     const bool own = str("scf_convergence") == "default";
     const QString threshold = nwchemScfThreshold(s);
-    QString text;
+    NwchemInputBuilder body;
     if (method == "dft") {
         const auto *f = functional(str("functional"));
-        text += "\ndft\n  xc " +
-                (QString(f->value) == "custom" ? str("xc_custom").simplified() : QString(f->xc)) + '\n';
+        body.append("\ndft\n  xc " +
+                    (QString(f->value) == "custom" ? str("xc_custom").simplified() : QString(f->xc)) + '\n');
         if (*f->extra)
-            text += QString("  ") + f->extra + '\n';
-        text += "  mult " + QString::number(d.job()["multiplicity"].toInt()) + '\n';
+            body.append(QString("  ") + f->extra + '\n');
+        body.append("  mult " + QString::number(d.job()["multiplicity"].toInt()) + '\n');
         if (check.reference == "uhf")
-            text += "  odft\n";
+            body.append("  odft\n");
         QString convergence;
+        QStringList keys;
+        bool overridden = false;
         for (const auto &[key, keyword] :
              {std::pair{"dft_energy", "energy"}, std::pair{"dft_density", "density"},
               std::pair{"dft_gradient", "gradient"}})
-            if (!own || advanced.contains(key))
+            if (!own || advanced.contains(key)) {
                 convergence += QString(" ") + keyword + ' ' + nwchemAdvancedNumber(d, key, threshold);
-        text += "  iterations " + integer("scf_maxiter") + '\n';
+                keys << key;
+                overridden |= advanced.contains(key);
+            }
+        body.append("  iterations " + integer("scf_maxiter") + '\n');
         if (!convergence.isEmpty())
-            text += "  convergence" + convergence + '\n';
-        text += "  grid " + str("grid") + (advanced["dft_grid_nodisk"].toBool() ? " nodisk" : "") + '\n';
-        text += nwchemAdvancedLines(d, "dft") + nwchemAdvancedLines(d, "vectors");
+            body.sourced("  convergence" + convergence + '\n', keys, overridden);
+        body.sourced("  grid " + str("grid") + (advanced["dft_grid_nodisk"].toBool() ? " nodisk" : "") + '\n',
+                     {"dft_grid_nodisk"}, advanced["dft_grid_nodisk"].toBool());
+        body.append(nwchemAdvancedLines(d, "dft"));
+        body.append(nwchemAdvancedLines(d, "vectors"));
         if (str("dispersion") != "none")
-            text += str("dispersion") == "d3" ? "  disp vdw 3\n" : "  disp vdw 4\n";
-        text += "end\n";
+            body.append(str("dispersion") == "d3" ? "  disp vdw 3\n" : "  disp vdw 4\n");
+        body.append("end\n");
+        out.block("dft", body.result, "method", "dft");
     } else {
-        text += "\nscf\n  " + check.reference + "\n  nopen " +
-                QString::number(d.job()["multiplicity"].toInt() - 1) + "\n  maxiter " +
-                integer("scf_maxiter") + '\n';
+        body.append("\nscf\n  " + check.reference + "\n  nopen " +
+                    QString::number(d.job()["multiplicity"].toInt() - 1) + "\n  maxiter " +
+                    integer("scf_maxiter") + '\n');
         if (!own || advanced.contains("scf_thresh"))
-            text += "  thresh " + nwchemAdvancedNumber(d, "scf_thresh", threshold) + '\n';
-        text += nwchemAdvancedLines(d, "scf") + nwchemAdvancedLines(d, "vectors") + "end\n";
+            body.sourced("  thresh " + nwchemAdvancedNumber(d, "scf_thresh", threshold) + '\n',
+                         {"scf_thresh"}, advanced.contains("scf_thresh"));
+        body.append(nwchemAdvancedLines(d, "scf"));
+        body.append(nwchemAdvancedLines(d, "vectors"));
+        body.append("end\n");
+        out.block("scf", body.result, "method", "scf");
         if (correlated(method)) {
-            text += method == "mp2" ? "\nmp2\n" : "\nccsd\n";
-            text += "  freeze " +
-                    nwchemAdvancedNumber(d, "corr_freeze", s["freeze_core"].toBool() ? "atomic" : "0") + '\n';
-            if (method != "mp2")
-                text += "  maxiter " + integer("cc_maxiter") + "\n  thresh " +
-                        nwchemAdvancedNumber(d, "cc_thresh", "1e-7") + '\n';
-            text += nwchemAdvancedLines(d, "correlation");
-            text += "end\n";
+            NwchemInputBuilder correlation;
+            correlation.append(method == "mp2" ? "\nmp2\n" : "\nccsd\n");
+            correlation.sourced(
+                "  freeze " +
+                    nwchemAdvancedNumber(d, "corr_freeze", s["freeze_core"].toBool() ? "atomic" : "0") + '\n',
+                {"corr_freeze"}, advanced.contains("corr_freeze"));
+            if (method != "mp2") {
+                correlation.append("  maxiter " + integer("cc_maxiter") + '\n');
+                correlation.sourced("  thresh " + nwchemAdvancedNumber(d, "cc_thresh", "1e-7") + '\n',
+                                    {"cc_thresh"}, advanced.contains("cc_thresh"));
+            }
+            correlation.append(nwchemAdvancedLines(d, "correlation"));
+            correlation.append("end\n");
+            out.block(method == "mp2" ? "mp2" : "ccsd", correlation.result, "method", "correlation");
         }
     }
-    return text;
 }
 QString theoryOf(const QString &method) {
     return method == "hf" ? "scf" : method;
 }
+void extraInput(NwchemInputBuilder &out, const QString &text, const QString &key) {
+    if (text.trimmed().isEmpty())
+        return;
+    NwchemInputBuilder body;
+    body.sourced("\n# Additional input (not checked by MolForma)\n" + text.trimmed() + '\n', {key}, false,
+                 true);
+    // Free-form input is one opaque region, even if it contains nested blocks or repeated directives.
+    out.block("additional", body.result, key, {}, {2}, text.trimmed().section('\n', 0, 0));
+}
 } // namespace
-QString nwchemInput(const Document &d) {
+NwchemGeneratedInput generateNwchemInput(const Document &d) {
     const auto check = validateNwchem(d);
     if (!check.errors.isEmpty())
         fail(check.errors.join('\n'));
-    const auto s = nwchemSettings(d);
-    const auto advanced = nwchemAdvanced(d);
+    const auto s = nwchemSettings(d), advanced = nwchemAdvanced(d);
     auto str = [&](const char *key) { return s[key].toString(); };
     auto integer = [&](const char *key) { return QString::number(s[key].toInt()); };
     const auto method = str("method"), task = str("task");
     const auto unit = str("geometry_units") == "bohr" ? CoordinateUnit::Bohr : CoordinateUnit::Angstrom;
     const double scale = coordinateScale(unit);
     const bool scan = task == "scan", relaxedScan = scan && s["scan_relaxed"].toBool();
-    QString text = "# Generated by MolForma for NWChem\nstart " + str("start") + '\n';
+    NwchemInputBuilder out;
+    out.append("# Generated by MolForma for NWChem\n");
+    out.block("start", "start " + str("start") + '\n', "start");
     if (!str("title").isEmpty())
-        text += "title \"" + str("title") + "\"\n";
-    text += "memory total " + integer("memory_mb") + " mb\n";
-    text += nwchemAdvancedLines(d, "files");
-    text += "charge " + QString::number(d.job()["charge"].toInt()) + "\n\n";
+        out.block("title", "title \"" + str("title") + "\"\n", "title");
+    out.block("memory", "memory total " + integer("memory_mb") + " mb\n", "memory_mb", {}, {3});
+    out.append(nwchemAdvancedLines(d, "files"));
+    out.block("charge", "charge " + QString::number(d.job()["charge"].toInt()) + '\n', "charge");
+    out.append("\n");
     if (!scan) {
         Document geometry = d;
         if (optimizationTask(task))
             for (auto &a : geometry.atoms)
-                a.fixed |= a.ghost; // Ghost centers carry no nucleus; the driver would pull them around.
+                a.fixed |= a.ghost;
         NwchemGeometryOptions options;
         if (optimizationTask(task))
             options.zcoord = constraintLines(d, s, scale);
         options.autoz = nwchemAutoz(d);
-        text += nwchemGeometry(geometry, unit, false, options);
+        geometryBlocks(out, geometry, unit, options,
+                       advanced["driver_cartesian"].toBool() && optimizationTask(task));
     }
-    text += basisBlocks(d, s, s["bsse"].toBool());
+    basisBlocks(out, d, s, s["bsse"].toBool());
     if (s["include_point_charges"].toBool() && !d.data["point_charges"].toArray().isEmpty()) {
-        // Point-charge coordinates always remain in angstrom, independently of GEOMETRY units.
-        text += "\nbq units angstrom\n";
+        QString text = "\nbq units angstrom\n";
         for (const auto &value : d.data["point_charges"].toArray()) {
             const auto p = value.toObject();
             const auto xyz = vectorFromJson(p["position"]);
@@ -1180,62 +1392,74 @@ QString nwchemInput(const Document &d) {
                         .arg(shortest(xyz.x()), shortest(xyz.y()), shortest(xyz.z()),
                              shortest(p["charge"].toDouble()));
         }
-        text += "end\n";
+        out.block("bq", text + "end\n", "include_point_charges", {}, {1, 2});
     }
     if (const auto relativistic = str("relativistic"); relativistic != "none")
-        text += "\nrelativistic\n" +
-                QString(relativistic == "zora"  ? "  zora on\n"
-                        : relativistic == "dkh" ? "  douglas-kroll dkh\n"
-                                                : "  x2c on\n") +
-                "end\n";
-    text += methodBlocks(d, s, check);
+        out.block("relativistic",
+                  "\nrelativistic\n" +
+                      QString(relativistic == "zora"  ? "  zora on\n"
+                              : relativistic == "dkh" ? "  douglas-kroll dkh\n"
+                                                      : "  x2c on\n") +
+                      "end\n",
+                  "relativistic");
+    methodBlocks(out, d, s, check);
     if (str("solvent") != "none") {
-        text += "\ncosmo\n";
+        NwchemInputBuilder body;
+        body.append("\ncosmo\n");
         if (str("solvent") == "smd")
-            text += "  do_cosmo_smd true\n";
-        if (str("solvent_name") == "dielectric")
-            text += "  dielec " + shortest(s["dielectric"].toDouble()) + '\n';
-        else
-            text += "  solvent " + str("solvent_name") + '\n';
-        text += nwchemAdvancedLines(d, "cosmo") + "end\n";
+            body.append("  do_cosmo_smd true\n");
+        body.append(str("solvent_name") == "dielectric"
+                        ? "  dielec " + shortest(s["dielectric"].toDouble()) + '\n'
+                        : "  solvent " + str("solvent_name") + '\n');
+        body.append(nwchemAdvancedLines(d, "cosmo"));
+        body.append("end\n");
+        out.block("cosmo", body.result, "solvent", "cosmo");
     }
     if (method == "dft" && s["tddft"].toBool()) {
-        // Vertical excitations from the ground state: closed shells give singlets (and triplets on
-        // request), open shells unrestricted states. "cis" selects the Tamm-Dancoff approximation.
-        text += "\ntddft\n  nroots " + integer("tddft_roots") + '\n';
+        QString text = "\ntddft\n  nroots " + integer("tddft_roots") + '\n';
         if (check.reference == "rhf" && !s["tddft_triplets"].toBool())
             text += "  notriplet\n";
         if (s["tddft_tda"].toBool())
             text += "  cis\n";
-        text += "end\n";
+        out.block("tddft", text + "end\n", "tddft");
     }
-    if (nwchemDriverTask(s))
-        text += "\ndriver\n  maxiter " + integer("opt_maxiter") + "\n  " + str("opt_convergence") + '\n' +
-                nwchemAdvancedLines(d, "driver") + "end\n";
+    if (nwchemDriverTask(s)) {
+        NwchemInputBuilder body;
+        body.append("\ndriver\n  maxiter " + integer("opt_maxiter") + "\n  " + str("opt_convergence") + '\n');
+        body.append(nwchemAdvancedLines(d, "driver"));
+        body.append("end\n");
+        out.block("driver", body.result, "opt_maxiter", "driver");
+    }
     if (frequencyTask(task)) {
         const auto lines = nwchemAdvancedLines(d, "frequency");
-        if (!lines.isEmpty())
-            text += "\nfreq\n" + lines + "end\n";
+        if (!lines.text.isEmpty()) {
+            NwchemInputBuilder body;
+            body.sourced("\nfreq\n", {"frequency"}, true);
+            body.append(lines);
+            body.sourced("end\n", {"frequency"}, true);
+            out.block("freq", body.result, {}, "frequency");
+        }
         if (!check.numericalFrequencies && advanced.contains("hessian_thresh"))
-            text += "\nhessian\n  thresh " + nwchemAdvancedNumber(d, "hessian_thresh", "1e-6") + "\nend\n";
+            out.advancedBlock("hessian",
+                              "\nhessian\n  thresh " + nwchemAdvancedNumber(d, "hessian_thresh", "1e-6") +
+                                  "\nend\n",
+                              {"hessian_thresh"}, "frequency");
     }
     if (task == "irc") {
-        // Gonzalez–Schlegel steps along the transition vector, forward and backward from the start
-        // unless one direction is chosen.
         const auto direction = s["irc_direction"].toString();
-        text += "\nmepgs\n  maxmep " + integer("irc_points") + "\n  maxiter " + integer("opt_maxiter") +
-                "\n  stride " + shortest(s["irc_stride"].toDouble()) +
-                (direction == "both" ? QString() : "\n  " + direction) + "\nend\n";
+        out.block("mepgs",
+                  "\nmepgs\n  maxmep " + integer("irc_points") + "\n  maxiter " + integer("opt_maxiter") +
+                      "\n  stride " + shortest(s["irc_stride"].toDouble()) +
+                      (direction == "both" ? QString() : "\n  " + direction) + "\nend\n",
+                  "irc_points");
     }
     if (s["bsse"].toBool()) {
-        text += "\nbsse\n";
+        QString text = "\nbsse\n";
         const auto monomers = bsseMonomers(d);
         for (int i = 0; i < monomers.size(); ++i) {
-            QStringList numbers;
+            QStringList numbers, lines;
             for (const auto &id : monomers[i])
                 numbers << QString::number(d.index(id) + 1);
-            // Continue long atom lists with a backslash, as for the fixed atoms.
-            QStringList lines;
             for (int k = 0; k < numbers.size(); k += 16)
                 lines << numbers.mid(k, 16).join(' ');
             text += QString("  mon m%1 %2\n  charge %3\n  mult 1\n")
@@ -1243,12 +1467,12 @@ QString nwchemInput(const Document &d) {
                         .arg(lines.join(" \\\n    "))
                         .arg(monomerCharge(d, monomers[i]));
         }
-        text += "end\n";
+        out.block("bsse", text + "end\n", "bsse");
     }
-    if (!str("extra_input").trimmed().isEmpty())
-        text += "\n# Additional input (not checked by MolForma)\n" + str("extra_input").trimmed() + '\n';
+    extraInput(out, str("extra_input"), "extra_input");
     const QString theory = theoryOf(method);
-    text += '\n';
+    out.append("\n");
+    auto taskLine = [&](const QString &value) { out.block("task", value, "task"); };
     if (scan) {
         const auto ids = idsFromJson(s["scan_atoms"]);
         const int points = s["scan_steps"].toInt();
@@ -1259,235 +1483,79 @@ QString nwchemInput(const Document &d) {
             options.constraints = false;
             if (relaxedScan)
                 options.zcoord = constraintLines(d, s, scale) << zcoordLine(d, ids, value, scale, "mfscan");
-            // The title marks each point in the log, so results can be read back per point.
-            text += QString("\ntitle \"MolForma scan %1/%2 %3 = %4\"\n")
-                        .arg(step + 1)
-                        .arg(points)
-                        .arg(zcoordLine(d, ids, value, 1, "").section(' ', 0, ids.size()), shortest(value));
-            text += nwchemGeometry(scanGeometry(d, s, step), unit, false, options);
-            text += "set geometry " + options.name + "\ntask " + theory +
-                    (relaxedScan ? " optimize\n" : " energy\n");
+            out.block("title",
+                      QString("\ntitle \"MolForma scan %1/%2 %3 = %4\"\n")
+                          .arg(step + 1)
+                          .arg(points)
+                          .arg(zcoordLine(d, ids, value, 1, "").section(' ', 0, ids.size()), shortest(value)),
+                      "scan_steps");
+            geometryBlocks(out, scanGeometry(d, s, step), unit, options, false);
+            out.block("set", "set geometry " + options.name + '\n', "scan_steps");
+            taskLine("task " + theory + (relaxedScan ? " optimize\n" : " energy\n"));
         }
     } else if (task == "irc")
-        text += "task " + theory + " mepgs\n";
+        taskLine("task " + theory + " mepgs\n");
     else {
         if (optimizationTask(task))
-            text += "task " + theory + (saddleTask(task) ? " saddle\n" : " optimize\n");
-        if (frequencyTask(task))
-            text +=
-                "task " + theory + " frequencies" + (check.numericalFrequencies ? " numerical" : "") + '\n';
-        else if (method == "dft" && s["tddft"].toBool())
-            text += "task tddft energy\n";
+            taskLine("task " + theory + (saddleTask(task) ? " saddle\n" : " optimize\n"));
+        if (frequencyTask(task)) {
+            NwchemInputBuilder body;
+            body.sourced("task " + theory + " frequencies" +
+                             (check.numericalFrequencies ? " numerical" : "") + '\n',
+                         {"numerical_frequencies"});
+            out.block("task", body.result, "task");
+        } else if (method == "dft" && s["tddft"].toBool())
+            taskLine("task tddft energy\n");
         else if (!optimizationTask(task))
-            text += "task " + theory + ' ' + task + '\n';
+            taskLine("task " + theory + ' ' + task + '\n');
     }
     Document last = d;
     auto lastCheck = check;
     if (s["followup"].toBool()) {
-        // NWChem keeps every setting in its runtime database: clear the method blocks so options of
-        // the first level (CAM parameters, dispersion, convergence) do not leak into the second.
         last = followupDocument(d);
         const auto ns = nwchemSettings(last);
         lastCheck = validateNwchem(last);
-        const auto &next = lastCheck;
-        text += "\n# Follow-up single point at the optimized structure\nunset scf:*\nunset dft:*\n";
+        out.append("\n# Follow-up single point at the optimized structure\n");
+        out.block("unset", "unset scf:*\n", "followup");
+        out.block("unset", "unset dft:*\n", "followup");
         if (correlated(ns["method"].toString()))
-            text += ns["method"] == "mp2" ? "unset mp2:*\n" : "unset ccsd:*\n";
-        text += basisBlocks(last, ns, false) + methodBlocks(last, ns, next);
-        text += "\ntask " + theoryOf(ns["method"].toString()) + " energy\n";
+            out.block("unset", ns["method"] == "mp2" ? QString("unset mp2:*\n") : QString("unset ccsd:*\n"),
+                      "followup");
+        NwchemInputBuilder next;
+        basisBlocks(next, last, ns, false);
+        methodBlocks(next, last, ns, lastCheck);
+        for (auto &block : next.result.outline.blocks) {
+            if (block.setting == "basis")
+                block.setting = "followup_basis";
+            else if (block.setting == "method")
+                block.setting = "followup_method";
+        }
+        out.append(next.result);
+        out.block("task", "\ntask " + theoryOf(ns["method"].toString()) + " energy\n", "followup");
     }
     if (anyProperty(s)) {
         const auto level = theoryOf(nwchemSettings(last)["method"].toString());
         if (s["prop_mulliken"].toBool() || s["prop_nmr"].toBool() || s["prop_polarizability"].toBool()) {
-            text += "\nproperty\n";
+            QString text = "\nproperty\n";
             if (s["prop_mulliken"].toBool())
                 text += "  mulliken\n";
             if (s["prop_nmr"].toBool())
                 text += "  shielding\n";
             if (s["prop_polarizability"].toBool())
-                text += "  aoresponse 1 0.0\n"; // Static dipole polarizability.
-            text += "end\ntask " + level + " property\n";
+                text += "  aoresponse 1 0.0\n";
+            out.block("property", text + "end\n", "prop_mulliken");
+            out.block("task", "task " + level + " property\n", "prop_mulliken");
         }
-        if (s["prop_esp"].toBool())
-            text += "\nesp\n  restrain\nend\ntask esp\n";
+        if (s["prop_esp"].toBool()) {
+            out.block("esp", "\nesp\n  restrain\nend\n", "prop_esp");
+            out.block("task", "task esp\n", "prop_esp");
+        }
     }
-    text += nwchemOutputLines(last, lastCheck);
-    if (!str("extra_tasks").trimmed().isEmpty())
-        text += "\n# Additional input (not checked by MolForma)\n" + str("extra_tasks").trimmed() + '\n';
-    return text;
+    out.append(nwchemOutputLines(last, lastCheck));
+    extraInput(out, str("extra_tasks"), "extra_tasks");
+    return out.result;
 }
-namespace {
-// Lines of `input` that a shortest edit script from `base` inserts (Myers' O(ND) diff, after the
-// common head and tail). Settings change a few lines; a larger difference marks nothing.
-QVector<bool> insertedLines(const QStringList &input, const QStringList &base) {
-    QVector<bool> inserted(input.size(), false);
-    int start = 0, endA = input.size(), endB = base.size();
-    while (start < endA && start < endB && input[start] == base[start])
-        ++start;
-    while (endA > start && endB > start && input[endA - 1] == base[endB - 1])
-        --endA, --endB;
-    const int n = endB - start, m = endA - start; // x walks the base, y the input.
-    if (m == 0)
-        return inserted;
-    if (n == 0) {
-        std::fill(inserted.begin() + start, inserted.begin() + endA, true);
-        return inserted;
-    }
-    const int offset = n + m, limit = std::min(n + m, 2000);
-    QVector<int> v(2 * offset + 2, 0);
-    QVector<QVector<int>> trace;
-    for (int d = 0; d <= limit; ++d) {
-        trace.append(v);
-        for (int k = -d; k <= d; k += 2) {
-            const bool down = k == -d || (k != d && v[offset + k - 1] < v[offset + k + 1]);
-            int x = down ? v[offset + k + 1] : v[offset + k - 1] + 1, y = x - k;
-            while (x < n && y < m && base[start + x] == input[start + y])
-                ++x, ++y;
-            v[offset + k] = x;
-            if (x < n || y < m)
-                continue;
-            // Back from the end: each step down of the path inserts one input line.
-            for (int step = d; step > 0; --step) {
-                const auto &before = trace[step];
-                const int key = x - y;
-                const bool fromAbove =
-                    key == -step || (key != step && before[offset + key - 1] < before[offset + key + 1]);
-                const int previous = fromAbove ? key + 1 : key - 1;
-                const int px = before[offset + previous], py = px - previous;
-                if (fromAbove)
-                    inserted[start + py] = true;
-                x = px;
-                y = py;
-            }
-            return inserted;
-        }
-    }
-    return QVector<bool>(input.size(), false);
-}
-QStringList generatedLines(const Document &d) {
-    try {
-        return nwchemInput(d).split('\n');
-    } catch (const std::exception &) {
-        return {};
-    }
-}
-} // namespace
-NwchemInputOutline nwchemInputOutline(const Document &d, const QString &input) {
-    NwchemInputOutline outline;
-    if (input.isEmpty())
-        return outline;
-    const auto lines = input.split('\n');
-    auto plain = d;
-    resetNwchemAdvanced(plain);
-    auto bare = d;
-    auto s = bare.data["nwchem"].toObject();
-    s.remove("extra_input");
-    s.remove("extra_tasks");
-    bare.data["nwchem"] = s;
-    for (auto [document, marks] : {std::pair{&plain, &outline.advanced}, std::pair{&bare, &outline.extra}}) {
-        const auto base = generatedLines(*document);
-        if (base.isEmpty())
-            continue;
-        const auto inserted = insertedLines(lines, base);
-        for (int i = 0; i < inserted.size(); ++i)
-            if (inserted[i] && !lines[i].trimmed().isEmpty())
-                marks->insert(i);
-    }
-    // Where each keyword is set: a tab and a setting of it, or a group of the details of "2 計算条件".
-    static const QHash<QString, std::pair<int, const char *>> sources{{"start", {2, "start"}},
-                                                                      {"title", {2, "title"}},
-                                                                      {"memory", {3, "memory_mb"}},
-                                                                      {"charge", {2, "charge"}},
-                                                                      {"geometry", {1, ""}},
-                                                                      {"constraints", {1, ""}},
-                                                                      {"basis", {2, "basis"}},
-                                                                      {"ecp", {2, "basis"}},
-                                                                      {"bq", {1, ""}},
-                                                                      {"relativistic", {2, "relativistic"}},
-                                                                      {"scf", {2, "method"}},
-                                                                      {"dft", {2, "method"}},
-                                                                      {"mp2", {2, "method"}},
-                                                                      {"ccsd", {2, "method"}},
-                                                                      {"cosmo", {2, "solvent"}},
-                                                                      {"tddft", {2, "tddft"}},
-                                                                      {"driver", {2, "opt_maxiter"}},
-                                                                      {"mepgs", {2, "irc_points"}},
-                                                                      {"bsse", {2, "bsse"}},
-                                                                      {"property", {2, "prop_mulliken"}},
-                                                                      {"esp", {2, "prop_esp"}},
-                                                                      {"unset", {2, "followup"}},
-                                                                      {"set", {2, "task"}},
-                                                                      {"task", {2, "task"}}};
-    static const QHash<QString, QString> groups{{"scf", "scf"},
-                                                {"dft", "dft"},
-                                                {"mp2", "correlation"},
-                                                {"ccsd", "correlation"},
-                                                {"driver", "driver"},
-                                                {"freq", "frequency"},
-                                                {"hessian", "frequency"},
-                                                {"cosmo", "cosmo"},
-                                                {"geometry", "driver"},
-                                                {"property", "visualization"},
-                                                {"dplot", "visualization"},
-                                                {"task", "visualization"},
-                                                {"echo", "files"},
-                                                {"scratch_dir", "files"},
-                                                {"permanent_dir", "files"},
-                                                {"memory", "files"}};
-    static const QRegularExpression atomLine(R"(^\s+\S+(?:\s+[-+0-9.eE]+){3}\s*$)");
-    for (int i = 0; i < lines.size(); ++i) {
-        const auto &line = lines[i];
-        if (line.isEmpty() || line[0].isSpace() || line.startsWith('#') || line == "end")
-            continue;
-        NwchemInputBlock block;
-        block.line = i;
-        block.keyword = line.section(' ', 0, 0).toLower();
-        int last = i;
-        // A block: indented lines up to an "end" of its own.
-        if (i + 1 < lines.size() && !lines[i + 1].isEmpty() && lines[i + 1][0].isSpace())
-            for (int j = i + 1; j < lines.size(); ++j) {
-                if (lines[j] == "end") {
-                    last = j;
-                    break;
-                }
-                if (lines[j].isEmpty() || !lines[j][0].isSpace())
-                    break;
-                last = j;
-            }
-        block.lines = last - i + 1;
-        block.title = line.trimmed();
-        if (block.keyword == "geometry") {
-            int atoms = 0;
-            for (int j = i + 1; j <= last; ++j)
-                atoms += atomLine.match(lines[j]).hasMatch();
-            block.title = tr("geometry（%n 原子）", nullptr, atoms);
-        } else if (block.keyword == "basis") // The library of the common basis, if there is one.
-            for (int j = i + 1; j <= last; ++j)
-                if (lines[j].startsWith("  * library "))
-                    block.title = "basis " + lines[j].mid(12).trimmed();
-        int advanced = 0, extra = 0;
-        for (int j = i; j <= last; ++j) {
-            advanced += outline.advanced.contains(j);
-            extra += outline.extra.contains(j);
-        }
-        const auto source = sources.value(block.keyword, {2, ""});
-        if (extra == block.lines) {
-            block.tabs = {2};
-            block.setting = "extra_input";
-        } else if (advanced == block.lines) {
-            block.tabs = {2};
-            block.group = groups.value(block.keyword, "files");
-        } else {
-            block.tabs = {source.first};
-            block.setting = source.second;
-            if (block.keyword == "bq" || (advanced && source.first != 2))
-                block.tabs << 2; // Point charges are included there; the details are part of it.
-            if (advanced)
-                block.group = groups.value(block.keyword, "files");
-        }
-        outline.blocks << block;
-        i = last;
-    }
-    return outline;
+QString nwchemInput(const Document &d) {
+    return generateNwchemInput(d).text;
 }
 } // namespace mf

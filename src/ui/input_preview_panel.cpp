@@ -447,9 +447,10 @@ void InputPreviewPanel::rebuildOutline() {
                                      .arg(source.tab)
                                      .arg(details ? "_details" : ""));
             badge->setText(details ? tr("詳") : QString::number(source.tab));
-            badge->setProperty("source", details                           ? "advanced"
-                                         : source.setting == "extra_input" ? "extra"
-                                                                           : "tab");
+            badge->setProperty(
+                "source", details                                                                ? "advanced"
+                          : (source.setting == "extra_input" || source.setting == "extra_tasks") ? "extra"
+                                                                                                 : "tab");
             const auto where = tabName(source.tab);
             badge->setToolTip(details ? tr("「%1」の詳細設定で編集").arg(where)
                                       : tr("「%1」で編集").arg(where));
@@ -496,7 +497,7 @@ void InputPreviewPanel::followCursor() {
                 if (g.value == source.group)
                     text = tr("%1 › 詳細設定（%2）")
                                .arg(text, g.value == "visualization" ? QString("CUBE / MOLDEN") : g.label);
-        } else if (source.setting == "extra_input")
+        } else if ((source.setting == "extra_input" || source.setting == "extra_tasks"))
             text = tr("%1 › 追加入力").arg(text);
         else if (source.tab == 2 && !source.setting.isEmpty())
             if (const auto section = window->calculation->sectionTitle(source.setting); !section.isEmpty())
@@ -513,23 +514,13 @@ void InputPreviewPanel::followCursor() {
 }
 void InputPreviewPanel::refresh() {
     const auto &d = window->displayDocument();
-    const auto s = nwchemSettings(d);
     const auto report = validateNwchem(d);
-    auto geometryErrors = d.validate();
-    try {
-        if (!d.atoms.isEmpty())
-            nwchemGeometry(d, CoordinateUnit::Angstrom);
-    } catch (const std::exception &e) {
-        geometryErrors << QString::fromUtf8(e.what());
-    }
     const bool resolved = mode->currentData() == "execution";
     modes->sync();
     QStringList errors = report.errors;
     QString html;
-    // Each message links to the setting it names, else to its tab.
-    const auto target = [this](const QString &message) {
-        const auto key = window->calculation->fieldFor(message);
-        return key.isEmpty() ? QString("tab:1") : "field:" + key;
+    const auto target = [](const Diagnostic &d) {
+        return d.tab == 1 && !d.setting.isEmpty() ? "field:" + d.setting : QString("tab:%1").arg(d.tab);
     };
     auto append = [&](const QString &label, const QString &message, const QString &link,
                       const QColor &color) {
@@ -537,17 +528,23 @@ void InputPreviewPanel::refresh() {
                     .arg(color.name(), label, sourceLink(link, message));
     };
     const ChromeColors c(palette());
-    for (const auto &error : report.errors)
-        append(tr("エラー:"), error, geometryErrors.contains(error) ? QString("tab:0") : target(error),
-               c.bad);
+    for (const auto &diagnostic : report.diagnostics)
+        if (diagnostic.severity == DiagnosticSeverity::Error)
+            append(tr("エラー:"), diagnostic.message, target(diagnostic), c.bad);
     QString text;
+    NwchemInputOutline generatedOutline;
     try {
         if (resolved) {
             const auto base =
                 window->path.isEmpty() ? QDir::currentPath() : QFileInfo(window->path).absolutePath();
-            text = executionPreviewPlan(d, base).input;
-        } else if (errors.isEmpty())
-            text = nwchemInput(d);
+            const auto plan = executionPreviewPlan(d, base);
+            text = plan.input;
+            generatedOutline = plan.inputOutline;
+        } else if (errors.isEmpty()) {
+            const auto generated = generateNwchemInput(d);
+            text = generated.text;
+            generatedOutline = generated.outline;
+        }
     } catch (const std::exception &e) {
         for (const auto &error : QString::fromUtf8(e.what()).split('\n'))
             if (!errors.contains(error)) {
@@ -555,14 +552,16 @@ void InputPreviewPanel::refresh() {
                 append(tr("エラー:"), error, "tab:2", c.bad);
             }
     }
-    for (const auto &warning : report.warnings) {
+    for (const auto &diagnostic : report.diagnostics) {
+        if (diagnostic.severity != DiagnosticSeverity::Warning)
+            continue;
+        const auto &warning = diagnostic.message;
         // The line a check is about, when the input names it ("frequencies numerical").
         QString where;
-        if (warning.contains(tr("数値Hessian"), Qt::CaseInsensitive))
-            for (const auto &line : text.split('\n'))
-                if (line.contains("frequencies numerical"))
-                    where = tr("（%1 行目）").arg(text.left(text.indexOf(line)).count('\n') + 1);
-        append(tr("確認:"), warning + where, target(warning), c.muted);
+        if (diagnostic.code == "frequencies.numerical")
+            for (const int line : generatedOutline.settings.value("numerical_frequencies"))
+                where = tr("（%1 行目）").arg(line + 1);
+        append(tr("確認:"), warning + where, target(diagnostic), c.muted);
     }
     if (errors.isEmpty())
         html.prepend(tr("<p style=\"color:%1\">分子・計算条件・詳細設定の検証を通過しました。</p>")
@@ -606,12 +605,13 @@ void InputPreviewPanel::refresh() {
     stats->setText(contents.isEmpty() ? QString()
                                       : tr("%n 行 · UTF-8 · %1 バイト", nullptr, int(contents.count('\n')))
                                             .arg(QLocale().toString(contents.toUtf8().size())));
-    if (input->toPlainText() != contents) {
+    const auto nextOutline = contents.isEmpty() ? NwchemInputOutline{} : generatedOutline;
+    if (input->toPlainText() != contents || outline != nextOutline) {
         const int scroll = input->verticalScrollBar()->value();
         // As numbers: a cursor kept across setPlainText would follow the inserted text to its end.
         const int anchor = input->textCursor().anchor(), at = input->textCursor().position();
         // Marks first: the text change repaints the gutter.
-        outline = nwchemInputOutline(d, contents);
+        outline = nextOutline;
         input->advanced = outline.advanced;
         input->extra = outline.extra;
         input->setPlainText(contents);

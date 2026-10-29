@@ -306,6 +306,18 @@ class ResultsTest : public QObject {
         huge.close();
         QVERIFY_EXCEPTION_THROWN(readResult(huge.fileName()), std::runtime_error);
     }
+    void outcomeSurvivesDisplayAndTransfer() {
+        const auto source = save("outcome.out", "NWChem\nTotal times  cpu: 1\n");
+        auto result = readResult(source);
+        QCOMPARE(result.outcome, ResultOutcome::Normal);
+        result.status = "Changed display text";
+        QCOMPARE(resultOutcome(result), QString("normal"));
+        const auto binary = files.filePath("outcome.bin");
+        saveResultData(binary, result);
+        const auto copy = loadResultData(binary);
+        QCOMPARE(copy.outcome, ResultOutcome::Normal);
+        QCOMPARE(copy.status, result.status);
+    }
     void independentViewerAndCancellation() {
         MainWindow w;
         auto *panel = widget<ResultsPanel>(w, "resultsTab");

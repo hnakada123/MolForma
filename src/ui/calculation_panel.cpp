@@ -33,48 +33,6 @@ QString marked(const QString &text, bool changed, const QColor &accent) {
     return QString("<span style=\"color:%1\">●</span>&nbsp;%2")
         .arg(changed ? accent.name() : QString("transparent"), text.toHtmlEscaped());
 }
-// Whether a message was made from a template of validateNwchem (the same translated text): every
-// piece between its placeholders is in the message.
-bool madeFrom(const QString &message, const QString &pattern) {
-    static const QRegularExpression placeholder("%\\d+");
-    for (const auto &piece : pattern.split(placeholder, Qt::SkipEmptyParts))
-        if (!message.contains(piece))
-            return false;
-    return true;
-}
-// Quick fixes for errors of validateNwchem, found by the template of the message: how the fix
-// reads, the setting and its new value (the multiplicity follows the electron count).
-struct QuickFix {
-    const char *message, *text, *key;
-    QJsonValue value;
-};
-const QuickFix quickFixes[]{
-    {QT_TR_NOOP("電子数 %1 と多重度 %2 が整合しません。全電荷または多重度を変更してください。"),
-     QT_TR_NOOP("電子数に合う多重度にする"),
-     "multiplicity",
-     {}},
-    {QT_TR_NOOP("任意のxcでは分散補正を選べません。NWChemにパラメータがない場合があるためです。"),
-     QT_TR_NOOP("分散補正を「なし」にする"), "dispersion", "none"},
-    {QT_TR_NOOP("%1 の%2はNWChemの公表パラメータと一致しないか、パラメータがありません。%3"),
-     QT_TR_NOOP("分散補正を「なし」にする"), "dispersion", "none"},
-    {QT_TR_NOOP("RHF / RKSは多重度1で使用してください。開殻には自動または非制限を選択してください。"),
-     QT_TR_NOOP("参照波動関数を「自動」にする"), "reference", "auto"},
-    {QT_TR_NOOP("TDDFTは計算目的「一点エネルギー」で使用してください（励起状態の構造最適化は未対応）。"),
-     QT_TR_NOOP("計算目的を「一点エネルギー」にする"), "task", "energy"},
-    {QT_TR_NOOP("SMDでは溶媒名を選んでください（誘電率だけでは非静電項を決められません）。"),
-     QT_TR_NOOP("溶媒を水にする"), "solvent_name", "h2o"},
-    {QT_TR_NOOP("NWChemのSMDはDFT専用です。HFにはCOSMOを使用してください。"),
-     QT_TR_NOOP("溶媒モデルをCOSMOにする"), "solvent", "cosmo"},
-    {QT_TR_NOOP("NWChemのZORAはDFT専用です。HFにはDKHまたはX2Cを選んでください。"),
-     QT_TR_NOOP("相対論をDKHにする"), "relativistic", "dkh"},
-    {QT_TR_NOOP("RI-J（Coulombフィッティング）はDFTで使用してください。"), QT_TR_NOOP("RI-Jをオフにする"),
-     "ri_j", false}};
-const QuickFix *quickFix(const QString &error) {
-    for (const auto &fix : quickFixes)
-        if (madeFrom(error, tr(fix.message)))
-            return &fix;
-    return nullptr;
-}
 } // namespace
 
 CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(owner) {
@@ -232,8 +190,8 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
                    "LANL2DZ ECPを自動指定します。"));
 
     auto *electronic = group("electronic", tr("電荷・スピン"));
-    integer(electronic, tr("全電荷"), "charge", -1000, 1000);
-    integer(electronic, tr("スピン多重度 2S+1"), "multiplicity", 1, 1000);
+    integer(electronic, tr("全電荷"), "charge");
+    integer(electronic, tr("スピン多重度 2S+1"), "multiplicity");
     choice(electronic, tr("参照波動関数"), "reference");
     reference = new QLabel;
     reference->setObjectName("calculationReference");
@@ -248,15 +206,15 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
             [this] { change("charge", window->document().expectedCharge()); });
 
     auto *convergence = group("convergence", tr("SCF・電子相関"));
-    integer(convergence, tr("SCF最大反復"), "scf_maxiter", 1, 10000);
+    integer(convergence, tr("SCF最大反復"), "scf_maxiter");
     choice(convergence, tr("SCF収束"), "scf_convergence");
     buttons(convergence, tr("DFT積分グリッド"), "grid", false);
     choice(convergence, tr("相対論ハミルトニアン"), "relativistic");
     flag(convergence, tr("RI-J（Coulomb項のフィッティング、DFT）"), "ri_j");
     flag(convergence, tr("相関計算で内殻を凍結（freeze atomic）"), "freeze_core");
-    integer(convergence, tr("CC最大反復"), "cc_maxiter", 1, 10000);
+    integer(convergence, tr("CC最大反復"), "cc_maxiter");
     auto *opt = group("optimization", tr("最適化・振動数"));
-    integer(opt, tr("最適化最大反復"), "opt_maxiter", 1, 10000);
+    integer(opt, tr("最適化最大反復"), "opt_maxiter");
     choice(opt, tr("最適化収束"), "opt_convergence");
     flag(opt, tr("数値Hessianを使用"), "numerical_frequencies");
     help(opt, tr("MP2・ROHF・ECP・溶媒・相対論・RI-Jの振動数は数値Hessianを自動選択します。"
@@ -264,8 +222,8 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
 
     nav->addHeading(tr("計算目的に応じて"));
     auto *path = group("path", tr("IRC・座標スキャン"));
-    integer(path, tr("IRCの点数（各方向）"), "irc_points", 1, 500);
-    real(path, tr("IRCの刻み幅 / amu½·Bohr"), "irc_stride", 0.01, 1, 3);
+    integer(path, tr("IRCの点数（各方向）"), "irc_points");
+    real(path, tr("IRCの刻み幅 / amu½·Bohr"), "irc_stride");
     choice(path, tr("IRCの方向"), "irc_direction");
     scanCoordinate = new QLabel;
     scanCoordinate->setObjectName("calculationScanCoordinate");
@@ -280,9 +238,9 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     scanLayout->addWidget(scanAtoms);
     addRow(path, "scan_atoms", tr("スキャン座標"), scanRow);
     connect(scanAtoms, &QPushButton::clicked, this, &CalculationPanel::setScanCoordinate);
-    real(path, tr("開始値（Å・°）"), "scan_start", -180, 180, 4);
-    real(path, tr("終了値（Å・°）"), "scan_end", -180, 180, 4);
-    integer(path, tr("点の数"), "scan_steps", 2, 50);
+    real(path, tr("開始値（Å・°）"), "scan_start");
+    real(path, tr("終了値（Å・°）"), "scan_end");
+    integer(path, tr("点の数"), "scan_steps");
     flag(path, tr("各点で他の座標を最適化（緩和スキャン）"), "scan_relaxed");
     help(path, tr("IRCは遷移状態の構造から反応経路を追跡します（既定は両方向）。NWChemは経路の長さが"
                   "1 amu½·Bohrを超えるまで極小に着いたと判定しないため、短い側は点の数の上限で"
@@ -372,7 +330,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
 
     auto *excited = group("excited", tr("励起状態（TDDFT）"));
     flag(excited, tr("TDDFTで励起エネルギー・振動子強度を計算"), "tddft");
-    integer(excited, tr("励起状態の数（nroots）"), "tddft_roots", 1, 100);
+    integer(excited, tr("励起状態の数（nroots）"), "tddft_roots");
     flag(excited, tr("三重項も計算（閉殻）"), "tddft_triplets");
     flag(excited, tr("Tamm–Dancoff近似（TDA / cis）"), "tddft_tda");
     help(excited, tr("DFTの一点エネルギーで使えます。結果は「結果ビューア」の「励起状態」に表示します。"));
@@ -383,8 +341,9 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     choice(environment, tr("溶媒"), "solvent_name");
     auto *dielectric = new QDoubleSpinBox;
     dielectric->setObjectName("nwchem_dielectric");
-    dielectric->setRange(1, 1000);
-    dielectric->setDecimals(4);
+    const auto dielectricSpec = nwchemSettingSpec("dielectric");
+    dielectric->setRange(dielectricSpec.minimum, dielectricSpec.maximum);
+    dielectric->setDecimals(dielectricSpec.decimals);
     dielectric->setKeyboardTracking(false);
     fields["dielectric"] = dielectric;
     addRow(environment, "dielectric", tr("比誘電率（例: 水 78.4）"), dielectric);
@@ -497,8 +456,12 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     validation->setFrameShape(QFrame::NoFrame);
     validation->setFitContents(220);
     checkLayout->addWidget(validation);
-    connect(validation, &DiagnosticsList::messageClicked, this,
-            [this](const QString &message) { showField(fieldFor(message)); });
+    connect(validation, &DiagnosticsList::diagnosticClicked, this, [this](const QString &setting, int tab) {
+        if (tab == 1 && !setting.isEmpty())
+            showField(setting);
+        else
+            window->workspaceTabs->setCurrentIndex(tab);
+    });
     connect(validation, &DiagnosticsList::fixRequested, this, &CalculationPanel::applyFix);
     railLayout->addWidget(validationCard);
 
@@ -705,95 +668,13 @@ QString CalculationPanel::sectionTitle(const QString &key) const {
             return section.title;
     return {};
 }
-QString CalculationPanel::fieldFor(const QString &message) const {
-    // A detailed option named in brackets ("詳細設定「…」: …"), or the first of those held back.
-    const auto heldBack = tr("現在の計算では保留（入力に出力しません）: %1");
-    for (const auto &o : nwchemAdvancedOptions())
-        if (message.contains(tr("「%1」").arg(o.label)) || message.contains(heldBack.arg(o.label)))
-            return "advanced:" + o.key;
-    // The wording of validateNwchem's messages names the setting; the first match wins. Translated
-    // words are matched regardless of case in English, where they may begin a sentence.
-    struct Word {
-        QString text;
-        const char *key;
-        bool translated = false;
-    };
-    const auto word = [](const QString &text, const char *key) { return Word{text, key, true}; };
-    const Word words[]{word(tr("出力movecs", "a word of validation messages"), "advanced:vectors_output"),
-                       {"movecs", "advanced:vectors_input"},
-                       {"SCF DIIS", "advanced:scf_solver"},
-                       word(tr("COSMOのideal", "a word of validation messages"), "advanced:cosmo_screen"),
-                       word(tr("Betaの分子軌道", "a word of validation messages"), "advanced:cube_spin"),
-                       word(tr("分子軌道番号", "a word of validation messages"), "advanced:cube_index"),
-                       word(tr("軌道番号", "a word of validation messages"), "advanced:cube_index"),
-                       {"HOMO", "advanced:cube_orbital"},
-                       word(tr("格子", "a word of validation messages"), "advanced:cube_padding"),
-                       word(tr("CUBEの範囲", "a word of validation messages"), "advanced:cube_padding"),
-                       {"CUBE", "advanced:cube_output"},
-                       {"MOLDEN", "advanced:molden_output"},
-                       word(tr("詳細設定", "a word of validation messages"), "advanced"),
-                       word(tr("後続の一点計算", "a word of validation messages"), "followup"),
-                       word(tr("追加入力", "a word of validation messages"), "extra_input"),
-                       word(tr("拘束", "a word of validation messages"), "constraints"),
-                       word(tr("スキャン", "a word of validation messages"), "scan_atoms"),
-                       {"IRC", "irc_points"},
-                       {"BSSE", "bsse"},
-                       word(tr("物性", "a word of validation messages"), "prop_mulliken"),
-                       {"NMR", "prop_nmr"},
-                       {"ESP", "prop_esp"},
-                       {"TDDFT", "tddft"},
-                       word(tr("任意のxc", "a word of validation messages"), "xc_custom"),
-                       word(tr("分散補正", "a word of validation messages"), "dispersion"),
-                       {"D3", "dispersion"},
-                       {"SMD", "solvent"},
-                       {"COSMO", "solvent"},
-                       word(tr("溶媒", "a word of validation messages"), "solvent_name"),
-                       word(tr("誘電率", "a word of validation messages"), "dielectric"),
-                       word(tr("相対論", "a word of validation messages"), "relativistic"),
-                       {"ZORA", "relativistic"},
-                       {"RI-J", "ri_j"},
-                       word(tr("フィッティング", "a word of validation messages"), "ri_j"),
-                       word(tr("元素別の基底", "a word of validation messages"), "basis_overrides"),
-                       {"ECP", "basis"},
-                       word(tr("基底", "a word of validation messages"), "basis"),
-                       word(tr("多重度", "a word of validation messages"), "multiplicity"),
-                       word(tr("電子数", "a word of validation messages"), "multiplicity"),
-                       word(tr("全電荷", "a word of validation messages"), "charge"),
-                       {"RHF", "reference"},
-                       {"ROHF", "reference"},
-                       {"UHF", "reference"},
-                       word(tr("内殻凍結", "a word of validation messages"), "freeze_core"),
-                       {"CCSD", "method"},
-                       word(tr("計算名", "a word of validation messages"), "start"),
-                       word(tr("タイトル", "a word of validation messages"), "title"),
-                       word(tr("メモリ", "a word of validation messages"), "memory_mb"),
-                       word(tr("振動数", "a word of validation messages"), "task"),
-                       word(tr("最適化", "a word of validation messages"), "task"),
-                       word(tr("固定原子", "a word of validation messages"), "task"),
-                       word(tr("点電荷", "a word of validation messages"), "include_point_charges")};
-    for (const auto &w : words)
-        if (message.contains(w.text, w.translated && english() ? Qt::CaseInsensitive : Qt::CaseSensitive))
-            return w.key;
-    for (auto it = fields.begin(); it != fields.end(); ++it)
-        if (message.contains(it.key()))
-            return it.key();
-    return {};
-}
-QMap<QString, QString> CalculationPanel::fixes(const QStringList &errors) const {
-    QMap<QString, QString> result;
-    for (const auto &e : errors)
-        if (const auto *fix = quickFix(e))
-            result[e] = tr(fix->text);
-    return result;
-}
-void CalculationPanel::applyFix(const QString &message) {
-    const auto *fix = quickFix(message);
-    if (!fix)
-        return;
-    if (QString(fix->key) == "multiplicity")
-        change(fix->key, validateNwchem(window->document()).electrons % 2 ? 2 : 1);
-    else
-        change(fix->key, fix->value);
+void CalculationPanel::applyFix(const QString &code, const QString &setting) {
+    const auto report = validateNwchem(window->document());
+    for (const auto &diagnostic : report.diagnostics)
+        if (diagnostic.code == code && diagnostic.setting == setting && diagnostic.fix) {
+            change(diagnostic.fix->setting, diagnostic.fix->value);
+            return;
+        }
 }
 void CalculationPanel::searchSettings(const QString &text) {
     const bool detailed = text.endsWith(tr("（詳細）"));
@@ -888,23 +769,23 @@ void CalculationPanel::buttons(QFormLayout *form, const QString &label, const QS
     connect(combo, &QComboBox::currentIndexChanged, this,
             [this, combo, key] { change(key, combo->currentData().toString()); });
 }
-void CalculationPanel::integer(QFormLayout *form, const QString &label, const QString &key, int minimum,
-                               int maximum) {
+void CalculationPanel::integer(QFormLayout *form, const QString &label, const QString &key) {
     auto *spin = new QSpinBox;
     spin->setObjectName("nwchem_" + key);
-    spin->setRange(minimum, maximum);
+    const auto &spec = nwchemSettingSpec(key);
+    spin->setRange(spec.minimum, spec.maximum);
     spin->setKeyboardTracking(false);
     spin->setMaximumWidth(180);
     fields[key] = spin;
     addRow(form, key, label, spin);
     connect(spin, &QSpinBox::valueChanged, this, [this, key](int n) { change(key, n); });
 }
-void CalculationPanel::real(QFormLayout *form, const QString &label, const QString &key, double minimum,
-                            double maximum, int decimals) {
+void CalculationPanel::real(QFormLayout *form, const QString &label, const QString &key) {
     auto *spin = new QDoubleSpinBox;
     spin->setObjectName("nwchem_" + key);
-    spin->setRange(minimum, maximum);
-    spin->setDecimals(decimals);
+    const auto &spec = nwchemSettingSpec(key);
+    spin->setRange(spec.minimum, spec.maximum);
+    spin->setDecimals(spec.decimals);
     spin->setKeyboardTracking(false);
     spin->setMaximumWidth(180);
     fields[key] = spin;
@@ -1045,21 +926,13 @@ bool CalculationPanel::editable() const {
 void CalculationPanel::change(const QString &key, const QJsonValue &value) {
     if (busy || !editable())
         return;
-    const bool shared = key == "charge" || key == "multiplicity";
+    const bool shared = nwchemSettingSpec(key).job;
     const QJsonValue current =
         shared ? window->document().job().value(key) : nwchemSettings(window->document()).value(key);
     if (current == value)
         return;
     window->safe([&] {
-        window->edit(tr("NWChem計算条件を変更"), [&](Document &d) {
-            if (shared)
-                d.setJobValue(key, value);
-            else {
-                auto s = d.data["nwchem"].toObject();
-                s[key] = value;
-                d.data["nwchem"] = s;
-            }
-        });
+        window->edit(tr("NWChem計算条件を変更"), [&](Document &d) { setNwchemSetting(d, key, value); });
     });
 }
 QStringList CalculationPanel::changedKeys(const QJsonObject &s) const {
@@ -1434,32 +1307,8 @@ void CalculationPanel::refresh() {
                 edit->setPlainText(appliedExtra[i]);
         }
     }
-    const QString method = s["method"].toString(), task = s["task"].toString();
-    for (const auto &key : {"functional", "dispersion", "grid", "ri_j"})
-        fields[key]->setEnabled(method == "dft");
-    fields["relativistic"]->setEnabled(method == "hf" || method == "dft" || s["relativistic"] != "none");
-    for (const auto &key : {"irc_points", "irc_stride", "irc_direction"})
-        fields[key]->setEnabled(task == "irc");
-    for (const auto &key : {"scan_start", "scan_end", "scan_steps", "scan_relaxed"})
-        fields[key]->setEnabled(task == "scan");
-    const bool followup = s["followup"].toBool();
-    fields["followup"]->setEnabled(task.startsWith("optimize") || task.startsWith("saddle") || followup);
-    fields["followup_method"]->setEnabled(followup);
-    for (const auto &key : {"followup_functional", "followup_dispersion"})
-        fields[key]->setEnabled(followup && s["followup_method"] == "dft");
-    fields["followup_basis"]->setEnabled(followup);
-    fields["solvent_name"]->setEnabled(s["solvent"] != "none");
-    fields["xc_custom"]->setEnabled(method == "dft" && s["functional"] == "custom");
-    // Stay enabled while checked, so an invalid combination can always be switched off.
-    fields["tddft"]->setEnabled((method == "dft" && task == "energy") || s["tddft"].toBool());
-    for (const auto &key : {"tddft_roots", "tddft_triplets", "tddft_tda"})
-        fields[key]->setEnabled(method == "dft" && s["tddft"].toBool());
-    fields["freeze_core"]->setEnabled(method == "mp2" || method.startsWith("ccsd"));
-    fields["cc_maxiter"]->setEnabled(method.startsWith("ccsd"));
-    for (const auto &key : {"opt_maxiter", "opt_convergence"})
-        fields[key]->setEnabled(nwchemDriverTask(s) || task == "irc");
-    fields["numerical_frequencies"]->setEnabled(task.contains("frequencies"));
-    fields["dielectric"]->setEnabled(s["solvent"] == "cosmo" && s["solvent_name"] == "dielectric");
+    for (auto it = fields.begin(); it != fields.end(); ++it)
+        it.value()->setEnabled(nwchemSettingEditable(nwchemSettingSpec(it.key()), s));
     const bool canEdit = editable();
     formWidget->setEnabled(canEdit);
     for (auto *b : {presetButton, storeButton})
@@ -1471,6 +1320,7 @@ void CalculationPanel::refresh() {
                                       : QString());
     banner->setVisible(!message->text().isEmpty());
     const auto check = validateNwchem(d);
+    const auto method = s["method"].toString();
     const QString referenceName = method == "dft" && check.reference != "rohf"
                                       ? (check.reference == "rhf" ? "RKS" : "UKS")
                                       : check.reference.toUpper();
@@ -1489,7 +1339,7 @@ void CalculationPanel::refresh() {
                                                             : tr("入力を生成できます（確認 %n 件）", nullptr,
                                                                  check.warnings.size()))
                                 : tr("入力を生成できません（エラー %n 件）", nullptr, check.errors.size()));
-    validation->setMessages(check.errors, check.warnings, {}, fixes(check.errors));
+    validation->setDiagnostics(check.diagnostics);
     validation->setVisible(validation->count());
     passed->setVisible(ok); // As the checks of "4 入力プレビュー" say it, above the warnings.
     if (auto *outputs = detailBoxes.value("orbitals").outputs) {
@@ -1823,11 +1673,12 @@ void CalculationPanel::showSnippet(const AdvancedOption &o) {
     snippet->clear();
     snippet->setExtraSelections({});
     showInInput->setProperty("line", -1);
-    QString input;
+    NwchemGeneratedInput generated;
     try {
-        input = nwchemInput(d);
+        generated = generateNwchemInput(d);
     } catch (const std::exception &) {
     }
+    const auto &input = generated.text;
     const bool active = nwchemAdvancedApplies(o, d), changed = nwchemAdvanced(d).contains(o.key);
     if (input.isEmpty()) {
         snippet->hide();
@@ -1841,22 +1692,18 @@ void CalculationPanel::showSnippet(const AdvancedOption &o) {
         return;
     }
     const auto lines = input.split('\n');
-    const auto outline = nwchemInputOutline(d, input);
+    const auto &outline = generated.outline;
+    const auto ownLines = outline.settings.value(o.key);
     const auto name = nwchemAdvancedBlock(o, d);
-    const auto last = o.keyword.section(' ', -1).toLower();
     const NwchemInputBlock *block = nullptr;
     for (const auto &b : outline.blocks) {
-        bool contains = b.keyword == name;
-        for (int i = b.line + 1; !contains && i < b.line + b.lines; ++i)
-            contains = lines[i].trimmed().startsWith(name + ' ') || lines[i].trimmed() == name;
-        // Of several blocks with the keyword, the one that the details write into.
-        const auto marked = [&](const NwchemInputBlock &x) {
-            for (int i = x.line; i < x.line + x.lines; ++i)
-                if (outline.advanced.contains(i))
-                    return true;
-            return false;
-        };
-        if (contains && (!block || (!marked(*block) && marked(b))))
+        const bool carries = std::any_of(ownLines.begin(), ownLines.end(),
+                                         [&](int line) { return line >= b.line && line < b.line + b.lines; });
+        if (carries) {
+            block = &b;
+            break;
+        }
+        if (!block && b.keyword == name)
             block = &b;
     }
     if (!block) {
@@ -1867,7 +1714,7 @@ void CalculationPanel::showSnippet(const AdvancedOption &o) {
     }
     QList<int> own;
     for (int i = block->line; i < block->line + block->lines; ++i)
-        if (outline.advanced.contains(i) && lines[i].toLower().contains(last))
+        if (changed && ownLines.contains(i) && outline.advanced.contains(i))
             own << i;
     // The header, the option's lines with a neighbor each, and the end; "…" for what is left out.
     QList<int> shown{block->line};

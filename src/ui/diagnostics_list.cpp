@@ -11,34 +11,35 @@ DiagnosticsList::DiagnosticsList(QWidget *parent) : QListWidget(parent) {
     setSelectionMode(QAbstractItemView::SingleSelection);
     connect(this, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
         if (!item->data(MessageRole).toString().isEmpty())
-            emit messageClicked(item->data(MessageRole).toString(), item->data(ErrorRole).toBool());
+            emit diagnosticClicked(item->data(SettingRole).toString(), item->data(TabRole).toInt());
     });
     connect(this, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *item) {
         if (!item->data(FixRole).toString().isEmpty())
-            emit fixRequested(item->data(MessageRole).toString());
+            emit fixRequested(item->data(CodeRole).toString(), item->data(SettingRole).toString());
     });
 }
-void DiagnosticsList::setMessages(const QStringList &errors, const QStringList &warnings, const QString &ok,
-                                  const QMap<QString, QString> &fixes) {
+void DiagnosticsList::setDiagnostics(const QVector<Diagnostic> &diagnostics) {
     clear();
-    // Icons from the style follow the theme; text uses the palette.
-    const auto add = [&](const QString &text, QStyle::StandardPixmap icon, const QString &message,
-                         bool error) {
-        auto *item = new QListWidgetItem(style()->standardIcon(icon), text, this);
-        item->setData(MessageRole, message);
-        item->setData(ErrorRole, error);
-        if (fixes.contains(message)) {
-            item->setData(FixRole, fixes[message]);
-            item->setText(tr("%1\n　→ ダブルクリックで修正: %2").arg(text, fixes[message]));
+    for (const auto severity : {DiagnosticSeverity::Error, DiagnosticSeverity::Warning})
+        for (const auto &d : diagnostics) {
+            if (d.severity != severity)
+                continue;
+            const bool error = severity == DiagnosticSeverity::Error;
+            const auto text = (error ? tr("エラー: %1") : tr("確認: %1")).arg(d.message);
+            auto *item = new QListWidgetItem(
+                style()->standardIcon(error ? QStyle::SP_MessageBoxCritical : QStyle::SP_MessageBoxWarning),
+                text, this);
+            item->setData(MessageRole, d.message);
+            item->setData(ErrorRole, error);
+            item->setData(CodeRole, d.code);
+            item->setData(SettingRole, d.setting);
+            item->setData(TabRole, d.tab);
+            if (d.fix) {
+                item->setData(FixRole, d.fix->label);
+                item->setText(tr("%1\n　→ ダブルクリックで修正: %2").arg(text, d.fix->label));
+            }
+            item->setToolTip(tr("クリックで該当する設定へ移動します。"));
         }
-        item->setToolTip(message.isEmpty() ? text : tr("クリックで該当する設定へ移動します。"));
-    };
-    if (errors.isEmpty() && !ok.isEmpty())
-        add(ok, QStyle::SP_DialogApplyButton, {}, false);
-    for (const auto &e : errors)
-        add(tr("エラー: %1").arg(e), QStyle::SP_MessageBoxCritical, e, true);
-    for (const auto &w : warnings)
-        add(tr("確認: %1").arg(w), QStyle::SP_MessageBoxWarning, w, false);
     if (fit)
         updateGeometry();
 }
