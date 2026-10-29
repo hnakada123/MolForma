@@ -27,6 +27,10 @@ class EditorSession : public QObject {
     bool candidateRemote() const {
         return pendingRemote;
     }
+    // Tells candidates apart: it grows with each candidate proposed.
+    int candidateSerial() const {
+        return pendingSerial;
+    }
     QUndoStack &history() {
         return stack;
     }
@@ -48,6 +52,7 @@ class EditorSession : public QObject {
     std::optional<Document> pending;
     QString pendingName;
     bool pendingRemote = false;
+    int pendingSerial = 0;
     QUndoStack stack;
     void apply(const Document &document, bool remote);
     bool commit(const QString &name, const Document &next, bool remote);

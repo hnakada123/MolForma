@@ -6,6 +6,7 @@
 #include "model/settings.h"
 #include "nwchem/nwchem.h"
 #include "ui/editor_chrome.h"
+#include "ui/editor_tool.h"
 #include "ui/main_window.h"
 #include "ui/periodic_table.h"
 #include "ui/template_delegate.h"
@@ -69,6 +70,27 @@ class EditorTest : public QObject {
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsHome.path());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
                            settingsHome.path()); // MolForma uses NativeFormat.
+    }
+    void paletteEntries() {
+        // Palette rows are keyed by kind; parts by their ID, with the kind from their category.
+        for (const auto &[kind, value] : {std::pair{PaletteKind::Atom, "C"},
+                                          {PaletteKind::Center, "Fe"},
+                                          {PaletteKind::Smiles, "CC(=O)O"}}) {
+            const auto entry = paletteEntry(paletteKey(kind, value));
+            QCOMPARE(entry.kind, kind);
+            QCOMPARE(entry.value, QString(value));
+        }
+        QVERIFY(paletteEntry("center:Fe").element() && !paletteEntry("smiles:C").part());
+        QCOMPARE(paletteEntry({}).kind, PaletteKind::Atom); // The element selector's atom.
+        for (const auto &[id, kind] : {std::pair{"skeleton:benzene", PaletteKind::Part},
+                                       {"substituent:methyl", PaletteKind::Substituent},
+                                       {"ligand:en", PaletteKind::Ligand},
+                                       {"amino:ALA:default", PaletteKind::Amino}}) {
+            const auto entry = paletteEntry(id, findTemplate(id));
+            QCOMPARE(entry.kind, kind);
+            QVERIFY(entry.part());
+            QCOMPARE(paletteKey(kind, id), QString(id));
+        }
     }
     void isotopeValidationMatchesCoordinateTable() {
         MainWindow w;

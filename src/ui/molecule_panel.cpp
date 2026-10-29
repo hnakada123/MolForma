@@ -102,28 +102,27 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
     railLayout->setContentsMargins(6, 10, 6, 10);
     railLayout->setSpacing(4);
     toolGroup = new QButtonGroup(this);
-    for (const auto &[code, label, key, tip] :
-         {std::tuple{"select", tr("選択"), "S",
+    for (const auto &[tool, label, key, tip] :
+         {std::tuple{EditorTool::Select, tr("選択"), "S",
                      tr("原子を選択します。Shift／Ctrl＋クリックで追加、Shiftドラッグで範囲選択。")},
-          {"move", tr("移動"), "M",
+          {EditorTool::Move, tr("移動"), "M",
            tr("原子をドラッグして動かします（付いている水素と、選択中なら選択全体が一緒に動きます）。")},
-          {"bond", tr("結合"), "B", tr("2原子を順にクリックして、上の「結合の種類」にします。")},
-          {"delete", tr("削除"), "X", tr("クリックした原子を削除する候補を作ります。")},
-          {"place", tr("配置"), "A",
+          {EditorTool::Bond, tr("結合"), "B", tr("2原子を順にクリックして、上の「結合の種類」にします。")},
+          {EditorTool::Delete, tr("削除"), "X", tr("クリックした原子を削除する候補を作ります。")},
+          {EditorTool::Place, tr("配置"), "A",
            tr("パレットで選んだ原子・部品を置きます。空白・原子・水素・配位中心の紫の番号のどれを"
               "クリックするかで置き方が決まります。")},
-          {"replace", tr("置き換え"), "R",
+          {EditorTool::Replace, tr("置き換え"), "R",
            tr("クリックした原子を、パレットで選んだ元素・部品に置き換えます。")},
-          {"charge", tr("点電荷"), "Q", tr("空白をクリックして外部点電荷を置きます。")}}) {
+          {EditorTool::Charge, tr("点電荷"), "Q", tr("空白をクリックして外部点電荷を置きます。")}}) {
         auto *b = new ToolRailButton(key);
-        b->setObjectName(QString("tool_") + code);
+        b->setObjectName("tool_" + editorToolKey(tool));
         b->setText(label);
-        b->setIcon(lineIcon(code));
+        b->setIcon(lineIcon(editorToolKey(tool)));
         b->setToolTip(tip);
-        b->setProperty("tool", code);
         b->setProperty("toolKey", key);
         railLayout->addWidget(b, 0, Qt::AlignHCenter);
-        toolGroup->addButton(b);
+        toolGroup->addButton(b, int(tool));
     }
     railLayout->addStretch();
     // The palette folds away for a wider view and table; the tools that place from it open it.
@@ -605,14 +604,15 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
     connect(toolGroup, &QButtonGroup::buttonToggled, this, [this](QAbstractButton *, bool on) {
         if (!on)
             return;
-        view->setTool(currentTool());
+        view->setTool(tool());
         // "選択" does not place the palette part: it is no longer shown as chosen. The tools that use
         // it show again the one chosen last.
-        if (currentTool() == "select")
+        const bool placing = tool() == EditorTool::Place || tool() == EditorTool::Replace;
+        if (tool() == EditorTool::Select)
             palette->clearSelection();
-        else if ((currentTool() == "place" || currentTool() == "replace") && palette->currentItem())
+        else if (placing && palette->currentItem())
             palette->currentItem()->setSelected(true);
-        if (currentTool() == "place" || currentTool() == "replace")
+        if (placing)
             showPalette(true);
         refreshToolHint();
     });
@@ -649,7 +649,7 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
             [this](auto id, auto mods) { safe([this, id, mods] { atomClicked(id, mods); }); });
     connect(view, &MoleculeView::blankClicked, this, [this](Vec p) {
         safe([this, p] {
-            if (currentTool() == "select")
+            if (tool() == EditorTool::Select)
                 setSelection({});
             else
                 place({}, p);
@@ -657,7 +657,7 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
     });
     connect(view, &MoleculeView::bondClicked, this, [this](auto a, auto b) {
         safe([this, a, b] {
-            if (currentTool() == "place" && placementKind() == "atom") {
+            if (tool() == EditorTool::Place && paletteChoice().kind == PaletteKind::Atom) {
                 edit(tr("結合間に原子を挿入"),
                      [=, this](Document &d) { insertAtom(d, a, b, value(elementBox), autoH->isChecked()); });
             } else
@@ -667,7 +667,7 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
     connect(view, &MoleculeView::siteClicked, this, [this](auto c, int site) {
         safe([this, c, site] {
             setSelection({c});
-            if (currentTool() == "place" && placementKind() == "ligand") {
+            if (tool() == EditorTool::Place && paletteChoice().kind == PaletteKind::Ligand) {
                 auto t = currentTemplate();
                 auto indices = sites();
                 if (t["connections"].toArray().size() == 2 && !indices.contains(site) &&
@@ -683,11 +683,11 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
                     // The next site continues the placement: the ligand placed before is confirmed. A
                     // person's click never confirms an MCP candidate, but MCP may continue its own.
                     const bool chained = session.candidate() &&
-                                         session.candidateName() == tr("配位子を配置") &&
+                                         session.candidateSerial() == ligandCandidate &&
                                          (!session.candidateRemote() || window.remoteRequest());
                     if (chained)
                         confirmCandidate();
-                    edit(tr("配位子を配置"), [=](Document &d) { placeLigand(d, c, indices, t); }, true);
+                    proposeLigand(c, indices, t);
                     if (chained)
                         statusBar()->showMessage(tr("前の配位子を確定し、次の配位子を候補にしました。"),
                                                  8000);
@@ -741,12 +741,9 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
                 if (hasSelection())
                     deleteAtoms(selected);
             } else if (key >= Qt::Key_1 && key <= Qt::Key_3) {
-                if (!hasSelection(2))
-                    return;
-                auto ids = selected;
-                QString kind = QStringList{"single", "double", "triple"}[key - Qt::Key_1];
-                edit(tr("結合次数を変更"),
-                     [=, this](Document &d) { changeBond(d, ids[0], ids[1], kind, autoH->isChecked()); });
+                if (hasSelection(2))
+                    bondAtoms(selected[0], selected[1],
+                              QStringList{"single", "double", "triple"}[key - Qt::Key_1]);
             }
         });
     });
@@ -764,8 +761,8 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
                     // A part the filtered palette does not list (an MCP drop): show the whole palette;
                     // an unknown part is an error, never the part chosen before.
                     if (!select()) {
-                        if (key.startsWith("atom:"))
-                            paletteElement = element(key.mid(5)).symbol;
+                        if (const auto entry = paletteEntry(key); entry.kind == PaletteKind::Atom)
+                            paletteElement = element(entry.value).symbol;
                         search->clear();
                         setPaletteCategory("all");
                         refreshPalette();
@@ -779,7 +776,7 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
                         auto t = currentTemplate();
                         setSelection({c});
                         siteInput->setText(QString::number(site + 1));
-                        edit(tr("配位子を配置"), [=](Document &d) { placeLigand(d, c, {site}, t); }, true);
+                        proposeLigand(c, {site}, t);
                     } else
                         place(atom, p);
                 });
@@ -828,22 +825,18 @@ void MoleculePanel::addEditActions(QMenu *editMenu) {
             orders, QStringList{tr("単結合"), tr("二重結合"), tr("三重結合")}[n - 1],
             QKeySequence(Qt::Key_0 + n), QString("bond%1").arg(n),
             [this, n] {
-                if (!hasSelection(2))
-                    return;
-                auto ids = selected;
-                const QString kind = QStringList{"single", "double", "triple"}[n - 1];
-                edit(tr("結合次数を変更"),
-                     [=, this](Document &d) { changeBond(d, ids[0], ids[1], kind, autoH->isChecked()); });
+                if (hasSelection(2))
+                    bondAtoms(selected[0], selected[1], QStringList{"single", "double", "triple"}[n - 1]);
             },
             QString("bondOrder%1Action").arg(n));
     // One key per editing tool while "1 分子" has the focus (text fields keep their letters).
     auto *editingTools = editMenu->addMenu(lineIcon("select"), tr("ツールを選ぶ"));
     for (auto *b : toolGroup->buttons()) {
-        const auto code = b->property("tool").toString();
+        const auto tool = EditorTool(toolGroup->id(b));
         const auto key = b->property("toolKey").toString();
         local(
-            editingTools, b->text(), QKeySequence(key), code, [this, code] { setTool(code); },
-            "toolAction_" + code);
+            editingTools, b->text(), QKeySequence(key), editorToolKey(tool), [this, tool] { setTool(tool); },
+            "toolAction_" + editorToolKey(tool));
         b->setToolTip(tr("%1（%2）").arg(b->toolTip(), key));
     }
     editMenu->addSeparator();
@@ -1125,19 +1118,19 @@ void MoleculePanel::refreshPalette() {
                    const QJsonObject &t = QJsonObject(), const QString &tip = QString()) {
         // Atoms (and centers under "配位中心") are chosen below by symbol, name or number; the other
         // parts by their text.
-        if (!id.startsWith("atom:") && !id.startsWith("smiles:") &&
-            !(cat == "center" && id.startsWith("center:")) && !needle.isEmpty() &&
+        const auto entry = paletteEntry(id, t);
+        if (entry.kind != PaletteKind::Atom && entry.kind != PaletteKind::Smiles &&
+            !(cat == "center" && entry.kind == PaletteKind::Center) && !needle.isEmpty() &&
             !searchText.contains(needle, Qt::CaseInsensitive))
             return;
         auto *item = new QListWidgetItem(label, palette);
         item->setData(Qt::UserRole, id);
         if (!t.isEmpty())
             item->setData(TemplateDelegate::TemplateRole, t);
-        if (id.startsWith("atom:"))
-            item->setData(TemplateDelegate::ElementRole, id.mid(5));
-        else if (id.startsWith("center:")) {
-            const auto symbol = id.mid(7);
-            const auto &e = element(symbol);
+        if (entry.kind == PaletteKind::Atom)
+            item->setData(TemplateDelegate::ElementRole, entry.value);
+        else if (entry.kind == PaletteKind::Center) {
+            const auto &e = element(entry.value);
             item->setData(TemplateDelegate::ElementRole, e.symbol);
             item->setData(TemplateDelegate::ElementDetailRole, tr("配位中心 · 原子番号 %1").arg(e.number));
         }
@@ -1187,7 +1180,8 @@ void MoleculePanel::refreshPalette() {
             const auto &e = element(symbol);
             // Japanese names the element in English too.
             const auto names = english() ? e.nameEn : QString("%1  %2").arg(e.nameJa, e.nameEn);
-            add(e.name(), "atom:" + e.symbol, tr("%1  %2\n原子番号 %3").arg(e.symbol, names).arg(e.number));
+            add(e.name(), paletteKey(PaletteKind::Atom, e.symbol),
+                tr("%1  %2\n原子番号 %3").arg(e.symbol, names).arg(e.number));
         }
     }
     const auto addTemplates = [&](const std::function<bool(const QJsonObject &)> &belongs,
@@ -1265,7 +1259,8 @@ void MoleculePanel::refreshPalette() {
                 metals.contains(s)
                     ? tr("%1  %2\n金属 配位中心 · 原子番号 %3").arg(e.symbol, names).arg(e.number)
                     : tr("%1  %2\n配位中心 · 原子番号 %3").arg(e.symbol, names).arg(e.number);
-            add(e.name(), "center:" + s, english() ? text + "\n" + e.nameJa : text, {}, text);
+            add(e.name(), paletteKey(PaletteKind::Center, s), english() ? text + "\n" + e.nameJa : text, {},
+                text);
         }
     }
     if (cat == "all" || cat == "my")
@@ -1274,16 +1269,13 @@ void MoleculePanel::refreshPalette() {
     // A search that names no part may be a SMILES: offer to build it (a fragment beside the molecule).
     static const QRegularExpression smilesText(R"(^[A-Za-z0-9@+\-\[\]()=#$/\\%.:*]+$)");
     if (cat == "all" && !palette->count() && smilesText.match(needle).hasMatch())
-        add(tr("SMILES「%1」から3Dで作成").arg(needle), "smiles:" + needle,
+        add(tr("SMILES「%1」から3Dで作成").arg(needle), paletteKey(PaletteKind::Smiles, needle),
             tr("SMILESとして読み込み、今の分子の横に置く候補を作ります。"));
     if (!palette->currentItem())
         selectFirstPart();
     // The highlighted atom or center is the element a click places, also after a category change.
-    if (const auto *item = palette->currentItem(); item && elementBox) {
-        const auto key = item->data(Qt::UserRole).toString();
-        if (key.startsWith("atom:") || key.startsWith("center:"))
-            elementBox->setCurrentIndex(elementBox->findData(key.section(':', 1)));
-    }
+    if (const auto entry = paletteChoice(); palette->currentItem() && elementBox && entry.element())
+        elementBox->setCurrentIndex(elementBox->findData(entry.value));
 }
 
 void MoleculePanel::selectFirstPart() {
@@ -1326,7 +1318,8 @@ void MoleculePanel::chooseElement(const QString &symbol) {
     search->clear();
     refreshPalette();
     for (int i = 0; i < palette->count(); ++i)
-        if (palette->item(i)->data(Qt::UserRole) == (center ? "center:" : "atom:") + element(symbol).symbol)
+        if (palette->item(i)->data(Qt::UserRole) ==
+            paletteKey(center ? PaletteKind::Center : PaletteKind::Atom, element(symbol).symbol))
             palette->setCurrentRow(i);
     paletteChosen();
 }
@@ -1344,30 +1337,29 @@ QJsonObject MoleculePanel::currentTemplate() const {
 void MoleculePanel::paletteChosen() {
     if (!palette->currentItem())
         return;
-    QString id = palette->currentItem()->data(Qt::UserRole).toString();
-    if (id.startsWith("smiles:")) {
-        const auto smiles = id.mid(7);
+    const auto entry = paletteChoice();
+    if (entry.kind == PaletteKind::Smiles) {
         search->clear();
-        runWorker(document().atoms.isEmpty() ? "smiles" : "fragment", smiles);
+        runWorker(document().atoms.isEmpty() ? "smiles" : "fragment", entry.value);
         return;
     }
-    if (id.startsWith("atom:")) {
-        paletteElement = id.mid(5);
-        elementBox->setCurrentIndex(elementBox->findData(id.mid(5)));
-    } else if (id.startsWith("center:")) {
-        centerElement = id.mid(7);
-        elementBox->setCurrentIndex(elementBox->findData(id.mid(7)));
+    if (entry.element())
+        elementBox->setCurrentIndex(elementBox->findData(entry.value));
+    if (entry.kind == PaletteKind::Atom)
+        paletteElement = entry.value;
+    else if (entry.kind == PaletteKind::Center) {
+        centerElement = entry.value;
         showProperties(tr("配位"));
-    } else if (currentTemplate()["category"] == "amino") {
+    } else if (entry.kind == PaletteKind::Amino) {
         showProperties(tr("残基"));
         if (growth->isChecked() && !growthResidue.isEmpty() && !session.candidate())
             addAmino(growthResidue, growthN);
     }
     // The replace tool keeps working with whatever is chosen: it replaces atoms with that part.
-    if (currentTool() != "replace")
-        setTool("place");
+    if (tool() != EditorTool::Replace)
+        setTool(EditorTool::Place);
     refreshToolHint();
-    view->setAminoHandles(id.startsWith("amino:"));
+    view->setAminoHandles(entry.kind == PaletteKind::Amino);
 }
 
 bool MoleculePanel::hasSelection(int count) {
@@ -1447,8 +1439,8 @@ void MoleculePanel::setSelection(const Ids &ids) {
 }
 
 void MoleculePanel::atomClicked(const QString &id, Qt::KeyboardModifiers mods) {
-    QString mode = currentTool();
-    if (mode == "select" || mode == "move") {
+    const auto mode = tool();
+    if (mode == EditorTool::Select || mode == EditorTool::Move) {
         auto group = expandedSelection({id});
         // A click selects; Shift/Ctrl+click adds or removes, keeping the order for measurements.
         if (!(mods & (Qt::ShiftModifier | Qt::ControlModifier))) {
@@ -1465,14 +1457,12 @@ void MoleculePanel::atomClicked(const QString &id, Qt::KeyboardModifiers mods) {
                     next << a;
         }
         setSelection(next);
-    } else if (mode == "bond") {
+    } else if (mode == EditorTool::Bond) {
         if (selected.size() != 1) {
             setSelection({id});
             return;
         }
-        auto a = selected.first();
-        auto kind = value(bondKind);
-        edit(tr("結合を変更"), [=, this](Document &d) { changeBond(d, a, id, kind, autoH->isChecked()); });
+        bondAtoms(selected.first(), id, value(bondKind));
     } else {
         place(id, document().atom(id).position);
         if (mods.testFlag(Qt::ShiftModifier))
@@ -1481,56 +1471,46 @@ void MoleculePanel::atomClicked(const QString &id, Qt::KeyboardModifiers mods) {
 }
 
 void MoleculePanel::place(const QString &id, const Vec &position) {
-    QString mode = currentTool();
-    if (mode == "place")
-        mode = placementKind();
+    const auto mode = tool();
+    const auto entry = paletteChoice();
     auto symbol = value(elementBox), kind = value(bondKind);
     bool hydrogen = autoH->isChecked();
-    if (mode == "atom")
+    if (mode == EditorTool::Charge) {
+        double q = chargeValue->value();
+        edit(tr("点電荷を配置"), [=](Document &d) { addPointCharge(d, position, q); });
+    } else if (mode == EditorTool::Delete) {
+        if (id.isEmpty())
+            return;
+        deleteAtoms(expandedSelection({id}));
+    } else if (mode != EditorTool::Place && mode != EditorTool::Replace)
+        return;
+    else if (entry.kind == PaletteKind::Smiles)
+        fail(tr("SMILESの項目は、パレットでクリックすると3D構造を作ります。"));
+    else if (mode == EditorTool::Replace) {
+        if (id.isEmpty())
+            return;
+        if (entry.part()) {
+            auto ids = expandedSelection({id});
+            auto t = currentTemplate();
+            double angle = twist->value();
+            edit(tr("部品を置換"), [=](Document &d) { replacePart(d, ids, t, angle); }, true);
+        } else
+            replaceElements(expandedSelection({id}), symbol);
+    } else if (entry.kind == PaletteKind::Atom)
         edit(tr("原子を追加"), [=](Document &d) { addAtom(d, symbol, position, id, kind, hydrogen); });
-    else if (mode == "center") {
+    else if (entry.kind == PaletteKind::Center) {
         QString g = value(geometryBox);
         double dist = distance->value();
         int ox = oxidation->value();
         edit(tr("配位中心を配置"), [=](Document &d) { addCenter(d, symbol, g, position, dist, ox); });
-    } else if (mode == "charge") {
-        double q = chargeValue->value();
-        edit(tr("点電荷を配置"), [=](Document &d) {
-            auto points = d.data["point_charges"].toArray();
-            points.append(QJsonObject{{"id", newId()},
-                                      {"position", vectorToJson(position)},
-                                      {"charge", q},
-                                      {"source", "manual"},
-                                      {"source_unit", "angstrom"}});
-            d.data["point_charges"] = points;
-        });
-    } else if (mode == "delete") {
-        if (id.isEmpty())
-            return;
-        deleteAtoms(expandedSelection({id}));
-    } else if (mode == "replace") {
-        if (id.isEmpty())
-            return;
-        auto ids = expandedSelection({id});
-        auto item = palette->currentItem();
-        auto key = item ? item->data(Qt::UserRole).toString() : QString();
-        if (key.startsWith("atom:") || key.startsWith("center:") || key.isEmpty())
-            edit(tr("元素を変更"), [=](Document &d) { replaceElement(d, ids, symbol, hydrogen); });
-        else {
-            auto t = currentTemplate();
-            double angle = twist->value();
-            edit(tr("部品を置換"), [=](Document &d) { replacePart(d, ids, t, angle); }, true);
-        }
-    } else if (mode == "smiles")
-        fail(tr("SMILESの項目は、パレットでクリックすると3D構造を作ります。"));
-    else if (mode == "ligand" && !id.isEmpty())
+    } else if (entry.kind == PaletteKind::Ligand && !id.isEmpty())
         fail(tr(
             "配位中心の紫の番号（空きサイト）をクリックしてください。空白をクリックすると単独で置きます。"));
     // A ligand clicked on a blank is put down on its own, like a skeleton.
-    else if (mode == "part" || mode == "substituent" || mode == "ligand") {
+    else {
         auto t = currentTemplate();
         double angle = twist->value();
-        if (t["category"] == "amino") {
+        if (entry.kind == PaletteKind::Amino) {
             if (!id.isEmpty()) {
                 auto rid = residueForAtom(document(), id);
                 if (rid.isEmpty())
@@ -1561,15 +1541,14 @@ void MoleculePanel::place(const QString &id, const Vec &position) {
             });
         } else if (!id.isEmpty())
             edit(tr("置換基を接続"), [=](Document &d) { attachPart(d, id, t, angle); });
-        else if (mode == "substituent")
+        else if (entry.kind == PaletteKind::Substituent)
             fail(tr("置換する水素へクリックまたはドロップしてください。"));
         else
             edit(tr("部品を配置"),
                  [=](Document &d) { placeTemplate(d, t, d.atoms.isEmpty() ? Vec::Zero() : position); });
         if (!keepTool->isChecked())
-            setTool("select");
-    } else
-        return;
+            setTool(EditorTool::Select);
+    }
     view->keepInView();
 }
 
@@ -1742,6 +1721,29 @@ void MoleculePanel::deleteAtoms(const Ids &chosen) {
         true);
 }
 
+void MoleculePanel::proposeLigand(const QString &center, const QList<int> &sites, const QJsonObject &t,
+                                  double twist) {
+    edit(tr("配位子を配置"), [=](Document &d) { placeLigand(d, center, sites, t, twist); }, true);
+    ligandCandidate = session.candidateSerial();
+}
+
+void MoleculePanel::bondAtoms(const QString &a, const QString &b, const QString &kind) {
+    const bool hydrogen = autoH->isChecked();
+    edit(tr("結合を変更"), [=](Document &d) { changeBond(d, a, b, kind, hydrogen); });
+}
+
+void MoleculePanel::replaceElements(const Ids &ids, const QString &symbol) {
+    const bool hydrogen = autoH->isChecked();
+    edit(tr("元素を変更"), [=](Document &d) { replaceElement(d, ids, symbol, hydrogen); });
+}
+
+void MoleculePanel::fixAtoms(const Ids &ids, bool fixed) {
+    AtomProperties properties;
+    properties.fixed = fixed;
+    edit(fixed ? tr("選択原子を固定") : tr("選択原子の固定を解除"),
+         [=](Document &d) { setAtomProperties(d, ids, properties); });
+}
+
 void MoleculePanel::selectAll() {
     setSelection(displayDocument().ids());
 }
@@ -1772,84 +1774,104 @@ void MoleculePanel::pasteFragment() {
     view->keepInView();
 }
 
-QString MoleculePanel::currentTool() const {
-    return toolGroup->checkedButton() ? toolGroup->checkedButton()->property("tool").toString()
-                                      : QString("select");
+EditorTool MoleculePanel::tool() const {
+    return toolGroup->checkedId() < 0 ? EditorTool::Select : EditorTool(toolGroup->checkedId());
 }
 
-void MoleculePanel::setTool(const QString &code) {
-    for (auto *b : toolGroup->buttons())
-        if (b->property("tool") == code)
-            b->setChecked(true);
+void MoleculePanel::setTool(EditorTool tool) {
+    toolGroup->button(int(tool))->setChecked(true);
 }
 
-QString MoleculePanel::placementKind() const {
+PaletteEntry MoleculePanel::paletteChoice() const {
     const auto *item = palette->currentItem();
-    const auto key = item ? item->data(Qt::UserRole).toString() : QString();
-    if (key.isEmpty() || key.startsWith("atom:"))
-        return "atom";
-    if (key.startsWith("center:") || key.startsWith("smiles:"))
-        return key.section(':', 0, 0);
-    const auto category = item->data(TemplateDelegate::TemplateRole).toJsonObject()["category"].toString();
-    return category == "substituent" || category == "ligand" ? category : "part";
+    return item ? paletteEntry(item->data(Qt::UserRole).toString(),
+                               item->data(TemplateDelegate::TemplateRole).toJsonObject())
+                : PaletteEntry();
 }
 
 void MoleculePanel::refreshToolHint() {
     if (!mouseHint || !palette)
         return;
     // What a click does with the current tool, naming the element or part it places.
-    const auto mode = currentTool();
+    const auto mode = tool();
+    const auto entry = paletteChoice();
     const auto part = palette->currentItem() ? palette->currentItem()->text() : tr("パレットで選択");
     const auto symbol = value(elementBox);
-    const QMap<QString, QString> places{
-        {"atom", tr("配置（%1）: 空白をクリックで配置 · 原子をクリックで結合した%1を追加 · "
-                    "結合をクリックで間に挿入")
-                     .arg(symbol)},
-        {"part", tr("配置（%1）: 空白をクリックで配置 · 原子・水素をクリックで接続").arg(part)},
-        {"substituent", tr("配置（%1）: 置き換える水素をクリック（ドロップも可）").arg(part)},
-        {"center", tr("配置（配位中心 %1）: 空白をクリックで配置 · 配位形状は「配位」ページ").arg(symbol)},
-        {"ligand",
-         tr("配置（%1）: 配位中心の紫の番号（空きサイト）をクリック · 空白なら単独で配置").arg(part)},
-        {"smiles", tr("配置: パレットの「%1」をクリックすると3D構造を作ります").arg(part)}};
-    const QMap<QString, QString> hints{
-        {"select",
-         tr("クリック: 選択 · Shift／Ctrl＋クリック: 追加・解除（順番を保持） · Shiftドラッグ: 範囲選択")},
-        {"place", places.value(placementKind())},
-        {"bond", tr("結合（%1）: 2原子を順にクリック · 種類は3D画面の上の「結合の種類」で選択")
-                     .arg(bondKind->currentText())},
-        {"move",
-         tr("移動: 原子をドラッグ（付いている水素と、選択中なら選択全体も動く） · Altドラッグ: 回転")},
-        {"replace",
-         tr("置き換え（%1）: 置き換える原子をクリック").arg(palette->currentItem() ? part : symbol)},
-        {"delete", tr("削除: 原子をクリックすると削除の候補を作ります")},
-        {"charge", tr("点電荷: 空白をクリックで配置 · 電荷の値は「電荷」ページ")}};
+    QString hint;
+    switch (mode) {
+    case EditorTool::Select:
+        hint =
+            tr("クリック: 選択 · Shift／Ctrl＋クリック: 追加・解除（順番を保持） · Shiftドラッグ: 範囲選択");
+        break;
+    case EditorTool::Move:
+        hint = tr("移動: 原子をドラッグ（付いている水素と、選択中なら選択全体も動く） · Altドラッグ: 回転");
+        break;
+    case EditorTool::Bond:
+        hint = tr("結合（%1）: 2原子を順にクリック · 種類は3D画面の上の「結合の種類」で選択")
+                   .arg(bondKind->currentText());
+        break;
+    case EditorTool::Delete:
+        hint = tr("削除: 原子をクリックすると削除の候補を作ります");
+        break;
+    case EditorTool::Replace:
+        hint = tr("置き換え（%1）: 置き換える原子をクリック").arg(palette->currentItem() ? part : symbol);
+        break;
+    case EditorTool::Charge:
+        hint = tr("点電荷: 空白をクリックで配置 · 電荷の値は「電荷」ページ");
+        break;
+    case EditorTool::Place:
+        switch (entry.kind) {
+        case PaletteKind::Atom:
+            hint = tr("配置（%1）: 空白をクリックで配置 · 原子をクリックで結合した%1を追加 · "
+                      "結合をクリックで間に挿入")
+                       .arg(symbol);
+            break;
+        case PaletteKind::Center:
+            hint = tr("配置（配位中心 %1）: 空白をクリックで配置 · 配位形状は「配位」ページ").arg(symbol);
+            break;
+        case PaletteKind::Smiles:
+            hint = tr("配置: パレットの「%1」をクリックすると3D構造を作ります").arg(part);
+            break;
+        case PaletteKind::Substituent:
+            hint = tr("配置（%1）: 置き換える水素をクリック（ドロップも可）").arg(part);
+            break;
+        case PaletteKind::Ligand:
+            hint =
+                tr("配置（%1）: 配位中心の紫の番号（空きサイト）をクリック · 空白なら単独で配置").arg(part);
+            break;
+        case PaletteKind::Part:
+        case PaletteKind::Amino:
+            hint = tr("配置（%1）: 空白をクリックで配置 · 原子・水素をクリックで接続").arg(part);
+            break;
+        }
+        break;
+    }
     // Delete and replace act on the selection unit too, which is set with the select tool.
-    auto hint = hints.value(mode);
-    if ((mode == "delete" || mode == "replace") && selectionUnit() != "atom")
+    if ((mode == EditorTool::Delete || mode == EditorTool::Replace) && selectionUnit() != "atom")
         hint = tr("%1（選択単位: %2）").arg(hint, unitGroup->checkedButton()->text());
     mouseHint->setText(hint);
     mouseHint->setToolTip(hint);
     // The option bar shows what the tool uses: the selection unit for the tools that pick atoms,
     // the bond kind for bonds and atoms put on atoms, and what the palette has chosen.
-    const auto kind = placementKind();
+    const bool placing = mode == EditorTool::Place;
     const QHash<QString, bool> shown{
-        {"selectionUnitOption", mode == "select" || mode == "move"},
-        {"partOption", mode == "place" || mode == "replace"},
-        {"bondOption", mode == "bond" || (mode == "place" && kind == "atom")},
-        {"keepToolOption", mode == "place" && QStringList{"part", "substituent", "ligand"}.contains(kind)},
-        {"deleteOption", mode == "delete"},
-        {"chargeOption", mode == "charge"}};
+        {"selectionUnitOption", mode == EditorTool::Select || mode == EditorTool::Move},
+        {"partOption", placing || mode == EditorTool::Replace},
+        {"bondOption", mode == EditorTool::Bond || (placing && entry.kind == PaletteKind::Atom)},
+        {"keepToolOption", placing && entry.part()},
+        {"deleteOption", mode == EditorTool::Delete},
+        {"chargeOption", mode == EditorTool::Charge}};
     for (auto it = shown.begin(); it != shown.end(); ++it)
         if (auto *group = toolOptionGroups.value(it.key()))
             group->setVisible(it.value());
     const auto &e = element(symbol);
-    const auto chosen = mode == "replace" && (kind == "atom" || kind == "center") ? e.name()
-                        : kind == "atom"   ? tr("%1（%2）").arg(e.name(), e.symbol)
-                        : kind == "center" ? tr("配位中心 %1（%2）").arg(e.name(), e.symbol)
-                                           : part;
-    toolPart->setText(
-        QString("%1 <b>%2</b>")
-            .arg(mode == "replace" ? tr("置き換え先") : tr("配置する部品"), chosen.toHtmlEscaped()));
+    const auto chosen = mode == EditorTool::Replace && entry.element() ? e.name()
+                        : entry.kind == PaletteKind::Atom   ? tr("%1（%2）").arg(e.name(), e.symbol)
+                        : entry.kind == PaletteKind::Center ? tr("配位中心 %1（%2）").arg(e.name(), e.symbol)
+                                                            : part;
+    toolPart->setText(QString("%1 <b>%2</b>")
+                          .arg(mode == EditorTool::Replace ? tr("置き換え先") : tr("配置する部品"),
+                               chosen.toHtmlEscaped()));
 }
 
 void MoleculePanel::contextMenu(const QPoint &p, const QString &id) {
@@ -1862,23 +1884,14 @@ void MoleculePanel::contextMenu(const QPoint &p, const QString &id) {
     };
     if (!selected.isEmpty()) {
         add(&menu, tr("選択原子を削除（候補）"), "delete", [this] { deleteAtoms(requireSelection()); });
-        add(&menu, tr("元素を %1 に変更").arg(value(elementBox)), "replace", [this] {
-            auto ids = requireSelection();
-            auto symbol = value(elementBox);
-            edit(tr("元素を変更"), [=](Document &d) { replaceElement(d, ids, symbol, false); });
-        });
+        add(&menu, tr("元素を %1 に変更").arg(value(elementBox)), "replace",
+            [this] { replaceElements(requireSelection(), value(elementBox)); });
         // As the coordinate table: fixed only when every selected atom is, else all of them get fixed.
         const bool allFixed = std::all_of(selected.begin(), selected.end(), [this](const QString &a) {
             return displayDocument().atom(a).fixed;
         });
         add(&menu, allFixed ? tr("固定を解除") : tr("選択原子を固定"), allFixed ? "unlock" : "lock",
-            [this, allFixed] {
-                auto ids = requireSelection();
-                edit(allFixed ? tr("選択原子の固定を解除") : tr("選択原子を固定"), [=](Document &d) {
-                    for (auto a : ids)
-                        d.atom(a).fixed = !allFixed;
-                });
-            });
+            [this, allFixed] { fixAtoms(requireSelection(), !allFixed); });
         if (selected.size() <= 3)
             add(&menu, tr("選択順に向きをそろえる（原点・+X・XY面）"), "axes", [this] {
                 auto ids = requireSelection();
@@ -1895,8 +1908,7 @@ void MoleculePanel::contextMenu(const QPoint &p, const QString &id) {
                                                     {tr("結合を削除"), "none", "delete"}})
                 add(bonds, label, icon, [this, kind = QString(kind)] {
                     auto ids = requireSelection(2);
-                    edit(tr("結合を変更"),
-                         [=, this](Document &d) { changeBond(d, ids[0], ids[1], kind, autoH->isChecked()); });
+                    bondAtoms(ids[0], ids[1], kind);
                 });
         }
         menu.addSeparator();

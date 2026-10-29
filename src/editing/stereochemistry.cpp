@@ -158,7 +158,7 @@ static QJsonObject recognizedCap(const Document &d, const QString &end, bool ace
     return {};
 }
 #endif
-void recognizeResidues(Document &d) {
+static void assignResidues(Document &d) {
 #ifdef MOLFORMA_HAS_RDKIT
     auto mol = rdMol(d);
     QVector<QJsonObject> amino;
@@ -386,5 +386,8 @@ void recognizeResidues(Document &d) {
     Q_UNUSED(d);
     fail(tr("グラフからの残基認識にはRDKit C++ライブラリが必要です。"));
 #endif
+}
+void recognizeResidues(Document &d) {
+    followingCharge(d, [&] { assignResidues(d); });
 }
 } // namespace mf

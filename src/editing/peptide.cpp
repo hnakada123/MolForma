@@ -444,29 +444,49 @@ QString prependResidue(Document &d, const QString &code, const QString &followin
     orientAmideH(d, following, named(residue(d, rid), "C"));
     return rid;
 }
+QString addTerminalResidue(Document &d, const QString &rid, bool nTerminus, const QString &code,
+                           const QString &state, const QString &chirality, const QString &n,
+                           const QString &c) {
+    QString added;
+    followingCharge(d, [&] {
+        added = nTerminus ? prependResidue(d, code, rid, state, chirality, n)
+                          : appendResidue(d, code, rid, state, chirality, n, c);
+    });
+    return added;
+}
 void buildPeptide(Document &d, const QStringList &codes, const QString &n, const QString &c,
                   const QString &chirality, const QString &state) {
     if (codes.isEmpty() || codes.size() > 1000)
         fail(tr("配列長は1〜1000残基にしてください。"));
     QString prev, first;
     QString nt = n == "ACE" ? "neutral" : n, ct = c == "NME" ? "neutral" : c;
-    for (const auto &code : codes) {
-        if (codes.size() == 1) {
-            prev = placeAmino(d, code, state, chirality, {}, Vec::Zero());
-            setTerminals(d, prev, nt, ct);
-        } else
-            prev = appendResidue(d, code, prev, state, chirality, nt, ct);
-        if (first.isEmpty())
-            first = prev;
-    }
-    if (n == "ACE")
-        addCap(d, first, "ACE");
-    if (c == "NME")
-        addCap(d, prev, "NME");
-    d.charge = d.formalCharge();
+    followingCharge(d, [&] {
+        for (const auto &code : codes) {
+            if (codes.size() == 1) {
+                prev = placeAmino(d, code, state, chirality, {}, Vec::Zero());
+                setTerminals(d, prev, nt, ct);
+            } else
+                prev = appendResidue(d, code, prev, state, chirality, nt, ct);
+            if (first.isEmpty())
+                first = prev;
+        }
+        if (n == "ACE")
+            addCap(d, first, "ACE");
+        if (c == "NME")
+            addCap(d, prev, "NME");
+    });
 }
-void mutateResidue(Document &d, const QString &rid, const QString &code, const QString &state,
-                   const QString &chirality) {
+void setChainTerminals(Document &d, const QString &rid, const QString &n, const QString &c) {
+    const auto chain = idsFromJson(d.data["chains"].toObject()[residue(d, rid)["chain"].toString()]);
+    if (chain.isEmpty())
+        fail(tr("鎖情報がありません。"));
+    followingCharge(d, [&] {
+        setTerminals(d, chain.first(), n, {});
+        setTerminals(d, chain.last(), {}, c);
+    });
+}
+static void replaceResidue(Document &d, const QString &rid, const QString &code, const QString &state,
+                           const QString &chirality) {
     auto old = residue(d, rid);
     QMap<QString, Vec> targets;
     for (auto name : {"N", "CA", "C", "O"})
@@ -541,6 +561,10 @@ void mutateResidue(Document &d, const QString &rid, const QString &code, const Q
             orientAmideH(d, rid, neighbor);
             break;
         }
+}
+void mutateResidue(Document &d, const QString &rid, const QString &code, const QString &state,
+                   const QString &chirality) {
+    followingCharge(d, [&] { replaceResidue(d, rid, code, state, chirality); });
 }
 void deleteResidue(Document &d, const QString &rid) {
     auto r = residue(d, rid);

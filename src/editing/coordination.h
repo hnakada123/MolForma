@@ -8,6 +8,8 @@ QString addCenter(Document &d, const QString &element, const QString &geometry, 
                   double distance, int oxidation);
 QJsonObject center(const Document &d, const QString &atom);
 void updateCenter(Document &d, const QJsonObject &c);
+// The oxidation state is structure preparation's: the total charge follows it (followingCharge).
+void setOxidation(Document &d, const QString &centerId, int oxidation);
 PlacedPart placeLigand(Document &d, const QString &centerId, const QList<int> &sites, const QJsonObject &t,
                        double twist = 0);
 void adjustCenter(Document &d, const QString &centerId, const QString &geometry, double distance,

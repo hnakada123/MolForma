@@ -1024,6 +1024,43 @@ class CoreTest : public QObject {
             sum += q.toObject()["charge"].toDouble();
         QVERIFY(std::abs(sum) < 1e-12);
     }
+    void totalChargeFollowsStructure() {
+        // One rule for the edits of residues, coordination and fragments: a total charge equal to the
+        // expected charge (the formal charges, with the oxidation states of centers) follows it.
+        Document d;
+        buildPeptide(d, {"LYS"}, "charged", "charged");
+        QCOMPARE(d.charge, 1);
+        const auto lys = d.data["residues"].toArray().first().toObject()["id"].toString();
+        const auto zinc = addCenter(d, "Zn", "tetrahedral", Vec(20, 0, 0), 2.3, 2);
+        QCOMPARE(d.charge, 3);
+        // With a center the formal charges alone (here 1) no longer equal the total charge.
+        const auto asp = addTerminalResidue(d, lys, false, "ASP", "default", "L", "charged", "charged");
+        QCOMPARE(d.charge, 2);
+        setChainTerminals(d, lys, "neutral", "charged");
+        QCOMPARE(d.charge, 1);
+        mutateResidue(d, asp, "GLY", "default", "L");
+        QCOMPARE(d.charge, 2);
+        setOxidation(d, zinc, 3);
+        QCOMPARE(d.charge, 3);
+        const auto chloride = [] {
+            Document f;
+            Atom cl;
+            cl.element = "Cl";
+            cl.charge = -1;
+            f.atoms << cl;
+            f.charge = -1;
+            return f;
+        };
+        insertFragment(d, chloride());
+        QCOMPARE(d.charge, 2);
+        QCOMPARE(d.charge, d.expectedCharge());
+        // A total charge set to another value stays, also when a peptide is built beside it.
+        d.charge = 7;
+        setOxidation(d, zinc, 2);
+        buildPeptide(d, {"GLY"}, "charged", "charged");
+        insertFragment(d, chloride());
+        QCOMPARE(d.charge, 7);
+    }
     void smilesAndRefine() {
         auto d = fromSmiles("CCO");
         QCOMPARE(d.formula(), QString("C2H6O"));

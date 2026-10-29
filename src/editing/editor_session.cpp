@@ -72,6 +72,7 @@ bool EditorSession::propose(const QString &name, const Document &next, bool remo
     pending = next;
     pendingName = name;
     pendingRemote = remote;
+    ++pendingSerial;
     emit changed();
     return true;
 }

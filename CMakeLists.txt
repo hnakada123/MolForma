@@ -93,6 +93,7 @@ add_library(molforma_ui STATIC
     src/ui/coordinates_panel.cpp
     src/ui/diagnostics_list.cpp
     src/ui/editor_chrome.cpp
+    src/ui/editor_tool.cpp
     src/ui/molecule_panel.cpp
     src/ui/molecule_properties.cpp
     src/ui/candidate_controls.cpp

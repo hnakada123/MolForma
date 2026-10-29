@@ -201,12 +201,7 @@ void MoleculePanel::buildEditPanel() {
         tr("「配置」ツールで置く原子・配位中心の元素、「元素を変更」で選択原子に設定する元素です。"
            "パレットで原子・配位中心を選ぶと連動します。"));
     enableWithSelection(button(f, tr("選択原子をこの元素に変更"),
-                               [this] {
-                                   auto ids = requireSelection();
-                                   QString s = value(elementBox);
-                                   bool h = autoH->isChecked();
-                                   edit(tr("元素を変更"), [=](Document &d) { replaceElement(d, ids, s, h); });
-                               }),
+                               [this] { replaceElements(requireSelection(), value(elementBox)); }),
                         1);
     // In a card like the rest of the page: how the 3D view colors the atoms.
     auto *color = choices(f, tr("3D画面の色分け"), {tr("元素"), tr("残基")}, {"element", "residue"});
@@ -250,10 +245,7 @@ void MoleculePanel::buildEditPanel() {
     enableWithSelection(button(f, tr("選択した2原子を結合"),
                                [this] {
                                    auto ids = requireSelection(2);
-                                   auto kind = value(bondKind);
-                                   bool h = autoH->isChecked();
-                                   edit(tr("結合を変更"),
-                                        [=](Document &d) { changeBond(d, ids[0], ids[1], kind, h); });
+                                   bondAtoms(ids[0], ids[1], value(bondKind));
                                }),
                         2, 2);
     auto *side = button(f, tr("結合の片側を選択"), [this] {
@@ -459,14 +451,7 @@ void MoleculePanel::buildEditPanel() {
     for (bool fixed : {true, false}) {
         auto *b = button(
             f, fixed ? tr("選択原子を固定") : tr("固定を解除"),
-            [this, fixed] {
-                auto ids = requireSelection();
-                edit(fixed ? tr("選択原子を固定") : tr("選択原子の固定を解除"), [=](Document &d) {
-                    AtomProperties properties;
-                    properties.fixed = fixed;
-                    setAtomProperties(d, ids, properties);
-                });
-            },
+            [this, fixed] { fixAtoms(requireSelection(), fixed); },
             fixed ? "fixSelectedAtoms" : "unfixSelectedAtoms");
         b->setToolTip(tr("編集時の移動・削除を防ぎ、NWChemの構造最適化でも座標を固定します。"));
         enableWithSelection(b, 1);
@@ -575,14 +560,7 @@ void MoleculePanel::buildCoordinationPanel() {
     button(f, tr("酸化数だけを適用"), [this] {
         auto id = selectedCenter();
         int ox = oxidation->value();
-        edit(tr("酸化数を変更"), [=](Document &d) {
-            const bool follows = d.charge == d.expectedCharge();
-            auto c = center(d, id);
-            c["oxidation"] = ox;
-            updateCenter(d, c);
-            if (follows)
-                d.charge = d.expectedCharge();
-        });
+        edit(tr("酸化数を変更"), [=](Document &d) { setOxidation(d, id, ox); });
     });
     section(f, QT_TR_NOOP("配位子の配置"));
     siteInput = new QLineEdit("1");
@@ -600,7 +578,7 @@ void MoleculePanel::buildCoordinationPanel() {
         auto idx = sites();
         auto t = currentTemplate();
         double angle = twist->value();
-        edit(tr("配位子を配置"), [=](Document &d) { placeLigand(d, c, idx, t, angle); }, true);
+        proposeLigand(c, idx, t, angle);
     })->setProperty("primary", true);
     button(f, tr("配位子を交換"), [this] {
         QString p = selectedPart();
@@ -641,13 +619,8 @@ void MoleculePanel::addAmino(const QString &rid, bool n) {
         fail(tr("アミノ酸をパレットで選択してください。"));
     QString code = t["code"].toString(), state = t["state"].toString("default"), ch = value(chiralityBox),
             nt = value(nTerm), ct = value(cTerm), result;
-    edit(tr("末端に残基を追加"), [&](Document &d) {
-        int before = d.formalCharge();
-        result =
-            n ? prependResidue(d, code, rid, state, ch, nt) : appendResidue(d, code, rid, state, ch, nt, ct);
-        if (d.charge == before)
-            d.charge = d.formalCharge();
-    });
+    edit(tr("末端に残基を追加"),
+         [&](Document &d) { result = addTerminalResidue(d, rid, n, code, state, ch, nt, ct); });
     growthResidue = result;
     growthN = n;
     view->keepInView();
@@ -659,16 +632,7 @@ void MoleculePanel::buildResiduePanel() {
     button(f, tr("PDBの診断・修復…"), [this] { pdbPreparation(); }, "preparePdb");
     button(f, tr("構造を検査…"), [this] { showReport(); });
     button(f, tr("結合グラフから残基を認識"), [this] {
-        // Charges read from the hydrogens (an XYZ file has none) carry the total charge along.
-        edit(
-            tr("残基を認識"),
-            [](Document &d) {
-                const int before = d.expectedCharge();
-                recognizeResidues(d);
-                if (d.charge == before)
-                    d.charge = d.expectedCharge();
-            },
-            true);
+        edit(tr("残基を認識"), [](Document &d) { recognizeResidues(d); }, true);
     })->setEnabled(hasStereochemistryBackend());
     button(f, tr("選択残基の欠損原子を補完"), [this] {
         auto rid = selectedResidue();
@@ -735,35 +699,14 @@ void MoleculePanel::buildResiduePanel() {
         if (t["category"] != "amino")
             fail(tr("アミノ酸を選択してください。"));
         // The state of the amino acid chosen in the palette (HIP, neutral Glu, ...), as when adding it at an
-        // end; the total charge follows the formal charges as there.
+        // end; the total charge follows as there.
         QString code = t["code"].toString(), state = t["state"].toString("default"), ch = value(chiralityBox);
-        edit(
-            tr("残基を置換"),
-            [=](Document &d) {
-                const int before = d.expectedCharge();
-                mutateResidue(d, rid, code, state, ch);
-                if (d.charge == before)
-                    d.charge = d.expectedCharge();
-            },
-            true);
+        edit(tr("残基を置換"), [=](Document &d) { mutateResidue(d, rid, code, state, ch); }, true);
     });
     button(f, tr("選択した鎖の両末端へ適用"), [this] {
         auto rid = selectedResidue();
         QString n = value(nTerm), c = value(cTerm);
-        edit(
-            tr("末端状態を変更"),
-            [=](Document &d) {
-                auto r = residue(d, rid);
-                auto seq = idsFromJson(d.data["chains"].toObject()[r["chain"].toString()]);
-                if (seq.isEmpty())
-                    fail(tr("鎖情報がありません。"));
-                int old = d.formalCharge();
-                setTerminals(d, seq.first(), n, {});
-                setTerminals(d, seq.last(), {}, c);
-                if (d.charge == old)
-                    d.charge = d.formalCharge();
-            },
-            true);
+        edit(tr("末端状態を変更"), [=](Document &d) { setChainTerminals(d, rid, n, c); }, true);
     });
     button(f, tr("残基を削除（鎖を分割）"), [this] {
         auto rid = selectedResidue();
@@ -941,15 +884,7 @@ void MoleculePanel::buildChargePanel() {
         [this] {
             Vec p = fields(chargeFields);
             double q = chargeValue->value();
-            edit(tr("点電荷を追加"), [=](Document &d) {
-                auto charges = d.data["point_charges"].toArray();
-                charges.append(QJsonObject{{"id", newId()},
-                                           {"position", vectorToJson(p)},
-                                           {"charge", q},
-                                           {"source", "manual"},
-                                           {"source_unit", "angstrom"}});
-                d.data["point_charges"] = charges;
-            });
+            edit(tr("点電荷を追加"), [=](Document &d) { addPointCharge(d, p, q); });
         },
         "addPointCharge")
         ->setProperty("primary", true);
@@ -961,18 +896,7 @@ void MoleculePanel::buildChargePanel() {
             QString id = pointList->currentItem()->data(Qt::UserRole).toString();
             Vec p = fields(chargeFields);
             double q = chargeValue->value();
-            edit(tr("点電荷を更新"), [=](Document &d) {
-                auto charges = d.data["point_charges"].toArray();
-                for (int i = 0; i < charges.size(); ++i) {
-                    auto c = charges[i].toObject();
-                    if (c["id"] == id) {
-                        c["position"] = vectorToJson(p);
-                        c["charge"] = q;
-                        charges[i] = c;
-                    }
-                }
-                d.data["point_charges"] = charges;
-            });
+            edit(tr("点電荷を更新"), [=](Document &d) { setPointCharge(d, id, p, q); });
         },
         "updatePointCharge");
     button(
@@ -981,13 +905,7 @@ void MoleculePanel::buildChargePanel() {
             if (!pointList->currentItem())
                 fail(tr("点電荷を選択してください。"));
             QString id = pointList->currentItem()->data(Qt::UserRole).toString();
-            edit(tr("点電荷を削除"), [=](Document &d) {
-                auto charges = d.data["point_charges"].toArray();
-                for (int i = charges.size() - 1; i >= 0; --i)
-                    if (charges[i].toObject()["id"] == id)
-                        charges.removeAt(i);
-                d.data["point_charges"] = charges;
-            });
+            edit(tr("点電荷を削除"), [=](Document &d) { removePointCharge(d, id); });
         },
         "deletePointCharge");
     enableWithSelection(

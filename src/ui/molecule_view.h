@@ -1,6 +1,7 @@
 #pragma once
 #include "model/document.h"
 #include "results/results.h"
+#include "ui/editor_tool.h"
 #include <QHash>
 #include <QPointF>
 #include <QTimer>
@@ -90,7 +91,7 @@ class MoleculeView : public QWidget {
         movedAtoms = moved;
         scheduleRender();
     }
-    void setTool(const QString &t) {
+    void setTool(EditorTool t) {
         tool = t;
     }
     // The atoms a drag with the move tool carries along (set when dragStarted is emitted).
@@ -167,7 +168,8 @@ class MoleculeView : public QWidget {
     Document doc;
     Ids selected;
     QSet<QString> selectedIds; // The same atoms, for lookups while drawing.
-    QString tool = "select", colorMode = "element";
+    EditorTool tool = EditorTool::Select;
+    QString colorMode = "element";
     Vec center = Vec::Zero();
     double scale = 65, depth = 0;
     Mat orientation = Mat::Identity(); // Camera rotation; mouse drags turn it about screen axes.

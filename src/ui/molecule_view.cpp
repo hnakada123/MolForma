@@ -841,7 +841,7 @@ void MoleculeView::mousePressEvent(QMouseEvent *e) {
     dragging = false;
     boxing = false;
     dragAtoms.clear();
-    if (tool == "move" && !pressedAtom.isEmpty() && pressedButton == Qt::LeftButton &&
+    if (tool == EditorTool::Move && !pressedAtom.isEmpty() && pressedButton == Qt::LeftButton &&
         !pressModifiers.testFlag(Qt::AltModifier))
         emit dragStarted(pressedAtom);
 }
@@ -855,10 +855,10 @@ void MoleculeView::mouseMoveEvent(QMouseEvent *e) {
         if (pressedButton == Qt::RightButton)
             pan += delta;
         else if (pressedButton == Qt::LeftButton &&
-                 (pressModifiers & (Qt::ShiftModifier | Qt::ControlModifier)) && tool == "select")
+                 (pressModifiers & (Qt::ShiftModifier | Qt::ControlModifier)) && tool == EditorTool::Select)
             boxing = true;
-        else if (tool != "move" || pressedAtom.isEmpty() || pressModifiers.testFlag(Qt::AltModifier) ||
-                 pressedButton == Qt::MiddleButton) {
+        else if (tool != EditorTool::Move || pressedAtom.isEmpty() ||
+                 pressModifiers.testFlag(Qt::AltModifier) || pressedButton == Qt::MiddleButton) {
             // Trackball: turn about the screen's vertical and horizontal axes, whatever the
             // current orientation (no gimbal lock), and keep the matrix orthonormal.
             orientation =
@@ -904,7 +904,7 @@ void MoleculeView::mouseReleaseEvent(QMouseEvent *e) {
             emit rectangleSelected(ids, pressModifiers.testFlag(Qt::ControlModifier));
             boxing = false;
             scheduleRender();
-        } else if (button == Qt::LeftButton && tool == "move" && !pressedAtom.isEmpty() &&
+        } else if (button == Qt::LeftButton && tool == EditorTool::Move && !pressedAtom.isEmpty() &&
                    !pressModifiers.testFlag(Qt::AltModifier))
             emit atomDragged(pressedAtom, worldPosition(e->position()) - worldPosition(press));
         return;

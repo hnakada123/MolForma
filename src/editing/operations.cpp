@@ -26,13 +26,12 @@ void deleteAtoms(Document &d, const Ids &chosen, AtomDeletionOptions options) {
                 for (const auto &n : d.neighbors(id))
                     if (!ids.contains(n) && !cut.contains(n))
                         cut << n;
-    const bool follows = d.charge == d.expectedCharge();
-    d.remove(ids);
-    // Deleting a hydrogen must not add it back. An empty selection would cap the whole molecule.
-    if (options.capCutBonds && !cut.isEmpty())
-        completeHydrogens(d, cut);
-    if (follows)
-        d.charge = d.expectedCharge();
+    followingCharge(d, [&] {
+        d.remove(ids);
+        // Deleting a hydrogen must not add it back. An empty selection would cap the whole molecule.
+        if (options.capCutBonds && !cut.isEmpty())
+            completeHydrogens(d, cut);
+    });
 }
 static int valence(const Atom &a, double used) {
     if (a.element == "H")
@@ -649,7 +648,6 @@ Ids insertFragment(Document &d, const Document &fragment) {
     auto errors = fragment.validate();
     if (!errors.isEmpty())
         fail(errors.join('\n'));
-    const bool chargeFollows = d.charge == d.formalCharge();
     Vec offset = Vec::Zero();
     if (!d.atoms.isEmpty()) {
         double right = -INFINITY, left = INFINITY;
@@ -667,28 +665,58 @@ Ids insertFragment(Document &d, const Document &fragment) {
         offset = Vec(right + 3 - left, center.y() - own.y(), center.z() - own.z());
     }
     Ids added;
-    for (auto a : fragment.atoms) {
-        if (d.contains(a.id))
-            fail(tr("断片の原子IDが重複しています。"));
-        a.position += offset;
-        d.atoms << a;
-        added << a.id;
-    }
-    d.bonds += fragment.bonds;
-    for (auto key : {"parts", "residues", "centers"}) {
-        auto list = d.data[key].toArray();
-        for (const auto &v : fragment.data[key].toArray())
-            list.append(v);
-        d.data[key] = list;
-    }
-    auto chains = d.data["chains"].toObject();
-    const auto more = fragment.data["chains"].toObject();
-    for (auto it = more.begin(); it != more.end(); ++it)
-        chains[it.key()] = it.value();
-    d.data["chains"] = chains;
-    if (chargeFollows)
-        d.charge = d.formalCharge();
+    followingCharge(d, [&] {
+        for (auto a : fragment.atoms) {
+            if (d.contains(a.id))
+                fail(tr("断片の原子IDが重複しています。"));
+            a.position += offset;
+            d.atoms << a;
+            added << a.id;
+        }
+        d.bonds += fragment.bonds;
+        for (auto key : {"parts", "residues", "centers"}) {
+            auto list = d.data[key].toArray();
+            for (const auto &v : fragment.data[key].toArray())
+                list.append(v);
+            d.data[key] = list;
+        }
+        auto chains = d.data["chains"].toObject();
+        const auto more = fragment.data["chains"].toObject();
+        for (auto it = more.begin(); it != more.end(); ++it)
+            chains[it.key()] = it.value();
+        d.data["chains"] = chains;
+    });
     return added;
+}
+QString addPointCharge(Document &d, const Vec &position, double charge) {
+    const auto id = newId();
+    auto charges = d.data["point_charges"].toArray();
+    charges.append(QJsonObject{{"id", id},
+                               {"position", vectorToJson(position)},
+                               {"charge", charge},
+                               {"source", "manual"},
+                               {"source_unit", "angstrom"}});
+    d.data["point_charges"] = charges;
+    return id;
+}
+void setPointCharge(Document &d, const QString &id, const Vec &position, double charge) {
+    auto charges = d.data["point_charges"].toArray();
+    for (int i = 0; i < charges.size(); ++i) {
+        auto c = charges[i].toObject();
+        if (c["id"] == id) {
+            c["position"] = vectorToJson(position);
+            c["charge"] = charge;
+            charges[i] = c;
+        }
+    }
+    d.data["point_charges"] = charges;
+}
+void removePointCharge(Document &d, const QString &id) {
+    auto charges = d.data["point_charges"].toArray();
+    for (int i = charges.size() - 1; i >= 0; --i)
+        if (charges[i].toObject()["id"] == id)
+            charges.removeAt(i);
+    d.data["point_charges"] = charges;
 }
 QString structureReport(const Document &d) {
     QStringList lines = d.validate();

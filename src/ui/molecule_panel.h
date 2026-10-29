@@ -1,5 +1,6 @@
 #pragma once
 #include "editing/editor_session.h"
+#include "ui/editor_tool.h"
 #include "ui/molecule_view.h"
 #include <QHash>
 #include <QSettings>
@@ -141,6 +142,7 @@ class MoleculePanel : public QWidget {
               *cTerm = nullptr;
     QString growthResidue;
     bool growthN = false;
+    int ligandCandidate = 0; // The candidate serial of the ligand proposed last (proposeLigand).
     void buildEditPanel();
     void buildCoordinationPanel();
     void buildResiduePanel();
@@ -195,12 +197,19 @@ class MoleculePanel : public QWidget {
     void removePart();
     void selectNumbers();
     void deleteAtoms(const Ids &ids);
+    // The edits that the tools, buttons, keys and menus share, with the options of the panel.
+    void bondAtoms(const QString &a, const QString &b, const QString &kind);
+    void replaceElements(const Ids &ids, const QString &symbol);
+    void fixAtoms(const Ids &ids, bool fixed);
+    // A ligand placed as a candidate; clicking the sites for the next one confirms it.
+    void proposeLigand(const QString &center, const QList<int> &sites, const QJsonObject &t,
+                       double twist = 0);
     void selectAll();
     void copySelection();
     void pasteFragment();
-    QString currentTool() const;
-    void setTool(const QString &code);
-    QString placementKind() const;
+    EditorTool tool() const;
+    void setTool(EditorTool tool);
+    PaletteEntry paletteChoice() const; // What the palette row chosen places.
     void refreshToolHint();
     void pdbPreparation();
     void addAmino(const QString &rid, bool n);
