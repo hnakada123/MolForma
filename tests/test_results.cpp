@@ -1,4 +1,5 @@
 #include "editing/coordinates.h"
+#include "results/result_summary.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
 #include "ui/molecule_view.h"
@@ -781,6 +782,41 @@ class ResultsTest : public QObject {
         QCOMPARE(resultRigidModes(r).count(true), 5);
         r.modes.removeLast();
         QCOMPARE(resultRigidModes(r).count(true), 0);
+    }
+    void summaryRules() {
+        // Every negative vibration is imaginary; below −10 cm⁻¹ it is significant.
+        ResultData r;
+        r.source = "water.out";
+        r.status = "status";
+        r.vibrationGeometry = Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n");
+        for (double f : {-0.02, -250.0, 0.01, -1.5, 0.0, -5.0, 2.0, 0.5, 3800.0})
+            r.modes.append({f, 1, {}});
+        using K = ResultModeKind;
+        const auto kinds = resultModeKinds(r);
+        QCOMPARE(kinds, (QVector<K>{K::Rigid, K::SignificantImaginary, K::Rigid, K::Rigid, K::Rigid,
+                                    K::Imaginary, K::Rigid, K::Rigid, K::Vibration}));
+        const auto counts = resultModeCounts(kinds);
+        QCOMPARE(counts.vibrations, 3);
+        QCOMPARE(counts.rigid, 6);
+        QCOMPARE(counts.imaginary, 2);
+        QCOMPARE(counts.significant, 1);
+        QCOMPARE(resultImaginaryText(counts), QString("虚振動 2個（−10 cm⁻¹未満 1個）"));
+        QCOMPARE(resultImaginaryText({}), QString("虚振動なし"));
+        r.properties["optimization"] = "converged";
+        QCOMPARE(resultBriefSummary(r), QString("最適化: 収束 · 虚振動 2個（−10 cm⁻¹未満 1個）"));
+        QCOMPARE(resultMessage(r), "status\n" + resultBriefSummary(r));
+        QVERIFY(resultMessage(ResultData()).isEmpty());
+        // The criteria in NWChem's order; the displacements are not judged at step 0.
+        const QJsonObject thresholds{{"gmax", 4.5e-4}, {"grms", 3e-4}, {"xmax", 1.8e-3}, {"xrms", 1.2e-3}};
+        ResultStep step{0, -76, 0, 4e-4, 2e-4, 0, 0, 0};
+        auto criteria = resultCriteria(step, thresholds);
+        QCOMPARE(QString(criteria[2].name), QString("Xrms"));
+        QCOMPARE(QString(criteria[3].name), QString("Xmax"));
+        QVERIFY(criteria[0].met() && criteria[1].met());
+        QVERIFY(!criteria[2].judged() && !criteria[3].judged() && !criteria[3].met());
+        step.step = 1;
+        QVERIFY(resultCriteria(step, thresholds)[3].met());
+        QVERIFY(!resultCriteria(step, {{"gmax", 4.5e-4}})[1].judged()); // No threshold printed for it.
     }
     void applyResultStructure() {
         // Core rule: same atoms in the same order; fixed atoms must not have moved.

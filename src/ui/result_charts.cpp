@@ -1,4 +1,5 @@
 #include "ui/result_charts.h"
+#include "model/units.h"
 #include "results/molden_orbitals.h"
 #include "ui/editor_chrome.h"
 #include <QHelpEvent>
@@ -12,7 +13,6 @@
 
 namespace mf {
 namespace {
-constexpr double HartreeToEv = 27.211386245988;
 // About five round tick values (1, 2, 5 × 10^n steps) covering [lo, hi].
 QVector<double> ticks(double lo, double hi) {
     const double span = hi - lo;

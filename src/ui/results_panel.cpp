@@ -3,6 +3,7 @@
 #include "editing/coordinates.h"
 #include "model/geometry.h"
 #include "model/i18n.h"
+#include "model/units.h"
 #include "results/molden_orbitals.h"
 #include "ui/editor_chrome.h"
 #include "ui/main_window.h"
@@ -59,7 +60,6 @@ QString shownReal(double value) {
 QString shownFixed(double value, int decimals) {
     return fixed(value, decimals).replace('-', "−");
 }
-constexpr double HartreeToKcal = 627.509474, HartreeToEv = 27.211386245988, EvNanometer = 1239.84198;
 // "bond 1 2" (MolForma's scan title) in the words of the calculation tab.
 QString coordinateText(const QString &coordinate) {
     const auto words = coordinate.split(' ', Qt::SkipEmptyParts);
@@ -803,7 +803,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     vl->addWidget(showRigid);
     connect(showRigid, &QCheckBox::toggled, this, [this](bool on) {
         for (int i = 0; i < modes->rowCount(); ++i)
-            modes->setRowHidden(i, !on && rigidMotion.value(i));
+            modes->setRowHidden(i, !on && modeKinds.value(i) == ResultModeKind::Rigid);
     });
     auto *modeHint = new QLabel(tr(
         "モードを選ぶと3Dビューに基準構造を表示し、下の操作で再生・書き出しできます。負の振動数は虚振動です。"
@@ -1542,8 +1542,7 @@ void ResultsPanel::updateActions() {
                                  : QString());
 }
 void ResultsPanel::display(bool orbitalOnly) {
-    const auto brief = briefSummary();
-    summary = data.source.isEmpty() ? QString() : brief.isEmpty() ? data.status : data.status + "\n" + brief;
+    summary = resultMessage(data);
     status->clear(); // The outcome is in "概要": no message left from loading.
     if (!orbitalOnly && !data.source.isEmpty()) {
         QString selectedFile;
@@ -1660,37 +1659,34 @@ void ResultsPanel::display(bool orbitalOnly) {
     if (!orbitalOnly) {
         const QSignalBlocker guard(modes);
         modes->setRowCount(data.modes.size());
-        rigidMotion = resultRigidModes(data);
+        modeKinds = resultModeKinds(data);
+        const auto counts = resultModeCounts(modeKinds);
         double strongest = 0;
         for (int i = 0; i < data.modes.size(); ++i)
-            if (!rigidMotion.value(i) && std::isfinite(data.modes[i].intensity))
+            if (modeKinds[i] != ResultModeKind::Rigid && std::isfinite(data.modes[i].intensity))
                 strongest = std::max(strongest, data.modes[i].intensity);
-        int vibrationCount = 0, imaginary = 0;
         for (int i = 0; i < data.modes.size(); ++i) {
             const auto &m = data.modes[i];
-            const bool rigid = rigidMotion.value(i);
-            vibrationCount += !rigid;
-            imaginary += !rigid && m.frequency < -10;
+            const bool rigid = modeKinds[i] == ResultModeKind::Rigid;
             // Translations and rotations are no vibrations: hidden by default, without an IR intensity.
             row(modes, i,
                 {real(m.frequency), rigid ? QString("—") : real(m.intensity),
-                 rigid             ? tr("並進・回転")
-                 : m.frequency < 0 ? tr("虚振動")
-                                   : tr("振動", "mode type")});
+                 rigid                         ? tr("並進・回転")
+                 : imaginaryMode(modeKinds[i]) ? tr("虚振動")
+                                               : tr("振動", "mode type")});
             if (!rigid && strongest > 0 && std::isfinite(m.intensity))
                 modes->item(i, 1)->setData(Qt::UserRole, std::clamp(m.intensity / strongest, 0., 1.));
-            if (!rigid && m.frequency < -10)
+            if (modeKinds[i] == ResultModeKind::SignificantImaginary)
                 modes->item(i, 2)->setForeground(errorColor(palette()));
             modes->setRowHidden(i, rigid && !showRigid->isChecked());
         }
         modes->clearSelection();
         modes->setCurrentCell(-1, -1);
-        QStringList parts{tr("振動 %n", nullptr, vibrationCount),
-                          imaginary ? tr("虚振動 %n個", nullptr, imaginary) : tr("虚振動なし")};
+        QStringList parts{tr("振動 %n", nullptr, counts.vibrations), resultImaginaryText(counts)};
         if (const auto thermo = data.properties.value("thermochemistry").toArray(); !thermo.isEmpty())
             parts << tr("ゼロ点補正 %1 kcal/mol").arg(fixed(thermo[0].toObject()["zpe_kcal"].toDouble(), 3));
-        if (data.modes.size() > vibrationCount)
-            parts << tr("並進・回転 %1").arg(data.modes.size() - vibrationCount);
+        if (counts.rigid)
+            parts << tr("並進・回転 %1").arg(counts.rigid);
         modeSummary->setText(parts.join(" · "));
         showIrSpectrum();
         showPath();
@@ -1764,8 +1760,8 @@ void ResultsPanel::updateTabs() {
                          loaded && (data.format == "CUBE" || data.format == "MOLDEN"),
                          loaded && !data.log.isEmpty()};
     // Counts after the names: what each tab lists.
-    const int vibrations = int(std::count(rigidMotion.begin(), rigidMotion.end(), false)) +
-                           std::max(0, int(data.modes.size() - rigidMotion.size()));
+    const int vibrations =
+        resultModeCounts(modeKinds).vibrations + std::max(0, int(data.modes.size() - modeKinds.size()));
     const int counts[]{0,
                        int(data.energies.size()),
                        int(data.orbitals.size()),
@@ -1885,17 +1881,12 @@ void ResultsPanel::showOverview() {
         QString caption;
         if (!data.steps.isEmpty()) {
             caption = tr("%nステップ", nullptr, data.steps.last().step);
-            const auto t = data.properties.value("thresholds").toObject();
-            const auto &last = data.steps.last();
             int met = 0, judged = 0;
-            for (const auto &[key, value] : {std::pair{"gmax", last.gmax},
-                                             {"grms", last.grms},
-                                             {"xrms", last.xrms},
-                                             {"xmax", last.xmax}})
-                if (t.contains(key)) {
-                    ++judged;
-                    met += value <= t[key].toDouble();
-                }
+            for (const auto &criterion :
+                 resultCriteria(data.steps.last(), data.properties.value("thresholds").toObject())) {
+                judged += criterion.judged();
+                met += criterion.met();
+            }
             if (judged)
                 caption += tr(" · 最終ステップは判定 %1/%2 を満たす").arg(met).arg(judged);
         }
@@ -1904,22 +1895,22 @@ void ResultsPanel::showOverview() {
              converged ? "good" : "warn", 4);
     }
     if (!data.modes.isEmpty()) {
-        int vibrations = 0;
-        QStringList imaginary;
-        for (int i = 0; i < data.modes.size(); ++i) {
-            if (rigidMotion.value(i))
-                continue;
-            ++vibrations;
-            if (data.modes[i].frequency < -10)
-                imaginary << shownFixed(data.modes[i].frequency, 1);
-        }
-        const int rigid = int(data.modes.size()) - vibrations;
-        tile("resultsTileImaginary", tr("虚振動（−10 cm⁻¹未満）"),
-             imaginary.isEmpty() ? tr("なし") : tr("%n個", "imaginary frequencies", int(imaginary.size())),
-             imaginary.isEmpty() ? tr("振動 %n%1", nullptr, vibrations)
-                                       .arg(rigid ? tr(" · 並進・回転 %1 は除外").arg(rigid) : QString())
-                                 : imaginary.join(", ") + " cm⁻¹",
-             imaginary.isEmpty() ? "good" : "warn", 3);
+        const auto counts = resultModeCounts(modeKinds);
+        QStringList values;
+        for (int i = 0; i < data.modes.size(); ++i)
+            if (imaginaryMode(modeKinds.value(i)))
+                values << shownFixed(data.modes[i].frequency, 1);
+        // All imaginary frequencies, and how many are significant (the others may be numerical noise).
+        tile("resultsTileImaginary", tr("虚振動", "summary card"),
+             counts.imaginary ? tr("%n個", "imaginary frequencies", counts.imaginary) : tr("なし"),
+             counts.imaginary
+                 ? tr("−10 cm⁻¹未満 %n個", nullptr, counts.significant) + " · " + values.join(", ") + " cm⁻¹"
+                 : tr("振動 %n%1", nullptr, counts.vibrations)
+                       .arg(counts.rigid ? tr(" · 並進・回転 %1 は除外").arg(counts.rigid) : QString()),
+             counts.significant ? "warn"
+             : counts.imaginary ? "neutral"
+                                : "good",
+             3);
     }
     QStringList spins;
     for (const auto &o : data.orbitals)
@@ -2088,9 +2079,9 @@ void ResultsPanel::showContext() {
         title = tr("モード %1 · %2 cm⁻¹").arg(mode + 1).arg(fixed(m.frequency, 1));
         detail = animation.isActive() ? tr("再生中 · 振幅 %1 Å").arg(fixed(amplitude->value(), 2))
                                       : tr("基準構造");
-        if (rigidMotion.value(mode))
+        if (modeKinds.value(mode) == ResultModeKind::Rigid)
             detail += tr(" · 並進・回転");
-        else if (m.frequency < -10)
+        else if (imaginaryMode(modeKinds.value(mode)))
             detail += tr(" · 虚振動");
         modeLabel->setText(title);
     } else if (data.format == "MOLDEN" && data.orbitalBasis && !data.orbitals.isEmpty() &&
@@ -2137,23 +2128,7 @@ QString ResultsPanel::message() const {
     return shown.isEmpty() ? summary : shown;
 }
 QString ResultsPanel::briefSummary() const {
-    QStringList parts;
-    if (data.properties.contains("optimization"))
-        parts << (data.properties.value("optimization") == "converged" ? tr("最適化: 収束")
-                                                                       : tr("最適化: 収束メッセージなし"));
-    if (const auto final = data.properties["final_energy"].toObject(); !final.isEmpty())
-        parts
-            << tr("E = %1 Eh（%2）").arg(shownReal(final["hartree"].toDouble()), final["method"].toString());
-    if (!data.modes.isEmpty()) {
-        const auto rigid = resultRigidModes(data);
-        int imaginary = 0;
-        for (int i = 0; i < data.modes.size(); ++i)
-            imaginary += !rigid.value(i) && data.modes[i].frequency < -10;
-        parts << tr("虚振動 %n個", nullptr, imaginary);
-    }
-    if (!data.excitations.isEmpty())
-        parts << tr("励起状態 %n件", nullptr, int(data.excitations.size()));
-    return parts.join(" · ");
+    return resultBriefSummary(data);
 }
 void ResultsPanel::showSpectrum() {
     const bool nm = spectrumAxis->currentData() == "nm";
@@ -2187,9 +2162,9 @@ void ResultsPanel::showSpectrum() {
 void ResultsPanel::showEnergies() {
     const auto unit = energyUnit->currentData().toString();
     const double factor = unit == "kcal"         ? HartreeToKcal
-                          : unit == "kj"         ? 2625.499639
+                          : unit == "kj"         ? HartreeToKj
                           : unit == "ev"         ? HartreeToEv
-                          : unit == "wavenumber" ? 219474.6313632
+                          : unit == "wavenumber" ? HartreeToWavenumber
                                                  : 1.;
     const QString label = energyUnit->currentText().section(':', 1).trimmed();
     energy->setHorizontalHeaderItem(2, new QTableWidgetItem("ΔE / " + label));
@@ -2327,7 +2302,7 @@ void ResultsPanel::showIrSpectrum() {
     double top = 0;
     for (int i = 0; i < data.modes.size(); ++i) {
         const auto &m = data.modes[i];
-        if (rigidMotion.value(i) || m.frequency <= 0 || !std::isfinite(m.intensity))
+        if (modeKinds.value(i) == ResultModeKind::Rigid || m.frequency <= 0 || !std::isfinite(m.intensity))
             continue;
         sticks << QPointF(m.frequency, m.intensity);
         irModes << i;
@@ -2378,21 +2353,19 @@ void ResultsPanel::showOptimization() {
         box->addWidget(title);
         auto *row = new QHBoxLayout;
         row->setSpacing(6);
-        for (const auto &[key, name, value] : {std::tuple{"gmax", "Gmax", last.gmax},
-                                               {"grms", "Grms", last.grms},
-                                               {"xrms", "Xrms", last.xrms},
-                                               {"xmax", "Xmax", last.xmax}}) {
-            const bool judged = thresholds.contains(key);
-            const bool met = judged && value <= thresholds[key].toDouble();
+        for (const auto &criterion : resultCriteria(last, thresholds)) {
+            const QString name = criterion.name;
             // Five decimals, as NWChem prints them.
             auto *chip = summaryTile(
-                judged ? QString("%1 %2").arg(name, met ? "✓" : "✗") : QString(name), fixed(value, 5),
-                judged ? tr("閾値 %1").arg(fixed(thresholds[key].toDouble(), 5)) : QString(),
-                !judged ? "neutral"
-                : met   ? "good"
-                        : "warn",
+                criterion.judged() ? QString("%1 %2").arg(name, criterion.met() ? "✓" : "✗") : name,
+                criterion.measured ? fixed(criterion.value, 5) : QString("—"),
+                std::isfinite(criterion.threshold) ? tr("閾値 %1").arg(fixed(criterion.threshold, 5))
+                                                   : QString(),
+                !criterion.judged() ? "neutral"
+                : criterion.met()   ? "good"
+                                    : "warn",
                 false);
-            chip->setObjectName(QString("resultsCriterion") + name);
+            chip->setObjectName("resultsCriterion" + name);
             row->addWidget(chip, 1);
         }
         box->addLayout(row);
@@ -2404,12 +2377,11 @@ void ResultsPanel::showOptimization() {
         row(steps, i,
             {QString::number(t.step), fixed(t.energy, 8), real(t.deltaE), fixed(t.gmax, 5), fixed(t.grms, 5),
              fixed(t.xrms, 5), fixed(t.xmax, 5), real(t.seconds)});
-        // Values within their threshold in the color of a met criterion (no step yet at step 0).
-        const std::tuple<int, const char *, double> columns[]{
-            {3, "gmax", t.gmax}, {4, "grms", t.grms}, {5, "xrms", t.xrms}, {6, "xmax", t.xmax}};
-        for (const auto &[column, key, value] : columns)
-            if (thresholds.contains(key) && value <= thresholds[key].toDouble() && (column < 5 || t.step > 0))
-                steps->item(i, column)->setForeground(c.good);
+        // Values within their threshold in the color of a met criterion (columns 3–6, in their order).
+        const auto criteria = resultCriteria(t, thresholds);
+        for (int k = 0; k < int(criteria.size()); ++k)
+            if (criteria[k].met())
+                steps->item(i, 3 + k)->setForeground(c.good);
         relative << QPointF(t.step, (t.energy - data.steps.last().energy) * HartreeToKcal);
         gmax << QPointF(t.step, t.gmax);
         grms << QPointF(t.step, t.grms);

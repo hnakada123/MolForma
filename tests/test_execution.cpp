@@ -222,7 +222,7 @@ class ExecutionTest : public QObject {
         setExecutionSetting(d, "omp_threads", 9);
         QVERIFY_EXCEPTION_THROWN(run.start(d, files.path()), std::runtime_error);
         QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 5000);
-        QCOMPARE(run.state(), "finished");
+        QCOMPARE(run.state(), RunState::Finished);
         QCOMPARE(QString::fromUtf8(readFile(directory + "/input.nw")), input);
         const auto captured = readObject(directory + "/captured.json");
         QCOMPARE(captured["arguments"].toArray(), QJsonArray{"input.nw"});
@@ -241,7 +241,7 @@ class ExecutionTest : public QObject {
         auto d = configured("fail");
         run.start(d, files.path());
         QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 5000);
-        QCOMPARE(run.state(), "failed");
+        QCOMPARE(run.state(), RunState::Failed);
         QCOMPARE(run.plan().manifest["exit_code"].toInt(), 7);
         const auto first = run.plan().directory;
 #ifdef Q_OS_UNIX
@@ -251,12 +251,12 @@ class ExecutionTest : public QObject {
         setExecutionSetting(d, "executable", broken);
         run.start(d, files.path());
         QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 5000);
-        QCOMPARE(run.state(), "failed");
+        QCOMPARE(run.state(), RunState::Failed);
         QVERIFY(!run.message().isEmpty());
 #endif
         run.start(configured(), files.path());
         QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 5000);
-        QCOMPARE(run.state(), "finished");
+        QCOMPARE(run.state(), RunState::Finished);
         QVERIFY(run.plan().directory != first);
     }
     void stopTimeoutAndChildProcesses() {
@@ -264,12 +264,12 @@ class ExecutionTest : public QObject {
         run.start(configured("slow"), files.path());
         run.stop(); // Includes the Starting state.
         QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 5000);
-        QCOMPARE(run.state(), "cancelled");
+        QCOMPARE(run.state(), RunState::Cancelled);
         auto d = configured("slow");
         setExecutionSetting(d, "timeout_seconds", 1);
         run.start(d, files.path());
         QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 6000);
-        QCOMPARE(run.state(), "timed_out");
+        QCOMPARE(run.state(), RunState::TimedOut);
         QCOMPARE(readObject(run.plan().directory + "/run.json")["status"].toString(), "timed_out");
 #ifdef Q_OS_UNIX
         run.start(configured("tree"), files.path());
@@ -278,7 +278,7 @@ class ExecutionTest : public QObject {
         const auto child = readFile(path + "/child.pid").trimmed();
         run.stop();
         QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 6000);
-        QCOMPARE(run.state(), "cancelled");
+        QCOMPARE(run.state(), RunState::Cancelled);
 #ifdef Q_OS_LINUX
         const QString proc = "/proc/" + QString::fromLatin1(child) + "/stat";
         QTRY_VERIFY_WITH_TIMEOUT(!QFileInfo::exists(proc) || readFile(proc).contains(") Z"), 3000);
@@ -287,7 +287,7 @@ class ExecutionTest : public QObject {
         run.start(configured("slow"), files.path());
         run.shutdown();
         QVERIFY(!run.active());
-        QCOMPARE(run.state(), "cancelled");
+        QCOMPARE(run.state(), RunState::Cancelled);
     }
     void nativeTabUndoEnvironmentCandidatesAndRun() {
         MainWindow w;
@@ -338,7 +338,7 @@ class ExecutionTest : public QObject {
         auto *run = w.findChild<NwchemRun *>("nwchemRun");
         QVERIFY(run);
         QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 5000);
-        QCOMPARE(run->state(), "finished");
+        QCOMPARE(run->state(), RunState::Finished);
         // The end is announced, and the job folder loads into the result viewer (tab unchanged).
         QVERIFY(w.findChild<QCheckBox *>("executionOpenResults")->isChecked());
         auto *runStatus = w.findChild<QToolButton *>("runStatusButton");
@@ -491,7 +491,7 @@ class ExecutionTest : public QObject {
         QVERIFY(w.findChild<QWidget *>("executionCriteria")->isVisibleTo(&w));
         QVERIFY(
             w.findChild<QLabel *>("executionCriterion0")->text().contains("達成")); // Gmax 0.0004 ≤ 0.00045
-        QVERIFY(w.findChild<QLabel *>("executionCriterion2")->text().contains("未達")); // Xmax 0.009 > 0.0018
+        QVERIFY(w.findChild<QLabel *>("executionCriterion3")->text().contains("未達")); // Xmax 0.009 > 0.0018
         // The run panel stops it too, asking first like the header's "停止".
         auto *stop = w.findChild<QPushButton *>("executionStopRun");
         QVERIFY(stop->isVisibleTo(&w) && stop->isEnabled());
@@ -562,7 +562,7 @@ class ExecutionTest : public QObject {
         panel->startCalculation();
         auto *run = w.findChild<NwchemRun *>("nwchemRun");
         QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 90000);
-        QCOMPARE(run->state(), "finished");
+        QCOMPARE(run->state(), RunState::Finished);
         QVERIFY(readFile(run->plan().directory + "/output.out").contains("Total SCF energy"));
         QCOMPARE(w.document().toJson(), d.toJson());
         writeFile(root + "/latest-directory.txt", run->plan().directory.toUtf8());
@@ -590,7 +590,7 @@ class ExecutionTest : public QObject {
         });
         w.findChild<QToolButton *>("headerStop")->click();
         QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 10000);
-        QCOMPARE(run->state(), "cancelled");
+        QCOMPARE(run->state(), RunState::Cancelled);
 #ifdef Q_OS_LINUX
         auto childrenGone = [&] {
             for (const auto &pid : QDir("/proc").entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {

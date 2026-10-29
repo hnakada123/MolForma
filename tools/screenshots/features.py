@@ -217,7 +217,7 @@ def shots(language, pages):
             g.tool("results_action", action="open_directory", path=folder)
             g.idle()
             g.tab(4)
-            time.sleep(0.6)
+            time.sleep(5.5)  # The status bar message of set_execution lasts about five seconds.
             g.tab_text("resultsDetails", T("概要"))
             g.snap("results/01_summary")
             g.tab_text("resultsDetails", T("最適化"))

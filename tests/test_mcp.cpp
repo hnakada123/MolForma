@@ -600,7 +600,13 @@ class McpTest : public QObject {
         const auto parsed =
             data(processCall(process, "get_results", {{"section", "modes"}}))["items"].toArray();
         QCOMPARE(parsed[0].toObject()["frequency"].toDouble(), -100.0);
+        QVERIFY(parsed[0].toObject()["imaginary"].toBool() && parsed[0].toObject()["significant"].toBool());
         QCOMPARE(parsed[1].toObject()["frequency"].toDouble(), 1500.0);
+        QVERIFY(!parsed[1].toObject()["imaginary"].toBool());
+        QCOMPARE(data(processCall(process, "get_results"))["counts"]
+                     .toObject()["significantImaginaryModes"]
+                     .toInt(),
+                 1);
         QCOMPARE(processCommand(process, "results_action",
                                 {{"action", "play_mode"}, {"index", 0}, {"amplitude", .4}})["state"]
                      .toString(),
@@ -1871,6 +1877,10 @@ class McpTest : public QObject {
         QCOMPARE(parsed[0].toObject()["frequency"].toDouble(), -100.0);
         QCOMPARE(data(processCall(process, "get_app_state"))["results"].toObject()["source"].toString(),
                  QFileInfo(modes).absoluteFilePath());
+        // Headless loading reports the result like the viewer: its status and the brief summary.
+        QVERIFY(
+            data(processCall(process, "get_app_state"))["results"].toObject()["message"].toString().contains(
+                "虚振動 1個（−10 cm⁻¹未満 1個）"));
         process.closeWriteChannel();
         QVERIFY(process.waitForFinished(10000));
         // By default a headless server runs only nwchem/mpirun from PATH without overrides.

@@ -325,7 +325,7 @@ GUI変更は `documentId` と `expectedRevision` を必要とし、`queued` の 
 {"name":"results_action","arguments":{"documentId":"DOC","expectedRevision":"REV","action":"stop"}}
 ```
 
-読込完了後、`frequency < 0` の行が虚振動です。変位データのない行は表示・選択できますが再生できません。正振動も同じ `play_mode` で再生できます。`mode_displacements` は基準構造と変位を返します。結果操作やカメラ操作は編集文書を変更しません。
+読込完了後、`frequency < 0` の行が虚振動（`imaginary: true`）です。−10 cm⁻¹未満の虚振動は `significant: true` で、それより小さい負の値は数値誤差であることが多いです。`summary` の `counts` の `imaginaryModes` / `significantImaginaryModes` がそれぞれの数です。変位データのない行は表示・選択できますが再生できません。正振動も同じ `play_mode` で再生できます。`mode_displacements` は基準構造と変位を返します。結果操作やカメラ操作は編集文書を変更しません。
 
 計算から行う場合は、先に `set_nwchem` / `set_advanced` / `set_execution` で設定を確定し、`calculation(action: "start")` を呼びます。NWChemの実行ファイルなどは利用者がMolFormaで設定します。`get_app_state.calculation.directory` が保存された実行フォルダーです。終了後に `results_action(action: "open_directory", path: ...)` で結果を開けます。
 

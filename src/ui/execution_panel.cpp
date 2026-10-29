@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/execution_panel.h"
+#include "model/i18n.h"
 #include "nwchem/nwchem.h"
 #include "ui/editor_chrome.h"
 #include "ui/main_window.h"
@@ -56,6 +57,55 @@ class CpuMeter : public QWidget {
         }
     }
 };
+// What the run panel adds to the state pill of an ended run.
+QString endedDetail(RunState state) {
+    switch (state) {
+    case RunState::Cancelled:
+        return tr("途中までのログと出力は保存先に残っています。");
+    case RunState::TimedOut:
+        return tr("制限時間に達しました。途中までのログと出力は保存先に残っています。");
+    case RunState::Finished:
+        return tr("終了コード0");
+    default:
+        return {};
+    }
+}
+// The run in the status bar, whatever the tab.
+QString statusBarText(RunState state) {
+    switch (state) {
+    case RunState::Starting:
+        return tr("NWChemを起動中");
+    case RunState::Running:
+        return tr("NWChem実行中");
+    case RunState::Stopping:
+        return tr("NWChemを停止中");
+    case RunState::Cancelled:
+        return tr("最後の計算: 停止");
+    case RunState::TimedOut:
+        return tr("最後の計算: 時間制限");
+    case RunState::Failed:
+        return tr("最後の計算: 失敗");
+    case RunState::Finished:
+        return tr("最後の計算: 終了（コード0）");
+    default:
+        return runStateName(state);
+    }
+}
+// How a run ended, in the message when it does.
+QString endedMessage(RunState state) {
+    switch (state) {
+    case RunState::Finished:
+        return tr("計算が終了しました（終了コード0）");
+    case RunState::Failed:
+        return tr("計算が失敗しました");
+    case RunState::Cancelled:
+        return tr("計算を停止しました");
+    case RunState::TimedOut:
+        return tr("計算が制限時間で停止しました");
+    default:
+        return tr("計算が終了しました");
+    }
+}
 } // namespace
 
 ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner), run(this) {
@@ -370,8 +420,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     connect(runStatus, &QToolButton::clicked, this, [this] { showRunPanel(); });
     connect(&run, &NwchemRun::changed, this, [this] {
         if (run.state() != previousRunState) {
-            const bool ended =
-                QStringList{"starting", "running", "stopping"}.contains(previousRunState) && !run.active();
+            const bool ended = runStateActive(previousRunState) && !run.active();
             previousRunState = run.state();
             refresh();
             emit bundleChanged(run.plan().directory);
@@ -872,14 +921,10 @@ void ExecutionPanel::updateRun() {
         saved = run.plan();
     const bool showingRun = saved.directory == run.plan().directory && !saved.directory.isEmpty();
     // The pill names the state: the text adds what it does not say.
-    const QMap<QString, QString> details{
-        {"cancelled", tr("途中までのログと出力は保存先に残っています。")},
-        {"timed_out", tr("制限時間に達しました。途中までのログと出力は保存先に残っています。")},
-        {"finished", tr("終了コード0")}};
     QStringList lines;
     if (showingRun) {
-        lines << details.value(run.state());
-        if (run.state() == "finished")
+        lines << endedDetail(run.state());
+        if (run.state() == RunState::Finished)
             lines << (!resultSummary.isEmpty()
                           ? tr("結果: %1（「結果ビューア」に読み込みました）").arg(resultSummary)
                           : tr("結果は「結果ビューアへ」で確認できます。"));
@@ -896,18 +941,13 @@ void ExecutionPanel::updateRun() {
     location->setToolTip(saved.directory);
     location->setVisible(!saved.directory.isEmpty());
     showRunLink->setVisible(!saved.directory.isEmpty());
-    const QMap<QString, QString> pills{
-        {"starting", tr("起動中")},           {"running", tr("実行中")},
-        {"stopping", tr("停止処理中")},       {"cancelled", tr("停止", "run state")},
-        {"timed_out", tr("時間制限")},        {"failed", tr("失敗")},
-        {"finished", tr("終了", "run state")}};
-    const auto kind = !showingRun                 ? QString("saved")
-                      : run.active()              ? QString("running")
-                      : run.state() == "finished" ? QString("finished")
-                                                  : QString("failed");
-    statePill->setText(showingRun                  ? pills.value(run.state(), run.state())
+    const auto kind = !showingRun                         ? QString("saved")
+                      : run.active()                      ? QString("running")
+                      : run.state() == RunState::Finished ? QString("finished")
+                                                          : QString("failed");
+    statePill->setText(showingRun                  ? runStateName(run.state())
                        : saved.directory.isEmpty() ? QString()
-                                                   : tr("保存のみ", "run state"));
+                                                   : runStateName(RunState::Prepared));
     statePill->setVisible(!statePill->text().isEmpty());
     if (statePill->property("state").toString() != kind) {
         statePill->setProperty("state", kind);
@@ -922,7 +962,7 @@ void ExecutionPanel::updateRun() {
                         : tr("所要 %1").arg(elapsedClock(seconds)));
     openFolder->setEnabled(!saved.directory.isEmpty());
     viewResults->setEnabled(!saved.directory.isEmpty() && !resultFiles(saved.directory).isEmpty());
-    const bool stoppable = run.active() && run.state() != "stopping";
+    const bool stoppable = run.active() && run.state() != RunState::Stopping;
     stopRun->setVisible(run.active());
     stopRun->setEnabled(stoppable);
     prepare->setVisible(!run.active());
@@ -936,21 +976,14 @@ void ExecutionPanel::updateRun() {
     window->showRun(run.active(), tr("実行中 %1").arg(elapsedClock(seconds)), stoppable);
     // Always visible in the status bar, whatever the tab.
     if (!run.plan().directory.isEmpty()) {
-        const QMap<QString, QString> brief{{"starting", tr("NWChemを起動中")},
-                                           {"running", tr("NWChem実行中")},
-                                           {"stopping", tr("NWChemを停止中")},
-                                           {"cancelled", tr("最後の計算: 停止")},
-                                           {"timed_out", tr("最後の計算: 時間制限")},
-                                           {"failed", tr("最後の計算: 失敗")},
-                                           {"finished", tr("最後の計算: 終了（コード0）")}};
         runStatus->setText(
             QString("%1%2 · %3")
-                .arg(run.active() ? "▶ " : "", brief.value(run.state(), run.state()))
+                .arg(run.active() ? "▶ " : "", statusBarText(run.state()))
                 .arg(run.active() ? elapsedClock(seconds) : QFileInfo(run.plan().directory).fileName()));
         runStatus->show();
     }
     if (showingRun)
-        progress->showRun(saved.directory, run.state(), run.active());
+        progress->showRun(saved.directory, run.state());
     else
         progress->clear();
     appendLog();
@@ -1007,13 +1040,8 @@ void ExecutionPanel::appendLog() {
         bar->setValue(bar->maximum());
 }
 void ExecutionPanel::runEnded() {
-    const QMap<QString, QString> names{{"finished", tr("計算が終了しました（終了コード0）")},
-                                       {"failed", tr("計算が失敗しました")},
-                                       {"cancelled", tr("計算を停止しました")},
-                                       {"timed_out", tr("計算が制限時間で停止しました")}};
     const auto directory = run.plan().directory;
-    const auto message = QString("%1: %2").arg(names.value(run.state(), tr("計算が終了しました")),
-                                               QFileInfo(directory).fileName());
+    const auto message = QString("%1: %2").arg(endedMessage(run.state()), QFileInfo(directory).fileName());
     // The run status at the right of the status bar says how it ended; a message at the left only
     // adds what the log says once it is read (setResultSummary).
     QApplication::alert(window); // Taskbar attention while MolForma is in the background.
@@ -1034,7 +1062,7 @@ void ExecutionPanel::runEnded() {
         QTimer::singleShot(15000, tray, &QSystemTrayIcon::hide);
     }
     resultSummary.clear();
-    emit runFinished(directory, openResults->isChecked() && run.state() == "finished");
+    emit runFinished(directory, openResults->isChecked() && run.state() == RunState::Finished);
 }
 void ExecutionPanel::setResultSummary(const QString &directory, const QString &summary) {
     if (directory != run.plan().directory)

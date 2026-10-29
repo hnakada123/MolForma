@@ -403,7 +403,7 @@ class OutputTest : public QObject {
             NwchemRun run;
             run.start(d, root);
             QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 90000);
-            QCOMPARE(run.state(), "finished");
+            QCOMPARE(run.state(), RunState::Finished);
             const auto folder = run.plan().directory;
             for (const auto &name : nwchemOutputFiles(d, validateNwchem(d))) {
                 const auto path = QDir(folder).filePath(name);

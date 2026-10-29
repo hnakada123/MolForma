@@ -1,5 +1,6 @@
 #include "mcp/headless.h"
 #include "mcp/tools.h"
+#include "results/result_summary.h"
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -15,7 +16,7 @@ McpHeadless::McpHeadless(McpPolicy p, QJsonObject trustedExecution, QObject *par
     });
     connect(&loader, &ResultLoader::loaded, this, [this](ResultData next, const QString &) {
         data = std::move(next);
-        loadMessage = "Loaded " + data.source;
+        loadMessage = resultMessage(data); // As the result viewer reports it.
         finish(loadWork, "results_action", loadAction, "results");
     });
     connect(&loader, &ResultLoader::failed, this, [this](const QString &error) {
@@ -157,7 +158,7 @@ void McpHeadless::finish(const QString &work, const QString &tool, const QString
 }
 std::optional<QJsonObject> McpHeadless::task(const QString &work) const {
     if (work == runWork && run.active())
-        return QJsonObject{{"state", "running"}, {"message", "NWChem is " + run.state() + "."}};
+        return QJsonObject{{"state", "running"}, {"message", "NWChem is " + runStateKey(run.state()) + "."}};
     if (work == loadWork && loader.active())
         return QJsonObject{{"state", "running"}, {"message", "Loading " + loader.pendingPath()}};
     if (finished.contains(work))

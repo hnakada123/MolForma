@@ -98,7 +98,7 @@ class ExecutionPanel : public QWidget {
     QLabel *runningNote;
     QSystemTrayIcon *tray = nullptr;
     ExecutionPlan saved;
-    QString previousRunState;
+    RunState previousRunState = RunState::Idle;
     // The log view appends what the file gained since the last look, so a selection stays.
     QString logPath;
     qint64 logOffset = -1;

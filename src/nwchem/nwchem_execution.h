@@ -1,6 +1,7 @@
 #pragma once
 #include "model/document.h"
 #include "nwchem/nwchem.h"
+#include "nwchem/run_state.h"
 #include <QElapsedTimer>
 #include <QProcess>
 #include <QTimer>
@@ -64,12 +65,12 @@ class NwchemRun : public QObject {
     void stop();
     void shutdown();
     bool active() const {
-        return running;
+        return runStateActive(status);
     }
     const ExecutionPlan &plan() const {
         return current;
     }
-    QString state() const {
+    RunState state() const {
         return status;
     }
     QString message() const {
@@ -84,8 +85,9 @@ class NwchemRun : public QObject {
     QTimer timer, killTimer;
     QElapsedTimer elapsed;
     ExecutionPlan current;
-    QString status = "idle", detail;
-    bool running = false, cancelling = false, timedOut = false;
+    RunState status = RunState::Idle;
+    QString detail;
+    bool timedOut = false;
     qint64 groupId = 0, duration = 0;
     void signalProcess(bool force);
     void finish(int exitCode, QProcess::ExitStatus exitStatus, const QString &error = {});

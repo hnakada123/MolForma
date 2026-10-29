@@ -61,6 +61,7 @@ find_package(Threads REQUIRED)
 add_library(molforma_results STATIC
     src/results/molden_orbitals.cpp
     src/results/result_loader.cpp
+    src/results/result_summary.cpp
     src/results/results.cpp)
 target_link_libraries(molforma_results PUBLIC molforma_model PRIVATE Threads::Threads)
 
@@ -71,7 +72,8 @@ add_library(molforma_nwchem STATIC
     src/nwchem/nwchem_execution.cpp
     src/nwchem/nwchem_geometry.cpp
     src/nwchem/nwchem_import.cpp
-    src/nwchem/nwchem_output.cpp)
+    src/nwchem/nwchem_output.cpp
+    src/nwchem/run_state.cpp)
 target_link_libraries(molforma_nwchem PUBLIC molforma_model PRIVATE molforma_editing molforma_results ${MOLFORMA_OPENBABEL})
 if(MSVC)
     target_compile_definitions(molforma_nwchem PRIVATE USING_DYNAMIC_LIBS)

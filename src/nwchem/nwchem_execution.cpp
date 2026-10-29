@@ -352,7 +352,7 @@ ExecutionPlan executionPlan(const Document &d, const QString &base, const QStrin
         overrides[it.key()] = it.value();
     p.manifest = {{"format", "molforma-nwchem-run"},
                   {"version", 1},
-                  {"status", "prepared"},
+                  {"status", runStateKey(RunState::Prepared)},
                   {"created_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
                   {"directory", directory},
                   {"program", p.program},
@@ -473,7 +473,8 @@ NwchemRun::NwchemRun(QObject *parent) : QObject(parent) {
     killTimer.setInterval(2000);
     connect(&killTimer, &QTimer::timeout, this, [this] { signalProcess(true); });
     connect(&timer, &QTimer::timeout, this, [this] {
-        if (!cancelling && current.timeoutSeconds && elapsedSeconds() >= current.timeoutSeconds) {
+        if (status != RunState::Stopping && current.timeoutSeconds &&
+            elapsedSeconds() >= current.timeoutSeconds) {
             timedOut = true;
             stop();
         }
@@ -484,11 +485,11 @@ NwchemRun::NwchemRun(QObject *parent) : QObject(parent) {
         const auto identity = executionProcessIdentity(groupId);
         for (auto it = identity.begin(); it != identity.end(); ++it)
             current.manifest[it.key()] = it.value();
-        if (cancelling) {
+        if (status == RunState::Stopping) {
             signalProcess(false);
             killTimer.start();
         } else
-            status = "running";
+            status = RunState::Running;
         record();
         emit changed();
     });
@@ -503,18 +504,17 @@ NwchemRun::~NwchemRun() {
     shutdown();
 }
 qint64 NwchemRun::elapsedSeconds() const {
-    return running ? elapsed.elapsed() / 1000 : duration;
+    return active() ? elapsed.elapsed() / 1000 : duration;
 }
 void NwchemRun::start(const Document &d, const QString &base) {
-    if (running)
+    if (active())
         fail(tr("計算は既に実行中です。"));
     current = saveExecutionBundle(d, base, true);
-    status = "starting";
+    status = RunState::Starting;
     detail.clear();
-    cancelling = timedOut = false;
+    timedOut = false;
     groupId = 0;
     duration = 0;
-    running = true;
     elapsed.start();
     auto environment = QProcessEnvironment::systemEnvironment();
     for (auto it = current.environment.begin(); it != current.environment.end(); ++it)
@@ -529,14 +529,14 @@ void NwchemRun::start(const Document &d, const QString &base) {
     current.manifest["started_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     record();
     process.start();
-    if (running)
+    if (active())
         timer.start();
     emit changed();
 }
 void NwchemRun::signalProcess(bool force) {
     // A forked child still inherits the application's signal handlers until exec.
     // Defer graceful cancellation to started(); a hung startup can still be killed.
-    if (!running || (!force && process.state() != QProcess::Running))
+    if (!active() || (!force && process.state() != QProcess::Running))
         return;
 #ifdef Q_OS_UNIX
     if (groupId > 0)
@@ -553,29 +553,27 @@ void NwchemRun::signalProcess(bool force) {
         process.terminate();
 }
 void NwchemRun::stop() {
-    if (!running || cancelling)
+    if (status != RunState::Starting && status != RunState::Running)
         return;
-    cancelling = true;
-    status = "stopping";
+    status = RunState::Stopping;
     signalProcess(false);
     killTimer.start();
     record();
     emit changed();
 }
 void NwchemRun::finish(int code, QProcess::ExitStatus exitStatus, const QString &error) {
-    if (!running)
+    if (!active())
         return;
     // Clean up surviving children in our private process group before allowing a new run.
     signalProcess(true);
     duration = elapsed.elapsed() / 1000;
-    running = false;
     groupId = 0;
     timer.stop();
     killTimer.stop();
-    status = timedOut                                                              ? "timed_out"
-             : cancelling                                                          ? "cancelled"
-             : !error.isEmpty() || exitStatus != QProcess::NormalExit || code != 0 ? "failed"
-                                                                                   : "finished";
+    status = timedOut                                                              ? RunState::TimedOut
+             : status == RunState::Stopping                                        ? RunState::Cancelled
+             : !error.isEmpty() || exitStatus != QProcess::NormalExit || code != 0 ? RunState::Failed
+                                                                                   : RunState::Finished;
     detail = error;
     current.manifest["exit_code"] = code;
     current.manifest["exit_status"] = exitStatus == QProcess::NormalExit ? "normal" : "crash";
@@ -589,7 +587,7 @@ void NwchemRun::finish(int code, QProcess::ExitStatus exitStatus, const QString 
     emit changed();
 }
 void NwchemRun::record() {
-    current.manifest["status"] = status;
+    current.manifest["status"] = runStateKey(status);
     current.manifest["elapsed_seconds"] = elapsedSeconds();
     current.manifest["error"] = detail;
     try {
@@ -599,7 +597,7 @@ void NwchemRun::record() {
     }
 }
 void NwchemRun::shutdown() {
-    if (!running)
+    if (!active())
         return;
     stop();
     if (!process.waitForFinished(2000)) {

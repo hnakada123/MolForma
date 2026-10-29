@@ -1,5 +1,6 @@
 #pragma once
 #include "results/result_loader.h"
+#include "results/result_summary.h"
 #include <QCache>
 #include <QTimer>
 #include <QWidget>
@@ -140,9 +141,9 @@ class ResultsPanel : public QWidget {
     QLineEdit *isovalue, *orbitalIso;
     QPushButton *openMolden; // A log's orbitals: their shapes from the MOLDEN file of the same job.
     QPushButton *energyReference, *applyIso;
-    int referenceEnergy = -1;  // Row of data.energies that ΔE refers to (-1: the last energy).
-    QVector<bool> rigidMotion; // Translations and rotations among data.modes.
-    QVector<int> irModes;      // The mode of each stick of the IR spectrum.
+    int referenceEnergy = -1;          // Row of data.energies that ΔE refers to (-1: the last energy).
+    QVector<ResultModeKind> modeKinds; // Of data.modes: vibrations, translations and rotations.
+    QVector<int> irModes;              // The mode of each stick of the IR spectrum.
     // Energy of each frame relative to the lowest one / kcal mol⁻¹, where the result ties them
     // (scan and IRC points); NaN elsewhere.
     QVector<double> frameEnergies;

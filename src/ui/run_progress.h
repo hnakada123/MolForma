@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
+#include "nwchem/run_state.h"
 #include "results/results.h"
 #include <QWidget>
 class QLabel;
@@ -18,9 +19,8 @@ class RunProgress : public QWidget {
   public:
     // columns: the criteria in one row (4) or in two (2).
     RunProgress(const QString &name, int columns, QWidget *parent = nullptr);
-    // state: the run's ("running", "finished", …); active while NWChem runs. Reads only what the log
-    // gained since the last call for the same folder.
-    void showRun(const QString &directory, const QString &state, bool active);
+    // Reads only what the log gained since the last call for the same folder.
+    void showRun(const QString &directory, RunState state);
     void clear();
 
   private:

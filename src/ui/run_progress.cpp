@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/run_progress.h"
+#include "results/result_summary.h"
 #include "ui/editor_chrome.h"
 #include <QtWidgets>
 
@@ -97,14 +98,14 @@ void RunProgress::read(const QString &path) {
         progress.add(QString::fromUtf8(line));
     rest.remove(0, end + 1);
 }
-void RunProgress::showRun(const QString &path, const QString &state, bool active) {
-    if (path.isEmpty() || state == "starting") {
+void RunProgress::showRun(const QString &path, RunState state) {
+    if (path.isEmpty() || state == RunState::Starting) {
         clear();
         return;
     }
     read(path);
     const ChromeColors c(palette());
-    const bool finished = state == "finished" && !active;
+    const bool active = runStateActive(state), finished = state == RunState::Finished;
     const int current = std::clamp(progress.started - 1, 0, std::max(0, int(tasks.size()) - 1));
     const auto number = [](double value, int digits) {
         return QString::number(value, 'f', digits).replace('-', "−");
@@ -141,26 +142,22 @@ void RunProgress::showRun(const QString &path, const QString &state, bool active
     criteria->setVisible(optimizing);
     if (!optimizing)
         return;
-    const auto &last = progress.steps.last();
-    const QList<std::tuple<QString, QString, double>> values{{"Gmax", "gmax", last.gmax},
-                                                             {"Grms", "grms", last.grms},
-                                                             {"Xmax", "xmax", last.xmax},
-                                                             {"Xrms", "xrms", last.xrms}};
-    for (int i = 0; i < 4; ++i) {
-        const auto &[label, key, value] = values[i];
-        const double target = progress.thresholds.value(key).toDouble();
-        // At step 0 the displacements are not measured yet.
-        const bool measured = key.startsWith('g') || last.step > 0;
-        const bool met = measured && value <= target;
-        criterionLabels[i]->setText(tr("<b>%1</b>　<span style=\"color:%2\">%3</span><br><span "
-                                       "style=\"font-family:monospace\">%4</span>"
-                                       "<br><span style=\"color:%5\">目標 %6</span>")
-                                        .arg(label, met ? c.good.name() : c.muted.name(),
-                                             met        ? tr("達成")
-                                             : measured ? tr("未達")
-                                                        : QString("—"))
-                                        .arg(measured ? QString::number(value, 'f', 5) : QString("—"),
-                                             c.muted.name(), QString::number(target, 'f', 5)));
+    const auto criteria = resultCriteria(progress.steps.last(), progress.thresholds);
+    for (int i = 0; i < int(criteria.size()); ++i) {
+        const auto &criterion = criteria[i];
+        const bool met = criterion.met();
+        criterionLabels[i]->setText(
+            tr("<b>%1</b>　<span style=\"color:%2\">%3</span><br><span "
+               "style=\"font-family:monospace\">%4</span>"
+               "<br><span style=\"color:%5\">目標 %6</span>")
+                .arg(criterion.name, met ? c.good.name() : c.muted.name(),
+                     met                  ? tr("達成")
+                     : criterion.judged() ? tr("未達")
+                                          : QString("—"))
+                .arg(criterion.measured ? QString::number(criterion.value, 'f', 5) : QString("—"),
+                     c.muted.name(),
+                     std::isfinite(criterion.threshold) ? QString::number(criterion.threshold, 'f', 5)
+                                                        : QString("—")));
     }
 }
 } // namespace mf

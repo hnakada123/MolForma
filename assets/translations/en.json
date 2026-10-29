@@ -661,9 +661,6 @@
     "n-ヘキサン": "n-Hexane",
     "optimization state|収束": "Converged",
     "orbital table column|軌道": "Orbital",
-    "run state|保存のみ": "Saved only",
-    "run state|停止": "Stopped",
-    "run state|終了": "Finished",
     "r²SCAN（meta-GGA）": "r²SCAN (meta-GGA)",
     "state|保存": "Saved",
     "state|保存のみ": "Saved only",
@@ -1024,7 +1021,6 @@
     "不対電子の数は0〜8で入力してください。": "Enter 0–8 unpaired electrons.",
     "不対電子の数は整数で入力してください。": "Enter the number of unpaired electrons as an integer.",
     "不斉中心を反転": "Invert stereocenter",
-    "不明": "Unknown",
     "不明なNWChem設定: %1": "Unknown NWChem setting: %1",
     "不正なNWChem詳細設定: %1": "Invalid NWChem advanced setting: %1",
     "不透明度": "Opacity",
@@ -1700,7 +1696,6 @@
     "既定（中性pH）": "default (neutral pH)",
     "旧記録の相対実行ファイルパスを復元できません。": "Cannot restore the relative executable path of an older record.",
     "昨日 · %1": "Yesterday · %1",
-    "時間制限": "Time limit",
     "書き出し": "Export",
     "書き出し後のパス": "Paths after export",
     "書出し用": "For export",
@@ -2141,12 +2136,20 @@
     "芳香族": "Aromatic bond",
     "英数字・_・-・.で指定し、拡張子は.cubeまたは.cub。ディレクトリは永続ファイルの設定に従います。": "Letters, digits, _, - and ., with the extension .cube or .cub. The directory follows the permanent directory setting.",
     "虚振動": "Imaginary",
+    "summary card|虚振動": "Imaginary frequencies",
     "虚振動 %n個": [
         "%n imaginary frequency",
         "%n imaginary frequencies"
     ],
     "虚振動なし": "No imaginary frequencies",
-    "虚振動（−10 cm⁻¹未満）": "Imaginary frequencies (below −10 cm⁻¹)",
+    "%1（−10 cm⁻¹未満 %n個）": [
+        "%1 (%n below −10 cm⁻¹)",
+        "%1 (%n below −10 cm⁻¹)"
+    ],
+    "−10 cm⁻¹未満 %n個": [
+        "%n below −10 cm⁻¹",
+        "%n below −10 cm⁻¹"
+    ],
     "行 %1 / 列 %2": "Ln %1, Col %2",
     "行 %1: %2": "Line %1: %2",
     "行 %1: NWChemエラー: %2": "Line %1: NWChem error: %2",

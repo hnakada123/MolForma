@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/history_panel.h"
 #include "model/i18n.h"
+#include "model/units.h"
 #include "nwchem/nwchem_execution.h"
 #include "ui/editor_chrome.h"
 #include "ui/main_window.h"
@@ -31,37 +32,42 @@ struct EnergyUnit {
     double factor; // Per Hartree.
     int digits;
 };
-constexpr EnergyUnit energyUnits[]{{"kcal", "kcal/mol", 627.509474, 2},
-                                   {"kj", "kJ/mol", 2625.499639, 2},
-                                   {"ev", "eV", 27.211386245988, 4},
+constexpr EnergyUnit energyUnits[]{{"kcal", "kcal/mol", HartreeToKcal, 2},
+                                   {"kj", "kJ/mol", HartreeToKj, 2},
+                                   {"ev", "eV", HartreeToEv, 4},
                                    {"hartree", "Eh", 1, 8}};
-bool pending(const QString &s) {
-    return s == "starting" || s == "running" || s == "stopping";
-}
 // The state of a job in a word, and the kind of label it takes.
 std::pair<QString, QString> stateLabel(const HistoryEntry &e, bool owned) {
-    if (pending(e.status)) {
-        if (owned)
-            return {e.status == "starting"   ? tr("起動中")
-                    : e.status == "stopping" ? tr("停止処理中")
-                                             : tr("実行中"),
-                    "running"};
+    if (runStateActive(e.status) && !owned)
         return e.orphaned ? std::pair<QString, QString>{tr("プロセスなし"), "orphan"}
                           : std::pair<QString, QString>{tr("稼働未確認"), "unknown"};
+    QString kind;
+    switch (e.status) {
+    case RunState::Starting:
+    case RunState::Running:
+    case RunState::Stopping:
+        kind = "running";
+        break;
+    case RunState::Prepared:
+        kind = "saved";
+        break;
+    case RunState::Finished:
+        kind = "finished";
+        break;
+    case RunState::TimedOut:
+        kind = "time";
+        break;
+    case RunState::Cancelled:
+    case RunState::Interrupted:
+        kind = "stopped";
+        break;
+    case RunState::Idle:
+    case RunState::Failed:
+    case RunState::Invalid:
+        kind = "failed";
+        break;
     }
-    if (e.status == "prepared")
-        return {tr("保存のみ", "state"), "saved"};
-    if (e.status == "finished")
-        return {tr("終了", "state"), "finished"};
-    if (e.status == "failed")
-        return {tr("失敗"), "failed"};
-    if (e.status == "cancelled")
-        return {tr("停止", "state"), "stopped"};
-    if (e.status == "timed_out")
-        return {tr("時間制限", "state"), "time"};
-    if (e.status == "interrupted")
-        return {tr("中断"), "stopped"};
-    return {tr("読めません"), "failed"};
+    return {runStateName(e.status), kind};
 }
 // The names of the state filters, as their keys "", active, finished, stopped and prepared.
 QStringList stateFilterNames() {
@@ -69,9 +75,9 @@ QStringList stateFilterNames() {
 }
 // The state filter a job falls under: active, finished, stopped (also failed and orphaned) or prepared.
 QString stateGroup(const HistoryEntry &e, bool owned) {
-    if (e.status == "prepared" || e.status == "finished")
-        return e.status;
-    return pending(e.status) && (owned || !e.orphaned) ? "active" : "stopped";
+    if (e.status == RunState::Prepared || e.status == RunState::Finished)
+        return runStateKey(e.status);
+    return runStateActive(e.status) && (owned || !e.orphaned) ? "active" : "stopped";
 }
 struct PillColors {
     QColor background, text, line;
@@ -169,15 +175,9 @@ QString energySource(const HistoryEntry &e) {
            : source == "bsse_corrected"    ? tr("BSSE補正後")
                                            : tr("最後のtask");
 }
-// An energy method as shown: run.json keeps the mark of a counterpoise-corrected energy in Japanese
-// (see nwchemLogSummary).
-QString energyMethodText(const QString &method) {
-    const QString bsse = "・BSSE補正"; // i18n-exempt (as stored in run.json)
-    return method.endsWith(bsse) ? tr("%1・BSSE補正").arg(method.chopped(bsse.size())) : method;
-}
 // Why a job has no ΔE against the reference; empty when it has one.
 QString comparisonNote(const HistoryEntry &e, const HistoryEntry &reference) {
-    if (pending(e.status))
+    if (runStateActive(e.status))
         return e.orphaned ? tr("記録の修復後に表示") : tr("終了後に表示");
     if (!e.energy)
         return tr("エネルギーの記録なし");
@@ -936,7 +936,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
     });
     connect(setReference, &QPushButton::clicked, this, [this] {
         const auto *e = selectedEntry();
-        if (!e || !e->energy || pending(e->status))
+        if (!e || !e->energy || runStateActive(e->status))
             return;
         reference = e->directory;
         table->scrollToTop();
@@ -1104,7 +1104,7 @@ void HistoryPanel::populate(bool reloadDetails) {
     const auto query = search->text().trimmed();
     const auto state = filter->currentData().toString(), active = activeDirectory();
     const auto *base = entry(reference);
-    if (!base || !base->energy || pending(base->status)) {
+    if (!base || !base->energy || runStateActive(base->status)) {
         reference.clear();
         base = nullptr;
     }
@@ -1291,7 +1291,7 @@ void HistoryPanel::fillRow(QTreeWidgetItem *item, const Row &r, bool grouped, do
     item->setText(DurationColumn, e.seconds < 0 ? QString("—") : elapsedClock(e.seconds));
     item->setData(DurationColumn, KindRole, r.owned ? "running" : "");
     item->setText(EnergyColumn, e.energy ? hartree(*e.energy) : QString("—"));
-    item->setData(EnergyColumn, DetailRole, e.energy ? energyMethodText(e.energyMethod) : QString());
+    item->setData(EnergyColumn, DetailRole, e.energy ? historyEnergyMethod(e.energyMethod) : QString());
     if (r.delta) {
         item->setText(DeltaColumn, signedNumber(*r.delta * unit.factor, unit.digits));
         item->setData(DeltaColumn, KindRole, e.directory == reference ? "reference" : "delta");
@@ -1313,7 +1313,8 @@ void HistoryPanel::updateRow(const HistoryEntry &e) {
         if ((*it)->data(StateColumn, DirectoryRole).toString() == e.directory) {
             (*it)->setText(DurationColumn, e.seconds < 0 ? QString("—") : elapsedClock(e.seconds));
             (*it)->setText(EnergyColumn, e.energy ? hartree(*e.energy) : QString("—"));
-            (*it)->setData(EnergyColumn, DetailRole, e.energy ? energyMethodText(e.energyMethod) : QString());
+            (*it)->setData(EnergyColumn, DetailRole,
+                           e.energy ? historyEnergyMethod(e.energyMethod) : QString());
             (*it)->setText(MemoColumn, e.memo);
         }
 }
@@ -1381,7 +1382,7 @@ void HistoryPanel::setComparing(bool on) {
     unitButtons->setVisible(on);
     if (on) {
         const auto *e = selectedEntry();
-        if (reference.isEmpty() && e && e->energy && !pending(e->status))
+        if (reference.isEmpty() && e && e->energy && !runStateActive(e->status))
             reference = e->directory;
         filesOpenBeforeComparing = filesOpen;
         setFilesOpen(false, false);
@@ -1481,7 +1482,8 @@ void HistoryPanel::showDetails() {
     memoDirectory = e->directory;
     memo->setReadOnly(!e->valid);
     memoStatus->hide();
-    memoBox->setVisible(!comparing && !(owned && pending(e->status))); // A run keeps its stop button in view.
+    memoBox->setVisible(!comparing &&
+                        !(owned && runStateActive(e->status))); // A run keeps its stop button in view.
     for (auto pair : {std::pair{input, "input.nw"}, std::pair{record, "run.json"}}) {
         try {
             showText(pair.first, historyText(e->directory, pair.second));
@@ -1495,7 +1497,7 @@ void HistoryPanel::showDetails() {
     updateLive();
 }
 void HistoryPanel::showEnergy(const HistoryEntry &e, bool owned) {
-    const bool running = owned && pending(e.status);
+    const bool running = owned && runStateActive(e.status);
     progressBox->setVisible(running);
     energyBox->setVisible(!running);
     if (running)
@@ -1505,12 +1507,13 @@ void HistoryPanel::showEnergy(const HistoryEntry &e, bool owned) {
     if (!comparing) {
         energyCaption->setText(tr("計算のE（%1）").arg(energySource(e)));
         energyValue->setText(e.energy ? hartree(*e.energy, 10) : QString("—"));
-        energySuffix->setText(e.energy ? "Eh · " + energyMethodText(e.energyMethod) : QString());
+        energySuffix->setText(e.energy ? "Eh · " + historyEnergyMethod(e.energyMethod) : QString());
         energyNote->setText(e.energy ? e.manifest["summary"].toObject()["energy"].isDouble()
                                            ? tr("最後のtaskの値です。収束の保証ではありません。")
                                            : tr("ログ末尾128 KiB内の最後の値です。収束の保証ではありません。")
-                            : e.status == "prepared" ? tr("NWChemは起動していません（入力一式の保存のみ）。")
-                                                     : tr("ログに全エネルギーの記録がありません。"));
+                            : e.status == RunState::Prepared
+                                ? tr("NWChemは起動していません（入力一式の保存のみ）。")
+                                : tr("ログに全エネルギーの記録がありません。"));
         return;
     }
     const auto *base = entry(reference);
@@ -1518,7 +1521,7 @@ void HistoryPanel::showEnergy(const HistoryEntry &e, bool owned) {
         energyCaption->setText(tr("ΔEの基準"));
         energyValue->setText("—");
         energySuffix->clear();
-        energyNote->setText(e.energy && !pending(e.status)
+        energyNote->setText(e.energy && !runStateActive(e.status)
                                 ? tr("「このジョブを基準にする」で、このジョブとの差を一覧に表示します。")
                                 : tr("エネルギーのある終了したジョブを選び、基準にしてください。"));
         return;
@@ -1537,7 +1540,7 @@ void HistoryPanel::showEnergy(const HistoryEntry &e, bool owned) {
         const auto pair = [&](const QString &a, const QString &b) {
             why = tr("%1（%2、基準は %3）").arg(why, a, b);
         };
-        if (!pending(e.status) && e.energy) {
+        if (!runStateActive(e.status) && e.energy) {
             if (e.formula.isEmpty() || e.formula != base->formula)
                 pair(e.formula, base->formula);
             else if (e.method != base->method)
@@ -1545,7 +1548,7 @@ void HistoryPanel::showEnergy(const HistoryEntry &e, bool owned) {
             else if (e.basis != base->basis)
                 pair(e.basis, base->basis);
             else if (e.energyMethod != base->energyMethod)
-                pair(energyMethodText(e.energyMethod), energyMethodText(base->energyMethod));
+                pair(historyEnergyMethod(e.energyMethod), historyEnergyMethod(base->energyMethod));
         }
         energyValue->setText("—");
         energySuffix->clear();
@@ -1584,7 +1587,7 @@ void HistoryPanel::showFacts(const HistoryEntry &e, bool owned) {
         add(key, name, label);
     };
     const auto energy = [](const HistoryEntry &x) {
-        return x.energy ? tr("%1 Eh（%2）").arg(hartree(*x.energy, 10), energyMethodText(x.energyMethod))
+        return x.energy ? tr("%1 Eh（%2）").arg(hartree(*x.energy, 10), historyEnergyMethod(x.energyMethod))
                         : QString("—");
     };
     if (comparing) {
@@ -1605,13 +1608,13 @@ void HistoryPanel::showFacts(const HistoryEntry &e, bool owned) {
         return QDateTime::fromString(e.manifest[key].toString(), Qt::ISODateWithMs);
     };
     const auto started = time("started_at"), finished = time("finished_at");
-    if (e.status == "prepared")
+    if (e.status == RunState::Prepared)
         text("created", tr("保存", "state"), e.created.isValid() ? dayAndTime(e.created) : QString("—"));
     else
         text("started", tr("開始"), started.isValid() ? dayAndTime(started) : QString("—"));
-    if (owned && pending(e.status))
+    if (owned && runStateActive(e.status))
         text("elapsed", tr("経過"), elapsedClock(run.elapsedSeconds()));
-    else if (e.status != "prepared") {
+    else if (e.status != RunState::Prepared) {
         QString end = finished.isValid() ? (finished.toLocalTime().date() == started.toLocalTime().date()
                                                 ? finished.toLocalTime().toString("HH:mm")
                                                 : dayAndTime(finished))
@@ -1663,7 +1666,7 @@ void HistoryPanel::arrangeActions(const HistoryEntry *e, bool owned) {
         actionGrid->addWidget(b, row, column, 1, span);
         b->show();
     };
-    const bool running = e && owned && pending(e->status);
+    const bool running = e && owned && runStateActive(e->status);
     viewer->setText(running ? tr("途中のログを開く") : tr("結果ビューアで開く"));
     setFlag(viewer, "primary", !running);
     setReference->setText(comparing ? tr("このジョブを基準にする") : tr("このジョブを基準にΔEを比べる"));
@@ -1682,7 +1685,7 @@ void HistoryPanel::arrangeActions(const HistoryEntry *e, bool owned) {
         place(viewer, 0, 0, 2);
         place(reuse, 1, 0);
         place(folder, 1, 1);
-        if (e && e->energy && !pending(e->status)) {
+        if (e && e->energy && !runStateActive(e->status)) {
             actionGrid->addWidget(setReference, 2, 0, 1, 2, Qt::AlignLeft);
             setReference->show();
         }
@@ -1693,7 +1696,7 @@ void HistoryPanel::updateLive() {
     const auto *e = selectedEntry();
     if (!e || e->directory != activeDirectory() || !detail->isVisible())
         return;
-    progress->showRun(e->directory, run.state(), run.active());
+    progress->showRun(e->directory, run.state());
     const qint64 seconds = run.elapsedSeconds();
     progressTiming->setText(
         tr("経過 %1 · %2 開始 · このウィンドウで実行中")
@@ -1720,8 +1723,8 @@ void HistoryPanel::updateActions() {
     viewer->setEnabled(exists && !resultFiles(e->directory).isEmpty());
     folder->setEnabled(exists);
     reuse->setEnabled(exists && e->valid && !window->hasCandidate() && !window->chemistryRunning());
-    stop->setEnabled(exists && owned && run.state() != "stopping");
-    const bool unfinished = e && pending(e->status);
+    stop->setEnabled(exists && owned && run.state() != RunState::Stopping);
+    const bool unfinished = e && runStateActive(e->status);
     repair->setEnabled(exists && e->valid && e->orphaned && !owned);
     repairBox->setVisible(e && e->orphaned && !owned && !comparing);
     const bool movable = exists && e->valid && !owned && (!unfinished || e->orphaned);

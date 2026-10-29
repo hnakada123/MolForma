@@ -325,7 +325,7 @@ The following are examples of tool names and `arguments` for `tools/call`. Befor
 {"name":"results_action","arguments":{"documentId":"DOC","expectedRevision":"REV","action":"stop"}}
 ```
 
-After loading completes, rows with `frequency < 0` are imaginary frequencies. Rows without displacement data can be shown and selected but not played. Real (positive) frequencies can be played with the same `play_mode`. `mode_displacements` returns the reference structure and the displacements. Result and camera operations do not change the edited document.
+After loading completes, rows with `frequency < 0` are imaginary frequencies (`imaginary: true`). Those below −10 cm⁻¹ have `significant: true`; smaller negative values are often numerical noise. `imaginaryModes` / `significantImaginaryModes` in the `counts` of the `summary` give their numbers. Rows without displacement data can be shown and selected but not played. Real (positive) frequencies can be played with the same `play_mode`. `mode_displacements` returns the reference structure and the displacements. Result and camera operations do not change the edited document.
 
 To start from a calculation, first set the settings with `set_nwchem` / `set_advanced` / `set_execution`, then call `calculation(action: "start")`. The user sets the NWChem executable and similar settings in MolForma. `get_app_state.calculation.directory` is the saved run folder. After the run ends, open the results with `results_action(action: "open_directory", path: ...)`.
 

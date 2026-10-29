@@ -1,5 +1,6 @@
 #pragma once
 #include "model/document.h"
+#include "nwchem/run_state.h"
 #include <QDateTime>
 #include <QDirIterator>
 #include <QObject>
@@ -9,7 +10,8 @@
 
 namespace mf {
 struct HistoryEntry {
-    QString directory, name, method, basis, task, status, formula, memo;
+    QString directory, name, method, basis, task, formula, memo;
+    RunState status = RunState::Invalid;
     QDateTime created;
     QJsonObject manifest;
     QStringList warnings;
@@ -21,7 +23,11 @@ struct HistoryEntry {
 };
 QString historyRoot(const Document &document, const QString &baseDirectory);
 HistoryEntry readHistoryEntry(const QString &directory);
-QString historyStatus(const QString &status, bool owned = false, bool orphaned = false);
+// The state in words for details: "終了（コード0）", or whether an active record still runs.
+QString historyStatus(RunState status, bool owned = false, bool orphaned = false);
+// An energy method as shown: run.json keeps the mark of a counterpoise-corrected energy in Japanese
+// (see nwchemLogSummary).
+QString historyEnergyMethod(const QString &method);
 // Energy of a whole NWChem log, read once when a run ends (run.json "summary"): that of the last
 // task with one, the reference structure's for a frequency task, the corrected one for BSSE.
 // {"energy", "energy_method", "energy_source": final|frequency_reference|bsse_corrected,

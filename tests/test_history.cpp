@@ -86,7 +86,7 @@ class HistoryTest : public QObject {
         auto p = saveExecutionBundle(d, tmp.path());
         auto entry = readHistoryEntry(p.directory);
         QVERIFY(entry.valid);
-        QCOMPARE(entry.status, "prepared");
+        QCOMPARE(entry.status, RunState::Prepared);
         QCOMPARE(entry.method, "Hartree–Fock");
         QCOMPARE(entry.basis, "STO-3G");
         QCOMPARE(entry.name, QString("molforma"));
@@ -152,7 +152,7 @@ class HistoryTest : public QObject {
         QVERIFY_EXCEPTION_THROWN(historyDocument(p.directory), std::runtime_error);
         QVERIFY_EXCEPTION_THROWN(historyText(p.directory, "../input.nw"), std::runtime_error);
         writeFile(p.directory + "/run.json", "{");
-        QCOMPARE(readHistoryEntry(p.directory).status, "invalid");
+        QCOMPARE(readHistoryEntry(p.directory).status, RunState::Invalid);
         writeFile(p.directory + "/run.json", QByteArray(256 * 1024 + 1, ' '));
         QVERIFY(!readHistoryEntry(p.directory).valid);
         QVERIFY(!readHistoryEntry(tmp.filePath("missing")).valid);
@@ -207,9 +207,17 @@ class HistoryTest : public QObject {
         auto csv = historyCsv({e});
         QVERIFY(csv.contains("\"'=cmd,\"\"name\"\"\nline\""));
         QVERIFY(csv.contains("\"-75.2\""));
-        QVERIFY(historyStatus("running").contains("稼働未確認"));
-        QCOMPARE(historyStatus("running", true), "実行中");
-        QVERIFY(!historyStatus("finished").contains("成功"));
+        QVERIFY(historyStatus(RunState::Running).contains("稼働未確認"));
+        QCOMPARE(historyStatus(RunState::Running, true), "実行中");
+        QVERIFY(!historyStatus(RunState::Finished).contains("成功"));
+        // run.json records the states by their keys.
+        for (auto state : {RunState::Prepared, RunState::Starting, RunState::Running, RunState::Stopping,
+                           RunState::Finished, RunState::Failed, RunState::Cancelled, RunState::TimedOut,
+                           RunState::Interrupted})
+            QCOMPARE(runStateFromKey(runStateKey(state)), state);
+        QCOMPARE(runStateKey(RunState::TimedOut), "timed_out");
+        QCOMPARE(runStateFromKey("idle"), RunState::Invalid);
+        QCOMPARE(runStateFromKey("done"), RunState::Invalid);
     }
     void comparableEnergies() {
         HistoryEntry a;
@@ -330,7 +338,7 @@ class HistoryTest : public QObject {
         widget<QPushButton>(w, "historyRepair")->click();
         QTRY_VERIFY(!panel->scanning());
         e = readHistoryEntry(p.directory);
-        QCOMPARE(e.status, "interrupted");
+        QCOMPARE(e.status, RunState::Interrupted);
         QVERIFY(!e.orphaned);
         QCOMPARE(*e.energy, -74.9);
         QCOMPARE(parseJson(readFile(p.directory + "/run.json"))["summary"].toObject()["energy"].toDouble(),
@@ -338,7 +346,7 @@ class HistoryTest : public QObject {
         QVERIFY(!widget<QPushButton>(w, "historyRepair")->isEnabled());
         QVERIFY(!widget<QFrame>(w, "historyOrphanBanner")->isVisibleTo(&w));
         QCOMPARE(rows(w).first()->text(0), "中断");
-        QVERIFY(historyStatus("interrupted").contains("中断"));
+        QVERIFY(historyStatus(RunState::Interrupted).contains("中断"));
 #endif
     }
     void scanningCancellationAndInvalidRows() {
@@ -361,7 +369,7 @@ class HistoryTest : public QObject {
         QTRY_COMPARE(done.count(), 1);
         QCOMPARE(scan.entries.size(), 2);
         QVERIFY(std::any_of(scan.entries.cbegin(), scan.entries.cend(),
-                            [](const auto &e) { return e.status == "invalid"; }));
+                            [](const auto &e) { return e.status == RunState::Invalid; }));
         scan.start(tmp.filePath("missing"));
         QCOMPARE(done.count(), 2);
         QVERIFY(scan.entries.isEmpty());

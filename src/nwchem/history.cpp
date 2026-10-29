@@ -15,8 +15,6 @@
 namespace mf {
 namespace {
 constexpr qint64 textLimit = 128 * 1024, projectLimit = 8 * 1024 * 1024;
-const QStringList states{"prepared", "starting",  "running",   "stopping",   "finished",
-                         "failed",   "cancelled", "timed_out", "interrupted"};
 QString resolve(QString path, const QString &base) {
     if (path == "~")
         path = QDir::homePath();
@@ -53,24 +51,16 @@ QJsonObject manifest(const QString &directory) {
     auto m = parseJson(bytes(directory, "run.json", 256 * 1024));
     if (m["format"] != "molforma-nwchem-run" || m["version"].toDouble() != 1)
         fail(tr("未対応の実行記録です（MolForma NWChem version 1が必要です）。"));
-    if (!states.contains(m["status"].toString()))
+    const auto state = runStateFromKey(m["status"].toString());
+    if (state == RunState::Invalid)
         fail(tr("実行状態が不明です。"));
-    if (m["status"] == "finished" && (!m["exit_code"].isDouble() || m["exit_code"].toDouble() != 0))
+    if (state == RunState::Finished && (!m["exit_code"].isDouble() || m["exit_code"].toDouble() != 0))
         fail(tr("終了状態と終了コードが一致しません。"));
     for (auto pair : {qMakePair("input", "input.nw"), qMakePair("project", "project.molforma.json"),
                       qMakePair("stdout", "output.out"), qMakePair("stderr", "stderr.err")})
         if (m[pair.first] != pair.second)
             fail(tr("実行記録のファイル名が未対応です。"));
     return m;
-}
-bool pending(const QString &s) {
-    return s == "starting" || s == "running" || s == "stopping";
-}
-// An energy method as shown: run.json keeps the mark of a counterpoise-corrected energy in Japanese
-// (see nwchemLogSummary).
-QString energyMethodText(const QString &method) {
-    const QString bsse = "・BSSE補正"; // i18n-exempt (as stored in run.json)
-    return method.endsWith(bsse) ? tr("%1・BSSE補正").arg(method.chopped(bsse.size())) : method;
 }
 // error: why the file does not match its recorded digest.
 void checkDigest(const QByteArray &data, const QJsonObject &m, const QString &key, const QString &error) {
@@ -95,25 +85,38 @@ QString historyChoice(const QString &key, const QString &value) {
             return c.label;
     return value;
 }
-QString historyStatus(const QString &s, bool owned, bool orphaned) {
-    if (pending(s) && !owned)
-        return orphaned ? tr("中断・プロセスなし（記録: %1）").arg(s) : tr("稼働未確認（記録: %1）").arg(s);
-    const QMap<QString, QString> names{
-        {"prepared", tr("入力保存済み")},    {"starting", tr("起動中")},
-        {"running", tr("実行中")},           {"stopping", tr("停止処理中")},
-        {"finished", tr("終了（コード0）")}, {"failed", tr("実行失敗")},
-        {"cancelled", tr("停止済み")},       {"timed_out", tr("時間制限", "state")},
-        {"invalid", tr("記録を読めません")}, {"interrupted", tr("中断（記録を修復）")}};
-    return names.value(s, tr("不明"));
+QString historyStatus(RunState state, bool owned, bool orphaned) {
+    if (runStateActive(state) && !owned)
+        return orphaned ? tr("中断・プロセスなし（記録: %1）").arg(runStateKey(state))
+                        : tr("稼働未確認（記録: %1）").arg(runStateKey(state));
+    switch (state) {
+    case RunState::Prepared:
+        return tr("入力保存済み");
+    case RunState::Finished:
+        return tr("終了（コード0）");
+    case RunState::Failed:
+        return tr("実行失敗");
+    case RunState::Cancelled:
+        return tr("停止済み");
+    case RunState::Invalid:
+        return tr("記録を読めません");
+    case RunState::Interrupted:
+        return tr("中断（記録を修復）");
+    default:
+        return runStateName(state);
+    }
+}
+QString historyEnergyMethod(const QString &method) {
+    const QString bsse = "・BSSE補正"; // i18n-exempt (as stored in run.json)
+    return method.endsWith(bsse) ? tr("%1・BSSE補正").arg(method.chopped(bsse.size())) : method;
 }
 HistoryEntry readHistoryEntry(const QString &directory) {
     HistoryEntry e;
     e.directory = QDir::cleanPath(QFileInfo(directory).absoluteFilePath());
     e.name = QFileInfo(e.directory).fileName();
-    e.status = "invalid";
     try {
         e.manifest = manifest(e.directory);
-        e.status = e.manifest["status"].toString();
+        e.status = runStateFromKey(e.manifest["status"].toString());
         e.created = QDateTime::fromString(e.manifest["created_at"].toString(), Qt::ISODateWithMs);
         if (!e.created.isValid())
             e.warnings << tr("作成日時を読めません。");
@@ -121,7 +124,7 @@ HistoryEntry readHistoryEntry(const QString &directory) {
         if (std::isfinite(seconds) && seconds >= 0 && seconds < 1e12)
             e.seconds = qint64(seconds);
         e.valid = true;
-        e.orphaned = pending(e.status) && executionProcessGone(e.manifest);
+        e.orphaned = runStateActive(e.status) && executionProcessGone(e.manifest);
         auto calculation = e.manifest["calculation"].toObject();
         if (calculation.isEmpty()) {
             const auto project = parseJson(bytes(e.directory, "project.molforma.json", projectLimit));
@@ -214,10 +217,10 @@ QJsonObject nwchemLogSummary(const QString &path) {
 }
 void repairHistoryEntry(const QString &directory) {
     auto m = manifest(directory);
-    if (!pending(m["status"].toString()) || !executionProcessGone(m))
+    if (!runStateActive(runStateFromKey(m["status"].toString())) || !executionProcessGone(m))
         fail(
             tr("実行中の可能性がある記録は修復できません（このPCで記録され、プロセスが終了したものだけ）。"));
-    m["status"] = "interrupted";
+    m["status"] = runStateKey(RunState::Interrupted);
     m["repaired_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     // Stored in Japanese whatever the language; the history shows it through translated().
     if (m["error"].toString().isEmpty())
@@ -338,7 +341,7 @@ void trashHistoryEntry(const QString &directory, const QString &root, const QStr
         QFileInfo(info.absolutePath()).canonicalFilePath() != QFileInfo(root).canonicalFilePath())
         fail(tr("このジョブフォルダーはごみ箱へ移動できません。"));
     const auto m = manifest(directory);
-    if (pending(m["status"].toString()) && !executionProcessGone(m))
+    if (runStateActive(runStateFromKey(m["status"].toString())) && !executionProcessGone(m))
         fail(tr("稼働未確認・実行中のジョブは移動できません。"));
     if (!QFile::moveToTrash(directory))
         fail(tr("ごみ箱へ移動できません。保存先を確認してください。"));
@@ -355,10 +358,10 @@ QString historyCsv(const QVector<HistoryEntry> &entries) {
                            e.method,
                            e.basis,
                            e.task,
-                           e.status,
+                           runStateKey(e.status),
                            e.seconds < 0 ? "" : QString::number(e.seconds),
                            e.energy ? QString::number(*e.energy, 'g', 16) : "",
-                           energyMethodText(e.energyMethod),
+                           historyEnergyMethod(e.energyMethod),
                            e.directory,
                            e.formula,
                            e.memo};
