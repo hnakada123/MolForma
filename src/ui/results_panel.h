@@ -1,7 +1,6 @@
 #pragma once
 #include "results/result_loader.h"
 #include <QCache>
-#include <QTemporaryDir>
 #include <QTimer>
 #include <QWidget>
 #include <optional>
@@ -149,9 +148,8 @@ class ResultsPanel : public QWidget {
     QVector<double> frameEnergies;
     // NWChem "freq animate" writes one XYZ per mode and step (<name>.m-001.s-001.xyz). The file
     // list shows one entry per mode; choosing it loads the steps joined into one trajectory.
-    QTemporaryDir animationDir;
     QMap<QString, QStringList> animationFrames; // "animation:<name>:<mode>" → step files
-    QMap<QString, QString> animationSources;    // joined file → its list entry
+    bool animationSource = false;
     void fillFiles(const QString &selected);
     void openEntry(const QString &entry);
     // The MOLDEN file of the job a log belongs to, as an entry of the file list (empty if none).
@@ -161,7 +159,8 @@ class ResultsPanel : public QWidget {
     QVector<int> picked;
     QVector<QVector<int>> pinned;
     void startLoad(const QString &path, double iso, int channel, int orbital = -1,
-                   const QString &normalization = "auto", int divisions = 40, bool reuseOrbital = false);
+                   const QString &normalization = "auto", int divisions = 40, bool reuseOrbital = false,
+                   bool animation = false);
     void renderOrbital(int orbital);
     void cacheOrbital();
     void display(bool orbitalOnly = false);

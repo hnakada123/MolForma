@@ -37,7 +37,7 @@ class CalculationPanel : public QWidget {
   public:
     explicit CalculationPanel(MainWindow *window);
     void refresh();
-    // Shows and focuses the field of a setting key ("advanced:<key>" for a detailed option).
+    // Shows this panel's field ("advanced:<key>" for details). Use MainWindow::showSetting for routing.
     void showField(const QString &key);
     // Shows a detailed option (opening its section's details), or the details of a group ("dft").
     void showDetail(const QString &key);

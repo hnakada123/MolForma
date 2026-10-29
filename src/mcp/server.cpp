@@ -951,12 +951,9 @@ QJsonObject McpServer::callTool(const QString &name, const QJsonObject &args) {
                     if (name == "translate" && a.fixed)
                         fail("Fixed atoms cannot move.");
                 }
-                if (name == "delete_atoms") {
-                    const bool follows = next.job()["charge"].toInt() == next.expectedCharge();
-                    next.remove(ids);
-                    if (follows)
-                        next.setJobValue("charge", next.expectedCharge());
-                } else
+                if (name == "delete_atoms")
+                    deleteAtoms(next, ids);
+                else
                     transform(next, ids, Mat::Identity(), vectorFromJson(args["offset"]));
             } else if (name == "import_document") {
                 if (args["append"].toBool() && args["format"] != "xyz")

@@ -9,7 +9,6 @@ class QListWidget;
 class QPlainTextEdit;
 class QPushButton;
 class QTextBrowser;
-class QTextDocument;
 class QToolButton;
 namespace mf {
 class MainWindow;
@@ -18,8 +17,6 @@ class ChoiceButtons;
 class InputEditor;
 class SettingsCard;
 class StatusCard;
-// Colors the comments, keywords and numbers of generated NWChem input, or a fragment of it.
-void highlightInput(QTextDocument *document);
 // "4 入力プレビュー": the blocks of the input with the tabs that set them at the left, the input
 // with marks on the lines from the details and the additional input, and at the right the input in
 // brief, its checks and how its paths are written.

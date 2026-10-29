@@ -4,6 +4,14 @@
 namespace mf {
 Vec freeDirection(const Document &d, const QString &id);
 void completeHydrogens(Document &d, const Ids &selection = {});
+struct AtomDeletionOptions {
+    bool includeAttachedHydrogens = false;
+    bool capCutBonds = false;
+};
+// Removes the selected atoms and their references. A total charge equal to the structure's expected
+// charge follows the new sum. Optional hydrogen handling is explicit, independent of GUI preferences.
+// Call on an editor-session copy, like other editing operations; fixed atoms cannot be removed.
+void deleteAtoms(Document &d, const Ids &ids, AtomDeletionOptions options = {});
 QString addAtom(Document &d, const QString &symbol, const Vec &position, const QString &anchor = {},
                 const QString &kind = "single", bool hydrogen = true);
 // Inserts a new atom into the bond a–b at covalent bond lengths, moving the smaller side outward.

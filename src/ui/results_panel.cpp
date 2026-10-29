@@ -1008,10 +1008,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         if (index >= 0)
             window->safe([&] { openEntry(files->itemData(index).toString()); });
     });
-    connect(reload, &QPushButton::clicked, this, [this] {
-        startLoad(data.source, data.isovalue, data.dataset, data.selectedOrbital, data.normalizationRequest,
-                  data.orbitalDivisions);
-    });
+    connect(reload, &QPushButton::clicked, this, &ResultsPanel::reloadResult);
     connect(cancel, &QPushButton::clicked, this, &ResultsPanel::cancelLoad);
     connect(frame, &QSpinBox::valueChanged, this, [this] {
         if (!animation.isActive())
@@ -1222,7 +1219,7 @@ void ResultsPanel::reloadResult() {
     if (data.source.isEmpty())
         fail(tr("結果ファイルが開かれていません。"));
     startLoad(data.source, data.isovalue, data.dataset, data.selectedOrbital, data.normalizationRequest,
-              data.orbitalDivisions);
+              data.orbitalDivisions, false, animationSource);
 }
 void ResultsPanel::selectFrame(int index) {
     if (loading())
@@ -1300,7 +1297,6 @@ void ResultsPanel::fillFiles(const QString &selected) {
     const QSignalBlocker guard(files);
     files->clear();
     animationFrames.clear();
-    static const QRegularExpression step(R"(^(.*)\.m-(\d+)\.s-(\d+)\.xyz$)");
     const auto kind = [](const QString &name) {
         const auto suffix = QFileInfo(name).suffix().toLower();
         return suffix == "out" || suffix == "log"    ? 0
@@ -1309,12 +1305,12 @@ void ResultsPanel::fillFiles(const QString &selected) {
                                                      : 3;
     };
     QVector<QStringList> groups(4);
-    QMap<QPair<QString, int>, QStringList> modes;
-    for (const auto &name : resultFiles(folder)) {
-        if (const auto m = step.match(name); m.hasMatch())
-            modes[{m.captured(1), m.captured(2).toInt()}] << name;
+    QVector<ResultFileGroup> modes;
+    for (const auto &group : resultFileGroups(folder)) {
+        if (group.mode >= 0)
+            modes << group;
         else
-            groups[kind(name)] << name;
+            groups[kind(group.files.first())] << group.files.first();
     }
     // Logs, structures, CUBE, MOLDEN, then the animations, separated by kind.
     for (const auto &group : groups) {
@@ -1327,16 +1323,12 @@ void ResultsPanel::fillFiles(const QString &selected) {
     }
     if (!modes.isEmpty() && files->count())
         files->insertSeparator(files->count());
-    for (auto it = modes.begin(); it != modes.end(); ++it) {
-        auto list = it.value();
-        std::sort(list.begin(), list.end(), [](const QString &a, const QString &b) {
-            return step.match(a).captured(3).toInt() < step.match(b).captured(3).toInt();
-        });
-        const auto key = QString("animation:%1:%2").arg(it.key().first).arg(it.key().second);
-        animationFrames[key] = list;
+    for (const auto &group : modes) {
+        const auto key = QString("animation:%1:%2").arg(group.animationName).arg(group.mode);
+        animationFrames[key] = group.files;
         files->addItem(tr("振動アニメーション %1: モード %2（%3枚）")
-                           .arg(QFileInfo(it.key().first).fileName(), QString::number(it.key().second),
-                                QString::number(list.size())),
+                           .arg(QFileInfo(group.animationName).fileName(), QString::number(group.mode),
+                                QString::number(group.files.size())),
                        key);
     }
     QString entry = selected;
@@ -1358,22 +1350,10 @@ void ResultsPanel::openEntry(const QString &entry) {
         openFile(QDir(folder).filePath(entry));
         return;
     }
-    // Join the steps of one mode into a multi-frame XYZ in a private temporary folder.
     const auto list = animationFrames.value(entry);
-    if (list.isEmpty() || !animationDir.isValid())
+    if (list.isEmpty())
         fail(tr("振動アニメーションのファイルが見つかりません。"));
-    QByteArray joined;
-    for (const auto &name : list) {
-        joined += readFile(QDir(folder).filePath(name));
-        if (!joined.endsWith('\n'))
-            joined += '\n';
-        if (joined.size() > 64 * 1024 * 1024)
-            fail(tr("振動アニメーションのファイルが大きすぎます。"));
-    }
-    const auto path = animationDir.filePath(QString("animation-%1.xyz").arg(animationSources.size() + 1));
-    writeFile(path, joined);
-    animationSources[path] = entry;
-    openFile(path);
+    startLoad(QDir(folder).filePath(list.first()), .03, 0, -1, "auto", 40, false, true);
 }
 QString ResultsPanel::jobMolden() const {
     if (data.format != "NWChem")
@@ -1412,7 +1392,7 @@ void ResultsPanel::renderOrbital(int orbital) {
               true);
 }
 void ResultsPanel::startLoad(const QString &path, double iso, int channel, int orbital,
-                             const QString &normalization, int divisions, bool reuseOrbital) {
+                             const QString &normalization, int divisions, bool reuseOrbital, bool animation) {
     cancelLoad();
     stopAnimation();
     if (path.isEmpty())
@@ -1448,13 +1428,14 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
         error(message);
     });
     connect(&loader, &ResultLoader::loaded, this,
-            [this, reuseOrbital, sameSource](ResultData next, const QString &stamp) {
+            [this, reuseOrbital, sameSource, animation](ResultData next, const QString &stamp) {
                 QString failure;
                 int follow = -1; // The log's orbital in the job's MOLDEN file, to show next.
                 const auto wanted = std::exchange(pendingOrbital, {});
                 try {
                     const bool newSource = data.source != next.source;
                     data = std::move(next);
+                    animationSource = animation;
                     orbitalCacheSource = stamp;
                     cacheOrbital();
                     display(reuseOrbital && sameSource && !newSource);
@@ -1487,7 +1468,7 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
                     orbitals->setCurrentCell(follow, 0); // Renders it like a choice in the list.
             });
     try {
-        loader.start({path, iso, channel, orbital, normalization, divisions});
+        loader.start({path, iso, channel, orbital, normalization, divisions, animation});
         status->setPlainText(tr("読込中: %1\n完了まで前の結果を表示します。").arg(loader.pendingPath()));
     } catch (const std::exception &e) {
         pendingOrbital = {};
@@ -1565,7 +1546,7 @@ void ResultsPanel::display(bool orbitalOnly) {
     summary = data.source.isEmpty() ? QString() : brief.isEmpty() ? data.status : data.status + "\n" + brief;
     status->clear(); // The outcome is in "概要": no message left from loading.
     if (!orbitalOnly && !data.source.isEmpty()) {
-        QString selectedFile = animationSources.value(data.source);
+        QString selectedFile;
         for (int i = 0; selectedFile.isEmpty() && i < files->count(); ++i) {
             const auto entry = files->itemData(i).toString();
             if (!entry.isEmpty() && !entry.startsWith("animation:") &&

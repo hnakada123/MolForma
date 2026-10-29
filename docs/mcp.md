@@ -223,6 +223,8 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `get_results` / `results_action` | 結果読込・取消、構造列・エネルギー・軌道・振動数・励起状態・最適化ステップ・変位・ログ取得、選択・再生・停止、XYZ保存、表示中の構造を文書の候補にする `apply_structure` |
 | `history_action` | 履歴の走査・取消、ジョブ選択・再利用・結果表示、記録の修復（`repair`: このPCで実行中と記録されたままプロセスが終了したジョブを「中断」に直す）、ごみ箱への移動、絞り込まれた一覧のCSV保存 |
 
+GUIのファイル一覧で振動アニメーションを選んだ場合、`get_results.source` は元のステップXYZのパスです。`results_action(action: "reload")` は同じモードの元XYZ群を読み直し、ステップの追加・削除も反映します。
+
 引数の型と必須項目は `tools/list` のJSON Schemaを参照してください。全ツールは `content` のJSONテキストと `structuredContent` の両方を返します。画面取得は追加でMCPの `image` コンテンツを返します。引数や編集内容のエラーは `isError: true`、不正なJSON-RPCや未知のツールはプロトコルエラーを返します。
 
 ## リソース

@@ -3,45 +3,15 @@
 #include "editing/coordinates.h"
 #include "model/i18n.h"
 #include "nwchem/nwchem_advanced.h"
-#include "ui/calculation_panel.h"
+#include "nwchem/nwchem_execution.h"
 #include "ui/editor_chrome.h"
-#include "ui/execution_panel.h"
+#include "ui/input_highlighter.h"
 #include "ui/main_window.h"
 #include "ui/theme.h"
 #include <QtWidgets>
 
 namespace mf {
 namespace {
-class InputHighlighter : public QSyntaxHighlighter {
-  public:
-    explicit InputHighlighter(QTextDocument *document) : QSyntaxHighlighter(document) {}
-
-  protected:
-    void highlightBlock(const QString &text) override {
-        // Only color the generated input; this is not an NWChem parser.
-        static const QRegularExpression tokens(
-            R"re(#[^\n]*|"[^"]*"|\b(?:start|title|memory|echo|scratch_dir|permanent_dir|charge|geometry|constraints|basis|ecp|bq|scf|dft|mp2|ccsd|driver|freq|cosmo|property|dplot|moldenfile|molden_norm|gaussian|limitxyz|orbitals|vectors|task|end)\b|(?<!\w)[+-]?(?:\d+\.?\d*|\.\d+)(?:[eEdD][+-]?\d+)?\b)re",
-            QRegularExpression::CaseInsensitiveOption);
-        auto matches = tokens.globalMatch(text);
-        while (matches.hasNext()) {
-            const auto match = matches.next();
-            const auto token = match.captured();
-            QTextCharFormat format;
-            const auto palette = qApp->palette();
-            // Darker than the accents of the chrome, so that each reads at 4.5:1 on white.
-            if (token.startsWith('#'))
-                format.setForeground(accentColor(palette, "#64748b", "#a0aec0"));
-            else if (token.startsWith('"'))
-                format.setForeground(accentColor(palette, "#16836a", "#5fd3b4"));
-            else if (token.front().isLetter()) {
-                format.setForeground(accentColor(palette, "#2f66b3", "#7fb0ff"));
-                format.setFontWeight(QFont::Bold);
-            } else
-                format.setForeground(accentColor(palette, "#9a4fa8", "#d9a3e6"));
-            setFormat(match.capturedStart(), match.capturedLength(), format);
-        }
-    }
-};
 QColor advancedMark(const QPalette &palette) {
     return accentColor(palette, "#8250df", "#b392f0");
 }
@@ -130,7 +100,7 @@ class InputEditor : public QPlainTextEdit {
         connect(this, &QPlainTextEdit::blockCountChanged, this, [this] { updateGutter(); });
         connect(this, &QPlainTextEdit::updateRequest, gutter, [this] { gutter->update(); });
         connect(this, &QPlainTextEdit::cursorPositionChanged, gutter, [this] { gutter->update(); });
-        new InputHighlighter(document());
+        highlightInput(document());
         updateGutter();
     }
     // A tint behind the lines of a block (from 0), stronger on the cursor's line.
@@ -149,9 +119,6 @@ class InputEditor : public QPlainTextEdit {
     }
 };
 
-void highlightInput(QTextDocument *document) {
-    new InputHighlighter(document);
-}
 InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     setObjectName("inputPreviewTab");
     setAttribute(Qt::WA_StyledBackground);
@@ -329,7 +296,7 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     body->addWidget(rail);
     summaryCard = new CalculationSummary("inputPreview", tr("この入力"), [this](const QString &link) {
         if (link == "memory")
-            window->calculationPanel()->showField("memory_mb");
+            window->showSetting(2, "memory_mb");
     });
     railLayout->addWidget(summaryCard);
     checkCard = new StatusCard;
@@ -365,10 +332,8 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
         const int tab = url.path().toInt(&ok);
         if (url.scheme() == "tab" && ok)
             navigate(tab);
-        else if (url.scheme() == "field") {
-            window->showPanel(window->calculationPanel());
-            window->calculationPanel()->showField(url.path());
-        }
+        else if (url.scheme() == "field")
+            window->showSetting(1, url.path());
     };
     connect(paths, &QLabel::linkActivated, this, openLink);
     connect(diagnostics, &QTextBrowser::anchorClicked, this,
@@ -400,11 +365,7 @@ void InputPreviewPanel::navigate(int tab) {
     window->showPanel(tab);
 }
 void InputPreviewPanel::openSource(int tab, const QString &setting, const QString &group) {
-    navigate(tab - 1);
-    if (!group.isEmpty())
-        window->calculationPanel()->showDetailGroup(group);
-    else if (!setting.isEmpty())
-        window->calculationPanel()->showField(setting); // Also the memory of "3 実行設定".
+    window->showSetting(tab - 1, setting, group);
 }
 QList<InputPreviewPanel::Source> InputPreviewPanel::sources(const NwchemInputBlock &b) {
     QList<Source> result;
@@ -498,8 +459,7 @@ void InputPreviewPanel::followCursor() {
         } else if ((source.setting == "extra_input" || source.setting == "extra_tasks"))
             text = tr("%1 › 追加入力").arg(text);
         else if (source.tab == 2 && !source.setting.isEmpty())
-            if (const auto section = window->calculationPanel()->sectionTitle(source.setting);
-                !section.isEmpty())
+            if (const auto section = window->settingSectionTitle(source.setting); !section.isEmpty())
                 text += " › " + section;
         auto *link = new QPushButton(text);
         link->setProperty("link", true);
@@ -639,9 +599,7 @@ void InputPreviewPanel::setBadge(bool failed, const QString &tip) {
     window->setPanelDiagnostics(this, failed, tip);
 }
 QString InputPreviewPanel::prepareExport() {
-    window->executionPanel()->commitPendingEdits();
-    if (auto *focused = QApplication::focusWidget())
-        focused->clearFocus();
+    window->commitPendingSettings();
     if (window->hasCandidate() || window->chemistryRunning())
         fail(tr("分子候補の確定・取消、または整形の終了後に出力してください。"));
     refresh();

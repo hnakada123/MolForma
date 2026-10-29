@@ -94,6 +94,7 @@ add_library(molforma_ui STATIC
     src/ui/editor_panels.cpp
     src/ui/execution_panel.cpp
     src/ui/history_panel.cpp
+    src/ui/input_highlighter.cpp
     src/ui/input_preview_panel.cpp
     src/ui/main_window.cpp
     src/ui/mcp_gui.cpp

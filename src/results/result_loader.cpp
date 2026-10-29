@@ -5,8 +5,58 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QMap>
+#include <QRegularExpression>
+#include <algorithm>
 
 namespace mf {
+namespace {
+const QRegularExpression animationStep(R"(^(.*)\.m-(\d+)\.s-(\d+)\.xyz$)");
+QStringList sourceFiles(const ResultLoadRequest &request) {
+    const QFileInfo source(request.path);
+    if (!request.animation)
+        return {source.absoluteFilePath()};
+    const auto match = animationStep.match(source.fileName());
+    if (match.hasMatch())
+        for (const auto &group : resultFileGroups(source.absolutePath()))
+            if (group.mode == match.captured(2).toInt() && group.animationName == match.captured(1)) {
+                QStringList paths;
+                for (const auto &name : group.files)
+                    paths << QDir(source.absolutePath()).filePath(name);
+                return paths;
+            }
+    fail(tr("振動アニメーションのファイルが見つかりません。"));
+}
+QString sourceStamp(const QStringList &paths) {
+    QJsonArray stamps;
+    for (const auto &path : paths) {
+        const auto stamp = resultSourceStamp(path);
+        if (stamp.isEmpty())
+            return {};
+        stamps.append(stamp);
+    }
+    return QString::fromUtf8(QJsonDocument(stamps).toJson(QJsonDocument::Compact));
+}
+} // namespace
+QVector<ResultFileGroup> resultFileGroups(const QString &directory) {
+    QVector<ResultFileGroup> groups;
+    QMap<QPair<QString, int>, QStringList> animations;
+    for (const auto &name : resultFiles(directory)) {
+        const auto match = animationStep.match(name);
+        if (match.hasMatch())
+            animations[{match.captured(1), match.captured(2).toInt()}] << name;
+        else
+            groups.append({{name}, {}, -1});
+    }
+    for (auto it = animations.begin(); it != animations.end(); ++it) {
+        auto files = it.value();
+        std::stable_sort(files.begin(), files.end(), [](const QString &a, const QString &b) {
+            return animationStep.match(a).captured(3).toInt() < animationStep.match(b).captured(3).toInt();
+        });
+        groups.append({files, it.key().first, it.key().second});
+    }
+    return groups;
+}
 QString preferredResultFile(const QString &directory) {
     const QDir dir(directory);
     if (!dir.exists())
@@ -55,15 +105,21 @@ void ResultLoader::start(const ResultLoadRequest &q) {
     auto work = std::make_unique<QTemporaryDir>();
     if (!work->isValid())
         fail(tr("一時フォルダーを作成できません。"));
-    const auto path = QFileInfo(q.path).absoluteFilePath(), stamp = resultSourceStamp(path);
+    const auto paths = sourceFiles(q);
+    const auto path = paths.first();
+    // Keep the single-file stamp compatible with the orbital cache.
+    const auto stamp = q.animation ? sourceStamp(paths) : resultSourceStamp(path);
     const auto request = work->filePath("request.json"), response = work->filePath("result.bin");
-    writeFile(request, QJsonDocument(QJsonObject{{"path", path},
-                                                 {"isovalue", q.isovalue},
-                                                 {"dataset", q.dataset},
-                                                 {"orbital", q.orbital},
-                                                 {"normalization", q.normalization},
-                                                 {"orbital_divisions", q.divisions}})
-                           .toJson());
+    writeFile(request,
+              QJsonDocument(QJsonObject{{"path", path},
+                                        {"isovalue", q.isovalue},
+                                        {"dataset", q.dataset},
+                                        {"orbital", q.orbital},
+                                        {"normalization", q.normalization},
+                                        {"orbital_divisions", q.divisions},
+                                        {"animation_files",
+                                         q.animation ? QJsonArray::fromStringList(paths) : QJsonArray{}}})
+                  .toJson());
     scratch = std::move(work);
     source = path;
     auto *p = process = new QProcess(this);
@@ -79,7 +135,7 @@ void ResultLoader::start(const ResultLoadRequest &q) {
         emit failed(message);
     });
     connect(p, &QProcess::finished, this,
-            [this, p, path, stamp, response](int code, QProcess::ExitStatus status) {
+            [this, p, q, paths, path, stamp, response](int code, QProcess::ExitStatus status) {
                 if (process != p)
                     return;
                 ResultData data;
@@ -89,7 +145,9 @@ void ResultLoader::start(const ResultLoadRequest &q) {
                         fail(QFileInfo::exists(response + ".error")
                                  ? QString::fromUtf8(readFile(response + ".error"))
                                  : tr("結果の読込プロセスが失敗しました。"));
-                    if (stamp.isEmpty() || resultSourceStamp(path) != stamp)
+                    if (stamp.isEmpty() ||
+                        (q.animation ? sourceFiles(q) != paths || sourceStamp(paths) != stamp
+                                     : resultSourceStamp(path) != stamp))
                         fail(tr("読込中にファイルが更新されました。再読込してください。"));
                     data = loadResultData(response);
                 } catch (const std::exception &e) {

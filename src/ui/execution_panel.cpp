@@ -505,8 +505,11 @@ void ExecutionPanel::buildRunPanel() {
     panel->addWidget(logCard, 1);
     // The panel follows the area of the tabs, over "1 分子" the pages at its right and over this tab
     // the settings below its bar (whose height changes as it wraps).
-    window->workspaceWidget()->installEventFilter(this);
     toolbar->installEventFilter(this);
+    connect(window, &MainWindow::workspaceGeometryChanged, this, [this] {
+        if (runPanel->isVisible())
+            placeRunPanel();
+    });
     connect(window, &MainWindow::panelChanged, this, [this] {
         if (runPanel->isVisible())
             placeRunPanel();
@@ -525,30 +528,16 @@ bool ExecutionPanel::runPanelShown() const {
     return runPanel->isVisible();
 }
 void ExecutionPanel::placeRunPanel() {
-    auto *tabs = window->workspaceWidget();
-    const QRect area(tabs->mapTo(window, QPoint()), tabs->size());
-    int left = area.right() + 1 - std::clamp(area.width() * 2 / 5, std::min(420, area.width()), 600);
-    // Over "1 分子" it takes the place of the pages at the right: the view, its controls and the
-    // options above it stay in sight.
-    auto *column = window->findChild<QWidget *>("propertyColumn");
-    if (column && window->moleculePanelVisible() && column->isVisible()) {
-        if (!column->property("runPanelWatched").toBool()) { // Its width follows the splitter.
-            column->setProperty("runPanelWatched", true);
-            column->installEventFilter(this);
-        }
-        left = column->mapTo(window, QPoint()).x();
-    }
+    auto area = window->runPanelArea();
     // Over "3 実行設定" it starts below the bar: the calculation, "終了したら結果ビューアに読み込む"
     // and "ジョブとして保存" stay in sight.
-    int top = area.top();
     if (window->currentPanel() == this)
-        top = toolbar->mapTo(window, QPoint(0, toolbar->height())).y();
-    runPanel->setGeometry(left, top, area.right() + 1 - left, area.bottom() + 1 - top);
+        area.setTop(toolbar->mapTo(window, QPoint(0, toolbar->height())).y());
+    runPanel->setGeometry(area);
 }
 bool ExecutionPanel::eventFilter(QObject *watched, QEvent *event) {
-    if ((watched == window->workspaceWidget() || watched == toolbar ||
-         watched->objectName() == "propertyColumn") &&
-        (event->type() == QEvent::Resize || event->type() == QEvent::Move) && runPanel->isVisible())
+    if (watched == toolbar && (event->type() == QEvent::Resize || event->type() == QEvent::Move) &&
+        runPanel->isVisible())
         placeRunPanel();
     return QWidget::eventFilter(watched, event);
 }
@@ -641,6 +630,11 @@ void ExecutionPanel::commitPendingEdits() {
     if (auto *focused = QApplication::focusWidget(); focused && isAncestorOf(focused))
         focused->clearFocus();
     editEnvironment();
+}
+void ExecutionPanel::showField(const QString &key) {
+    QWidget *target = key == "memory_mb" ? memory : key == "environment" ? environment : fields.value(key);
+    if (target)
+        target->setFocus(Qt::OtherFocusReason);
 }
 void ExecutionPanel::saveBundle() {
     if (window->hasCandidate() || window->chemistryRunning() || run.active())

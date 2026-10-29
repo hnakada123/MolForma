@@ -7,9 +7,7 @@
 #include "editing/stereochemistry.h"
 #include "model/i18n.h"
 #include "nwchem/nwchem.h"
-#include "ui/calculation_panel.h"
 #include "ui/editor_chrome.h"
-#include "ui/input_preview_panel.h"
 #include "ui/main_window.h"
 #include <QJsonDocument>
 #include <QtWidgets>
@@ -871,10 +869,7 @@ void MainWindow::buildChargePanel() {
     chargeState = new QLabel;
     chargeState->setObjectName("moleculeChargeState");
     auto *chargeLink = linkButton(tr("2 計算条件で変更"), "moleculeChargeLink");
-    connect(chargeLink, &QPushButton::clicked, this, [this] {
-        workspaceTabs->setCurrentWidget(calculation);
-        calculation->showField("charge");
-    });
+    connect(chargeLink, &QPushButton::clicked, this, [this] { showSetting(1, "charge"); });
     // The value and the link wrap: the link goes under the value where the column is narrow.
     auto *chargeRow = new QWidget;
     auto *chargeRowLayout = new FlowLayout(chargeRow, 10, 4);
@@ -901,17 +896,14 @@ void MainWindow::buildChargePanel() {
         ->setToolTip(
             tr("原子の形式電荷の合計（配位中心は酸化数）を、計算の全電荷（「2 計算条件」）にします。"));
     auto *preview = linkButton(tr("4 入力プレビューで確認"), "moleculeInputPreview");
-    connect(preview, &QPushButton::clicked, this, [this] { workspaceTabs->setCurrentWidget(inputPreview); });
+    connect(preview, &QPushButton::clicked, this, [this] { showInputLine(); });
     f->addRow(preview);
     section(f, QT_TR_NOOP("外部点電荷"));
     pointChargeState = new QLabel;
     pointChargeState->setObjectName("moleculePointChargeState");
     auto *pointLink = linkButton(tr("2 計算条件で設定"), "moleculePointChargeLink");
     pointLink->setToolTip(tr("点電荷をNWChem入力に含めるかは「2 計算条件」の「周囲の環境」で設定します。"));
-    connect(pointLink, &QPushButton::clicked, this, [this] {
-        workspaceTabs->setCurrentWidget(calculation);
-        calculation->showField("include_point_charges");
-    });
+    connect(pointLink, &QPushButton::clicked, this, [this] { showSetting(1, "include_point_charges"); });
     auto *pointRow = new QWidget;
     auto *pointRowLayout = new FlowLayout(pointRow, 10, 4);
     pointRowLayout->setContentsMargins(0, 0, 0, 0);

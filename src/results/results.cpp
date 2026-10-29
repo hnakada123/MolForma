@@ -1343,10 +1343,36 @@ ResultData loadResultData(const QString &path) {
 int resultWorker(const QString &request, const QString &response) {
     try {
         const auto q = parseJson(boundedRead(request));
-        saveResultData(response,
-                       readResult(q["path"].toString(), q["isovalue"].toDouble(.03), q["dataset"].toInt(),
-                                  q["orbital"].toInt(-1), q["normalization"].toString("auto"),
-                                  q["orbital_divisions"].toInt(40)));
+        auto path = q["path"].toString();
+        const auto animation = q["animation_files"].toArray();
+        if (!animation.isEmpty()) {
+            // The loader owns this scratch directory, so cancellation removes the joined file too.
+            // Bound each read before allocating; all source I/O runs in this cancellable worker.
+            constexpr qint64 limit = 64 * 1024 * 1024;
+            QByteArray joined;
+            for (const auto &source : animation) {
+                QFile file(source.toString());
+                if (!file.open(QIODevice::ReadOnly))
+                    fail(file.errorString());
+                const auto remaining = limit - joined.size();
+                if (file.size() > remaining)
+                    fail(tr("振動アニメーションのファイルが大きすぎます。"));
+                joined += file.read(remaining + 1);
+                if (file.error() != QFileDevice::NoError)
+                    fail(file.errorString());
+                if (!joined.endsWith('\n'))
+                    joined += '\n';
+                if (joined.size() > limit)
+                    fail(tr("振動アニメーションのファイルが大きすぎます。"));
+            }
+            path = QDir(QFileInfo(response).absolutePath()).filePath("animation.xyz");
+            writeFile(path, joined);
+        }
+        auto data =
+            readResult(path, q["isovalue"].toDouble(.03), q["dataset"].toInt(), q["orbital"].toInt(-1),
+                       q["normalization"].toString("auto"), q["orbital_divisions"].toInt(40));
+        data.source = QFileInfo(q["path"].toString()).absoluteFilePath();
+        saveResultData(response, data);
         return 0;
     } catch (const std::exception &e) {
         try {

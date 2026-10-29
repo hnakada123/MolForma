@@ -34,6 +34,7 @@ class ExecutionPanel : public QWidget {
     void stopEditing();
     void shutdown();
     void commitPendingEdits();
+    void showField(const QString &key); // Focuses this panel's own setting control.
     bool running() const {
         return run.active();
     }

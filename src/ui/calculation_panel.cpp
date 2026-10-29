@@ -7,8 +7,7 @@
 #include "nwchem/nwchem_output.h"
 #include "ui/diagnostics_list.h"
 #include "ui/editor_chrome.h"
-#include "ui/execution_panel.h"
-#include "ui/input_preview_panel.h"
+#include "ui/input_highlighter.h"
 #include "ui/main_window.h"
 #include <QtWidgets>
 #include <algorithm>
@@ -369,7 +368,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     memoryState = new QLabel;
     memoryState->setObjectName("calculationMemoryState");
     auto *memoryLink = linkButton(tr("3 実行設定で変更"), "calculationMemoryLink");
-    connect(memoryLink, &QPushButton::clicked, this, [this] { showField("memory_mb"); });
+    connect(memoryLink, &QPushButton::clicked, this, [this] { window->showSetting(2, "memory_mb"); });
     auto *memoryRow = readOnlyRow(memoryState, memoryLink);
     output->addRow(tr("メモリ"), memoryRow);
     rows["memory_mb"] = memoryRow;
@@ -438,7 +437,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     body->addWidget(railScroll);
     summaryCard = new CalculationSummary("calculation", tr("この計算"), [this](const QString &link) {
         if (link == "memory")
-            showField("memory_mb");
+            window->showSetting(2, "memory_mb");
     });
     railLayout->addWidget(summaryCard);
 
@@ -456,12 +455,8 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     validation->setFrameShape(QFrame::NoFrame);
     validation->setFitContents(220);
     checkLayout->addWidget(validation);
-    connect(validation, &DiagnosticsList::diagnosticClicked, this, [this](const QString &setting, int tab) {
-        if (tab == 1 && !setting.isEmpty())
-            showField(setting);
-        else
-            window->showPanel(tab);
-    });
+    connect(validation, &DiagnosticsList::diagnosticClicked, this,
+            [this](const QString &setting, int tab) { window->showSetting(tab, setting); });
     connect(validation, &DiagnosticsList::fixRequested, this, &CalculationPanel::applyFix);
     railLayout->addWidget(validationCard);
 
@@ -541,7 +536,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
             [this] { changeDetail(selectedDetail, QJsonValue::Undefined); });
     connect(showInInput, &QPushButton::clicked, this, [this] {
         if (const auto line = showInInput->property("line").toInt(); line >= 0)
-            window->previewPanel()->showLine(line);
+            window->showInputLine(line);
     });
     detailCard->hide();
     railLayout->addWidget(detailCard);
@@ -567,8 +562,9 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     changes->header()->setSectionResizeMode(2, QHeaderView::Fixed);
     changes->setColumnWidth(2, 30);
     changeCard->body()->addWidget(changes, 1);
-    connect(changes, &QTreeWidget::itemClicked, this,
-            [this](QTreeWidgetItem *item) { showField(item->data(0, Qt::UserRole).toString()); });
+    connect(changes, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *item) {
+        window->showSetting(1, item->data(0, Qt::UserRole).toString());
+    });
     noChanges = new QLabel(tr("なし（HF / STO-3G・一点エネルギー）"));
     noChanges->setObjectName("calculationNoChanges");
     noChanges->setProperty("muted", true);
@@ -581,7 +577,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     previewRow->addStretch();
     previewRow->addWidget(showPreview);
     railLayout->addLayout(previewRow);
-    connect(showPreview, &QPushButton::clicked, this, [this] { window->showPanel(window->previewPanel()); });
+    connect(showPreview, &QPushButton::clicked, this, [this] { window->showInputLine(); });
 
     // Labels for search and the list of changes: form rows, plus the fields with their own rows.
     QStringList completions = labels.values();
@@ -634,12 +630,6 @@ void CalculationPanel::showField(const QString &key) {
         changeFilter->setCurrentIndex(changeFilter->findData("changed"));
         return;
     }
-    if (key == "memory_mb") { // Set in "3 実行設定".
-        window->showPanel(window->executionPanel());
-        if (auto *memory = window->executionPanel()->findChild<QWidget *>("execution_memory"))
-            memory->setFocus(Qt::OtherFocusReason);
-        return;
-    }
     QWidget *target = key == "extra_input"   ? static_cast<QWidget *>(extraInput)
                       : key == "extra_tasks" ? static_cast<QWidget *>(extraTasks)
                                              : rows.value(key);
@@ -683,7 +673,7 @@ void CalculationPanel::searchSettings(const QString &text) {
     if (!detailed)
         for (auto it = labels.begin(); it != labels.end(); ++it)
             if (it.value().contains(query, Qt::CaseInsensitive)) {
-                showField(it.key());
+                window->showSetting(1, it.key());
                 return;
             }
     // A detailed option by its name, then by its NWChem keyword or key.

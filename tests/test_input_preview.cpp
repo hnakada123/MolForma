@@ -39,6 +39,8 @@ class InputPreviewTest : public QObject {
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settings.path());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
                            settings.path()); // MolForma uses NativeFormat.
+        qputenv("XDG_CONFIG_HOME", settings.path().toUtf8());
+        qputenv("XDG_DATA_HOME", settings.filePath("data").toUtf8());
     }
     void nativeTabReadOnlyCopyAndSave() {
         auto d = water();
@@ -384,6 +386,39 @@ class InputPreviewTest : public QObject {
                  QString("%1 行 · UTF-8 · %2 バイト")
                      .arg(nwchemInput(d).count('\n'))
                      .arg(QLocale().toString(nwchemInput(d).toUtf8().size())));
+    }
+    void settingLinksFollowOwners() {
+        MainWindow w;
+        w.loadDocument(water());
+        w.show();
+        w.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&w));
+        auto *tabs = widget<QTabWidget>(w, "workspaceTabs");
+        auto *memory = widget<QSpinBox>(w, "execution_memory");
+        // Navigation must not depend on another panel's private widget names.
+        memory->setObjectName("renamedMemoryControl");
+        tabs->setCurrentIndex(1);
+        widget<QPushButton>(w, "calculationMemoryLink")->click();
+        QCOMPARE(tabs->currentIndex(), 2);
+        QTRY_VERIFY(memory->hasFocus());
+        openPreview(w);
+        auto *checks = widget<QTextBrowser>(w, "inputPreviewDiagnostics");
+        QVERIFY(QMetaObject::invokeMethod(checks, "anchorClicked", Q_ARG(QUrl, QUrl("field:memory_mb"))));
+        QCOMPARE(tabs->currentIndex(), 2);
+        QTRY_VERIFY(memory->hasFocus());
+        openPreview(w);
+        const auto generated = generateNwchemInput(w.document());
+        for (const auto &block : generated.outline.blocks)
+            if (block.keyword == "memory") {
+                auto *link =
+                    w.findChild<QToolButton *>(QString("inputPreviewSource%1_3").arg(block.line + 1));
+                QVERIFY(link);
+                link->click();
+                QCOMPARE(tabs->currentIndex(), 2);
+                QTRY_VERIFY(memory->hasFocus());
+                return;
+            }
+        QFAIL("Missing memory input block");
     }
     void focusedSettingAndSaveDialog() {
         MainWindow w;

@@ -223,6 +223,8 @@ The following tools are added with `--mcp-gui`.
 | `get_results` / `results_action` | Load results or cancel loading; get structures, energies, orbitals, frequencies, excited states, optimization steps, displacements and log; select, play, stop; save XYZ; `apply_structure`, which makes the shown structure a candidate for the document |
 | `history_action` | Scan the history or cancel the scan; select, reuse and show the results of jobs; repair records (`repair`: marks jobs recorded as running on this PC whose process has ended as “Interrupted”); move to the trash; save the filtered list as CSV |
 
+When a vibration animation is selected in the GUI file list, `get_results.source` is the path of an original step XYZ file. `results_action(action: "reload")` rereads the original XYZ files of that mode, including added or removed steps.
+
 See the JSON Schema of `tools/list` for argument types and required fields. All tools return both JSON text in `content` and `structuredContent`. Screen captures also return MCP `image` content. Errors in arguments or edits return `isError: true`; invalid JSON-RPC and unknown tools return protocol errors.
 
 ## Resources

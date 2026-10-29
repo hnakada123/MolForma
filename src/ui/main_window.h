@@ -130,9 +130,16 @@ class MainWindow : public QMainWindow {
     }
     void showPanel(QWidget *panel);
     void showPanel(int index);
+    // Routes a setting to its owning panel. Tab indices are zero-based, as in showPanel().
+    // Memory belongs to execution; detailed groups belong to calculation settings.
+    void showSetting(int tab, const QString &setting = {}, const QString &group = {});
+    QString settingSectionTitle(const QString &setting) const;
+    void showInputLine(int line = -1);
+    void commitPendingSettings();
     QWidget *currentPanel() const;
     int currentPanelIndex() const;
     QWidget *workspaceWidget() const;
+    QRect runPanelArea() const; // Available overlay area in main-window coordinates.
     bool moleculePanelVisible() const;
     QString moleculeLayoutMode() const;
     void setPanelDiagnostics(QWidget *panel, bool error, const QString &tip);
@@ -167,8 +174,10 @@ class MainWindow : public QMainWindow {
     void runWorker(const QString &mode, const QString &smiles = {}, const Ids &moving = {}, int count = 10);
   signals:
     void panelChanged();
+    void workspaceGeometryChanged();
 
   protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void changeEvent(QEvent *) override;
     void closeEvent(QCloseEvent *) override;
     void dragEnterEvent(QDragEnterEvent *) override;
@@ -200,6 +209,7 @@ class MainWindow : public QMainWindow {
     HistoryPanel *calculationHistory = nullptr;
     // The tabs; their bar is hidden and the workflow steps of the header switch them.
     QTabWidget *workspaceTabs = nullptr;
+    QWidget *propertyColumn = nullptr;
     HeaderBar *header = nullptr;
     QWidget *workflowSteps = nullptr;
     QButtonGroup *stepGroup = nullptr; // One button per tab, its index as id.

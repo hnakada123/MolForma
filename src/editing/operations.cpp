@@ -6,6 +6,34 @@
 #include <functional>
 #include <limits>
 namespace mf {
+void deleteAtoms(Document &d, const Ids &chosen, AtomDeletionOptions options) {
+    for (const auto &id : chosen)
+        d.atom(id);
+    Ids ids = chosen;
+    if (options.includeAttachedHydrogens)
+        for (const auto &id : chosen)
+            for (const auto &n : d.neighbors(id))
+                if (d.atom(n).element == "H" && !ids.contains(n)) {
+                    const auto partners = d.neighbors(n);
+                    if (std::all_of(partners.begin(), partners.end(),
+                                    [&](const auto &p) { return ids.contains(p); }))
+                        ids << n;
+                }
+    Ids cut;
+    if (options.capCutBonds)
+        for (const auto &id : ids)
+            if (d.atom(id).element != "H")
+                for (const auto &n : d.neighbors(id))
+                    if (!ids.contains(n) && !cut.contains(n))
+                        cut << n;
+    const bool follows = d.job()["charge"].toInt() == d.expectedCharge();
+    d.remove(ids);
+    // Deleting a hydrogen must not add it back. An empty selection would cap the whole molecule.
+    if (options.capCutBonds && !cut.isEmpty())
+        completeHydrogens(d, cut);
+    if (follows)
+        d.setJobValue("charge", d.expectedCharge());
+}
 static int valence(const Atom &a, double used) {
     if (a.element == "H")
         return std::max(0, (a.charge ? 0 : 1) - a.radical); // H+ / H- (hydride) have no bond

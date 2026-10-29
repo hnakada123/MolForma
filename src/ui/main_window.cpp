@@ -246,6 +246,33 @@ void MainWindow::showPanel(int index) {
     if (index >= 0 && index < workspaceTabs->count())
         workspaceTabs->setCurrentIndex(index);
 }
+void MainWindow::showSetting(int tab, const QString &setting, const QString &group) {
+    if (setting == "memory_mb")
+        tab = 2;
+    else if (!group.isEmpty())
+        tab = 1;
+    showPanel(tab);
+    if (tab == 1) {
+        if (!group.isEmpty())
+            calculation->showDetailGroup(group);
+        else if (!setting.isEmpty())
+            calculation->showField(setting);
+    } else if (tab == 2 && !setting.isEmpty())
+        execution->showField(setting);
+}
+QString MainWindow::settingSectionTitle(const QString &setting) const {
+    return calculation->sectionTitle(setting);
+}
+void MainWindow::showInputLine(int line) {
+    showPanel(inputPreview);
+    if (line >= 0)
+        inputPreview->showLine(line);
+}
+void MainWindow::commitPendingSettings() {
+    execution->commitPendingEdits();
+    if (auto *focused = QApplication::focusWidget())
+        focused->clearFocus();
+}
 QWidget *MainWindow::currentPanel() const {
     return workspaceTabs->currentWidget();
 }
@@ -254,6 +281,14 @@ int MainWindow::currentPanelIndex() const {
 }
 QWidget *MainWindow::workspaceWidget() const {
     return workspaceTabs;
+}
+QRect MainWindow::runPanelArea() const {
+    QRect area(workspaceTabs->mapTo(this, QPoint()), workspaceTabs->size());
+    int left = area.right() + 1 - std::clamp(area.width() * 2 / 5, std::min(420, area.width()), 600);
+    if (moleculePanelVisible() && propertyColumn->isVisible())
+        left = propertyColumn->mapTo(this, QPoint()).x();
+    area.setLeft(left);
+    return area;
 }
 bool MainWindow::moleculePanelVisible() const {
     return currentPanel() == moleculePage;
@@ -284,6 +319,7 @@ void MainWindow::buildUi() {
     outer->setSpacing(0);
     setCentralWidget(central);
     workspaceTabs = new QTabWidget;
+    workspaceTabs->installEventFilter(this);
     workspaceTabs->setObjectName("workspaceTabs");
     workspaceTabs->setDocumentMode(true);
     // The workflow steps of the header switch the tabs, so their own bar stays hidden.
@@ -712,7 +748,8 @@ void MainWindow::buildUi() {
     splitter->addWidget(middle);
     applyMoleculeLayout();
     // The properties: one page at a time, chosen with segments (their tab bar stays hidden).
-    auto *propertyColumn = new QWidget;
+    propertyColumn = new QWidget;
+    propertyColumn->installEventFilter(this);
     propertyColumn->setObjectName("propertyColumn");
     propertyColumn->setAttribute(Qt::WA_StyledBackground);
     propertyColumn->setMinimumWidth(300);
@@ -2232,6 +2269,12 @@ void MainWindow::syncWorkflowSteps() {
         }
     }
 }
+bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
+    if ((watched == workspaceTabs || watched == propertyColumn) &&
+        (event->type() == QEvent::Resize || event->type() == QEvent::Move))
+        emit workspaceGeometryChanged();
+    return QMainWindow::eventFilter(watched, event);
+}
 void MainWindow::changeEvent(QEvent *e) {
     QMainWindow::changeEvent(e);
     if (e->type() == QEvent::PaletteChange && !stylingChrome) {
@@ -2334,7 +2377,7 @@ void MainWindow::applyChromeStyle() {
         QFrame[choice="segments"] QToolButton:checked { background: @base; color: @accentText; font-weight: bold; }
     )");
     // The pages of properties: the cards and buttons of the settings tabs.
-    style(findChild<QWidget *>("propertyColumn"), settingsRules() + R"(
+    style(propertyColumn, settingsRules() + R"(
         #propertyColumn { background: @window; border-left: 1px solid @line; }
         #propertyPageBar { background: @base; border-bottom: 1px solid @line; }
         QFrame#propertyPages QToolButton { padding: 4px 4px; }
@@ -2945,30 +2988,7 @@ void MainWindow::deleteAtoms(const Ids &chosen) {
     edit(
         tr("選択原子を削除"),
         [=](Document &d) {
-            Ids ids = chosen;
-            // Hydrogens bonded only to deleted atoms go with them.
-            for (const auto &id : chosen)
-                for (const auto &n : d.neighbors(id))
-                    if (d.atom(n).element == "H" && !ids.contains(n)) {
-                        const auto partners = d.neighbors(n);
-                        if (std::all_of(partners.begin(), partners.end(),
-                                        [&](const auto &p) { return ids.contains(p); }))
-                            ids << n;
-                    }
-            Ids cut;
-            for (const auto &id : ids)
-                if (d.atom(id).element != "H")
-                    for (const auto &n : d.neighbors(id))
-                        if (!ids.contains(n) && !cut.contains(n))
-                            cut << n;
-            // The total charge follows the formal charges and oxidation numbers when they matched.
-            const bool follows = d.job()["charge"].toInt() == d.expectedCharge();
-            d.remove(ids);
-            // Only heavy atoms leave cut bonds to cap; an empty list would mean the whole molecule.
-            if (terminate && !cut.isEmpty())
-                completeHydrogens(d, cut);
-            if (follows)
-                d.setJobValue("charge", d.expectedCharge());
+            mf::deleteAtoms(d, chosen, {.includeAttachedHydrogens = true, .capCutBonds = terminate});
         },
         true);
 }

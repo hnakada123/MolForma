@@ -61,6 +61,8 @@ class ResultsTest : public QObject {
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settings.path());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
                            settings.path()); // MolForma uses NativeFormat.
+        qputenv("XDG_CONFIG_HOME", settings.path().toUtf8());
+        qputenv("XDG_DATA_HOME", settings.filePath("data").toUtf8());
     }
     void logGeometryEnergyAndFailure() {
         auto source = "NWChem\n" + geometry() +
@@ -897,6 +899,80 @@ class ResultsTest : public QObject {
         QCOMPARE(panel->result().frames.size(), 3);
         QCOMPARE(panel->result().frames[2].molecule.atoms[0].position.z(), 3.0);
         QCOMPARE(chooser->currentText(), QString("振動アニメーション w_vib.freq: モード 2（3枚）"));
+        const auto first = job.filePath("w_vib.freq.m-002.s-001.xyz");
+        QCOMPARE(panel->result().source, first); // Original source, never a temporary joined file.
+        writeFile(first, "1\nupdated\nH 0 0 9\n");
+        writeFile(job.filePath("w_vib.freq.m-002.s-010.xyz"), "1\nnew step\nH 0 0 10\n");
+        panel->reloadResult();
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 3, 10000);
+        QCOMPARE(panel->result().frames.size(), 4);
+        QCOMPARE(panel->result().frames[0].molecule.atoms[0].position.z(), 9.0);
+        QCOMPARE(panel->result().frames[3].molecule.atoms[0].position.z(), 10.0);
+        QCOMPARE(chooser->currentText(), QString("振動アニメーション w_vib.freq: モード 2（4枚）"));
+        QVERIFY(QFile::remove(first));
+        panel->reloadResult();
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 4, 10000);
+        QCOMPARE(panel->result().frames.size(), 3);
+        QCOMPARE(panel->result().source, job.filePath("w_vib.freq.m-002.s-002.xyz"));
+        QCOMPARE(chooser->currentText(), QString("振動アニメーション w_vib.freq: モード 2（3枚）"));
+    }
+    void animationLoadingRejectsChangedSources() {
+        QTemporaryDir job;
+        const auto first = job.filePath("mode.m-001.s-001.xyz");
+        const auto second = job.filePath("mode.m-001.s-002.xyz");
+        const auto third = job.filePath("mode.m-001.s-003.xyz");
+        writeFile(first, "1\nfirst\nH 0 0 1\n");
+        writeFile(second, "1\nsecond\nH 0 0 2\n");
+        ResultLoader loader;
+        QSignalSpy loaded(&loader, &ResultLoader::loaded), failed(&loader, &ResultLoader::failed);
+        ResultLoadRequest request{first};
+        request.animation = true;
+        loader.start(request);
+        // No event processing between start and these changes: even an already finished worker's
+        // result must be rejected. Check a non-primary source, additions and removals separately.
+        writeFile(second, "1\nchanged second step\nH 0 0 20\n");
+        QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 10000);
+        loader.start(request);
+        writeFile(third, "1\nthird\nH 0 0 3\n");
+        QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 2, 10000);
+        loader.start(request);
+        QVERIFY(QFile::remove(second));
+        QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 3, 10000);
+        QCOMPARE(loaded.count(), 0);
+        loader.start(request);
+        QVERIFY(loader.cancel());
+        QVERIFY(!loader.active());
+        loader.start(request);
+        QTRY_COMPARE_WITH_TIMEOUT(loaded.count(), 1, 10000);
+        const auto data = qvariant_cast<ResultData>(loaded[0][0]);
+        QCOMPARE(data.source, first);
+        QCOMPARE(data.frames.size(), 2);
+        QCOMPARE(data.frames[1].molecule.atoms[0].position.z(), 3.0);
+    }
+    void animationLoadingBoundsReadsAndKeepsPreviousResult() {
+        QTemporaryDir job;
+        const auto first = job.filePath("mode.m-001.s-001.xyz");
+        writeFile(first, "1\nfirst\nH 0 0 1\n");
+        MainWindow w;
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        QSignalSpy loaded(panel, &ResultsPanel::loaded), failed(panel, &ResultsPanel::loadFailed);
+        panel->openDirectory(job.path());
+        QTRY_COMPARE_WITH_TIMEOUT(loaded.count(), 1, 10000);
+        QFile oversized(job.filePath("mode.m-001.s-002.xyz"));
+        QVERIFY(oversized.open(QIODevice::WriteOnly));
+        QVERIFY(oversized.resize(64 * 1024 * 1024 + 1));
+        oversized.close();
+        panel->reloadResult();
+        QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 10000);
+        QVERIFY(failed[0][0].toString().contains("大きすぎます"));
+        QCOMPARE(panel->result().frames.size(), 1);
+        QCOMPARE(panel->result().frames[0].molecule.atoms[0].position.z(), 1.0);
+        QVERIFY(QFile::remove(oversized.fileName()));
+        QVERIFY(QFile::remove(first));
+        panel->reloadResult();
+        QCOMPARE(failed.count(), 2);
+        QCOMPARE(panel->result().frames.size(), 1);
+        QCOMPARE(loaded.count(), 1);
     }
     void cameraSlidersPreserveGeometry() {
         MainWindow w;

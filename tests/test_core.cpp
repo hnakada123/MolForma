@@ -2,6 +2,7 @@
 #include "editing/coordinates.h"
 #include "editing/coordination.h"
 #include "editing/editor_session.h"
+#include "editing/operations.h"
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
 #include "io/structure_io.h"
@@ -50,6 +51,68 @@ class CoreTest : public QObject {
         session.reset(d);
         QVERIFY(session.history().isClean());
         QVERIFY(!session.history().canUndo());
+    }
+
+    void atomDeletionPolicies() {
+        Document ethane;
+        placeTemplate(ethane, findTemplate("skeleton:ethane"), Vec::Zero());
+        ethane.envelope["future_field"] = 42;
+        const auto carbon = ethane.atoms.first().id;
+        QCOMPARE(ethane.atom(carbon).element, QString("C"));
+        const auto original = ethane.project();
+        EditorSession session;
+        session.reset(ethane);
+        // The MCP policy removes precisely the IDs requested, leaving attached hydrogens.
+        session.edit("explicit deletion", [&](Document &d) { deleteAtoms(d, {carbon}); }, true);
+        QCOMPARE(session.document().project(), original);
+        QCOMPARE(session.candidate()->atoms.size(), ethane.atoms.size() - 1);
+        session.cancel();
+        // GUI deletion includes attached hydrogens; termination of the cut bond is optional.
+        session.edit(
+            "uncapped deletion",
+            [&](Document &d) { deleteAtoms(d, {carbon}, {.includeAttachedHydrogens = true}); }, true);
+        QCOMPARE(session.candidate()->formula(), QString("CH3"));
+        session.cancel();
+        session.edit(
+            "capped deletion",
+            [&](Document &d) {
+                deleteAtoms(d, {carbon}, {.includeAttachedHydrogens = true, .capCutBonds = true});
+            },
+            true);
+        QCOMPARE(session.candidate()->formula(), QString("CH4"));
+        QCOMPARE(session.candidate()->envelope, ethane.envelope);
+        QVERIFY(session.confirm());
+        session.navigate("undo");
+        QCOMPARE(session.document().project(), original);
+        session.navigate("redo");
+        QCOMPARE(session.document().formula(), QString("CH4"));
+        const auto hydrogen = session.document().neighbors(session.document().atoms.first().id).first();
+        session.edit("remove hydrogen", [&](Document &d) {
+            deleteAtoms(d, {hydrogen}, {.includeAttachedHydrogens = true, .capCutBonds = true});
+        });
+        QCOMPARE(session.document().formula(), QString("CH3"));
+
+        for (const auto &id : ethane.neighbors(carbon))
+            if (ethane.atom(id).element == "H") {
+                ethane.atom(id).fixed = true;
+                break;
+            }
+        session.reset(ethane);
+        const auto fixed = session.document().project();
+        QVERIFY_EXCEPTION_THROWN(session.edit(
+                                     "fixed hydrogen",
+                                     [&](Document &d) {
+                                         deleteAtoms(d, {carbon},
+                                                     {.includeAttachedHydrogens = true, .capCutBonds = true});
+                                     },
+                                     true),
+                                 std::runtime_error);
+        QVERIFY_EXCEPTION_THROWN(
+            session.edit("unknown atom", [&](Document &d) { deleteAtoms(d, {carbon, "missing"}); }),
+            std::runtime_error);
+        QCOMPARE(session.document().project(), fixed);
+        QVERIFY(!session.candidate());
+        QCOMPARE(session.history().count(), 0);
     }
 
     void namedElements() {
