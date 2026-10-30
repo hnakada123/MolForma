@@ -58,7 +58,8 @@ QString historyIncomparable(const HistoryEntry &entry, const HistoryEntry &refer
 // The job folders (with run.json) directly in root, counted up to limit; -1 if root cannot be read.
 int historyJobCount(const QString &root, int limit = 2000);
 
-// Incremental, bounded directory scan. Each event reads at most one bundle.
+// Incremental, bounded directory scan, a few milliseconds per event. Entries of ended jobs whose files
+// have not changed since an earlier scan are not read again.
 class HistoryScan : public QObject {
     Q_OBJECT
   public:
@@ -77,6 +78,8 @@ class HistoryScan : public QObject {
     QTimer timer;
     std::unique_ptr<QDirIterator> iterator;
     int examined = 0;
+    // By folder: the stamp of its files and its entry, of this scan and of earlier ones.
+    QHash<QString, std::pair<QString, HistoryEntry>> read, earlier;
     void step();
 };
 } // namespace mf

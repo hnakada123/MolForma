@@ -6,6 +6,7 @@
 #include "results/results.h"
 #include <QCryptographicHash>
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -161,11 +162,11 @@ HistoryEntry readHistoryEntry(const QString &directory) {
     } else if (QFileInfo::exists(QDir(e.directory).filePath("output.out"))) {
         // Older records and unfinished runs: the last energy in the end of the log (whole lines only).
         try {
-            auto lines = historyText(e.directory, "output.out", true).split('\n');
+            auto lines = bytes(e.directory, "output.out", textLimit, true).split('\n');
             lines.removeLast();
             NwchemLog log;
             for (const auto &line : std::as_const(lines))
-                log.add(line);
+                log.addBytes(line);
             if (std::isfinite(log.energy)) {
                 e.energy = log.energy;
                 e.energyMethod = log.energyMethod;
@@ -376,6 +377,8 @@ HistoryScan::HistoryScan(QObject *parent) : QObject(parent) {
 }
 void HistoryScan::start(const QString &root) {
     cancel();
+    earlier.insert(read); // Entries of an interrupted scan count too.
+    read.clear();
     entries.clear();
     message.clear();
     examined = 0;
@@ -391,23 +394,55 @@ void HistoryScan::cancel() {
     timer.stop();
     iterator.reset();
 }
+// The files a history entry is read from, by size and times: an entry of a job that has ended reads
+// the same while they stay as they are.
+static QString entryStamp(const QString &directory) {
+    QString stamp;
+    for (const auto *name : {"run.json", "memo.txt", "output.out", "project.molforma.json"}) {
+        const QFileInfo f(QDir(directory).filePath(name));
+        stamp += f.exists() ? QString("%1 %2 %3;")
+                                  .arg(f.size())
+                                  .arg(f.lastModified().toMSecsSinceEpoch())
+                                  .arg(f.fileTime(QFileDevice::FileMetadataChangeTime).toMSecsSinceEpoch())
+                            : QString("-;");
+    }
+    return stamp;
+}
 void HistoryScan::step() {
-    if (!iterator)
-        return;
-    if (entries.size() >= 2000 || examined >= 20000) {
-        message = tr("走査上限（2000ジョブ / 20000フォルダー）に達しました。保存先を分割してください。");
-        cancel();
-        emit finished();
-        return;
-    }
-    if (!iterator->hasNext()) {
-        cancel();
-        emit finished();
-        return;
-    }
-    const auto directory = iterator->next();
-    ++examined;
-    if (QFileInfo::exists(QDir(directory).filePath("run.json")))
-        entries << readHistoryEntry(directory);
+    // A few milliseconds of folders per event, so the window stays responsive.
+    QElapsedTimer slice;
+    slice.start();
+    do {
+        if (!iterator)
+            return;
+        if (entries.size() >= 2000 || examined >= 20000) {
+            message = tr("走査上限（2000ジョブ / 20000フォルダー）に達しました。保存先を分割してください。");
+            cancel();
+            emit finished();
+            return;
+        }
+        if (!iterator->hasNext()) {
+            earlier.clear(); // What the scan did not see again is gone.
+            cancel();
+            emit finished();
+            return;
+        }
+        const auto directory = iterator->next();
+        ++examined;
+        if (!QFileInfo::exists(QDir(directory).filePath("run.json")))
+            continue;
+        // A job that has ended and whose files are unchanged since the last scan is not read again;
+        // an active one is, since whether its process still runs can change.
+        const auto stamp = entryStamp(directory);
+        if (const auto known = earlier.constFind(directory);
+            known != earlier.cend() && known->first == stamp) {
+            entries << known->second;
+            read.insert(directory, *known);
+        } else {
+            entries << readHistoryEntry(directory);
+            if (!runStateActive(entries.last().status))
+                read.insert(directory, {stamp, entries.last()});
+        }
+    } while (slice.elapsed() < 8);
 }
 } // namespace mf

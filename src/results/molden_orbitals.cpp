@@ -303,16 +303,21 @@ QVector<double> moldenOrbitalGrid(const MoldenWavefunction &w, int orbital, cons
     }
     for (const auto &s : w.shells)
         primitives += s.primitives.size();
-    // The separable evaluation takes about 1 ns per point and primitive: 1–2 s at this bound.
-    if (points * primitives > 1000000000)
-        fail(tr("軌道表示の計算量が大きすぎます。格子の分割数を小さくしてください。"));
     const auto polynomials = orbitalPolynomials(w, orbital);
     // On an axis-aligned grid exp(-a*r^2) separates into three 1D tables per primitive, and the
     // coordinate powers into three per shell; they are built once and shared by the threads.
+    // Along each axis exp(-a*r^2) underflows to 0 away from the center: the grid lines where a primitive
+    // (and a shell) is not 0 form one range, and the terms outside, all exactly 0, are skipped.
+    using Span = std::array<std::pair<int, int>, 3>; // [first, last) on each axis.
     struct Tables {
         int shell;
         std::array<std::array<std::array<double, 5>, 101>, 3> powers;
         QVector<std::array<std::array<double, 101>, 3>> exponentials;
+        QVector<Span> spans;
+        Span reach{};
+    };
+    const auto inside = [](const std::pair<int, int> &span, int i) {
+        return i >= span.first && i < span.second;
     };
     std::vector<Tables> tables;
     for (int shell = 0; shell < w.shells.size(); ++shell) {
@@ -330,13 +335,40 @@ QVector<double> moldenOrbitalGrid(const MoldenWavefunction &w, int orbital, cons
                     t.powers[axis][i][n] = t.powers[axis][i][n - 1] * r;
             }
         t.exponentials.resize(s.primitives.size());
+        t.spans.resize(s.primitives.size());
+        for (int axis = 0; axis < 3; ++axis)
+            t.reach[axis] = {grid[axis], 0};
         for (int p = 0; p < s.primitives.size(); ++p)
-            for (int axis = 0; axis < 3; ++axis)
+            for (int axis = 0; axis < 3; ++axis) {
+                auto &span = t.spans[p][axis];
+                span = {grid[axis], 0};
                 for (int i = 0; i < grid[axis]; ++i) {
                     const double r = t.powers[axis][i][1];
                     t.exponentials[p][axis][i] = std::exp(-s.primitives[p].exponent * r * r);
+                    if (t.exponentials[p][axis][i] != 0)
+                        span = {std::min(span.first, i), i + 1};
                 }
+                t.reach[axis] = {std::min(t.reach[axis].first, span.first),
+                                 std::max(t.reach[axis].second, span.second)};
+            }
     }
+    // The separable evaluation takes about 1 ns per point and primitive: 1–2 s at this bound. The terms
+    // left out above do not count; the bound is never lower than for the whole grid.
+    qint64 work = 0;
+    for (const auto &t : tables) {
+        for (const auto &span : t.spans) {
+            qint64 volume = 1;
+            for (const auto &[first, last] : span)
+                volume *= std::max(0, last - first);
+            work += volume;
+        }
+        qint64 volume = 1;
+        for (const auto &[first, last] : t.reach)
+            volume *= std::max(0, last - first);
+        work += volume;
+    }
+    if (points * primitives > 1000000000 && work > 1000000000)
+        fail(tr("軌道表示の計算量が大きすぎます。格子の分割数を小さくしてください。"));
     QVector<double> values(points, 0.);
     auto *output = values.data();
     // Planes of constant x, one range per thread. Every point adds the shells in the same order,
@@ -344,21 +376,33 @@ QVector<double> moldenOrbitalGrid(const MoldenWavefunction &w, int orbital, cons
     const auto planes = [&](int first, int last) {
         for (int x = first; x < last; ++x)
             for (const auto &t : tables) {
+                if (!inside(t.reach[0], x))
+                    continue;
                 const auto &s = w.shells[t.shell];
                 const auto *exps = t.exponentials.constData();
-                for (int y = 0; y < grid[1]; ++y) {
+                for (int y = t.reach[1].first; y < t.reach[1].second; ++y) {
                     std::array<double, 101> radial{};
+                    int low = grid[2], high = 0; // Where radial is not 0.
                     for (int p = 0; p < s.primitives.size(); ++p) {
+                        const auto &span = t.spans[p];
+                        if (!inside(span[0], x) || !inside(span[1], y))
+                            continue;
                         const double xy = s.primitives[p].coefficient * exps[p][0][x] * exps[p][1][y];
-                        for (int z = 0; z < grid[2]; ++z)
+                        if (xy == 0)
+                            continue;
+                        for (int z = span[2].first; z < span[2].second; ++z)
                             radial[z] += xy * exps[p][2][z];
+                        low = std::min(low, span[2].first);
+                        high = std::max(high, span[2].second);
                     }
+                    if (low >= high)
+                        continue;
                     std::array<double, 5> angular{};
                     for (const auto &term : polynomials[t.shell])
                         angular[term.powers[2]] += term.coefficient * t.powers[0][x][term.powers[0]] *
                                                    t.powers[1][y][term.powers[1]];
                     const int offset = (x * grid[1] + y) * grid[2];
-                    for (int z = 0; z < grid[2]; ++z) {
+                    for (int z = low; z < high; ++z) {
                         double a = angular[s.angularMomentum];
                         for (int n = s.angularMomentum - 1; n >= 0; --n)
                             a = a * t.powers[2][z][1] + angular[n];

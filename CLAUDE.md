@@ -55,7 +55,8 @@ Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#inc
   definitions/result views shared with `McpGui`, and `policy.*` holds the command-line access policy.
 - `molforma` executable (`src/main.cpp`) links all of them and has several modes selected by argv:
   normal GUI, `--screenshot`, `--mcp` (headless, `QCoreApplication`), `--mcp-gui` (MCP driving a real
-  `MainWindow` via `src/ui/mcp_gui.*`), and the internal `--worker` / `--result-worker <in> <out>` modes.
+  `MainWindow` via `src/ui/mcp_gui.*`), and the internal `--worker` / `--result-worker <in> <out>` /
+  `--result-worker-ready` modes (test executables that load results handle them through `resultWorkerMain`).
 
 Key cross-cutting designs:
 
@@ -83,6 +84,9 @@ Key cross-cutting designs:
   re-launch the same executable with `--worker` / `--result-worker` via `QProcess`, exchanging JSON through temp
   files, so they are cancellable. Results returning after the document changed must be rejected as stale
   (compare `EditorSession::revision()`, which also backs the MCP `revision`; don't serialize documents for it).
+  `ResultLoader` keeps the next result worker started (`--result-worker-ready`, given its paths on stdin) and a
+  session cache folder: a CUBE/MOLDEN file read before is not parsed again for another dataset, orbital or
+  isovalue (keys hold the file's stamp; an explicit reload starts a new cache).
 - **NWChem pipeline**: `nwchem/nwchem.*` validates settings and generates full input; `nwchem_advanced.*` layers typed
   overrides (blank = default) on the base settings; `nwchem_output.*` adds CUBE/MOLDEN tasks; `nwchem_execution.*`
   saves immutable run bundles and controls NWChem/MPI processes; `history.*` scans those bundles. The Input preview

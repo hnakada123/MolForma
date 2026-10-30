@@ -1219,7 +1219,7 @@ void ResultsPanel::reloadResult() {
     if (data.source.isEmpty())
         fail(tr("結果ファイルが開かれていません。"));
     startLoad(data.source, data.isovalue, data.dataset, data.selectedOrbital, data.normalizationRequest,
-              data.orbitalDivisions, false, animationSource);
+              data.orbitalDivisions, false, animationSource, true);
 }
 void ResultsPanel::selectFrame(int index) {
     if (loading())
@@ -1392,7 +1392,8 @@ void ResultsPanel::renderOrbital(int orbital) {
               true);
 }
 void ResultsPanel::startLoad(const QString &path, double iso, int channel, int orbital,
-                             const QString &normalization, int divisions, bool reuseOrbital, bool animation) {
+                             const QString &normalization, int divisions, bool reuseOrbital, bool animation,
+                             bool reread) {
     cancelLoad();
     stopAnimation();
     if (path.isEmpty())
@@ -1468,7 +1469,7 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
                     orbitals->setCurrentCell(follow, 0); // Renders it like a choice in the list.
             });
     try {
-        loader.start({path, iso, channel, orbital, normalization, divisions, animation});
+        loader.start({path, iso, channel, orbital, normalization, divisions, animation, reread});
         status->setPlainText(tr("読込中: %1\n完了まで前の結果を表示します。").arg(loader.pendingPath()));
     } catch (const std::exception &e) {
         pendingOrbital = {};

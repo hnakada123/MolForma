@@ -5,9 +5,13 @@
 #include "model/numbers.h"
 #include "model/units.h"
 #include "results/molden_orbitals.h"
+#include "results/result_loader.h"
 #include <Eigen/Geometry>
+#include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDataStream>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonDocument>
@@ -283,7 +287,20 @@ ResultStep resultStep(const QRegularExpressionMatch &m) {
             logNumber(columns[3]), logNumber(columns[4]), logNumber(columns[5]), logNumber(columns[6])};
 }
 void mesh(ResultData &r, const QVector<double> &values, const Vec &origin, const Mat &axes);
-void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
+// The values of a grid: a dataset of a CUBE, or an orbital evaluated on the MOLDEN grid.
+struct GridValues {
+    QVector<double> values;
+    Vec origin = Vec::Zero();
+    Mat axes = Mat::Identity();
+};
+// What a MOLDEN file holds for its orbital shapes, besides the result: the blocks of the basis
+// (all but [MO]) and the MO coefficients.
+struct MoldenData {
+    QMap<QString, QStringList> blocks;
+    QVector<QVector<double>> coefficients;
+};
+// Reads a MOLDEN file into the result, all but the orbital surface (moldenSurface).
+MoldenData moldenData(ResultData &r, const QStringList &lines) {
     QMap<QString, QStringList> blocks;
     QMap<QString, QString> headers;
     QString current;
@@ -392,50 +409,6 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
             orbital.spin = value.left(1).toUpper() + value.mid(1).toLower();
     }
     finishOrbital();
-    if (!r.orbitals.isEmpty()) {
-        r.orbitalBasis = blocks.contains("GTO") && r.orbitalFrame >= 0;
-        try {
-            if (!r.orbitalBasis)
-                fail(tr("軌道の形状表示には[Atoms]・[GTO]・[MO]が必要です。"));
-            const auto &atoms = r.frames[r.orbitalFrame].molecule;
-            const auto wavefunction = moldenWavefunction(blocks, atoms, coefficients, r.normalizationRequest);
-            int selected = requestedOrbital;
-            if (selected < 0) {
-                selected = frontierOrbital(r.orbitals, "Alpha");
-                if (selected < 0)
-                    selected = frontierOrbital(r.orbitals, "Beta");
-                if (selected < 0)
-                    selected = 0;
-            }
-            Vec lo = atoms.atoms.first().position, hi = lo;
-            for (const auto &atom : atoms.atoms) {
-                lo = lo.cwiseMin(atom.position);
-                hi = hi.cwiseMax(atom.position);
-            }
-            // The same grid as MolForma's CUBE output: 3 Å around the atoms, equal spacing.
-            const auto box = uniformGrid(lo.array() - 3., hi.array() + 3., r.orbitalDivisions);
-            const Vec step = Vec::Constant(box.spacing);
-            for (int axis = 0; axis < 3; ++axis)
-                r.grid[axis] = box.divisions[axis] + 1;
-            const auto values = moldenOrbitalGrid(wavefunction, selected, box.origin, step, r.grid);
-            r.minimum = *std::min_element(values.cbegin(), values.cend());
-            r.maximum = *std::max_element(values.cbegin(), values.cend());
-            mesh(r, values, box.origin, step.asDiagonal());
-            r.selectedOrbital = selected;
-            r.orbitalNormalization = wavefunction.normalization;
-            if (r.surface.isEmpty())
-                r.warnings << tr("指定した等値の面がありません。「軌道」の等値を小さくしてください。");
-            r.warnings << tr(
-                "MOLDENの分子軌道を表示しています。赤が正、青が負です。全体の位相の符号は任意です。");
-        } catch (const std::exception &e) {
-            r.surface.clear();
-            r.grid = {};
-            if (requestedOrbital >= 0)
-                throw;
-            r.orbitalError = QString::fromUtf8(e.what());
-            r.warnings << tr("軌道形状を表示できません: %1").arg(r.orbitalError);
-        }
-    }
     if (blocks.contains("FR-COORD")) {
         Document d;
         for (const auto &line : blocks["FR-COORD"]) {
@@ -485,6 +458,184 @@ void molden(ResultData &r, const QStringList &lines, int requestedOrbital) {
         }
         if (energy)
             r.energies << ResultEnergy{"GEOCONV", number(line.trimmed()), 0};
+    }
+    blocks.remove("MO");
+    return {blocks, coefficients};
+}
+QByteArray resultBytes(const ResultData &r);
+ResultData resultFromBytes(const QByteArray &bytes);
+// The readings a result loader keeps for its session, in a folder it owns: a CUBE or MOLDEN file read
+// once is not parsed again for another dataset, orbital or isovalue, and an orbital evaluated on its grid
+// is not evaluated again for another isovalue. Every key holds the file's stamp (paths, size and times),
+// so a changed file is read anew. Entries are written with QSaveFile (a worker cancelled while writing
+// leaves none); unreadable ones count as missing, and the oldest go beyond 512 MiB.
+class ResultCache {
+  public:
+    ResultCache(const QString &folder, const QString &path)
+        : folder(folder), stamp(folder.isEmpty() ? QString() : resultSourceStamp(path)) {}
+    explicit operator bool() const {
+        return !stamp.isEmpty();
+    }
+    std::optional<std::pair<ResultData, MoldenData>> molden() const {
+        return read<std::pair<ResultData, MoldenData>>("molden", [](QDataStream &s) {
+            QByteArray base;
+            MoldenData m;
+            s >> base >> m.blocks >> m.coefficients;
+            return std::pair{resultFromBytes(base), m};
+        });
+    }
+    void store(const ResultData &base, const MoldenData &m) const {
+        write("molden", [&](QDataStream &s) { s << resultBytes(base) << m.blocks << m.coefficients; });
+    }
+    std::optional<std::pair<ResultData, GridValues>> cube(int dataset) const {
+        return read<std::pair<ResultData, GridValues>>(QString("cube %1").arg(dataset), [](QDataStream &s) {
+            QByteArray base;
+            GridValues g;
+            s >> base >> g.values;
+            in(s, g);
+            return std::pair{resultFromBytes(base), g};
+        });
+    }
+    void store(int dataset, const ResultData &base, const GridValues &g) const {
+        write(QString("cube %1").arg(dataset), [&](QDataStream &s) {
+            s << resultBytes(base) << g.values;
+            out(s, g);
+        });
+    }
+    std::optional<std::pair<GridValues, QString>> orbital(const QString &key) const {
+        return read<std::pair<GridValues, QString>>(key, [](QDataStream &s) {
+            GridValues g;
+            QString normalization;
+            s >> g.values >> normalization;
+            in(s, g);
+            return std::pair{g, normalization};
+        });
+    }
+    void store(const QString &key, const GridValues &g, const QString &normalization) const {
+        write(key, [&](QDataStream &s) {
+            s << g.values << normalization;
+            out(s, g);
+        });
+    }
+
+  private:
+    QString folder, stamp;
+    QString file(const QString &what) const {
+        const auto key = QCryptographicHash::hash((stamp + '\n' + what).toUtf8(), QCryptographicHash::Sha256);
+        return QDir(folder).filePath(QString::fromLatin1(key.toHex()) + ".bin");
+    }
+    static void out(QDataStream &s, const GridValues &g) {
+        for (int i = 0; i < 3; ++i)
+            s << g.origin[i];
+        for (int i = 0; i < 9; ++i)
+            s << g.axes.data()[i];
+    }
+    static void in(QDataStream &s, GridValues &g) {
+        for (int i = 0; i < 3; ++i)
+            s >> g.origin[i];
+        for (int i = 0; i < 9; ++i)
+            s >> g.axes.data()[i];
+    }
+    template <typename T, typename Read> std::optional<T> read(const QString &what, Read &&entry) const {
+        if (stamp.isEmpty())
+            return std::nullopt;
+        QFile f(file(what));
+        if (!f.open(QIODevice::ReadOnly))
+            return std::nullopt;
+        try {
+            const auto bytes = f.readAll();
+            QDataStream s(bytes);
+            s.setVersion(QDataStream::Qt_6_4);
+            QString magic;
+            s >> magic;
+            if (magic != "MolFormaResultCache1")
+                return std::nullopt;
+            auto value = entry(s);
+            if (s.status() != QDataStream::Ok || !s.atEnd())
+                return std::nullopt;
+            return value;
+        } catch (const std::exception &) {
+            return std::nullopt;
+        }
+    }
+    template <typename Write> void write(const QString &what, Write &&entry) const {
+        if (stamp.isEmpty())
+            return;
+        try {
+            QByteArray bytes;
+            QDataStream s(&bytes, QIODevice::WriteOnly);
+            s.setVersion(QDataStream::Qt_6_4);
+            s << QString("MolFormaResultCache1");
+            entry(s);
+            if (s.status() != QDataStream::Ok)
+                return;
+            writeFile(file(what), bytes);
+            auto entries = QDir(folder).entryInfoList({"*.bin"}, QDir::Files, QDir::Time); // Newest first.
+            qint64 total = 0;
+            for (const auto &e : std::as_const(entries))
+                if ((total += e.size()) > 512ll * 1024 * 1024 && e.absoluteFilePath() != file(what))
+                    QFile::remove(e.absoluteFilePath());
+        } catch (const std::exception &) {
+            // Without the entry the file is only parsed again.
+        }
+    }
+};
+// The surface of an orbital (the requested one, or the frontier orbital) at r.isovalue.
+void moldenSurface(ResultData &r, const MoldenData &m, int requestedOrbital, const ResultCache &cache) {
+    if (!r.orbitals.isEmpty()) {
+        r.orbitalBasis = m.blocks.contains("GTO") && r.orbitalFrame >= 0;
+        try {
+            if (!r.orbitalBasis)
+                fail(tr("軌道の形状表示には[Atoms]・[GTO]・[MO]が必要です。"));
+            const auto &atoms = r.frames[r.orbitalFrame].molecule;
+            int selected = requestedOrbital;
+            if (selected < 0) {
+                selected = frontierOrbital(r.orbitals, "Alpha");
+                if (selected < 0)
+                    selected = frontierOrbital(r.orbitals, "Beta");
+                if (selected < 0)
+                    selected = 0;
+            }
+            Vec lo = atoms.atoms.first().position, hi = lo;
+            for (const auto &atom : atoms.atoms) {
+                lo = lo.cwiseMin(atom.position);
+                hi = hi.cwiseMax(atom.position);
+            }
+            // The same grid as MolForma's CUBE output: 3 Å around the atoms, equal spacing.
+            const auto box = uniformGrid(lo.array() - 3., hi.array() + 3., r.orbitalDivisions);
+            const Vec step = Vec::Constant(box.spacing);
+            for (int axis = 0; axis < 3; ++axis)
+                r.grid[axis] = box.divisions[axis] + 1;
+            // An orbital evaluated before on this grid (for another isovalue) is not evaluated again.
+            const auto key =
+                QString("orbital %1 %2 %3").arg(selected).arg(r.normalizationRequest).arg(r.orbitalDivisions);
+            auto evaluated = cache.orbital(key);
+            if (!evaluated) {
+                const auto wavefunction =
+                    moldenWavefunction(m.blocks, atoms, m.coefficients, r.normalizationRequest);
+                evaluated = {GridValues{moldenOrbitalGrid(wavefunction, selected, box.origin, step, r.grid),
+                                        box.origin, step.asDiagonal()},
+                             wavefunction.normalization};
+                cache.store(key, evaluated->first, evaluated->second);
+            }
+            const auto &values = evaluated->first.values;
+            r.minimum = *std::min_element(values.cbegin(), values.cend());
+            r.maximum = *std::max_element(values.cbegin(), values.cend());
+            mesh(r, values, evaluated->first.origin, evaluated->first.axes);
+            r.selectedOrbital = selected;
+            r.orbitalNormalization = evaluated->second;
+            if (r.surface.isEmpty())
+                r.warnings << tr("指定した等値の面がありません。「軌道」の等値を小さくしてください。");
+            r.warnings << tr(
+                "MOLDENの分子軌道を表示しています。赤が正、青が負です。全体の位相の符号は任意です。");
+        } catch (const std::exception &e) {
+            r.surface.clear();
+            r.grid = {};
+            if (requestedOrbital >= 0)
+                throw;
+            r.orbitalError = QString::fromUtf8(e.what());
+            r.warnings << tr("軌道形状を表示できません: %1").arg(r.orbitalError);
+        }
     }
 }
 // Marching cubes. Each cube's surface comes from where the level crosses its edges: on every face
@@ -608,7 +759,8 @@ void mesh(ResultData &r, const QVector<double> &values, const Vec &origin, const
                 }
     }
 }
-void cube(ResultData &r, QString text) {
+// Reads a CUBE into the result (atoms, datasets, grid) and returns the values of r.dataset.
+GridValues cubeValues(ResultData &r, QString text) {
     QTextStream stream(&text, QIODevice::ReadOnly);
     stream.readLine();
     stream.readLine();
@@ -682,10 +834,14 @@ void cube(ResultData &r, QString text) {
         }
     if (!all.mid(at).trimmed().isEmpty())
         fail(tr("CUBE格子数とデータ数が一致しません。"));
-    auto bounds = std::minmax_element(values.begin(), values.end());
+    return {values, origin, axes};
+}
+// The surface of the CUBE's values at r.isovalue.
+void cubeSurface(ResultData &r, const GridValues &g) {
+    auto bounds = std::minmax_element(g.values.begin(), g.values.end());
     r.minimum = *bounds.first;
     r.maximum = *bounds.second;
-    mesh(r, values, origin, axes);
+    mesh(r, g.values, g.origin, g.axes);
     if (r.surface.isEmpty())
         r.warnings << tr("指定した等値の面がありません。等値とデータ範囲を確認してください。");
     r.warnings << tr(
@@ -1215,9 +1371,32 @@ QStringList NwchemLog::tasks(const QString &input) {
     return result;
 }
 ResultData readResult(const QString &path, double iso, int dataset, int orbital, const QString &normalization,
-                      int orbitalDivisions) {
+                      int orbitalDivisions, const QString &cacheFolder) {
     if (!std::isfinite(iso) || iso <= 0 || iso > 1e6)
         fail(tr("等値は0より大きい有限の値で指定してください。"));
+    const auto suffix = QFileInfo(path).suffix().toLower();
+    const ResultCache cache(cacheFolder, path);
+    // A CUBE or MOLDEN file read before in this session: only its surface is made again.
+    if (cache && orbitalDivisions >= 16 && orbitalDivisions <= 100) {
+        const auto again = [&](ResultData r) {
+            r.isovalue = iso;
+            r.dataset = dataset;
+            r.orbitalDivisions = orbitalDivisions;
+            r.normalizationRequest = normalization;
+            return r;
+        };
+        if (suffix == "cube" || suffix == "cub") {
+            if (const auto hit = cache.cube(dataset)) {
+                auto r = again(hit->first);
+                cubeSurface(r, hit->second);
+                return r;
+            }
+        } else if (const auto hit = cache.molden()) {
+            auto r = again(hit->first);
+            moldenSurface(r, hit->second, orbital, cache);
+            return r;
+        }
+    }
     const auto bytes = boundedRead(path);
     const auto text = QString::fromUtf8(bytes);
     ResultData r;
@@ -1231,7 +1410,6 @@ ResultData readResult(const QString &path, double iso, int dataset, int orbital,
     r.log = QString::fromUtf8(bytes.right(128 * 1024));
     if (bytes.size() > 128 * 1024)
         r.log.prepend(tr("…末尾128 KiBを表示しています。\n"));
-    const auto suffix = QFileInfo(path).suffix().toLower();
     QStringList lines; // CUBE files are read as a stream of words instead.
     if (suffix != "cube" && suffix != "cub") {
         lines = text.split('\n');
@@ -1242,10 +1420,16 @@ ResultData readResult(const QString &path, double iso, int dataset, int orbital,
     r.status = tr("ファイルを読み込みました（計算の成否は判定しません）");
     if (suffix == "cube" || suffix == "cub") {
         r.format = "CUBE";
-        cube(r, text);
+        const auto values = cubeValues(r, text);
+        if (!r.frames.isEmpty())
+            cache.store(dataset, r, values);
+        cubeSurface(r, values);
     } else if (QStringView(text).trimmed().startsWith(u"[Molden Format]", Qt::CaseInsensitive)) {
         r.format = "MOLDEN";
-        molden(r, lines, orbital);
+        const auto data = moldenData(r, lines);
+        if (!r.frames.isEmpty())
+            cache.store(r, data);
+        moldenSurface(r, data, orbital, cache);
     } else if (suffix == "xyz") {
         r.format = "XYZ";
         xyz(r, lines);
@@ -1276,7 +1460,8 @@ Document resultModeGeometry(const ResultData &r, int mode, double phase, double 
             d.atoms[i].position += v[i] * (std::sin(phase) * amplitude / scale);
     return d;
 }
-void saveResultData(const QString &path, const ResultData &r) {
+namespace {
+QByteArray resultBytes(const ResultData &r) {
     QByteArray bytes;
     QDataStream s(&bytes, QIODevice::WriteOnly);
     s.setVersion(QDataStream::Qt_6_4);
@@ -1325,10 +1510,18 @@ void saveResultData(const QString &path, const ResultData &r) {
     s << QJsonDocument(r.properties).toJson(QJsonDocument::Compact);
     if (s.status() != QDataStream::Ok)
         fail(tr("結果の転送データを保存できません。"));
-    writeFile(path, bytes);
+    return bytes;
+}
+ResultData resultFromBytes(const QByteArray &bytes);
+} // namespace
+void saveResultData(const QString &path, const ResultData &r) {
+    writeFile(path, resultBytes(r));
 }
 ResultData loadResultData(const QString &path) {
-    auto bytes = boundedRead(path);
+    return resultFromBytes(boundedRead(path));
+}
+namespace {
+ResultData resultFromBytes(const QByteArray &bytes) {
     QDataStream s(bytes);
     s.setVersion(QDataStream::Qt_6_4);
     QString magic;
@@ -1437,6 +1630,7 @@ ResultData loadResultData(const QString &path) {
         fail(tr("結果の転送データが不完全です。"));
     return r;
 }
+} // namespace
 int resultWorker(const QString &request, const QString &response) {
     try {
         const auto q = parseJson(boundedRead(request));
@@ -1465,9 +1659,9 @@ int resultWorker(const QString &request, const QString &response) {
             path = QDir(QFileInfo(response).absolutePath()).filePath("animation.xyz");
             writeFile(path, joined);
         }
-        auto data =
-            readResult(path, q["isovalue"].toDouble(.03), q["dataset"].toInt(), q["orbital"].toInt(-1),
-                       q["normalization"].toString("auto"), q["orbital_divisions"].toInt(40));
+        auto data = readResult(path, q["isovalue"].toDouble(.03), q["dataset"].toInt(),
+                               q["orbital"].toInt(-1), q["normalization"].toString("auto"),
+                               q["orbital_divisions"].toInt(40), q["cache"].toString());
         data.source = QFileInfo(q["path"].toString()).absoluteFilePath();
         saveResultData(response, data);
         return 0;
@@ -1478,6 +1672,24 @@ int resultWorker(const QString &request, const QString &response) {
         }
         return 1;
     }
+}
+int resultWorkerMain(int argc, char **argv, void (*prepare)()) {
+    const auto mode = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QString();
+    const bool ready = argc == 2 && mode == "--result-worker-ready";
+    if (!ready && !(argc == 4 && mode == "--result-worker"))
+        return -1;
+    QCoreApplication app(argc, argv);
+    if (prepare)
+        prepare();
+    if (!ready)
+        return resultWorker(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]));
+    QFile input;
+    if (!input.open(stdin, QIODevice::ReadOnly))
+        return 1;
+    const auto paths = QJsonDocument::fromJson(input.readLine()).object(); // Waits for the request.
+    if (!paths["request"].isString() || !paths["response"].isString())
+        return 1;
+    return resultWorker(paths["request"].toString(), paths["response"].toString());
 }
 QString resultOutcome(const ResultData &data) {
     switch (data.outcome) {

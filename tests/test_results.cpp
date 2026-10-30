@@ -123,6 +123,66 @@ class ResultsTest : public QObject {
         qputenv("XDG_CONFIG_HOME", settings.path().toUtf8());
         qputenv("XDG_DATA_HOME", settings.filePath("data").toUtf8());
     }
+    // A result as transferred to the window, with the atom IDs of each frame replaced by their numbers
+    // (readings of the same file get new IDs).
+    QByteArray transferred(ResultData r) {
+        const auto canonical = [](Document &d) {
+            QHash<QString, QString> renamed;
+            for (int i = 0; i < d.atoms.size(); ++i)
+                renamed[d.atoms[i].id] = QString("a%1").arg(i);
+            d.renameIds(renamed);
+            d.data["id"] = "x";
+        };
+        for (auto &f : r.frames)
+            canonical(f.molecule);
+        canonical(r.vibrationGeometry);
+        const auto path = files.filePath("transferred.bin");
+        saveResultData(path, r);
+        return readFile(path);
+    }
+    void cachedReadings() {
+        // The loader's session cache gives what reading the file again gives: for another isovalue,
+        // dataset or orbital, and after the file changed or its entries were damaged.
+        QTemporaryDir cache;
+        QVERIFY(cache.isValid());
+        QStringList different;
+        const auto both = [&](const QString &path, double iso, int dataset, int orbital = -1) {
+            const auto fresh = readResult(path, iso, dataset, orbital);
+            if (transferred(readResult(path, iso, dataset, orbital, "auto", 40, cache.path())) !=
+                transferred(fresh))
+                different << QString("%1 %2 %3 %4")
+                                 .arg(QFileInfo(path).fileName())
+                                 .arg(iso)
+                                 .arg(dataset)
+                                 .arg(orbital);
+            return fresh;
+        };
+        const auto cube = save("cached.cube", cubeText(true));
+        both(cube, .25, 1);
+        const int entries = QDir(cache.path()).entryList(QDir::Files).size();
+        QCOMPARE(entries, 1);
+        both(cube, .1, 1);
+        QCOMPARE(QDir(cache.path()).entryList(QDir::Files).size(), entries); // Read from the entry.
+        both(cube, .25, 0);
+        const auto molden =
+            save("cached.molden", "[Molden Format]\n[Atoms] AU\nH 1 1 0 0 0\nH 2 1 0 0 1.4\n"
+                                  "[GTO]\n1 0\ns 1 1.0\n1.0 1.0\n\n2 0\ns 1 1.0\n1.0 1.0\n\n"
+                                  "[MO]\nSym= a\nEne= -0.5\nSpin= Alpha\nOccup= 2\n1 0.5\n2 0.5\n"
+                                  "Sym= b\nEne= 0.3\nSpin= Alpha\nOccup= 0\n1 0.7\n2 -0.7\n");
+        QCOMPARE(both(molden, .03, 0).selectedOrbital, 0);
+        QCOMPARE(both(molden, .05, 0, 1).selectedOrbital, 1);
+        both(molden, .1, 0, 1);
+        both(molden, .03, 0);
+        // A rewritten file is read again, and damaged entries are only read around.
+        QTest::qWait(5);
+        save("cached.molden", readFile(molden).replace("Ene= -0.5", "Ene= -0.6"));
+        QCOMPARE(both(molden, .03, 0).orbitals[0].energy, -.6);
+        for (const auto &name : QDir(cache.path()).entryList(QDir::Files))
+            writeFile(QDir(cache.path()).filePath(name), "damaged");
+        both(molden, .05, 0, 1);
+        both(cube, .25, 1);
+        QVERIFY2(different.isEmpty(), qPrintable(different.join(", ")));
+    }
     void progressFromBytes() {
         // The run panel passes over the lines that change no progress without decoding them: it reads
         // the same progress and energy summary as from the whole text.
@@ -1261,10 +1321,8 @@ class ResultsTest : public QObject {
     }
 };
 int main(int argc, char **argv) {
-    if (argc == 4 && QString::fromLocal8Bit(argv[1]) == "--result-worker") {
-        QCoreApplication app(argc, argv);
-        return resultWorker(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]));
-    }
+    if (const int code = resultWorkerMain(argc, argv); code >= 0)
+        return code;
     QApplication app(argc, argv);
     ResultsTest test;
     return QTest::qExec(&test, argc, argv);

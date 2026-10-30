@@ -150,12 +150,20 @@ class NwchemLog {
     void read(const QString &line);
     void progress(const QString &line);
 };
-// Parsing/meshing is bounded and runs in a cancellable native process in the UI.
+// Parsing/meshing is bounded and runs in a cancellable native process in the UI. With a cache folder
+// (the result loader's, for its session), a CUBE or MOLDEN file read before is not parsed again for
+// another dataset, orbital or isovalue, nor an orbital evaluated again for another isovalue.
 ResultData readResult(const QString &path, double isovalue = .03, int dataset = 0, int orbital = -1,
-                      const QString &normalization = "auto", int orbitalDivisions = 40);
+                      const QString &normalization = "auto", int orbitalDivisions = 40,
+                      const QString &cacheFolder = {});
 void saveResultData(const QString &path, const ResultData &data);
 ResultData loadResultData(const QString &path);
 int resultWorker(const QString &request, const QString &response);
+// The process of a result loader's worker: with the request and response paths as arguments
+// (--result-worker <request> <response>), or started ahead of its request (--result-worker-ready) and
+// given them as a JSON line on standard input; the end of input ends it. Its exit code, or -1 when
+// argv starts neither (prepare runs once the application exists, e.g. for the translations).
+int resultWorkerMain(int argc, char **argv, void (*prepare)() = nullptr);
 QStringList resultFiles(const QString &directory);
 Document resultModeGeometry(const ResultData &data, int mode, double phase, double amplitude);
 // Translations and rotations among the normal modes: the 6 (linear: 5, atom: 3) modes with the

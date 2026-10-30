@@ -400,6 +400,33 @@ class HistoryTest : public QObject {
         QTRY_COMPARE(done.count(), 3);
         QVERIFY(scan.entries.isEmpty()); // No stale rows from the superseded root.
     }
+    void rescansReadOnlyChangedJobs() {
+        // A scan keeps the readings of ended jobs whose files are unchanged; a note or a rewritten
+        // record is read again.
+        QTemporaryDir tmp;
+        auto p = saveExecutionBundle(water(tmp.path()), tmp.path());
+        manifest(p, "finished", 3);
+        HistoryScan scan;
+        QSignalSpy done(&scan, &HistoryScan::finished);
+        scan.start(tmp.path());
+        QTRY_COMPARE(done.count(), 1);
+        QCOMPARE(scan.entries.size(), 1);
+        QCOMPARE(scan.entries[0].seconds, 3);
+        scan.start(tmp.path());
+        QTRY_COMPARE(done.count(), 2);
+        QCOMPARE(scan.entries[0].seconds, 3);
+        QTest::qWait(5);
+        setHistoryMemo(p.directory, "second look");
+        scan.start(tmp.path());
+        QTRY_COMPARE(done.count(), 3);
+        QCOMPARE(scan.entries[0].memo, QString("second look"));
+        QTest::qWait(5);
+        manifest(p, "finished", 7);
+        scan.start(tmp.path());
+        QTRY_COMPARE(done.count(), 4);
+        QCOMPARE(scan.entries[0].seconds, 7);
+        QCOMPARE(scan.entries[0].memo, QString("second look"));
+    }
     void listFiltersSortingSelectionAndReuse() {
         QTemporaryDir tmp;
         auto d = water(tmp.filePath("jobs"));
@@ -774,10 +801,8 @@ class HistoryTest : public QObject {
     }
 };
 int main(int argc, char **argv) {
-    if (argc == 4 && QString::fromLocal8Bit(argv[1]) == "--result-worker") {
-        QCoreApplication app(argc, argv);
-        return resultWorker(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]));
-    }
+    if (const int code = resultWorkerMain(argc, argv); code >= 0)
+        return code;
     QApplication app(argc, argv);
     QApplication::setStyle("Fusion");
     HistoryTest test;

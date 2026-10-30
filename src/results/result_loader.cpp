@@ -82,6 +82,35 @@ QString resultSourceStamp(const QString &path) {
 ResultLoader::ResultLoader(QObject *parent) : QObject(parent) {}
 ResultLoader::~ResultLoader() {
     cancel();
+    if (ready) {
+        ready->kill();
+        ready->waitForFinished(2000);
+    }
+}
+QProcess *ResultLoader::worker(const QString &request, const QString &response) {
+    const auto start = [this](QProcess *p, const QStringList &arguments) {
+        p->setProgram(QCoreApplication::applicationFilePath());
+        p->setArguments(arguments);
+        p->setStandardOutputFile(QProcess::nullDevice());
+        p->setStandardErrorFile(QProcess::nullDevice());
+        p->start();
+    };
+    QProcess *p = std::exchange(ready, nullptr);
+    if (p && p->state() != QProcess::NotRunning) { // Writes wait while it is still starting.
+        p->write(QJsonDocument(QJsonObject{{"request", request}, {"response", response}})
+                     .toJson(QJsonDocument::Compact) +
+                 '\n');
+        p->closeWriteChannel();
+    } else {
+        if (p) // It ended while waiting.
+            p->deleteLater();
+        p = new QProcess(this);
+        start(p, {"--result-worker", request, response});
+    }
+    // The next one starts now, while this one reads.
+    ready = new QProcess(this);
+    start(ready, {"--result-worker-ready"});
+    return p;
 }
 void ResultLoader::release() {
     auto *p = std::exchange(process, nullptr);
@@ -111,23 +140,23 @@ void ResultLoader::start(const ResultLoadRequest &q) {
     // Keep the single-file stamp compatible with the orbital cache.
     const auto stamp = q.animation ? sourceStamp(paths) : resultSourceStamp(path);
     const auto request = work->filePath("request.json"), response = work->filePath("result.bin");
-    writeFile(request,
-              QJsonDocument(QJsonObject{{"path", path},
-                                        {"isovalue", q.isovalue},
-                                        {"dataset", q.dataset},
-                                        {"orbital", q.orbital},
-                                        {"normalization", q.normalization},
-                                        {"orbital_divisions", q.divisions},
-                                        {"animation_files",
-                                         q.animation ? QJsonArray::fromStringList(paths) : QJsonArray{}}})
-                  .toJson());
+    if (!cache || q.reread)
+        cache = std::make_unique<QTemporaryDir>();
+    writeFile(
+        request,
+        QJsonDocument(
+            QJsonObject{{"path", path},
+                        {"isovalue", q.isovalue},
+                        {"dataset", q.dataset},
+                        {"orbital", q.orbital},
+                        {"normalization", q.normalization},
+                        {"orbital_divisions", q.divisions},
+                        {"animation_files", q.animation ? QJsonArray::fromStringList(paths) : QJsonArray{}},
+                        {"cache", cache->isValid() && !q.animation ? cache->path() : QString()}})
+            .toJson());
     scratch = std::move(work);
     source = path;
-    auto *p = process = new QProcess(this);
-    p->setProgram(QCoreApplication::applicationFilePath());
-    p->setArguments({"--result-worker", request, response});
-    p->setStandardOutputFile(QProcess::nullDevice());
-    p->setStandardErrorFile(QProcess::nullDevice());
+    auto *p = process = worker(request, response);
     connect(p, &QProcess::errorOccurred, this, [this, p](QProcess::ProcessError e) {
         if (process != p || e != QProcess::FailedToStart)
             return;
@@ -161,6 +190,5 @@ void ResultLoader::start(const ResultLoadRequest &q) {
                 else
                     emit failed(error);
             });
-    p->start();
 }
 } // namespace mf

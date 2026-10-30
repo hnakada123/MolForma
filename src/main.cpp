@@ -5,6 +5,7 @@
 #include "mcp/stdio_transport.h"
 #include "model/i18n.h"
 #include "model/settings.h"
+#include "results/results.h"
 #include "ui/main_window.h"
 #include "ui/mcp_gui.h"
 #include "ui/translations.h"
@@ -82,11 +83,8 @@ int main(int argc, char **argv) {
             return 1;
         }
     }
-    if (argc == 4 && QString::fromLocal8Bit(argv[1]) == "--result-worker") {
-        QCoreApplication app(argc, argv);
-        mf::inheritTranslations();
-        return mf::resultWorker(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]));
-    }
+    if (const int code = mf::resultWorkerMain(argc, argv, mf::inheritTranslations); code >= 0)
+        return code;
     // The same native executable acts as a cancellable chemistry worker; no Python runtime.
     if (argc == 4 && QString::fromLocal8Bit(argv[1]) == "--worker") {
         QCoreApplication app(argc, argv);

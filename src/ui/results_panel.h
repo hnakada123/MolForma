@@ -162,7 +162,7 @@ class ResultsPanel : public QWidget {
     QVector<QVector<int>> pinned;
     void startLoad(const QString &path, double iso, int channel, int orbital = -1,
                    const QString &normalization = "auto", int divisions = 40, bool reuseOrbital = false,
-                   bool animation = false);
+                   bool animation = false, bool reread = false);
     void renderOrbital(int orbital);
     void cacheOrbital();
     void display(bool orbitalOnly = false);

@@ -15,6 +15,8 @@ struct ResultLoadRequest {
     int divisions = 40;
     // Read all steps of the freq-animate mode identified by path, rediscovering them on each load.
     bool animation = false;
+    // Read the file again even if this session has read it (an explicit reload).
+    bool reread = false;
 };
 struct ResultFileGroup {
     QStringList files; // Names relative to the directory, in step order for an animation.
@@ -44,7 +46,13 @@ class ResultLoader : public QObject {
 
   private:
     QProcess *process = nullptr;
+    // A worker started ahead of the next request, after the first one: starting a process is most of
+    // the time that another orbital or isovalue of a file read before takes.
+    QProcess *ready = nullptr;
+    QProcess *worker(const QString &request, const QString &response);
     std::unique_ptr<QTemporaryDir> scratch;
+    // The readings kept for this loader's session (readResult), removed with it.
+    std::unique_ptr<QTemporaryDir> cache;
     QString source;
     void release();
 };

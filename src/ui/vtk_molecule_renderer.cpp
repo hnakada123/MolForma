@@ -297,6 +297,20 @@ void VtkMoleculeRenderer::setCamera(const Mat &rotation, const Vec &center, doub
     camera->SetViewUp(up.data());
     camera->SetParallelScale(std::max(1, height()) / (2 * scale));
     camera->SetClippingRange(.01, 4 * radius);
+    // Large structures draw coarser spheres while they are small on the screen (edges of about 6 px):
+    // most of a frame is their triangles. Up to 2000 atoms, and zoomed in, they keep 24 × 16.
+    int segments = 24;
+    if (s.visibleAtoms.size() > 2000) {
+        const double pixels = s.style == "spacefill"   ? 2. * scale
+                              : s.style == "stick"     ? std::clamp(scale * .1, 3., 7.)
+                              : s.style == "wireframe" ? std::clamp(scale * .12, 4., 8.)
+                                                       : std::clamp(scale * .20, 8., 20.);
+        segments = std::clamp(int(std::ceil(2 * M_PI * pixels / 6)), 12, 24);
+    }
+    if (s.sphere->GetThetaResolution() != segments) {
+        s.sphere->SetThetaResolution(segments);
+        s.sphere->SetPhiResolution(segments * 2 / 3);
+    }
     // Spacefill radii are fixed in Å; the others are sizes on the screen, by kind of atom.
     if (scale != s.atomScale && !(s.style == "spacefill" && s.atomScale > 0)) {
         double radius[3];

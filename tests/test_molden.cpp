@@ -616,10 +616,8 @@ class MoldenTest : public QObject {
     }
 };
 int main(int argc, char **argv) {
-    if (argc == 4 && QString::fromLocal8Bit(argv[1]) == "--result-worker") {
-        QCoreApplication app(argc, argv);
-        return resultWorker(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]));
-    }
+    if (const int code = resultWorkerMain(argc, argv); code >= 0)
+        return code;
     QApplication app(argc, argv);
     QApplication::setStyle("Fusion");
     MoldenTest test;

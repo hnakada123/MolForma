@@ -148,7 +148,9 @@ void McpHeadless::load(const QString &path, const QString &action) {
     cancelLoad("Superseded by a newer load.");
     loadWork = "results-" + QString::number(++nextWork);
     loadAction = action;
-    loader.start({path});
+    ResultLoadRequest request{path};
+    request.reread = action == "reload";
+    loader.start(request);
     loadMessage = "Loading " + loader.pendingPath();
 }
 void McpHeadless::cancelLoad(const QString &message) {
