@@ -16,6 +16,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
+#include <QColorDialog>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -1127,7 +1128,43 @@ class EditorTest : public QObject {
             QVERIFY(!b->text().contains("拘束に追加"));
         }
         auto *color = w.findChild<QComboBox *>("moleculeColorMode");
-        QCOMPARE(color->count(), 3);
+        QCOMPARE(color->count(), 4);
+        // "単色": its color from a few, or any from the color dialog.
+        auto *uniform = w.findChild<QComboBox *>("moleculeUniformColor");
+        QVERIFY(!uniform->isEnabled());
+        color->setCurrentIndex(color->findData("uniform"));
+        QVERIFY(uniform->isEnabled());
+        const auto oxygen = d.atoms[0].id;
+        QCOMPARE(w.canvas()->atomColor(oxygen), QColor("#c8323c"));
+        uniform->setCurrentIndex(uniform->findText("青"));
+        QCOMPARE(w.canvas()->atomColor(oxygen), QColor("#3f6fb5"));
+        const int other = uniform->count() - 1;
+        const auto choose = [&](const QColor &chosen) {
+            QTimer::singleShot(0, &w, [chosen] {
+                auto *dialog = qobject_cast<QColorDialog *>(QApplication::activeModalWidget());
+                QVERIFY(dialog);
+                if (chosen.isValid()) {
+                    dialog->setCurrentColor(chosen);
+                    dialog->accept();
+                } else
+                    dialog->reject();
+            });
+            const int last = uniform->count() - 1; // "その他の色…", after the color so chosen.
+            uniform->setCurrentIndex(last);
+            emit uniform->activated(last);
+        };
+        choose(QColor()); // Cancelled: the last color stays.
+        QCOMPARE(uniform->currentText(), QString("青"));
+        QCOMPARE(w.canvas()->atomColor(oxygen), QColor("#3f6fb5"));
+        choose(QColor("#123456"));
+        QCOMPARE(uniform->currentText(), QString("#123456"));
+        QCOMPARE(w.canvas()->atomColor(oxygen), QColor("#123456"));
+        choose(QColor("#654321")); // The same item holds the next one.
+        QCOMPARE(uniform->count(), other + 2);
+        QCOMPARE(w.canvas()->atomColor(oxygen), QColor("#654321"));
+        color->setCurrentIndex(color->findData("element"));
+        QVERIFY(!uniform->isEnabled());
+        QCOMPARE(w.canvas()->atomColor(oxygen), element("O").color);
         QVERIFY(w.findChild<QPushButton *>("preparePdb"));
 
         // The task is set in "2 計算条件" only.

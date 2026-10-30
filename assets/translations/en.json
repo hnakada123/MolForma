@@ -1055,7 +1055,7 @@
     "ログ行": "Log line",
     "ワイヤーフレーム": "Wireframe",
     "主鎖（Cαトレース）": "Backbone (Cα trace)",
-    "残基: 残基ごとに色を変えます。鎖: たんぱく質・核酸の残基を鎖ごとの色にし、配位子・イオン・水は元素の色のままにします。": "Residue: a color for each residue. Chain: the residues of proteins and nucleic acids in a color of each chain, ligands, ions and water in the colors of their elements.",
+    "残基: 残基ごとに色を変えます。鎖: たんぱく質・核酸の残基を鎖ごとの色にし、配位子・イオン・水は元素の色のままにします。単色: すべての原子を下の「色」で選んだ色にします。": "Residue: a color for each residue. Chain: the residues of proteins and nucleic acids in a color of each chain, ligands, ions and water in the colors of their elements. Single color: every atom in the color chosen under “Color”.",
     "・": ", ",
     "・%1": "• %1",
     "一冠四方逆プリズム": "Capped square antiprismatic",
@@ -2598,5 +2598,17 @@
     "＋ N": "+ N",
     "残基IDが空または重複しています。": "Residue IDs are empty or duplicated.",
     "鎖の残基参照が不正です。": "A chain refers to its residues incorrectly.",
-    "ネットワーク上の場所 %1 は、「編集 → 環境設定」で指定した場合だけ使えます。": "The network location %1 can be used only when it is set in “Edit → Preferences”."
+    "ネットワーク上の場所 %1 は、「編集 → 環境設定」で指定した場合だけ使えます。": "The network location %1 can be used only when it is set in “Edit → Preferences”.",
+    "単色": "Single color",
+    "色": "Color",
+    "その他の色…": "Other color…",
+    "単色の色": "Single color",
+    "赤": "Red",
+    "橙": "Orange",
+    "黄": "Yellow",
+    "緑": "Green",
+    "水色": "Light blue",
+    "青": "Blue",
+    "紫": "Purple",
+    "灰色": "Gray"
 }

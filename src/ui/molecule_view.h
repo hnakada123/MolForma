@@ -109,10 +109,15 @@ class MoleculeView : public QWidget {
         showIndices = value;
         scheduleOverlay();
     }
-    // "element" (default), "residue" (a hue for each residue) or "chain" (the polymer residues in a color of
-    // their chain, other atoms by element).
+    // "element" (default), "residue" (a hue for each residue), "chain" (the polymer residues in a color of
+    // their chain, other atoms by element) or "uniform" (every atom in uniformColor).
     void setColorMode(const QString &mode) {
         colorMode = mode;
+        refreshColors();
+        scheduleRender();
+    }
+    void setUniformColor(const QColor &color) {
+        uniformColor = color;
         refreshColors();
         scheduleRender();
     }
@@ -181,6 +186,7 @@ class MoleculeView : public QWidget {
     QSet<QString> selectedIds; // The same atoms, for lookups while drawing.
     EditorTool tool = EditorTool::Select;
     QString colorMode = "element";
+    QColor uniformColor = Qt::gray;
     Vec center = Vec::Zero();
     double scale = 65, depth = 0;
     Mat orientation = Mat::Identity(); // Camera rotation; mouse drags turn it about screen axes.

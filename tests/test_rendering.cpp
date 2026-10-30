@@ -148,8 +148,27 @@ class RenderingTest : public QObject {
         QVERIFY(view.atomColor(first) != view.atomColor(other));
         QCOMPARE(view.atomColor(d.residues[1].atoms["CB"]), view.atomColor(first));
         QCOMPARE(view.atomColor(water.atoms[0].id), element("O").color);
+        view.setUniformColor(QColor("#c8323c"));
+        view.setColorMode("uniform"); // Every atom, the water too.
+        QCOMPARE(view.atomColor(first), QColor("#c8323c"));
+        QCOMPARE(view.atomColor(water.atoms[0].id), QColor("#c8323c"));
+        view.setUniformColor(QColor("#3f6fb5"));
+        QCOMPARE(view.atomColor(water.atoms[1].id), QColor("#3f6fb5"));
         view.setColorMode("element");
         QCOMPARE(view.atomColor(first), element("C").color);
+    }
+    void fitsLargeStructures() {
+        // As large as a spike protein of a virus (160 Å) and larger: fitting shows every atom.
+        for (const double size : {160., 400., 1000.}) {
+            auto d = Document::fromXyz(QString("3\n\nC 0 0 0\nC 0 0 %1\nC 0 3 %1\n").arg(size));
+            MoleculeView view;
+            view.resize(400, 300);
+            view.setDocument(d);
+            view.fit();
+            for (const auto &atom : d.atoms)
+                QVERIFY2(QRectF(0, 0, 400, 300).contains(view.atomScreenPosition(atom.id)),
+                         qPrintable(QString::number(size)));
+        }
     }
     void surfaceWithoutAtoms() {
         MoleculeView view;

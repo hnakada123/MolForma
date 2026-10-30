@@ -206,14 +206,62 @@ void MoleculePanel::buildEditPanel() {
                                [this] { replaceElements(requireSelection(), value(elementBox)); }),
                         1);
     // In a card like the rest of the page: how the 3D view colors the atoms.
-    auto *color =
-        choices(f, tr("3D画面の色分け"), {tr("元素"), tr("残基"), tr("鎖")}, {"element", "residue", "chain"});
+    auto *color = choices(f, tr("3D画面の色分け"), {tr("元素"), tr("残基"), tr("鎖"), tr("単色")},
+                          {"element", "residue", "chain", "uniform"});
     color->setObjectName("moleculeColorMode");
     color->setToolTip(
         tr("残基: 残基ごとに色を変えます。鎖: たんぱく質・核酸の残基を鎖ごとの色にし、配位子・イオン・水は"
-           "元素の色のままにします。"));
-    connect(color, &QComboBox::currentIndexChanged, this,
-            [this, color] { view->setColorMode(value(color)); });
+           "元素の色のままにします。単色: すべての原子を下の「色」で選んだ色にします。"));
+    // The color of "単色": one of a few, or any from the color dialog.
+    static constexpr std::pair<const char *, const char *> palette[] = {
+        {QT_TR_NOOP("赤"), "#c8323c"}, {QT_TR_NOOP("橙"), "#e8822a"},   {QT_TR_NOOP("黄"), "#e3c13b"},
+        {QT_TR_NOOP("緑"), "#4a9e52"}, {QT_TR_NOOP("水色"), "#5ab4d6"}, {QT_TR_NOOP("青"), "#3f6fb5"},
+        {QT_TR_NOOP("紫"), "#8a5aa8"}, {QT_TR_NOOP("灰色"), "#9a9a9a"}};
+    const auto swatch = [](const QColor &c) {
+        QPixmap pixmap(14, 14);
+        pixmap.fill(c);
+        return QIcon(pixmap);
+    };
+    auto *uniform = new QComboBox;
+    uniform->setObjectName("moleculeUniformColor");
+    for (const auto &[name, hex] : palette)
+        uniform->addItem(swatch(QColor(hex)), translated(name), QString(hex));
+    uniform->addItem(tr("その他の色…"));
+    uniform->setEnabled(false);
+    uniform->setProperty("chosen", 0);
+    view->setUniformColor(QColor(palette[0].second));
+    f->addRow(tr("色"), uniform);
+    connect(color, &QComboBox::currentIndexChanged, this, [this, color, uniform] {
+        uniform->setEnabled(value(color) == "uniform");
+        view->setColorMode(value(color));
+    });
+    connect(uniform, &QComboBox::currentIndexChanged, this, [this, uniform](int index) {
+        if (const QColor c(uniform->itemData(index).toString()); c.isValid()) {
+            uniform->setProperty("chosen", index);
+            view->setUniformColor(c);
+        }
+    });
+    // "その他の色…" asks for a color, which an item before it then holds; cancelling keeps the last one.
+    connect(uniform, &QComboBox::activated, this, [this, uniform, swatch](int index) {
+        if (index != uniform->count() - 1)
+            return;
+        const int chosen = uniform->property("chosen").toInt();
+        const auto c =
+            QColorDialog::getColor(QColor(uniform->itemData(chosen).toString()), this, tr("単色の色"));
+        if (!c.isValid()) {
+            uniform->setCurrentIndex(chosen);
+            return;
+        }
+        int custom = uniform->count() - 2;
+        if (!uniform->itemData(custom, Qt::UserRole + 1).toBool()) {
+            uniform->insertItem(++custom, QString());
+            uniform->setItemData(custom, true, Qt::UserRole + 1);
+        }
+        uniform->setItemIcon(custom, swatch(c));
+        uniform->setItemText(custom, c.name());
+        uniform->setItemData(custom, c.name());
+        uniform->setCurrentIndex(custom);
+    });
     // The coordinate table, when shown, edits the same values.
     positionCard = section(f, QT_TR_NOOP("座標（1原子）"));
     positionCard->setVisible(moleculeLayout->currentData() == "view");

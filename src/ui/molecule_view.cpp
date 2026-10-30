@@ -33,6 +33,8 @@
 #include <utility>
 namespace mf {
 namespace {
+// Pixels per Å: how far the wheel zooms out and in.
+constexpr double MinScale = .5, MaxScale = 600;
 class ViewOverlay : public QWidget {
   public:
     std::function<void(QPainter &)> draw;
@@ -259,7 +261,7 @@ void MoleculeView::indexTrace() {
 void MoleculeView::refreshColors() {
     // By residue: a hue for each residue, the last one that holds the atom. By chain: the polymer residues
     // in a color of each chain, in the order the chains come; ligands, ions and water keep the element
-    // colors, so that they stand out.
+    // colors, so that they stand out. Uniform: every atom in one color, as in pictures of large molecules.
     static const QColor chainColors[] = {
         QColor("#4e79a7"), QColor("#f28e2b"), QColor("#59a14f"), QColor("#e15759"), QColor("#76b7b2"),
         QColor("#edc948"), QColor("#b07aa1"), QColor("#ff9da7"), QColor("#9c755f"), QColor("#bab0ac")};
@@ -280,7 +282,8 @@ void MoleculeView::refreshColors() {
     atomColors.clear();
     atomColors.reserve(doc.atoms.size());
     for (const auto &atom : doc.atoms)
-        atomColors << colors.value(atom.id, element(atom.element).color);
+        atomColors << (colorMode == "uniform" ? uniformColor
+                                              : colors.value(atom.id, element(atom.element).color));
     moleculeDirty = true;
 }
 void MoleculeView::renderScene() {
@@ -467,7 +470,8 @@ void MoleculeView::fit() {
     double radius = 2;
     for (auto p : points)
         radius = std::max(radius, (p - center).norm() + .6);
-    scale = std::clamp(std::min(width(), height()) / (2.5 * radius), 4., 100.);
+    // Large proteins (a radius of 100 Å and more) fit too.
+    scale = std::clamp(std::min(width(), height()) / (2.5 * radius), MinScale, 100.);
     pan = {};
     // A hidden view (another tab) has no final size yet: fit again when it is shown.
     fitPending = !isVisible();
@@ -1107,7 +1111,7 @@ void MoleculeView::mouseReleaseEvent(QMouseEvent *e) {
 }
 void MoleculeView::wheelEvent(QWheelEvent *e) {
     // Zoom about the cursor: the point under it stays in place.
-    const double next = std::clamp(scale * std::pow(1.0015, e->angleDelta().y()), .5, 600.);
+    const double next = std::clamp(scale * std::pow(1.0015, e->angleDelta().y()), MinScale, MaxScale);
     const QPointF cursor = e->position(), middle(width() * .5, height() * .5);
     pan = cursor - middle - (cursor - middle - pan) * (next / scale);
     scale = next;
