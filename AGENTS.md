@@ -94,7 +94,7 @@ cmake --build build -j 4
 ctest --test-dir build --output-on-failure
 ```
 
-Dependencies: Qt6 Widgets/Test, Eigen3, zlib, Open Babel 3, CMake >= 3.21.
+Dependencies: Qt6 Widgets/Network/Test, Eigen3, zlib, Open Babel 3, CMake >= 3.21.
 CTest uses `QT_QPA_PLATFORM=offscreen`. Tests require no credentials or network.
 Format with `rg --files src tests -g '*.h' -g '*.cpp' -0 | xargs -0 clang-format -i`.
 

@@ -20,6 +20,7 @@
 #include "ui/history_panel.h"
 #include "ui/input_preview_panel.h"
 #include "ui/molecule_panel.h"
+#include "ui/pdb_download.h"
 #include "ui/results_panel.h"
 #include "ui/structure_import.h"
 #include "ui/theme.h"
@@ -317,6 +318,8 @@ void MainWindow::buildUi() {
     workspaceTabs->addTab(moleculePage, tr("1 分子"));
     connect(moleculePage, &MoleculePanel::geometryChanged, this, &MainWindow::workspaceGeometryChanged);
     connect(moleculePage, &MoleculePanel::openRequested, this, &MainWindow::open);
+    connect(moleculePage, &MoleculePanel::downloadRequested, this,
+            [this] { safe([this] { downloadPdb(); }); });
     calculation = new CalculationPanel(this);
     workspaceTabs->addTab(calculation, tr("2 計算条件"));
     execution = new ExecutionPanel(this);
@@ -501,9 +504,11 @@ void MainWindow::buildMenus() {
     const QList<QAction *> documentActions{
         action(file, tr("新規"), QKeySequence::New, "new", [this] { newDocument(); }),
         action(file, tr("開く…"), QKeySequence::Open, "folder", [this] { open(); }),
+        action(file, tr("PDBからダウンロード…"), {}, "import", [this] { downloadPdb(); }),
         action(file, tr("SMILESから作成…"), {}, "ring", [this] { moleculePage->importSmiles(); })};
     for (int i = 0; i < documentActions.size(); ++i)
-        documentActions[i]->setObjectName(QStringList{"newAction", "openAction", "smilesAction"}[i]);
+        documentActions[i]->setObjectName(
+            QStringList{"newAction", "openAction", "downloadPdbAction", "smilesAction"}[i]);
     recentMenu = file->addMenu(tr("最近使ったファイル"));
     recentMenu->setObjectName("recentMenu");
     recentMenu->setIcon(lineIcon("recent"));
@@ -665,9 +670,9 @@ void MainWindow::buildMenus() {
     });
     // The header's document menu and run button, and the "表示" button over the 3D view.
     auto *documentMenu = new QMenu(documentButton);
-    documentMenu->addActions(documentActions.mid(0, 2));
+    documentMenu->addActions(documentActions.mid(0, 3)); // New, Open, Download from PDB.
     documentMenu->addMenu(recentMenu);
-    documentMenu->addAction(documentActions[2]);
+    documentMenu->addAction(documentActions[3]); // From SMILES.
     documentMenu->addSeparator();
     documentMenu->addAction(saveAction);
     documentMenu->addAction(saveAsAction);
@@ -906,6 +911,29 @@ void MainWindow::newDocument() {
     view->viewFrom(2); // A new molecule starts from the front, whatever the last one was turned to.
     workspaceTabs->setCurrentWidget(moleculePage);
     statusBar()->showMessage(tr("新しい分子を作成しました。"), 4000);
+}
+void MainWindow::downloadPdb() {
+    bool ok = false;
+    const auto text =
+        QInputDialog::getText(this, tr("PDBからダウンロード"),
+                              tr("PDB ID（例: 7DMU）。RCSB PDBからmmCIFファイルをダウンロードして開きます。"),
+                              QLineEdit::Normal, {}, &ok);
+    if (!ok)
+        return;
+    const auto id = pdbId(text);
+    if (id.isEmpty())
+        fail(tr("PDB IDは4文字（例: 7DMU）か、pdb_00007dmu の形で指定してください。"));
+    // Downloads stay in the cache, not among the user's files; over MCP, within its folders.
+    const auto folder = QDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation)).filePath("pdb");
+    checkMcpPath(QDir(folder).filePath(id + ".cif.gz"));
+    if (!confirmDiscard())
+        return;
+    const auto path = mf::downloadPdb(this, id, folder);
+    if (path.isEmpty())
+        return;
+    loadPath(path);
+    statusBar()->showMessage(
+        tr("%1 をダウンロードして開きました（%2）。").arg(id, QDir::toNativeSeparators(path)), 8000);
 }
 void MainWindow::open() {
     QString p = QFileDialog::getOpenFileName(this, tr("分子を開く"), settings.value("directory").toString(),

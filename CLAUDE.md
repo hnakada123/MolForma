@@ -16,7 +16,7 @@ ctest --test-dir build -R '^editor$' --output-on-failure   # one test executable
 QT_QPA_PLATFORM=offscreen ./build/test_editor someTestFunction   # one Qt Test slot
 ```
 
-- Dependencies: Qt6 (>= 6.4) Widgets/Test, Eigen3, zlib (gzip-compressed structure files), Open Babel 3
+- Dependencies: Qt6 (>= 6.4) Widgets/Network/Test, Eigen3, zlib (gzip-compressed structure files), Open Babel 3
   (pkg-config `openbabel-3`, C++ API only), CMake >= 3.21. Optional: RDKit C++ (defines `MOLFORMA_HAS_RDKIT`,
   enables strict CIP/residue recognition) and Qt6-built VTK >= 9.1 (defines `MOLFORMA_HAS_VTK`). Code must
   build and pass tests with neither.

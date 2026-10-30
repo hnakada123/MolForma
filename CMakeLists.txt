@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Network)
 set(CMAKE_FIND_USE_PACKAGE_REGISTRY FALSE)
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(ZLIB REQUIRED)
@@ -111,6 +111,7 @@ add_library(molforma_ui STATIC
     src/ui/main_window.cpp
     src/ui/mcp_gui.cpp
     src/ui/molecule_view.cpp
+    src/ui/pdb_download.cpp
     src/ui/periodic_table.cpp
     src/ui/result_charts.cpp
     src/ui/results_panel.cpp
@@ -121,7 +122,7 @@ add_library(molforma_ui STATIC
     src/ui/translations.cpp
     docs/manual.qrc)
 # McpGui shares tool definitions, result views and the access policy with the headless server.
-target_link_libraries(molforma_ui PUBLIC molforma_core molforma_mcp Qt6::Widgets PRIVATE ${MOLFORMA_OPENBABEL})
+target_link_libraries(molforma_ui PUBLIC molforma_core molforma_mcp Qt6::Widgets PRIVATE Qt6::Network ${MOLFORMA_OPENBABEL})
 if(MSVC)
     # Both renderers use Open Babel van der Waals radii.
     target_compile_definitions(molforma_ui PRIVATE USING_DYNAMIC_LIBS)

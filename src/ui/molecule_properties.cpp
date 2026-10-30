@@ -629,6 +629,7 @@ void MoleculePanel::buildResiduePanel() {
     auto *f = panel(tr("残基"));
     section(f, QT_TR_NOOP("PDB・残基の認識"));
     button(f, tr("PDBを読み込む…"), [this] { emit openRequested(); });
+    button(f, tr("PDBからダウンロード…"), [this] { emit downloadRequested(); }, "downloadPdb");
     button(f, tr("PDBの診断・修復…"), [this] { pdbPreparation(); }, "preparePdb");
     button(f, tr("構造を検査…"), [this] { showReport(); });
     button(f, tr("結合グラフから残基を認識"), [this] {

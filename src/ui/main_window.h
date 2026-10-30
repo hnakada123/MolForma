@@ -246,6 +246,8 @@ class MainWindow : public QMainWindow {
     void trustExecution(const QJsonObject &values);
     void newDocument();
     void open();
+    // Downloads a PDB entry by its ID from RCSB PDB into the cache folder and opens it.
+    void downloadPdb();
     bool save(bool as = false);
     void exportFile();
     void chemistryReady(const ChemistryResult &result);

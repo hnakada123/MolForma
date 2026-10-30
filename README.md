@@ -8,7 +8,7 @@ NWChem向けの分子作成・座標編集・計算入力作成を行う、Qt6 /
 
 ## ビルドと起動
 
-必要な開発パッケージは Qt6 Widgets / Test、Eigen3、zlib、Open Babel 3、CMake 3.21以上、C++20コンパイラです。Ninjaを使う例:
+必要な開発パッケージは Qt6 Widgets / Network / Test、Eigen3、zlib、Open Babel 3、CMake 3.21以上、C++20コンパイラです。Ninjaを使う例:
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release

@@ -7,6 +7,7 @@
 #include "nwchem/nwchem_geometry.h"
 #include "ui/coordinates_panel.h"
 #include "ui/main_window.h"
+#include "ui/pdb_download.h"
 #include "ui/structure_import.h"
 #include <QtTest>
 #include <QtWidgets>
@@ -176,6 +177,52 @@ class CoordinatesTest : public QObject {
         const auto single = dir.filePath("single.pdb");
         writeFile(single, "ATOM      1  CA  GLY A   1       0.000   0.000   0.000  1.00  0.00           C\n");
         QVERIFY(chooseStructureImport(&parent, single));
+    }
+    // PDB entries download by their ID into a folder; read here from files, without the network.
+    void pdbDownloads() {
+        QCOMPARE(pdbId(" 7dmu "), QString("7DMU"));
+        QCOMPARE(pdbId("PDB_00007DMU"), QString("pdb_00007dmu"));
+        for (const auto *text : {"7DM", "7DMUX", "ABCD", "../x", "7DMU.cif", "pdb_7dmu", "7D U", ""})
+            QVERIFY2(pdbId(text).isEmpty(), text);
+        QTemporaryDir source, cache;
+        const QByteArray entry =
+            "data_7DMU\nloop_\n_atom_site.group_PDB\n_atom_site.id\n_atom_site.type_symbol\n"
+            "_atom_site.label_atom_id\n_atom_site.label_comp_id\n_atom_site.auth_asym_id\n"
+            "_atom_site.auth_seq_id\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\n"
+            "ATOM 1 C CA GLY A 1 0 0 0\n";
+        writeFile(source.filePath("7DMU.cif.gz"), gzip(entry));
+        const auto url = QUrl::fromLocalFile(source.filePath("ENTRY.cif.gz"))
+                             .toString()
+                             .replace("ENTRY.cif.gz", "%1.cif.gz");
+        const auto folder = cache.filePath("pdb");
+        QWidget parent;
+        const auto path = downloadPdb(&parent, "7DMU", folder, url);
+        QCOMPARE(path, QDir(folder).filePath("7DMU.cif.gz"));
+        QCOMPARE(readFile(path), gzip(entry));
+        QCOMPARE(importStructure(path).atoms.size(), 1);
+        // A missing entry fails with its ID and leaves nothing behind.
+        try {
+            downloadPdb(&parent, "1ABC", folder, url);
+            QFAIL("downloaded a missing entry");
+        } catch (const std::exception &e) {
+            QVERIFY(QString::fromUtf8(e.what()).contains("1ABC"));
+        }
+        QCOMPARE(QDir(folder).entryList(QDir::Files), QStringList{"7DMU.cif.gz"});
+        // Cancelled: nothing left either.
+        PdbDownload download("7DMU", cache.filePath("cancelled"), url);
+        QSignalSpy finished(&download, &PdbDownload::finished);
+        download.start();
+        download.cancel();
+        QTRY_COMPARE(finished.count(), 1);
+        QVERIFY(download.cancelled());
+        QCOMPARE(finished.first().first().toString(), QString());
+        QVERIFY(QDir(cache.filePath("cancelled")).entryList(QDir::Files).isEmpty());
+        // In the File menu and on the "残基" page.
+        MainWindow w;
+        QVERIFY(w.findChild<QPushButton *>("downloadPdb"));
+        const auto header = w.findChild<QToolButton *>("documentButton")->menu()->actions();
+        for (const auto *name : {"newAction", "openAction", "downloadPdbAction", "smilesAction"})
+            QVERIFY2(header.contains(w.findChild<QAction *>(name)), name);
     }
     void multiFrameImport() {
         QFETCH(bool, replace);

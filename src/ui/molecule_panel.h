@@ -75,6 +75,7 @@ class MoleculePanel : public QWidget {
   signals:
     void geometryChanged();
     void openRequested();
+    void downloadRequested();
 
   protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
