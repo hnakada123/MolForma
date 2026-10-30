@@ -186,6 +186,19 @@ class ExecutionTest : public QObject {
         QVERIFY(validateExecution(d, files.path(), false).errors.isEmpty());
         d.data["nwchem_execution"] = "malformed";
         QVERIFY(validateExecution(d, files.path(), false).errors.join('\n').contains("オブジェクト"));
+        // A network location (UNC) that the document names and Preferences do not is not looked at:
+        // on Windows that would offer the user's credentials to the server.
+        QVERIFY(networkPath("\\\\server\\share") && networkPath("//server/share") &&
+                !networkPath("/srv/jobs"));
+        for (const auto *key : {"executable", "job_root", "reference_directory"}) {
+            auto network = configured();
+            setExecutionSetting(network, key, "//server/share/molforma");
+            QCOMPARE(untrustedNetworkPath(network), QString("//server/share/molforma"));
+            QVERIFY2(
+                validateExecution(network, files.path()).errors.join('\n').contains("ネットワーク上の場所"),
+                key);
+        }
+        QVERIFY(untrustedNetworkPath(configured()).isEmpty());
     }
     void plansAndIsolatedBundles() {
         auto d = configured();
@@ -369,7 +382,19 @@ class ExecutionTest : public QObject {
         QVERIFY(!button(w, "executionPrepare")->isEnabled());
         w.cancelCandidate();
         QVERIFY(!w.findChild<QPushButton *>("executionStart")); // Only the header's button runs.
+        // The executable came with the loaded document, not from Preferences: the first run asks.
+        QCOMPARE(w.untrustedExecution(), QStringList{"executable"});
+        bool asked = false;
+        QTimer::singleShot(0, &w, [&] {
+            auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            QVERIFY(box && box->property("mcpProtected").toBool());
+            QCOMPARE(box->textFormat(), Qt::PlainText);
+            QVERIFY(box->informativeText().contains(helper));
+            asked = true;
+            box->button(QMessageBox::Yes)->click();
+        });
         w.findChild<QToolButton *>("runButton")->click();
+        QVERIFY(asked);
         auto *run = w.findChild<NwchemRun *>("nwchemRun");
         QVERIFY(run);
         QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 5000);
@@ -402,6 +427,53 @@ class ExecutionTest : public QObject {
         QVERIFY(!w.findChild<QToolButton *>("headerStop")->isVisibleTo(&w));
         button(w, "executionPrepare")->click();
         QVERIFY(w.findChild<QLabel *>("executionState")->text().contains("入力一式"));
+    }
+    void untrustedSettingsAskBeforeRunning() {
+        // What a loaded document names instead of Preferences runs only once the user confirmed it.
+        MainWindow w;
+        w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(2);
+        w.loadDocument(configured());
+        QCOMPARE(w.untrustedExecution(), QStringList{"executable"});
+        auto *panel = w.findChild<ExecutionPanel *>("executionTab");
+        auto *run = w.findChild<NwchemRun *>("nwchemRun");
+        QString shown;
+        const auto answer = [&](QMessageBox::StandardButton button) {
+            QTimer::singleShot(0, &w, [&, button] {
+                auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+                QVERIFY(box);
+                shown = box->text();
+                box->button(button)->click();
+            });
+        };
+        answer(QMessageBox::No);
+        panel->startCalculation();
+        QVERIFY(shown.contains("任意のプログラムを起動できます"));
+        QVERIFY(!run->active());
+        QVERIFY(run->plan().directory.isEmpty());
+        // Editing another setting, undo and redo, or loading again does not make it trusted.
+        w.edit("environment", [](Document &d) { environment(d, {{"MOLFORMA_UNUSED", "1"}}); });
+        w.history()->undo();
+        w.history()->redo();
+        w.loadDocument(w.document());
+        QCOMPARE(w.untrustedExecution(), QStringList{"executable"});
+        answer(QMessageBox::Yes);
+        panel->startCalculation();
+        QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 5000);
+        QCOMPARE(run->state(), RunState::Finished);
+        QVERIFY(w.untrustedExecution().isEmpty());
+        // Values of Preferences and values typed in the window are trusted.
+        auto other = configured();
+        setExecutionSetting(other, "executable", "nwchem");
+        w.loadDocument(other);
+        QVERIFY(w.untrustedExecution().isEmpty());
+        input(w, "executable", QCoreApplication::applicationFilePath());
+        QCOMPARE(executionSettings(w.document())["executable"].toString(),
+                 QCoreApplication::applicationFilePath());
+        QVERIFY(w.untrustedExecution().isEmpty());
+        // A project's other program asks again.
+        setExecutionSetting(other, "executable", files.filePath("other engine" EXE));
+        w.loadDocument(other);
+        QCOMPARE(w.untrustedExecution(), QStringList{"executable"});
     }
     void checksAndProgressParsing() {
         // The checks before a run, one per program, folder and the input.
@@ -458,6 +530,7 @@ class ExecutionTest : public QObject {
         s["task"] = "optimize_frequencies";
         d.data["nwchem"] = s;
         w.loadDocument(d);
+        w.trustCurrentExecution(); // As if the user confirmed the test engine before the first run.
         auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
         tabs->setCurrentIndex(2);
         w.resize(1380, 900);
@@ -590,6 +663,7 @@ class ExecutionTest : public QObject {
         d.data["nwchem"] = s;
         MainWindow w;
         w.loadDocument(d);
+        w.trustCurrentExecution(); // As if the user confirmed the engine before the first run.
         w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(2);
         w.resize(1380, 1000);
         w.show();
@@ -612,6 +686,7 @@ class ExecutionTest : public QObject {
         calculation["task"] = "optimize_frequencies";
         longer.data["nwchem"] = calculation;
         w.loadDocument(longer);
+        w.trustCurrentExecution();
         panel->startCalculation();
         const auto cancelledDirectory = run->plan().directory;
         const auto output = cancelledDirectory + "/output.out";

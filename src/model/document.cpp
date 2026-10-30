@@ -528,7 +528,9 @@ QStringList validateStructure(const Document &d) {
         if (a.id.isEmpty() || seen.contains(a.id))
             errors << tr("原子IDが空または重複しています。");
         seen.insert(a.id);
-        if (!a.position.allFinite() || !std::isfinite(a.mass) || a.mass < 0 || a.isotope < 0 || a.radical < 0)
+        // Coordinates stay within 10^6 Å, as in results: far beyond any molecule, and safe in grids.
+        if (!a.position.allFinite() || a.position.cwiseAbs().maxCoeff() > 1e6 || !std::isfinite(a.mass) ||
+            a.mass < 0 || a.isotope < 0 || a.radical < 0)
             errors << tr("原子の座標・属性が不正です。");
         const auto pos = positionKey(a.position);
         if (positions.contains(pos))
@@ -541,8 +543,11 @@ QStringList validateStructure(const Document &d) {
         for (const auto &id : part.atoms)
             if (!seen.contains(id))
                 errors << tr("部品の原子参照が不正です。");
+        if (part.connections.isEmpty())
+            continue;
+        const QSet<QString> members(part.atoms.begin(), part.atoms.end());
         for (const auto &id : part.connections)
-            if (!part.atoms.contains(id))
+            if (!members.contains(id))
                 errors << tr("部品の接続点が不正です。");
     }
     for (const auto &r : residues)
@@ -574,12 +579,33 @@ QStringList validateStructure(const Document &d) {
             errors << tr("結合種類が不正です。");
     }
     for (const auto &q : pointCharges) {
-        if (!q.position.allFinite())
+        if (!q.position.allFinite() || q.position.cwiseAbs().maxCoeff() > 1e6)
             errors << tr("点電荷の座標が不正です。");
         if (!std::isfinite(q.charge))
             errors << tr("点電荷が不正です。");
     }
+    errors.removeDuplicates(); // Each kind once, however many atoms share the problem.
     return errors;
+}
+// Residue IDs are unique; a chain lists each of its residues once, and only residues of that chain.
+QStringList residueErrors(const Document &d) {
+    QHash<QString, QString> chainOf;
+    for (const auto &r : d.residues) {
+        if (r.id.isEmpty() || chainOf.contains(r.id))
+            return {tr("残基IDが空または重複しています。")};
+        chainOf.insert(r.id, r.chain);
+    }
+    QSet<QString> listed;
+    for (auto it = d.chains.begin(); it != d.chains.end(); ++it)
+        for (const auto &id : it.value()) {
+            if (!chainOf.contains(id) || chainOf[id] != it.key() || listed.contains(id))
+                return {tr("鎖の残基参照が不正です。")};
+            listed.insert(id);
+        }
+    for (const auto &r : d.residues)
+        if (!r.chain.isEmpty() && !listed.contains(r.id))
+            return {tr("鎖の残基参照が不正です。")};
+    return {};
 }
 } // namespace
 QStringList Document::validate() const {
@@ -679,7 +705,7 @@ Document Document::fromJson(const QJsonObject &o) {
         d.bonds.append({b["a"].toString(), b["b"].toString(), b["kind"].toString("single"),
                         b["stereo"].toString(), b["source"].toString("explicit")});
     }
-    auto errors = d.validate();
+    auto errors = d.validate() + residueErrors(d);
     if (!errors.isEmpty())
         fail(errors.join('\n'));
     return d;
@@ -789,10 +815,15 @@ void Document::inferBonds() {
             radii[k] = element(atoms[k].element).radius;
         return radii[k];
     };
+    // Real atoms have at most about a dozen neighbors (16 C around U in uranocene); atoms packed
+    // closer than any molecule would otherwise give every pair a bond.
+    constexpr int maximumBonds = 16;
+    QVector<int> degree(atoms.size(), 0);
     double width = 6.0;
     for (int i = 0; i < atoms.size(); ++i) {
         const auto &a = atoms[i];
-        Vec p = (a.position / width).array().floor();
+        // Clamped so that the conversion to int stays defined for coordinates far out of range.
+        Vec p = (a.position / width).array().floor().cwiseMax(-1e6).cwiseMin(1e6);
         for (int x = -1; x <= 1; ++x)
             for (int y = -1; y <= 1; ++y)
                 for (int z = -1; z <= 1; ++z) {
@@ -802,8 +833,12 @@ void Document::inferBonds() {
                     for (int j : *cell) {
                         const auto &b = atoms[j];
                         double dist = (a.position - b.position).norm();
-                        if (!a.ghost && !b.ghost && dist > .25 && dist < 1.22 * (radius(i) + radius(j)))
+                        if (!a.ghost && !b.ghost && dist > .25 && dist < 1.22 * (radius(i) + radius(j)) &&
+                            degree[i] < maximumBonds && degree[j] < maximumBonds) {
                             bonds.append({b.id, a.id, "single", {}, "distance"});
+                            ++degree[i];
+                            ++degree[j];
+                        }
                     }
                 }
         cells[key(int(p.x()), int(p.y()), int(p.z()))].append(i);

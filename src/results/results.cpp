@@ -27,6 +27,11 @@ namespace mf {
 namespace {
 constexpr qint64 maxBytes = 128 * 1024 * 1024;
 constexpr int maxAtoms = 2000, maxFrames = 2000, maxPoints = 2000000, maxTriangles = 500000;
+// Distinct warnings, and not too many to show: a log can repeat the same trouble on every line.
+void warn(ResultData &r, const QString &text) {
+    if (r.warnings.size() < 100 && !r.warnings.contains(text))
+        r.warnings << text;
+}
 // The words of a line between ASCII whitespace, as a split at "\\s+" gives them (logs have millions).
 QStringList words(QStringView line) {
     const auto space = [](QChar c) { return c == ' ' || (c >= '\t' && c <= '\r'); };
@@ -967,7 +972,7 @@ void NwchemLog::read(const QString &line) {
                 continue;
             abort = QString(text).remove(code).left(200);
             fatal = true;
-            r.warnings << tr("行 %1: NWChemエラー: %2").arg(i - recent.size() + j).arg(abort);
+            warn(r, tr("行 %1: NWChemエラー: %2").arg(i - recent.size() + j).arg(abort));
             break;
         }
     const bool troubled = std::any_of(std::begin(errorWords), std::end(errorWords), [&](QStringView word) {
@@ -1033,29 +1038,31 @@ void NwchemLog::read(const QString &line) {
         };
     // ESP (and RESP with "restrain") charges of the ESP module.
     if (line.contains(u"Atom") && line.contains(u"Coordinates") && line.contains(u"Charge"))
-        sections << [&r, value, esp = QJsonArray(), resp = QJsonArray(),
-                     left = 7 + maxAtoms](const QString *text) mutable {
-            if (text && --left >= 0) {
-                const auto row = words(*text);
-                if (row.size() < 6 || !index.match(row[0]).hasMatch()) {
-                    if (esp.isEmpty())
+        // The rows start within seven lines of the heading; a log repeating the heading must not keep
+        // thousands of sections waiting for them.
+        sections <<
+            [&r, value, esp = QJsonArray(), resp = QJsonArray(), preamble = 7](const QString *text) mutable {
+                if (text) {
+                    const auto row = words(*text);
+                    if (row.size() < 6 || !index.match(row[0]).hasMatch()) {
+                        if (esp.isEmpty() && --preamble >= 0)
+                            return true;
+                    } else if (row[0].toInt() == esp.size() + 1 && esp.size() < maxAtoms) {
+                        esp << value(row[5]);
+                        if (row.size() >= 7)
+                            resp << value(row[6]);
                         return true;
-                } else if (row[0].toInt() == esp.size() + 1) {
-                    esp << value(row[5]);
-                    if (row.size() >= 7)
-                        resp << value(row[6]);
-                    return true;
+                    }
                 }
-            }
-            if (!esp.isEmpty()) {
-                r.properties["esp"] = esp;
-                if (resp.size() == esp.size())
-                    r.properties["resp"] = resp;
-                else
-                    r.properties.remove("resp");
-            }
-            return false;
-        };
+                if (!esp.isEmpty()) {
+                    r.properties["esp"] = esp;
+                    if (resp.size() == esp.size())
+                        r.properties["resp"] = resp;
+                    else
+                        r.properties.remove("resp");
+                }
+                return false;
+            };
     // GIAO shielding tensors: "Atom:  n  X" followed by "isotropic =" and "anisotropy =".
     if (const auto t = QStringView(line).trimmed(); t.startsWith(u"Atom:")) {
         const auto w = words(t);
@@ -1064,10 +1071,11 @@ void NwchemLog::read(const QString &line) {
     }
     if (shieldingAtom > 0 && line.contains(u"isotropic =")) {
         if (shieldingAtom == 1)
-            shielding = {}; // A later NMR calculation replaces the earlier one.
-        shielding << QJsonObject{{"atom", shieldingAtom},
-                                 {"element", shieldingElement},
-                                 {"isotropic", value(words(line.section('=', 1)).value(0))}};
+            shielding = {};              // A later NMR calculation replaces the earlier one.
+        if (shielding.size() < maxAtoms) // One per atom.
+            shielding << QJsonObject{{"atom", shieldingAtom},
+                                     {"element", shieldingElement},
+                                     {"isotropic", value(words(line.section('=', 1)).value(0))}};
     }
     if (shieldingAtom > 0 && line.contains(u"anisotropy =") && !shielding.isEmpty()) {
         auto last = shielding.last().toObject();
@@ -1168,7 +1176,7 @@ void NwchemLog::read(const QString &line) {
             return false;
         };
     if (line.contains(u"Optimization converged"))
-        r.warnings << tr("最適化の収束メッセージを検出しました。");
+        warn(r, tr("最適化の収束メッセージを検出しました。"));
     if (const auto e = totalEnergy(line)) {
         if (r.energies.size() >= 20000)
             fail(tr("エネルギーの記録数が2万件を超えています。"));
@@ -1179,7 +1187,7 @@ void NwchemLog::read(const QString &line) {
     if (line.contains(u"Output coordinates in ")) {
         const double scale = line.contains(u"angstroms") ? 1 : line.contains(u"a.u.") ? BohrToAngstrom : 0;
         if (!scale) {
-            r.warnings << tr("未対応の座標単位を読み飛ばしました。");
+            warn(r, tr("未対応の座標単位を読み飛ばしました。"));
             return;
         }
         // The table starts after the dashes under its heading (or nine lines on); a blank line ends
@@ -1202,7 +1210,7 @@ void NwchemLog::read(const QString &line) {
                         d.atoms << atom(row[1], point(row, 3, scale));
                         return true;
                     } catch (const std::exception &e) {
-                        r.warnings << QString::fromUtf8(e.what());
+                        warn(r, QString::fromUtf8(e.what()));
                         d.atoms.clear();
                     }
                 }
@@ -1216,7 +1224,7 @@ void NwchemLog::read(const QString &line) {
                 if (scanAt > 0 && scan.contains(scanAt))
                     scan[scanAt]["frame"] = r.frames.size() - 1;
             } else if (!complete)
-                r.warnings << tr("行 %1の不完全な座標表を読み飛ばしました。").arg(i);
+                warn(r, tr("行 %1の不完全な座標表を読み飛ばしました。").arg(i));
             return false;
         };
     }
@@ -1226,8 +1234,14 @@ void NwchemLog::read(const QString &line) {
             r.vibrationGeometry = r.frames.last().molecule;
     }
     if (QStringView(line).trimmed().startsWith(u"P.Frequency") && !r.vibrationGeometry.atoms.isEmpty()) {
+        const auto values = words(line).mid(1);
+        // NWChem prints six modes per table and 3N in all: a longer line is not one of its tables.
+        if (values.size() > 6 || r.modes.size() + values.size() > 3 * r.vibrationGeometry.atoms.size()) {
+            warn(r, tr("未完の振動モード表を読み飛ばしました。"));
+            return;
+        }
         QVector<ResultMode> modes;
-        for (const auto &f : words(line).mid(1))
+        for (const auto &f : values)
             modes.append({number(f), std::numeric_limits<double>::quiet_NaN(),
                           QVector<Vec>(r.vibrationGeometry.atoms.size(), Vec::Zero())});
         // Blank lines, then one row per Cartesian coordinate.
@@ -1248,7 +1262,7 @@ void NwchemLog::read(const QString &line) {
             if (rows == count)
                 r.modes += modes;
             else
-                r.warnings << tr("未完の振動モード表を読み飛ばしました。");
+                warn(r, tr("未完の振動モード表を読み飛ばしました。"));
             return false;
         };
     }

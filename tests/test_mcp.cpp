@@ -1478,6 +1478,14 @@ class McpTest : public QObject {
                      QString("failed"));
         QVERIFY(command["error"].toString().contains("MCPからはこの設定で実行できません"));
         QVERIFY(!data(call(s, "get_app_state", scoped(s)))["calculation"].toObject()["active"].toBool());
+        // Nor when the user opens such a project (one MCP saved, for example): values read from files
+        // count only once a person confirmed them.
+        w.loadDocument(Document::fromProject(project.project()));
+        const QJsonValue opened = data(change(s, "calculation", {{"action", "start"}}))["commandId"];
+        QTRY_COMPARE((command = data(call(s, "get_ui_command", scoped(s, {{"commandId", opened}}))))["state"]
+                         .toString(),
+                     QString("failed"));
+        QVERIFY(command["error"].toString().contains("MCPからはこの設定で実行できません"));
         // A person starting it confirms in a dialog that MCP can neither answer nor elicit.
         auto *start = w.findChild<QToolButton *>("runButton");
         QVERIFY(start && start->isEnabled());
@@ -1574,6 +1582,11 @@ class McpTest : public QObject {
         QVERIFY(rejects(allowed.filePath("link/file.json")));
         QVERIFY(QFile::link(allowed.filePath("missing-target"), allowed.filePath("dangling")));
         QVERIFY(rejects(allowed.filePath("dangling")));
+        // ".." after a link climbs from the link's target, so it is refused rather than removed as text.
+        QVERIFY(QDir(outside.path()).mkdir("sub"));
+        QVERIFY(QFile::link(outside.filePath("sub"), allowed.filePath("deep")));
+        QVERIFY(rejects(allowed.filePath("deep/../escape.json")));
+        QVERIFY(rejects("sub/../file.json", allowed.path()));
 #endif
         McpServer server({}, policy);
         QVERIFY(!failed(change(
@@ -1602,6 +1615,25 @@ class McpTest : public QObject {
                    {{"settings", QJsonObject{{"job_root", allowed.filePath("jobs")}}}, {"preview", false}})));
         QVERIFY(failed(
             change(server, "set_advanced", {{"settings", QJsonObject{{"scratch_dir", outside.path()}}}})));
+#ifndef Q_OS_WIN
+        // The file chosen in a result folder is checked too: a link there may lead out of it.
+        {
+            McpHeadless runtime(policy);
+            McpServer results(runtime.editor(), policy);
+            runtime.attach(results);
+            const auto job = allowed.filePath("linked-job");
+            QVERIFY(QDir().mkpath(job));
+            writeFile(outside.filePath("output.out"),
+                      "NWChem\nTotal SCF energy = -1.1\nTotal times  cpu: 1\n");
+            QVERIFY(QFile::link(outside.filePath("output.out"), job + "/output.out"));
+            const auto opened = change(results, "results_action",
+                                       {{"action", "open_directory"},
+                                        { "path",
+                                          job }});
+            QVERIFY(failed(opened));
+            QVERIFY(text(opened).contains("--mcp-allow-dir"));
+        }
+#endif
         QCOMPARE(data(call(server, "get_execution", scoped(server)))["policy"]
                      .toObject()["allowedDirectories"]
                      .toArray(),

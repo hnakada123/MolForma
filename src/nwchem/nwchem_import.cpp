@@ -6,6 +6,7 @@
 #include "model/units.h"
 #include "nwchem/nwchem.h"
 #include <QRegularExpression>
+#include <algorithm>
 #include <cmath>
 
 namespace mf {
@@ -104,6 +105,7 @@ NwchemImport importNwchemInput(const QString &text) {
     int multiplicity = 0;
     QJsonObject overrides;
     QSet<int> fixedAtoms;
+    int fixedBudget = 1000000;   // Atom numbers expanded from ranges, however often they repeat.
     QMap<int, int> atomOfCenter; // 1-based NWChem center number → MolForma atom index.
     // The SCF thresholds of the scf block (thresh) and of the dft block (convergence energy, density
     // and gradient), read once the method is known.
@@ -138,7 +140,7 @@ NwchemImport importNwchemInput(const QString &text) {
             settings["title"] = w.mid(1).join(' ').left(120);
         } else if (keyword == "charge") {
             double q;
-            if (number(w.value(1), q) && q == std::floor(q))
+            if (number(w.value(1), q) && q == std::floor(q) && std::abs(q) <= 1000)
                 d.charge = int(q);
         } else if (keyword == "memory") {
             // memory [total] <n> <unit> [heap <n> <unit>] [stack ...] [global ...]: MolForma keeps the
@@ -157,8 +159,8 @@ NwchemImport importNwchemInput(const QString &text) {
                 else
                     total = mb;
             }
-            if (total > 0 || parts > 0)
-                settings["memory_mb"] = int(std::round(total > 0 ? total : parts));
+            if (total > 0 || parts > 0) // Out of range values stay out of range, as validation reports.
+                settings["memory_mb"] = int(std::round(std::min(total > 0 ? total : parts, 1e9)));
         } else if (keyword == "geometry") {
             if (haveGeometry) {
                 notes << tr("2番目以降のGEOMETRYは取り込みません。");
@@ -271,7 +273,7 @@ NwchemImport importNwchemInput(const QString &text) {
                 else if (spins.contains(option))
                     multiplicity = spins.indexOf(option) + 1;
                 else if (option == "nopen")
-                    multiplicity = row.value(1).toInt() + 1;
+                    multiplicity = std::clamp(row.value(1).toInt(), 0, 1000) + 1;
                 else if (option == "maxiter")
                     settings["scf_maxiter"] = row.value(1).toInt();
                 else if (option == "thresh")
@@ -392,7 +394,8 @@ NwchemImport importNwchemInput(const QString &text) {
                         // Atom numbers and ranges such as 1:5.
                         const int first = item.section(':', 0, 0).toInt(),
                                   last = item.section(':', -1).toInt();
-                        for (int n = first; n >= 1 && n <= last && n <= 100000; ++n)
+                        for (int n = first; n >= 1 && n <= last && n <= 100000 && fixedBudget > 0;
+                             ++n, --fixedBudget)
                             fixedAtoms.insert(n);
                     }
                 } else if (!QStringList{"clear", ""}.contains(row.value(0).toLower()))

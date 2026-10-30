@@ -329,9 +329,11 @@ QString extraInputError(const QString &text) {
         return tr("20000文字以内で指定してください。");
     if (text.contains(QRegularExpression("[\\x00-\\x08\\x0b-\\x1f\\x7f]")))
         return tr("制御文字を含めないでください。");
-    // Statements as NWChem splits them (";" and "\\" continuations), not physical lines.
+    // Statements as NWChem splits them (";" and "\\" continuations), not physical lines. NWChem
+    // reads quoted words without their quotes: task "shell" is task shell.
     for (const auto &statement : nwchemStatements(text)) {
-        const auto words = statement.simplified().toLower().split(' ', Qt::SkipEmptyParts);
+        const auto words =
+            QString(statement).remove('"').simplified().toLower().split(' ', Qt::SkipEmptyParts);
         if (words.isEmpty())
             continue;
         if (words[0] == "python" ||

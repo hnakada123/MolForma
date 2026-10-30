@@ -50,6 +50,9 @@ void DocumentStorage::startAutosave() {
     const QDir directory(autosaveDirectory());
     if (!directory.mkpath("."))
         return;
+    // Unsaved work stays private, whatever the umask and the permissions of the home folder.
+    QFile::setPermissions(directory.absolutePath(),
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
     const auto name = QString("session-%1-%2").arg(QCoreApplication::applicationPid()).arg(newId());
     auto sessionLock = std::make_unique<QLockFile>(directory.filePath(name + ".lock"));
     sessionLock->setStaleLockTime(0);

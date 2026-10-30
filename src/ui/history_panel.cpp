@@ -1206,6 +1206,12 @@ void HistoryPanel::refresh() {
         status->setText(QString::fromUtf8(e.what()));
         return;
     }
+    // A network folder named by the project rather than chosen by the user is not looked at.
+    if (followsExecution && networkPath(root) && !untrustedNetworkPath(window->document()).isEmpty()) {
+        status->setText(
+            tr("ネットワーク上の場所 %1 は、「編集 → 環境設定」で指定した場合だけ使えます。").arg(root));
+        return;
+    }
     if (pendingSelection.isEmpty())
         pendingSelection = selectedDirectory();
     cancel->setEnabled(true);
@@ -1532,7 +1538,7 @@ void HistoryPanel::showDetails() {
     const bool owned = e->directory == activeDirectory();
     const auto [label, kind] = stateLabel(*e, owned);
     title->setText(e->name);
-    title->setToolTip(e->name);
+    title->setToolTip(Qt::convertFromPlainText(e->name)); // A title from run.json, shown as written.
     statePill->setText(label);
     statePill->setToolTip(historyStatus(e->status, owned, e->orphaned));
     setFlag(statePill, "pill", kind);
@@ -1906,10 +1912,13 @@ void HistoryPanel::trashSelected() {
     if (directory.isEmpty())
         return;
     window->checkMcpPath(directory);
-    if (QMessageBox::question(
-            this, tr("ジョブをごみ箱へ"),
-            tr("入力・プロジェクト・結果を含む次のフォルダーをごみ箱へ移動します。\n%1").arg(directory),
-            QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
+    QMessageBox box(
+        QMessageBox::Question, tr("ジョブをごみ箱へ"),
+        tr("入力・プロジェクト・結果を含む次のフォルダーをごみ箱へ移動します。\n%1").arg(directory),
+        QMessageBox::Yes | QMessageBox::Cancel, this);
+    box.setDefaultButton(QMessageBox::Cancel);
+    box.setTextFormat(Qt::PlainText);
+    if (box.exec() != QMessageBox::Yes)
         return;
     trashHistoryEntry(directory, root, activeDirectory());
     refresh();

@@ -1045,7 +1045,7 @@ void MoleculePanel::refresh() {
     for (const auto &r : std::as_const(residues)) {
         QString label = r.code + " " + QString::number(r.number);
         seq << QString("<a href=\"%1\"><span style=\"color:%3\">%2</span></a>")
-                   .arg(r.id, label.toHtmlEscaped(), link);
+                   .arg(r.id.toHtmlEscaped(), label.toHtmlEscaped(), link);
         plain << label;
         // The free ends of the chain, in the words of the "N末端" and "C末端" choices of this page.
         QStringList ends;
@@ -2011,6 +2011,7 @@ void MoleculePanel::compareDialog() {
                         .arg(fit.heavyRmsd, 0, 'f', 4)
                         .arg(fit.maximum, 0, 'f', 4),
                     QMessageBox::Close, this);
+    box.setTextFormat(Qt::PlainText); // The file name is shown as written.
     box.setObjectName("compareResult");
     auto *align = box.addButton(tr("比較対象に重ねる（候補）"), QMessageBox::ActionRole);
     box.exec();

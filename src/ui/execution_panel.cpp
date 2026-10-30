@@ -494,44 +494,62 @@ void ExecutionPanel::startCalculation() {
     if (window->hasCandidate() || window->chemistryRunning() || run.active())
         fail(tr("候補・整形・実行中は新しい計算を開始できません。"));
     commitPendingEdits();
-    if (const auto *policy = window->accessPolicy()) {
-        const bool remote = window->remoteRequest();
+    const auto *policy = window->accessPolicy();
+    const bool remote = window->remoteRequest();
+    if (policy && remote)
+        policy->checkRun(window->document(), baseDirectory());
+    // The executable, launcher, environment and additional input choose what runs: values that came
+    // from a file, the history, an autosave copy or MCP run only once the user confirmed them.
+    if ((!policy || !policy->allowExecutionSettings) && !window->untrustedExecution().isEmpty()) {
         if (remote)
-            policy->checkRun(window->document(), baseDirectory());
-        const auto settings = protectedExecution(window->document());
-        if (!policy->allowExecutionSettings && settings != window->trustedExecution()) {
-            if (remote)
-                fail(tr("NWChem実行ファイル・MPIランチャー・追加の環境変数・NWChemの追加入力が、"
-                        "MolForma上で最後に設定した値と異なります（MCP経由の変更や"
-                        "プロジェクトの読込による）。MCPからはこの設定で実行できません。"
-                        "利用者が「2 計算条件」「3 実行設定」タブで設定を確認してください。"));
-            // A person started the run: confirm in a dialog that MCP cannot see or press.
-            QStringList environment;
-            for (const auto &row : settings["environment"].toArray())
-                if (row.toObject()["enabled"].toBool())
-                    environment << row.toObject()["name"].toString() + "=" +
-                                       row.toObject()["value"].toString();
-            QMessageBox box(
-                QMessageBox::Warning, tr("実行設定の確認"),
-                tr("実行ファイル・ランチャー・環境変数・NWChemの追加入力が、MCP接続中に画面の外から"
-                   "変更されています。この設定で実行しますか？"),
-                QMessageBox::Yes | QMessageBox::No, window);
-            const bool extra = !settings["extra_input"].toString().trimmed().isEmpty() ||
-                               !settings["extra_tasks"].toString().trimmed().isEmpty();
-            box.setInformativeText(tr("実行ファイル: %1\nランチャー: %2\n環境変数: %3\nNWChemの追加入力: %4")
-                                       .arg(settings["executable"].toString(),
-                                            settings["launcher"].toString(),
-                                            environment.isEmpty() ? tr("なし") : environment.join(", "),
-                                            extra ? tr("あり（「4 入力プレビュー」で確認）") : tr("なし")));
-            box.setDefaultButton(QMessageBox::No);
-            box.setProperty("mcpProtected", true);
-            if (box.exec() != QMessageBox::Yes)
-                return;
-            window->trustCurrentExecution();
-        }
+            fail(tr("NWChem実行ファイル・MPIランチャー・追加の環境変数・NWChemの追加入力に、利用者が"
+                    "MolFormaで入力・確認していない値があります（MCP経由の変更や、プロジェクト・履歴・"
+                    "自動保存の読込による）。MCPからはこの設定で実行できません。"
+                    "利用者が「2 計算条件」「3 実行設定」タブで設定を確認してください。"));
+        if (!confirmExecution())
+            return;
+        window->trustCurrentExecution();
     }
     run.start(window->document(), baseDirectory());
     showRunPanel();
+}
+bool ExecutionPanel::confirmExecution() {
+    // A person started the run: confirm in a dialog that MCP cannot see or press.
+    const auto &d = window->document();
+    const auto settings = protectedExecution(d);
+    const auto report = validateExecution(d, baseDirectory(), false);
+    // Show where a name or relative path leads (for example a program beside the project file).
+    const auto program = [](const QString &value, const QString &found) {
+        return found.isEmpty() || found == value ? value : tr("%1（%2）").arg(value, found);
+    };
+    QStringList environment;
+    for (const auto &row : settings["environment"].toArray())
+        if (row.toObject()["enabled"].toBool())
+            environment << row.toObject()["name"].toString() + "=" + row.toObject()["value"].toString();
+    QStringList extra;
+    for (const auto *key : {"extra_input", "extra_tasks"})
+        if (const auto text = settings[key].toString().trimmed(); !text.isEmpty())
+            extra << (QString(key) == "extra_input" ? tr("追加入力（タスクの前）")
+                                                    : tr("追加入力（入力の末尾）")) +
+                         '\n' + text;
+    QMessageBox box(
+        QMessageBox::Warning, tr("実行設定の確認"),
+        tr("実行ファイル・ランチャー・環境変数・NWChemの追加入力に、MolFormaで入力・確認していない"
+           "値があります（プロジェクト・履歴・自動保存の読込やMCPによる変更）。これらの設定は任意の"
+           "プログラムを起動できます。内容を確認し、信頼できる場合だけ実行してください。"
+           "この設定で実行しますか？"),
+        QMessageBox::Yes | QMessageBox::No, window);
+    box.setInformativeText(tr("実行ファイル: %1\nランチャー: %2\n環境変数: %3\nNWChemの追加入力: %4")
+                               .arg(program(settings["executable"].toString(), report.executable),
+                                    program(settings["launcher"].toString(), report.launcher),
+                                    environment.isEmpty() ? tr("なし") : environment.join(", "),
+                                    extra.isEmpty() ? tr("なし") : tr("あり（「4 入力プレビュー」で確認）")));
+    if (!extra.isEmpty())
+        box.setDetailedText(extra.join("\n\n"));
+    box.setTextFormat(Qt::PlainText); // Paths and values from a file are shown as written.
+    box.setDefaultButton(QMessageBox::No);
+    box.setProperty("mcpProtected", true);
+    return box.exec() == QMessageBox::Yes;
 }
 void ExecutionPanel::confirmStop() {
     if (!run.active()) {

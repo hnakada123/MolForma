@@ -337,7 +337,10 @@ void addCap(Document &d, const QString &rid, const QString &kind) {
     (ace ? r.nTerminal : r.cTerminal) = kind;
     updateResidue(d, r);
     auto &seq = d.chains[r.chain];
-    seq.insert(seq.indexOf(rid) + (ace ? 0 : 1), cap.id);
+    const auto at = seq.indexOf(rid);
+    if (at < 0)
+        fail(tr("鎖の残基参照が不正です。"));
+    seq.insert(at + (ace ? 0 : 1), cap.id);
 }
 static void orientAmideH(Document &d, const QString &rid, const QString &carbon) {
     auto r = residue(d, rid);
@@ -571,6 +574,8 @@ void deleteResidue(Document &d, const QString &rid) {
     const auto chain = r.chain;
     const auto sequence = d.chains.value(chain);
     int index = sequence.indexOf(rid);
+    if (!chain.isEmpty() && index < 0)
+        fail(tr("鎖の残基参照が不正です。"));
     d.remove(r.atoms.values());
     if (index > 0)
         setTerminals(d, sequence[index - 1], {}, "neutral");
@@ -590,6 +595,8 @@ void setResidueTorsion(Document &d, const QString &rid, const QString &kind, dou
     auto r = residue(d, rid);
     auto seq = d.chains.value(r.chain);
     int i = seq.indexOf(rid);
+    if (!r.chain.isEmpty() && i < 0)
+        fail(tr("鎖の残基参照が不正です。"));
     Ids ids;
     if (kind == "phi") {
         if (i <= 0)

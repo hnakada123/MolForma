@@ -650,7 +650,10 @@ class CalculationTest : public QObject {
         set(e, "extra_input", "python\n  print('x')\nend");
         QVERIFY(errorContains(e, "pythonブロック"));
         // NWChem statements, not physical lines: ";" separators and "\\" continuations.
-        for (const auto *text : {"print none; task shell echo hi", "task \\\nshell echo hi", "task python"}) {
+        // NWChem also reads quoted words without their quotes.
+        for (const auto *text : {"print none; task shell echo hi", "task \\\nshell echo hi", "task python",
+                                 "task \"shell\" \"echo hi\"", "\"task\" sh\"ell\" echo", "\"task shell\" x",
+                                 "task\tshell echo", "\"python\"\n  print('x')\nend"}) {
             set(e, "extra_input", text);
             QVERIFY2(errorContains(e, "task shell"), text);
         }

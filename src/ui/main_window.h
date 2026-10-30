@@ -163,9 +163,9 @@ class MainWindow : public QMainWindow {
     QScopedValueRollback<int> remoteScope() {
         return QScopedValueRollback<int>(mcp.depth, mcp.depth + 1);
     }
-    const QJsonObject &trustedExecution() const {
-        return mcp.trustedExecution;
-    }
+    // Keys of protectedExecution() whose current values the user has neither entered in MolForma,
+    // confirmed before a run, nor saved in Preferences: runs with them need a confirmation.
+    QStringList untrustedExecution() const;
     void trustCurrentExecution();
 
     // Paths reached by an MCP-driven GUI action obey --mcp-allow-dir like the semantic tools.
@@ -193,13 +193,16 @@ class MainWindow : public QMainWindow {
 
   private:
     EditorSession session;
-    // MCP access, set by McpGui. A calculation started over MCP may only use the executable,
-    // launcher and environment that were last changed outside MCP (trustedExecution).
+    // MCP access, set by McpGui.
     struct McpAccess {
         const McpPolicy *policy = nullptr;
         int depth = 0; // > 0 while an MCP request or GUI command is being applied
-        QJsonObject trustedExecution;
     } mcp;
+    // Values of the executable, launcher, environment and additional NWChem input (per key of
+    // protectedExecution) that the user entered in MolForma or confirmed before a run. Values read
+    // from a project, an autosave copy or the history, and those set over MCP, count only once
+    // confirmed; those saved in Preferences always count.
+    QHash<QString, QList<QJsonValue>> trustedExecution;
     QMenu *recentMenu = nullptr;
     QUndoStack &undo = session.history();
     QSettings settings;
@@ -238,6 +241,7 @@ class MainWindow : public QMainWindow {
     void refreshPanels();
     void announceHistory(const QString &verb, const QString &name, const Document &from, const Document &to);
     void trackExecution(const Document &before, const Document &after);
+    void trustExecution(const QJsonObject &values);
     void newDocument();
     void open();
     bool save(bool as = false);

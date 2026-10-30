@@ -52,8 +52,8 @@ MainWindow::MainWindow(QWidget *parent)
     // Undo/Redo texts) has moved. Saving only changes the title.
     connect(&session, &EditorSession::changed, this, &MainWindow::refresh);
     connect(&session, &EditorSession::applied, this,
-            [this](const Document &before, const Document &after, bool remote) {
-                if (!remote)
+            [this](const Document &before, const Document &after, bool remote, EditorSession::Change change) {
+                if (!remote && change == EditorSession::Change::Edit)
                     trackExecution(before, after);
                 moleculePage->pruneSelection(after);
             });
@@ -67,7 +67,6 @@ MainWindow::MainWindow(QWidget *parent)
         placeTemplate(initial, findTemplate("skeleton:water"), Vec::Zero());
     applyExecutionPreferences(initial);
     session.reset(initial);
-    mcp.trustedExecution = protectedExecution(document());
     refresh();
     QTimer::singleShot(0, view, &MoleculeView::fit);
     auto saved = settings.value("geometry").toByteArray();
@@ -93,13 +92,37 @@ void MainWindow::safe(const std::function<void()> &operation) {
     } catch (const std::exception &e) {
         QString message = QString::fromUtf8(e.what());
         statusBar()->showMessage(message, 15000);
-        QMessageBox::warning(this, tr("操作できません"), message);
+        QMessageBox box(QMessageBox::Warning, tr("操作できません"), message, QMessageBox::Ok, this);
+        box.setTextFormat(Qt::PlainText); // Messages quote file names and file contents.
+        box.exec();
     }
 }
 void MainWindow::trackExecution(const Document &before, const Document &after) {
-    // Only a change made outside MCP that itself alters these settings makes them trusted.
-    if (mcp.depth == 0 && protectedExecution(before) != protectedExecution(after))
-        mcp.trustedExecution = protectedExecution(after);
+    // Only the values an edit made in MolForma itself changes become trusted: never those of loads,
+    // undo/redo or MCP requests, nor the other values kept beside an edited one.
+    if (mcp.depth > 0)
+        return;
+    const auto old = protectedExecution(before), now = protectedExecution(after);
+    QJsonObject changed;
+    for (auto it = now.begin(); it != now.end(); ++it)
+        if (old[it.key()] != it.value())
+            changed[it.key()] = it.value();
+    trustExecution(changed);
+}
+void MainWindow::trustExecution(const QJsonObject &values) {
+    for (auto it = values.begin(); it != values.end(); ++it)
+        if (auto &known = trustedExecution[it.key()]; !known.contains(it.value()))
+            known.append(it.value());
+}
+QStringList MainWindow::untrustedExecution() const {
+    Document preferred;
+    applyExecutionPreferences(preferred);
+    const auto preferences = protectedExecution(preferred), current = protectedExecution(document());
+    QStringList keys;
+    for (auto it = current.begin(); it != current.end(); ++it)
+        if (it.value() != preferences[it.key()] && !trustedExecution.value(it.key()).contains(it.value()))
+            keys << it.key();
+    return keys;
 }
 void MainWindow::checkMcpPath(const QString &path) const {
     if (mcp.policy && mcp.depth > 0)
@@ -272,7 +295,7 @@ void MainWindow::setRunPanelShown(bool shown) {
         runPanelAction->setChecked(shown);
 }
 void MainWindow::trustCurrentExecution() {
-    mcp.trustedExecution = protectedExecution(document());
+    trustExecution(protectedExecution(document()));
 }
 void MainWindow::buildUi() {
     auto *central = new QWidget;
@@ -918,10 +941,13 @@ void MainWindow::loadPath(const QString &p) {
             QStringList items;
             for (const auto &note : imported.notes.mid(0, 20))
                 items << tr("・%1").arg(note);
-            QMessageBox::information(this, tr("NWChem入力の取込み"),
-                                     tr("構造・電荷・多重度と、MolFormaで扱える計算条件を取り込みました。\n\n"
-                                        "取り込まなかった項目:\n%1")
-                                         .arg(items.join('\n')));
+            QMessageBox box(QMessageBox::Information, tr("NWChem入力の取込み"),
+                            tr("構造・電荷・多重度と、MolFormaで扱える計算条件を取り込みました。\n\n"
+                               "取り込まなかった項目:\n%1")
+                                .arg(items.join('\n')),
+                            QMessageBox::Ok, this);
+            box.setTextFormat(Qt::PlainText); // The items quote the input file.
+            box.exec();
         }
     } else
         next = reading([&] { return importStructure(p, options->model, options->altloc, options->frame); });
@@ -1031,7 +1057,9 @@ void MainWindow::chemistryReady(const ChemistryResult &result) {
 void MainWindow::chemistryFailed(const ChemistryRequest &request, const QString &error, bool starting) {
     statusBar()->clearMessage();
     if (starting) {
-        QMessageBox::warning(this, tr("処理を起動できません"), error);
+        QMessageBox box(QMessageBox::Warning, tr("処理を起動できません"), error, QMessageBox::Ok, this);
+        box.setTextFormat(Qt::PlainText);
+        box.exec();
         return;
     }
     const bool smiles = request.mode == "smiles" || request.mode == "fragment";
@@ -1040,6 +1068,7 @@ void MainWindow::chemistryFailed(const ChemistryRequest &request, const QString 
                     : request.mode == "conformers" ? tr("配座探索できません")
                                                    : tr("構造を整形できません"),
                     error, QMessageBox::Close, this);
+    box.setTextFormat(Qt::PlainText);
     auto *retry =
         smiles && !request.remote ? box.addButton(tr("SMILESを修正…"), QMessageBox::AcceptRole) : nullptr;
     box.exec();
@@ -1175,6 +1204,7 @@ void MainWindow::offerRecovery() {
                                  recovered.formula())
                             .arg(recovered.atoms.size()),
                         QMessageBox::NoButton, this);
+        box.setTextFormat(Qt::PlainText);
         box.setObjectName("recoveryDialog");
         auto *restore = box.addButton(tr("復旧する"), QMessageBox::AcceptRole);
         auto *discard = box.addButton(tr("破棄する"), QMessageBox::DestructiveRole);

@@ -136,8 +136,10 @@ QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
     } else if (path.isEmpty())
         fail("Specify path.");
     policy.checkPath(path);
-    if (action == "open_directory")
+    if (action == "open_directory") {
         path = preferredResultFile(path);
+        policy.checkPath(path); // The file chosen in the folder may be a link that leads out of it.
+    }
     load(path, action);
     return {{"tool", name}, {"action", action}, {"workId", loadWork}, {"results", state()["results"]}};
 }

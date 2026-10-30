@@ -12,6 +12,9 @@ namespace mf {
 class EditorSession : public QObject {
     Q_OBJECT
   public:
+    // How the document changed: an edit committed now, undo/redo, or a document loaded with reset.
+    enum class Change { Edit, History, Reset };
+    Q_ENUM(Change)
     explicit EditorSession(QObject *parent = nullptr);
     const Document &document() const {
         return current;
@@ -49,7 +52,8 @@ class EditorSession : public QObject {
     void navigate(const QString &action);
   signals:
     void changed();
-    void applied(const mf::Document &before, const mf::Document &after, bool remote);
+    void applied(const mf::Document &before, const mf::Document &after, bool remote,
+                 mf::EditorSession::Change change);
     void historyMoved(bool undo, QString name, const mf::Document &before, const mf::Document &after);
 
   private:
@@ -61,7 +65,7 @@ class EditorSession : public QObject {
     int pendingSerial = 0;
     quint64 changes = 0;
     QUndoStack stack;
-    void apply(const Document &document, bool remote);
+    void apply(const Document &document, bool remote, Change change);
     bool commit(const QString &name, const Document &next, bool remote);
     void validateEdit(const Document &next) const;
 };

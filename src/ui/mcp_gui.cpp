@@ -682,9 +682,10 @@ QJsonObject McpGui::prompt() {
     QString message = box->windowTitle();
     for (const auto &text : {box->text(), box->informativeText()})
         if (!text.isEmpty())
-            message +=
-                (message.isEmpty() ? "" : "\n") +
-                (Qt::mightBeRichText(text) ? QTextDocumentFragment::fromHtml(text).toPlainText() : text);
+            message += (message.isEmpty() ? "" : "\n") +
+                       (box->textFormat() != Qt::PlainText && Qt::mightBeRichText(text)
+                            ? QTextDocumentFragment::fromHtml(text).toPlainText()
+                            : text);
     // Handles are never reused, so each dialog gets a key that is unique for the task's lifetime.
     return {{"key", "dialog-" + handle(box)}, {"message", message}, {"choices", choices}};
 }

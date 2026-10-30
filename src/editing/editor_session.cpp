@@ -13,11 +13,11 @@ class SessionCommand : public QUndoCommand {
     SessionCommand(EditorSession &s, const QString &name, const Document &next, bool remote)
         : QUndoCommand(name), session(s), before(s.document()), after(next), remote(remote) {}
     void undo() override {
-        session.apply(before, remote);
+        session.apply(before, remote, EditorSession::Change::History);
         emit session.historyMoved(true, text(), after, before);
     }
     void redo() override {
-        session.apply(after, remote);
+        session.apply(after, remote, pushed ? EditorSession::Change::History : EditorSession::Change::Edit);
         if (pushed)
             emit session.historyMoved(false, text(), before, after);
         pushed = true;
@@ -27,15 +27,15 @@ EditorSession::EditorSession(QObject *parent) : QObject(parent) {
     stack.setUndoLimit(100);
     connect(&stack, &QUndoStack::indexChanged, this, &EditorSession::changed);
 }
-void EditorSession::apply(const Document &d, bool remote) {
+void EditorSession::apply(const Document &d, bool remote, Change change) {
     const auto before = current;
     current = d;
     pending.reset();
     ++changes;
-    emit applied(before, current, remote);
+    emit applied(before, current, remote, change);
 }
 void EditorSession::reset(const Document &d, bool remote) {
-    apply(d, remote);
+    apply(d, remote, Change::Reset);
     stack.clear();
     stack.setClean();
     emit changed();

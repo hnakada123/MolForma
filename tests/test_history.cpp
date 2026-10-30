@@ -294,6 +294,7 @@ class HistoryTest : public QObject {
                                 {"enabled", true}, {"name", "MOLFORMA_FAKE_MODE"}, {"value", "frequency"}}});
         MainWindow w;
         w.loadDocument(d);
+        w.trustCurrentExecution(); // As if the user confirmed the test engine before the first run.
         auto *execution = widget<ExecutionPanel>(w, "executionTab");
         execution->startCalculation();
         const auto directory = execution->currentRun().plan().directory;
@@ -582,6 +583,7 @@ class HistoryTest : public QObject {
         d.data["nwchem"] = s;
         MainWindow w;
         w.loadDocument(d);
+        w.trustCurrentExecution(); // As if the user confirmed the test engine before the first run.
         showHistory(w);
         auto *history = widget<HistoryPanel>(w, "historyTab");
         auto *execution = widget<ExecutionPanel>(w, "executionTab");

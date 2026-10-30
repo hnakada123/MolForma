@@ -495,7 +495,7 @@
     "NWChem出力・XYZ・CUBE・MOLDENを開いて\n構造・軌道の等値面・振動を確認できます。": "Open NWChem output, XYZ, CUBE or MOLDEN\nto view structures, orbital isosurfaces and vibrations.",
     "NWChem実行ファイル": "NWChem executable",
     "NWChem実行ファイルが見つからないか、実行権限がありません。": "The NWChem executable is missing or not executable.",
-    "NWChem実行ファイル・MPIランチャー・追加の環境変数・NWChemの追加入力が、MolForma上で最後に設定した値と異なります（MCP経由の変更やプロジェクトの読込による）。MCPからはこの設定で実行できません。利用者が「2 計算条件」「3 実行設定」タブで設定を確認してください。": "The NWChem executable, MPI launcher, additional environment variables or additional NWChem input differ from the values last set in MolForma (changed over MCP or by loading a project). They cannot be run from MCP. The user must check the settings in the “2 Calculation” and “3 Run settings” tabs.",
+    "NWChem実行ファイル・MPIランチャー・追加の環境変数・NWChemの追加入力に、利用者がMolFormaで入力・確認していない値があります（MCP経由の変更や、プロジェクト・履歴・自動保存の読込による）。MCPからはこの設定で実行できません。利用者が「2 計算条件」「3 実行設定」タブで設定を確認してください。": "The NWChem executable, MPI launcher, additional environment variables or additional NWChem input have values the user has not entered or confirmed in MolForma (changed over MCP, or loaded from a project, the history or an autosave copy). They cannot be run from MCP. The user must check the settings in the “2 Calculation” and “3 Run settings” tabs.",
     "NWChem実行中": "NWChem running",
     "NWChem実行設定はオブジェクトである必要があります。": "NWChem run settings must be an object.",
     "NWChem実行設定を変更": "Change NWChem run settings",
@@ -1490,7 +1490,7 @@
     "実行ファイル": "Executable",
     "実行ファイル: %1\nランチャー: %2\n環境変数: %3\nNWChemの追加入力: %4": "Executable: %1\nLauncher: %2\nEnvironment variables: %3\nAdditional NWChem input: %4",
     "実行ファイルは名前またはパスで指定します。MPIはmpirun/mpiexecの -np を使用します。入力movecsの相対パスは参照基準から解決します。scratch・permanentは新しいジョブフォルダーが基準です。出力movecs・CUBE・MOLDENはpermanent（未指定ならジョブ）に保存します。出力movecsを./で始めるとジョブ内、絶対パスなら指定先に保存します。": "Give programs by name or path. MPI uses -np of mpirun/mpiexec. Relative input movecs paths are resolved from the reference directory. scratch and permanent are relative to the new job folder. Output movecs, CUBE and MOLDEN files are saved to permanent (the job folder if unset). Output movecs starting with ./ go into the job folder; absolute paths go where they point.",
-    "実行ファイル・ランチャー・環境変数・NWChemの追加入力が、MCP接続中に画面の外から変更されています。この設定で実行しますか？": "The executable, launcher, environment variables or additional NWChem input were changed outside the window while MCP was connected. Run with these settings?",
+    "実行ファイル・ランチャー・環境変数・NWChemの追加入力に、MolFormaで入力・確認していない値があります（プロジェクト・履歴・自動保存の読込やMCPによる変更）。これらの設定は任意のプログラムを起動できます。内容を確認し、信頼できる場合だけ実行してください。この設定で実行しますか？": "The executable, launcher, environment variables or additional NWChem input have values you have not entered or confirmed in MolForma (loaded from a project, the history or an autosave copy, or changed over MCP). These settings can start any program. Check them and run only if you trust them. Run with these settings?",
     "実行ファイル・保存先": "Executable and job folder",
     "実行ファイル・保存先などを確認し直します。": "Checks the programs, folders and other settings again.",
     "実行中": "Running",
@@ -2525,5 +2525,8 @@
     "（詳細）": " (advanced)",
     "（選んだ保存先）": " (chosen folder)",
     "＋ C": "+ C",
-    "＋ N": "+ N"
+    "＋ N": "+ N",
+    "残基IDが空または重複しています。": "Residue IDs are empty or duplicated.",
+    "鎖の残基参照が不正です。": "A chain refers to its residues incorrectly.",
+    "ネットワーク上の場所 %1 は、「編集 → 環境設定」で指定した場合だけ使えます。": "The network location %1 can be used only when it is set in “Edit → Preferences”."
 }

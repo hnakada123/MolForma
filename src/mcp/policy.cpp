@@ -11,6 +11,10 @@ namespace {
 QString resolvedPath(const QString &path, const QString &base) {
     if (path.trimmed().isEmpty())
         fail("Specify a path.");
+    // ".." after a symbolic link leads to the parent of the link's target, not of the link: removed as
+    // text, it would make the checked path differ from the one the file system opens.
+    if (QDir::fromNativeSeparators(path).split('/').contains(".."))
+        fail("Paths containing \"..\" are refused while --mcp-allow-dir restricts MCP paths: " + path);
     // Expand "~" exactly as execution does, so the checked path is the one that is used.
     QString current = absolutePath(path, base.isEmpty() ? QDir::currentPath() : base);
     QStringList missing;

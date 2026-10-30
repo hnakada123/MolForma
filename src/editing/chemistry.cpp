@@ -233,6 +233,13 @@ Document xyzStructure(const QString &text) {
     }
     mol.EndModify();
     mol.SetDimension(3);
+    // Molecules have at most six bonds per atom and about one per atom (two in diamond). Denser
+    // graphs come from atoms packed too closely, and their ring search would not finish.
+    bool molecular = perceived.size() <= 2 * int(mol.NumAtoms());
+    for (unsigned int k = 1; molecular && k <= mol.NumAtoms(); ++k)
+        molecular = mol.GetAtom(k)->GetExplicitDegree() <= 6;
+    if (!molecular)
+        return d;
     mol.PerceiveBondOrders();
     for (int k = 0; k < perceived.size(); ++k) {
         auto *b = mol.GetBond(k);
@@ -245,13 +252,16 @@ Document xyzStructure(const QString &text) {
 }
 Document importBabelStructure(const QString &path, int model, const QString &altloc) {
     QString ext = QFileInfo(path).suffix().toLower();
-    auto bytes = readFile(path);
     if (ext == "ent")
         ext = "pdb";
     if (ext == "sd")
         ext = "sdf";
     if (ext == "mdl")
         ext = "mol";
+    // Open Babel knows some 150 formats; files from others go only through these common readers.
+    if (!QStringList{"mol", "sdf", "mol2", "cml", "pdb"}.contains(ext))
+        fail(tr("対応していない形式です: %1").arg(ext));
+    auto bytes = readFile(path);
     if (ext == "pdb")
         bytes = preparePdb(QString::fromUtf8(bytes), model, altloc).toUtf8();
     OBConversion conversion;

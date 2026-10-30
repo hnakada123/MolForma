@@ -71,6 +71,8 @@ class ExecutionPanel : public QWidget {
     bool eventFilter(QObject *watched, QEvent *event) override;
 
   private:
+    // Asks the user whether to run with execution settings they have not entered or confirmed.
+    bool confirmExecution();
     MainWindow *window;
     NwchemRun run;
     bool busy = false, startable = false;

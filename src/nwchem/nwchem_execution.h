@@ -11,6 +11,12 @@ namespace mf {
 // Expands "~" and "~/" to the home directory and resolves relative paths against base.
 // Every execution path goes through this, and the MCP access policy checks the same result.
 QString absolutePath(QString path, const QString &base);
+// A UNC path (\\server\share or //server/share): on Windows, merely looking at one connects to that
+// server and offers it the user's credentials.
+bool networkPath(const QString &path);
+// The network location the document's settings name where Preferences do not (empty if none):
+// a project from elsewhere must not make MolForma look at it before the user chose it.
+QString untrustedNetworkPath(const Document &document);
 QJsonObject executionDefaults();
 // The whole-number settings and their ranges, for the checks and the controls of "3 実行設定" and
 // Preferences.

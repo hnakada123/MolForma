@@ -280,6 +280,26 @@ class ResultsTest : public QObject {
         const auto moved = resultModeGeometry(r, 0, std::numbers::pi / 2, .3);
         QVERIFY(std::abs(moved.atoms[0].position.x() - .3) < 1e-12);
         QCOMPARE(r.vibrationGeometry.atoms[0].position.x(), 0.0);
+        // NWChem prints six modes per table: a longer line is skipped before anything is allocated.
+        auto wide = "NWChem\n" + geometry() + " (Projected Frequencies expressed in cm-1)\n\n P.Frequency";
+        for (int i = 0; i < 20000; ++i)
+            wide += " 1";
+        const auto skipped = readResult(save("wide.out", wide + "\n"));
+        QVERIFY(skipped.modes.isEmpty());
+        QVERIFY(skipped.warnings.contains("未完の振動モード表を読み飛ばしました。"));
+    }
+    void repeatedTroubleIsReportedBriefly() {
+        // A log repeating the same trouble gives each warning once, and a hundred at most.
+        auto s = "NWChem\n" + geometry();
+        for (int i = 0; i < 2000; ++i)
+            s += " Output coordinates in parsecs\n Output coordinates in angstroms\n";
+        // Repeated ESP headings without rows do not keep sections waiting for thousands of lines.
+        for (int i = 0; i < 20000; ++i)
+            s += "    Atom              Coordinates                           Charge\n";
+        const auto r = readResult(save("noisy.out", s));
+        QCOMPARE(r.frames.size(), 1);
+        QVERIFY(r.warnings.size() <= 100);
+        QCOMPARE(r.warnings.count("未対応の座標単位を読み飛ばしました。"), 1);
     }
     void xyzAndMolden() {
         auto r = readResult(save("path.xyz", "2\n\nH 0 0 0\nH 0 0 1\n2\nsecond\nH 0 0 0\nH 0 0 2\n"));

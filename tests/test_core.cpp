@@ -45,6 +45,10 @@ class CoreTest : public QObject {
         QCOMPARE(applied.size(), 3);
         for (const auto &event : applied)
             QVERIFY(event[2].toBool()); // Confirmation and undo/redo keep remote provenance.
+        // Edits made now are told apart from undo/redo (and loads), which never trust settings.
+        QCOMPARE(applied[0][3].value<EditorSession::Change>(), EditorSession::Change::Edit);
+        QCOMPARE(applied[1][3].value<EditorSession::Change>(), EditorSession::Change::History);
+        QCOMPARE(applied[2][3].value<EditorSession::Change>(), EditorSession::Change::History);
         QVERIFY(!session.edit("no-op", [](Document &) {}));
         QCOMPARE(session.history().count(), 1);
         QVERIFY(session.edit("candidate", [](Document &next) { next.atoms[1].position.z() = 2; }, true));
@@ -495,6 +499,52 @@ class CoreTest : public QObject {
             for (int i = 0; i < d.atoms.size(); ++i)
                 QVERIFY((copy.atoms[i].position - d.atoms[i].position).norm() < 1e-12);
         }
+    }
+    void hostileFilesStayBounded() {
+        QTemporaryDir tmp;
+        // Open Babel reads only the common formats: other readers are not given files from others.
+        writeFile(tmp.filePath("one.bgf"),
+                  "HETATM    1 C1   RES     1   0.000   0.000   0.000\nORDER 2 1 2 1\n");
+        try {
+            importStructure(tmp.filePath("one.bgf"));
+            QFAIL("A BGF file was read.");
+        } catch (const std::exception &e) {
+            QVERIFY(QString::fromUtf8(e.what()).contains("対応していない形式です"));
+        }
+        // A chain listing a residue of another chain is refused when read, not met by an edit.
+        auto project = parseJson(readFile(QString(FIXTURE_DIR) + "/ala_gly_ser.molforma.json"));
+        auto doc = project["document"].toObject();
+        auto residues = doc["residues"].toArray();
+        auto first = residues[0].toObject();
+        first["chain"] = "Y";
+        residues[0] = first;
+        doc["residues"] = residues;
+        project["document"] = doc;
+        QVERIFY_EXCEPTION_THROWN(Document::fromProject(project), std::runtime_error);
+        auto twice = parseJson(readFile(QString(FIXTURE_DIR) + "/ala_gly_ser.molforma.json"));
+        doc = twice["document"].toObject();
+        auto chains = doc["chains"].toObject();
+        const auto key = chains.keys().first();
+        auto sequence = chains[key].toArray();
+        sequence.append(sequence[0]);
+        chains[key] = sequence;
+        doc["chains"] = chains;
+        twice["document"] = doc;
+        QVERIFY_EXCEPTION_THROWN(Document::fromProject(twice), std::runtime_error);
+        // Atoms packed far closer than in any molecule: bonds per atom are bounded and the bond orders
+        // are left alone, instead of a ring search that does not finish.
+        QString xyz = "64\ndense\n";
+        for (int i = 0; i < 64; ++i)
+            xyz += QString("C %1 %2 %3\n").arg(.3 * (i % 4)).arg(.3 * (i / 4 % 4)).arg(.3 * (i / 16));
+        QElapsedTimer timer;
+        timer.start();
+        const auto dense = xyzStructure(xyz);
+        QVERIFY(timer.elapsed() < 5000);
+        QVERIFY(dense.bonds.size() <= 64 * 16 / 2);
+        // Coordinates stay within 10^6 Å.
+        auto far = Document::fromXyz("2\nfar\nH 0 0 0\nH 0 0 1e7\n");
+        QVERIFY(!far.validate().isEmpty());
+        QVERIFY(Document::fromXyz("2\nnear\nH 0 0 0\nH 0 0 .74\n").validate().isEmpty());
     }
     void samplesWriteBack() {
         // The practice files of the recipes are in the current format: the typed document writes back what

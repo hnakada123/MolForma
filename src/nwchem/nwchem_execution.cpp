@@ -34,6 +34,25 @@ QString absolutePath(QString path, const QString &base) {
         path = QDir::home().filePath(path.mid(2));
     return QDir::cleanPath(QDir(base).absoluteFilePath(path));
 }
+bool networkPath(const QString &path) {
+    const auto p = path.trimmed();
+    return p.startsWith("//") || p.startsWith("\\\\");
+}
+QString untrustedNetworkPath(const Document &d) {
+    const auto s = executionSettings(d), preferred = executionPreferences();
+    for (const auto *key : {"executable", "launcher", "job_root", "reference_directory"})
+        if (const auto value = s[key].toString(); networkPath(value) && value != preferred[key].toString())
+            return value;
+    for (const auto &row : s["environment"].toArray())
+        if (const auto value = row.toObject()["value"].toString();
+            networkPath(value) && !preferred["environment"].toArray().contains(row))
+            return value;
+    const auto advanced = nwchemAdvanced(d);
+    for (const auto *key : {"vectors_input", "vectors_output", "scratch_dir", "permanent_dir"})
+        if (const auto value = advanced[key].toString(); networkPath(value))
+            return value;
+    return {};
+}
 namespace {
 const QStringList managedEnvironment{"OMP_NUM_THREADS",      "OMP_STACKSIZE",    "OMP_DYNAMIC",
                                      "OPENBLAS_NUM_THREADS", "GOTO_NUM_THREADS", "MKL_NUM_THREADS",
@@ -236,6 +255,13 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
                                : absolutePath(s["reference_directory"].toString(), base);
     r.executable = locateProgram(s["executable"].toString(), base, environment);
     r.launcher = locateProgram(s["launcher"].toString(), base, environment);
+    if (const auto network = untrustedNetworkPath(d); !network.isEmpty()) {
+        r.error(
+            "execution.network", "job_root",
+            tr("ネットワーク上の場所 %1 は、「編集 → 環境設定」で指定した場合だけ使えます。").arg(network),
+            {}, 2);
+        local = false; // Not even looked at.
+    }
     if (local) {
         const auto check = [&](const QString &key, const QString &label, bool ok, const QString &found,
                                const QString &error) {

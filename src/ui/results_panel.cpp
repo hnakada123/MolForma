@@ -1398,6 +1398,13 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
     stopAnimation();
     if (path.isEmpty())
         return;
+    try {
+        // The file itself: one picked from a folder may be a link that leads out of the allowed ones.
+        window->checkMcpPath(path);
+    } catch (const std::exception &e) {
+        error(QString::fromUtf8(e.what()));
+        return;
+    }
     const auto stamp = resultSourceStamp(path);
     const bool sameSource = !stamp.isEmpty() && stamp == orbitalCacheSource;
     if (!reuseOrbital || !sameSource) {
