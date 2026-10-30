@@ -4,6 +4,7 @@
 #include "editing/chemistry.h"
 #include "editing/coordinates.h"
 #include "editing/operations.h"
+#include "editing/pdb.h"
 #include "editing/site.h"
 #include "io/structure_io.h"
 #include "mcp/tools.h"
@@ -310,13 +311,48 @@ QString promptText(const QString &name, const QJsonObject &args, const QSet<QStr
     return text + "Explain whether the structure looks like a minimum or a saddle point.";
 }
 void validateDocument(const Document &d) {
-    if (d.atoms.size() > MaxAtoms)
-        fail("MCP documents are limited to 10000 atoms.");
     for (const auto &a : d.atoms)
         element(a.element);
     auto errors = d.validate();
     if (!errors.isEmpty())
         fail(errors.join('\n'));
+}
+// For documents too large to read whole: each chain with the number and the range of numbers of its polymer
+// residues (amino acids, nucleotides) and its waters, every other residue (ligands, ions, sugars) on its own.
+QJsonObject residueSummary(const Document &d) {
+    QVector<QJsonObject> chains;
+    QHash<QString, int> chainIndex;
+    QJsonArray others;
+    qsizetype registered = 0;
+    for (const auto &r : d.residues) {
+        registered += r.atoms.size();
+        const auto chain = r.metadata.value("pdb_chain").toString();
+        const bool polymer = (r.atoms.contains("N") && r.atoms.contains("CA") && r.atoms.contains("C")) ||
+                             r.atoms.contains("C1'"),
+                   water = waterResidue(r.code);
+        if (!polymer && !water) {
+            others.append(QJsonObject{
+                {"chain", chain}, {"number", r.number}, {"code", r.code}, {"atoms", r.atoms.size()}});
+            continue;
+        }
+        auto it = chainIndex.find(chain);
+        if (it == chainIndex.end()) {
+            it = chainIndex.insert(chain, chains.size());
+            chains.append({{"chain", chain}, {"polymer", 0}, {"waters", 0}});
+        }
+        auto &o = chains[*it];
+        if (water) {
+            o["waters"] = o["waters"].toInt() + 1;
+            continue;
+        }
+        o["first"] = o["polymer"].toInt() ? std::min(o["first"].toInt(), r.number) : r.number;
+        o["last"] = o["polymer"].toInt() ? std::max(o["last"].toInt(), r.number) : r.number;
+        o["polymer"] = o["polymer"].toInt() + 1;
+    }
+    QJsonArray list;
+    for (const auto &o : chains)
+        list.append(o);
+    return {{"chains", list}, {"others", others}, {"atomsOutsideResidues", d.atoms.size() - registered}};
 }
 } // namespace
 
@@ -480,8 +516,21 @@ QJsonObject McpServer::taskResult(const QString &taskId) {
 }
 void McpServer::edit(const QString &name, const std::function<void(Document &)> &operation, bool preview) {
     const auto checked = [&](Document &d) {
+        // MCP's input size limit, in both frontends: no edit makes a document of more than MaxAtoms atoms. A
+        // larger one opened in the GUI can be edited, so long as no atom is added to it.
+        QSet<QString> before;
+        if (d.atoms.size() > MaxAtoms)
+            for (const auto &a : d.atoms)
+                before.insert(a.id);
         operation(d);
-        validateDocument(d); // MCP's input size limits apply in both frontends.
+        if (d.atoms.size() > MaxAtoms && std::any_of(d.atoms.begin(), d.atoms.end(),
+                                                     [&](const Atom &a) { return !before.contains(a.id); }))
+            fail(QString(
+                     "MCP edits cannot make documents of more than %1 atoms. A larger document opened in the "
+                     "GUI can be edited without adding atoms, and cut_out_site with path reads a site of a "
+                     "larger structure file.")
+                     .arg(MaxAtoms));
+        validateDocument(d);
     };
     if (editor.edit)
         editor.edit(name, checked, preview);
@@ -589,10 +638,15 @@ void McpServer::registerTools() {
         });
     add({.name = "get_document",
          .title = "Read document",
-         .description = "Read the revision with the committed project and/or separate candidate (stable atom "
-                        "IDs). include defaults to both; [] returns only metadata.",
+         .description =
+             "Read the revision with the committed project and/or separate candidate (stable atom "
+             "IDs). include defaults to both; [] returns only metadata (atomCount among it). "
+             "residues summarizes the residues of a document too large to read whole: each chain "
+             "(author chain ID) with the count and number range of its polymer residues and its "
+             "waters, and every other residue (ligands, ions, sugars) with chain, number and code, "
+             "as cut_out_site takes them.",
          .properties = {{"include", QJsonObject{{"type", "array"},
-                                                {"items", choice({"project", "candidate"})},
+                                                {"items", choice({"project", "candidate", "residues"})},
                                                 {"uniqueItems", true}}}},
          .output = object({{"documentId", text},
                            {"revision", text},
@@ -600,18 +654,28 @@ void McpServer::registerTools() {
                            {"atomCount", type("integer")},
                            {"project", type("object")},
                            {"candidate", QJsonObject{{"type", QJsonArray{"object", "null"}}}},
-                           {"hasCandidate", type("boolean")}},
+                           {"hasCandidate", type("boolean")},
+                           {"residues", type("object")}},
                           {"documentId", "revision", "formula", "atomCount"}),
          .meta = {{"anthropic/maxResultSizeChars", McpLargeResultChars}}},
         [this](const QJsonObject &args) {
-            auto out = snapshot();
-            if (args.contains("include")) {
-                const auto include = args["include"].toArray();
-                for (const auto &section : {"project", "candidate"})
-                    if (!include.contains(QJsonValue(section)))
-                        out.remove(section);
-                out["hasCandidate"] = candidate().has_value();
-            }
+            // Only the parts asked for are made: the project of a large document is megabytes of JSON.
+            const auto include =
+                args.contains("include") ? args["include"].toArray() : QJsonArray{"project", "candidate"};
+            const auto d = document();
+            const auto c = candidate();
+            QJsonObject out{{"documentId", id},
+                            {"revision", revision()},
+                            {"formula", d.formula()},
+                            {"atomCount", d.atoms.size()}};
+            if (include.contains("project"))
+                out["project"] = d.project();
+            if (include.contains("candidate"))
+                out["candidate"] = c ? QJsonValue(c->project()) : QJsonValue();
+            if (include.contains("residues"))
+                out["residues"] = residueSummary(d);
+            if (args.contains("include"))
+                out["hasCandidate"] = c.has_value();
             return out;
         });
     add({.name = "list_templates",

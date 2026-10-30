@@ -973,6 +973,87 @@ class McpTest : public QObject {
         QCOMPARE(committed(server).formula(), QString("CZn"));
     }
     // A site cut out of a structure file in one edit, so that its size is what counts, or of the document.
+    // A document of more than 10,000 atoms opened in the GUI: MCP edits that add no atoms go through, those
+    // that add atoms do not; its residues can be read as a summary, and a site cut out of it.
+    void largeGuiDocument() {
+        Document large;
+        buildPeptide(large, {"GLY", "HIS", "GLY"}, "charged", "charged");
+        for (auto &r : large.residues)
+            r.metadata["pdb_chain"] = "A";
+        const auto addResidue = [&](const QString &code, int number, const QString &chain,
+                                    const QVector<std::tuple<QString, QString, Vec>> &atoms) {
+            Residue r;
+            r.code = code;
+            r.number = number;
+            r.chain = newId();
+            r.metadata["pdb_chain"] = chain;
+            for (const auto &[name, symbol, position] : atoms) {
+                Atom a;
+                a.element = symbol;
+                a.position = position;
+                r.atoms[name] = a.id;
+                large.atoms << a;
+            }
+            large.residues << r;
+            large.chains[r.chain] = {r.id};
+            return r.atoms.first();
+        };
+        const auto zinc = addResidue("ZN", 101, "A", {{"ZN", "Zn", Vec(0, 0, 8)}});
+        for (int i = 0; i < 3400; ++i) {
+            const Vec at(20 + 3 * (i % 16), 3 * (i / 16 % 16), 3 * (i / 256));
+            addResidue(
+                "HOH", 1000 + i, "W",
+                {{"O", "O", at}, {"H1", "H", at + Vec(.76, 0, .59)}, {"H2", "H", at + Vec(-.76, 0, .59)}});
+            const auto &r = large.residues.last();
+            large.bonds.append({r.atoms["O"], r.atoms["H1"], "single", {}, "explicit"});
+            large.bonds.append({r.atoms["O"], r.atoms["H2"], "single", {}, "explicit"});
+        }
+        QVERIFY(large.atoms.size() > 10000);
+        QVERIFY2(large.validate().isEmpty(), qPrintable(large.validate().join('\n')));
+        MainWindow w;
+        w.loadDocument(large);
+        McpGui gui(w);
+        McpServer s(gui.editor());
+        auto response =
+            change(s, "set_nwchem", {{"settings", QJsonObject{{"basis", "6-31g*"}}}, {"preview", false}});
+        QVERIFY2(!failed(response), qPrintable(QString::fromUtf8(QJsonDocument(response).toJson())));
+        QCOMPARE(nwchemSettings(w.document())["basis"].toString(), QString("6-31g*"));
+        response = change(s, "add_atom",
+                          {{"element", "He"}, {"position", QJsonArray{0, 0, -20}}, {"preview", false}});
+        QVERIFY(failed(response));
+        QVERIFY(QJsonDocument(response).toJson().contains("cannot make documents"));
+        QCOMPARE(w.document().atoms.size(), large.atoms.size());
+        QTemporaryDir dir;
+        QVERIFY(!failed(change(s, "save_file", {{"path", dir.filePath("large.molforma.json")}})));
+        // The summary instead of megabytes of project.
+        const auto summary = data(call(s, "get_document", scoped(s, {{"include", QJsonArray{"residues"}}})));
+        QVERIFY(!summary.contains("project"));
+        QCOMPARE(summary["atomCount"].toInt(), large.atoms.size());
+        const auto residues = summary["residues"].toObject();
+        const auto chains = residues["chains"].toArray();
+        QCOMPARE(chains.size(), 2);
+        QCOMPARE(chains[0].toObject(),
+                 QJsonObject({{"chain", "A"}, {"polymer", 3}, {"waters", 0}, {"first", 1}, {"last", 3}}));
+        QCOMPARE(chains[1].toObject()["waters"].toInt(), 3400);
+        QCOMPARE(residues["others"].toArray(),
+                 QJsonArray({QJsonObject{{"chain", "A"}, {"number", 101}, {"code", "ZN"}, {"atoms", 1}}}));
+        QVERIFY(QJsonDocument(summary).toJson(QJsonDocument::Compact).size() < 2000);
+        // A site cut out of it adds hydrogens, but the result is small.
+        response = change(
+            s, "cut_out_site",
+            {{"residues", QJsonArray{QJsonObject{{"code", "ZN"}}}}, {"radius", 3}, {"preview", false}});
+        QVERIFY2(!failed(response), qPrintable(QString::fromUtf8(QJsonDocument(response).toJson())));
+        QVERIFY(w.document().atoms.size() < 10000);
+        QVERIFY(w.document().contains(zinc));
+        // MCP itself makes no such document.
+        McpServer headless;
+        QString xyz = "10001\n\n";
+        for (int i = 0; i < 10001; ++i)
+            xyz += QString("He %1 %2 %3\n").arg(3 * (i % 22)).arg(3 * (i / 22 % 22)).arg(3 * (i / 484));
+        QVERIFY(failed(
+            change(headless, "import_document", {{"format", "xyz"}, {"text", xyz}, {"preview", false}})));
+        QCOMPARE(committed(headless).atoms.size(), 0);
+    }
     void cutOutSite() {
         QTemporaryDir dir;
         Document peptide;

@@ -175,7 +175,7 @@ Moving fixed atoms, invalid references, duplicate coordinates, invalid arguments
 
 | Tool | Purpose |
 | --- | --- |
-| `list_documents` / `get_document` | Get document IDs, revision, project and candidate. `include` sets what to return |
+| `list_documents` / `get_document` | Get document IDs, revision, project and candidate. `include` sets what to return (`[]`: the atom count and the like only). `include: ["residues"]` summarizes the residues of a large document: for each chain the count and number range of its polymer residues (amino acids, nucleotides) and its waters, and every other residue (ligands, ions, sugars) with chain, number and name (as `residues` of `cut_out_site` takes them) |
 | `list_templates` / `place_template` | Search and place built-in parts |
 | `add_atom` | Add an atom by element and coordinates in Å, with an optional bond partner and hydrogen completion |
 | `set_positions` / `translate` | Set coordinates or translate by stable ID |
@@ -356,7 +356,7 @@ Successful results return `resultType: "complete"`. An unsupported version gets 
 - Elicitation uses only the form mode. It covers only the `save_file` overwrite confirmation and `QMessageBox` during Tasks. Other dialogs, such as file dialogs, are operated with `get_ui` → `ui_*`.
 - The Tasks extension covers GUI change tools and, in headless mode, starting calculations and loading results. Document tools return their results synchronously.
 - GUI operations, result display and playback, screen capture, building from SMILES and cleanup, and the calculation history are available only with `--mcp-gui`. The windowless `--mcp` provides 23 document and settings tools and 4 calculation and result tools.
-- Reading is limited to 8 MiB per file (for gzip-compressed files, also after decompressing), receiving to 8 MiB per message, and documents to 10,000 atoms. A client that stops reading while more than 32 MiB of data waits to be sent is disconnected. JSON-RPC batches are not supported.
+- Reading is limited to 8 MiB per file (for gzip-compressed files, also after decompressing), and receiving to 8 MiB per message. MCP edits cannot make documents of more than 10,000 atoms; a larger document opened in the GUI can be edited without adding atoms (calculation settings, deletion, cutting out a site with `cut_out_site` and the like) and saved. A client that stops reading while more than 32 MiB of data waits to be sent is disconnected. JSON-RPC batches are not supported.
 - Without these arguments, PDB and mmCIF loading with `open_file` reads MODEL 1, selects ALTLOC automatically and reads everything. Structures of more than 10,000 atoms load when `chains` and the like narrow them down.
 - Document tools are synchronous; GUI change tools return an operation ID. To cancel long operations, use the cancel operations of `chemistry` / `calculation` / `results_action` / `history_action`. `notifications/cancelled` for completed RPCs is ignored. The undo history in headless mode keeps the latest 100 steps.
 - Result loading has the same limits as the existing viewer (128 MiB per file, 2,000 atoms and 2,000 structures, 200,000 atoms in total for a structure series). Screen captures are limited to 4,096 pixels in width and 8 MiB of PNG.
