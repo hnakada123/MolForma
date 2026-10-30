@@ -5,6 +5,7 @@
 #include "editing/stereochemistry.h"
 #include "model/geometry.h"
 #include "model/i18n.h"
+#include "model/structure_file.h"
 #include "model/topology.h"
 #include <QFileInfo>
 #include <QRegularExpression>
@@ -291,7 +292,7 @@ static Document mmcifStructure(const QVector<MmcifAtom> &atoms) {
     return fromOB(mol, true, chains);
 }
 Document importBabelStructure(const QString &path, int model, const QString &altloc) {
-    QString ext = QFileInfo(path).suffix().toLower();
+    QString ext = structureSuffix(path);
     if (ext == "ent")
         ext = "pdb";
     if (ext == "cif")
@@ -303,7 +304,7 @@ Document importBabelStructure(const QString &path, int model, const QString &alt
     // Open Babel knows some 150 formats; files from others go only through these common readers.
     if (!QStringList{"mol", "sdf", "mol2", "cml", "pdb", "mmcif"}.contains(ext))
         fail(tr("対応していない形式です: %1").arg(ext));
-    auto bytes = readFile(path);
+    auto bytes = readStructureFile(path);
     Document d;
     if (ext == "mmcif") {
         d = mmcifStructure(selectMmcif(mmcifAtoms(bytes), model, altloc));

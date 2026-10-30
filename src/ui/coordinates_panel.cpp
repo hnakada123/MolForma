@@ -4,6 +4,7 @@
 #include "editing/peptide.h"
 #include "io/structure_io.h"
 #include "model/geometry.h"
+#include "model/structure_file.h"
 #include "nwchem/nwchem_geometry.h"
 #include "ui/editor_chrome.h"
 #include "ui/main_window.h"
@@ -1018,9 +1019,9 @@ void CoordinatesPanel::pasteXyz() {
 }
 void CoordinatesPanel::importFile() {
     const auto base = window->revision();
-    QString path = QFileDialog::getOpenFileName(this, tr("構造を読み込んで置換候補を作成"),
-                                                window->preference("directory").toString(),
-                                                tr("分子構造 (*.xyz *.mol *.sdf *.pdb *.ent *.cif *.mmcif)"));
+    QString path = QFileDialog::getOpenFileName(
+        this, tr("構造を読み込んで置換候補を作成"), window->preference("directory").toString(),
+        tr("分子構造 (*.xyz *.mol *.sdf *.pdb *.ent *.cif *.mmcif *.gz)"));
     if (path.isEmpty())
         return;
     if (base != window->revision())
@@ -1045,7 +1046,7 @@ void CoordinatesPanel::dragEnterEvent(QDragEnterEvent *event) {
     // the window, which opens them.
     const auto urls = event->mimeData()->urls();
     if (urls.size() == 1 && urls.first().isLocalFile() &&
-        structureSuffixes.contains(QFileInfo(urls.first().toLocalFile()).suffix().toLower()))
+        structureSuffixes.contains(structureSuffix(urls.first().toLocalFile())))
         event->acceptProposedAction();
     else
         event->ignore();

@@ -7,6 +7,7 @@
 #include "io/structure_io.h"
 #include "mcp/tools.h"
 #include "model/geometry.h"
+#include "model/structure_file.h"
 #include "model/topology.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
@@ -824,7 +825,8 @@ void McpServer::registerTools() {
               "they "
               "share with MolForma. Multi-frame XYZ files need frame (0-based). PDB and mmCIF use model 1 "
               "and automatic "
-              "alternate-location selection. Maximum file size: 8 MiB.",
+              "alternate-location selection. Files may be gzip-compressed (.gz). Maximum file size: 8 MiB, "
+              "also after decompressing.",
           .properties = {{"path", type("string")},
                          {"frame", QJsonObject{{"type", "integer"}, {"minimum", 0}}}},
           .required = {"path"}},
@@ -834,11 +836,13 @@ void McpServer::registerTools() {
              QFileInfo info(path);
              if (!info.isFile() || info.size() > 8 * 1024 * 1024)
                  fail("Expected a regular structure file no larger than 8 MiB.");
+             if (compressedFile(path))
+                 readStructureFile(path, 8 * 1024 * 1024); // The limit holds for the decompressed contents.
              // A project replaces everything; a structure file only the structure, as in the GUI's
              // coordinate table, so calculation and execution settings stay. NWChem and Gaussian
              // inputs also set charge and multiplicity, and NWChem inputs the calculation settings
              // (keeping the advanced options and the additional input the user chose).
-             const auto suffix = info.suffix().toLower();
+             const auto suffix = structureSuffix(path);
              const int frame = args.contains("frame") ? args["frame"].toInt() : -1;
              if (suffix == "json") {
                  next = importStructure(path);

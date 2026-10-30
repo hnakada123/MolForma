@@ -16,6 +16,7 @@ MolForma has no package in the official repositories or the AUR (as of 2026-10-2
 | Run time | `openbabel` | Reading and writing structure files, force-field cleanup, 3D structures from SMILES (includes the format plugins and force-field data) |
 | Run time | `rdkit` | Strict stereo perception (R/S, E/Z), residue recognition |
 | Run time | `vtk` | Drawing the 3D view with VTK (OpenGL) |
+| Run time | `zlib` | Reading gzip-compressed structure files |
 | Build time | `git`, `cmake`, `ninja`, `eigen` | Fetching the source and building |
 | Build time | `boost`, `fast_float`, `nlohmann-json`, `openmpi` | What the CMake configurations of RDKit and VTK refer to |
 

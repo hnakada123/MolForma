@@ -8,7 +8,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential cmake ninja-build git pkgconf file ca-certificates curl \
         qt6-base-dev qt6-base-dev-tools qt6-translations-l10n \
-        libeigen3-dev libopenbabel-dev librdkit-dev libboost-iostreams-dev libboost-serialization-dev \
+        libeigen3-dev zlib1g-dev libopenbabel-dev librdkit-dev libboost-iostreams-dev libboost-serialization-dev \
         libgl-dev libegl-dev libglx-dev libx11-dev libxcursor-dev \
     && rm -rf /var/lib/apt/lists/*
 

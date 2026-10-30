@@ -15,6 +15,7 @@ The build needs these packages (see [1. Install the packages](#1-install-the-pac
 | Required | `build-essential`, `cmake`, `ninja-build`, `git`, `pkgconf`, `file` | Building and making the deb package (CPack uses `file` to look up the shared libraries used) |
 | Required | `qt6-base-dev` | The interface (Qt Widgets), the tests (Qt Test) |
 | Required | `libeigen3-dev` | Coordinate and geometry calculations |
+| Required | `zlib1g-dev` | Reading gzip-compressed structure files |
 | Required | `libopenbabel-dev` | Reading and writing structure files, force-field cleanup, 3D structures from SMILES |
 | Optional | `librdkit-dev`, `libboost-iostreams-dev`, `libboost-serialization-dev` | Strict stereo perception (R/S, E/Z), residue recognition. RDKit's CMake configuration refers to the two Boost packages |
 | Optional | `libvtk9-dev`, `libvtk9-qt-dev` | Drawing the 3D view with VTK (OpenGL). `nlohmann-json3-dev` and the MPI development packages that VTK's CMake configuration refers to come in as dependencies |
@@ -32,7 +33,7 @@ Update the package lists and install the required packages.
 
 ```sh
 sudo apt update
-sudo apt install build-essential cmake ninja-build git pkgconf file qt6-base-dev libeigen3-dev libopenbabel-dev
+sudo apt install build-essential cmake ninja-build git pkgconf file qt6-base-dev libeigen3-dev zlib1g-dev libopenbabel-dev
 ```
 
 For RDKit and VTK, install these as well. VTK's development package has many dependencies (the Java version of VTK and more): from a bare system, about 780 packages with the ones above, and about 1 GB to download.

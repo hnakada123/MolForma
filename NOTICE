@@ -13,12 +13,13 @@ assets/library.json (molecule-builder fragments) and assets/elements.json (eleme
 data) are part of MolForma and are under the same license. Some fragment geometries
 were generated with RDKit (BSD-3-Clause).
 
-Qt6, Eigen3, Open Babel 3 and the optional RDKit and VTK are system dependencies, not
-vendored here; their own license terms apply. Open Babel 3 is licensed under the GNU
+Qt6, Eigen3, zlib, Open Babel 3 and the optional RDKit and VTK are system dependencies,
+not vendored here; their own license terms apply. Open Babel 3 is licensed under the GNU
 GPL version 2 only, so binaries linked with it are distributed under GPL version 2.
 The Qt modules MolForma uses (Core, Gui, Widgets, OpenGL, OpenGL Widgets) are also
 offered under GPL-2.0-only; binaries linked with Open Babel use Qt under that option.
-Eigen (MPL-2.0), RDKit and VTK (BSD-3-Clause) are compatible with GPL version 2.
+Eigen (MPL-2.0), zlib (zlib license), RDKit and VTK (BSD-3-Clause) are compatible with GPL
+version 2.
 The AppImage made with packaging/appimage bundles these libraries and those they use,
 with their license texts in usr/share/doc; whoever distributes it distributes those
 binaries too, under their terms (for Open Babel and Qt, the GPL's source requirement).

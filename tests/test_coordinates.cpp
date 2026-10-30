@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/atom_properties.h"
 #include "editing/peptide.h"
+#include "gzip.h"
 #include "model/geometry.h"
 #include "nwchem/nwchem_geometry.h"
 #include "ui/coordinates_panel.h"
@@ -93,15 +94,15 @@ class CoordinatesTest : public QObject {
                           "ENDMDL\nMODEL        7\n"
                           "ATOM      1  CA BALA A   1       1.000   0.000   0.000  0.40 20.00           C\n"
                           "ENDMDL\n");
-        QTest::newRow("mmcif")
-            << "models.cif"
-            << QByteArray("data_MODELS\nloop_\n_atom_site.group_PDB\n_atom_site.id\n"
-                          "_atom_site.type_symbol\n_atom_site.label_atom_id\n_atom_site.label_alt_id\n"
-                          "_atom_site.label_comp_id\n_atom_site.auth_asym_id\n_atom_site.auth_seq_id\n"
-                          "_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\n"
-                          "_atom_site.occupancy\n_atom_site.pdbx_PDB_model_num\n"
-                          "ATOM 1 C CA A ALA A 1 0.000 0.000 0.000 0.60 2\n"
-                          "ATOM 2 C CA B ALA A 1 1.000 0.000 0.000 0.40 7\n");
+        const QByteArray mmcif("data_MODELS\nloop_\n_atom_site.group_PDB\n_atom_site.id\n"
+                               "_atom_site.type_symbol\n_atom_site.label_atom_id\n_atom_site.label_alt_id\n"
+                               "_atom_site.label_comp_id\n_atom_site.auth_asym_id\n_atom_site.auth_seq_id\n"
+                               "_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\n"
+                               "_atom_site.occupancy\n_atom_site.pdbx_PDB_model_num\n"
+                               "ATOM 1 C CA A ALA A 1 0.000 0.000 0.000 0.60 2\n"
+                               "ATOM 2 C CA B ALA A 1 1.000 0.000 0.000 0.40 7\n");
+        QTest::newRow("mmcif") << "models.cif" << mmcif;
+        QTest::newRow("mmcif.gz") << "models.cif.gz" << gzip(mmcif); // As the PDB hands it out.
     }
     void sharedPdbImportChoices() {
         QFETCH(QString, name);

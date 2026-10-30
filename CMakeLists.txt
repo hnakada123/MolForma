@@ -7,6 +7,7 @@ set(CMAKE_AUTORCC ON)
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets)
 set(CMAKE_FIND_USE_PACKAGE_REGISTRY FALSE)
 find_package(Eigen3 REQUIRED NO_MODULE)
+find_package(ZLIB REQUIRED)
 if(MSVC)
     # Open Babel's MSVC build installs a CMake package but no pkg-config file (docs/installation/windows.md).
     find_package(OpenBabel3 3 CONFIG REQUIRED)
@@ -30,11 +31,12 @@ add_library(molforma_model STATIC
     src/model/document.cpp
     src/model/geometry.cpp
     src/model/i18n.cpp
+    src/model/structure_file.cpp
     src/model/topology.cpp
     assets/resources.qrc)
 target_include_directories(molforma_model PUBLIC src)
 target_compile_definitions(molforma_model PUBLIC MOLFORMA_VERSION="${PROJECT_VERSION}")
-target_link_libraries(molforma_model PUBLIC Qt6::Core Qt6::Gui Eigen3::Eigen)
+target_link_libraries(molforma_model PUBLIC Qt6::Core Qt6::Gui Eigen3::Eigen PRIVATE ZLIB::ZLIB)
 
 add_library(molforma_editing STATIC
     src/editing/atom_properties.cpp
@@ -187,7 +189,7 @@ if(BUILD_TESTING)
     target_link_libraries(test_services PRIVATE molforma_core Qt6::Test)
     add_test(NAME services COMMAND test_services)
     add_executable(test_core tests/test_core.cpp)
-    target_link_libraries(test_core PRIVATE molforma_core Qt6::Test)
+    target_link_libraries(test_core PRIVATE molforma_core Qt6::Test ZLIB::ZLIB)
     target_compile_definitions(test_core PRIVATE FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
                                                  RECIPES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/docs/recipes/samples")
     add_test(NAME core COMMAND test_core)
@@ -202,7 +204,7 @@ if(BUILD_TESTING)
     add_test(NAME rendering COMMAND test_rendering)
     set_tests_properties(rendering PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 120)
     add_executable(test_coordinates tests/test_coordinates.cpp)
-    target_link_libraries(test_coordinates PRIVATE molforma_ui Qt6::Test)
+    target_link_libraries(test_coordinates PRIVATE molforma_ui Qt6::Test ZLIB::ZLIB)
     add_test(NAME coordinates COMMAND test_coordinates)
     add_executable(test_calculation tests/test_calculation.cpp)
     target_link_libraries(test_calculation PRIVATE molforma_ui Qt6::Test)

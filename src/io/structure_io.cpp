@@ -2,6 +2,7 @@
 #include "io/structure_io.h"
 #include "editing/chemistry.h"
 #include "model/i18n.h"
+#include "model/structure_file.h"
 #include "nwchem/nwchem_import.h"
 #include <QFileInfo>
 #include <QRegularExpression>
@@ -87,11 +88,14 @@ Document gaussianStructure(const QString &text) {
     return d;
 }
 Document importStructure(const QString &path, int model, const QString &altloc, int xyzFrame) {
-    const auto ext = QFileInfo(path).suffix().toLower();
-    if (ext == "json")
+    const auto ext = structureSuffix(path);
+    if (ext == "json") {
+        if (compressedFile(path))
+            fail(tr("圧縮したプロジェクトは開けません。展開してから開いてください。"));
         return Document::load(path);
+    }
     if (ext == "xyz") {
-        const auto frames = xyzFrames(QString::fromUtf8(readFile(path)));
+        const auto frames = xyzFrames(QString::fromUtf8(readStructureFile(path)));
         if (frames.size() > 1 && (xyzFrame < 0 || xyzFrame >= frames.size()))
             fail(tr("%1フレームのXYZです。読み込むフレーム（0〜%2）を指定してください。")
                      .arg(frames.size())
@@ -99,9 +103,9 @@ Document importStructure(const QString &path, int model, const QString &altloc, 
         return xyzStructure(frames.value(std::max(0, xyzFrame)));
     }
     if (ext == "nw" || ext == "nwinp")
-        return importNwchemInput(QString::fromUtf8(readFile(path))).document;
+        return importNwchemInput(QString::fromUtf8(readStructureFile(path))).document;
     if (ext == "gjf" || ext == "com" || ext == "gau")
-        return gaussianStructure(QString::fromUtf8(readFile(path)));
+        return gaussianStructure(QString::fromUtf8(readStructureFile(path)));
     return importBabelStructure(path, model, altloc);
 }
 void exportStructure(const Document &document, const QString &path) {

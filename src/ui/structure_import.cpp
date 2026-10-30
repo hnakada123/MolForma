@@ -4,6 +4,7 @@
 #include "editing/mmcif.h"
 #include "io/structure_io.h"
 #include "model/i18n.h"
+#include "model/structure_file.h"
 #include <QFileInfo>
 #include <QInputDialog>
 #include <QRegularExpression>
@@ -11,18 +12,18 @@
 namespace mf {
 std::optional<StructureImportOptions> chooseStructureImport(QWidget *parent, const QString &path) {
     StructureImportOptions options;
-    const auto suffix = QFileInfo(path).suffix().toLower();
+    const auto suffix = structureSuffix(path);
     bool ok = true;
     const bool pdb = suffix == "pdb" || suffix == "ent";
     if (pdb || suffix == "cif" || suffix == "mmcif") {
         QStringList models;
         bool altlocs;
         if (pdb) {
-            const auto text = QString::fromUtf8(readFile(path));
+            const auto text = QString::fromUtf8(readStructureFile(path));
             models = pdbModels(text);
             altlocs = text.contains(QRegularExpression("(?m)^(ATOM  |HETATM).{10}[A-Z]"));
         } else {
-            const auto atoms = mmcifAtoms(readFile(path));
+            const auto atoms = mmcifAtoms(readStructureFile(path));
             models = mmcifModels(atoms);
             altlocs = std::any_of(atoms.begin(), atoms.end(),
                                   [](const MmcifAtom &a) { return !a.altloc.isEmpty(); });
@@ -46,7 +47,7 @@ std::optional<StructureImportOptions> chooseStructureImport(QWidget *parent, con
                 options.altloc.clear();
         }
     } else if (suffix == "xyz") {
-        const auto frames = xyzFrames(QString::fromUtf8(readFile(path)));
+        const auto frames = xyzFrames(QString::fromUtf8(readStructureFile(path)));
         options.frame = 0;
         if (frames.size() > 2000) {
             options.frame =

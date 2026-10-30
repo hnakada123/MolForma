@@ -9,7 +9,7 @@ pkgdesc='Molecular editor, input builder and result viewer for NWChem'
 arch=('x86_64')
 url='https://hnakada123.github.io/MolForma/'
 license=('GPL-2.0-or-later')
-depends=('qt6-base' 'openbabel' 'rdkit' 'vtk')
+depends=('qt6-base' 'openbabel' 'rdkit' 'vtk' 'zlib')
 # VTK's CMake files need fast_float, nlohmann-json and Open MPI, and RDKit's need Boost.
 makedepends=('git' 'cmake' 'ninja' 'eigen' 'boost' 'fast_float' 'nlohmann-json' 'openmpi')
 optdepends=('nwchem: running calculations (AUR)'

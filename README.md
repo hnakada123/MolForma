@@ -8,7 +8,7 @@ NWChem向けの分子作成・座標編集・計算入力作成を行う、Qt6 /
 
 ## ビルドと起動
 
-必要な開発パッケージは Qt6 Widgets / Test、Eigen3、Open Babel 3、CMake 3.21以上、C++20コンパイラです。Ninjaを使う例:
+必要な開発パッケージは Qt6 Widgets / Test、Eigen3、zlib、Open Babel 3、CMake 3.21以上、C++20コンパイラです。Ninjaを使う例:
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -111,6 +111,6 @@ QT_QPA_PLATFORM=offscreen ./build/molforma \
 
 ## ライセンス
 
-MolFormaは [GNU General Public License](LICENSE) バージョン2、または（選択により）それ以降のバージョン（GPL-2.0-or-later）で配布します。同梱の部品データ101件と元素データも同じ条件です。リンクする外部ライブラリ（Qt6・Eigen3・Open Babel 3・RDKit・VTK）はそれぞれのライセンスに従います。Open BabelがGPL-2.0-onlyのため、Open Babelとリンクしたバイナリを配布する場合はGPLバージョン2の条件に従います（[NOTICE](NOTICE)）。
+MolFormaは [GNU General Public License](LICENSE) バージョン2、または（選択により）それ以降のバージョン（GPL-2.0-or-later）で配布します。同梱の部品データ101件と元素データも同じ条件です。リンクする外部ライブラリ（Qt6・Eigen3・zlib・Open Babel 3・RDKit・VTK）はそれぞれのライセンスに従います。Open BabelがGPL-2.0-onlyのため、Open Babelとリンクしたバイナリを配布する場合はGPLバージョン2の条件に従います（[NOTICE](NOTICE)）。
 
 MolFormaはNWChemを同梱していません。計算には別にインストールしたNWChemを使い、NWChemはそれ自身のライセンス（[Educational Community License 2.0](https://github.com/nwchemgit/nwchem/blob/master/LICENSE.TXT)）に従います。MolFormaはNWChemの開発元とは関係のない独立したソフトウェアです。NWChemで得た結果を発表する際は、NWChemの文献（E. Aprà et al., “NWChem: Past, present, and future”, *J. Chem. Phys.* 152, 184102 (2020), [doi:10.1063/5.0004997](https://doi.org/10.1063/5.0004997)）を引用してください。

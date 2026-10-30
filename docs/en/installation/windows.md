@@ -13,7 +13,7 @@ There is no installer or binary download of MolForma for Windows. You build it f
 | Required | Visual Studio 2022 or later (workload “Desktop development with C++”) | The MSVC compiler, Windows SDK, CMake and Ninja |
 | Required | Git for Windows | Getting the sources; its Perl is used to build Open Babel |
 | Required | “MSVC 2022 64-bit” of Qt 6 (6.4 or later) | The interface (Qt Widgets), the tests (Qt Test), `windeployqt` |
-| Required | `eigen3`, `zlib` and `libxml2` from vcpkg | Coordinate and geometry calculations, building Open Babel |
+| Required | `eigen3`, `zlib` and `libxml2` from vcpkg | Coordinate and geometry calculations, reading gzip-compressed structure files, building Open Babel |
 | Required | Open Babel 3.2.1 (built from source) | Reading and writing structure files, force-field cleanup, 3D structures from SMILES |
 | Optional | RDKit Release_2026_09_1 (built from source) with Boost from vcpkg | Strict stereo perception (R/S, E/Z), residue recognition |
 | Optional | VTK 9.7.1 (built from source for Qt 6) | Drawing the 3D view with VTK (OpenGL); without it, QPainter (CPU) draws it |

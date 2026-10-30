@@ -16,6 +16,7 @@ MolFormaのパッケージは公式リポジトリにもAURにもありません
 | 実行時 | `openbabel` | 構造ファイルの読み書き、力場による整形、SMILESからの3D構造（フォーマットプラグインと力場データを含む） |
 | 実行時 | `rdkit` | 厳密な立体判定（R/S・E/Z）、残基認識 |
 | 実行時 | `vtk` | 3D画面をVTK（OpenGL）で描画 |
+| 実行時 | `zlib` | gzipで圧縮した構造ファイルの読込 |
 | ビルド時 | `git`、`cmake`、`ninja`、`eigen` | ソースの取得とビルド |
 | ビルド時 | `boost`、`fast_float`、`nlohmann-json`、`openmpi` | RDKit・VTKのCMakeの設定が参照するもの |
 

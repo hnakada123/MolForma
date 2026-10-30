@@ -22,6 +22,7 @@ On every OS, MolForma uses the following software. Python is not needed at run t
 | Required | A C++20 compiler, CMake 3.21 or later, pkg-config (not with MSVC) | Building |
 | Required | Qt6 (6.4 or later; Widgets, and Test for the tests) | The interface |
 | Required | Eigen3 | Coordinate and geometry calculations |
+| Required | zlib | Reading gzip-compressed structure files |
 | Required | Open Babel 3 (the C++ library with its format plugins and force-field data) | Reading and writing structure files, force-field cleanup, 3D structures from SMILES |
 | Optional | RDKit C++ | Strict stereo perception (R/S, E/Z), residue recognition |
 | Optional | VTK 9.1 or later built for Qt6 (development package) | Drawing the 3D view with VTK (OpenGL); without it, QPainter (CPU) draws it |

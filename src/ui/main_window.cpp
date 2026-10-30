@@ -7,6 +7,7 @@
 #include "io/structure_io.h"
 #include "model/i18n.h"
 #include "model/settings.h"
+#include "model/structure_file.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_import.h"
@@ -909,7 +910,7 @@ void MainWindow::newDocument() {
 void MainWindow::open() {
     QString p = QFileDialog::getOpenFileName(this, tr("分子を開く"), settings.value("directory").toString(),
                                              tr("分子 (*.molforma.json *.json *.xyz *.mol *.sdf *.mol2 *.cml "
-                                                "*.pdb *.ent *.cif *.mmcif *.nw *.gjf *.com);;"
+                                                "*.pdb *.ent *.cif *.mmcif *.gz *.nw *.gjf *.com);;"
                                                 "NWChem入力 (*.nw);;Gaussian入力 (*.gjf *.com);;すべて (*)"));
     if (p.isEmpty() || !confirmDiscard())
         return;
@@ -930,10 +931,10 @@ void MainWindow::loadPath(const QString &p) {
     if (!options)
         return;
     Document next;
-    if (QFileInfo(p).suffix().toLower() == "nw") {
+    if (structureSuffix(p) == "nw") {
         NwchemImport imported;
         reading([&] {
-            imported = importNwchemInput(QString::fromUtf8(readFile(p)));
+            imported = importNwchemInput(QString::fromUtf8(readStructureFile(p)));
             return imported.document;
         });
         next = imported.document;

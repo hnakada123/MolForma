@@ -15,6 +15,7 @@ MolFormaのパッケージは、Ubuntuの公式リポジトリにもPPAにもあ
 | 必須 | `build-essential`、`cmake`、`ninja-build`、`git`、`pkgconf`、`file` | ビルドとdebパッケージの作成（`file` はCPackが依存ライブラリを調べるのに使う） |
 | 必須 | `qt6-base-dev` | 画面（Qt Widgets）、テスト（Qt Test） |
 | 必須 | `libeigen3-dev` | 座標・幾何の計算 |
+| 必須 | `zlib1g-dev` | gzipで圧縮した構造ファイルの読込 |
 | 必須 | `libopenbabel-dev` | 構造ファイルの読み書き、力場による整形、SMILESからの3D構造 |
 | 任意 | `librdkit-dev`、`libboost-iostreams-dev`、`libboost-serialization-dev` | 厳密な立体判定（R/S・E/Z）、残基認識。Boostの2つは、RDKitのCMakeの設定が参照する |
 | 任意 | `libvtk9-dev`、`libvtk9-qt-dev` | 3D画面をVTK（OpenGL）で描画。VTKのCMakeの設定が参照する `nlohmann-json3-dev` やMPIの開発用パッケージも、依存として入る |
@@ -32,7 +33,7 @@ MolFormaのパッケージは、Ubuntuの公式リポジトリにもPPAにもあ
 
 ```sh
 sudo apt update
-sudo apt install build-essential cmake ninja-build git pkgconf file qt6-base-dev libeigen3-dev libopenbabel-dev
+sudo apt install build-essential cmake ninja-build git pkgconf file qt6-base-dev libeigen3-dev zlib1g-dev libopenbabel-dev
 ```
 
 RDKitとVTKを使う場合は、続けて次を入れます。VTKの開発用パッケージは依存するもの（Java版のVTKなど）が多く、何もない状態からは上と合わせて約780個、ダウンロードは約1 GBになります。

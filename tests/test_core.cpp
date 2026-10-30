@@ -7,8 +7,10 @@
 #include "editing/operations.h"
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
+#include "gzip.h"
 #include "io/structure_io.h"
 #include "model/geometry.h"
+#include "model/structure_file.h"
 #include "model/topology.h"
 #include "nwchem/nwchem.h"
 #include <QJsonDocument>
@@ -581,6 +583,52 @@ class CoreTest : public QObject {
         QVERIFY(message("data_X\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n"
                         "_atom_site_fract_z\nC1 0.1 0.2 0.3\n")
                     .contains("_atom_site"));
+    }
+    // Structure files open gzip-compressed, as the PDB hands them out, through the readers of their format.
+    void compressedStructureFiles() {
+        QCOMPARE(structureSuffix("/data/10MU.CIF.GZ"), QString("cif"));
+        QCOMPARE(structureSuffix("pdb10mu.ent.gz"), QString("ent"));
+        QCOMPARE(structureSuffix("water.xyz"), QString("xyz"));
+        QTemporaryDir temp;
+        const auto file = [&](const QString &name, const QByteArray &bytes) {
+            const auto path = temp.filePath(name);
+            writeFile(path, bytes);
+            return path;
+        };
+        const QByteArray xyz = "3\nwater\nO 0 0 0\nH .96 0 0\nH -.24 .93 0\n";
+        QCOMPARE(importStructure(file("water.xyz.gz", gzip(xyz))).atoms.size(), 3);
+        Document peptide;
+        buildPeptide(peptide, {"ALA", "GLY", "SER"}, "charged", "charged");
+        const auto pdb = temp.filePath("peptide.pdb");
+        exportStructure(peptide, pdb);
+        const auto plain = importStructure(pdb);
+        const auto packed = importStructure(file("peptide.ent.gz", gzip(readFile(pdb))));
+        QCOMPARE(packed.atoms.size(), plain.atoms.size());
+        QCOMPARE(packed.bonds.size(), plain.bonds.size());
+        QCOMPARE(packed.residues.size(), 3);
+        QCOMPARE(packed.data["metadata"].toObject()["source_format"].toString(), QString("pdb"));
+        // Members joined with cat read as one file.
+        QCOMPARE(readStructureFile(file("joined.xyz.gz", gzip(xyz.left(10)) + gzip(xyz.mid(10)))), xyz);
+        const auto refusal = [](const std::function<void()> &read) {
+            try {
+                read();
+            } catch (const std::exception &e) {
+                return QString::fromUtf8(e.what());
+            }
+            return QString();
+        };
+        QVERIFY(refusal([&] {
+                    readStructureFile(file("cut.xyz.gz", gzip(xyz).chopped(4)));
+                }).contains("cut.xyz.gz"));
+        QVERIFY(refusal([&] { readStructureFile(file("plain.xyz.gz", xyz)); }).contains("gzip"));
+        // A small file that would decompress past the limit stops there.
+        QVERIFY(refusal([&] {
+                    readStructureFile(file("zeros.xyz.gz", gzip(QByteArray(3 << 20, '0'))), 1 << 20);
+                }).contains("1 MiB"));
+        const auto project = readFile(QString(FIXTURE_DIR) + "/ala_gly_ser.molforma.json");
+        QVERIFY(refusal([&] {
+                    importStructure(file("project.molforma.json.gz", gzip(project)));
+                }).contains("圧縮"));
     }
     void templateLibrary() {
         QCOMPARE(templates().size(), 101);

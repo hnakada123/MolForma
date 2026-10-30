@@ -13,7 +13,7 @@ MolFormaのWindows用のインストーラーや配布ファイルはありま�
 | 必須 | Visual Studio 2022以降（ワークロード「C++によるデスクトップ開発」） | MSVCのコンパイラ、Windows SDK、CMake、Ninja |
 | 必須 | Git for Windows | ソースの取得。付属のPerlをOpen Babelのビルドに使う |
 | 必須 | Qt 6（6.4以上）の「MSVC 2022 64-bit」 | 画面（Qt Widgets）、テスト（Qt Test）、`windeployqt` |
-| 必須 | vcpkgの `eigen3`・`zlib`・`libxml2` | 座標・幾何の計算、Open Babelのビルド |
+| 必須 | vcpkgの `eigen3`・`zlib`・`libxml2` | 座標・幾何の計算、gzipで圧縮した構造ファイルの読込、Open Babelのビルド |
 | 必須 | Open Babel 3.2.1（ソースからビルド） | 構造ファイルの読み書き、力場による整形、SMILESからの3D構造 |
 | 任意 | RDKit Release_2026_09_1（ソースからビルド）と、vcpkgのBoost | 厳密な立体判定（R/S・E/Z）、残基認識 |
 | 任意 | VTK 9.7.1（Qt 6に合わせてソースからビルド） | 3D画面をVTK（OpenGL）で描画。ないときはQPainter（CPU）で描画 |
