@@ -1294,8 +1294,9 @@ void MainWindow::showShortcuts() {
         row(keys.join(" / "), text,
             a->shortcutContext() == Qt::WidgetWithChildrenShortcut ? tr("「1 分子」") : tr("全体", "where"));
     }
-    for (const auto &[key, text] : {std::pair{tr("左ドラッグ"), tr("回転（画面の縦・横軸まわり）")},
-                                    {tr("右ドラッグ"), tr("平行移動", "view")},
+    for (const auto &[key, text] : {std::pair{tr("左ドラッグ"), tr("視点を回転（画面の縦・横軸まわり）")},
+                                    {tr("右ドラッグ"), tr("視点を平行移動")},
+                                    {tr("移動ツールで原子をドラッグ"), tr("原子の座標を動かす")},
                                     {tr("ホイール"), tr("カーソル位置を中心に拡大・縮小")},
                                     {tr("クリック"), tr("原子を選択（選択単位に従う）")},
                                     {tr("Shift／Ctrl＋クリック"), tr("選択へ追加・解除（順番を保持）")},

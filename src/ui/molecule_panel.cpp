@@ -108,7 +108,8 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
          {std::tuple{EditorTool::Select, tr("選択"), "S",
                      tr("原子を選択します。Shift／Ctrl＋クリックで追加、Shiftドラッグで範囲選択。")},
           {EditorTool::Move, tr("移動"), "M",
-           tr("原子をドラッグして動かします（付いている水素と、選択中なら選択全体が一緒に動きます）。")},
+           tr("原子をドラッグして座標を動かします（付いている水素と、選択中なら選択全体が一緒に動きます）。"
+              "空白のドラッグとAltドラッグは視点の回転です。")},
           {EditorTool::Bond, tr("結合"), "B", tr("2原子を順にクリックして、上の「結合の種類」にします。")},
           {EditorTool::Delete, tr("削除"), "X", tr("クリックした原子を削除する候補を作ります。")},
           {EditorTool::Place, tr("配置"), "A",
@@ -1830,7 +1831,8 @@ void MoleculePanel::refreshToolHint() {
             tr("クリック: 選択 · Shift／Ctrl＋クリック: 追加・解除（順番を保持） · Shiftドラッグ: 範囲選択");
         break;
     case EditorTool::Move:
-        hint = tr("移動: 原子をドラッグ（付いている水素と、選択中なら選択全体も動く） · Altドラッグ: 回転");
+        hint = tr("移動: 原子をドラッグして座標を変える（付いている水素と、選択中なら選択全体も動く） · "
+                  "空白のドラッグ・Altドラッグ: 視点を回転");
         break;
     case EditorTool::Bond:
         hint = tr("結合（%1）: 2原子を順にクリック · 種類は3D画面の上の「結合の種類」で選択")

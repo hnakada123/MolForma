@@ -653,7 +653,7 @@ void repolish(QWidget *widget) {
     widget->style()->polish(widget);
 }
 QString viewControlsHint() {
-    return tr("左ドラッグ: 回転 · 右ドラッグ: 平行移動 · ホイール: 拡大縮小");
+    return tr("左ドラッグ: 視点を回転 · 右ドラッグ: 視点を平行移動 · ホイール: 拡大縮小");
 }
 QString calculationBrief(const Document &d) {
     const auto s = nwchemSettings(d);
