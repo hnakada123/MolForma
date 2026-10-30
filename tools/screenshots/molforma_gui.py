@@ -226,6 +226,7 @@ class Gui:
         self.answer(*DISCARD)
         self.wait(self.tool("ui_file_dialog", target=self.modal(), path=path, accept=True), 1.0)
         self.answer(*DISCARD)  # Unsaved changes are asked about after the file is chosen.
+        self.answer("OK")  # What to read of a PDB or mmCIF file: all of it, as the dialog proposes.
         time.sleep(0.5)
         self.idle()
 

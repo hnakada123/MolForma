@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordination.h"
 #include "editing/library.h"
+#include "editing/peptide.h"
+#include "io/structure_io.h"
 #include "mcp/headless.h"
 #include "mcp/server.h"
 #include "mcp/stdio_transport.h"
@@ -969,6 +971,55 @@ class McpTest : public QObject {
         QVERIFY(failed(
             change(server, "open_file", {{"path", pdb}, {"chains", QJsonArray{"X"}}, {"preview", false}})));
         QCOMPARE(committed(server).formula(), QString("CZn"));
+    }
+    // A site cut out of a structure file in one edit, so that its size is what counts, or of the document.
+    void cutOutSite() {
+        QTemporaryDir dir;
+        Document peptide;
+        buildPeptide(peptide, {"GLY", "LYS", "GLY", "ASP", "GLY"}, "charged", "charged");
+        const auto pdb = dir.filePath("peptide.pdb");
+        exportStructure(peptide, pdb);
+        McpServer server;
+        QVERIFY(!failed(change(server, "set_nwchem",
+                               {{"settings", QJsonObject{{"basis", "6-31g*"}}}, {"preview", false}})));
+        auto response = change(server, "cut_out_site",
+                               {{"path", pdb},
+                                {"residues", QJsonArray{QJsonObject{{"number", 3}}}},
+                                {"radius", 0.1},
+                                {"pointCharges", true},
+                                {"chargeRadius", 100},
+                                {"preview", false}});
+        QVERIFY2(!failed(response), qPrintable(QString::fromUtf8(QJsonDocument(response).toJson())));
+        auto site = committed(server);
+        QCOMPARE(site.residues.size(), 1);
+        QCOMPARE(site.residues[0].code, QString("GLY"));
+        QCOMPARE(std::count_if(site.atoms.begin(), site.atoms.end(), [](const Atom &a) { return a.fixed; }),
+                 2);
+        QCOMPARE(site.pointCharges.size(), 6); // NH3+, Lys, Asp and COO− of the residues removed.
+        QCOMPARE(site.charge, 0);
+        QVERIFY(nwchemSettings(site)["include_point_charges"].toBool());
+        QCOMPARE(nwchemSettings(site)["basis"].toString(), QString("6-31g*")); // Settings stay.
+        // The fixed atoms at the cuts stay: a smaller site that would remove them is refused.
+        const auto alpha = site.residues[0].atoms["CA"];
+        QVERIFY(failed(change(
+            server, "cut_out_site",
+            {{"ids", QJsonArray{alpha}}, {"radius", 0}, {"wholeResidues", false}, {"preview", false}})));
+        QCOMPARE(committed(server).atoms.size(), site.atoms.size());
+        // The document itself, by atom IDs; the IDs of a file's atoms do not exist yet.
+        McpServer opened;
+        QVERIFY(!failed(change(opened, "open_file", {{"path", pdb}, {"preview", false}})));
+        const auto whole = committed(opened);
+        QVERIFY(!failed(change(
+            opened, "cut_out_site",
+            {{"ids", QJsonArray{whole.residues[2].atoms["CA"]}}, {"radius", 0.1}, {"preview", false}})));
+        QCOMPARE(committed(opened).residues.size(), 1);
+        QVERIFY(committed(opened).atoms.size() < whole.atoms.size());
+        QVERIFY(failed(
+            change(server, "cut_out_site", {{"path", pdb}, {"ids", QJsonArray{alpha}}, {"preview", false}})));
+        QVERIFY(failed(change(
+            server, "cut_out_site",
+            {{"path", pdb}, {"residues", QJsonArray{QJsonObject{{"code", "TRP"}}}}, {"preview", false}})));
+        QVERIFY(failed(change(server, "cut_out_site", {{"preview", false}})));
     }
     void filesResourcesAndNwchem() {
         McpServer server;

@@ -185,6 +185,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `set_atom_properties` | 安定IDの原子の元素（`hydrogens` で水素の調整）、形式電荷、不対電子、同位体（質量数、0で解除）または質量（amu）、固定、ゴースト、原子名の変更 |
 | `import_document` | XYZ文字列またはMolFormaプロジェクト（`.molforma.json`、version 1）のJSON文字列の取込。XYZは `append: true` で今の分子の横に追加 |
 | `open_file` | ローカルXYZ/MOL/SDF/Mol2/CML/PDB/mmCIF/MolFormaプロジェクト、NWChem・Gaussian入力の取込。複数フレームのXYZは `frame`、PDB・mmCIFは `model`・`altloc`・`chains`・`polymer`・`ligands`・`water` で選択 |
+| `cut_out_site` | 活性部位の切り出し（「残基」ページの「活性部位の切り出し」と同じ）。中心は `ids`（今の文書の原子ID）か `residues`（著者の鎖ID `chain`・残基番号 `number`・残基名 `code` で指定）、`radius`（既定5 Å）・`wholeResidues`・`water`・`fixCuts`・`hydrogens`（pH 7の水素、既定 `true`）・`pointCharges`（既定 `false`）・`chargeRadius`（既定15 Å）。`path` を指定するとファイル（`model`・`altloc`・`chains` は `open_file` と同じ）を読み込んで切り出し、結果だけを今の構造と置き換えて全電荷を部位の値にするので、1万原子を超える構造にも使える |
 | `export_document` | 確定文書のXYZ、MolFormaプロジェクトのJSON、検証済みNWChem入力文字列 |
 | `save_file` | 確定文書をMolFormaプロジェクト（`.molforma.json`）として保存。既存ファイルは `overwrite: true` か、利用者の上書き承認が必要 |
 | `get_nwchem` / `set_nwchem` | 計算条件・既定値・選択肢（`choices`）・検証結果の取得と条件変更。溶媒（SMD・溶媒名）、相対論、RI-J、物性、遷移状態探索・IRC・拘束（`constraints`、原子は安定ID）・スキャン（`scan_atoms` 等）、BSSE、後続の一点計算を含む。追加入力（`extra_input` / `extra_tasks`）は変更不可。変更で新たに生じたエラーだけで拒否し、変更前からあるエラー（原子がまだない、多重度が未設定など）はほかの条件の変更を妨げない |

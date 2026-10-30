@@ -812,7 +812,7 @@ class CoreTest : public QObject {
         }
         QVERIFY(cut.atom(d.residues[1].atoms["N"]).fixed && cut.atom(d.residues[3].atoms["C"]).fixed);
         auto loose = d;
-        cutOutSite(loose, site, false);
+        cutOutSite(loose, site, {.fixCuts = false});
         QVERIFY(std::none_of(loose.atoms.begin(), loose.atoms.end(), [](const Atom &a) { return a.fixed; }));
         // Structures from the PDB have no hydrogens: they are added after the cut-out, the fixed atoms
         // staying.
@@ -844,6 +844,106 @@ class CoreTest : public QObject {
         QCOMPARE(cutOutSite(copy, {ids[0], ids[1]}).size(), 1);
         zinc.atoms[2].fixed = true;
         QVERIFY_EXCEPTION_THROWN(cutOutSite(zinc, {ids[0], ids[1]}), std::runtime_error);
+    }
+    // Hydrogens in the states of pH 7 for a structure without them: the same peptide as built with its
+    // charged groups, His on the nitrogen not bound to a metal, water and ions bound to a metal.
+    void protonation() {
+        Document built;
+        buildPeptide(built, {"ALA", "ASP", "GLU", "LYS", "ARG", "HIS", "CYS", "TYR"}, "charged", "charged");
+        built.charge = built.expectedCharge();
+        const auto strip = [](Document d) {
+            Ids hydrogens;
+            for (auto &a : d.atoms) {
+                a.charge = 0;
+                if (a.element == "H")
+                    hydrogens << a.id;
+            }
+            d.remove(hydrogens);
+            d.charge = d.expectedCharge();
+            return d;
+        };
+        auto d = strip(built);
+        protonate(d);
+        QVERIFY2(d.validate().isEmpty(), qPrintable(d.validate().join('\n')));
+        QCOMPARE(d.formula(), built.formula());
+        QCOMPARE(d.charge, built.charge);
+        QCOMPARE(d.charge, 0); // Asp, Glu −1; Lys, Arg +1; NH3+ and COO− at the ends.
+        const auto his = [](const Document &d) {
+            for (const auto &r : d.residues)
+                if (r.code == "HIS")
+                    return r;
+            return Residue();
+        };
+        const auto hydrogenOn = [](const Document &d, const QString &atom) {
+            const auto bonded = d.neighbors(atom);
+            return std::count_if(bonded.begin(), bonded.end(),
+                                 [&](const QString &n) { return d.atom(n).element == "H"; });
+        };
+        QCOMPARE(his(d).state, QString("HIE"));
+        QCOMPARE(hydrogenOn(d, his(d).atoms["NE2"]), 1);
+        QCOMPARE(hydrogenOn(d, his(d).atoms["ND1"]), 0);
+
+        // A zinc ion bound to NE2 of His and to SG of Cys, with a water bound to it.
+        d = strip(built);
+        const auto ne2 = d.atom(his(d).atoms["NE2"]), ring = d.atom(his(d).atoms["CE1"]);
+        const Vec at = ne2.position + (ne2.position - ring.position).normalized() * 2.0;
+        auto ion = Document::fromXyz(
+            QString("2\n\nZn %1 %2 %3\nO %1 %2 %4\n").arg(at.x()).arg(at.y()).arg(at.z()).arg(at.z() + 2.1));
+        const auto zinc = ion.atoms[0].id, water = ion.atoms[1].id;
+        d.atoms += ion.atoms;
+        QString sg;
+        for (const auto &r : d.residues)
+            if (r.code == "CYS")
+                sg = r.atoms["SG"];
+        d.setBond(zinc, ne2.id, "single");
+        d.setBond(zinc, water, "single");
+        d.setBond(zinc, sg, "single");
+        registerResidue(d, {zinc}, "ZN");
+        registerResidue(d, {water}, "HOH");
+        d.charge = d.expectedCharge();
+        protonate(d);
+        QVERIFY2(d.validate().isEmpty(), qPrintable(d.validate().join('\n')));
+        QCOMPARE(his(d).state, QString("HID"));
+        QCOMPARE(hydrogenOn(d, his(d).atoms["NE2"]), 0);
+        QCOMPARE(hydrogenOn(d, his(d).atoms["ND1"]), 1);
+        QCOMPARE(hydrogenOn(d, water), 2);
+        QCOMPARE(hydrogenOn(d, sg), 0);
+        QCOMPARE(d.atom(sg).charge, -1);
+        QCOMPARE(d.atom(zinc).charge, 2);
+        QCOMPARE(d.charge, 1); // The peptide, Zn2+ and the thiolate.
+        for (const auto &b : d.bonds)
+            if (b.a == zinc || b.b == zinc)
+                QVERIFY(b.kind == "dative" && b.b == zinc); // From the donor.
+    }
+    // The charged groups of the residues removed around a site stay as point charges, within their radius.
+    void siteSurroundingCharges() {
+        Document d;
+        buildPeptide(d, {"GLY", "LYS", "GLY", "ASP", "GLY"}, "charged", "charged");
+        d.charge = d.expectedCharge();
+        const auto site = siteAtoms(d, d.residues[2].atoms.values(), {.radius = 0.1});
+        QCOMPARE(site.size(), d.residues[2].atoms.size());
+        auto cut = d;
+        cutOutSite(cut, site, {.charges = true, .chargeRadius = 100});
+        // NH3+ and Lys NZ +1, the carboxylates of Asp and of the C terminus −0.5 on each oxygen.
+        QCOMPARE(cut.pointCharges.size(), 6);
+        double sum = 0;
+        for (const auto &q : cut.pointCharges) {
+            sum += q.charge;
+            QCOMPARE(q.source, QString("site"));
+        }
+        QVERIFY(std::abs(sum) < 1e-12);
+        QCOMPARE(std::count_if(cut.pointCharges.begin(), cut.pointCharges.end(),
+                               [](const PointCharge &q) { return q.charge == 1; }),
+                 2);
+        auto near = d;
+        cutOutSite(near, site, {.charges = true, .chargeRadius = 2});
+        QVERIFY(near.pointCharges.size() < 6);
+        // With hydrogens in the states of pH 7: the site is the glycine capped with hydrogens.
+        auto protonated = d;
+        cutOutSite(protonated, site, {.hydrogens = true});
+        QVERIFY2(protonated.validate().isEmpty(), qPrintable(protonated.validate().join('\n')));
+        QCOMPARE(protonated.charge, 0);
+        QVERIFY(protonated.pointCharges.isEmpty());
     }
     void templateLibrary() {
         QCOMPARE(templates().size(), 101);

@@ -4,6 +4,7 @@
 #include "editing/chemistry.h"
 #include "editing/coordinates.h"
 #include "editing/operations.h"
+#include "editing/site.h"
 #include "io/structure_io.h"
 #include "mcp/tools.h"
 #include "model/geometry.h"
@@ -877,6 +878,104 @@ void McpServer::registerTools() {
                          settings[key] = current[key];
                  next.data["nwchem"] = settings;
              }
+         });
+    const auto number = [](double minimum, double maximum) {
+        return QJsonObject{{"type", "number"}, {"minimum", minimum}, {"maximum", maximum}};
+    };
+    edit({.name = "cut_out_site",
+          .title = "Cut out site",
+          .description =
+              "Cut out a site, such as the active site of a protein, as a cluster model for quantum "
+              "chemistry: "
+              "the center and the atoms within radius (angstrom, default 5) of it, whole residues "
+              "(wholeResidues, default true) and water (water, default true) included; the rest is removed "
+              "and each covalent bond so cut capped with a hydrogen along the bond. The center is ids (atom "
+              "IDs "
+              "of the current document) or residues, each matching the author chain ID (chain), number and "
+              "residue name (code) given. fixCuts (default true) fixes the capped atoms. hydrogens (default "
+              "true) adds hydrogens in the states of pH 7: Asp/Glu -1, Lys/Arg +1, charged chain ends, His "
+              "protonated on the nitrogen not bound to a metal, ions and sulfate by their charge, bonds to "
+              "metals made dative. pointCharges (default false) keeps the charged groups removed within "
+              "chargeRadius (angstrom, default 15) as point charges and includes them in the NWChem input. "
+              "With "
+              "path, the structure is read from that file (with model, altloc and chains as open_file) and "
+              "the "
+              "site replaces the current structure, the total charge set to the site's and calculation "
+              "settings kept, so that structures of more than 10,000 atoms can be cut; without path the "
+              "current document is cut. Maximum file size: 8 MiB, also after decompressing.",
+          .properties = {{"path", type("string")},
+                         {"model", QJsonObject{{"type", "integer"}, {"minimum", 1}}},
+                         {"altloc", type("string")},
+                         {"chains", strings()},
+                         {"ids", idsSchema()},
+                         {"residues", QJsonObject{{"type", "array"},
+                                                  {"minItems", 1},
+                                                  {"items", object({{"chain", type("string")},
+                                                                    {"number", type("integer")},
+                                                                    {"code", type("string")}},
+                                                                   {})}}},
+                         {"radius", number(0, 30)},
+                         {"wholeResidues", type("boolean")},
+                         {"water", type("boolean")},
+                         {"fixCuts", type("boolean")},
+                         {"hydrogens", type("boolean")},
+                         {"pointCharges", type("boolean")},
+                         {"chargeRadius", number(0, 100)}}},
+         [this](Document &next, const QJsonObject &args) {
+             const auto path = args["path"].toString();
+             Document source = next;
+             if (!path.isEmpty()) {
+                 if (args.contains("ids"))
+                     fail("With path, give the center as residues: the file's atoms have no IDs yet.");
+                 policy.checkPath(path);
+                 const QFileInfo info(path);
+                 if (!info.isFile() || info.size() > 8 * 1024 * 1024)
+                     fail("Expected a regular structure file no larger than 8 MiB.");
+                 if (compressedFile(path))
+                     readStructureFile(path,
+                                       8 * 1024 * 1024); // The limit holds for the decompressed contents.
+                 MacromoleculeSelection selection;
+                 selection.model = args.contains("model") ? args["model"].toInt() : 1;
+                 selection.altloc = args["altloc"].toString();
+                 for (const auto &chain : args["chains"].toArray())
+                     selection.chains << chain.toString();
+                 source = importStructure(path, selection);
+             }
+             Ids center = args.contains("ids") ? idsFromJson(args["ids"]) : Ids();
+             for (const auto &value : args["residues"].toArray()) {
+                 const auto selector = value.toObject();
+                 bool found = false;
+                 for (const auto &r : source.residues)
+                     if ((!selector.contains("chain") ||
+                          r.metadata["pdb_chain"].toString() == selector["chain"].toString()) &&
+                         (!selector.contains("number") || r.number == selector["number"].toInt()) &&
+                         (!selector.contains("code") || r.code == selector["code"].toString())) {
+                         center += r.atoms.values();
+                         found = true;
+                     }
+                 if (selector.isEmpty() || !found)
+                     fail("No residue matches " + QJsonDocument(selector).toJson(QJsonDocument::Compact) +
+                          '.');
+             }
+             if (center.isEmpty())
+                 fail("Give the center as ids or residues.");
+             const SiteOptions site{args.contains("radius") ? args["radius"].toDouble() : 5,
+                                    args["wholeResidues"].toBool(true), args["water"].toBool(true)};
+             const SiteCutOptions cut{args["fixCuts"].toBool(true), args["hydrogens"].toBool(true),
+                                      args["pointCharges"].toBool(),
+                                      args.contains("chargeRadius") ? args["chargeRadius"].toDouble() : 15};
+             const auto charges = source.pointCharges.size();
+             cutOutSite(source, siteAtoms(source, center, site), cut);
+             if (path.isEmpty()) {
+                 next = source;
+             } else {
+                 replaceCoordinateStructure(next, source);
+                 next.charge = source.charge;
+                 if (cut.charges)
+                     next.pointCharges = source.pointCharges;
+             }
+             if (source.pointCharges.size() > charges)
+                 setNwchemSetting(next, "include_point_charges", true);
          });
     add({.name = "export_document",
          .title = "Export document",

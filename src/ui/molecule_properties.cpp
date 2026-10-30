@@ -668,12 +668,41 @@ void MoleculePanel::buildResiduePanel() {
     fixCuts->setChecked(true);
     fixCuts->setToolTip(tr("水素で終端した原子を固定し、構造最適化でも全体の中での位置を保ちます。"));
     f->addRow(fixCuts);
+    auto *hydrogens = new QCheckBox(tr("水素を付ける（pH 7）"));
+    hydrogens->setObjectName("siteHydrogens");
+    hydrogens->setChecked(true);
+    hydrogens->setToolTip(tr(
+        "PDBの構造にない水素を、pH 7の状態で付けます。Asp・Glu −1、Lys・Arg +1、鎖の末端は荷電、Hisは金属に"
+        "配位していない窒素に水素（どちらも配位していなければHIE）、金属に配位したCys −1、イオンと硫酸は"
+        "その電荷にし、金属との結合は配位結合にします。そのほかの配位子は原子価に合わせて水素を付けます。"));
+    f->addRow(hydrogens);
+    auto *charges = new QCheckBox(tr("周りの電荷を点電荷として残す"));
+    charges->setObjectName("siteCharges");
+    charges->setToolTip(
+        tr("削除する原子のうち、電荷を持つ基（Asp・Glu・Lys・Arg、鎖の末端、イオン、硫酸など）を点電荷として"
+           "残し、計算条件で外部点電荷を含めます。水と中性の基は残しません。"));
+    f->addRow(charges);
+    auto *chargeRadius = number(f, tr("点電荷の範囲 / Å"), 15, 1, 100);
+    chargeRadius->setObjectName("siteChargeRadius");
+    chargeRadius->setDecimals(1);
+    chargeRadius->setToolTip(tr("切り出す原子からこの距離以内の電荷を点電荷として残します。"));
+    chargeRadius->setEnabled(false);
+    connect(charges, &QCheckBox::toggled, chargeRadius, &QWidget::setEnabled);
     auto *cut = button(
         f, tr("選択範囲を切り出す"),
-        [this, fixCuts] {
+        [this, fixCuts, hydrogens, charges, chargeRadius] {
             const auto ids = requireSelection();
-            const bool fix = fixCuts->isChecked();
-            edit(tr("活性部位を切り出す"), [=](Document &d) { cutOutSite(d, ids, fix); }, true);
+            const SiteCutOptions options{fixCuts->isChecked(), hydrogens->isChecked(), charges->isChecked(),
+                                         chargeRadius->value()};
+            edit(
+                tr("活性部位を切り出す"),
+                [=](Document &d) {
+                    const auto before = d.pointCharges.size();
+                    cutOutSite(d, ids, options);
+                    if (d.pointCharges.size() > before)
+                        setNwchemSetting(d, "include_point_charges", true);
+                },
+                true);
             view->fit();
         },
         "cutOutSite");

@@ -1048,6 +1048,20 @@ class EditorTest : public QObject {
                                [](const Atom &a) { return a.fixed; }),
                  2);
         QCOMPARE(w.document().charge, 1);
+        QVERIFY(w.document().pointCharges.isEmpty());
+        // The charged groups around stay as point charges, which the calculation then includes.
+        w.loadDocument(d);
+        w.setSelection(lys);
+        w.findChild<QPushButton *>("selectSite")->click();
+        auto *charges = w.findChild<QCheckBox *>("siteCharges");
+        QVERIFY(!charges->isChecked() && !w.findChild<QDoubleSpinBox *>("siteChargeRadius")->isEnabled());
+        charges->setChecked(true);
+        QVERIFY(w.findChild<QDoubleSpinBox *>("siteChargeRadius")->isEnabled());
+        w.findChild<QDoubleSpinBox *>("siteChargeRadius")->setValue(100);
+        w.findChild<QPushButton *>("cutOutSite")->click();
+        w.findChild<QPushButton *>("confirmCandidate")->click();
+        QCOMPARE(w.document().pointCharges.size(), 3); // NH3+ +1, the C-terminal carboxylate −0.5 twice.
+        QVERIFY(nwchemSettings(w.document())["include_point_charges"].toBool());
     }
     void attributePageHoldsAttributes() {
         MainWindow w;
