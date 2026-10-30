@@ -5,6 +5,7 @@
 #include "editing/coordination.h"
 #include "editing/operations.h"
 #include "editing/peptide.h"
+#include "editing/site.h"
 #include "editing/stereochemistry.h"
 #include "model/i18n.h"
 #include "nwchem/nwchem.h"
@@ -633,6 +634,51 @@ void MoleculePanel::buildResiduePanel() {
         auto rid = selectedResidue();
         edit(tr("欠損側鎖・水素を補完"), [=](Document &d) { repairResidue(d, rid); }, true);
     });
+    // A cluster model for quantum chemistry: the atoms around a ligand or residues, selected, then cut out.
+    section(f, QT_TR_NOOP("活性部位の切り出し"));
+    auto *radius = number(f, tr("半径 / Å"), 5, 1, 30);
+    radius->setObjectName("siteRadius");
+    radius->setDecimals(1);
+    radius->setSingleStep(0.5);
+    radius->setToolTip(tr("選択した原子からこの距離以内にある原子を選びます。"));
+    auto *wholeResidues = new QCheckBox(tr("残基ごとに含める"));
+    wholeResidues->setObjectName("siteWholeResidues");
+    wholeResidues->setChecked(true);
+    wholeResidues->setToolTip(
+        tr("半径内に原子がある残基を丸ごと含めます。残基に登録されていない原子は、その分子ごと含めます。"));
+    f->addRow(wholeResidues);
+    auto *waters = new QCheckBox(tr("水分子を含める"));
+    waters->setObjectName("siteWaters");
+    waters->setChecked(true);
+    f->addRow(waters);
+    button(
+        f, tr("周囲を選択"),
+        [this, radius, wholeResidues, waters] {
+            const SiteOptions options{radius->value(), wholeResidues->isChecked(), waters->isChecked()};
+            const auto ids = siteAtoms(displayDocument(), requireSelection(), options);
+            setSelection(ids);
+            statusBar()->showMessage(
+                tr("周囲の%n原子を選択しました（半径 %1 Å）。", nullptr, ids.size()).arg(options.radius),
+                5000);
+        },
+        "selectSite")
+        ->setToolTip(tr("選択した配位子や残基を中心に、その周りの原子を選択します。"));
+    auto *fixCuts = new QCheckBox(tr("切断した原子を固定"));
+    fixCuts->setObjectName("siteFixCuts");
+    fixCuts->setChecked(true);
+    fixCuts->setToolTip(tr("水素で終端した原子を固定し、構造最適化でも全体の中での位置を保ちます。"));
+    f->addRow(fixCuts);
+    auto *cut = button(
+        f, tr("選択範囲を切り出す"),
+        [this, fixCuts] {
+            const auto ids = requireSelection();
+            const bool fix = fixCuts->isChecked();
+            edit(tr("活性部位を切り出す"), [=](Document &d) { cutOutSite(d, ids, fix); }, true);
+            view->fit();
+        },
+        "cutOutSite");
+    cut->setProperty("primary", true);
+    cut->setToolTip(tr("選択していない原子を削除し、切った結合を水素で終端します（候補として表示）。"));
     section(f, QT_TR_NOOP("配列から構築"));
     sequenceInput = new QLineEdit;
     sequenceInput->setObjectName("sequenceInput");

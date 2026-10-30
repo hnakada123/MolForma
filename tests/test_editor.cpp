@@ -1021,6 +1021,34 @@ class EditorTest : public QObject {
         QCOMPARE(w.document().formula(), QString("C17H26N6O6"));
         QCOMPARE(w.document().charge, 0);
     }
+    // "周囲を選択" grows the selection of a residue to the residues around it; "選択範囲を切り出す" makes
+    // them a candidate with the cut bonds capped and their atoms fixed.
+    void siteCutOutUi() {
+        MainWindow w;
+        Document d;
+        buildPeptide(d, parseSequence("AGKAG"), "charged", "charged");
+        d.charge = d.formalCharge();
+        w.loadDocument(d);
+        w.show();
+        const auto lys = w.document().residues[2].atoms.values();
+        w.setSelection(lys);
+        w.findChild<QDoubleSpinBox *>("siteRadius")->setValue(2);
+        w.findChild<QPushButton *>("selectSite")->click();
+        int around = 0;
+        for (int r = 1; r <= 3; ++r)
+            around += w.document().residues[r].atoms.size();
+        QCOMPARE(w.selection().size(), around);
+        w.findChild<QPushButton *>("cutOutSite")->click();
+        QVERIFY(w.hasCandidate());
+        QCOMPARE(w.document().atoms.size(), d.atoms.size()); // Nothing changes before the confirmation.
+        w.findChild<QPushButton *>("confirmCandidate")->click();
+        QCOMPARE(w.document().atoms.size(), around + 2);
+        QCOMPARE(w.document().residues.size(), 3);
+        QCOMPARE(std::count_if(w.document().atoms.begin(), w.document().atoms.end(),
+                               [](const Atom &a) { return a.fixed; }),
+                 2);
+        QCOMPARE(w.document().charge, 1);
+    }
     void attributePageHoldsAttributes() {
         MainWindow w;
         const auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");

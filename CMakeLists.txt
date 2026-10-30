@@ -49,6 +49,7 @@ add_library(molforma_editing STATIC
     src/editing/mmcif.cpp
     src/editing/operations.cpp
     src/editing/peptide.cpp
+    src/editing/site.cpp
     src/editing/stereochemistry.cpp)
 target_link_libraries(molforma_editing PUBLIC molforma_model PRIVATE ${MOLFORMA_OPENBABEL})
 if(TARGET RDKit::CIPLabeler)

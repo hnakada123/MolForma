@@ -287,7 +287,7 @@ Each existing GUI operation is available through the following routes.
 | GUI area | MCP route |
 | --- | --- |
 | Molecule editing, parts, peptides, coordination, stereochemistry, fragments, residues, point charges | Document tools and `get_ui` → `ui_*`. Dialogs follow the same steps |
-| PDB MODEL/ALTLOC selection, diagnosis and repair, My parts, settings and presets | `ui_activate` the corresponding menu or button; contents with `ui_set_value` / `ui_select` |
+| PDB MODEL/ALTLOC selection, diagnosis and repair, active-site cut-out, My parts, settings and presets | `ui_activate` the corresponding menu or button; contents with `ui_set_value` / `ui_select` |
 | Coordinate table, fixed, ghost, mass, calculation settings and advanced settings | `ui_edit_cell` / `ui_set_value`, or the settings tools |
 | Input preview, search, copy, save | Operate the tab and its buttons with `ui_*`; get the text with `get_ui_item` |
 | NWChem runs and history | `calculation` / `history_action` and `get_app_state`. Confirmations for reuse and the trash are also handled over MCP |

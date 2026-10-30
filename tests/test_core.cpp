@@ -6,6 +6,7 @@
 #include "editing/mmcif.h"
 #include "editing/operations.h"
 #include "editing/peptide.h"
+#include "editing/site.h"
 #include "editing/stereochemistry.h"
 #include "gzip.h"
 #include "io/structure_io.h"
@@ -629,6 +630,102 @@ class CoreTest : public QObject {
         QVERIFY(refusal([&] {
                     importStructure(file("project.molforma.json.gz", gzip(project)));
                 }).contains("圧縮"));
+    }
+    // A cluster model: the residues around a center, the peptide bonds so cut ending in hydrogens on fixed
+    // atoms.
+    void siteCutOut() {
+        Document d;
+        buildPeptide(d, {"ALA", "GLY", "LYS", "ALA", "GLY"}, "charged", "charged");
+        d.charge = d.expectedCharge();
+        QCOMPARE(d.residues[2].code, QString("LYS"));
+        const auto center = d.residues[2].atoms.values();
+        // A water beside the middle residue and one far away, outside residues.
+        const auto addWater = [&](const Vec &at) {
+            auto water = Document::fromXyz("3\n\nO 0 0 0\nH .76 0 .59\nH -.76 0 .59\n");
+            for (auto &a : water.atoms)
+                a.position += at;
+            d.atoms += water.atoms;
+            d.bonds += water.bonds;
+            return water.ids();
+        };
+        const Vec ca = d.atom(d.residues[2].atoms["CA"]).position;
+        const auto nearWater = addWater(ca + Vec(0, 0, 1.9));
+        addWater(ca + Vec(40, 0, 0));
+        QSet<QString> residues; // The middle residue and its neighbors, bonded to it.
+        for (int r = 1; r <= 3; ++r)
+            for (const auto &id : d.residues[r].atoms)
+                residues.insert(id);
+        const auto set = [](const Ids &ids) { return QSet<QString>(ids.begin(), ids.end()); };
+        const auto site = siteAtoms(d, center, {.radius = 2});
+        QCOMPARE(set(site), residues + set(nearWater));
+        QCOMPARE(set(siteAtoms(d, center, {.radius = 2, .waters = false})), residues);
+        // Atom by atom: the backbone atoms bonded to the center, with their hydrogens, not their residues.
+        const auto atoms = set(siteAtoms(d, center, {.radius = 2, .wholeResidues = false}));
+        QVERIFY(atoms.contains(d.residues[1].atoms["C"]) && !atoms.contains(d.residues[1].atoms["N"]));
+        QVERIFY(atoms.contains(d.residues[3].atoms["N"]) && !atoms.contains(d.residues[3].atoms["CA"]));
+        const Topology before(d);
+        const auto amide = before.neighbors(d, d.residues[3].atoms["N"]);
+        QVERIFY(std::any_of(amide.begin(), amide.end(),
+                            [&](const QString &h) { return d.atom(h).element == "H" && atoms.contains(h); }));
+        QVERIFY_EXCEPTION_THROWN(siteAtoms(d, {}), std::runtime_error);
+
+        auto cut = d;
+        const auto links = cutOutSite(cut, site);
+        QCOMPARE(links.size(), 2); // GLY–ALA and ALA–GLY, at either end.
+        QCOMPARE(cut.atoms.size(), site.size() + 2);
+        QCOMPARE(cut.residues.size(), 3);
+        QVERIFY2(cut.validate().isEmpty(), qPrintable(cut.validate().join('\n')));
+        QCOMPARE(cut.charge, 1); // Lys; the charged ends are gone.
+        const Topology after(cut);
+        for (const auto &h : links) {
+            const auto partners = after.neighbors(cut, h);
+            QCOMPARE(partners.size(), 1);
+            const auto &atom = after.atom(cut, partners[0]);
+            QVERIFY(atom.fixed);
+            // Along the bond that was cut, at the X–H length.
+            QString outside;
+            for (const auto &n : before.neighbors(d, atom.id))
+                if (!site.contains(n))
+                    outside = n;
+            const Vec bond = d.atom(outside).position - atom.position,
+                      link = cut.atom(h).position - atom.position;
+            QVERIFY(std::abs(link.norm() - element(atom.element).radius - element("H").radius) < 1e-9);
+            QVERIFY(link.normalized().dot(bond.normalized()) > 1 - 1e-9);
+        }
+        QVERIFY(cut.atom(d.residues[1].atoms["N"]).fixed && cut.atom(d.residues[3].atoms["C"]).fixed);
+        auto loose = d;
+        cutOutSite(loose, site, false);
+        QVERIFY(std::none_of(loose.atoms.begin(), loose.atoms.end(), [](const Atom &a) { return a.fixed; }));
+        // Structures from the PDB have no hydrogens: they are added after the cut-out, the fixed atoms
+        // staying.
+        auto heavy = d;
+        Ids hydrogens;
+        for (const auto &a : heavy.atoms)
+            if (a.element == "H")
+                hydrogens << a.id;
+        heavy.remove(hydrogens);
+        cutOutSite(heavy, siteAtoms(heavy, heavy.residues[2].atoms.values(), {.radius = 2}));
+        QMap<QString, Vec> fixed;
+        for (const auto &a : heavy.atoms)
+            if (a.fixed)
+                fixed[a.id] = a.position;
+        QCOMPARE(fixed.size(), 2);
+        completeHydrogens(heavy);
+        QVERIFY2(heavy.validate().isEmpty(), qPrintable(heavy.validate().join('\n')));
+        for (auto it = fixed.begin(); it != fixed.end(); ++it)
+            QCOMPARE(heavy.atom(it.key()).position, it.value());
+        QCOMPARE(heavy.formula(), cut.formula()); // The same model as cut out with its hydrogens.
+
+        // Bonds to metals end without a hydrogen; fixed atoms stay.
+        auto zinc = Document::fromXyz("3\n\nZn 0 0 0\nC 2 0 0\nC 3.5 0 0\n");
+        const auto ids = zinc.ids();
+        zinc.bonds = {Bond{.a = ids[0], .b = ids[1]}, Bond{.a = ids[1], .b = ids[2]}};
+        auto copy = zinc;
+        QCOMPARE(cutOutSite(copy, {ids[1], ids[2]}).size(), 0);
+        copy = zinc;
+        QCOMPARE(cutOutSite(copy, {ids[0], ids[1]}).size(), 1);
+        zinc.atoms[2].fixed = true;
+        QVERIFY_EXCEPTION_THROWN(cutOutSite(zinc, {ids[0], ids[1]}), std::runtime_error);
     }
     void templateLibrary() {
         QCOMPARE(templates().size(), 101);

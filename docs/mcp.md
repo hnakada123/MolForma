@@ -287,7 +287,7 @@ GUI変更は `documentId` と `expectedRevision` を必要とし、`queued` の 
 | GUIの範囲 | MCPの経路 |
 | --- | --- |
 | 分子編集、部品・ペプチド・配位・立体化学、断片・残基・点電荷 | 文書ツールと `get_ui` → `ui_*`。ダイアログも同じ手順 |
-| PDBのMODEL/ALTLOC選択、診断・修復、カスタム部品、設定・プリセット | 対応するメニュー・ボタンを `ui_activate`、内容を `ui_set_value` / `ui_select` |
+| PDBのMODEL/ALTLOC選択、診断・修復、活性部位の切り出し、カスタム部品、設定・プリセット | 対応するメニュー・ボタンを `ui_activate`、内容を `ui_set_value` / `ui_select` |
 | 座標表、固定・ゴースト・質量、計算条件・詳細設定 | `ui_edit_cell` / `ui_set_value`、または設定ツール |
 | 入力プレビュー、検索・コピー・保存 | タブと各ボタンを `ui_*` で操作、本文は `get_ui_item` |
 | NWChem実行と履歴 | `calculation` / `history_action` と `get_app_state`。再利用・ごみ箱の確認もMCPで処理 |
