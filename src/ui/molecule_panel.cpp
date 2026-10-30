@@ -1721,7 +1721,7 @@ void MoleculePanel::addFragmentFromFile() {
         return;
     if (base != session.revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
-    const auto fragment = importStructure(p, options->model, options->altloc, options->frame);
+    const auto fragment = importStructure(p, options->selection, options->frame);
     edit(tr("ファイルから断片を追加"), [&](Document &d) { insertFragment(d, fragment); }, true);
     view->keepInView();
 }
@@ -2000,7 +2000,7 @@ void MoleculePanel::compareDialog() {
         return;
     if (base != session.revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
-    const auto reference = importStructure(p, options->model, options->altloc, options->frame);
+    const auto reference = importStructure(p, options->selection, options->frame);
     const auto fit = superpose(document(), reference);
     QMessageBox box(QMessageBox::Information, tr("構造の比較"),
                     tr("%1\n\nRMSD（座標そのまま）: %2 Å\n重ね合わせ後のRMSD: %3 Å（水素以外 %4 Å）\n"

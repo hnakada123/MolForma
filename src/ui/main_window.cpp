@@ -951,7 +951,7 @@ void MainWindow::loadPath(const QString &p) {
             box.exec();
         }
     } else
-        next = reading([&] { return importStructure(p, options->model, options->altloc, options->frame); });
+        next = reading([&] { return importStructure(p, options->selection, options->frame); });
     if (base != revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
     if (!p.endsWith(".json", Qt::CaseInsensitive))

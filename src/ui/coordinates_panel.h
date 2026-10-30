@@ -81,7 +81,7 @@ class CoordinatesPanel : public QWidget {
     // Shows the columns of the atom attributes (formal charge, unpaired electrons, atom name).
     void showAttributes();
     void previewStructure(const Document &structure);
-    // Reads a structure file into a replacement candidate, asking for the PDB MODEL and ALTLOC.
+    // Reads a structure file into a replacement candidate, asking what to read of PDB and mmCIF files.
     void importPath(const QString &path);
     void applyChromeStyle();
     // At least the height the bars need as wrapped at the current width, over a table of four rows.

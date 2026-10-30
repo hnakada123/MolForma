@@ -564,6 +564,26 @@
     "mmCIFの%1行目の loop_ の値の数が項目の数と合いません。": "The number of values in the loop_ on line %1 of the mmCIF file does not match its items.",
     "mmCIFに原子の表（_atom_site）がありません。小分子のCIF（分率座標）は読み込めません。": "The mmCIF file has no atom table (_atom_site). Small-molecule CIF files (fractional coordinates) cannot be read.",
     "mmCIFにモデル %1 の原子がありません。": "The mmCIF file has no atoms in model %1.",
+    "読み込む範囲": "What to read",
+    "鎖": "Chains",
+    "（%n残基）": [
+        " (%n residue)",
+        " (%n residues)"
+    ],
+    "成分": "Components",
+    "たんぱく質・核酸（%n残基）": [
+        "Proteins and nucleic acids (%n residue)",
+        "Proteins and nucleic acids (%n residues)"
+    ],
+    "配位子・イオン・糖鎖など（%n個）": [
+        "Ligands, ions, sugars and the like (%n)",
+        "Ligands, ions, sugars and the like (%n)"
+    ],
+    "水（%n分子）": [
+        "Water (%n molecule)",
+        "Water (%n molecules)"
+    ],
+    "選んだ鎖・成分に原子がありません。": "The chosen chains and components have no atoms.",
     "%1 は展開すると %2 MiB を超えるため読み込めません。": "%1 exceeds %2 MiB when decompressed and cannot be read.",
     "%1 をgzipの圧縮データとして読めません（壊れているか、途中で切れています）。": "%1 cannot be read as gzip-compressed data (it is damaged or cut short).",
     "圧縮したプロジェクトは開けません。展開してから開いてください。": "Compressed projects cannot be opened. Decompress the file first.",

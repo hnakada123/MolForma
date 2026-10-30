@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/chemistry.h"
 #include "editing/mmcif.h"
+#include "editing/pdb.h"
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
 #include "model/geometry.h"
@@ -157,60 +158,6 @@ static Document fromOB(OBMol &mol, bool readResidues = false,
         fail(errors.join('\n'));
     return d;
 }
-QStringList pdbModels(const QString &text) {
-    QStringList models;
-    for (const auto &line : text.split('\n'))
-        if (line.startsWith("MODEL "))
-            models << line.mid(10, 4).trimmed();
-    if (models.isEmpty())
-        models << "1";
-    models.removeDuplicates();
-    return models;
-}
-QString preparePdb(const QString &text, int model, const QString &altloc) {
-    auto lines = text.split('\n');
-    bool hasModels = text.contains(QRegularExpression("(^|\n)MODEL "));
-    int current = hasModels ? 0 : model;
-    QStringList chosen;
-    QMap<QString, QMap<QString, double>> occupancies;
-    for (const auto &l : lines) {
-        if (l.startsWith("MODEL "))
-            current = l.mid(10, 4).trimmed().toInt();
-        if (l.startsWith("ENDMDL"))
-            current = 0;
-        if (current != model)
-            continue;
-        chosen << l;
-        if (l.startsWith("ATOM  ") || l.startsWith("HETATM")) {
-            QString residue = l.mid(21, 6), alt = l.mid(16, 1);
-            if (!alt.trimmed().isEmpty())
-                occupancies[residue][alt] += l.mid(54, 6).toDouble();
-        }
-    }
-    QMap<QString, QString> preferred;
-    for (auto it = occupancies.begin(); it != occupancies.end(); ++it) {
-        double best = -1;
-        for (auto a = it.value().begin(); a != it.value().end(); ++a)
-            if (a.value() > best) {
-                best = a.value();
-                preferred[it.key()] = a.key();
-            }
-    }
-    QString out;
-    for (auto l : chosen) {
-        if (l.startsWith("MODEL") || l.startsWith("ENDMDL"))
-            continue;
-        if (l.startsWith("ATOM  ") || l.startsWith("HETATM")) {
-            QString alt = l.mid(16, 1), want = altloc.isEmpty() ? preferred[l.mid(21, 6)] : altloc;
-            if (!alt.trimmed().isEmpty() && alt != want)
-                continue;
-            if (l.size() > 16)
-                l[16] = ' ';
-        }
-        out += l + '\n';
-    }
-    return out;
-}
 Document xyzStructure(const QString &text) {
     Document d = Document::fromXyz(text);
     // Bonds come from distances. Let Open Babel assign double/triple/aromatic orders from the
@@ -291,7 +238,7 @@ static Document mmcifStructure(const QVector<MmcifAtom> &atoms) {
         OBAtomAssignTypicalImplicitHydrogens(mol.GetAtom(i));
     return fromOB(mol, true, chains);
 }
-Document importBabelStructure(const QString &path, int model, const QString &altloc) {
+Document importBabelStructure(const QString &path, const MacromoleculeSelection &selection) {
     QString ext = structureSuffix(path);
     if (ext == "ent")
         ext = "pdb";
@@ -307,10 +254,10 @@ Document importBabelStructure(const QString &path, int model, const QString &alt
     auto bytes = readStructureFile(path);
     Document d;
     if (ext == "mmcif") {
-        d = mmcifStructure(selectMmcif(mmcifAtoms(bytes), model, altloc));
+        d = mmcifStructure(selectMmcif(readMmcif(bytes).atoms, selection));
     } else {
         if (ext == "pdb")
-            bytes = preparePdb(QString::fromUtf8(bytes), model, altloc).toUtf8();
+            bytes = preparePdb(QString::fromUtf8(bytes), selection).toUtf8();
         OBConversion conversion;
         if (!conversion.SetInFormat(ext.toLatin1().constData()))
             fail(tr("対応していない形式です: %1").arg(ext));
@@ -323,8 +270,16 @@ Document importBabelStructure(const QString &path, int model, const QString &alt
     meta["source_file"] = path;
     meta["source_format"] = ext;
     if (ext == "pdb" || ext == "mmcif") {
-        meta["pdb_model"] = model;
-        meta["pdb_altloc"] = altloc;
+        meta["pdb_model"] = selection.model;
+        meta["pdb_altloc"] = selection.altloc;
+        meta["pdb_chains"] = QJsonArray::fromStringList(selection.chains); // Empty: every chain.
+        QJsonArray kinds;
+        for (const auto &[kept, kind] : {std::pair{selection.polymer, "polymer"},
+                                         {selection.ligands, "ligands"},
+                                         {selection.water, "water"}})
+            if (kept)
+                kinds << kind;
+        meta["pdb_components"] = kinds;
     }
     d.data["metadata"] = meta;
     return d;

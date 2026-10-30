@@ -112,6 +112,8 @@ struct Columns {
         occupancy = find("occupancy");
         charge = find("pdbx_formal_charge");
         model = find("pdbx_pdb_model_num");
+        group = find("group_pdb");
+        entity = find("label_entity_id");
         QStringList missing;
         for (const auto &[column, name] : {std::pair{x, "Cartn_x"},
                                            {y, "Cartn_y"},
@@ -124,7 +126,7 @@ struct Columns {
             fail(tr("mmCIFの原子の表に %1 がありません。").arg(missing.join(", ")));
     }
     int element, authName, labelName, authResidue, labelResidue, authChain, labelChain, authNumber,
-        labelNumber, insertion, altloc, x, y, z, occupancy, charge, model;
+        labelNumber, insertion, altloc, x, y, z, occupancy, charge, model, group, entity;
 };
 MmcifAtom atom(const Columns &c, const QVector<QByteArrayView> &row, int line) {
     const auto at = [&](int column) { return column < 0 ? QByteArrayView() : row[column]; };
@@ -164,16 +166,27 @@ MmcifAtom atom(const Columns &c, const QVector<QByteArrayView> &row, int line) {
     a.occupancy = number(c.occupancy, "occupancy", 1);
     a.charge = int(number(c.charge, "pdbx_formal_charge", 0));
     a.model = int(number(c.model, "pdbx_PDB_model_num", 1));
+    a.hetatm = at(c.group) == "HETATM";
+    a.entity = QString::fromUtf8(at(c.entity));
     return a;
 }
+// An entity of the _entity table, by the names of its columns.
+struct Entity {
+    QString id, type, description;
+    explicit Entity(const QHash<QByteArray, QString> &values)
+        : id(values.value("_entity.id")), type(values.value("_entity.type")),
+          description(values.value("_entity.pdbx_description")) {}
+};
 } // namespace
-QVector<MmcifAtom> mmcifAtoms(const QByteArray &text) {
+MmcifEntry readMmcif(const QByteArray &text) {
     Tokens tokens(text);
     Token token;
     QVector<MmcifAtom> atoms;
     QList<QByteArray> itemTags; // _atom_site items outside a loop: a table of one atom.
     QVector<QByteArrayView> itemValues;
     int itemLine = 0;
+    QVector<Entity> entities;
+    QHash<QByteArray, QString> entityItems; // _entity items outside a loop: a table of one entity.
     bool block = false, more = tokens.next(token);
     while (more) {
         if (isTag(token)) {
@@ -186,6 +199,8 @@ QVector<MmcifAtom> mmcifAtoms(const QByteArray &text) {
                 itemTags << tag;
                 itemValues << value(token);
             }
+            if (tag.startsWith("_entity."))
+                entityItems[tag] = QString::fromUtf8(value(token));
             more = tokens.next(token);
         } else if (!reserved(token)) {
             fail(tr("mmCIFの%1行目の値に項目名がありません。").arg(token.line));
@@ -199,17 +214,25 @@ QVector<MmcifAtom> mmcifAtoms(const QByteArray &text) {
             std::optional<Columns> columns;
             if (tags.first().startsWith("_atom_site."))
                 columns.emplace(tags);
+            const bool entity = tags.first().startsWith("_entity.");
             QVector<QByteArrayView> row;
             int rowLine = 0;
             qsizetype count = 0;
             for (; more && !isTag(token) && !reserved(token); more = tokens.next(token), ++count)
-                if (columns) {
+                if (columns || entity) {
                     rowLine = row.isEmpty() ? token.line : rowLine;
                     row << value(token);
-                    if (row.size() == tags.size()) {
+                    if (row.size() < tags.size())
+                        continue;
+                    if (columns) {
                         atoms << atom(*columns, row, rowLine);
-                        row.clear();
+                    } else {
+                        QHash<QByteArray, QString> values;
+                        for (int i = 0; i < tags.size(); ++i)
+                            values[tags[i]] = QString::fromUtf8(row[i]);
+                        entities << Entity(values);
                     }
+                    row.clear();
                 }
             if (count % tags.size())
                 fail(tr("mmCIFの%1行目の loop_ の値の数が項目の数と合いません。").arg(line));
@@ -226,26 +249,81 @@ QVector<MmcifAtom> mmcifAtoms(const QByteArray &text) {
         atoms << atom(Columns(itemTags), itemValues, itemLine);
     if (atoms.isEmpty())
         fail(tr("mmCIFに原子の表（_atom_site）がありません。小分子のCIF（分率座標）は読み込めません。"));
-    return atoms;
+    if (!entityItems.isEmpty())
+        entities << Entity(entityItems);
+    MmcifEntry entry;
+    QHash<QString, QString> types;
+    for (const auto &e : entities) {
+        types[e.id] = e.type;
+        entry.descriptions[e.id] = e.description;
+    }
+    for (auto &a : atoms) {
+        const auto type = types.value(a.entity);
+        if (type == "polymer")
+            a.kind = ResidueKind::Polymer;
+        else if (type == "water" || (type.isEmpty() && waterResidue(a.residue)))
+            a.kind = ResidueKind::Water;
+        else if (!type.isEmpty() || a.hetatm) // non-polymer, branched (sugars), macrolide
+            a.kind = ResidueKind::Ligand;
+    }
+    entry.atoms = std::move(atoms);
+    return entry;
 }
-QStringList mmcifModels(const QVector<MmcifAtom> &atoms) {
-    QStringList models;
-    QSet<int> seen;
-    for (const auto &a : atoms)
-        if (!seen.contains(a.model)) {
-            seen.insert(a.model);
-            models << QString::number(a.model);
+MacromoleculeContents mmcifContents(const MmcifEntry &entry) {
+    MacromoleculeContents contents;
+    QSet<int> models;
+    for (const auto &a : entry.atoms) {
+        contents.altlocs = contents.altlocs || !a.altloc.isEmpty();
+        if (!models.contains(a.model)) {
+            models.insert(a.model);
+            contents.models << QString::number(a.model);
         }
-    return models;
+    }
+    const int first = contents.models.first().toInt();
+    QSet<QString> residues;
+    QHash<QString, int> chains;
+    for (const auto &a : entry.atoms) {
+        const auto residue = QString("%1\n%2\n%3\n%4").arg(a.chain).arg(a.number).arg(a.insertion, a.residue);
+        if (a.model != first || residues.contains(residue))
+            continue;
+        residues.insert(residue);
+        auto it = chains.find(a.chain);
+        if (it == chains.end()) {
+            it = chains.insert(a.chain, contents.chains.size());
+            contents.chains.append({a.chain, {}, 0, {}});
+        }
+        auto &chain = contents.chains[*it];
+        if (a.kind != ResidueKind::Polymer && !chain.groups.contains(a.residue))
+            chain.groups << a.residue;
+        switch (a.kind) {
+        case ResidueKind::Polymer:
+            ++contents.polymers;
+            ++chain.residues;
+            if (chain.description.isEmpty())
+                chain.description = entry.descriptions.value(a.entity);
+            break;
+        case ResidueKind::Ligand:
+            ++contents.ligands;
+            break;
+        case ResidueKind::Water:
+            ++contents.waters;
+        }
+    }
+    return contents;
 }
-QVector<MmcifAtom> selectMmcif(const QVector<MmcifAtom> &atoms, int model, const QString &altloc) {
+QVector<MmcifAtom> selectMmcif(const QVector<MmcifAtom> &atoms, const MacromoleculeSelection &selection) {
+    const int model = selection.model;
     const auto residue = [](const MmcifAtom &a) {
         return QString("%1\n%2\n%3").arg(a.chain).arg(a.number).arg(a.insertion);
     };
     QHash<QString, QMap<QString, double>> occupancies;
+    int inModel = 0;
     for (const auto &a : atoms)
-        if (a.model == model && !a.altloc.isEmpty())
-            occupancies[residue(a)][a.altloc] += a.occupancy;
+        if (a.model == model) {
+            ++inModel;
+            if (!a.altloc.isEmpty() && selection.keeps(a.chain, a.kind))
+                occupancies[residue(a)][a.altloc] += a.occupancy;
+        }
     QHash<QString, QString> preferred;
     for (auto it = occupancies.begin(); it != occupancies.end(); ++it) {
         double best = -1;
@@ -256,15 +334,18 @@ QVector<MmcifAtom> selectMmcif(const QVector<MmcifAtom> &atoms, int model, const
             }
     }
     QVector<MmcifAtom> chosen;
+    const auto &altloc = selection.altloc;
     for (auto a : atoms) {
-        if (a.model != model ||
+        if (a.model != model || !selection.keeps(a.chain, a.kind) ||
             (!a.altloc.isEmpty() && a.altloc != (altloc.isEmpty() ? preferred[residue(a)] : altloc)))
             continue;
         a.altloc.clear();
         chosen << a;
     }
-    if (chosen.isEmpty())
+    if (!inModel)
         fail(tr("mmCIFにモデル %1 の原子がありません。").arg(model));
+    if (chosen.isEmpty())
+        fail(tr("選んだ鎖・成分に原子がありません。"));
     return chosen;
 }
 } // namespace mf

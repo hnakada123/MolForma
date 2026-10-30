@@ -529,7 +529,7 @@ class CoreTest : public QObject {
             "_atom_site.Cartn_x 0\n"
             "_atom_site.Cartn_y 0\n"
             "_atom_site.Cartn_z 0\n";
-        const auto atoms = mmcifAtoms(text);
+        const auto atoms = readMmcif(text).atoms;
         QCOMPARE(atoms.size(), 6);
         QCOMPARE(atoms[0].chain, QString("AA"));
         QCOMPARE(atoms[0].number, 10);
@@ -537,20 +537,20 @@ class CoreTest : public QObject {
         QCOMPARE(atoms[3].charge, 2);
         QCOMPARE(atoms[4].name, QString("O5'"));
         QCOMPARE(atoms[4].insertion, QString("A"));
-        QCOMPARE(mmcifModels(atoms), QStringList({"1", "2"}));
+        QCOMPARE(mmcifContents(readMmcif(text)).models, QStringList({"1", "2"}));
         // Automatically the location of the highest occupancy, else the one asked for.
-        auto chosen = selectMmcif(atoms, 1, {});
+        auto chosen = selectMmcif(atoms, {.model = 1});
         QCOMPARE(chosen.size(), 4);
         QCOMPARE(chosen[1].position.x(), 1.46);
         QVERIFY(chosen[1].altloc.isEmpty());
-        QCOMPARE(selectMmcif(atoms, 1, "A")[1].position.x(), 1.45);
-        QCOMPARE(selectMmcif(atoms, 2, {}).size(), 1);
-        QVERIFY_EXCEPTION_THROWN(selectMmcif(atoms, 3, {}), std::runtime_error);
+        QCOMPARE(selectMmcif(atoms, {.model = 1, .altloc = "A"})[1].position.x(), 1.45);
+        QCOMPARE(selectMmcif(atoms, {.model = 2}).size(), 1);
+        QVERIFY_EXCEPTION_THROWN(selectMmcif(atoms, {.model = 3}), std::runtime_error);
 
         QTemporaryDir temp;
         const auto path = temp.filePath("test.mmcif");
         writeFile(path, text);
-        const auto d = importStructure(path, 1, "A");
+        const auto d = importStructure(path, {.altloc = "A"});
         QCOMPARE(d.atoms.size(), 4);
         QCOMPARE(d.atoms[1].position.x(), 1.45);
         QCOMPARE(d.chains.size(), 2); // AA and AB, which Open Babel would both call A.
@@ -561,10 +561,128 @@ class CoreTest : public QObject {
         QCOMPARE(d.atoms[2].charge, 2);
         QCOMPARE(d.data["metadata"].toObject()["pdb_altloc"].toString(), QString("A"));
     }
+    // Chains and kinds of residues of a PDB file: names from COMPND, a modified residue of SEQRES in the
+    // polymer.
+    void pdbChainsAndComponents() {
+        const auto record = [](const char *type, int serial, const char *name, const char *residue,
+                               char chain, int number, double x, double y, double z, const char *element) {
+            return QString::asprintf("%-6s%5d %-4s %-3s %c%4d    %8.3f%8.3f%8.3f  1.00  0.00          %2s\n",
+                                     type, serial, name, residue, chain, number, x, y, z, element);
+        };
+        const auto text = QString("COMPND    MOL_ID: 1;\n"
+                                  "COMPND   2 MOLECULE: SPIKE PROTEIN;\n"
+                                  "COMPND   3 CHAIN: A;\n"
+                                  "COMPND   4 MOL_ID: 2;\n"
+                                  "COMPND   5 MOLECULE: ANTIBODY HEAVY\n"
+                                  "COMPND   6 CHAIN;\n"
+                                  "COMPND   7 CHAIN: B, C;\n"
+                                  "SEQRES   1 A    2  GLY MSE\n"
+                                  "SEQRES   1 B    1  GLY\n"
+                                  "SEQRES   1 C    1  GLY\n") +
+                          record("ATOM", 1, "CA", "GLY", 'A', 1, 0, 0, 0, "C") +
+                          record("HETATM", 2, "CA", "MSE", 'A', 2, 3.8, 0, 0, "C") +
+                          record("ATOM", 3, "CA", "GLY", 'B', 1, 0, 5, 0, "C") +
+                          record("ATOM", 4, "CA", "GLY", 'C', 1, 0, 10, 0, "C") +
+                          record("HETATM", 5, "ZN", "ZN", 'A', 101, 5, 5, 5, "ZN") +
+                          record("HETATM", 6, "O", "HOH", 'A', 201, 9, 9, 9, "O") +
+                          record("HETATM", 7, "O", "HOH", 'B', 202, 9, 12, 9, "O") +
+                          "CONECT    5    6\nEND\n";
+        const auto contents = pdbContents(text);
+        QCOMPARE(contents.models, QStringList{"1"});
+        QVERIFY(!contents.altlocs);
+        QCOMPARE(contents.chains.size(), 3);
+        QCOMPARE(contents.chains[0].id, QString("A"));
+        QCOMPARE(contents.chains[0].description, QString("SPIKE PROTEIN"));
+        QCOMPARE(contents.chains[0].residues, 2); // MSE, a HETATM record of the sequence.
+        QCOMPARE(contents.chains[2].description, QString("ANTIBODY HEAVY CHAIN"));
+        QCOMPARE(contents.chains[0].groups, QStringList({"ZN", "HOH"}));
+        QCOMPARE(contents.chains[1].groups, QStringList{"HOH"});
+        QCOMPARE(contents.polymers, 4);
+        QCOMPARE(contents.ligands, 1);
+        QCOMPARE(contents.waters, 2);
+        const auto serials = [](const QString &records) {
+            QList<int> out;
+            for (const auto &line : records.split('\n'))
+                if (line.startsWith("ATOM") || line.startsWith("HETATM"))
+                    out << line.mid(6, 5).toInt();
+            return out;
+        };
+        auto chosen = preparePdb(text, {.chains = {"A"}, .water = false});
+        QCOMPARE(serials(chosen), QList<int>({1, 2, 5}));
+        QVERIFY(!chosen.contains("CONECT")); // It names the water left out.
+        chosen = preparePdb(text, {.chains = {"A"}});
+        QCOMPARE(serials(chosen), QList<int>({1, 2, 5, 6}));
+        QVERIFY(chosen.contains("CONECT    5    6"));
+
+        QTemporaryDir temp;
+        const auto path = temp.filePath("entry.pdb");
+        writeFile(path, text.toUtf8());
+        const auto d = importStructure(path, {.chains = {"A", "B"}, .ligands = false, .water = false});
+        QCOMPARE(d.atoms.size(), 3);
+        QCOMPARE(d.residues.size(), 3);
+        const auto meta = d.data["metadata"].toObject();
+        QCOMPARE(meta["pdb_chains"].toArray(), QJsonArray({"A", "B"}));
+        QCOMPARE(meta["pdb_components"].toArray(), QJsonArray({"polymer"}));
+        QCOMPARE(importStructure(path).atoms.size(), 7);
+        // Without END, the last line break left a blank line that Open Babel took for a broken file.
+        writeFile(path, record("ATOM", 1, "CA", "GLY", 'A', 1, 0, 0, 0, "C").toUtf8());
+        QCOMPARE(importStructure(path).atoms.size(), 1);
+        writeFile(path, text.toUtf8());
+        try {
+            importStructure(path, {.chains = {"X"}});
+            QFAIL("read no atoms");
+        } catch (const std::exception &e) {
+            QVERIFY(QString::fromUtf8(e.what()).contains("鎖・成分"));
+        }
+    }
+    // The same of an mmCIF file, from its entities; without them, from the records and the water names.
+    void mmcifChainsAndComponents() {
+        const QByteArray atoms =
+            "loop_\n_atom_site.group_PDB\n_atom_site.id\n_atom_site.type_symbol\n"
+            "_atom_site.label_atom_id\n_atom_site.label_comp_id\n_atom_site.label_asym_id\n"
+            "_atom_site.label_entity_id\n_atom_site.label_seq_id\n_atom_site.Cartn_x\n"
+            "_atom_site.Cartn_y\n_atom_site.Cartn_z\n_atom_site.auth_seq_id\n"
+            "_atom_site.auth_asym_id\n"
+            "ATOM   1 C  CA GLY A 1 1 0   0 0 1   A\n"
+            "HETATM 2 C  CA MSE A 1 2 3.8 0 0 2   A\n"
+            "ATOM   3 C  CA GLY B 1 1 0   5 0 1   BB\n"
+            "HETATM 4 ZN ZN ZN  C 2 . 5   5 5 101 A\n"
+            "HETATM 5 O  O  HOH D 3 . 9   9 9 201 A\n";
+        const auto entry = readMmcif("data_TEST\nloop_\n_entity.id\n_entity.type\n_entity.pdbx_description\n"
+                                     "1 polymer 'Spike protein'\n2 non-polymer 'ZINC ION'\n3 water water\n" +
+                                     atoms);
+        QCOMPARE(entry.atoms[1].kind, ResidueKind::Polymer); // MSE, of the polymer entity.
+        QCOMPARE(entry.atoms[3].kind, ResidueKind::Ligand);
+        QCOMPARE(entry.atoms[4].kind, ResidueKind::Water);
+        const auto contents = mmcifContents(entry);
+        QCOMPARE(contents.chains.size(), 2);
+        QCOMPARE(contents.chains[1].id, QString("BB"));
+        QCOMPARE(contents.chains[1].description, QString("Spike protein"));
+        QCOMPARE(contents.chains[0].residues, 2);
+        QCOMPARE(contents.chains[0].groups, QStringList({"ZN", "HOH"}));
+        QCOMPARE(contents.polymers, 3);
+        QCOMPARE(contents.ligands, 1);
+        QCOMPARE(contents.waters, 1);
+        QCOMPARE(selectMmcif(entry.atoms, {.chains = {"BB"}}).size(), 1);
+        QCOMPARE(selectMmcif(entry.atoms, {.water = false}).size(), 4);
+        QCOMPARE(selectMmcif(entry.atoms, {.ligands = false, .water = false}).size(), 3);
+        QVERIFY_EXCEPTION_THROWN(selectMmcif(entry.atoms, {.chains = {"BB"}, .polymer = false}),
+                                 std::runtime_error);
+        // One entity as items; atoms without an entity by their record and name.
+        const auto items =
+            readMmcif("data_TEST\n_entity.id 1\n_entity.type polymer\n_entity.pdbx_description 'Peptide'\n" +
+                      QByteArray(atoms).replace(" 1 1 0   5", " . 1 0   5").replace(" 1 2 3.8", " . 2 3.8"));
+        QCOMPARE(items.descriptions.value("1"), QString("Peptide"));
+        QCOMPARE(items.atoms[0].kind, ResidueKind::Polymer);
+        QCOMPARE(items.atoms[1].kind, ResidueKind::Ligand); // A HETATM record without its entity.
+        QCOMPARE(items.atoms[2].kind, ResidueKind::Polymer);
+        QCOMPARE(items.atoms[3].kind, ResidueKind::Ligand);
+        QCOMPARE(items.atoms[4].kind, ResidueKind::Water);
+    }
     void mmcifErrorsNameTheProblem() {
         const auto message = [](const QByteArray &text) {
             try {
-                mmcifAtoms(text);
+                readMmcif(text);
             } catch (const std::exception &e) {
                 return QString::fromUtf8(e.what());
             }

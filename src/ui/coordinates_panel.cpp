@@ -1038,7 +1038,7 @@ void CoordinatesPanel::importPath(const QString &path) {
         return;
     if (base != window->revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
-    previewStructure(importStructure(path, options->model, options->altloc, options->frame));
+    previewStructure(importStructure(path, options->selection, options->frame));
     window->setPreference("directory", QFileInfo(path).absolutePath());
 }
 void CoordinatesPanel::dragEnterEvent(QDragEnterEvent *event) {
@@ -1056,7 +1056,7 @@ void CoordinatesPanel::dropEvent(QDropEvent *event) {
     if (path.isEmpty())
         return;
     event->acceptProposedAction();
-    // Read after the drop finishes, so the PDB dialogs do not run inside the drag-and-drop loop.
+    // Read after the drop finishes, so the dialogs of what to read do not run inside the drag-and-drop loop.
     QTimer::singleShot(0, this, [this, path] { attempt([&] { importPath(path); }); });
 }
 QSize CoordinatesPanel::minimumSizeHint() const {

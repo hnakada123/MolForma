@@ -169,7 +169,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 
 `revision` は版番号で、確定文書か候補が変わるたびに新しくなります（編集・Undo/Redo・候補の作成・確定・取消し。元の内容に戻しても版は戻りません）。GUIでの編集などで版が変わると、古い版を指定した変更は失敗します。失敗時は再取得して差分を確認してください。文書IDはプロセスごとに異なり、切断後は無効になります。複数の呼び出し元が同じプロセスを共有する場合も、各操作にIDを渡す必要があります。
 
-固定原子の移動、不正な参照、重複座標、不正な引数などは文書を変えずに失敗します。部分編集はプロジェクトの未知のenvelopeフィールドも保持します。`open_file`（プロジェクト）と `import_document(format: "project")` は指定したプロジェクト全体を読み込み、元のプロジェクトはUndoで復元できます。`open_file` でXYZ/MOL/SDF/Mol2/CML/PDB/mmCIFを開いた場合は、座標の表の「構造ファイルを読み込む…」と同じく構造だけを置き換え、計算条件・実行設定を保持します。NWChem入力（`.nw`）とGaussian入力（`.gjf` / `.com`）は電荷・多重度も設定し、NWChem入力はMolFormaと共通の計算条件も取り込みます（詳細設定と追加入力は保持）。複数フレームのXYZは `frame`（0始まり）が必要です。
+固定原子の移動、不正な参照、重複座標、不正な引数などは文書を変えずに失敗します。部分編集はプロジェクトの未知のenvelopeフィールドも保持します。`open_file`（プロジェクト）と `import_document(format: "project")` は指定したプロジェクト全体を読み込み、元のプロジェクトはUndoで復元できます。`open_file` でXYZ/MOL/SDF/Mol2/CML/PDB/mmCIFを開いた場合は、座標の表の「構造ファイルを読み込む…」と同じく構造だけを置き換え、計算条件・実行設定を保持します。NWChem入力（`.nw`）とGaussian入力（`.gjf` / `.com`）は電荷・多重度も設定し、NWChem入力はMolFormaと共通の計算条件も取り込みます（詳細設定と追加入力は保持）。複数フレームのXYZは `frame`（0始まり）が必要です。PDB・mmCIFは `model`（既定1）、`altloc`（既定は残基ごとに占有率が最大の位置）、`chains`（著者の鎖ID。既定はすべて）と、成分の `polymer`（たんぱく質・核酸）・`ligands`（配位子・イオン・糖鎖など）・`water`（既定はすべて `true`）で読み込む範囲を選べます。
 
 ## 公開ツール
 
@@ -184,7 +184,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `set_dimension` | 2/3/4原子の距離（Å）・角度・二面角（度）の設定。GUIと同じく後の原子の側（結合していない別々の分子では後の原子の分子全体）を動かす |
 | `set_atom_properties` | 安定IDの原子の元素（`hydrogens` で水素の調整）、形式電荷、不対電子、同位体（質量数、0で解除）または質量（amu）、固定、ゴースト、原子名の変更 |
 | `import_document` | XYZ文字列またはMolFormaプロジェクト（`.molforma.json`、version 1）のJSON文字列の取込。XYZは `append: true` で今の分子の横に追加 |
-| `open_file` | ローカルXYZ/MOL/SDF/Mol2/CML/PDB/mmCIF/MolFormaプロジェクト、NWChem・Gaussian入力の取込。複数フレームのXYZは `frame` で選択 |
+| `open_file` | ローカルXYZ/MOL/SDF/Mol2/CML/PDB/mmCIF/MolFormaプロジェクト、NWChem・Gaussian入力の取込。複数フレームのXYZは `frame`、PDB・mmCIFは `model`・`altloc`・`chains`・`polymer`・`ligands`・`water` で選択 |
 | `export_document` | 確定文書のXYZ、MolFormaプロジェクトのJSON、検証済みNWChem入力文字列 |
 | `save_file` | 確定文書をMolFormaプロジェクト（`.molforma.json`）として保存。既存ファイルは `overwrite: true` か、利用者の上書き承認が必要 |
 | `get_nwchem` / `set_nwchem` | 計算条件・既定値・選択肢（`choices`）・検証結果の取得と条件変更。溶媒（SMD・溶媒名）、相対論、RI-J、物性、遷移状態探索・IRC・拘束（`constraints`、原子は安定ID）・スキャン（`scan_atoms` 等）、BSSE、後続の一点計算を含む。追加入力（`extra_input` / `extra_tasks`）は変更不可。変更で新たに生じたエラーだけで拒否し、変更前からあるエラー（原子がまだない、多重度が未設定など）はほかの条件の変更を妨げない |
@@ -287,7 +287,7 @@ GUI変更は `documentId` と `expectedRevision` を必要とし、`queued` の 
 | GUIの範囲 | MCPの経路 |
 | --- | --- |
 | 分子編集、部品・ペプチド・配位・立体化学、断片・残基・点電荷 | 文書ツールと `get_ui` → `ui_*`。ダイアログも同じ手順 |
-| PDBのMODEL/ALTLOC選択、診断・修復、活性部位の切り出し、カスタム部品、設定・プリセット | 対応するメニュー・ボタンを `ui_activate`、内容を `ui_set_value` / `ui_select` |
+| PDB・mmCIFの読み込む範囲の選択、PDBの診断・修復、活性部位の切り出し、カスタム部品、設定・プリセット | 対応するメニュー・ボタンを `ui_activate`、内容を `ui_set_value` / `ui_select` |
 | 座標表、固定・ゴースト・質量、計算条件・詳細設定 | `ui_edit_cell` / `ui_set_value`、または設定ツール |
 | 入力プレビュー、検索・コピー・保存 | タブと各ボタンを `ui_*` で操作、本文は `get_ui_item` |
 | NWChem実行と履歴 | `calculation` / `history_action` と `get_app_state`。再利用・ごみ箱の確認もMCPで処理 |
@@ -356,7 +356,7 @@ GUI変更は `documentId` と `expectedRevision` を必要とし、`queued` の 
 - Tasks拡張の対象は、GUI変更ツールと、画面なしモードの計算開始・結果読込です。文書ツールは同期で結果を返します。
 - GUI操作、結果の表示・再生、画面取得、SMILES生成・整形、計算履歴は `--mcp-gui` だけです。画面を作らない `--mcp` は文書・設定用の23ツールと計算・結果用の4ツールを提供します。
 - 読み込みは1ファイル8 MiB（gzip圧縮したファイルは展開後も8 MiB）、受信は1メッセージ8 MiB、文書は10,000原子までです。送信待ちデータが32 MiBを超える読み取り停止クライアントは切断します。JSON-RPCバッチには対応しません。
-- `open_file` によるPDB・mmCIF読込はMODEL 1・ALTLOC自動選択です。選択が必要な場合はGUIのファイルメニューから読み込み、ダイアログをMCPで操作します。
+- `open_file` によるPDB・mmCIF読込は、引数を省くとMODEL 1・ALTLOC自動選択・全体です。1万原子を超える構造も、`chains` などで絞ると読み込めます。
 - 文書ツールは同期、GUI変更ツールは操作IDを返します。長時間処理の取消は `chemistry` / `calculation` / `results_action` / `history_action` の中止操作を使います。完了済みRPCへの `notifications/cancelled` は無視します。ヘッドレスモードのUndo履歴は直近100回までです。
 - 結果読込は既存ビューアと同じ上限（1ファイル128 MiB、2,000原子・2,000構造、構造列は合計20万原子）です。画面取得は横幅最大4,096ピクセル・PNG 8 MiBまでです。
 - ファイル保存以外の文書・候補・履歴はメモリー内にあり、プロセス終了時に失われます。

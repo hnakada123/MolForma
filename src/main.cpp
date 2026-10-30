@@ -156,7 +156,8 @@ int main(int argc, char **argv) {
                              &QCoreApplication::exit);
             transport->start();
             window.statusBar()->addPermanentWidget(new QLabel(mf::tr("MCP stdio 接続中"), &window));
-            // PDB MODEL/ALTLOC and load-error dialogs must already be reachable over MCP.
+            // The dialogs of what to read (PDB, mmCIF, XYZ frames) and of load errors must already be
+            // reachable over MCP.
             if (!parser.positionalArguments().isEmpty()) {
                 const auto path = parser.positionalArguments().first();
                 QTimer::singleShot(0, &window,

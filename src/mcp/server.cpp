@@ -823,12 +823,19 @@ void McpServer::registerTools() {
               "(.gjf/.com) as an undoable edit. Structure files keep the calculation settings; NWChem and "
               "Gaussian inputs also set charge and multiplicity, and NWChem inputs the calculation settings "
               "they "
-              "share with MolForma. Multi-frame XYZ files need frame (0-based). PDB and mmCIF use model 1 "
-              "and automatic "
-              "alternate-location selection. Files may be gzip-compressed (.gz). Maximum file size: 8 MiB, "
-              "also after decompressing.",
+              "share with MolForma. Multi-frame XYZ files need frame (0-based). PDB and mmCIF files read "
+              "model (default 1), altloc (default: in each residue the location of the highest occupancy), "
+              "chains (author chain IDs; default all) and the residue kinds polymer (proteins, nucleic "
+              "acids), ligands (other hetero groups: ligands, ions, sugars) and water (default all). Files "
+              "may be gzip-compressed (.gz). Maximum file size: 8 MiB, also after decompressing.",
           .properties = {{"path", type("string")},
-                         {"frame", QJsonObject{{"type", "integer"}, {"minimum", 0}}}},
+                         {"frame", QJsonObject{{"type", "integer"}, {"minimum", 0}}},
+                         {"model", QJsonObject{{"type", "integer"}, {"minimum", 1}}},
+                         {"altloc", type("string")},
+                         {"chains", strings()},
+                         {"polymer", type("boolean")},
+                         {"ligands", type("boolean")},
+                         {"water", type("boolean")}},
           .required = {"path"}},
          [this](Document &next, const QJsonObject &args) {
              auto path = args["path"].toString();
@@ -848,7 +855,15 @@ void McpServer::registerTools() {
                  next = importStructure(path);
                  return;
              }
-             const auto imported = importStructure(path, 1, {}, frame);
+             MacromoleculeSelection selection;
+             selection.model = args.contains("model") ? args["model"].toInt() : 1;
+             selection.altloc = args["altloc"].toString();
+             for (const auto &chain : args["chains"].toArray())
+                 selection.chains << chain.toString();
+             selection.polymer = args["polymer"].toBool(true);
+             selection.ligands = args["ligands"].toBool(true);
+             selection.water = args["water"].toBool(true);
+             const auto imported = importStructure(path, selection, frame);
              replaceCoordinateStructure(next, imported);
              if (QStringList{"nw", "nwinp", "gjf", "com", "gau"}.contains(suffix)) {
                  next.charge = imported.charge;

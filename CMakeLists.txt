@@ -48,6 +48,7 @@ add_library(molforma_editing STATIC
     src/editing/library.cpp
     src/editing/mmcif.cpp
     src/editing/operations.cpp
+    src/editing/pdb.cpp
     src/editing/peptide.cpp
     src/editing/site.cpp
     src/editing/stereochemistry.cpp)

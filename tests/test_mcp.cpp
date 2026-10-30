@@ -954,6 +954,21 @@ class McpTest : public QObject {
         QCOMPARE(nwchemSettings(opened)["basis"].toString(), QString("cc-pvdz"));
         QCOMPARE(nwchemSettings(opened)["task"].toString(), QString("optimize"));
         QCOMPARE(executionSettings(opened)["mpi_ranks"].toInt(), 5);
+        // PDB and mmCIF files read the chains and kinds of residues asked for.
+        const auto pdb = dir.filePath("entry.pdb");
+        writeFile(pdb, "ATOM      1  CA  GLY A   1       0.000   0.000   0.000  1.00  0.00           C\n"
+                       "ATOM      2  CA  GLY B   1       0.000   5.000   0.000  1.00  0.00           C\n"
+                       "HETATM    3 ZN    ZN A 101       5.000   5.000   5.000  1.00  0.00          ZN\n"
+                       "HETATM    4  O   HOH A 201       9.000   9.000   9.000  1.00  0.00           O\n");
+        QVERIFY(!failed(change(server, "open_file", {{"path", pdb}, {"preview", false}})));
+        QCOMPARE(committed(server).formula(), QString("C2OZn"));
+        QVERIFY(!failed(
+            change(server, "open_file",
+                   {{"path", pdb}, {"chains", QJsonArray{"A"}}, {"water", false}, {"preview", false}})));
+        QCOMPARE(committed(server).formula(), QString("CZn"));
+        QVERIFY(failed(
+            change(server, "open_file", {{"path", pdb}, {"chains", QJsonArray{"X"}}, {"preview", false}})));
+        QCOMPARE(committed(server).formula(), QString("CZn"));
     }
     void filesResourcesAndNwchem() {
         McpServer server;

@@ -87,7 +87,7 @@ Document gaussianStructure(const QString &text) {
     d.multiplicity = multiplicity;
     return d;
 }
-Document importStructure(const QString &path, int model, const QString &altloc, int xyzFrame) {
+Document importStructure(const QString &path, const MacromoleculeSelection &selection, int xyzFrame) {
     const auto ext = structureSuffix(path);
     if (ext == "json") {
         if (compressedFile(path))
@@ -106,7 +106,7 @@ Document importStructure(const QString &path, int model, const QString &altloc, 
         return importNwchemInput(QString::fromUtf8(readStructureFile(path))).document;
     if (ext == "gjf" || ext == "com" || ext == "gau")
         return gaussianStructure(QString::fromUtf8(readStructureFile(path)));
-    return importBabelStructure(path, model, altloc);
+    return importBabelStructure(path, selection);
 }
 void exportStructure(const Document &document, const QString &path) {
     const auto ext = QFileInfo(path).suffix().toLower();

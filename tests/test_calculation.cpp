@@ -1078,7 +1078,7 @@ class CalculationTest : public QObject {
         writeFile(path, "1\nfirst\nHe 0 0 0\n\n1\nsecond\nHe 0 0 1\n");
         QCOMPARE(xyzFrames(QString::fromUtf8(readFile(path))).size(), 2);
         QVERIFY_THROWS_EXCEPTION(std::exception, importStructure(path));
-        QCOMPARE(importStructure(path, 1, {}, 1).atoms[0].position.z(), 1.0);
+        QCOMPARE(importStructure(path, {}, 1).atoms[0].position.z(), 1.0);
         const auto nw = dir.filePath("input.nw");
         writeFile(nw, "geometry\n Ne 0 0 0\nend\ncharge 0\ntask scf energy\n");
         QCOMPARE(importStructure(nw).atoms[0].element, QString("Ne"));

@@ -2,6 +2,7 @@
 #include "editing/atom_properties.h"
 #include "editing/peptide.h"
 #include "gzip.h"
+#include "io/structure_io.h"
 #include "model/geometry.h"
 #include "nwchem/nwchem_geometry.h"
 #include "ui/coordinates_panel.h"
@@ -114,28 +115,64 @@ class CoordinatesTest : public QObject {
         QTimer choose;
         int prompts = 0;
         connect(&choose, &QTimer::timeout, &parent, [&] {
-            auto *dialog = qobject_cast<QInputDialog *>(QApplication::activeModalWidget());
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
             if (!dialog)
                 return;
-            if (dialog->windowTitle() == "PDB MODEL")
-                dialog->findChild<QComboBox *>()->setCurrentIndex(1);
-            else if (dialog->windowTitle() == "PDB ALTLOC")
-                dialog->setTextValue("B");
+            // One dialog for both: no chains or kinds to choose in this entry.
+            QVERIFY(!dialog->findChild<QListWidget *>("importChains"));
+            QVERIFY(!dialog->findChild<QCheckBox *>("importWater"));
+            dialog->findChild<QComboBox *>("importModel")->setCurrentIndex(1);
+            dialog->findChild<QComboBox *>("importAltloc")->setEditText("B");
             ++prompts;
-            dialog->accept();
+            dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok)->click();
         });
         choose.start(0);
         const auto options = chooseStructureImport(&parent, path);
         choose.stop();
         QVERIFY(options);
-        QCOMPARE(prompts, 2);
-        QCOMPARE(options->model, 7);
-        QCOMPARE(options->altloc, QString("B"));
+        QCOMPARE(prompts, 1);
+        QCOMPARE(options->selection.model, 7);
+        QCOMPARE(options->selection.altloc, QString("B"));
         QTimer::singleShot(0, &parent, [] {
-            if (auto *dialog = qobject_cast<QInputDialog *>(QApplication::activeModalWidget()))
+            if (auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget()))
                 dialog->reject();
         });
         QVERIFY(!chooseStructureImport(&parent, path));
+    }
+    // Chains and kinds of residues are chosen in the same dialog; something must be left to read.
+    void importChainsAndComponents() {
+        QTemporaryDir dir;
+        const auto path = dir.filePath("chains.pdb");
+        writeFile(path, "ATOM      1  CA  GLY A   1       0.000   0.000   0.000  1.00  0.00           C\n"
+                        "ATOM      2  CA  GLY B   1       0.000   5.000   0.000  1.00  0.00           C\n"
+                        "HETATM    3  O   HOH A 201       9.000   9.000   9.000  1.00  0.00           O\n");
+        QWidget parent;
+        bool okWithoutChains = true;
+        QTimer::singleShot(0, &parent, [&] {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            QVERIFY(dialog);
+            QVERIFY(!dialog->findChild<QComboBox *>("importModel"));
+            QVERIFY(!dialog->findChild<QCheckBox *>("importLigands")); // The entry has none.
+            auto *chains = dialog->findChild<QListWidget *>("importChains");
+            QCOMPARE(chains->count(), 2);
+            auto *ok = dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok);
+            chains->item(0)->setCheckState(Qt::Unchecked);
+            chains->item(1)->setCheckState(Qt::Unchecked);
+            okWithoutChains = ok->isEnabled();
+            chains->item(0)->setCheckState(Qt::Checked);
+            dialog->findChild<QCheckBox *>("importWater")->setChecked(false);
+            ok->click();
+        });
+        const auto options = chooseStructureImport(&parent, path);
+        QVERIFY(!okWithoutChains);
+        QVERIFY(options);
+        QCOMPARE(options->selection.chains, QStringList{"A"});
+        QVERIFY(options->selection.polymer && options->selection.ligands && !options->selection.water);
+        QCOMPARE(importStructure(path, options->selection).atoms.size(), 1);
+        // An entry without a choice opens without asking.
+        const auto single = dir.filePath("single.pdb");
+        writeFile(single, "ATOM      1  CA  GLY A   1       0.000   0.000   0.000  1.00  0.00           C\n");
+        QVERIFY(chooseStructureImport(&parent, single));
     }
     void multiFrameImport() {
         QFETCH(bool, replace);
