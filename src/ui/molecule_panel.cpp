@@ -893,7 +893,8 @@ void MoleculePanel::addViewActions(QMenu *viewMenu) {
          {std::tuple{tr("ボール＆スティック"), "ball_and_stick", "viewStyleBallAndStick"},
           {tr("スティック"), "stick", "viewStyleStick"},
           {tr("空間充填（CPK）"), "spacefill", "viewStyleSpacefill"},
-          {tr("ワイヤーフレーム"), "wireframe", "viewStyleWireframe"}}) {
+          {tr("ワイヤーフレーム"), "wireframe", "viewStyleWireframe"},
+          {tr("主鎖（Cαトレース）"), "backbone", "viewStyleBackbone"}}) {
         auto *a = styles->addAction(label);
         a->setObjectName(name);
         a->setCheckable(true);

@@ -169,6 +169,9 @@ class CoordinatesTest : public QObject {
         QCOMPARE(options->selection.chains, QStringList{"A"});
         QVERIFY(options->selection.polymer && options->selection.ligands && !options->selection.water);
         QCOMPARE(importStructure(path, options->selection).atoms.size(), 1);
+        // Without asking, as a screenshot from the command line reads: all of it.
+        const auto quiet = chooseStructureImport(&parent, path, false);
+        QVERIFY(quiet && quiet->selection.chains.isEmpty() && quiet->selection.water);
         // An entry without a choice opens without asking.
         const auto single = dir.filePath("single.pdb");
         writeFile(single, "ATOM      1  CA  GLY A   1       0.000   0.000   0.000  1.00  0.00           C\n");

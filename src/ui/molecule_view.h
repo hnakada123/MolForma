@@ -30,7 +30,8 @@ class MoleculeView : public QWidget {
     // Renders pending changes at once, so the widget can be grabbed as an image and the markers
     // match the molecule.
     void renderNow();
-    // "ball_and_stick" (default), "stick", "spacefill" or "wireframe".
+    // "ball_and_stick" (default), "stick", "spacefill", "wireframe" or "backbone": the polymer residues
+    // as a line through their Cα atoms (P of nucleotides), the other atoms as balls and sticks.
     void setStyle(const QString &style);
     QString style() const {
         return displayStyle;
@@ -108,10 +109,19 @@ class MoleculeView : public QWidget {
         showIndices = value;
         scheduleOverlay();
     }
+    // "element" (default), "residue" (a hue for each residue) or "chain" (the polymer residues in a color of
+    // their chain, other atoms by element).
     void setColorMode(const QString &mode) {
         colorMode = mode;
         refreshColors();
         scheduleRender();
+    }
+    QColor atomColor(const QString &id) const {
+        return atomColors.value(atomIndices.value(id, -1));
+    }
+    // The line of the backbone style: pairs of atom indices.
+    const QVector<std::pair<int, int>> &traceSegments() const {
+        return trace;
     }
     void setDepth(double value) {
         depth = value;
@@ -193,8 +203,14 @@ class MoleculeView : public QWidget {
     bool showHydrogenBonds = false;
     QVector<std::pair<QString, QString>> hbonds; // (hydrogen, acceptor)
     void findHydrogenBonds();
+    // The atoms of polymer residues that the backbone style leaves out, its line and the atoms it runs
+    // through.
+    QSet<QString> traced;
+    QVector<std::pair<int, int>> trace;
+    QVector<bool> traceNodes;
+    void indexTrace();
     bool shown(const Atom &a) const {
-        return !hidden.contains(a.id);
+        return !hidden.contains(a.id) && !traced.contains(a.id);
     }
     double atomRadius(int atom) const;
     bool positiveSurface = true, negativeSurface = true;

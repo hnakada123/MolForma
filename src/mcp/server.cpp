@@ -5,6 +5,7 @@
 #include "editing/coordinates.h"
 #include "editing/operations.h"
 #include "editing/pdb.h"
+#include "editing/peptide.h"
 #include "editing/site.h"
 #include "io/structure_io.h"
 #include "mcp/tools.h"
@@ -327,9 +328,7 @@ QJsonObject residueSummary(const Document &d) {
     for (const auto &r : d.residues) {
         registered += r.atoms.size();
         const auto chain = r.metadata.value("pdb_chain").toString();
-        const bool polymer = (r.atoms.contains("N") && r.atoms.contains("CA") && r.atoms.contains("C")) ||
-                             r.atoms.contains("C1'"),
-                   water = waterResidue(r.code);
+        const bool polymer = polymerResidue(r), water = waterResidue(r.code);
         if (!polymer && !water) {
             others.append(QJsonObject{
                 {"chain", chain}, {"number", r.number}, {"code", r.code}, {"atoms", r.atoms.size()}});

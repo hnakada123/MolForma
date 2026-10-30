@@ -393,6 +393,8 @@ class EditorTest : public QObject {
         w.edit("削除", [&](Document &d) { d.remove({ids[3], ids[4], ids[5]}); });
         QVERIFY(view->monitorList().isEmpty());
         hbonds->setChecked(false);
+        w.findChild<QAction *>("viewStyleBackbone")->trigger();
+        QCOMPARE(view->style(), QString("backbone"));
         w.findChild<QAction *>("viewStyleBallAndStick")->trigger();
         // A monitor whose atoms became coincident or collinear still paints (as "—").
         auto line = Document::fromXyz("4\nline\nC 0 0 0\nC 1.5 0 0\nC 3 0 0\nC 4.5 0 0\n");
@@ -1125,7 +1127,7 @@ class EditorTest : public QObject {
             QVERIFY(!b->text().contains("拘束に追加"));
         }
         auto *color = w.findChild<QComboBox *>("moleculeColorMode");
-        QCOMPARE(color->count(), 2);
+        QCOMPARE(color->count(), 3);
         QVERIFY(w.findChild<QPushButton *>("preparePdb"));
 
         // The task is set in "2 計算条件" only.

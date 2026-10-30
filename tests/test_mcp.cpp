@@ -19,6 +19,7 @@
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QFileDialog>
+#include <QImage>
 #include <QJsonDocument>
 #include <QLineEdit>
 #include <QMenu>
@@ -556,6 +557,26 @@ class McpTest : public QObject {
         process.closeWriteChannel();
         QVERIFY(process.waitForFinished(5000));
         QCOMPARE(process.exitCode(), 0);
+    }
+    // A screenshot from the command line has no person to answer the dialog of what to read: it reads all.
+    void screenshotReadsWithoutAsking() {
+        QTemporaryDir files;
+        const auto pdb = files.filePath("chains.pdb");
+        writeFile(pdb, "ATOM      1  CA  GLY A   1       0.000   0.000   0.000  1.00  0.00           C\n"
+                       "ATOM      2  CA  GLY B   1       0.000   5.000   0.000  1.00  0.00           C\n"
+                       "HETATM    3  O   HOH A 201       9.000   9.000   9.000  1.00  0.00           O\n");
+        QProcess process;
+        auto env = QProcessEnvironment::systemEnvironment();
+        env.insert("QT_QPA_PLATFORM", "offscreen");
+        env.insert("MOLFORMA_RENDERER", "painter");
+        env.insert("XDG_CONFIG_HOME", files.filePath("settings"));
+        env.insert("XDG_DATA_HOME", files.filePath("data"));
+        process.setProcessEnvironment(env);
+        const auto png = files.filePath("chains.png");
+        process.start(QCoreApplication::applicationDirPath() + "/molforma", {pdb, "--screenshot", png});
+        QVERIFY(process.waitForFinished(30000));
+        QCOMPARE(process.exitCode(), 0);
+        QVERIFY(!QImage(png).isNull());
     }
     void guiProcessCalculationAndVibration() {
         QTemporaryDir files;

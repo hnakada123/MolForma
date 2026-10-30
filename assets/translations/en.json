@@ -1045,6 +1045,8 @@
     "ログ末尾の最後の値": "last value in the log tail",
     "ログ行": "Log line",
     "ワイヤーフレーム": "Wireframe",
+    "主鎖（Cαトレース）": "Backbone (Cα trace)",
+    "残基: 残基ごとに色を変えます。鎖: たんぱく質・核酸の残基を鎖ごとの色にし、配位子・イオン・水は元素の色のままにします。": "Residue: a color for each residue. Chain: the residues of proteins and nucleic acids in a color of each chain, ligands, ions and water in the colors of their elements.",
     "・": ", ",
     "・%1": "• %1",
     "一冠四方逆プリズム": "Capped square antiprismatic",

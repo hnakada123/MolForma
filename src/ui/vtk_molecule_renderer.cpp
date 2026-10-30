@@ -54,6 +54,8 @@ struct VtkMoleculeRenderer::Scene {
     vtkNew<vtkFloatArray> radii;
     std::array<Mesh, 2> surfaces;
     Mesh plain, bonds, arrows; // Bonds that look the same from every side, and camera-facing ones.
+    Mesh trace;                // The line of the backbone style.
+    QVector<std::pair<int, int>> traceSegments;
     Document document;
     QHash<QString, int> atomIndices;
     struct DrawnBond {
@@ -61,7 +63,8 @@ struct VtkMoleculeRenderer::Scene {
         const BondStyle *style;
     };
     QVector<DrawnBond> drawnBonds; // The bonds shown, between shown atoms.
-    // Per shown atom: 0 heavy, 1 hydrogen, 2 without a bond (wireframe); and the van der Waals radius.
+    // Per shown atom: 0 heavy, 1 hydrogen, 2 without a bond (wireframe), 3 on the backbone trace; and the van
+    // der Waals radius.
     QVector<char> radiusKind;
     QVector<double> vdw;
     QVector<int> visibleAtoms;
@@ -135,7 +138,7 @@ VtkMoleculeRenderer::VtkMoleculeRenderer(QWidget *parent)
         property->SetOpacity(150. / 255);
         s.renderer->AddActor(s.surfaces[i].actor);
     }
-    for (auto *mesh : {&s.plain, &s.bonds, &s.arrows}) {
+    for (auto *mesh : {&s.plain, &s.bonds, &s.arrows, &s.trace}) {
         mesh->mapper->SetScalarModeToUseCellData();
         mesh->mapper->SetColorModeToDirectScalars();
         mesh->actor->GetProperty()->LightingOff();
@@ -143,15 +146,21 @@ VtkMoleculeRenderer::VtkMoleculeRenderer(QWidget *parent)
     }
     s.plain.actor->GetProperty()->RenderLinesAsTubesOn();
     s.bonds.actor->GetProperty()->RenderLinesAsTubesOn();
+    s.trace.actor->GetProperty()->RenderLinesAsTubesOn();
 }
 VtkMoleculeRenderer::~VtkMoleculeRenderer() {
     // Release VTK resources while the Qt context and render-window adapter still exist.
     setRenderWindow(static_cast<vtkGenericOpenGLRenderWindow *>(nullptr));
 }
 void VtkMoleculeRenderer::setMolecule(const Document &document, const QVector<QColor> &colors, bool hydrogens,
-                                      const QString &style, const QSet<QString> &hidden) {
+                                      const QString &style, const QSet<QString> &hidden,
+                                      const QVector<std::pair<int, int>> &trace) {
     auto &s = *scene;
     s.document = document;
+    s.traceSegments = trace;
+    QSet<int> nodes;
+    for (const auto &[a, b] : trace)
+        nodes << a << b;
     s.hydrogens = hydrogens;
     s.colors = colors;
     s.style = style;
@@ -161,7 +170,8 @@ void VtkMoleculeRenderer::setMolecule(const Document &document, const QVector<QC
         s.bonded << bond.a << bond.b;
     s.plain.actor->SetVisibility(style != "spacefill");
     s.bonds.actor->SetVisibility(style != "spacefill");
-    s.arrows.actor->SetVisibility(style == "ball_and_stick");
+    s.arrows.actor->SetVisibility(style == "ball_and_stick" || style == "backbone");
+    s.trace.actor->SetVisibility(style == "backbone");
     s.visibleAtoms.clear();
     s.atomIndices.clear();
     s.radiusKind.clear();
@@ -180,6 +190,7 @@ void VtkMoleculeRenderer::setMolecule(const Document &document, const QVector<QC
         points->InsertNextPoint(atom.position.data());
         appendColor(rgb, colors[i]);
         s.radiusKind << (style == "wireframe" && !s.bonded.contains(atom.id) ? 2
+                         : nodes.contains(i)                                 ? 3
                          : atom.element == "H"                               ? 1
                                                                              : 0);
         double radius = 1.7;
@@ -313,11 +324,11 @@ void VtkMoleculeRenderer::setCamera(const Mat &rotation, const Vec &center, doub
     }
     // Spacefill radii are fixed in Å; the others are sizes on the screen, by kind of atom.
     if (scale != s.atomScale && !(s.style == "spacefill" && s.atomScale > 0)) {
-        double radius[3];
-        for (int kind = 0; kind < 3; ++kind) {
+        double radius[4];
+        for (int kind = 0; kind < 4; ++kind) {
             const bool h = kind == 1;
             radius[kind] = std::clamp(scale * (h ? .12 : .20), h ? 5. : 8., h ? 11. : 20.) / scale;
-            if (s.style == "stick")
+            if (s.style == "stick" || kind == 3)
                 radius[kind] = std::clamp(scale * .1, 3., 7.) / scale;
             else if (s.style == "wireframe") // Isolated atoms (ions) stay visible as small dots.
                 radius[kind] = kind == 2 ? std::clamp(scale * .12, 4., 8.) / scale : 0;
@@ -334,6 +345,7 @@ void VtkMoleculeRenderer::setCamera(const Mat &rotation, const Vec &center, doub
                                                                          : 3.5) *
                                                devicePixelRatioF());
     s.plain.actor->GetProperty()->SetLineWidth(s.bonds.actor->GetProperty()->GetLineWidth());
+    s.trace.actor->GetProperty()->SetLineWidth(std::clamp(scale * .35, 4., 16.) * devicePixelRatioF());
     struct Lines {
         vtkNew<vtkPoints> points;
         vtkNew<vtkCellArray> cells;
@@ -372,6 +384,15 @@ void VtkMoleculeRenderer::setCamera(const Mat &rotation, const Vec &center, doub
                 fixed.add(a, b, bond.style->color);
         }
         fixed.show(s.plain);
+        // The trace in the colors of its residues, half a segment each.
+        Lines trace;
+        for (const auto &[a, b] : std::as_const(s.traceSegments)) {
+            const auto &from = s.document.atoms[a].position, &to = s.document.atoms[b].position;
+            const Vec middle = (from + to) / 2;
+            trace.add(from, middle, s.colors.value(a));
+            trace.add(middle, to, s.colors.value(b));
+        }
+        trace.show(s.trace);
         s.plainDirty = false;
     }
     if (!s.bondsDirty && scale == s.bondScale && rotation == s.bondRotation)

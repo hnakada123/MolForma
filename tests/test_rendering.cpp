@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+#include "editing/peptide.h"
 #include "ui/main_window.h"
 #include "ui/molecule_view.h"
 #include "ui/theme.h"
@@ -110,6 +111,45 @@ class RenderingTest : public QObject {
         QCOMPARE(window.document().atoms.size(), 2);
         window.history()->undo();
         QCOMPARE(window.document().toJson(), original);
+    }
+    // The backbone style draws each chain through its Cα atoms, broken where residues lie apart; chain colors
+    // paint the polymer residues by chain and leave the other atoms in element colors.
+    void backboneAndChainColors() {
+        Document d, second;
+        buildPeptide(d, {"GLY", "ALA", "GLY"}, "charged", "charged");
+        buildPeptide(second, {"GLY", "GLY"}, "charged", "charged");
+        for (auto &a : second.atoms)
+            a.position += Vec(0, 20, 0);
+        d.atoms += second.atoms;
+        d.bonds += second.bonds;
+        d.residues += second.residues;
+        for (auto it = second.chains.begin(); it != second.chains.end(); ++it)
+            d.chains[it.key()] = it.value();
+        auto water = Document::fromXyz("3\n\nO 0 -20 0\nH .76 -20 .59\nH -.76 -20 .59\n");
+        d.atoms += water.atoms;
+        d.bonds += water.bonds;
+        MoleculeView view;
+        view.resize(400, 300);
+        view.setDocument(d);
+        view.setStyle("backbone");
+        QCOMPARE(view.style(), QString("backbone"));
+        QCOMPARE(view.traceSegments().size(), 3); // Two in the first chain, one in the second.
+        QVERIFY(!view.grab().isNull());
+        auto apart = d;
+        for (const auto &id : apart.residues[2].atoms)
+            apart.atom(id).position += Vec(10, 0, 0);
+        view.setDocument(apart);
+        QCOMPARE(view.traceSegments().size(), 2);
+        view.setStyle("ball_and_stick");
+        QVERIFY(view.traceSegments().isEmpty());
+        view.setDocument(d);
+        view.setColorMode("chain");
+        const auto first = d.residues[0].atoms["CA"], other = second.residues[0].atoms["CA"];
+        QVERIFY(view.atomColor(first) != view.atomColor(other));
+        QCOMPARE(view.atomColor(d.residues[1].atoms["CB"]), view.atomColor(first));
+        QCOMPARE(view.atomColor(water.atoms[0].id), element("O").color);
+        view.setColorMode("element");
+        QCOMPARE(view.atomColor(first), element("C").color);
     }
     void surfaceWithoutAtoms() {
         MoleculeView view;

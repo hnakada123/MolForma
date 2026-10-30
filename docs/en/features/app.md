@@ -46,6 +46,6 @@ Use `ctest --test-dir build --output-on-failure`.
 
 CTest has 14 series, `core`, `editor`, `coordinates`, `calculation`, `advanced`, `execution`, `input_preview`, `results`, `history`, `output`, `molden`, `rendering`, `translations` and `mcp`, and each `tests/test_*.cpp` is one executable. The dated records in each section give the number of series and cases at that time. Starting under X11 and saving the screen after installing to a separate directory, as well as SMILES generation by the worker, cleanup that keeps fixed atoms and the error response to invalid SMILES, were also checked.
 
-`tests/fixtures/` holds 4 example project files. Screenshots can be regenerated with `--screenshot`.
+`tests/fixtures/` holds 4 example project files. Screenshots can be regenerated with `--screenshot`. With `--screenshot`, what to read of PDB and mmCIF files and the frame of XYZ files are not asked: the defaults of the dialogs (the first model, everything, the last frame) are read.
 
 See also: [MCP server overview](ai.md), the list of pages in “[Features](../features.md)”.

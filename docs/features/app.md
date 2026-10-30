@@ -46,6 +46,6 @@
 
 CTestは `core`、`editor`、`coordinates`、`calculation`、`advanced`、`execution`、`input_preview`、`results`、`history`、`output`、`molden`、`rendering`、`translations`、`mcp` の14系列で、各 `tests/test_*.cpp` が1つの実行ファイルです。各節の日付付きの記録は、その時点の系列数・件数です。別ディレクトリへのインストール後のX11起動・画面保存と、ワーカーのSMILES生成・固定原子を保持する整形・不正SMILESのエラー応答も確認しています。
 
-`tests/fixtures/` はプロジェクトの作例4ファイルです。スクリーンショットは `--screenshot` で再生成できます。
+`tests/fixtures/` はプロジェクトの作例4ファイルです。スクリーンショットは `--screenshot` で再生成できます。`--screenshot` では、PDB・mmCIFの読み込む範囲やXYZのフレームを尋ねず、ダイアログの既定（最初のモデル、全体、最後のフレーム）で読みます。
 
 関連: [MCPサーバーの概要](ai.md)、「[機能と操作](../features.md)」のページの一覧。

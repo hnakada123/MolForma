@@ -10,5 +10,8 @@ struct StructureImportOptions {
     MacromoleculeSelection selection; // PDB, mmCIF
     int frame = -1;                   // Multi-frame XYZ
 };
-std::optional<StructureImportOptions> chooseStructureImport(QWidget *parent, const QString &path);
+// Without ask, the choices the dialogs propose: the first model, the alternate location of the highest
+// occupancy, everything, the last frame.
+std::optional<StructureImportOptions> chooseStructureImport(QWidget *parent, const QString &path,
+                                                            bool ask = true);
 } // namespace mf

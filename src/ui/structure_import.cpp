@@ -16,12 +16,12 @@
 namespace mf {
 // What to read of a PDB or mmCIF entry, chosen in one dialog: the model, the alternate location, the chains
 // and the kinds of residues. The dialog appears only where the entry offers a choice.
-static std::optional<MacromoleculeSelection> chooseMacromolecule(QWidget *parent,
-                                                                 const MacromoleculeContents &contents) {
+static std::optional<MacromoleculeSelection>
+chooseMacromolecule(QWidget *parent, const MacromoleculeContents &contents, bool ask) {
     MacromoleculeSelection selection;
     selection.model = contents.models.first().toInt();
     const int kinds = (contents.polymers > 0) + (contents.ligands > 0) + (contents.waters > 0);
-    if (contents.models.size() < 2 && !contents.altlocs && contents.chains.size() < 2 && kinds < 2)
+    if (!ask || (contents.models.size() < 2 && !contents.altlocs && contents.chains.size() < 2 && kinds < 2))
         return selection;
     QDialog dialog(parent);
     dialog.setObjectName("structureImportDialog");
@@ -116,22 +116,24 @@ static std::optional<MacromoleculeSelection> chooseMacromolecule(QWidget *parent
     selection.water = !kindBoxes[2] || kindBoxes[2]->isChecked();
     return selection;
 }
-std::optional<StructureImportOptions> chooseStructureImport(QWidget *parent, const QString &path) {
+std::optional<StructureImportOptions> chooseStructureImport(QWidget *parent, const QString &path, bool ask) {
     StructureImportOptions options;
     const auto suffix = structureSuffix(path);
     bool ok = true;
     const bool pdb = suffix == "pdb" || suffix == "ent";
     if (pdb || suffix == "cif" || suffix == "mmcif") {
         const auto bytes = readStructureFile(path);
-        const auto selection = chooseMacromolecule(parent, pdb ? pdbContents(QString::fromUtf8(bytes))
-                                                               : mmcifContents(readMmcif(bytes)));
+        const auto selection = chooseMacromolecule(
+            parent, pdb ? pdbContents(QString::fromUtf8(bytes)) : mmcifContents(readMmcif(bytes)), ask);
         if (!selection)
             return std::nullopt;
         options.selection = *selection;
     } else if (suffix == "xyz") {
         const auto frames = xyzFrames(QString::fromUtf8(readStructureFile(path)));
         options.frame = 0;
-        if (frames.size() > 2000) {
+        if (!ask) {
+            options.frame = int(frames.size()) - 1;
+        } else if (frames.size() > 2000) {
             options.frame =
                 QInputDialog::getInt(
                     parent, tr("XYZのフレーム"),

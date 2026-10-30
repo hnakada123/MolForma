@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/molecule_view.h"
+#include "editing/peptide.h"
 #include "model/geometry.h"
 #include "model/i18n.h"
 #include "model/settings.h"
@@ -138,9 +139,11 @@ void MoleculeView::renderNow() {
         repaint();
 }
 void MoleculeView::setStyle(const QString &style) {
-    displayStyle = QStringList{"ball_and_stick", "stick", "spacefill", "wireframe"}.contains(style)
-                       ? style
-                       : QString("ball_and_stick");
+    displayStyle =
+        QStringList{"ball_and_stick", "stick", "spacefill", "wireframe", "backbone"}.contains(style)
+            ? style
+            : QString("ball_and_stick");
+    indexTrace();
     moleculeDirty = true;
     scheduleRender();
 }
@@ -204,22 +207,80 @@ double MoleculeView::atomRadius(int atom) const {
         return std::clamp(scale * .1, 3., 7.);
     if (displayStyle == "wireframe")
         return 2;
+    if (displayStyle == "backbone" && traceNodes.value(atom))
+        return std::clamp(scale * .1, 3., 7.);
     return std::clamp(scale * (hydrogen ? .12 : .20), hydrogen ? 5. : 8., hydrogen ? 11. : 20.);
 }
+// The trace of the backbone style: each chain's polymer residues through their Cα (P of nucleotides, else
+// C4'), between residues close enough to follow each other, so that gaps in a structure stay open.
+void MoleculeView::indexTrace() {
+    traced.clear();
+    trace.clear();
+    traceNodes.fill(false, doc.atoms.size());
+    if (displayStyle != "backbone")
+        return;
+    const auto node = [&](const Residue &r) {
+        for (const auto *name : {"CA", "P", "C4'"})
+            if (r.atoms.contains(name))
+                return atomIndices.value(r.atoms[name], -1);
+        return -1;
+    };
+    QHash<QString, int> residues;
+    for (int i = 0; i < doc.residues.size(); ++i) {
+        const auto &r = doc.residues[i];
+        residues.insert(r.id, i);
+        if (!polymerResidue(r))
+            continue;
+        const int n = node(r);
+        for (const auto &id : r.atoms)
+            if (atomIndices.value(id, -1) != n)
+                traced.insert(id);
+    }
+    for (const auto &chain : std::as_const(doc.chains)) {
+        int previous = -1;
+        for (const auto &id : chain) {
+            const int r = residues.value(id, -1);
+            if (r < 0 || !polymerResidue(doc.residues[r]))
+                continue;
+            const int n = node(doc.residues[r]);
+            // Cα–Cα 3.8 Å; P–P of nucleic acids about 7 Å.
+            const double reach =
+                n >= 0 && doc.atoms[n].element == "C" && doc.residues[r].atoms.contains("CA") ? 4.3 : 8;
+            if (n >= 0 && previous >= 0 &&
+                (doc.atoms[n].position - doc.atoms[previous].position).norm() < reach)
+                trace.append({previous, n});
+            previous = n;
+        }
+    }
+    // The atoms the line runs through, drawn small; a residue on its own keeps its ball, as the VTK scene.
+    for (const auto &[a, b] : std::as_const(trace))
+        traceNodes[a] = traceNodes[b] = true;
+}
 void MoleculeView::refreshColors() {
-    // Colored by residue: a hue for each residue, the last one that holds the atom.
-    QHash<QString, QString> residueOf;
-    if (colorMode == "residue")
-        for (const auto &r : doc.residues)
-            for (const auto &id : r.atoms)
-                residueOf.insert(id, r.id);
+    // By residue: a hue for each residue, the last one that holds the atom. By chain: the polymer residues
+    // in a color of each chain, in the order the chains come; ligands, ions and water keep the element
+    // colors, so that they stand out.
+    static const QColor chainColors[] = {
+        QColor("#4e79a7"), QColor("#f28e2b"), QColor("#59a14f"), QColor("#e15759"), QColor("#76b7b2"),
+        QColor("#edc948"), QColor("#b07aa1"), QColor("#ff9da7"), QColor("#9c755f"), QColor("#bab0ac")};
+    QHash<QString, QColor> colors;
+    QHash<QString, int> chains;
+    for (const auto &r : doc.residues) {
+        QColor color;
+        if (colorMode == "residue")
+            color = QColor::fromHsv(int(qHash(r.id, 0) % 360), 135, 205);
+        else if (colorMode == "chain" && polymerResidue(r)) {
+            const int chain = *chains.insert(r.chain, chains.value(r.chain, chains.size()));
+            color = chainColors[chain % std::size(chainColors)];
+        } else
+            continue;
+        for (const auto &id : r.atoms)
+            colors.insert(id, color);
+    }
     atomColors.clear();
     atomColors.reserve(doc.atoms.size());
-    for (const auto &atom : doc.atoms) {
-        const auto group = residueOf.value(atom.id);
-        atomColors << (group.isEmpty() ? element(atom.element).color
-                                       : QColor::fromHsv(int(qHash(group, 0) % 360), 135, 205));
-    }
+    for (const auto &atom : doc.atoms)
+        atomColors << colors.value(atom.id, element(atom.element).color);
     moleculeDirty = true;
 }
 void MoleculeView::renderScene() {
@@ -227,7 +288,7 @@ void MoleculeView::renderScene() {
     if (!renderer || !isVisible())
         return;
     if (moleculeDirty) {
-        renderer->setMolecule(doc, atomColors, showHydrogens, displayStyle, hidden);
+        renderer->setMolecule(doc, atomColors, showHydrogens, displayStyle, hidden | traced, trace);
         moleculeDirty = positionsDirty = false;
     } else if (positionsDirty) {
         renderer->setPositions(doc);
@@ -326,6 +387,7 @@ void MoleculeView::setDocument(const Document &d) {
         return;
     }
     indexAtoms();
+    indexTrace();
     const auto absent = [&](const QString &id) { return !atomIndices.contains(id); };
     selected.removeIf(absent);
     selectedIds = QSet<QString>(selected.begin(), selected.end());
@@ -526,7 +588,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
     }
     struct Item {
         double z;
-        int kind; // 0: bond, 1: atom, 2: isosurface triangle.
+        int kind; // 0: bond, 1: atom, 2: isosurface triangle, 3: a segment of the backbone trace.
         int index;
     };
     QVector<Item> items;
@@ -552,6 +614,11 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             items << Item{(r * ((doc.atoms[ai].position + doc.atoms[bi].position) * .5 - center)).z(), false,
                           i};
     }
+    for (int i = 0; !overlayOnly && i < trace.size(); ++i) {
+        const auto [ai, bi] = trace[i];
+        if (crosses(screen[ai], screen[bi]))
+            items << Item{(r * ((doc.atoms[ai].position + doc.atoms[bi].position) * .5 - center)).z(), 3, i};
+    }
     // The painter draws at most about 150 000 triangles; larger surfaces are thinned evenly.
     const int stride = int(std::max<qsizetype>(1, (surface.size() + 149999) / 150000));
     for (int i = 0; !overlayOnly && i < surface.size(); i += stride) {
@@ -573,7 +640,16 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
     for (const auto &c : doc.centers)
         centers.insert(c.atom);
     for (auto item : items) {
-        if (item.kind == 2) {
+        if (item.kind == 3) {
+            // A tube in the colors of its two residues.
+            const auto [ai, bi] = trace[item.index];
+            const QPointF middle = (screen[ai] + screen[bi]) / 2;
+            const double width = std::clamp(scale * .35, 4., 16.);
+            p.setPen(QPen(atomColors[ai], width, Qt::SolidLine, Qt::RoundCap));
+            p.drawLine(screen[ai], middle);
+            p.setPen(QPen(atomColors[bi], width, Qt::SolidLine, Qt::RoundCap));
+            p.drawLine(middle, screen[bi]);
+        } else if (item.kind == 2) {
             const auto &t = surface.at(item.index);
             const Vec smooth = t.na + t.nb + t.nc;
             const Vec normal = r * (smooth.isZero() ? (t.b - t.a).cross(t.c - t.a) : smooth).normalized();
@@ -647,7 +723,8 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
                 p.drawEllipse(pos, radius, radius);
             }
             const bool chosen = selectedIds.contains(a.id);
-            if (labelMode != "none" &&
+            // The hundreds of Cα of a backbone trace carry labels only when selected.
+            if (labelMode != "none" && (chosen || !traceNodes.value(item.index)) &&
                 (labelMode == "all" || chosen || (labelMode == "heavy" && !hydrogen))) {
                 QString label = a.isotope == 2 && hydrogen ? "D"
                                 : a.isotope == 3 && hydrogen

@@ -206,8 +206,12 @@ void MoleculePanel::buildEditPanel() {
                                [this] { replaceElements(requireSelection(), value(elementBox)); }),
                         1);
     // In a card like the rest of the page: how the 3D view colors the atoms.
-    auto *color = choices(f, tr("3D画面の色分け"), {tr("元素"), tr("残基")}, {"element", "residue"});
+    auto *color =
+        choices(f, tr("3D画面の色分け"), {tr("元素"), tr("残基"), tr("鎖")}, {"element", "residue", "chain"});
     color->setObjectName("moleculeColorMode");
+    color->setToolTip(
+        tr("残基: 残基ごとに色を変えます。鎖: たんぱく質・核酸の残基を鎖ごとの色にし、配位子・イオン・水は"
+           "元素の色のままにします。"));
     connect(color, &QComboBox::currentIndexChanged, this,
             [this, color] { view->setColorMode(value(color)); });
     // The coordinate table, when shown, edits the same values.

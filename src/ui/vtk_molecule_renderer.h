@@ -11,8 +11,10 @@ class VtkMoleculeRenderer : public QVTKOpenGLNativeWidget {
   public:
     explicit VtkMoleculeRenderer(QWidget *parent);
     ~VtkMoleculeRenderer() override;
+    // trace: the line of the backbone style, pairs of atom indices.
     void setMolecule(const Document &document, const QVector<QColor> &colors, bool hydrogens,
-                     const QString &style = "ball_and_stick", const QSet<QString> &hidden = {});
+                     const QString &style = "ball_and_stick", const QSet<QString> &hidden = {},
+                     const QVector<std::pair<int, int>> &trace = {});
     // The same atoms (as the last setMolecule) at new positions: a drag or a vibration frame.
     void setPositions(const Document &document);
     void setSurface(const QVector<SurfaceTriangle> &triangles);

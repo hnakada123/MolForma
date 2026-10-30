@@ -136,8 +136,9 @@ int main(int argc, char **argv) {
             mf::fail("--mcp-gui and --screenshot cannot be combined.");
         const auto policy = mcpPolicy(parser);
         mf::MainWindow window;
+        // A screenshot is taken without a person to answer the dialogs of what to read.
         if (!guiMcp && !parser.positionalArguments().isEmpty())
-            window.loadPath(parser.positionalArguments().first());
+            window.loadPath(parser.positionalArguments().first(), !parser.isSet("screenshot"));
         window.show();
         if (!parser.isSet("screenshot")) {
             window.startAutosave();

@@ -916,7 +916,7 @@ void MainWindow::open() {
         return;
     loadPath(p);
 }
-void MainWindow::loadPath(const QString &p) {
+void MainWindow::loadPath(const QString &p, bool ask) {
     checkMcpPath(p); // Also for recent files and other menu paths reached over MCP.
     // Reading errors name the file (the messages themselves give the line where they can).
     const auto reading = [&](const std::function<Document()> &read) -> Document {
@@ -927,7 +927,7 @@ void MainWindow::loadPath(const QString &p) {
         }
     };
     const auto base = revision();
-    const auto options = chooseStructureImport(this, p);
+    const auto options = chooseStructureImport(this, p, ask);
     if (!options)
         return;
     Document next;

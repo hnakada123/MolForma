@@ -36,6 +36,10 @@ Residue residue(const Document &d, const QString &id) {
         return *r;
     fail(tr("残基を選択してください。"));
 }
+bool polymerResidue(const Residue &r) {
+    return (r.atoms.contains("N") && r.atoms.contains("CA") && r.atoms.contains("C")) ||
+           r.atoms.contains("C1'");
+}
 QString residueForAtom(const Document &d, const QString &id) {
     for (const auto &r : d.residues)
         for (const auto &a : r.atoms)

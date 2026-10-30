@@ -66,7 +66,9 @@ class MainWindow : public QMainWindow {
     void confirmCandidate();
     void cancelCandidate();
     void remoteHistory(const QString &action);
-    void loadPath(const QString &path);
+    // Without ask, the choices of what to read are those the dialogs propose (a screenshot from the command
+    // line).
+    void loadPath(const QString &path, bool ask = true);
     bool chemistryRunning() const {
         return chemistry.active();
     }

@@ -4,6 +4,8 @@
 namespace mf {
 QStringList parseSequence(const QString &text);
 Residue residue(const Document &d, const QString &id);
+// A residue of a polymer chain: an amino acid (N, CA, C) or a nucleotide (C1').
+bool polymerResidue(const Residue &r);
 QString residueForAtom(const Document &d, const QString &atom);
 // The residue of every atom in one (the first residue that holds it) by atom ID: residueForAtom of
 // all atoms at once, for loops over many atoms.
