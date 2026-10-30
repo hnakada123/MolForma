@@ -1711,7 +1711,7 @@ void MoleculePanel::addFragmentFromSmiles(const QString &initial) {
 void MoleculePanel::addFragmentFromFile() {
     const auto p = QFileDialog::getOpenFileName(
         this, tr("断片を追加"), settings.value("directory").toString(),
-        tr("構造 (*.xyz *.mol *.sdf *.mol2 *.cml *.pdb *.ent *.nw *.gjf *.com)"));
+        tr("構造 (*.xyz *.mol *.sdf *.mol2 *.cml *.pdb *.ent *.cif *.mmcif *.nw *.gjf *.com)"));
     if (p.isEmpty())
         return;
     checkMcpPath(p);
@@ -1989,7 +1989,7 @@ void MoleculePanel::compareDialog() {
         return;
     const auto p = QFileDialog::getOpenFileName(
         this, tr("比較する構造"), settings.value("directory").toString(),
-        tr("構造 (*.molforma.json *.json *.xyz *.mol *.sdf *.mol2 *.cml *.pdb *.ent "
+        tr("構造 (*.molforma.json *.json *.xyz *.mol *.sdf *.mol2 *.cml *.pdb *.ent *.cif *.mmcif "
            "*.nw *.gjf *.com);;すべて (*)"));
     if (p.isEmpty())
         return;

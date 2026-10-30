@@ -83,14 +83,32 @@ class CoordinatesTest : public QObject {
                 QTest::newRow(qPrintable(QString("%1-%2").arg(replace).arg(choice)))
                     << replace << QString(choice);
     }
+    void sharedPdbImportChoices_data() {
+        QTest::addColumn<QString>("name");
+        QTest::addColumn<QByteArray>("text");
+        QTest::newRow("pdb")
+            << "models.pdb"
+            << QByteArray("MODEL        2\n"
+                          "ATOM      1  CA AALA A   1       0.000   0.000   0.000  0.60 20.00           C\n"
+                          "ENDMDL\nMODEL        7\n"
+                          "ATOM      1  CA BALA A   1       1.000   0.000   0.000  0.40 20.00           C\n"
+                          "ENDMDL\n");
+        QTest::newRow("mmcif")
+            << "models.cif"
+            << QByteArray("data_MODELS\nloop_\n_atom_site.group_PDB\n_atom_site.id\n"
+                          "_atom_site.type_symbol\n_atom_site.label_atom_id\n_atom_site.label_alt_id\n"
+                          "_atom_site.label_comp_id\n_atom_site.auth_asym_id\n_atom_site.auth_seq_id\n"
+                          "_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\n"
+                          "_atom_site.occupancy\n_atom_site.pdbx_PDB_model_num\n"
+                          "ATOM 1 C CA A ALA A 1 0.000 0.000 0.000 0.60 2\n"
+                          "ATOM 2 C CA B ALA A 1 1.000 0.000 0.000 0.40 7\n");
+    }
     void sharedPdbImportChoices() {
+        QFETCH(QString, name);
+        QFETCH(QByteArray, text);
         QTemporaryDir dir;
-        const auto path = dir.filePath("models.pdb");
-        writeFile(path, "MODEL        2\n"
-                        "ATOM      1  CA AALA A   1       0.000   0.000   0.000  0.60 20.00           C\n"
-                        "ENDMDL\nMODEL        7\n"
-                        "ATOM      1  CA BALA A   1       1.000   0.000   0.000  0.40 20.00           C\n"
-                        "ENDMDL\n");
+        const auto path = dir.filePath(name);
+        writeFile(path, text);
         QWidget parent;
         QTimer choose;
         int prompts = 0;

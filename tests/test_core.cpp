@@ -3,6 +3,7 @@
 #include "editing/coordinates.h"
 #include "editing/coordination.h"
 #include "editing/editor_session.h"
+#include "editing/mmcif.h"
 #include "editing/operations.h"
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
@@ -395,6 +396,191 @@ class CoreTest : public QObject {
         QCOMPARE(copy.atoms.size(), 31);
         QCOMPARE(copy.residues.size(), 3);
         QVERIFY(copy.validate().isEmpty());
+    }
+    // An mmCIF file reads as the PDB file of the same atoms: names, residues, chains, bonds and their orders.
+    void mmcifMatchesPdb() {
+        Document d;
+        buildPeptide(d, {"PHE", "HIS", "SER"}, "charged", "charged");
+        QTemporaryDir temp;
+        const auto pdb = temp.filePath("peptide.pdb"), cif = temp.filePath("peptide.cif");
+        exportStructure(d, pdb);
+        // Open Babel writes every bond as CONECT records, with their orders. Files from the PDB have them
+        // only for hetero groups and disulfide bonds, which the distances also give, and mmCIF files none.
+        QStringList atomRecords;
+        for (const auto &line : QString::fromUtf8(readFile(pdb)).split('\n'))
+            if (!line.startsWith("CONECT"))
+                atomRecords << line;
+        writeFile(pdb, atomRecords.join('\n').toUtf8());
+        QString table = "data_PEPTIDE\n#\nloop_\n";
+        for (const char *column :
+             {"group_PDB", "id", "type_symbol", "label_atom_id", "label_alt_id", "label_comp_id",
+              "label_asym_id", "label_seq_id", "pdbx_PDB_ins_code", "Cartn_x", "Cartn_y", "Cartn_z",
+              "occupancy", "pdbx_formal_charge", "auth_seq_id", "auth_asym_id", "pdbx_PDB_model_num"})
+            table += QString("_atom_site.%1\n").arg(column);
+        for (const auto &line : atomRecords)
+            if (line.startsWith("ATOM") || line.startsWith("HETATM")) {
+                const auto field = [&](int from, int to) {
+                    return line.mid(from - 1, to - from + 1).trimmed();
+                };
+                const auto charge = field(79, 80); // "1+" in PDB files, "+1" in mmCIF.
+                table += QStringList{field(1, 6),
+                                     field(7, 11),
+                                     field(77, 78),
+                                     '"' + field(13, 16) + '"',
+                                     ".",
+                                     field(18, 20),
+                                     "A",
+                                     field(23, 26),
+                                     "?",
+                                     field(31, 38),
+                                     field(39, 46),
+                                     field(47, 54),
+                                     field(55, 60),
+                                     charge.isEmpty() ? "?" : charge.right(1) + charge.left(1),
+                                     field(23, 26),
+                                     field(22, 22),
+                                     "1"}
+                             .join(' ') +
+                         '\n';
+            }
+        writeFile(cif, table.toUtf8());
+        const auto a = importStructure(cif), b = importStructure(pdb);
+        QCOMPARE(a.atoms.size(), b.atoms.size());
+        for (int i = 0; i < a.atoms.size(); ++i) {
+            QCOMPARE(a.atoms[i].element, b.atoms[i].element);
+            QCOMPARE(a.atoms[i].name, b.atoms[i].name);
+            QCOMPARE(a.atoms[i].charge, b.atoms[i].charge);
+            QCOMPARE(a.atoms[i].position, b.atoms[i].position);
+        }
+        const auto bonds = [](const Document &d) {
+            QStringList out;
+            for (const auto &bond : d.bonds)
+                out << QString("%1-%2 %3")
+                           .arg(std::min(d.index(bond.a), d.index(bond.b)))
+                           .arg(std::max(d.index(bond.a), d.index(bond.b)))
+                           .arg(bond.kind);
+            out.sort();
+            return out;
+        };
+        QCOMPARE(bonds(a), bonds(b));
+        QVERIFY(
+            bonds(a).join(' ').contains("aromatic")); // The phenyl ring, from the typical hydrogen counts.
+        QCOMPARE(a.residues.size(), 3);
+        for (int i = 0; i < a.residues.size(); ++i) {
+            QCOMPARE(a.residues[i].code, b.residues[i].code);
+            QCOMPARE(a.residues[i].number, b.residues[i].number);
+            QCOMPARE(a.residues[i].metadata, b.residues[i].metadata);
+            QCOMPARE(a.residues[i].atoms.keys(), b.residues[i].atoms.keys());
+            for (const auto &name : a.residues[i].atoms.keys())
+                QCOMPARE(a.index(a.residues[i].atoms[name]), b.index(b.residues[i].atoms[name]));
+            QCOMPARE(a.residues[i].nTerminal, b.residues[i].nTerminal);
+            QCOMPARE(a.residues[i].cTerminal, b.residues[i].cTerminal);
+        }
+        QCOMPARE(a.charge, b.charge);
+        QCOMPARE(a.data["metadata"].toObject()["source_format"].toString(), QString("mmcif"));
+    }
+    // CIF syntax that other categories use, the author's names before the PDBx ones, chains longer than a
+    // character, and MODEL/ALTLOC chosen as in PDB files.
+    void mmcifTables() {
+        const QByteArray text =
+            "data_TEST\n"
+            "# Other categories, whose values are not atoms.\n"
+            "_struct.title 'it's a title with _tags'\n"
+            "_struct_keywords.text\n"
+            ";A text field\n"
+            "_atom_site.id 7\n"
+            ";\n"
+            "loop_\n"
+            "_entity.id\n"
+            "_entity.type\n"
+            "1 polymer\n"
+            "2 \"non-polymer\"\n"
+            "loop_\n"
+            "_atom_site.group_PDB\n"
+            "_atom_site.id\n"
+            "_atom_site.type_symbol\n"
+            "_atom_site.label_atom_id\n"
+            "_atom_site.label_alt_id\n"
+            "_atom_site.label_comp_id\n"
+            "_atom_site.label_asym_id\n"
+            "_atom_site.label_seq_id\n"
+            "_atom_site.pdbx_PDB_ins_code\n"
+            "_atom_site.Cartn_x\n"
+            "_atom_site.Cartn_y\n"
+            "_atom_site.Cartn_z\n"
+            "_atom_site.occupancy\n"
+            "_atom_site.pdbx_formal_charge\n"
+            "_atom_site.auth_seq_id\n"
+            "_atom_site.auth_asym_id\n"
+            "_atom_site.pdbx_PDB_model_num\n"
+            "ATOM   1 N  N     . GLY A 1 ? 0.000 0.000 0.000 1.00 ? 10 AA 1\n"
+            "ATOM   2 C  CA    A GLY A 1 ? 1.450 0.000 0.000 0.40 ? 10 AA 1\n"
+            "ATOM   3 C  CA    B GLY A 1 ? 1.460 0.100 0.000 0.60 ? 10 AA 1\n"
+            "HETATM 4 ZN ZN    . ZN  B . ? 9.000 0.000 0.000 1.00 2 301 AB 1\n"
+            "HETATM 5 O  \"O5'\" . XYZ C . A 0.000 9.000 0.000 1.00 ? 401 AB 1\n"
+            "ATOM   6 N  N     . GLY A 1 ? 0.000 0.000 1.000 1.00 ? 10 AA 2 # The second model.\n"
+            "data_SECOND\n"
+            "_atom_site.id 8\n"
+            "_atom_site.type_symbol C\n"
+            "_atom_site.label_atom_id C\n"
+            "_atom_site.Cartn_x 0\n"
+            "_atom_site.Cartn_y 0\n"
+            "_atom_site.Cartn_z 0\n";
+        const auto atoms = mmcifAtoms(text);
+        QCOMPARE(atoms.size(), 6);
+        QCOMPARE(atoms[0].chain, QString("AA"));
+        QCOMPARE(atoms[0].number, 10);
+        QCOMPARE(atoms[3].element, QString("Zn"));
+        QCOMPARE(atoms[3].charge, 2);
+        QCOMPARE(atoms[4].name, QString("O5'"));
+        QCOMPARE(atoms[4].insertion, QString("A"));
+        QCOMPARE(mmcifModels(atoms), QStringList({"1", "2"}));
+        // Automatically the location of the highest occupancy, else the one asked for.
+        auto chosen = selectMmcif(atoms, 1, {});
+        QCOMPARE(chosen.size(), 4);
+        QCOMPARE(chosen[1].position.x(), 1.46);
+        QVERIFY(chosen[1].altloc.isEmpty());
+        QCOMPARE(selectMmcif(atoms, 1, "A")[1].position.x(), 1.45);
+        QCOMPARE(selectMmcif(atoms, 2, {}).size(), 1);
+        QVERIFY_EXCEPTION_THROWN(selectMmcif(atoms, 3, {}), std::runtime_error);
+
+        QTemporaryDir temp;
+        const auto path = temp.filePath("test.mmcif");
+        writeFile(path, text);
+        const auto d = importStructure(path, 1, "A");
+        QCOMPARE(d.atoms.size(), 4);
+        QCOMPARE(d.atoms[1].position.x(), 1.45);
+        QCOMPARE(d.chains.size(), 2); // AA and AB, which Open Babel would both call A.
+        QCOMPARE(d.residues.size(), 3);
+        QCOMPARE(d.residues[1].metadata["pdb_chain"].toString(), QString("AB"));
+        QCOMPARE(d.residues[1].chain, d.residues[2].chain);
+        QVERIFY(d.residues[0].chain != d.residues[1].chain);
+        QCOMPARE(d.atoms[2].charge, 2);
+        QCOMPARE(d.data["metadata"].toObject()["pdb_altloc"].toString(), QString("A"));
+    }
+    void mmcifErrorsNameTheProblem() {
+        const auto message = [](const QByteArray &text) {
+            try {
+                mmcifAtoms(text);
+            } catch (const std::exception &e) {
+                return QString::fromUtf8(e.what());
+            }
+            return QString();
+        };
+        const QByteArray header =
+            "data_X\nloop_\n_atom_site.id\n_atom_site.type_symbol\n_atom_site.label_atom_id\n"
+            "_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\n";
+        QVERIFY(message(header + "1 C C 0 0 0\n").isEmpty());
+        QVERIFY(message(header + "1 C C 0 0 0\n2 C C 0 x 0\n").contains("10行目"));
+        QVERIFY(message(header + "1 C C 0 0 ?\n").contains("9行目"));
+        QVERIFY(message(header + "1 C C 0 0\n").contains("2行目")); // The loop_ that a value is missing from.
+        QVERIFY(message(header + "1 C 'C 0 0 0\n").contains("9行目"));
+        QVERIFY(message("data_X\n_struct.title\n;open\n").contains("3行目"));
+        QVERIFY(message("data_X\nloop_\n_atom_site.id\n_atom_site.Cartn_x\n1 0\n").contains("Cartn_z"));
+        // A small-molecule CIF has fractional coordinates in _atom_site_fract_x, not an mmCIF table.
+        QVERIFY(message("data_X\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n"
+                        "_atom_site_fract_z\nC1 0.1 0.2 0.3\n")
+                    .contains("_atom_site"));
     }
     void templateLibrary() {
         QCOMPARE(templates().size(), 101);

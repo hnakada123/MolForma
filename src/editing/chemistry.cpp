@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/chemistry.h"
+#include "editing/mmcif.h"
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
 #include "model/geometry.h"
@@ -14,6 +15,7 @@
 #include <openbabel/forcefield.h>
 #include <openbabel/mol.h>
 #include <openbabel/obconversion.h>
+#include <openbabel/obfunctions.h>
 #include <openbabel/residue.h>
 #include <openbabel/stereo/stereo.h>
 #include <sstream>
@@ -71,7 +73,9 @@ static OBMol toOB(const Document &d) {
     mol.SetTotalSpinMultiplicity(d.multiplicity);
     return mol;
 }
-static Document fromOB(OBMol &mol, bool readResidues = false) {
+// chainNames gives the residues' chains where Open Babel's one character would not hold them.
+static Document fromOB(OBMol &mol, bool readResidues = false,
+                       const QHash<OBResidue *, QString> &chainNames = {}) {
     Document d;
     QMap<unsigned int, QString> ids;
     QMap<OBResidue *, Residue> residues;
@@ -91,7 +95,7 @@ static Document fromOB(OBMol &mol, bool readResidues = false) {
         ids[i] = a.id;
         if (auto *r = readResidues ? o->GetResidue() : nullptr) {
             a.name = QString::fromStdString(r->GetAtomID(o)).trimmed();
-            QString chain = QString(QChar(r->GetChain()));
+            const QString chain = chainNames.contains(r) ? chainNames[r] : QString(QChar(r->GetChain()));
             if (!chains.contains(chain))
                 chains[chain] = newId();
             if (!residues.contains(r)) {
@@ -250,31 +254,74 @@ Document xyzStructure(const QString &text) {
     }
     return d;
 }
+// The atoms of a PDBx/mmCIF file, made a molecule the way Open Babel reads a PDB file: atoms with their
+// residues, bonds by distance, bond orders from the geometry and typical hydrogen counts, which aromaticity
+// depends on. Its residue templates add no bonds there (they look up atom names without the PDB columns'
+// padding), so they are left out here too.
+static Document mmcifStructure(const QVector<MmcifAtom> &atoms) {
+    OBMol mol;
+    mol.SetChainsPerceived(); // The residues are the file's.
+    mol.BeginModify();
+    QHash<QString, OBResidue *> residues;
+    QHash<OBResidue *, QString> chains;
+    for (const auto &a : atoms) {
+        auto *&residue =
+            residues[QString("%1\n%2\n%3\n%4").arg(a.chain).arg(a.number).arg(a.insertion, a.residue)];
+        if (!residue) {
+            residue = mol.NewResidue();
+            residue->SetName(a.residue.toStdString());
+            residue->SetNum(a.number);
+            residue->SetChain(a.chain.isEmpty() ? ' ' : a.chain[0].toLatin1());
+            residue->SetInsertionCode(a.insertion.isEmpty() ? 0 : a.insertion[0].toLatin1());
+            chains[residue] = a.chain;
+        }
+        auto *o = mol.NewAtom();
+        o->SetAtomicNum(OBElements::GetAtomicNum(a.element.toLatin1().constData()));
+        o->SetVector(a.position.x(), a.position.y(), a.position.z());
+        o->SetFormalCharge(a.charge);
+        residue->AddAtom(o);
+        residue->SetAtomID(o, a.name.toStdString());
+    }
+    mol.EndModify();
+    mol.ConnectTheDots();
+    mol.PerceiveBondOrders();
+    mol.SetChainsPerceived(); // EndModify() cleared it.
+    for (unsigned int i = 1; i <= mol.NumAtoms(); ++i)
+        OBAtomAssignTypicalImplicitHydrogens(mol.GetAtom(i));
+    return fromOB(mol, true, chains);
+}
 Document importBabelStructure(const QString &path, int model, const QString &altloc) {
     QString ext = QFileInfo(path).suffix().toLower();
     if (ext == "ent")
         ext = "pdb";
+    if (ext == "cif")
+        ext = "mmcif";
     if (ext == "sd")
         ext = "sdf";
     if (ext == "mdl")
         ext = "mol";
     // Open Babel knows some 150 formats; files from others go only through these common readers.
-    if (!QStringList{"mol", "sdf", "mol2", "cml", "pdb"}.contains(ext))
+    if (!QStringList{"mol", "sdf", "mol2", "cml", "pdb", "mmcif"}.contains(ext))
         fail(tr("対応していない形式です: %1").arg(ext));
     auto bytes = readFile(path);
-    if (ext == "pdb")
-        bytes = preparePdb(QString::fromUtf8(bytes), model, altloc).toUtf8();
-    OBConversion conversion;
-    if (!conversion.SetInFormat(ext.toLatin1().constData()))
-        fail(tr("対応していない形式です: %1").arg(ext));
-    OBMol mol;
-    if (!conversion.ReadString(&mol, bytes.toStdString()) || !mol.NumAtoms())
-        fail(tr("構造ファイルを読み込めません。"));
-    Document d = fromOB(mol, ext == "pdb");
+    Document d;
+    if (ext == "mmcif") {
+        d = mmcifStructure(selectMmcif(mmcifAtoms(bytes), model, altloc));
+    } else {
+        if (ext == "pdb")
+            bytes = preparePdb(QString::fromUtf8(bytes), model, altloc).toUtf8();
+        OBConversion conversion;
+        if (!conversion.SetInFormat(ext.toLatin1().constData()))
+            fail(tr("対応していない形式です: %1").arg(ext));
+        OBMol mol;
+        if (!conversion.ReadString(&mol, bytes.toStdString()) || !mol.NumAtoms())
+            fail(tr("構造ファイルを読み込めません。"));
+        d = fromOB(mol, ext == "pdb");
+    }
     auto meta = d.data["metadata"].toObject();
     meta["source_file"] = path;
     meta["source_format"] = ext;
-    if (ext == "pdb") {
+    if (ext == "pdb" || ext == "mmcif") {
         meta["pdb_model"] = model;
         meta["pdb_altloc"] = altloc;
     }

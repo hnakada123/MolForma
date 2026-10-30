@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/structure_import.h"
 #include "editing/chemistry.h"
+#include "editing/mmcif.h"
 #include "io/structure_io.h"
 #include "model/i18n.h"
 #include <QFileInfo>
@@ -12,9 +13,20 @@ std::optional<StructureImportOptions> chooseStructureImport(QWidget *parent, con
     StructureImportOptions options;
     const auto suffix = QFileInfo(path).suffix().toLower();
     bool ok = true;
-    if (suffix == "pdb" || suffix == "ent") {
-        const auto text = QString::fromUtf8(readFile(path));
-        const auto models = pdbModels(text);
+    const bool pdb = suffix == "pdb" || suffix == "ent";
+    if (pdb || suffix == "cif" || suffix == "mmcif") {
+        QStringList models;
+        bool altlocs;
+        if (pdb) {
+            const auto text = QString::fromUtf8(readFile(path));
+            models = pdbModels(text);
+            altlocs = text.contains(QRegularExpression("(?m)^(ATOM  |HETATM).{10}[A-Z]"));
+        } else {
+            const auto atoms = mmcifAtoms(readFile(path));
+            models = mmcifModels(atoms);
+            altlocs = std::any_of(atoms.begin(), atoms.end(),
+                                  [](const MmcifAtom &a) { return !a.altloc.isEmpty(); });
+        }
         options.model = models.first().toInt();
         if (models.size() > 1) {
             options.model =
@@ -23,7 +35,7 @@ std::optional<StructureImportOptions> chooseStructureImport(QWidget *parent, con
             if (!ok)
                 return std::nullopt;
         }
-        if (text.contains(QRegularExpression("(?m)^(ATOM  |HETATM).{10}[A-Z]"))) {
+        if (altlocs) {
             const auto automatic = tr("自動");
             options.altloc =
                 QInputDialog::getItem(parent, "PDB ALTLOC", tr("代替位置（自動: 残基ごとの占有率最大）"),

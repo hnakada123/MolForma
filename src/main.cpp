@@ -120,7 +120,8 @@ int main(int argc, char **argv) {
     parser.addHelpOption();
     parser.addVersionOption();
     parser.addPositionalArgument(
-        "file", mf::tr("開くファイル（XYZ・MOL・SDF・PDB・MolFormaプロジェクト .molforma.json など）"));
+        "file",
+        mf::tr("開くファイル（XYZ・MOL・SDF・PDB・mmCIF・MolFormaプロジェクト .molforma.json など）"));
     parser.addOption({"screenshot", mf::tr("画面をPNGで保存して終了する"), "path"});
     parser.addOption({"mcp", mf::tr("画面なしのMCPサーバーを標準入出力で起動する")});
     parser.addOption({"mcp-gui", mf::tr("編集画面つきでMCPサーバーを起動する")});

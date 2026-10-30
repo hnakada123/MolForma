@@ -56,7 +56,7 @@ Files exported from structure editors (`.sdf`, `.mol`) often have flat coordinat
 
    **Figure 6** The result of “Tools → Regenerate 3D” is shown as a candidate.
 
-Readable formats are XYZ, MOL, SDF, Mol2, CML, PDB, NWChem input (`.nw`) and Gaussian input (`.gjf`). XYZ bonds are guessed from distances; for ions, set formal charges before adding hydrogens. Reading with “Structure → Import structure file…” of the coordinate table replaces only the structure and keeps the calculation settings.
+Readable formats are XYZ, MOL, SDF, Mol2, CML, PDB, mmCIF, NWChem input (`.nw`) and Gaussian input (`.gjf`). XYZ bonds are guessed from distances; for ions, set formal charges before adding hydrogens. Reading with “Structure → Import structure file…” of the coordinate table replaces only the structure and keeps the calculation settings.
 
 ## 3. Templates or SMILES
 

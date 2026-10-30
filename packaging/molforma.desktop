@@ -10,5 +10,5 @@ Icon=molforma
 Terminal=false
 Categories=Science;Chemistry;
 Keywords=chemistry;molecule;NWChem;quantum;DFT;化学;分子;
-MimeType=application/x-molforma-project;text/x-nwchem-input;chemical/x-xyz;chemical/x-mdl-molfile;chemical/x-mdl-sdfile;chemical/x-mol2;chemical/x-cml;chemical/x-pdb;
+MimeType=application/x-molforma-project;text/x-nwchem-input;chemical/x-xyz;chemical/x-mdl-molfile;chemical/x-mdl-sdfile;chemical/x-mol2;chemical/x-cml;chemical/x-pdb;chemical/x-mmcif;
 StartupWMClass=molforma

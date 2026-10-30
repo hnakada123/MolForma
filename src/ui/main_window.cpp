@@ -907,10 +907,10 @@ void MainWindow::newDocument() {
     statusBar()->showMessage(tr("新しい分子を作成しました。"), 4000);
 }
 void MainWindow::open() {
-    QString p = QFileDialog::getOpenFileName(
-        this, tr("分子を開く"), settings.value("directory").toString(),
-        tr("分子 (*.molforma.json *.json *.xyz *.mol *.sdf *.mol2 *.cml *.pdb *.ent *.nw *.gjf *.com);;"
-           "NWChem入力 (*.nw);;Gaussian入力 (*.gjf *.com);;すべて (*)"));
+    QString p = QFileDialog::getOpenFileName(this, tr("分子を開く"), settings.value("directory").toString(),
+                                             tr("分子 (*.molforma.json *.json *.xyz *.mol *.sdf *.mol2 *.cml "
+                                                "*.pdb *.ent *.cif *.mmcif *.nw *.gjf *.com);;"
+                                                "NWChem入力 (*.nw);;Gaussian入力 (*.gjf *.com);;すべて (*)"));
     if (p.isEmpty() || !confirmDiscard())
         return;
     loadPath(p);

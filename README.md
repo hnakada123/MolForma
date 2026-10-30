@@ -17,7 +17,7 @@ ctest --test-dir build --output-on-failure
 ./build/molforma
 ```
 
-構造ファイル（XYZ・MOL・SDF・Mol2・CML・PDB、NWChem・Gaussian入力、プロジェクト）を指定して起動できます。ウィンドウへのドラッグ＆ドロップや「ファイル → 最近使ったファイル」でも開けます。
+構造ファイル（XYZ・MOL・SDF・Mol2・CML・PDB・mmCIF、NWChem・Gaussian入力、プロジェクト）を指定して起動できます。ウィンドウへのドラッグ＆ドロップや「ファイル → 最近使ったファイル」でも開けます。
 
 ```sh
 ./build/molforma tests/fixtures/ala_gly_ser.molforma.json

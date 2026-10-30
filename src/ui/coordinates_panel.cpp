@@ -44,7 +44,7 @@ bool textColumn(int column) {
 }
 constexpr int IdRole = Qt::UserRole, FixedRole = Qt::UserRole + 1;
 // The structure files that "構造を読み込む…" and a drop on the tab read as a replacement candidate.
-const QStringList structureSuffixes{"xyz", "mol", "sdf", "pdb", "ent"};
+const QStringList structureSuffixes{"xyz", "mol", "sdf", "pdb", "ent", "cif", "mmcif"};
 // Takes the width left over in its row of a FlowLayout; hidden, it takes none.
 QWidget *gap() {
     auto *w = new QWidget;
@@ -280,7 +280,7 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
         editActions << a;
     };
     structureAction(tr("構造ファイルを読み込む…"), "coordinateImport", "import",
-                    tr("XYZ・MOL・SDF・PDBを読み込み、今の構造を置き換える候補を作ります。"),
+                    tr("XYZ・MOL・SDF・PDB・mmCIFを読み込み、今の構造を置き換える候補を作ります。"),
                     [this] { importFile(); });
     structureAction(tr("XYZを貼り付けて置き換え…"), "coordinatePaste", "paste",
                     tr("クリップボードのXYZ（Å）で今の構造を置き換える候補を作ります。"),
@@ -567,9 +567,9 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     button(emptyActions, tr("原子を追加…"), "coordinateEmptyAdd", "plus", [this] { addAtom(); }, true);
     emptyActions->addStretch();
     cardLayout->addLayout(emptyActions);
-    auto *emptyNote =
-        new QLabel(tr("XYZ・MOL・SDF・PDB（.ent）のファイルは、ここへドロップしても読み込めます。"
-                      "部品やアミノ酸配列から組み立てるときは左のパレットを使います。"));
+    auto *emptyNote = new QLabel(
+        tr("XYZ・MOL・SDF・PDB（.ent）・mmCIF（.cif）のファイルは、ここへドロップしても読み込めます。"
+           "部品やアミノ酸配列から組み立てるときは左のパレットを使います。"));
     emptyNote->setObjectName("coordinateEmptyNote");
     emptyNote->setWordWrap(true);
     emptyNote->setAlignment(Qt::AlignCenter);
@@ -1020,7 +1020,7 @@ void CoordinatesPanel::importFile() {
     const auto base = window->revision();
     QString path = QFileDialog::getOpenFileName(this, tr("構造を読み込んで置換候補を作成"),
                                                 window->preference("directory").toString(),
-                                                tr("分子構造 (*.xyz *.mol *.sdf *.pdb *.ent)"));
+                                                tr("分子構造 (*.xyz *.mol *.sdf *.pdb *.ent *.cif *.mmcif)"));
     if (path.isEmpty())
         return;
     if (base != window->revision())

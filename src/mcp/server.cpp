@@ -817,13 +817,13 @@ void McpServer::registerTools() {
     edit({.name = "open_file",
           .title = "Open structure file",
           .description =
-              "Load a local XYZ/MOL/SDF/Mol2/CML/PDB/MolForma project file, NWChem input (.nw) or Gaussian "
-              "input "
+              "Load a local XYZ/MOL/SDF/Mol2/CML/PDB/mmCIF/MolForma project file, NWChem input (.nw) or "
+              "Gaussian input "
               "(.gjf/.com) as an undoable edit. Structure files keep the calculation settings; NWChem and "
               "Gaussian inputs also set charge and multiplicity, and NWChem inputs the calculation settings "
               "they "
-              "share with MolForma. Multi-frame XYZ files need frame (0-based). PDB uses model 1 and "
-              "automatic "
+              "share with MolForma. Multi-frame XYZ files need frame (0-based). PDB and mmCIF use model 1 "
+              "and automatic "
               "alternate-location selection. Maximum file size: 8 MiB.",
           .properties = {{"path", type("string")},
                          {"frame", QJsonObject{{"type", "integer"}, {"minimum", 0}}}},

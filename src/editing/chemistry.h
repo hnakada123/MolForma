@@ -2,7 +2,8 @@
 #pragma once
 #include "model/document.h"
 namespace mf {
-// Native Open Babel formats; routing of project/XYZ/NWChem/Gaussian files is in io/structure_io.h.
+// Native Open Babel formats and PDBx/mmCIF (.cif, .mmcif), which takes MODEL and ALTLOC as PDB does; routing
+// of project/XYZ/NWChem/Gaussian files is in io/structure_io.h.
 Document importBabelStructure(const QString &path, int pdbModel = 1, const QString &altloc = {});
 void exportBabelStructure(const Document &document, const QString &path);
 // Reads XYZ text and assigns bond orders from the geometry; XYZ itself carries none.
