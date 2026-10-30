@@ -40,7 +40,7 @@
         "%1 · %n atom",
         "%1 · %n atoms"
     ],
-    "%1 · Esc: 候補・選択を解除": "%1 · Esc: discard candidate, clear selection",
+    "%1 · Esc: 候補・選択を解除": "%1 · Esc: discard candidate, deselect",
     "%1 · 収束": "%1 · converged",
     "%1 · 多重度 %2": "%1 · multiplicity %2",
     "%1 · 末尾 128 KiB": "%1 · last 128 KiB",

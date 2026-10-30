@@ -55,8 +55,13 @@ class Shots(Gui):
     def want(self, page):
         return not self.pages or page in self.pages
 
-    def snap(self, name, target="mainWindow"):
+    def snap(self, name, target="mainWindow", settle=True):
         if self.want(name.split("/")[0]):
+            # The status bar shows the composition once the message of the last operation (5–8 s) is gone.
+            for _ in range(60 if settle else 0):
+                if not self.tool("get_app_state")["status"]:
+                    break
+                time.sleep(0.2)
             self.shot(WORK / "shots" / self.language / "features" / f"{name}.png", target)
             print("shot", name, flush=True)
 
@@ -79,7 +84,7 @@ def run(language):
         g.tool("calculation", action="start")
         g.tab(2)
         time.sleep(80 if language == "ja" else 45)  # Into the optimization steps.
-        g.snap("execution/02_run_panel")
+        g.snap("execution/02_run_panel", settle=False)
         if language == "ja":
             g.tool("calculation", action="stop")
         print(json.dumps(g.idle(900)["calculation"], ensure_ascii=False), flush=True)
@@ -291,7 +296,7 @@ def shots(language, pages):
             g.open(SAMPLES + "caffeine.molforma.json")
             atoms, _ = g.atoms()
             g.select_atoms([a["id"] for a in atoms if a["element"] == "N"])
-            g.snap("ai/01_mcp_gui")
+            g.snap("ai/01_mcp_gui", settle=False)  # The status bar shows the last MCP call.
     finally:
         g.close()
 

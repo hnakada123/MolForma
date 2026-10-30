@@ -49,3 +49,7 @@ each time and is not repeated.
   sliders still show 0).
 - Unsaved changes are asked about after the file of File → Open is chosen; `Gui.open_dialog` answers both.
 - Changing the bond order of two atoms also sets the bond type of the "Place" tool (`toolBondKind`).
+- `features.py` waits before each shot until the status bar message is gone, so that the status bar shows
+  the composition (not for the AI page, which shows the last MCP call, nor for the run panel).
+- The palette keeps the element chosen on an earlier page: `shots` of `molecule` together with later pages
+  shows N highlighted on them, other runs C.
