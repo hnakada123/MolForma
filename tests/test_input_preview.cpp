@@ -92,7 +92,7 @@ class InputPreviewTest : public QObject {
         QVERIFY(!widget<QPushButton>(w, "inputPreviewCopy")->isEnabled());
         const auto path = files.filePath("protect.nw");
         writeFile(path, "keep");
-        QVERIFY_EXCEPTION_THROWN(panel(w)->saveInput(path), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, panel(w)->saveInput(path));
         QCOMPARE(readFile(path), QByteArray("keep"));
         w.cancelCandidate();
         QCOMPARE(text(w)->toPlainText(), nwchemInput(w.document()));
@@ -105,7 +105,7 @@ class InputPreviewTest : public QObject {
         QVERIFY(text(w)->toPlainText().isEmpty());
         QVERIFY(!widget<QPushButton>(w, "inputPreviewSave")->isEnabled());
         QVERIFY(widget<QTextBrowser>(w, "inputPreviewDiagnostics")->toPlainText().contains("多重度"));
-        QVERIFY_EXCEPTION_THROWN(panel(w)->saveInput(path), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, panel(w)->saveInput(path));
         QCOMPARE(readFile(path), QByteArray("keep"));
         w.history()->undo();
         QVERIFY(!text(w)->toPlainText().isEmpty());
@@ -161,7 +161,7 @@ class InputPreviewTest : public QObject {
         widget<QPushButton>(w, "refineButton")->click();
         QVERIFY(!widget<QPushButton>(w, "inputPreviewSave")->isEnabled());
         QVERIFY(widget<QLabel>(w, "inputPreviewHint")->text().contains("整形中"));
-        QVERIFY_EXCEPTION_THROWN(panel(w)->saveInput(files.filePath("during-worker.nw")), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, panel(w)->saveInput(files.filePath("during-worker.nw")));
         QVERIFY(!QFileInfo::exists(files.filePath("during-worker.nw")));
         // Cancel synchronously, before the test executable used as worker can deliver any result.
         QPushButton *cancel = nullptr;

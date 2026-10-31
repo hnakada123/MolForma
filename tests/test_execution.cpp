@@ -244,19 +244,19 @@ class ExecutionTest : public QObject {
         QVERIFY(QFileInfo(p.directory + "/permanent/orbitals").isDir());
         QCOMPARE(d.toJson(), before);
         setNwchemAdvanced(d, "vectors_output", files.filePath("seed orbitals.movecs"));
-        QVERIFY_EXCEPTION_THROWN(executionPlan(d, files.path(), p.directory), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, executionPlan(d, files.path(), p.directory));
         QCOMPARE(readFile(files.filePath("seed orbitals.movecs")), QByteArray("seed"));
         for (const auto &bad : {"../outside.movecs", "input.nw", "run.json", "stderr.err"}) {
             setNwchemAdvanced(d, "vectors_output", bad);
-            QVERIFY_EXCEPTION_THROWN(executionPlan(d, files.path(), p.directory), std::runtime_error);
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error, executionPlan(d, files.path(), p.directory));
         }
         setNwchemAdvanced(d, "vectors_output", "new.movecs");
         setNwchemAdvanced(d, "vectors_input", "absent.movecs");
-        QVERIFY_EXCEPTION_THROWN(executionPlan(d, files.path(), p.directory), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, executionPlan(d, files.path(), p.directory));
         setNwchemAdvanced(d, "vectors_input", "seed orbitals.movecs");
         setNwchemAdvanced(d, "permanent_dir", files.path());
         writeFile(files.filePath("molforma.db"), "previous");
-        QVERIFY_EXCEPTION_THROWN(executionPlan(d, files.path(), p.directory), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, executionPlan(d, files.path(), p.directory));
         QCOMPARE(readFile(files.filePath("molforma.db")), QByteArray("previous"));
     }
     void processSnapshotAndLiteralArguments() {
@@ -268,7 +268,7 @@ class ExecutionTest : public QObject {
         const auto input = nwchemInput(d);
         d.atoms[1].position.x() += 5;
         setExecutionSetting(d, "omp_threads", 9);
-        QVERIFY_EXCEPTION_THROWN(run.start(d, files.path()), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, run.start(d, files.path()));
         QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 5000);
         QCOMPARE(run.state(), RunState::Finished);
         QCOMPARE(QString::fromUtf8(readFile(directory + "/input.nw")), input);

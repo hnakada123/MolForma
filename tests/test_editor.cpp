@@ -1353,12 +1353,10 @@ class EditorTest : public QObject {
         Document d;
         placeTemplate(d, findTemplate("skeleton:water"), Vec::Zero());
         w.loadDocument(d);
-        QVERIFY_EXCEPTION_THROWN(w.edit("invalid",
-                                        [](Document &candidate) {
-                                            candidate.atoms.clear();
-                                            fail("reject");
-                                        }),
-                                 std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, w.edit("invalid", [](Document &candidate) {
+            candidate.atoms.clear();
+            fail("reject");
+        }));
         QCOMPARE(w.document().atoms.size(), 3);
         QCOMPARE(w.history()->count(), 0);
     }

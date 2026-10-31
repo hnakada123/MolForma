@@ -256,7 +256,7 @@ class CoordinatesTest : public QObject {
                 w.loadPath(path);
         };
         if (choice == "stale") {
-            QVERIFY_EXCEPTION_THROWN(load(), std::runtime_error);
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error, load());
             QCOMPARE(w.document().charge, 1);
             QCOMPARE(w.document().ids(), before.ids());
             QVERIFY(!w.hasCandidate());
@@ -287,11 +287,11 @@ class CoordinatesTest : public QObject {
         AtomProperties properties;
         properties.isotope = 2; // Valid for H, invalid for C.
         properties.charge = 1;
-        QVERIFY_EXCEPTION_THROWN(setAtomProperties(d, d.ids(), properties), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, setAtomProperties(d, d.ids(), properties));
         QCOMPARE(d.project(), before);
-        QVERIFY_EXCEPTION_THROWN(
-            setCoordinateCell(d, d.atoms[1].id, CoordinateColumn::Mass, "400", CoordinateUnit::Angstrom),
-            std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(
+            std::runtime_error,
+            setCoordinateCell(d, d.atoms[1].id, CoordinateColumn::Mass, "400", CoordinateUnit::Angstrom));
         QCOMPARE(d.project(), before);
         properties = atomMassInput("13.0");
         setAtomProperties(d, {d.atoms[1].id}, properties);
@@ -313,11 +313,11 @@ class CoordinatesTest : public QObject {
         QCOMPARE(b.isotope, 0);
         QCOMPARE(coordinateText(b, CoordinateColumn::Mass, CoordinateUnit::Angstrom), QString("13.0"));
         for (const auto &bad : {"nan", "inf", "1,2", "1e999", ""})
-            QVERIFY_EXCEPTION_THROWN(coordinateAtom("C", {bad, "0", "0"}, "", CoordinateUnit::Angstrom),
-                                     std::runtime_error);
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                     coordinateAtom("C", {bad, "0", "0"}, "", CoordinateUnit::Angstrom));
         for (const auto &bad : {"0", "-1", "nan", "999", "1e999"})
-            QVERIFY_EXCEPTION_THROWN(coordinateAtom("C", {"0", "0", "0"}, bad, CoordinateUnit::Angstrom),
-                                     std::runtime_error);
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                     coordinateAtom("C", {"0", "0", "0"}, bad, CoordinateUnit::Angstrom));
     }
     void refreshUpdatesCellsInPlace() {
         // A refresh updates the cells of the rows there are; only another number of atoms resets them.
@@ -870,7 +870,7 @@ class CoordinatesTest : public QObject {
         w.history()->undo();
         QCOMPARE(w.document().toJson(), d.toJson());
         w.edit("fix", [](Document &d) { d.atoms[0].fixed = true; });
-        QVERIFY_EXCEPTION_THROWN(panel->previewStructure(imported), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, panel->previewStructure(imported));
         QVERIFY(!w.hasCandidate());
         QCOMPARE(w.document().atoms.size(), 3);
     }

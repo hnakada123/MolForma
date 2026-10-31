@@ -209,7 +209,7 @@ class AdvancedTest : public QObject {
         QVERIFY(errors(d, "別のファイル名"));
         for (const auto &bad : {"a\"; task shell invalid", "a\nb", "a#b", "a\\b"}) {
             setNwchemAdvanced(d, "vectors_output", bad);
-            QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
         }
         for (const auto &bad : {"/remote/scratch job", "host:/scratch", "scratch'job"})
             QVERIFY(!nwchemAdvancedError(option("scratch_dir"), bad).isEmpty());
@@ -269,7 +269,7 @@ class AdvancedTest : public QObject {
             }
         }
         values(d, {{"scf_solver", "diis\nend\ntask shell invalid"}});
-        QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
     }
     void detailsInTheSections() {
         MainWindow w;

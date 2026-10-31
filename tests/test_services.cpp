@@ -96,7 +96,7 @@ class ServicesTest : public QObject {
         d.atoms[0].fixed = true;
         session.reset(d);
         ChemistryJob job(session, nullptr, home.filePath("missing-worker"));
-        QVERIFY_EXCEPTION_THROWN(job.start({"smiles", "C"}), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, job.start({"smiles", "C"}));
         QVERIFY(!job.active());
         int failed = 0;
         connect(&job, &ChemistryJob::failed, this,

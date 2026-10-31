@@ -293,7 +293,7 @@ class CalculationTest : public QObject {
             QCOMPARE(validateNwchem(d).electrons, element(symbol).number);
             QVERIFY(nwchemGeometry(d, CoordinateUnit::Angstrom).contains(QString(symbol) + " "));
             QVERIFY(errorContains(d, "対応元素"));
-            QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
         }
         d.atoms[0].element = "Kr";
         d.charge = 0;
@@ -386,16 +386,16 @@ class CalculationTest : public QObject {
             auto d = water();
             set(d, entry.first, entry.second);
             QVERIFY2(!validateNwchem(d).errors.isEmpty(), qPrintable(entry.first));
-            QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
         }
         auto d = water();
         d.data["nwchem"] = "invalid";
-        QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
         d = water();
         d.charge = 2000;
         QVERIFY(errorContains(d, "整数"));
-        QVERIFY_EXCEPTION_THROWN(setNwchemSetting(d, "charge", 0.5), std::runtime_error);
-        QVERIFY_EXCEPTION_THROWN(nwchemInput(Document()), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, setNwchemSetting(d, "charge", 0.5));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(Document()));
     }
     void tddftInput() {
         auto d = water();

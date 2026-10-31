@@ -224,14 +224,14 @@ class OutputTest : public QObject {
         setNwchemAdvanced(d, "cube_orbital", "lumo");
         QVERIFY(nwchemInput(d).contains("orbitals view; 1; 6"));
         setNwchemAdvanced(d, "cube_spin", "beta");
-        QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
         base(d, "reference", "uhf");
         d.charge = 1;
         d.multiplicity = 2;
         setNwchemAdvanced(d, "cube_orbital", "homo");
         QVERIFY(nwchemInput(d).contains("spin beta\n  orbitals view; 1; 4"));
         setNwchemAdvanced(d, "cube_orbital", "index");
-        QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
         setNwchemAdvanced(d, "cube_index", 7);
         QVERIFY(nwchemInput(d).contains("orbitals view; 1; 7"));
         setNwchemAdvanced(d, "cube_type", "density");
@@ -251,7 +251,7 @@ class OutputTest : public QObject {
         both(h);
         setNwchemAdvanced(h, "cube_type", "orbital");
         setNwchemAdvanced(h, "cube_spin", "beta");
-        QVERIFY_EXCEPTION_THROWN(nwchemInput(h), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(h));
         setNwchemAdvanced(h, "cube_orbital", "lumo");
         QVERIFY(nwchemInput(h).contains("orbitals view; 1; 1"));
     }
@@ -262,21 +262,21 @@ class OutputTest : public QObject {
         for (const auto &bad : {QJsonValue(QJsonArray{-3, 3}), QJsonValue(QJsonArray{3, -3, 20}),
                                 QJsonValue(QJsonArray{-3, 3, 1.5}), QJsonValue("NaN")}) {
             setNwchemAdvanced(d, "cube_x", bad);
-            QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
         }
         setNwchemAdvanced(d, "cube_x", QJsonArray{-3, 3, 30});
         setNwchemAdvanced(d, "cube_divisions", 1000);
-        QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
         setNwchemAdvanced(d, "cube_divisions", 20);
         QCOMPARE(nwchemCubeGrid(d).points(), 31LL * 17 * 19); // Y and Z keep the automatic spacing.
         for (const auto &name :
              {"../bad.cube", "input.nw", "bad name.cube", "bad;task.cube", "bad\n.cube", "/abs.cube"}) {
             setNwchemAdvanced(d, "cube_filename", name);
-            QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
         }
         setNwchemAdvanced(d, "cube_filename", "orbitals.CUBE");
         setNwchemAdvanced(d, "vectors_output", "orbitals.CUBE");
-        QVERIFY_EXCEPTION_THROWN(nwchemInput(d), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
         setNwchemAdvanced(d, "vectors_output", "orbitals.movecs");
         const auto saved = d.project();
         auto next = Document::fromProject(saved);
@@ -289,7 +289,7 @@ class OutputTest : public QObject {
         QVERIFY(!nwchemInput(next).contains("dplot"));
         QVERIFY(nwchemInput(next).contains("moldenfile"));
         setNwchemAdvanced(next, "cube_output", true);
-        QVERIFY_EXCEPTION_THROWN(nwchemInput(next), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(next));
         resetNwchemAdvanced(next, "visualization");
         QVERIFY(!nwchemInput(next).contains("property"));
         QCOMPARE(nwchemAdvanced(next)["vectors_output"].toString(), "orbitals.movecs");
@@ -312,7 +312,7 @@ class OutputTest : public QObject {
         writeFile(plan.directory + "/output.out", "NWChem\n Total SCF energy = -75\n Total times  cpu: 1s\n");
         writeFile(plan.directory + "/permanent/molforma_density.cube", cube().toUtf8());
         QVERIFY(resultFiles(plan.directory).contains("permanent/molforma_density.cube"));
-        QVERIFY_EXCEPTION_THROWN(executionPlan(d, tmp.path(), plan.directory), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, executionPlan(d, tmp.path(), plan.directory));
         MainWindow w;
         w.loadDocument(d);
         const auto before = w.document().project();

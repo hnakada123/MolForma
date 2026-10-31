@@ -1248,7 +1248,7 @@ void CalculationSummary::update(const Document &d) {
 }
 
 ViewControls::ViewControls(MoleculeView *view, const Names &names, bool rotate, bool menu, QWidget *parent)
-    : QFrame(parent), view(view) {
+    : QFrame(parent) {
     setProperty("viewControls", true);
     setProperty("compactButtons", true); // OverlayHost shows only the icons when narrow.
     auto *row = new QHBoxLayout(this);

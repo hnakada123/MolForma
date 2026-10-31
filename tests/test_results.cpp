@@ -264,7 +264,7 @@ class ResultsTest : public QObject {
         au.replace("in angstroms", "in a.u.");
         r = readResult(save("bohr.log", "NWChem\n" + au));
         QVERIFY(std::abs(r.frames[0].molecule.atoms[1].position.x() - .758 * BohrToAngstrom) < 1e-12);
-        QVERIFY_EXCEPTION_THROWN(readResult(save("not.log", "hello")), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readResult(save("not.log", "hello")));
     }
     void projectedModes() {
         QString s = "NWChem\n" + geometry() +
@@ -306,8 +306,8 @@ class ResultsTest : public QObject {
         QCOMPARE(r.frames.size(), 2);
         QCOMPARE(r.frames[1].label, "second");
         QVERIFY(resultOutcome(r).isEmpty()); // Only logs have an outcome.
-        QVERIFY_EXCEPTION_THROWN(readResult(save("truncated.xyz", "2\ntitle\nH 0 0 0\n")),
-                                 std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 readResult(save("truncated.xyz", "2\ntitle\nH 0 0 0\n")));
         r = readResult(save("orbitals.molden", moldenText()));
         QCOMPARE(r.orbitals.size(), 2);
         QCOMPARE(r.orbitals[0].energy, -.5);
@@ -319,13 +319,13 @@ class ResultsTest : public QObject {
         QVERIFY(std::abs(r.frames[0].molecule.atoms[1].position.z() - 1.4 * BohrToAngstrom) < 1e-12);
         auto bad = moldenText();
         bad.replace("[Atoms] AU", "[Atoms] unknown");
-        QVERIFY_EXCEPTION_THROWN(readResult(save("bad.molden", bad)), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readResult(save("bad.molden", bad)));
         bad = moldenText();
         bad.replace("Occup= 2.0", "Occup= nan");
-        QVERIFY_EXCEPTION_THROWN(readResult(save("nan.molden", bad)), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readResult(save("nan.molden", bad)));
         bad = moldenText();
         bad.replace("vibration 2\n0 0 .1\n0 0 -.1", "vibration 2\n0 0 .1");
-        QVERIFY_EXCEPTION_THROWN(readResult(save("partial.molden", bad)), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readResult(save("partial.molden", bad)));
     }
     void affineCubeAndDatasets() {
         const auto path = save("affine.cube", cubeText());
@@ -357,7 +357,7 @@ class ResultsTest : public QObject {
              {cubeText() + "1", cubeText().chopped(8), QString(cubeText()).replace("2 1 0 0", "-2 1 0 0"),
               QString(cubeText()).replace("2 1 0 0", "2000000 1 0 0"),
               QString(cubeText()).replace("0.5", "nan")})
-            QVERIFY_EXCEPTION_THROWN(readResult(save("invalid.cube", bad)), std::runtime_error);
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error, readResult(save("invalid.cube", bad)));
     }
     void heavyElementResults() {
         for (const auto &symbol : {"Fr", "U", "Nh", "Og"}) {
@@ -379,10 +379,10 @@ class ResultsTest : public QObject {
         }
         auto invalid = cubeText();
         invalid.replace("6 4 1 2 3", "119 119 1 2 3");
-        QVERIFY_EXCEPTION_THROWN(readResult(save("unknown.cube", invalid)), std::runtime_error);
-        QVERIFY_EXCEPTION_THROWN(
-            readResult(save("unknown.molden", "[Molden Format]\n[Atoms] Angs\nUue 1 119 0 0 0\n")),
-            std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readResult(save("unknown.cube", invalid)));
+        QVERIFY_THROWS_EXCEPTION(
+            std::runtime_error,
+            readResult(save("unknown.molden", "[Molden Format]\n[Atoms] Angs\nUue 1 119 0 0 0\n")));
     }
     void logSummaries() {
         // Excerpts in the layout NWChem 7.3.1 prints (TDDFT, DRIVER, vib, multipole and MO analysis).
@@ -481,12 +481,12 @@ class ResultsTest : public QObject {
         QCOMPARE(loaded.frames[0].molecule.toJson(), r.frames[0].molecule.toJson());
         QVERIFY((loaded.surface[0].a - r.surface[0].a).norm() < 1e-15);
         writeFile(path, readFile(path).chopped(4));
-        QVERIFY_EXCEPTION_THROWN(loadResultData(path), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, loadResultData(path));
         QFile huge(files.filePath("huge.xyz"));
         QVERIFY(huge.open(QIODevice::WriteOnly));
         QVERIFY(huge.resize(128 * 1024 * 1024 + 1));
         huge.close();
-        QVERIFY_EXCEPTION_THROWN(readResult(huge.fileName()), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readResult(huge.fileName()));
     }
     void outcomeSurvivesDisplayAndTransfer() {
         const auto source = save("outcome.out", "NWChem\nTotal times  cpu: 1\n");
@@ -1010,12 +1010,12 @@ class ResultsTest : public QObject {
         QVERIFY(rmsd > 0 && rmsd < largest);
         auto pinned = editor;
         pinned.atoms[1].fixed = true;
-        QVERIFY_EXCEPTION_THROWN(applyResultGeometry(pinned, optimized), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, applyResultGeometry(pinned, optimized));
         pinned.atoms[1].fixed = false;
         pinned.atoms[0].fixed = true; // O did not move in the result.
         applyResultGeometry(pinned, optimized);
         auto other = Document::fromXyz("3\nwrong order\nH .758 0 .504\nO 0 0 0\nH -.758 0 .504\n");
-        QVERIFY_EXCEPTION_THROWN(applyResultGeometry(copy, other), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, applyResultGeometry(copy, other));
         // GUI: the displayed frame becomes a candidate of the editor document.
         MainWindow w;
         w.loadDocument(editor);

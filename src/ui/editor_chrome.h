@@ -279,7 +279,6 @@ class ViewControls : public QFrame {
     void applyStyle(const QPalette &palette);
 
   private:
-    MoleculeView *view;
     QToolButton *fit, *rotation = nullptr, *display = nullptr;
     QFrame *popup = nullptr;
     QList<QWidget *> parts;

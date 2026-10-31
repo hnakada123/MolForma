@@ -88,7 +88,7 @@ ResultLoader::~ResultLoader() {
     }
 }
 QProcess *ResultLoader::worker(const QString &request, const QString &response) {
-    const auto start = [this](QProcess *p, const QStringList &arguments) {
+    const auto start = [](QProcess *p, const QStringList &arguments) {
         p->setProgram(QCoreApplication::applicationFilePath());
         p->setArguments(arguments);
         p->setStandardOutputFile(QProcess::nullDevice());

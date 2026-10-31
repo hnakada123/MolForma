@@ -29,16 +29,16 @@ class CoreTest : public QObject {
         session.reset(d);
         QSignalSpy applied(&session, &EditorSession::applied);
         const auto before = session.document().project();
-        QVERIFY_EXCEPTION_THROWN(
-            session.edit("invalid", [](Document &next) { next.atoms[0].position.x() = 1; }),
-            std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, session.edit("invalid", [](Document &next) {
+            next.atoms[0].position.x() = 1;
+        }));
         QCOMPARE(session.document().project(), before);
         QCOMPARE(session.history().count(), 0);
         QVERIFY(!session.candidate());
         QVERIFY(session.edit("move", [](Document &next) { next.atoms[1].position.z() = 1; }, true, true));
         QCOMPARE(session.document().project(), before);
         QVERIFY(session.candidateRemote());
-        QVERIFY_EXCEPTION_THROWN(session.edit("blocked", [](Document &) {}), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, session.edit("blocked", [](Document &) {}));
         QVERIFY(session.confirm());
         QCOMPARE(session.document().envelope, d.envelope);
         QCOMPARE(session.history().count(), 1);
@@ -103,7 +103,7 @@ class CoreTest : public QObject {
         QCOMPARE(std::count(molecule.begin(), molecule.end(), 1), 3);
         // Indices of a list of atoms keep its order; an unknown atom fails.
         QCOMPARE(d.indices({d.atoms[4].id, d.atoms[1].id, d.atoms[4].id}), (QVector<int>{4, 1, 4}));
-        QVERIFY_EXCEPTION_THROWN(d.indices({d.atoms[1].id, "missing"}), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, d.indices({d.atoms[1].id, "missing"}));
     }
 
     void counterpoiseMonomersInAtomOrder() {
@@ -198,17 +198,17 @@ class CoreTest : public QObject {
             }
         session.reset(ethane);
         const auto fixed = session.document().project();
-        QVERIFY_EXCEPTION_THROWN(session.edit(
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 session.edit(
                                      "fixed hydrogen",
                                      [&](Document &d) {
                                          deleteAtoms(d, {carbon},
                                                      {.includeAttachedHydrogens = true, .capCutBonds = true});
                                      },
-                                     true),
-                                 std::runtime_error);
-        QVERIFY_EXCEPTION_THROWN(
-            session.edit("unknown atom", [&](Document &d) { deleteAtoms(d, {carbon, "missing"}); }),
-            std::runtime_error);
+                                     true));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, session.edit("unknown atom", [&](Document &d) {
+            deleteAtoms(d, {carbon, "missing"});
+        }));
         QCOMPARE(session.document().project(), fixed);
         QVERIFY(!session.candidate());
         QCOMPARE(session.history().count(), 0);
@@ -233,8 +233,8 @@ class CoreTest : public QObject {
         }
         QCOMPARE(element("U").number, 92);
         QCOMPARE(element("Nh").number, 113);
-        QVERIFY_EXCEPTION_THROWN(element("Uue"), std::runtime_error);
-        QVERIFY_EXCEPTION_THROWN(element("Ubn"), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, element("Uue"));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, element("Ubn"));
     }
     void nativeStereochemistry() {
         if (!hasStereochemistryBackend())
@@ -545,7 +545,7 @@ class CoreTest : public QObject {
         QVERIFY(chosen[1].altloc.isEmpty());
         QCOMPARE(selectMmcif(atoms, {.model = 1, .altloc = "A"})[1].position.x(), 1.45);
         QCOMPARE(selectMmcif(atoms, {.model = 2}).size(), 1);
-        QVERIFY_EXCEPTION_THROWN(selectMmcif(atoms, {.model = 3}), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, selectMmcif(atoms, {.model = 3}));
 
         QTemporaryDir temp;
         const auto path = temp.filePath("test.mmcif");
@@ -666,8 +666,8 @@ class CoreTest : public QObject {
         QCOMPARE(selectMmcif(entry.atoms, {.chains = {"BB"}}).size(), 1);
         QCOMPARE(selectMmcif(entry.atoms, {.water = false}).size(), 4);
         QCOMPARE(selectMmcif(entry.atoms, {.ligands = false, .water = false}).size(), 3);
-        QVERIFY_EXCEPTION_THROWN(selectMmcif(entry.atoms, {.chains = {"BB"}, .polymer = false}),
-                                 std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 selectMmcif(entry.atoms, {.chains = {"BB"}, .polymer = false}));
         // One entity as items; atoms without an entity by their record and name.
         const auto items =
             readMmcif("data_TEST\n_entity.id 1\n_entity.type polymer\n_entity.pdbx_description 'Peptide'\n" +
@@ -785,7 +785,7 @@ class CoreTest : public QObject {
         const auto amide = before.neighbors(d, d.residues[3].atoms["N"]);
         QVERIFY(std::any_of(amide.begin(), amide.end(),
                             [&](const QString &h) { return d.atom(h).element == "H" && atoms.contains(h); }));
-        QVERIFY_EXCEPTION_THROWN(siteAtoms(d, {}), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, siteAtoms(d, {}));
 
         auto cut = d;
         const auto links = cutOutSite(cut, site);
@@ -843,7 +843,7 @@ class CoreTest : public QObject {
         copy = zinc;
         QCOMPARE(cutOutSite(copy, {ids[0], ids[1]}).size(), 1);
         zinc.atoms[2].fixed = true;
-        QVERIFY_EXCEPTION_THROWN(cutOutSite(zinc, {ids[0], ids[1]}), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, cutOutSite(zinc, {ids[0], ids[1]}));
     }
     // Hydrogens in the states of pH 7 for a structure without them: the same peptide as built with its
     // charged groups, His on the nitrogen not bound to a metal, water and ions bound to a metal.
@@ -1069,7 +1069,7 @@ class CoreTest : public QObject {
         residues[0] = first;
         doc["residues"] = residues;
         project["document"] = doc;
-        QVERIFY_EXCEPTION_THROWN(Document::fromProject(project), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, Document::fromProject(project));
         auto twice = parseJson(readFile(QString(FIXTURE_DIR) + "/ala_gly_ser.molforma.json"));
         doc = twice["document"].toObject();
         auto chains = doc["chains"].toObject();
@@ -1079,7 +1079,7 @@ class CoreTest : public QObject {
         chains[key] = sequence;
         doc["chains"] = chains;
         twice["document"] = doc;
-        QVERIFY_EXCEPTION_THROWN(Document::fromProject(twice), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, Document::fromProject(twice));
         // Atoms packed far closer than in any molecule: bonds per atom are bounded and the bond orders
         // are left alone, instead of a ring search that does not finish.
         QString xyz = "64\ndense\n";
@@ -1205,9 +1205,9 @@ class CoreTest : public QObject {
         QCOMPARE(d.bonds.size(), 2);
         QCOMPARE(d.atoms[1].isotope, 2);
         QCOMPARE(Document::fromXyz(d.xyz()).atoms[1].isotope, 2);
-        QVERIFY_EXCEPTION_THROWN(Document::fromXyz("1\ninvalid\nC nan 0 0\n"), std::runtime_error);
-        QVERIFY_EXCEPTION_THROWN(Document::fromXyz("2\nshort\nC 0 0 0\n"), std::runtime_error);
-        QVERIFY_EXCEPTION_THROWN(Document::fromXyz("1\nunknown\nXx 0 0 0\n"), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, Document::fromXyz("1\ninvalid\nC nan 0 0\n"));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, Document::fromXyz("2\nshort\nC 0 0 0\n"));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, Document::fromXyz("1\nunknown\nXx 0 0 0\n"));
         // Errors name the line, so a broken file can be fixed.
         try {
             Document::fromXyz("2\nbroken\nO 0 0 0\nH 1 x 0\n");
@@ -1240,10 +1240,9 @@ class CoreTest : public QObject {
                 a.fixed = true;
         EditorSession session;
         session.reset(d);
-        QVERIFY_EXCEPTION_THROWN(
-            session.edit("double",
-                         [&](Document &next) { changeBond(next, carbons[0], carbons[1], "double", true); }),
-            std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, session.edit("double", [&](Document &next) {
+            changeBond(next, carbons[0], carbons[1], "double", true);
+        }));
         QCOMPARE(session.document().project(), d.project());
         QCOMPARE(session.history().count(), 0);
         QVERIFY(session.edit("double",
@@ -1300,7 +1299,7 @@ class CoreTest : public QObject {
         }
         QVERIFY(std::abs(left - right - 3) < 1e-12);
         QVERIFY(d.validate().isEmpty());
-        QVERIFY_EXCEPTION_THROWN(insertFragment(d, other), std::runtime_error); // Same IDs again.
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, insertFragment(d, other)); // Same IDs again.
         // A total charge that matched the formal charges follows the added ion.
         auto chloride = Document::fromXyz("1\nchloride\nCl 0 0 0\n");
         chloride.atoms[0].charge = -1;
@@ -1316,9 +1315,9 @@ class CoreTest : public QObject {
         Document placed;
         placeTemplate(placed, part, Vec(1, 2, 3));
         QCOMPARE(placed.formula(), QString("H2O"));
-        QVERIFY_EXCEPTION_THROWN(makePart(water, {water.atoms[0].id, water.atoms[1].id}, "piece", "skeleton"),
-                                 std::runtime_error);
-        QVERIFY_EXCEPTION_THROWN(makePart(water, water.ids(), "bad", "fragment"), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(
+            std::runtime_error, makePart(water, {water.atoms[0].id, water.atoms[1].id}, "piece", "skeleton"));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, makePart(water, water.ids(), "bad", "fragment"));
     }
     void symmetryNumber() {
         // Rotational symmetry numbers for thermochemistry hints (NWChem runs with noautosym).
@@ -1573,7 +1572,7 @@ class CoreTest : public QObject {
         for (const auto &atom : old.atoms)
             QVERIFY((ring.atom(atom.id).position - atom.position).norm() < 1e-12);
         QVERIFY(angle(ring, r1, n, r2) < 170);
-        QVERIFY_EXCEPTION_THROWN(insertAtom(ring, r1, r2, "O"), std::runtime_error); // No bond any more.
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, insertAtom(ring, r1, r2, "O")); // No bond any more.
     }
     void aromaticHydrogens() {
         // Aromatic rings count by their Kekulé form, so completion keeps every template intact.
@@ -1677,10 +1676,10 @@ class CoreTest : public QObject {
         setDimension(d, {ids[1], ids[2]}, 1.8);
         QVERIFY(std::abs(measure(d, {ids[1], ids[2]}) - 1.8) < 1e-10);
         d.atom(ids[3]).fixed = true;
-        QVERIFY_EXCEPTION_THROWN(setDimension(d, ids, 90), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, setDimension(d, ids, 90));
         d.atom(ids[3]).fixed = false;
         d.setBond(ids[0], ids[3], "single");
-        QVERIFY_EXCEPTION_THROWN(d.bondSide(ids[1], ids[2]), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, d.bondSide(ids[1], ids[2]));
         // Intermolecular distance, angle and dihedral move the molecule of the later atoms.
         Document dimer;
         placeTemplate(dimer, findTemplate("skeleton:water"), Vec::Zero());
@@ -1697,7 +1696,7 @@ class CoreTest : public QObject {
         QVERIFY(std::abs(measure(dimer, {o2, h2}) - measure(dimer, {o1, h1})) < 1e-8);
         QVERIFY((dimer.atoms[0].position - first).norm() < 1e-12);
         // Within one molecule, non-bonded atoms have no side to move.
-        QVERIFY_EXCEPTION_THROWN(setDimension(dimer, {h1, dimer.atoms[2].id}, 2), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, setDimension(dimer, {h1, dimer.atoms[2].id}, 2));
     }
     void wholePartReplacement() {
         Document d;
@@ -1717,8 +1716,8 @@ class CoreTest : public QObject {
         QCOMPARE(d.index(hydroxyl.connections.first()), oldIndex);
         QVERIFY((d.atom(parent).position - position).norm() < 1e-12);
         QVERIFY(d.validate().isEmpty());
-        QVERIFY_EXCEPTION_THROWN(replacePart(d, d.ids(), findTemplate("substituent:methyl")),
-                                 std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 replacePart(d, d.ids(), findTemplate("substituent:methyl")));
     }
     void peptide() {
         Document d;
@@ -1766,8 +1765,8 @@ class CoreTest : public QObject {
             QCOMPARE(b.b, zinc);
             QVERIFY(std::abs((d.atom(b.a).position - d.atom(zinc).position).norm() - 2.3) < 1e-10);
         }
-        QVERIFY_EXCEPTION_THROWN(placeLigand(d, zinc, {0}, findTemplate("ligand:chloride")),
-                                 std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 placeLigand(d, zinc, {0}, findTemplate("ligand:chloride")));
         adjustCenter(d, zinc, "tetrahedral", 2.5, 2);
         QCOMPARE(d.atoms.size(), 5);
         for (auto b : d.bonds)
@@ -1818,7 +1817,7 @@ class CoreTest : public QObject {
     void chelate() {
         Document d;
         QString co = addCenter(d, "Co", "octahedral", Vec::Zero(), 2.1, 3);
-        QVERIFY_EXCEPTION_THROWN(placeLigand(d, co, {0, 2}, findTemplate("ligand:en")), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, placeLigand(d, co, {0, 2}, findTemplate("ligand:en")));
         auto en = placeLigand(d, co, {0, 1}, findTemplate("ligand:en"));
         QCOMPARE(en.connections.size(), 2);
         QVERIFY(d.validate().isEmpty());
@@ -1883,7 +1882,7 @@ class CoreTest : public QObject {
         auto out = refine(d);
         QVERIFY((out.atoms[0].position - first).norm() < 1e-12);
         QCOMPARE(out.ids(), d.ids());
-        QVERIFY_EXCEPTION_THROWN(fromSmiles("not a smiles"), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, fromSmiles("not a smiles"));
         // Heavy main-group elements are refined; only metals and ghosts are refused.
         for (const auto &[smiles, formula] :
              {std::pair{"c1ccccc1Br", "C6H5Br"}, {"CI", "CH3I"}, {"C[Se]C", "C2H6Se"}})
@@ -1894,7 +1893,7 @@ class CoreTest : public QObject {
                      QString("UFF"));
         auto metal = fromSmiles("CCO");
         metal.atoms[0].element = "Fe";
-        QVERIFY_EXCEPTION_THROWN(refine(metal), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, refine(metal));
         QTemporaryDir tmp;
         exportStructure(d, tmp.filePath("ethanol.sdf"));
         auto copy = importStructure(tmp.filePath("ethanol.sdf"));

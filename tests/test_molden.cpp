@@ -104,7 +104,7 @@ class MoldenTest : public QObject {
         // silently guess when the file cannot distinguish standard from embedded factors.
         const auto standard = moldenWavefunction(b, hydrogen(), {{1}}, "standard");
         const QMap<QString, QStringList> unnormalized{{"GTO", {"1 0", "s 2 1", "2 1", ".5 1.2"}}};
-        QVERIFY_EXCEPTION_THROWN(moldenWavefunction(unnormalized, hydrogen(), {{1}}), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, moldenWavefunction(unnormalized, hydrogen(), {{1}}));
         const auto explicitStandard = moldenWavefunction(unnormalized, hydrogen(), {{1}}, "standard");
         QVERIFY(std::abs(explicitStandard.value(0, Vec(.2, .3, .4)) - standard.value(0, Vec(.2, .3, .4))) <
                 1e-12);
@@ -122,21 +122,21 @@ class MoldenTest : public QObject {
                                 QStringList{"1 0", "s 1 0", "-1 1"}, QStringList{"1 0", "s 1 0", "nan 1"},
                                 QStringList{"2 0", "s 1 0", "1 1"}, QStringList{"1 0", "s 1 0", "1 0"}}) {
             b["GTO"] = bad;
-            QVERIFY_EXCEPTION_THROWN(moldenWavefunction(b, hydrogen(), {{1}}), std::runtime_error);
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error, moldenWavefunction(b, hydrogen(), {{1}}));
         }
         b["GTO"] = {"1 0", "p 1 0", "1 1"};
-        QVERIFY_EXCEPTION_THROWN(moldenWavefunction(b, hydrogen(), {{0, 0, 0, 1}}), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, moldenWavefunction(b, hydrogen(), {{0, 0, 0, 1}}));
         b["GTO"] = {"1 0", "d 1 0", "1 1"};
         b["5D7F9G"] = {};
         QCOMPARE(moldenWavefunction(b, hydrogen(), {{1, 0, 0, 0, 0}}).shells[0].functions.size(), 5);
         b["6D"] = {};
-        QVERIFY_EXCEPTION_THROWN(moldenWavefunction(b, hydrogen(), {{1}}), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, moldenWavefunction(b, hydrogen(), {{1}}));
         b.remove("5D7F9G");
         QVector<QVector<double>> sparse(20000, QVector<double>{1});
         b["GTO"] = {"1 0"};
         for (int i = 0; i < 100; ++i)
             b["GTO"] << "g 1 0" << "1 1";
-        QVERIFY_EXCEPTION_THROWN(moldenWavefunction(b, hydrogen(), sparse), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, moldenWavefunction(b, hydrogen(), sparse));
     }
     void separableGridMatchesPointEvaluation() {
         auto atoms = Document::fromXyz("2\noff-center\nH .23 -.41 .37\nH -.71 .53 -.29\n");
@@ -167,8 +167,8 @@ class MoldenTest : public QObject {
                 QCOMPARE(v, 0.);
             const auto edge = moldenOrbitalGrid(w, 0, origin, step, {101, 2, 3});
             QVERIFY(std::abs(edge.last() - w.value(0, origin + step.cwiseProduct(Vec(100, 1, 2)))) < 1e-12);
-            QVERIFY_EXCEPTION_THROWN(moldenOrbitalGrid(w, 2, origin, step, grid), std::runtime_error);
-            QVERIFY_EXCEPTION_THROWN(moldenOrbitalGrid(w, 0, origin, step, {102, 2, 3}), std::runtime_error);
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error, moldenOrbitalGrid(w, 2, origin, step, grid));
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error, moldenOrbitalGrid(w, 0, origin, step, {102, 2, 3}));
         }
     }
     void isosurfaceNormals() {
@@ -236,15 +236,15 @@ class MoldenTest : public QObject {
         QCOMPARE(loaded.orbitalFrame, 0);
         QCOMPARE(loaded.orbitalNormalization, p.orbitalNormalization);
         QCOMPARE(loaded.surface.size(), p.surface.size());
-        QVERIFY_EXCEPTION_THROWN(readResult(path, .03, 0, 100), std::runtime_error);
-        QVERIFY_EXCEPTION_THROWN(readResult(path, .03, 0, 0, "auto", 1000), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readResult(path, .03, 0, 100));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readResult(path, .03, 0, 0, "auto", 1000));
         auto incomplete = sample();
         incomplete.replace("sp 1 0", "s 1 0").replace("1 1 1", "1 1");
         const auto bad = save("incomplete.molden", incomplete);
         QVERIFY(!readResult(bad).orbitalError.isEmpty());
-        QVERIFY_EXCEPTION_THROWN(readResult(bad, .03, 0, 0), std::runtime_error);
-        QVERIFY_EXCEPTION_THROWN(readResult(save("duplicate.molden", sample() + "3 1\n")),
-                                 std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readResult(bad, .03, 0, 0));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 readResult(save("duplicate.molden", sample() + "3 1\n")));
     }
     void nativeSelectionAndCancellation() {
         MainWindow w;

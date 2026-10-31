@@ -161,28 +161,28 @@ class HistoryTest : public QObject {
         const auto input = readFile(p.directory + "/input.nw");
         writeFile(p.directory + "/input.nw", input + "# manually changed\n");
         QVERIFY(historyIntegrity(readHistoryEntry(p.directory)).contains("一致しません"));
-        QVERIFY_EXCEPTION_THROWN(historyDocument(p.directory), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, historyDocument(p.directory));
         writeFile(p.directory + "/input.nw", input);
         const auto project = readFile(p.directory + "/project.molforma.json");
         writeFile(p.directory + "/project.molforma.json", project + " ");
-        QVERIFY_EXCEPTION_THROWN(historyDocument(p.directory), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, historyDocument(p.directory));
         writeFile(p.directory + "/project.molforma.json", project);
         p.manifest["input"] = "../outside.nw";
         manifest(p, "prepared");
         QVERIFY(!readHistoryEntry(p.directory).valid);
-        QVERIFY_EXCEPTION_THROWN(historyDocument(p.directory), std::runtime_error);
-        QVERIFY_EXCEPTION_THROWN(historyText(p.directory, "../input.nw"), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, historyDocument(p.directory));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, historyText(p.directory, "../input.nw"));
         writeFile(p.directory + "/run.json", "{");
         QCOMPARE(readHistoryEntry(p.directory).status, RunState::Invalid);
         writeFile(p.directory + "/run.json", QByteArray(256 * 1024 + 1, ' '));
         QVERIFY(!readHistoryEntry(p.directory).valid);
         QVERIFY(!readHistoryEntry(tmp.filePath("missing")).valid);
         writeFile(p.directory + "/input.nw", QByteArray(8 * 1024 * 1024 + 1, 'a'));
-        QVERIFY_EXCEPTION_THROWN(historyText(p.directory, "input.nw"), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, historyText(p.directory, "input.nw"));
 #ifdef Q_OS_UNIX
         QVERIFY(QFile::remove(p.directory + "/input.nw"));
         QVERIFY(QFile::link(p.directory + "/project.molforma.json", p.directory + "/input.nw"));
-        QVERIFY_EXCEPTION_THROWN(historyText(p.directory, "input.nw"), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, historyText(p.directory, "input.nw"));
 #endif
     }
     void relativePathsAndExternalReferences() {
@@ -202,7 +202,7 @@ class HistoryTest : public QObject {
         p.manifest.remove("project_directory");
         p.manifest["program"] = "bin/nwchem";
         manifest(p, "prepared");
-        QVERIFY_EXCEPTION_THROWN(historyDocument(p.directory), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, historyDocument(p.directory));
         p.manifest["program"] = tmp.filePath("bin/nwchem");
         manifest(p, "finished");
         next = historyDocument(p.directory);
@@ -648,15 +648,15 @@ class HistoryTest : public QObject {
         panel->reuseSelected();
         QCOMPARE(w.document().project(), changed);
         w.edit("candidate", [](Document &n) { n.atoms[1].position.y() += .1; }, true);
-        QVERIFY_EXCEPTION_THROWN(panel->reuseSelected(), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, panel->reuseSelected());
         QVERIFY(w.hasCandidate());
         w.cancelCandidate();
-        QVERIFY_EXCEPTION_THROWN(trashHistoryEntry(p.directory, tmp.path(), p.directory), std::runtime_error);
-        QVERIFY_EXCEPTION_THROWN(trashHistoryEntry(p.directory, p.directory, {}), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, trashHistoryEntry(p.directory, tmp.path(), p.directory));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, trashHistoryEntry(p.directory, p.directory, {}));
         manifest(p, "running");
-        QVERIFY_EXCEPTION_THROWN(trashHistoryEntry(p.directory, tmp.path(), {}), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, trashHistoryEntry(p.directory, tmp.path(), {}));
         manifest(p, "future");
-        QVERIFY_EXCEPTION_THROWN(trashHistoryEntry(p.directory, tmp.path(), {}), std::runtime_error);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, trashHistoryEntry(p.directory, tmp.path(), {}));
         QVERIFY(QFileInfo::exists(p.directory + "/input.nw"));
     }
     void screenshot() {
