@@ -302,7 +302,7 @@ void addCap(Document &d, const QString &rid, const QString &kind) {
         leaving = temporary.id;
     }
     auto part = attachPart(d, leaving, findTemplate(ace ? "substituent:acetyl" : "cap:NME"));
-    QString connection = part.connections.first(), methyl, oxygen;
+    QString connection = part.connections.first(), methyl;
     QMap<QString, QString> names;
     int h = 0;
     for (auto id : part.atoms) {
@@ -314,7 +314,6 @@ void addCap(Document &d, const QString &rid, const QString &kind) {
             methyl = id;
         } else if (a.element == "O") {
             a.name = "O";
-            oxygen = id;
         } else
             a.name = "H" + QString::number(++h);
         names[a.name] = id;

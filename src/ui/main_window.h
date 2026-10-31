@@ -122,14 +122,8 @@ class MainWindow : public QMainWindow {
     void setPreference(const QString &key, const QVariant &value) {
         settings.setValue(key, value);
     }
-    CalculationPanel *calculationPanel() const {
-        return calculation;
-    }
     ExecutionPanel *executionPanel() const {
         return execution;
-    }
-    InputPreviewPanel *previewPanel() const {
-        return inputPreview;
     }
     ResultsPanel *resultsPanel() const {
         return results;
@@ -147,7 +141,6 @@ class MainWindow : public QMainWindow {
     void commitPendingSettings();
     QWidget *currentPanel() const;
     int currentPanelIndex() const;
-    QWidget *workspaceWidget() const;
     QRect runPanelArea() const; // Available overlay area in main-window coordinates.
     bool moleculePanelVisible() const;
     QString moleculeLayoutMode() const;

@@ -1003,12 +1003,6 @@ class NavDelegate : public QStyledItemDelegate {
                         note);
             right -= w + 6;
         }
-        if (index.data(NavList::MarkRole).toBool()) {
-            p->setPen(Qt::NoPen);
-            p->setBrush(c.accent);
-            p->drawEllipse(QPointF(right - 3, r.center().y() + .5), 3, 3);
-            right -= 12;
-        }
         font.setBold(selected);
         p->setFont(font);
         p->setPen(selected ? c.accentText : muted ? c.muted : c.text);
@@ -1277,7 +1271,7 @@ ViewControls::ViewControls(MoleculeView *view, const Names &names, bool rotate, 
         parts << b;
         return b;
     };
-    fit = button(tr("全体を表示"), "fit", names.fit);
+    auto *fit = button(tr("全体を表示"), "fit", names.fit);
     fit->setToolTip(tr("向きを変えずに、分子全体が収まるように表示します。"));
     connect(fit, &QToolButton::clicked, view, &MoleculeView::fit);
     if (rotate) {

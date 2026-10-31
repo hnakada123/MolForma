@@ -96,9 +96,6 @@ class FormLayout : public QFormLayout {
 class ToolbarFit : public QObject {
   public:
     ToolbarFit(QWidget *bar, std::function<void(bool compact)> apply);
-    bool isCompact() const {
-        return compact;
-    }
     // What the bar holds changed (a shorter name, a button hidden): the full bar again if it fits.
     void refit();
 
@@ -126,9 +123,6 @@ class ChoiceButtons : public QFrame {
     enum Look { Segments, Chips };
     // labels: shorter texts for the buttons, in the order of the items (else the item texts).
     ChoiceButtons(QComboBox *combo, Look look, const QStringList &labels = {}, QWidget *parent = nullptr);
-    QComboBox *comboBox() const {
-        return combo;
-    }
     QToolButton *button(int index) const {
         return buttons.value(index);
     }
@@ -144,11 +138,11 @@ class ChoiceButtons : public QFrame {
 };
 
 // The list at the left of a settings tab: headings, and entries with a count or a note at the
-// right ("変更 4", "使わない"). Muted entries take no part in the current calculation; a mark is a
-// dot before the count. Entries hold their key in Qt::UserRole.
+// right ("変更 4", "使わない"). Muted entries take no part in the current calculation.
+// Entries hold their key in Qt::UserRole.
 class NavList : public QListWidget {
   public:
-    enum Role { HeadingRole = Qt::UserRole + 10, BadgeRole, NoteRole, MutedRole, MarkRole };
+    enum Role { HeadingRole = Qt::UserRole + 10, BadgeRole, NoteRole, MutedRole };
     explicit NavList(QWidget *parent = nullptr);
     QListWidgetItem *addHeading(const QString &text);
     QListWidgetItem *addEntry(const QString &text, const QVariant &key);
@@ -266,9 +260,6 @@ class ViewControls : public QFrame {
     // rotate / menu false: without those buttons (the coordinate table's small view).
     ViewControls(MoleculeView *view, const Names &names, bool rotate = true, bool menu = true,
                  QWidget *parent = nullptr);
-    QToolButton *fitButton() const {
-        return fit;
-    }
     QToolButton *menuButton() const {
         return display;
     }
@@ -279,7 +270,7 @@ class ViewControls : public QFrame {
     void applyStyle(const QPalette &palette);
 
   private:
-    QToolButton *fit, *rotation = nullptr, *display = nullptr;
+    QToolButton *rotation = nullptr, *display = nullptr;
     QFrame *popup = nullptr;
     QList<QWidget *> parts;
 };

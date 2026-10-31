@@ -9,12 +9,11 @@ namespace mf {
 class DiagnosticsList : public QListWidget {
     Q_OBJECT
   public:
-    static constexpr int MessageRole = Qt::UserRole, ErrorRole = Qt::UserRole + 1, FixRole = Qt::UserRole + 2;
+    static constexpr int MessageRole = Qt::UserRole, FixRole = Qt::UserRole + 2;
     explicit DiagnosticsList(QWidget *parent = nullptr);
     static constexpr int CodeRole = Qt::UserRole + 3, SettingRole = Qt::UserRole + 4,
                          TabRole = Qt::UserRole + 5;
     void setDiagnostics(const QVector<Diagnostic> &diagnostics);
-    QStringList messages() const;
     // As tall as its rows for the width it gets, up to maximum (then it scrolls).
     void setFitContents(int maximum);
     QSize sizeHint() const override;

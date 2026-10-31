@@ -16,9 +16,6 @@ class Topology {
     int index(const QString &id) const {
         return indices.value(id, -1);
     }
-    bool contains(const QString &id) const {
-        return indices.contains(id);
-    }
     // The neighbors of atom i in the order of the bonds, and those bonds (indices into Document::bonds).
     std::span<const int> neighbors(int i) const {
         return {adjacent.constData() + offsets[i], size_t(offsets[i + 1] - offsets[i])};

@@ -71,9 +71,6 @@ class FrameTimeline : public QWidget {
     // energies: one per frame, NaN where unknown.
     void setFrames(int count, const QVector<double> &energies = {});
     void setCurrent(int index);
-    int current() const {
-        return now;
-    }
     QSize sizeHint() const override {
         return {240, 36};
     }

@@ -40,9 +40,6 @@ class ExecutionPanel : public QWidget {
     // "計算を実行" (header, menu, F5): starts when "3 実行設定" allows it, otherwise shows that tab
     // and why.
     void startFromMenu();
-    bool canStart() const {
-        return startable;
-    }
     // The run panel over the tabs (state, progress and log of the current or last run).
     void showRunPanel(bool show = true);
     bool runPanelShown() const;

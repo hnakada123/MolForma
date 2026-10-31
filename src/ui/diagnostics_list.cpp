@@ -31,7 +31,6 @@ void DiagnosticsList::setDiagnostics(const QVector<Diagnostic> &diagnostics) {
                 style()->standardIcon(error ? QStyle::SP_MessageBoxCritical : QStyle::SP_MessageBoxWarning),
                 text, this);
             item->setData(MessageRole, d.message);
-            item->setData(ErrorRole, error);
             item->setData(CodeRole, d.code);
             item->setData(SettingRole, d.setting);
             item->setData(TabRole, d.tab);
@@ -70,11 +69,5 @@ void DiagnosticsList::resizeEvent(QResizeEvent *event) {
     QListWidget::resizeEvent(event);
     if (fit && event->size().width() != event->oldSize().width())
         updateGeometry();
-}
-QStringList DiagnosticsList::messages() const {
-    QStringList list;
-    for (int i = 0; i < count(); ++i)
-        list << item(i)->text();
-    return list;
 }
 } // namespace mf

@@ -139,8 +139,8 @@ static PlacedPart bindLigand(Document &d, const QString &id, const QList<int> &i
         points << vectorFromJson(v.toObject()["position"]);
     for (auto v : connections)
         anchors << points[v.toInt()];
-    Mat r = Mat::Identity();
-    Vec shift = Vec::Zero();
+    Mat r;
+    Vec shift;
     if (indices.size() == 1) {
         Vec average = Vec::Zero();
         for (auto p : points)

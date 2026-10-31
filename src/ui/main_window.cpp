@@ -265,9 +265,6 @@ QWidget *MainWindow::currentPanel() const {
 int MainWindow::currentPanelIndex() const {
     return workspaceTabs->currentIndex();
 }
-QWidget *MainWindow::workspaceWidget() const {
-    return workspaceTabs;
-}
 QRect MainWindow::runPanelArea() const {
     QRect area(workspaceTabs->mapTo(this, QPoint()), workspaceTabs->size());
     int left = area.right() + 1 - std::clamp(area.width() * 2 / 5, std::min(420, area.width()), 600);

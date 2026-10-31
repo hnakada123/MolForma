@@ -70,7 +70,7 @@ class McpServer : public QObject {
         QString requestState;
     } incoming;
     struct Task {
-        QString work, tool, state;
+        QString work, state;
         QDateTime created, updated;
         bool cancelRequested = false;
     };

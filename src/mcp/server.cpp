@@ -452,7 +452,7 @@ std::optional<QJsonObject> McpServer::openState() const {
 QJsonObject McpServer::createTask(const QString &tool, const QString &work) {
     const auto taskId = newId();
     const auto now = QDateTime::currentDateTimeUtc();
-    tasks[taskId] = {work, tool, "working", now, now};
+    tasks[taskId] = {work, "working", now, now};
     taskOrder.append(taskId);
     while (taskOrder.size() > 128)
         tasks.remove(taskOrder.takeFirst());
