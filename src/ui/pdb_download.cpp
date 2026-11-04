@@ -77,8 +77,12 @@ void PdbDownload::finish() {
         else if (!file->commit())
             failure = file->errorString();
     }
-    if (!failure.isEmpty() || stopped)
+    if (!failure.isEmpty() || stopped) {
+        // Destroying it removes the temporary file now: on Windows it has a name in the folder until then.
         file->cancelWriting();
+        delete file;
+        file = nullptr;
+    }
     reply->deleteLater();
     emit finished(stopped ? QString() : failure);
 }
