@@ -351,7 +351,7 @@ Successful results return `resultType: "complete"`. An unsupported version gets 
 
 ## Scope and limitations
 
-- stdio works on Linux, macOS and Windows. On Windows it reads and writes in separate threads. Give the path of `molforma.exe` as the server command (for example `claude mcp add molforma -- C:\Users\<user>\AppData\Local\Programs\MolForma\bin\molforma.exe --mcp-gui`).
+- stdio works on Linux, macOS and Windows. On Windows it reads and writes in separate threads. Give the path of `molforma.exe` as the server command (for example `claude mcp add molforma -- C:\Users\<user>\AppData\Local\Programs\MolForma\bin\molforma.exe --mcp-gui`). For `MolForma.app` on macOS, give the executable inside it (for example `claude mcp add molforma -- /Applications/MolForma.app/Contents/MacOS/molforma --mcp-gui`).
 - Streamable HTTP, OAuth, remote connections, Sampling, Roots, Logging, completion (`completion/complete`), subscriptions (`subscriptions/listen`) and MCP Apps are not provided and are not declared as capabilities.
 - Elicitation uses only the form mode. It covers only the `save_file` overwrite confirmation and `QMessageBox` during Tasks. Other dialogs, such as file dialogs, are operated with `get_ui` → `ui_*`.
 - The Tasks extension covers GUI change tools and, in headless mode, starting calculations and loading results. Document tools return their results synchronously.

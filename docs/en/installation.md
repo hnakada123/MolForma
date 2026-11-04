@@ -1,6 +1,6 @@
 # Installation and required packages by OS
 
-The software MolForma needs and how to install it on each OS. MolForma is built from the source code published on GitHub (on Windows, installed into a folder; on macOS, under your home folder). Calculations use NWChem, installed separately. Choose the page for your OS.
+The software MolForma needs and how to install it on each OS. MolForma is built from the source code published on GitHub (on Windows, installed into a folder; on macOS, as a disk image of the app). Calculations use NWChem, installed separately. Choose the page for your OS.
 
 ## Steps by OS
 
@@ -8,7 +8,7 @@ The software MolForma needs and how to install it on each OS. MolForma is built 
 | --- | --- | --- |
 | Arch Linux | [Installing on Arch Linux](installation/arch_linux.md) | Making a package from the PKGBUILD and installing it with pacman (with its dependencies), NWChem from the AUR; checking VTK rendering, updating and removing, troubleshooting |
 | Ubuntu 26.04 LTS | [Installing on Ubuntu](installation/ubuntu.md) | Development packages and NWChem with apt, building from source, making a deb package and installing it with apt; checking VTK rendering, updating and removing, troubleshooting |
-| macOS (Apple silicon) | [Installing on macOS](installation/macos.md) | Libraries (Qt, Open Babel, RDKit, VTK) and NWChem with Homebrew, building from source and installing into `~/.local`; starting from Terminal, limitations on macOS, updating and removing, troubleshooting |
+| macOS (Apple silicon) | [Installing on macOS](installation/macos.md) | Libraries (Qt, Open Babel, RDKit, VTK) and NWChem with Homebrew, building from source, making a DMG of `MolForma.app` with the libraries and installing it into the Applications folder; using it on other Macs and distributing it, updating and removing, troubleshooting |
 | Windows 11 | [Installing on Windows](installation/windows.md) | Building with Visual Studio (MSVC) and vcpkg, Open Babel, RDKit and VTK also from source, and installing into a folder that holds Qt and the rest; NWChem in Ubuntu on WSL, started through the included batch files; updating and removing, troubleshooting |
 | Windows x64 (NWChem) | [Building NWChem on Windows](installation/nwchem_mingw64.md) | Without WSL: building all standard modules of NWChem 7.3.1 as a native Windows program with GNU Fortran and OpenBLAS of MSYS2 UCRT64 and Microsoft MPI (with an unofficial compatibility patch); numerical tests, MolForma run settings, license, troubleshooting |
 | Linux (any distribution) | [Making an AppImage](installation/appimage.md) | Building inside Docker and making an AppImage that holds Qt, Open Babel, RDKit and VTK in one file; starts without installation on Linux with glibc 2.38 or later (Ubuntu 24.04 or later, Debian 13 or later, Fedora 39 or later and others); licenses when distributing it, troubleshooting |

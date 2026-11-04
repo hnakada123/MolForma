@@ -1,6 +1,6 @@
 # OS別インストール・必要パッケージ
 
-MolFormaを動かすのに必要なソフトウェアと、OSごとのインストール手順です。MolFormaはGitHubで公開しているソースからビルドします（Windowsではフォルダーに、macOSではホームフォルダーの下にインストール）。計算には、別にインストールしたNWChemを使います。使用するOSのページを選んでください。
+MolFormaを動かすのに必要なソフトウェアと、OSごとのインストール手順です。MolFormaはGitHubで公開しているソースからビルドします（Windowsではフォルダーにインストール、macOSではアプリのディスクイメージを作成）。計算には、別にインストールしたNWChemを使います。使用するOSのページを選んでください。
 
 ## OSごとの手順
 
@@ -8,7 +8,7 @@ MolFormaを動かすのに必要なソフトウェアと、OSごとのインス�
 | --- | --- | --- |
 | Arch Linux | [Arch Linuxでのインストール](installation/arch_linux.md) | PKGBUILDからパッケージを作ってpacmanでインストール（依存パッケージも自動で導入）、AURからNWChem。VTK描画の確認、更新・削除、困ったとき |
 | Ubuntu 26.04 LTS | [Ubuntuでのインストール](installation/ubuntu.md) | aptで開発用パッケージとNWChemを入れ、ソースからビルドしてdebパッケージを作り、aptでインストール。VTK描画の確認、更新・削除、困ったとき |
-| macOS（Apple silicon） | [macOSでのインストール](installation/macos.md) | Homebrewでライブラリ（Qt・Open Babel・RDKit・VTK）とNWChemを入れ、ソースからビルドして `~/.local` にインストール。ターミナルから起動。macOSでの制限、更新・削除、困ったとき |
+| macOS（Apple silicon） | [macOSでのインストール](installation/macos.md) | Homebrewでライブラリ（Qt・Open Babel・RDKit・VTK）とNWChemを入れ、ソースからビルドして、ライブラリを含めた `MolForma.app` のDMGを作り、「アプリケーション」フォルダーにインストール。ほかのMacで使う・配布するとき、更新・削除、困ったとき |
 | Windows 11 | [Windowsでのインストール](installation/windows.md) | Visual Studio（MSVC）とvcpkgでビルドし、Open Babel・RDKit・VTKもソースからビルドして、Qtなどを含めたフォルダーにインストール。NWChemはWSLのUbuntuに入れ、付属のバッチファイルから起動。更新・削除、困ったとき |
 | Windows x64（NWChem） | [WindowsでNWChemをビルドする](installation/nwchem_mingw64.md) | WSLを使わない方法。MSYS2 UCRT64のGNU Fortran・OpenBLASとMicrosoft MPIで、NWChem 7.3.1の全標準モジュールをWindowsネイティブにビルド（非公式の互換性パッチを適用）。数値テスト、MolFormaの実行設定、ライセンス、困ったとき |
 | Linux（ディストリビューション共通） | [AppImageの作成](installation/appimage.md) | Dockerの中でビルドし、Qt・Open Babel・RDKit・VTKを1つのファイルにまとめたAppImageを作る。glibc 2.38以上のLinux（Ubuntu 24.04以降、Debian 13以降、Fedora 39以降など）でインストールせずに起動。配布するときのライセンス、困ったとき |

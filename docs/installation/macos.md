@@ -1,10 +1,10 @@
 # macOSでのインストール
 
-MolFormaをmacOSでソースからビルドし、ホームフォルダーの下にインストールする手順です。ビルドに使うライブラリと、計算に使うNWChemは、パッケージマネージャーの[Homebrew](https://brew.sh/)で入れます。
+MolFormaをmacOSでソースからビルドし、アプリケーション（`MolForma.app`）のディスクイメージ（DMG）を作って、「アプリケーション」フォルダーにインストールする手順です。ビルドに使うライブラリと、計算に使うNWChemは、パッケージマネージャーの[Homebrew](https://brew.sh/)で入れます。
 
 対象はApple siliconのMac（arm64）のmacOS 27とMolForma 1.0.0です。2026-11-04に、macOS 27.0.1とHomebrew 7.0.10で手順を確認しました（[確認した構成](#確認した構成)）。
 
-MolFormaのパッケージは、Homebrewにはありません（2026-11-04時点）。GitHubのソースからビルドし、`cmake --install` で `~/.local` に入れます。macOSのアプリケーションバンドル（`.app`）は作らないため、MolFormaは「ターミナル」から起動します（[macOSでの制限](#macosでの制限)）。
+MolFormaのパッケージは、Homebrewにはありません（2026-11-04時点）。GitHubのソースからビルドし、CMakeに含まれるCPackでDMG（`MolForma-1.0.0-arm64.dmg`）を作ります。`MolForma.app` は、使うライブラリ（Qt・Open Babel・RDKit・VTKなど）をすべて含み、Homebrewのフォルダーのライブラリを読み込みません。インストールした後は、Homebrewのライブラリを更新・削除しても動きます。NWChemは含まないので、別に入れます。
 
 ## 必要なパッケージ
 
@@ -21,11 +21,11 @@ MolFormaのパッケージは、Homebrewにはありません（2026-11-04時点
 | 任意 | `vtk` | 3D画面をVTK（OpenGL）で描画。HomebrewのVTKはQt 6に対応している |
 | 任意 | `qttranslations` | 日本語表示のとき、ファイル選択などQtの標準ダイアログも日本語にする |
 
-Qt全体の `qt` は不要です（MolFormaが使うのは `qtbase` だけで、`qt` はQt WebEngineなど多くのモジュールを入れます）。ビルドしたMolFormaは、Homebrewのライブラリ（`/opt/homebrew` の下）をそのまま使います。
+Qt全体の `qt` は不要です（MolFormaが使うのは `qtbase` だけで、`qt` はQt WebEngineなど多くのモジュールを入れます）。これらのライブラリはビルドとDMGの作成に使い、DMGを作るときに `MolForma.app` の中へコピーされます。
 
 計算に使うNWChemは、Homebrewの `nwchem` を入れます（[3. NWChemを入れる](#3-nwchemを入れる)）。
 
-- **RDKitとVTK**: どちらも任意です。ビルド時にCMakeが見つけたときだけ有効になります。
+- **RDKitとVTK**: どちらも任意です。ビルド時にCMakeが見つけたときだけ有効になり、DMGにも入ります。`qttranslations` を入れた場合は、Qtの日本語訳もDMGに入ります。
 - **NWChem**: 入力の作成・保存（「ジョブとして保存」）はNWChemがなくても使えます。
 
 ## 1. Command Line ToolsとHomebrewを入れる
@@ -58,7 +58,7 @@ brew install rdkit vtk qttranslations
 brew install nwchem
 ```
 
-Open MPI（`open-mpi`）、ScaLAPACK・OpenBLAS、GNU Fortran（`gcc`）なども依存として入ります。NWChemは約1 GBです。NWChemは `/opt/homebrew/bin/nwchem` に、MPIの実行環境 `mpirun` は `/opt/homebrew/bin/mpirun` に入ります。HomebrewのNWChemは、基底関数などのライブラリの場所を書いた `/opt/homebrew/etc/nwchemrc` を読むため、`~/.nwchemrc` や `NWCHEM_BASIS_LIBRARY` の設定は不要です。MolFormaの「3 実行設定」の既定（実行ファイル `nwchem`、MPIで起動、MPIランチャー `mpirun`、2プロセス）のままで、このNWChemを起動できます。
+Open MPI（`open-mpi`）、ScaLAPACK・OpenBLAS、GNU Fortran（`gcc`）なども依存として入ります。NWChemは約1 GBです。NWChemは `/opt/homebrew/bin/nwchem` に、MPIの実行環境 `mpirun` は `/opt/homebrew/bin/mpirun` に入ります。HomebrewのNWChemは、基底関数などのライブラリの場所を書いた `/opt/homebrew/etc/nwchemrc` を読むため、`~/.nwchemrc` や `NWCHEM_BASIS_LIBRARY` の設定は不要です。MolFormaの「3 実行設定」の既定（実行ファイル `nwchem`、MPIで起動、MPIランチャー `mpirun`、2プロセス）のままで、このNWChemを起動できます。FinderやDockから起動したアプリには、ターミナルのPATHの設定が渡りませんが、`MolForma.app` は `/opt/homebrew/bin`（IntelのMacでは `/usr/local/bin`）をPATHに加えてNWChemとMPIランチャーを探します。
 
 NWChemだけで動くか確かめる場合は、空のフォルダーで次の入力を `h2.nw` として保存し、実行します（任意）。
 
@@ -115,65 +115,84 @@ cmake --build build -j 4
 ctest --test-dir build --output-on-failure
 ```
 
-## 5. インストールする
+## 5. DMGを作る
 
-`~/.local` にインストールし、`~/.local/bin` をPATHに加えます。PATHの設定は最初の1回だけで、新しく開いたターミナルから有効になります。
+`build` で `cpack` を実行し、DMGを作ります。
 
 ```sh
-cmake --install build --prefix ~/.local
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zprofile
+cd build
+cpack -G DragNDrop
 ```
 
-次のファイルを配置します。
+1〜2分で、`build` に `MolForma-1.0.0-arm64.dmg`（約85 MB）ができます。CPackは、次のことを行ってから、`MolForma.app` と「アプリケーション」フォルダーへのリンクをDMGに入れます。
 
-| 配置先 | 内容 |
-| --- | --- |
-| `~/.local/bin/molforma` | 実行ファイル |
-| `~/.local/share/molforma/` | LICENSE・NOTICE・README とマニュアルのMarkdown（マニュアルは実行ファイルにも組み込み済み） |
-| `~/.local/share/applications/`、`~/.local/share/icons/`、`~/.local/share/mime/` | Linuxのデスクトップ用のメニュー項目・アイコン・ファイルの種類。macOSでは使いません |
+1. `MolForma.app` を組み立てます。実行ファイル、アイコン、ファイルの種類などを書いた `Info.plist`、Open Babelのフォーマットプラグインと力場データ、Qtの日本語訳を入れます。
+2. Qtの `macdeployqt` で、Qtのフレームワークとプラグインをコピーします。
+3. `packaging/macos/bundle.cmake` で、残りのライブラリ（Open Babel・RDKit・Boost・VTKなど）をコピーし、すべての参照をアプリの中のコピーに向けます。Homebrewのフォルダーを参照するものは残しません。
+4. 含めたライブラリのライセンスの文面と、パッケージ名・版・ライセンスの一覧を `Contents/Resources/licenses` に入れます（[ほかのMacで使う・配布するとき](#ほかのmacで使う配布するとき)）。
+5. アドホック署名（開発者IDのない署名）をします。Apple siliconのMacは、署名のないプログラムを実行しないためです。
 
-インストールせずに、ビルドしたフォルダーの `build/molforma` をそのまま起動しても使えます。
+DMGを作らずに `MolForma.app` だけを作る場合は、`cmake --install build --prefix <フォルダー>` を実行します。`<フォルダー>/MolForma.app` ができます。
 
-## 6. 起動して確認する
+## 6. インストールする
 
-ターミナルで `molforma` を実行します。ファイルを指定して開くこともできます（例: `molforma water.molforma.json`）。表示言語はシステムの言語に従います（環境設定（⌘,）の「表示言語 / Language」で切り替え、再起動後に反映）。macOSでは、「環境設定…」「MolFormaについて」の項目が、表示言語によってメニューバーの「MolForma」メニューに移ることがあります。
+DMGを開き、`MolForma` を「アプリケーション」フォルダーへドラッグします。DMGはターミナルからも開けます。
+
+```sh
+open MolForma-1.0.0-arm64.dmg
+```
+
+コピーが終わったら、Finderのサイドバーの「MolForma」の取り出しボタンでDMGを取り出します。DMGは、ほかのMacで使う場合のほかは削除してもかまいません。
+
+ターミナルやMCPクライアントから起動する場合は、`/Applications/MolForma.app/Contents/MacOS/molforma` を指定します（例: `/Applications/MolForma.app/Contents/MacOS/molforma water.molforma.json`。MCPは[MCP](../mcp.md)）。`molforma` の名前で起動したい場合は、PATHの通ったフォルダーにリンクを作ります。
+
+```sh
+mkdir -p ~/.local/bin
+ln -sf /Applications/MolForma.app/Contents/MacOS/molforma ~/.local/bin/molforma
+```
+
+`~/.local/bin` がPATHにない場合は、`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zprofile` で加え、ターミナルを開き直します。
+
+## 7. 起動して確認する
+
+Launchpad、または「アプリケーション」フォルダーの「MolForma」から起動します。表示言語はシステムの言語に従います（環境設定（⌘,）の「表示言語 / Language」で切り替え、再起動後に反映）。macOSでは、「環境設定…」「MolFormaについて」の項目が、表示言語によってメニューバーの「MolForma」メニューに移ることがあります。
 
 1. 「MolFormaについて」（「ヘルプ」メニュー、または「MolForma」メニュー）を開き、版が「MolForma 1.0.0」で、RDKit・VTKを入れた場合は「立体判定・残基認識（RDKit）: 有効」「3D描画: VTK（OpenGL）」と表示されることを確認します。
 2. 「3 実行設定」を開き、「NWChem実行ファイル」と「MPIランチャー」の欄の下に、PATHで見つかった `/opt/homebrew/bin/nwchem`・`/opt/homebrew/bin/mpirun` が表示されることを確認します。表示されない場合は、[困ったとき](#困ったとき)を参照してください。
 3. 小さな分子で計算してみます。手順は[題材1 原子と結合から組む](../recipes/atoms_and_bonds.md)にあります。
 
-## macOSでの制限
+Finderからは、ファイルを右クリックして「このアプリケーションで開く → MolForma」を選ぶか、DockのMolFormaのアイコンにドラッグして開けます。NWChem入力（`.nw`）は、ほかに開くアプリがなければダブルクリックで開きます。構造ファイル（XYZ・MOL・SDF・Mol2・CML・PDB・mmCIF、Gaussian入力）とプロジェクト（`.molforma.json`）は、「このアプリケーションで開く」の候補に出ます。プロジェクトは拡張子が `.json` のため、ダブルクリックするとJSONの既定のアプリで開きます。
 
-- **アプリケーションバンドルがない**: `.app` を作らないため、Finder・Launchpad・Dockからは起動できず、`.molforma.json` をダブルクリックしても開きません。ターミナルから `molforma` で起動してください。
-- **Homebrewのライブラリに依存する**: ビルドしたMolFormaは `/opt/homebrew` のQt・Open Babel・RDKit・VTKを使います。ほかのMacへコピーしても動きません。
+## ほかのMacで使う・配布するとき
+
+DMGは、作ったMacと同じ種類（Apple silicon）で、同じかより新しいmacOSのMacで使えます。HomebrewのライブラリはそのMacのmacOS向けにビルドされているため、`Info.plist` に書く最小のmacOSの版も、DMGを作ったMacのmacOSの版（ここではmacOS 27）にしています。使うMacには、計算のためにNWChemを入れます（[3. NWChemを入れる](#3-nwchemを入れる)）。
+
+- **初めて開くとき**: 開発者IDで署名・公証していないため、インターネットやAirDropで受け取ったDMGのアプリは、初めて開くときに「“MolForma”を開けません」などと表示されます。「システム設定 → プライバシーとセキュリティ」の下に出る「このまま開く」を押してから、もう一度開きます。ターミナルで、インストールした後に `xattr -dr com.apple.quarantine /Applications/MolForma.app` を実行しても開けます。自分のMacで作ったDMGは、この確認なしで開きます。
+- **ライセンス**: DMGを人に配る場合は、含めたソフトウェアのライセンスに従ってください。`MolForma.app/Contents/Resources/licenses` に、各パッケージのライセンスの文面（Homebrewのパッケージにある場合）と、パッケージ名・版・ライセンスの一覧 `packages.txt` があります。MolForma（GPL-2.0-or-later）、Open Babel（GPL-2.0-only）、Open BabelとリンクしたためGPL-2.0の条件で使うQtは、バイナリを配るときに対応するソースも入手できるようにします（リポジトリの `NOTICE`）。MolFormaはDMGを作ったコミットのソースを示し、ほかのパッケージは `packages.txt` の版のソースを示してください。
 
 ## 更新・削除
 
 ### 更新する
 
-ソースを更新してビルドし直し、インストールし直します。
+ソースを更新してビルドし直し、DMGを作り直します。
 
 ```sh
 cd MolForma
 git pull --ff-only
 cmake --build build -j 4
-cmake --install build --prefix ~/.local
+cd build
+cpack -G DragNDrop
 ```
 
-`brew upgrade` でQt・Open Babel・RDKit・VTKが新しい版になると、ライブラリのファイル名が変わり、MolFormaが起動しなくなることがあります（`dyld[…]: Library not loaded` と出ます）。その場合は、`build` を削除して[4. ソースを取得してビルドする](#4-ソースを取得してビルドする)の構成からやり直し、インストールし直してください。
+MolFormaを終了してから、新しいDMGの `MolForma` を「アプリケーション」フォルダーへドラッグし、「置き換える」を選びます。
+
+インストールした `MolForma.app` は、`brew upgrade` でHomebrewのライブラリが新しい版になっても、そのまま動きます。ビルドしたフォルダーの `build` は、Qt・Open Babel・RDKit・VTKの版が変わると、ビルドやDMGの作成に失敗することがあります（`dyld[…]: Library not loaded` などと出ます）。その場合は、`build` を削除して[4. ソースを取得してビルドする](#4-ソースを取得してビルドする)の構成からやり直してください。
 
 ### 削除する
 
-インストールしたファイルを削除します。
+「アプリケーション」フォルダーの `MolForma` をゴミ箱に入れます。[6. インストールする](#6-インストールする)でリンクを作った場合は、`rm ~/.local/bin/molforma` で削除します。
 
-```sh
-rm ~/.local/bin/molforma
-rm -r ~/.local/share/molforma
-rm ~/.local/share/applications/molforma.desktop ~/.local/share/icons/hicolor/scalable/apps/molforma.svg
-rm ~/.local/share/icons/hicolor/256x256/apps/molforma.png ~/.local/share/mime/packages/molforma.xml
-```
-
-アプリの設定（`~/Library/Preferences/MolForma/MolForma.ini`）、自動保存（`~/Library/Application Support/MolForma/`）、計算のジョブ（既定は `~/MolForma/jobs`）は残ります。不要なら手動で削除してください。Homebrewで入れたパッケージは、`brew uninstall` で指定して削除し、`brew autoremove` で一緒に入ったものも削除できます。NWChemは `brew uninstall nwchem` の後に `brew autoremove` で削除できます。
+アプリの設定（`~/Library/Preferences/MolForma/MolForma.ini`）、自動保存（`~/Library/Application Support/MolForma/`）、計算のジョブ（既定は `~/MolForma/jobs`）は残ります。不要なら手動で削除してください。Homebrewで入れたパッケージは、`brew uninstall` で指定して削除し、`brew autoremove` で一緒に入ったものも削除できます。DMGを作った後は、NWChemを除いてHomebrewのパッケージを削除しても `MolForma.app` は動きます。NWChemは `brew uninstall nwchem` の後に `brew autoremove` で削除できます。
 
 ## 困ったとき
 
@@ -182,21 +201,24 @@ rm ~/.local/share/icons/hicolor/256x256/apps/molforma.png ~/.local/share/mime/pa
 | 構成が `No CMAKE_CXX_COMPILER could be found` などで止まる | Command Line Toolsを入れます（`xcode-select --install`）。`xcode-select -p` で場所が出れば入っています |
 | 構成が `Qt6`・`Eigen3`・`openbabel-3` が見つからないというエラーで止まる | [2. パッケージを入れる](#2-パッケージを入れる)の必須のパッケージを入れ、構成からやり直します |
 | `MolForma rendering: QPainter (Qt6-enabled VTK development package not found)` と出る | `brew install vtk` で入れ、構成からやり直します |
-| `molforma: command not found` と出る | `~/.local/bin` がPATHにありません。[5. インストールする](#5-インストールする)のPATHの設定を行い、ターミナルを開き直します |
-| 起動時に `dyld[…]: Library not loaded` と出る | Homebrewのライブラリの版が変わりました。[更新する](#更新する)のとおり、構成からやり直してインストールし直します |
-| 「実行前の確認」でNWChemやMPIランチャーが見つからない | ターミナルで `command -v nwchem mpirun` を確認します。`brew` をPATHに加える設定（`~/.zprofile`）を行ってから、MolFormaを起動したターミナルを開き直します。それでも見つからない場合は、「3 実行設定」で `/opt/homebrew/bin/nwchem`・`/opt/homebrew/bin/mpirun` を指定します |
+| `cpack` が `… not found in …` で止まる | アプリに入れるライブラリが、Homebrewのフォルダーに見つかりません。`brew upgrade` の後なら、`build` を削除して構成からやり直します |
+| 開くと「“MolForma”を開けません」「開発元を検証できません」などと表示される | 受け取ったDMGのアプリです。[ほかのMacで使う・配布するとき](#ほかのmacで使う配布するとき)のとおり、「プライバシーとセキュリティ」の「このまま開く」を押すか、`xattr -dr com.apple.quarantine /Applications/MolForma.app` を実行します |
+| 「“MolForma”は壊れているため開けません」と表示される | 署名が壊れています。DMGを作り直し、インストールし直します。アプリの中のファイルを書き換えた場合も、この表示になります |
+| `molforma: command not found` と出る | [6. インストールする](#6-インストールする)のリンクとPATHの設定を行い、ターミナルを開き直します |
+| 「実行前の確認」でNWChemやMPIランチャーが見つからない | ターミナルで `command -v nwchem mpirun` を確認します。`/opt/homebrew/bin`・`/usr/local/bin` 以外にNWChemを入れた場合は、「3 実行設定」でパスを指定します |
 | NWChemの計算が、基底関数のライブラリが見つからないというエラーで止まる | `/opt/homebrew/etc/nwchemrc` があるか確認します。ない場合は `brew reinstall nwchem` で入れ直します |
-| 日本語表示なのに、ファイル選択などQtの標準ダイアログに英語が残る | `brew install qttranslations` で入れます |
+| 日本語表示なのに、ファイル選択などQtの標準ダイアログに英語が残る | `brew install qttranslations` で入れ、DMGを作り直します |
 | ビルド中にメモリーが不足する | `cmake --build build -j 2` のように並列数を減らします |
 
 ## 確認した構成
 
-2026-11-04に、Apple siliconのMac（macOS 27.0.1、arm64、10コア・メモリー32 GB）で、次のことを確かめました。
+2026-11-04〜05に、Apple siliconのMac（macOS 27.0.1、arm64、10コア・メモリー32 GB）で、次のことを確かめました。
 
-- 上のパッケージを入れて、ソースを構成・ビルドできること（RDKit・VTKとも有効）。ビルドは `-j 8` で約1分で、警告は出ませんでした。
-- `cmake --install` で入れた `molforma` が起動し、プロジェクトファイルを開いた画面の写真（`--screenshot`）を撮れること。設定が `~/Library/Preferences/MolForma/MolForma.ini` に保存されること。
+- 上のパッケージを入れて、ソースを構成・ビルドできること（RDKit・VTKとも有効）。ビルドは `-j 8` で約1分で、警告は出ませんでした。CTestの16件すべてが通り、テストの間、`~/Library/Preferences`・`~/Library/Application Support` のMolFormaの設定と自動保存が変わらないこと。
+- `cpack -G DragNDrop` が約1分半で `MolForma-1.0.0-arm64.dmg`（84 MB）を作ること。DMGに `MolForma.app`（205 MB、38のHomebrewパッケージのライブラリを含む）と「アプリケーション」フォルダーへのリンクがあり、`codesign --verify --deep --strict` が通ること。
+- DMGからコピーした `MolForma.app` で、次のことができること。読み込まれるライブラリ（`DYLD_PRINT_LIBRARIES`）に、Homebrewのフォルダーのものが1つもないこと。プロジェクトファイルを開いた画面の写真（`--screenshot`）を撮れること。SMILESからの3D構造で、アプリの中のOpen Babelのプラグインが使われること。Finderから開いたファイル（`open -a`）が読み込まれること。
+- FinderやDockから起動したときと同じ最小のPATH（`/usr/bin:/bin:/usr/sbin:/sbin`）で起動した `MolForma.app` が、既定の実行設定のまま `/opt/homebrew/bin` のNWChemと `mpirun` を見つけ、MPI 2プロセスの水素分子の計算を完了すること。
 - `~/.nwchemrc` を置かずに `mpirun -np 2 nwchem` で水素分子のHF/6-31G*計算が完了し、SCFエネルギーが −1.126755317965 Hartree になること。MolFormaの実行設定のテスト（実際のNWChemを使う任意のテスト、[「3 実行設定」](../features/execution.md)）で、MPI 2プロセスの水のHF/STO-3G計算が完了し、SCFエネルギーが −74.945628203255 Hartree になること。
-- CTestの16件すべてが通ること（並列）。テストの間、`~/Library/Preferences`・`~/Library/Application Support` のMolFormaの設定と自動保存が変わらないこと。
 
 | 項目 | 版 |
 | --- | --- |
@@ -209,6 +231,6 @@ rm ~/.local/share/icons/hicolor/256x256/apps/molforma.png ~/.local/share/mime/pa
 | NWChem | 7.3.1 |
 | Open MPI | 5.0.11 |
 
-IntelのMac（Homebrewは `/usr/local` に入ります）、macOS 26以前、画面を操作しての長時間の利用は確認していません。
+IntelのMac（Homebrewは `/usr/local` に入ります）、macOS 26以前、Homebrewを入れていないMacでの起動、受け取ったDMGを開くときの確認の表示、画面を操作しての長時間の利用は確認していません。
 
-関連: [OS別インストール・必要パッケージ](../installation.md)、[3D描画](../features/rendering.md)、[「3 実行設定」](../features/execution.md)
+関連: [OS別インストール・必要パッケージ](../installation.md)、[3D描画](../features/rendering.md)、[「3 実行設定」](../features/execution.md)、[MCP](../mcp.md)
