@@ -19,7 +19,7 @@ For building MolForma itself, see [Installing on Windows](windows.md). This page
 | GNU Make | 4.4.1 |
 | OpenBLAS | 0.3.34 (LP64, 32-bit integer arguments) |
 | Global Arrays (GA) | 5.9.2 |
-| Microsoft MPI | Runtime 10.1.1, MSYS2 development package `10.1.1-26` |
+| Microsoft MPI | Runtime 10.1.1, MSYS2 development package `10.1.1-26` (a build with `10.1.1-27` was also checked) |
 | NWChem modules | `NWCHEM_MODULES=all` |
 | ARMCI network | `MPI-TS` |
 | Eigensolvers | `USE_SERIALEIGENSOLVERS=y`, no ScaLAPACK |
@@ -210,7 +210,7 @@ make -j4
 
 `make -C include` prepares the headers needed, and the main build follows the integer interface conversion. NWChem's Make also configures and builds GA. With `tee`, `pipefail` keeps a failed build from being hidden by the success of the logging command.
 
-With all modules there are many sources: on the PC used, the integer interface conversion alone took tens of minutes. When the screen shows little output for a while, check the log and the processes. `-j4` is the number of parallel compile jobs, unrelated to the number of MPI processes in calculations.
+With all modules there are many sources: on the PC used, the integer interface conversion alone took tens of minutes, and the whole build about two and a half hours (`-j4`). Early in the log, a link error `cannot open output file` for `depend.x` may appear several times; those are attempts made before its output folder exists, and it is built afterwards, so they are harmless. When the screen shows little output for a while, check the log and the processes. `-j4` is the number of parallel compile jobs, unrelated to the number of MPI processes in calculations.
 
 If the build stops, fix the cause and, **as long as the settings are unchanged**, continue with:
 
@@ -332,13 +332,13 @@ This is a parallel optimization for you to run. The 2-process numerical test rec
 | Official QA `h2o`: HF/6-31G* energy and gradient | Finished normally with 1 and 2 processes; the SCF energy −76.010538615916 hartree matches the reference output |
 | Official QA `dft_he_mvs15` | The DFT energy −2.867079060595 hartree matches the reference output |
 | Official QA `tce_h2o` | 11 printed correlation energies compared; the largest difference from the reference is about 5.31×10⁻¹³ hartree |
-| The water RHF/6-31G* optimization of this page | Converged with 1 process |
+| The water RHF/6-31G* optimization of this page | Converged with 1 and 2 processes; final energy −76.010746508443 hartree |
 
 The TCE methods run were LCCD, LCCSD, CCD, CCSD, CCSDT, QCISD, CISD, CISDT, MBPT(2) and MBPT(3); MBPT(2) is printed twice, hence 11 values.
 
 The full QA suite, numerical results of NWPW, MD and stochastic methods, multi-node MPI and ScaLAPACK were not checked. MD coupling over Unix sockets is not available in this MinGW configuration. Compiler warnings from old sources remain.
 
-The published scripts arrange the settings that worked so that they are easy to move. Their shell syntax, applying the patch, and that the 15 patched files match the sources actually built were checked; a full new build from fresh downloads with the published layout was not repeated.
+The published scripts arrange the settings that worked so that they are easy to move. In another new folder, the whole procedure was repeated with the published ZIP and the steps of this page, from installing MSYS2 and fresh downloads to the full build, and the water optimization above converged to the same energy with 1 and 2 processes.
 
 ## 9. Using it from MolForma
 
