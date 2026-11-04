@@ -4,7 +4,7 @@ MolFormaをWindowsでMicrosoft Visual C++（MSVC）を使ってソースから�
 
 対象はWindows 11（x64）とMolForma 1.0.0です。2026-10-28に、Windows 11 HomeとVisual Studio Community 2026で手順を確認しました（[確認した構成](#確認した構成)）。
 
-MolFormaのWindows用のインストーラーや配布ファイルはありません。GitHubのソースからビルドし、`cmake --install` で、実行に必要なQt・Open BabelのファイルをまとめたMolFormaのフォルダーを作ります。NWChemはWindows版が公式には配布されていないため、WSLのUbuntuのパッケージを使い、MolFormaに付属する2つのバッチファイル（`nwchem.cmd`・`mpirun.cmd`）から起動します。
+MolFormaのWindows用のインストーラーや配布ファイルはありません。GitHubのソースからビルドし、`cmake --install` で、実行に必要なQt・Open BabelのファイルをまとめたMolFormaのフォルダーを作ります。NWChemはWindows版が公式には配布されていないため、WSLのUbuntuのパッケージを使い、MolFormaに付属する2つのバッチファイル（`nwchem.cmd`・`mpirun.cmd`）から起動します。WSLを使わずに、NWChemをWindowsネイティブにビルドする方法もあります（[WindowsでNWChemをビルドする](nwchem_mingw64.md)）。
 
 ## 必要なソフトウェア
 
@@ -185,6 +185,8 @@ $s.Save()
 MSVCの実行時ライブラリ（`MSVCP140.dll` など）はフォルダーに含めません。Visual Studioを入れたPCにはあります。フォルダーをほかのPCにコピーして使う場合は、そのPCに「Microsoft Visual C++ 再頒布可能パッケージ」（x64）を入れてください。
 
 ## 7. NWChemを入れる（WSL）
+
+ここではWSLのUbuntuのNWChemを使います。WSLを使わない場合は、[WindowsでNWChemをビルドする](nwchem_mingw64.md)の手順でネイティブ版をビルドし、その「9. MolFormaから使う」のとおりに設定してください。
 
 WSLのUbuntuにNWChemを入れます。WSLを使っていない場合は、管理者のPowerShellで `wsl --install` を実行し、再起動後にUbuntuのユーザー名とパスワードを設定します。続けて、コマンドプロンプトで次を実行します。
 

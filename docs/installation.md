@@ -9,6 +9,7 @@ MolFormaを動かすのに必要なソフトウェアと、OSごとのインス�
 | Arch Linux | [Arch Linuxでのインストール](installation/arch_linux.md) | PKGBUILDからパッケージを作ってpacmanでインストール（依存パッケージも自動で導入）、AURからNWChem。VTK描画の確認、更新・削除、困ったとき |
 | Ubuntu 26.04 LTS | [Ubuntuでのインストール](installation/ubuntu.md) | aptで開発用パッケージとNWChemを入れ、ソースからビルドしてdebパッケージを作り、aptでインストール。VTK描画の確認、更新・削除、困ったとき |
 | Windows 11 | [Windowsでのインストール](installation/windows.md) | Visual Studio（MSVC）とvcpkgでビルドし、Open Babel・RDKit・VTKもソースからビルドして、Qtなどを含めたフォルダーにインストール。NWChemはWSLのUbuntuに入れ、付属のバッチファイルから起動。更新・削除、困ったとき |
+| Windows x64（NWChem） | [WindowsでNWChemをビルドする](installation/nwchem_mingw64.md) | WSLを使わない方法。MSYS2 UCRT64のGNU Fortran・OpenBLASとMicrosoft MPIで、NWChem 7.3.1の全標準モジュールをWindowsネイティブにビルド（非公式の互換性パッチを適用）。数値テスト、MolFormaの実行設定、ライセンス、困ったとき |
 | Linux（ディストリビューション共通） | [AppImageの作成](installation/appimage.md) | Dockerの中でビルドし、Qt・Open Babel・RDKit・VTKを1つのファイルにまとめたAppImageを作る。glibc 2.38以上のLinux（Ubuntu 24.04以降、Debian 13以降、Fedora 39以降など）でインストールせずに起動。配布するときのライセンス、困ったとき |
 
 ほかのOSの手順は、用意でき次第このページに追加します。
@@ -26,6 +27,6 @@ OSによらず、次のソフトウェアを使います。実行時にPythonは
 | 必須 | Open Babel 3（C++ライブラリと、フォーマットプラグイン・力場データ） | 構造ファイルの読み書き、力場による整形、SMILESからの3D構造 |
 | 任意 | RDKit C++ | 厳密な立体判定（R/S・E/Z）、残基認識 |
 | 任意 | Qt6に対応したVTK 9.1以上（開発用パッケージ） | 3D画面をVTK（OpenGL）で描画。ないときはQPainter（CPU）で描画 |
-| 計算 | NWChemと、そのビルドに合うMPI（MPI版の場合。WindowsではWSLのもの） | 計算の実行。入力の作成・保存だけならなくても使えます |
+| 計算 | NWChemと、そのビルドに合うMPI（MPI版の場合。WindowsではWSLのものか、MinGWでビルドしたネイティブ版とMicrosoft MPI） | 計算の実行。入力の作成・保存だけならなくても使えます |
 
 任意のものはビルド時にCMakeが見つけたときだけ有効になります。有効になった機能は「ヘルプ → MolFormaについて」で確認できます。3D描画の方式は[3D描画](features/rendering.md)、NWChemの起動条件は[「3 実行設定」](features/execution.md)を参照してください。

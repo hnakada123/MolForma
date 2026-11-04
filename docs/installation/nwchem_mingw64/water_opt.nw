@@ -1,0 +1,32 @@
+echo
+start water_opt
+
+title "Water geometry optimization: RHF/6-31G*"
+memory total 512 mb
+charge 0
+
+# A bent starting structure; coordinates are in angstrom.
+geometry units angstrom
+  O  0.000000  0.000000  0.000000
+  H  0.800000  0.000000  0.600000
+  H -0.800000  0.000000  0.600000
+end
+
+basis
+  * library 6-31g*
+end
+
+scf
+  rhf
+  singlet
+  thresh 1.0e-8
+  maxiter 100
+end
+
+driver
+  tight
+  maxiter 50
+  xyz water_opt
+end
+
+task scf optimize

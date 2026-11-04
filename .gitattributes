@@ -1,2 +1,6 @@
 # Windows batch files need CRLF line endings.
 *.cmd text eol=crlf
+# Shell scripts and patches for MSYS2 need LF line endings.
+*.sh text eol=lf
+*.patch text eol=lf
+*.zip binary

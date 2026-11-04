@@ -34,3 +34,11 @@ MolForma is an independent project and is not affiliated with or endorsed by the
 NWChem developers. When publishing results obtained with NWChem, please cite:
 E. Aprà et al., "NWChem: Past, present, and future", J. Chem. Phys. 152, 184102
 (2020), doi:10.1063/5.0004997.
+
+docs/installation/nwchem_mingw64/ (and its ZIP) describes building NWChem natively on
+Windows. Its mingw64-compatibility.patch changes a few lines of NWChem (Copyright
+Pacific Northwest National Laboratory, Battelle Memorial Institute; ECL 2.0) and of
+Global Arrays 5.9.2 (Copyright Battelle Memorial Institute; BSD-3-Clause); each change
+is offered under the license of the file it changes, as the patch's header states. The
+page and its scripts contain no NWChem, Global Arrays, MSYS2 or Microsoft MPI sources or
+binaries, which they download from their official sources.

@@ -4,7 +4,7 @@ How to build MolForma from source on Windows with Microsoft Visual C++ (MSVC) an
 
 The steps are for Windows 11 (x64) and MolForma 1.0.0. They were checked on 2026-10-28 on Windows 11 Home with Visual Studio Community 2026 ([Verified configuration](#verified-configuration)).
 
-There is no installer or binary download of MolForma for Windows. You build it from the source on GitHub, and `cmake --install` makes a MolForma folder that holds the Qt and Open Babel files it needs. NWChem has no official Windows build, so the Ubuntu package in WSL is used, started through two batch files that come with MolForma (`nwchem.cmd` and `mpirun.cmd`).
+There is no installer or binary download of MolForma for Windows. You build it from the source on GitHub, and `cmake --install` makes a MolForma folder that holds the Qt and Open Babel files it needs. NWChem has no official Windows build, so the Ubuntu package in WSL is used, started through two batch files that come with MolForma (`nwchem.cmd` and `mpirun.cmd`). NWChem can also be built as a native Windows program, without WSL ([Building NWChem on Windows](nwchem_mingw64.md)).
 
 ## Required software
 
@@ -185,6 +185,8 @@ $s.Save()
 The MSVC runtime (`MSVCP140.dll` and others) is not in the folder; a PC with Visual Studio has it. To use the folder on another PC, install the “Microsoft Visual C++ Redistributable” (x64) there.
 
 ## 7. Install NWChem (WSL)
+
+This section uses NWChem in Ubuntu on WSL. Without WSL, build a native NWChem with [Building NWChem on Windows](nwchem_mingw64.md) and set it up as its “9. Using it from MolForma” describes.
 
 Install NWChem into Ubuntu on WSL. If you do not use WSL yet, run `wsl --install` in PowerShell as administrator, restart, and set up the Ubuntu user name and password. Then run in the command prompt:
 

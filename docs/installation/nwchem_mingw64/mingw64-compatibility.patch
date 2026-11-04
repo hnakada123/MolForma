@@ -1,0 +1,291 @@
+MinGW-w64 (MSYS2 UCRT64) compatibility changes for NWChem 7.3.1 and Global Arrays 5.9.2.
+prepare.sh applies them after NWChem's own Global Arrays preparation (get-tools-github); see
+installation/nwchem_mingw64.md on https://hnakada123.github.io/MolForma/. This is not an official
+patch of NWChem or Global Arrays, and their developers have not reviewed or endorsed it.
+
+The changed files belong to:
+- NWChem (src/util/): Copyright (c) 1994-2020 Pacific Northwest National Laboratory, Battelle
+  Memorial Institute. Licensed under the Educational Community License, Version 2.0
+  (https://opensource.org/licenses/ECL-2.0).
+- Global Arrays 5.9.2 (src/tools/ga-5.9.2/): Copyright Battelle Memorial Institute. Licensed under
+  the BSD-3-Clause license (https://opensource.org/licenses/BSD-3-Clause).
+Each change is offered under the license of the file it changes. The hunks below list the changed
+files and lines.
+
+--- a/src/tools/ga-5.9.2/global/src/globalp.h
++++ b/src/tools/ga-5.9.2/global/src/globalp.h
+@@ -154,3 +154,7 @@
+ extern void    ga_set_spare_procs(int *spare);
+ 
+ #endif /* _GLOBALP_H_ */
++#if defined(__MINGW32__)
++#include <string.h>
++#define bzero(address, length) memset((address), 0, (length))
++#endif
+--- a/src/tools/ga-5.9.2/pario/dra/buffers.c
++++ b/src/tools/ga-5.9.2/pario/dra/buffers.c
+@@ -17,6 +17,10 @@
+ #endif
+ 
+ #include "buffers.h"
++#if defined(__MINGW32__)
++#include <string.h>
++#define bzero(address, length) memset((address), 0, (length))
++#endif
+ 
+ /*#define STATBUF 1 */ /* set if static buffers will be used */
+ /*#define DEBUG 1 */
+--- a/src/tools/ga-5.9.2/pario/eaf/eaf_f2c.c
++++ b/src/tools/ga-5.9.2/pario/eaf/eaf_f2c.c
+@@ -226,8 +226,13 @@
+ 
+ double FATR eaf_util_random_(Integer* seed)
+ {
++#if defined(__MINGW32__)
++  if(*seed) srand((unsigned) *seed);
++  return ((double) rand()) / ((double) RAND_MAX + 1.0);
++#else
+   if(*seed) srandom((unsigned) *seed);
+   return ((double) random())*4.6566128752458e-10;
++#endif
+ }
+ 
+ 
+--- a/src/tools/ga-5.9.2/pario/elio/stat.c
++++ b/src/tools/ga-5.9.2/pario/elio/stat.c
+@@ -55,10 +55,15 @@
+ void  get_avail_space(int dev, avail_t *avail, int* bsize)
+ {
+       static char drive[4]="A:\\";
+-      int sectors, cfree, ctotal;
++      DWORD sectors, cfree, ctotal, bytes_per_sector;
+       drive[0]= dev + 'A';
+ 
+-      GetDiskFreeSpace(drive, &sectors, bsize, &cfree, &ctotal);
++      if (!GetDiskFreeSpace(drive, &sectors, &bytes_per_sector, &cfree, &ctotal)) {
++          *avail = 0;
++          *bsize = 0;
++          return;
++      }
++      *bsize = (int)bytes_per_sector;
+       *avail = sectors*(avail_t)cfree;
+ }
+ 
+--- a/src/tools/ga-5.9.2/gaf2c/drand.c
++++ b/src/tools/ga-5.9.2/gaf2c/drand.c
+@@ -10,10 +10,16 @@
+ 
+ static DoublePrecision gai_drand_(Integer *flag)
+ {
++#if defined(__MINGW32__)
++    if (*flag)
++        srand((unsigned) *flag);
++    return ((DoublePrecision) rand()) / ((DoublePrecision) RAND_MAX + 1.0);
++#else
+     if (*flag)
+         srandom((unsigned) *flag);
+ 
+     return ((DoublePrecision) random()) * 4.6566128752458e-10;
++#endif
+ }
+ 
+ #define drand_ F77_FUNC(drand,DRAND)
+--- a/src/tools/ga-5.9.2/tcgmsg/capi.c
++++ b/src/tools/ga-5.9.2/tcgmsg/capi.c
+@@ -48,7 +48,11 @@
+ 
+ double tcg_drand48()
+ {
++#if defined(__MINGW32__)
++    return (double)rand() / ((double)RAND_MAX + 1.0);
++#else
+     return ( (double) random() ) * 4.6566128752458e-10;
++#endif
+ }
+ 
+ 
+@@ -234,7 +238,11 @@
+ {
+     unsigned int aseed = seed;
+ 
++#if defined(__MINGW32__)
++    srand(aseed);
++#else
+     srandom(aseed);
++#endif
+ }
+ 
+ 
+--- a/src/tools/ga-5.9.2/tcgmsg/fapi.c
++++ b/src/tools/ga-5.9.2/tcgmsg/fapi.c
+@@ -78,7 +78,11 @@
+ 
+ DoublePrecision  FATR _DRAND48_()
+ {
++#if defined(__MINGW32__)
++    return (double)rand() / ((double)RAND_MAX + 1.0);
++#else
+     return ( (double) random() ) * 4.6566128752458e-10;
++#endif
+ }
+ 
+ 
+@@ -284,7 +288,11 @@
+ {
+     unsigned int aseed = *seed;
+ 
++#if defined(__MINGW32__)
++    srand(aseed);
++#else
+     srandom(aseed);
++#endif
+ }
+ #endif
+ 
+--- a/src/tools/ga-5.9.2/tcgmsg/tcgmsg-mpi/drand48.c
++++ b/src/tools/ga-5.9.2/tcgmsg/tcgmsg-mpi/drand48.c
+@@ -10,12 +10,20 @@
+ 
+ double DRAND48_()
+ {
++#if defined(__MINGW32__)
++    double val=(double)rand() / ((double)RAND_MAX + 1.0);
++#else
+     double val=((double) random() ) * 4.6566128752458e-10;
++#endif
+     return val;
+ }
+ 
+ 
+ void SRAND48_(long *seed)
+ {
++#if defined(__MINGW32__)
++    srand((unsigned)*seed);
++#else
+     (void) srandom(*seed);
++#endif
+ }
+--- a/src/tools/ga-5.9.2/tcgmsg/tcgmsg-mpi/clustercheck.c
++++ b/src/tools/ga-5.9.2/tcgmsg/tcgmsg-mpi/clustercheck.c
+@@ -20,7 +20,7 @@
+ #   include <unistd.h>
+ #endif
+ 
+-#define HOSTNAME_LEN 128 
++#define HOSTNAME_LEN MPI_MAX_PROCESSOR_NAME
+ static char myname[HOSTNAME_LEN], rootname[HOSTNAME_LEN];
+ 
+ /**
+@@ -30,7 +30,8 @@
+ {
+     int rc,me,root=0,stat,global_stat,len;
+ 
+-    gethostname(myname, HOSTNAME_LEN-1);
++    rc = MPI_Get_processor_name(myname, &len);
++    if (rc != MPI_SUCCESS) MPI_Abort(MPI_COMM_WORLD, rc);
+     rc = MPI_Comm_rank(MPI_COMM_WORLD, &me);
+     if(me==root) {
+         rc = MPI_Bcast(myname,HOSTNAME_LEN,MPI_CHAR,root,MPI_COMM_WORLD);
+--- a/src/tools/ga-5.9.2/tcgmsg/tcgmsg-mpi/niceftn.c
++++ b/src/tools/ga-5.9.2/tcgmsg/tcgmsg-mpi/niceftn.c
+@@ -7,6 +7,7 @@
+ #endif
+ 
+ #include "srftoc.h"
++#include <errno.h>
+ 
+ /**
+  * Wrapper around nice for FORTRAN users courtesy of Rick Kendall
+@@ -14,6 +15,12 @@
+  */
+ long NICEFTN_(long *ival)
+ {
++#if defined(__MINGW32__)
++    (void)ival;
++    errno = ENOSYS;
++    return -1;
++#else
+     int val = (int)(*ival);
+     return nice(val);
++#endif
+ }
+--- a/src/tools/ga-5.9.2/tcgmsg/tcgmsg-mpi/pfilecopy.c
++++ b/src/tools/ga-5.9.2/tcgmsg/tcgmsg-mpi/pfilecopy.c
+@@ -142,7 +142,7 @@
+ 
+     filename = malloc( (unsigned) (len+1) );
+     if (filename) {
+-        (void) bcopy(fname, filename, len);
++        (void) memmove(filename, fname, len);
+         filename[len] = '\0';
+     }
+     else {
+--- a/src/util/util.c
++++ b/src/util/util.c
+@@ -442,7 +442,7 @@
+ {
+ /* on YMP/J90 need to use thread safe version of rand */
+     unsigned long fflag = (unsigned long)*flag;
+-#ifdef CRAY_YMP
++#if defined(CRAY_YMP) || defined(__MINGW32__)
+ 
+   return _util_ran((unsigned int)fflag);
+ 
+--- a/src/util/util_md_sockets.c
++++ b/src/util/util_md_sockets.c
+@@ -4,6 +4,7 @@
+ 
+ #include <sys/types.h>
+ #include <stdio.h>
++#include "ga.h"
+ #include <unistd.h>
+ #if !defined(__MINGW32__)
+ #include <sys/socket.h>
+--- a/src/util/util_getppn.c
++++ b/src/util/util_getppn.c
+@@ -51,10 +51,10 @@
+      * http://lists.mcs.anl.gov/pipermail/mpich-discuss/2012-January/011662.html
+      * A slightly more efficient implementation than below may be:
+      * https://github.com/jeffhammond/HPCInfo/blob/master/mpi/advanced/symmetric-heap.c */
+-  const int mxlen = 255;
++  const int mxlen = MPI_MAX_PROCESSOR_NAME + 1;
+   char myhostname[mxlen];
+   char* recvbuf;
+-  int i, num_procs, me,  err, modppn;
++  int i, num_procs, me, err, modppn, hostname_len;
+   MPI_Comm ga_comm=GA_MPI_Comm_pgroup_default();
+   
+   if(ppn_initialized) {
+@@ -66,9 +66,10 @@
+     
+       recvbuf=(char*)malloc(num_procs*(mxlen+1)*(sizeof(char)));
+       
+-      err=gethostname(myhostname, sizeof(myhostname) );
++      memset(myhostname, 0, sizeof(myhostname));
++      err=MPI_Get_processor_name(myhostname, &hostname_len);
+       if (err != 0) {
+-	fprintf(stdout,"util_getppn: gethostname failed\n");
++	fprintf(stdout,"util_getppn: MPI_Get_processor_name failed\n");
+ 	ppn=0;
+ 	goto errlab;
+       }
+--- a/src/util/linux_random.c
++++ b/src/util/linux_random.c
+@@ -12,9 +12,17 @@
+   unsigned int seed;
+ 
+   seed = (unsigned) *input_seed;
++#if defined(__MINGW32__)
++  srand(seed);
++#else
+   (void) srandom(seed);
++#endif
+ }
+ double linux_rand_(void)
+ {
++#if defined(__MINGW32__)
++  return (double)rand() / (double)RAND_MAX;
++#else
+   return (double) (((double) random())/(double) RAND_MAX);
++#endif
+ }
