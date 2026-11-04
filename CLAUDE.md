@@ -113,7 +113,12 @@ Key cross-cutting designs:
   through its CMake package (no pkg-config), keep preferences in an INI file (`model/settings.h`), and `cmake --install`
   makes a self-contained folder with windeployqt plus `packaging/windows/` (batch files that run NWChem in WSL; its
   `copy_runtime.cmake` also copies the DLLs beside each executable of the build folder after linking); see
-  `docs/installation/windows.md`.
+  `docs/installation/windows.md`. On macOS (Homebrew), `cmake --install` / `cpack -G DragNDrop` make `MolForma.app`
+  and a disk image (`packaging/macos/`: `Info.plist.in`, the icon, and `bundle.cmake`, which runs macdeployqt for Qt,
+  copies Open Babel's plugins, the other libraries and their license files into the bundle, points every reference
+  at the copies through `@rpath` and signs it ad hoc); `main()` points `BABEL_LIBDIR`/`BABEL_DATADIR` into the bundle
+  and adds Homebrew's `bin` to `PATH`, and opens files sent by Finder; see `docs/installation/macos.md`. The build
+  folder keeps a plain `build/molforma`.
 - `docs/` is also the source of the GitHub Pages site https://hnakada123.github.io/MolForma/: on pushes to main that
   touch `docs/`, `.github/workflows/pages.yml` generates the HTML with Jekyll (`docs/Gemfile` + `Gemfile.lock`, the
   `github-pages` gem) and publishes that HTML (Pages source: GitHub Actions). Preview locally with

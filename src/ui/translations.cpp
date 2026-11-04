@@ -69,9 +69,11 @@ void installTranslations(QCoreApplication &app) {
     }
     // Qt asks the last installed translator first: Qt's own translation, then the fallback.
     app.installTranslator(new Fallback(&app));
+    // Qt's folder, else beside the frameworks of MolForma.app (packaging/macos/bundle.cmake).
     auto *qt = new QTranslator(&app);
-    if (qt->load(QLocale(QLocale::Japanese, QLocale::Japan), "qtbase", "_",
-                 QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
+    const QLocale japanese(QLocale::Japanese, QLocale::Japan);
+    if (qt->load(japanese, "qtbase", "_", QLibraryInfo::path(QLibraryInfo::TranslationsPath)) ||
+        qt->load(japanese, "qtbase", "_", QCoreApplication::applicationDirPath() + "/../translations"))
         app.installTranslator(qt);
     else
         delete qt;

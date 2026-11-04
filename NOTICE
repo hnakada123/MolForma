@@ -26,6 +26,11 @@ binaries too, under their terms (for Open Babel and Qt, the GPL's source require
 On Windows, "cmake --install" likewise copies the DLLs of Qt, Open Babel, zlib (zlib
 license) and libxml2 (MIT) into the installed folder; whoever passes that folder on
 distributes them under the same terms.
+On macOS, MolForma.app made with "cpack -G DragNDrop" (packaging/macos) holds the Qt,
+Open Babel, RDKit, VTK and other Homebrew libraries it uses, with the license files of
+their packages and a list of those packages and their licenses in
+Contents/Resources/licenses; whoever passes the app or its disk image on distributes
+those binaries too, under their terms.
 
 NWChem is not included with MolForma and not linked into it: MolForma writes NWChem
 input files and runs an NWChem installed separately by the user as its own program.

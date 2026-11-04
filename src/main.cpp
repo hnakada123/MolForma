@@ -12,6 +12,8 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDir>
+#include <QFileInfo>
+#include <QFileOpenEvent>
 #include <QIcon>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -19,7 +21,55 @@
 #include <QStatusBar>
 #include <QTimer>
 #include <cstdio>
+#ifdef Q_OS_MACOS
+#include <mach-o/dyld.h>
+#include <string>
+#endif
 namespace {
+#ifdef Q_OS_MACOS
+// MolForma.app (docs/installation/macos.md): Open Babel's format plugins and data are the copies in the
+// bundle, and PATH also holds Homebrew's folders, which apps started from Finder do not get (NWChem and
+// mpirun in "3 実行設定"). Workers started by this process inherit both.
+void prepareBundle() {
+    uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::string executable(size, '\0');
+    if (_NSGetExecutablePath(executable.data(), &size) != 0)
+        return;
+    const QDir contents(QFileInfo(QString::fromUtf8(executable.c_str())).canonicalPath() + "/..");
+    if (!QFileInfo(contents.filePath("Info.plist")).isFile() || !contents.exists("PlugIns/openbabel"))
+        return; // The executable of the build folder.
+    if (qEnvironmentVariableIsEmpty("BABEL_LIBDIR"))
+        qputenv("BABEL_LIBDIR", QFile::encodeName(contents.absoluteFilePath("PlugIns/openbabel")));
+    if (qEnvironmentVariableIsEmpty("BABEL_DATADIR"))
+        qputenv("BABEL_DATADIR", QFile::encodeName(contents.absoluteFilePath("Resources/openbabel")));
+    auto path = qEnvironmentVariable("PATH").split(':', Qt::SkipEmptyParts);
+    for (const QString folder : {"/opt/homebrew/bin", "/usr/local/bin"})
+        if (!path.contains(folder) && QFileInfo(folder).isDir())
+            path << folder;
+    qputenv("PATH", QFile::encodeName(path.join(':')));
+}
+// Files opened from Finder (double-click, "Open With", a drop on the Dock icon) arrive as events.
+class FinderFiles : public QObject {
+  public:
+    explicit FinderFiles(mf::MainWindow &window) : QObject(&window), window(window) {}
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        if (event->type() != QEvent::FileOpen)
+            return QObject::eventFilter(watched, event);
+        if (const auto path = static_cast<QFileOpenEvent *>(event)->file(); !path.isEmpty())
+            QTimer::singleShot(0, &window, [w = &window, path] {
+                w->safe([&] {
+                    if (w->confirmDiscard())
+                        w->loadPath(path);
+                });
+            });
+        return true;
+    }
+
+  private:
+    mf::MainWindow &window;
+};
+#endif
 void addMcpOptions(QCommandLineParser &parser) {
     parser.addOption({"mcp-allow-dir", mf::tr("MCPのファイル操作をこのディレクトリに限定する（複数指定可）"),
                       "directory"});
@@ -45,6 +95,7 @@ int main(int argc, char **argv) {
     else // Qt would put the INI file under ~/.config: keep it where macOS keeps preferences.
         QSettings::setPath(mf::SettingsFormat, QSettings::UserScope,
                            QDir::homePath() + "/Library/Preferences");
+    prepareBundle();
 #endif
 #endif
     // Check before QApplication so headless MCP needs no display or platform plugin.
@@ -147,6 +198,10 @@ int main(int argc, char **argv) {
         if (!guiMcp && !parser.positionalArguments().isEmpty())
             window.loadPath(parser.positionalArguments().first(), !parser.isSet("screenshot"));
         window.show();
+#ifdef Q_OS_MACOS
+        if (!guiMcp && !parser.isSet("screenshot"))
+            app.installEventFilter(new FinderFiles(window));
+#endif
         if (!parser.isSet("screenshot")) {
             window.startAutosave();
             // A person decides about recovered work; MCP sessions start without the question.
