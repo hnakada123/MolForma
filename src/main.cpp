@@ -169,6 +169,11 @@ int main(int argc, char **argv) {
     QCoreApplication::setApplicationVersion(MOLFORMA_VERSION);
     mf::installTranslations(app);
     QApplication::setStyle("Fusion");
+#ifdef Q_OS_MACOS
+    // Qt's macOS theme gives tool buttons the 10 pt of native toolbars, against 13 pt for everything else.
+    // MolForma's header, tool rail and chips are tool buttons, and should read like the rest of the window.
+    QApplication::setFont(QApplication::font(), "QToolButton");
+#endif
     Q_INIT_RESOURCE(manual);
     QApplication::setWindowIcon(QIcon(":/icons/molforma.png"));
     QGuiApplication::setDesktopFileName("molforma"); // Matches packaging/molforma.desktop.
