@@ -90,7 +90,8 @@ class MainWindow : public QMainWindow {
     }
     void safe(const std::function<void()> &operation);
     // Interactive sessions: periodic autosave of unsaved work, and recovery after a crash.
-    // The copies go to <AppLocalDataLocation>/autosave, on Windows too under XDG_DATA_HOME when it is set.
+    // The copies go to <AppLocalDataLocation>/autosave, on Windows and macOS too under XDG_DATA_HOME when it
+    // is set.
     static QString autosaveDirectory();
     void startAutosave();
     void offerRecovery();

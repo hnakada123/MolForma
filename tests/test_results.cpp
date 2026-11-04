@@ -11,8 +11,40 @@
 #include <Eigen/LU>
 #include <QtTest>
 #include <QtWidgets>
+#include <algorithm>
+#include <cmath>
 #include <numbers>
 using namespace mf;
+
+namespace {
+// Equal JSON, with numbers equal to the last few bits: values computed from the read numbers (such as
+// the dipole moment by std::hypot) round differently between C++ libraries (libstdc++, libc++, MSVC).
+bool sameReading(const QJsonValue &a, const QJsonValue &b) {
+    if (a.isDouble() && b.isDouble()) {
+        const auto x = a.toDouble(), y = b.toDouble();
+        return x == y || std::abs(x - y) <= 1e-13 * std::max(std::abs(x), std::abs(y));
+    }
+    if (a.isArray() && b.isArray()) {
+        const auto p = a.toArray(), q = b.toArray();
+        if (p.size() != q.size())
+            return false;
+        for (qsizetype i = 0; i < p.size(); ++i)
+            if (!sameReading(p[i], q[i]))
+                return false;
+        return true;
+    }
+    if (a.isObject() && b.isObject()) {
+        const auto p = a.toObject(), q = b.toObject();
+        if (p.keys() != q.keys())
+            return false;
+        for (auto i = p.begin(); i != p.end(); ++i)
+            if (!sameReading(i.value(), q[i.key()]))
+                return false;
+        return true;
+    }
+    return a == b;
+}
+} // namespace
 
 class ResultsTest : public QObject {
     Q_OBJECT
@@ -220,7 +252,7 @@ class ResultsTest : public QObject {
             }
             const auto expected = parseJson(readFile(golden));
             for (const auto &key : expected.keys())
-                QVERIFY2(digest[key] == expected[key], qPrintable(log + ": " + key));
+                QVERIFY2(sameReading(digest[key], expected[key]), qPrintable(log + ": " + key));
             QCOMPARE(digest.keys(), expected.keys());
         }
     }

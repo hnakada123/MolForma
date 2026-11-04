@@ -38,7 +38,7 @@ void DocumentStorage::remember(const QString &path) {
     settings.setValue("recentFiles", files);
 }
 QString DocumentStorage::autosaveDirectory() {
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
     if (const auto home = qEnvironmentVariable("XDG_DATA_HOME"); !home.isEmpty())
         return home + "/MolForma/autosave";
 #endif

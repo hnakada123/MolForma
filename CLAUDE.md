@@ -29,8 +29,8 @@ QT_QPA_PLATFORM=offscreen ./build/test_editor someTestFunction   # one Qt Test s
   `tests/fake_nwchem.cpp` builds a stand-in NWChem used by execution/history/output/mcp tests.
   `test_mcp` launches the built `molforma` binary. Fixtures live in `tests/fixtures/` (`FIXTURE_DIR` in `test_core`).
   Tests must not touch the user's files: MolForma's settings use `mf::SettingsFormat` (`model/settings.h`: NativeFormat,
-  an INI file on Windows), so redirect `QSettings::setPath` for both NativeFormat and IniFormat and set
-  `XDG_CONFIG_HOME` / `XDG_DATA_HOME` (honored on Windows too)
+  an INI file on Windows and macOS), so redirect `QSettings::setPath` for both NativeFormat and IniFormat and set
+  `XDG_CONFIG_HOME` / `XDG_DATA_HOME` (honored on Windows and macOS too)
   (autosave copies) to temporary directories, also for launched `molforma` processes.
 - New source files must be added to the explicit lists in `CMakeLists.txt` (no globbing).
 - Format: `rg --files src tests -g '*.h' -g '*.cpp' -0 | xargs -0 clang-format -i` (uses `.clang-format`).

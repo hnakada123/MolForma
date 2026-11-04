@@ -509,7 +509,11 @@ class CoordinatesTest : public QObject {
         auto *split = w.findChild<QSplitter *>("moleculeSplit");
         // The split is sized after the table is shown (queued): until then the table has no room.
         QTRY_VERIFY(split->sizes().value(1) > 0 && split->sizes().value(0) > split->sizes().value(1));
-        QVERIFY(w.findChild<QWidget *>("coordinatesTab")->minimumSizeHint().height() < 300);
+        // Measured against the table rather than in pixels, which follow the fonts of the platform.
+        auto *pages = w.findChild<QWidget *>("coordinatesTab")->findChild<QStackedWidget *>();
+        QVERIFY(pages && pages->count() == 2 && pages->widget(0) == table(w));
+        QCOMPARE(pages->minimumSizeHint().height(), table(w)->minimumHeight());
+        QVERIFY(pages->widget(1)->minimumSizeHint().height() > table(w)->minimumHeight());
         QVERIFY(table(w)->viewport()->height() >= 4 * table(w)->verticalHeader()->defaultSectionSize());
         button(w, "moleculeLayout_view")->click();
     }

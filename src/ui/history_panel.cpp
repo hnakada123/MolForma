@@ -1424,7 +1424,7 @@ void HistoryPanel::updateToolbar() {
     const bool same = QDir::cleanPath(other) == QDir::cleanPath(root);
     const auto path = root.isEmpty() ? tr("未設定") : displayPath(root);
     const QString note = same ? tr("（3 実行設定と同じ）") : tr("（選んだ保存先）");
-    rootButton->setText(fontMetrics().elidedText(path, Qt::ElideMiddle, compactToolbar ? 200 : 360) +
+    rootButton->setText(fontMetrics().elidedText(path, Qt::ElideMiddle, compactToolbar ? 160 : 360) +
                         (compactToolbar ? QString() : note));
     rootButton->setToolTip(root + (compactToolbar ? note : QString()));
     executionRootAction->setEnabled(!same || !followsExecution);

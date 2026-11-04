@@ -111,8 +111,8 @@ Add deterministic regression tests, especially for file compatibility,
 connectivity, geometry, undo and candidates. Preserve project envelope fields.
 Tests must not write the user's settings or data: redirect
 `QSettings::NativeFormat` and `IniFormat` (MolForma's settings use `SettingsFormat` from
-`model/settings.h`: an INI file on Windows) and `XDG_CONFIG_HOME` / `XDG_DATA_HOME`
-(autosave; MolForma honors them on Windows too) to temporary directories.
+`model/settings.h`: an INI file on Windows and macOS) and `XDG_CONFIG_HOME` / `XDG_DATA_HOME`
+(autosave; MolForma honors them on Windows and macOS too) to temporary directories.
 Document limitations in the page of the screen in `docs/features/` (Japanese;
 `docs/features.md` lists the pages, screenshots in `docs/features/images/`); MCP
 tool changes belong in `docs/mcp.md`. Keep the English manuals

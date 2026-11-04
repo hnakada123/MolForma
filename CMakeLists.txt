@@ -184,7 +184,7 @@ if(BUILD_TESTING)
         "-DMOLFORMA_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/src"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckLayers.cmake")
     add_executable(test_mcp tests/test_mcp.cpp)
-    target_link_libraries(test_mcp PRIVATE molforma_mcp molforma_ui Qt6::Test)
+    target_link_libraries(test_mcp PRIVATE molforma_ui molforma_mcp Qt6::Test)
     add_dependencies(test_mcp molforma)
     add_test(NAME mcp COMMAND test_mcp)
     set_tests_properties(mcp PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 120)

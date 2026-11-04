@@ -11,6 +11,7 @@
 #include "ui/translations.h"
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QDir>
 #include <QIcon>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -35,10 +36,16 @@ mf::McpPolicy mcpPolicy(const QCommandLineParser &parser) {
 }
 } // namespace
 int main(int argc, char **argv) {
-#ifdef Q_OS_WIN
-    // Windows has no XDG folders; honoring XDG_CONFIG_HOME moves MolForma.ini there as on Linux (tests).
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+    // Windows and macOS have no XDG folders; honoring XDG_CONFIG_HOME moves MolForma.ini there as on
+    // Linux (tests).
     if (const auto config = qEnvironmentVariable("XDG_CONFIG_HOME"); !config.isEmpty())
         QSettings::setPath(mf::SettingsFormat, QSettings::UserScope, config);
+#ifdef Q_OS_MACOS
+    else // Qt would put the INI file under ~/.config: keep it where macOS keeps preferences.
+        QSettings::setPath(mf::SettingsFormat, QSettings::UserScope,
+                           QDir::homePath() + "/Library/Preferences");
+#endif
 #endif
     // Check before QApplication so headless MCP needs no display or platform plugin.
     bool headlessMcp = false, guiMcp = false;

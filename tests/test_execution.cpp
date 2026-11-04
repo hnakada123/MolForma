@@ -274,7 +274,9 @@ class ExecutionTest : public QObject {
         QCOMPARE(QString::fromUtf8(readFile(directory + "/input.nw")), input);
         const auto captured = readObject(directory + "/captured.json");
         QCOMPARE(captured["arguments"].toArray(), QJsonArray{"input.nw"});
-        QCOMPARE(captured["cwd"].toString(), directory);
+        // The temporary folder may be reached through a symbolic link (/var -> /private/var on macOS).
+        QCOMPARE(QFileInfo(captured["cwd"].toString()).canonicalFilePath(),
+                 QFileInfo(directory).canonicalFilePath());
         QCOMPARE(captured["omp"].toString(), "1");
         QCOMPARE(captured["literal"].toString(), "a ' ; $(touch SHOULD_NOT_EXIST)");
         QVERIFY(!QFileInfo::exists(directory + "/SHOULD_NOT_EXIST"));
