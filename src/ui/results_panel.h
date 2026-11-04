@@ -143,6 +143,7 @@ class ResultsPanel : public QWidget {
     QPushButton *openMolden; // A log's orbitals: their shapes from the MOLDEN file of the same job.
     QPushButton *energyReference, *applyIso;
     int referenceEnergy = -1;          // Row of data.energies that ΔE refers to (-1: the last energy).
+    int orbitalLoad = -1;              // Orbital of the shown file being read (-1: another load).
     QVector<ResultModeKind> modeKinds; // Of data.modes: vibrations, translations and rotations.
     QVector<int> irModes;              // The mode of each stick of the IR spectrum.
     // Energy of each frame relative to the lowest one / kcal mol⁻¹, where the result ties them

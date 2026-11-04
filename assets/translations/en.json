@@ -2328,6 +2328,7 @@
     "読込を中止しました。前の結果を保持しています。": "Loading stopped. The previous result is kept.",
     "読込・表示エラー: %1\n前の結果は保持しています。": "Loading or display error: %1\nThe previous result is kept.",
     "読込中: %1\n完了まで前の結果を表示します。": "Loading: %1\nThe previous result stays shown until it finishes.",
+    "読込中: %1 %2番 / 等値 ±%3\n準位図か一覧で軌道を選ぶと表示を切り替えます。赤: 正 / 青: 負。": "Loading: %1 #%2 / isovalue ±%3\nChoose an orbital in the level diagram or the list to switch. Red: positive / blue: negative.",
     "読込中にファイルが更新されました。再読込してください。": "The file changed while loading. Reload it.",
     "読込中に分子が変更されました。読込をやり直してください。": "The molecule changed during loading. Load it again.",
     "読込中に結果ファイルが128 MiBを超えました。": "The result file grew beyond 128 MiB while loading.",

@@ -402,15 +402,54 @@ class MoldenTest : public QObject {
             rectangles << QRect(details->mapTo(panel, QPoint()), QSize(details->width(), 1));
             return rectangles;
         };
+        // The tab's contents: the level diagram is drawn to its height, so that a change moves the levels.
+        auto orbitalTab = [&] {
+            geometry();
+            QVector<QRect> rectangles;
+            for (const auto *name : {"resultsDetails", "resultsOrbitalSource", "resultsOrbitalLevels",
+                                     "resultsOrbitals", "resultsOrbitalStatus"}) {
+                auto *control = widget<QWidget>(w, name);
+                rectangles << QRect(control->mapTo(panel, QPoint()), control->size());
+            }
+            return rectangles;
+        };
         for (const auto &size : {QSize(1380, 900), QSize(1000, 760)}) {
             w.resize(size);
             const int count = done.count();
             panel->openFile(path);
             QTRY_COMPARE_WITH_TIMEOUT(done.count(), count + 1, 10000);
             const auto before = geometry();
+            const auto tabBefore = orbitalTab();
+            auto *orbitalStatus = widget<QLabel>(w, "resultsOrbitalStatus");
             QVERIFY(status->isReadOnly());
             QVERIFY(status->isHidden()); // How the file ended is in "概要".
+            // Stepping through orbitals says it under the settings: nothing in the tab changes size.
             next->click();
+            QVERIFY(panel->loading());
+            QVERIFY(status->isHidden());
+            QVERIFY(orbitalStatus->text().startsWith("読込中: Alpha 2番"));
+            QCOMPARE(geometry(), before);
+            QCOMPARE(orbitalTab(), tabBefore);
+            panel->cancelLoad();
+            QVERIFY(status->toPlainText().contains("中止"));
+            QVERIFY(orbitalStatus->text().startsWith("表示中: Alpha 1番"));
+            QCOMPARE(geometry(), before);
+            next->click(); // Closes the message of the cancelled load at once.
+            QVERIFY(status->isHidden());
+            QCOMPARE(geometry(), before);
+            QCOMPARE(orbitalTab(), tabBefore);
+            QTRY_COMPARE_WITH_TIMEOUT(done.count(), count + 2, 10000);
+            QCOMPARE(panel->result().selectedOrbital, 1);
+            QVERIFY(orbitalStatus->text().startsWith("表示中: Alpha 2番"));
+            QCOMPARE(geometry(), before);
+            QCOMPARE(orbitalTab(), tabBefore);
+            previous->click(); // Cached orbital: no loading message or worker.
+            QVERIFY(!panel->loading());
+            QCOMPARE(panel->result().selectedOrbital, 0);
+            QCOMPARE(geometry(), before);
+            QCOMPARE(orbitalTab(), tabBefore);
+            // Reading a file does use the message, for its path.
+            panel->openFile(path);
             QVERIFY(panel->loading());
             QVERIFY(status->toPlainText().contains("\n完了まで前の結果を表示します。"));
             QCOMPARE(geometry(), before);
@@ -418,18 +457,8 @@ class MoldenTest : public QObject {
             QVERIFY(status->mapTo(panel, QPoint()).y() > before.last().top());
             QVERIFY(status->mapTo(panel, QPoint()).x() > before[0].right());
             QVERIFY(status->verticalScrollBar()->maximum() > 0); // Wrapped long path is accessible.
-            panel->cancelLoad();
-            QVERIFY(status->toPlainText().contains("中止"));
-            QCOMPARE(geometry(), before);
-            next->click();
-            QCOMPARE(geometry(), before);
-            QTRY_COMPARE_WITH_TIMEOUT(done.count(), count + 2, 10000);
-            QCOMPARE(panel->result().selectedOrbital, 1);
-            QCOMPARE(geometry(), before);
-            previous->click(); // Cached orbital: no loading message or worker.
-            QVERIFY(!panel->loading());
-            QCOMPARE(panel->result().selectedOrbital, 0);
-            QCOMPARE(geometry(), before);
+            QTRY_COMPARE_WITH_TIMEOUT(done.count(), count + 4, 10000);
+            QCOMPARE(orbitalTab(), tabBefore);
             widget<QLineEdit>(w, "resultsOrbitalIso")->setText("nan");
             next->click();
             QVERIFY(status->toPlainText().startsWith("読込・表示エラー:"));

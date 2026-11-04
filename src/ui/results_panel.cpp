@@ -1475,9 +1475,15 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
                 if (follow >= 0)
                     orbitals->setCurrentCell(follow, 0); // Renders it like a choice in the list.
             });
+    // Another orbital of this file: the message would open under the details at every step and
+    // change the height of the level diagram, so that the line under the settings says it instead.
+    orbitalLoad = reuseOrbital && sameSource ? orbital : -1;
     try {
         loader.start({path, iso, channel, orbital, normalization, divisions, animation, reread});
-        status->setPlainText(tr("読込中: %1\n完了まで前の結果を表示します。").arg(loader.pendingPath()));
+        if (orbitalLoad >= 0)
+            status->clear();
+        else
+            status->setPlainText(tr("読込中: %1\n完了まで前の結果を表示します。").arg(loader.pendingPath()));
     } catch (const std::exception &e) {
         pendingOrbital = {};
         error(QString::fromUtf8(e.what()));
@@ -1548,6 +1554,23 @@ void ResultsPanel::updateActions() {
                                  ? tr("%1 %2番").arg(data.orbitals[data.selectedOrbital].spin,
                                                      orbitals->item(data.selectedOrbital, 0)->text())
                                  : QString());
+    const bool rendering = loading() && orbitalLoad >= 0 && orbitalLoad < data.orbitals.size();
+    orbitalStatus->setText(
+        data.format == "NWChem" && !data.orbitals.isEmpty()
+            ? tr("番号はNWChemの軌道番号です（ログに一部の軌道しかなくてもMOLDENと同じ番号）。")
+        : data.format != "MOLDEN" ? tr("MOLDENファイルを開くと分子軌道を表示します。")
+        : rendering
+            ? tr("読込中: %1 %2番 / 等値 ±%3\n準位図か一覧で軌道を選ぶと表示を切り替えます。赤: 正 / 青: 負。")
+                  .arg(data.orbitals[orbitalLoad].spin, orbitals->item(orbitalLoad, 0)->text(),
+                       orbitalIso->text())
+        : !data.orbitalError.isEmpty() ? data.orbitalError
+        : data.selectedOrbital >= 0
+            ? tr("表示中: %1 %2番 / 等値 ±%3 / 正規化: "
+                 "%4\n準位図か一覧で軌道を選ぶと表示を切り替えます。赤: 正 / 青: 負。")
+                  .arg(data.orbitals[data.selectedOrbital].spin,
+                       orbitals->item(data.selectedOrbital, 0)->text(), real(data.isovalue),
+                       data.orbitalNormalization == "nwchem" ? QString("NWChem") : tr("標準MOLDEN"))
+            : tr("このファイルには表示可能な分子軌道がありません。"));
 }
 void ResultsPanel::display(bool orbitalOnly) {
     summary = resultMessage(data);
@@ -1652,18 +1675,6 @@ void ResultsPanel::display(bool orbitalOnly) {
                                   : QString());
     orbitalSource->setVisible(!orbitalSource->text().isEmpty());
     orbitalOptions->setVisible(data.format == "MOLDEN");
-    orbitalStatus->setText(
-        data.format == "NWChem" && !data.orbitals.isEmpty()
-            ? tr("番号はNWChemの軌道番号です（ログに一部の軌道しかなくてもMOLDENと同じ番号）。")
-        : data.format != "MOLDEN"      ? tr("MOLDENファイルを開くと分子軌道を表示します。")
-        : !data.orbitalError.isEmpty() ? data.orbitalError
-        : data.selectedOrbital >= 0
-            ? tr("表示中: %1 %2番 / 等値 ±%3 / 正規化: "
-                 "%4\n準位図か一覧で軌道を選ぶと表示を切り替えます。赤: 正 / 青: 負。")
-                  .arg(data.orbitals[data.selectedOrbital].spin,
-                       orbitals->item(data.selectedOrbital, 0)->text(), real(data.isovalue),
-                       data.orbitalNormalization == "nwchem" ? QString("NWChem") : tr("標準MOLDEN"))
-            : tr("このファイルには表示可能な分子軌道がありません。"));
     if (!orbitalOnly) {
         const QSignalBlocker guard(modes);
         modes->setRowCount(data.modes.size());
