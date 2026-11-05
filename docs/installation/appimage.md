@@ -4,14 +4,14 @@ MolFormaを、Linuxのディストリビューションによらず動く1つの
 
 AppImageを作るPCは、Dockerが使えるx86-64のLinuxであれば、ディストリビューションを問いません。AppImageを動かすPCは、x86-64で、glibc 2.38以上とGCC 13以降の `libstdc++` を持つLinuxのデスクトップです（Ubuntu 24.04以降、Debian 13以降、Fedora 39以降、Arch Linuxなど）。対象はMolForma 1.0.0です。2026-10-28に手順を確認しました（[確認した構成](#確認した構成)）。
 
-配布しているAppImageはまだありません（2026-10-28時点）。この手順で作ってください。
+ビルド済みのAppImageは、[Releases](https://github.com/hnakada123/MolForma/releases) のZIP（`MolForma-<版>-x86_64.zip`）にあります。展開して、[4. 起動する](#4-起動する)に進んでください。自分で作る場合は、次の手順です。
 
 ## AppImageに入るもの
 
 | 区分 | 内容 |
 | --- | --- |
 | 入るもの | MolForma、Qt 6.4.2（xcb・offscreenの表示部品と、Qt自身の翻訳）、Open Babel 3.1.1（フォーマットプラグインと力場データ）、RDKit 2023.09.3、VTK 9.7.1（Qt 6向けにビルド）、Boostなどそれらが使うライブラリ、各ライブラリのライセンス（`usr/share/doc`） |
-| 動かすPCのものを使う | glibc・`libstdc++`、OpenGL（GPUドライバー）、X11の基本ライブラリ（`libX11`・`libxcb` など）、fontconfig・FreeType・HarfBuzzとフォント、NWChemとMPI |
+| 動かすPCのものを使う | glibc・`libstdc++`、OpenSSL 3（HTTPSの通信）、OpenGL（GPUドライバー）、X11の基本ライブラリ（`libX11`・`libxcb` など）、fontconfig・FreeType・HarfBuzzとフォント、NWChemとMPI |
 
 「動かすPCのものを使う」ライブラリは、デスクトップ環境には通常入っています。日本語の表示には、日本語のフォントがPCに入っている必要があります。
 
@@ -41,6 +41,7 @@ docker build -t molforma-appimage packaging/appimage
 1. Ubuntu 24.04に、ビルドに使う開発用パッケージを入れます。Ubuntu 24.04を使うのは、glibcが古めで、動かせるディストリビューションが広くなるためです。
 2. VTK 9.7.1を、MolFormaが使う部品だけQt 6向けにソースからビルドします。Ubuntu 24.04のVTKはQt 5向けのため、そのままでは使えません。
 3. AppImageの作成に使う道具（linuxdeploy・linuxdeploy-plugin-qt・appimagetool・AppImageの起動部分）を取得します。
+4. Ubuntuの更新を適用します。
 
 ダウンロードするものは版とSHA-256を固定しています。VTKのビルドに時間がかかり、16コアのPC（同時に4つのコンパイル）で約23分かかりました。できるイメージは約2 GBです。作るのは最初の1回だけで、以後は使い回せます。
 
@@ -48,7 +49,7 @@ VTKのビルドで同時に動かすコンパイルの数は、既定で4です�
 
 ## 3. AppImageを作る
 
-取得したソースのフォルダーで、次を実行します。`build-appimage/MolForma-1.0.0-x86_64.AppImage`（約100 MB）ができます。所要時間は3分ほどです。
+取得したソースのフォルダーで、次を実行します。`build-appimage/MolForma-1.0.0-x86_64.AppImage`（約110 MB）ができます。所要時間は3分ほどです。
 
 ```sh
 mkdir -p build-appimage
@@ -61,7 +62,7 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src:ro" -v "$PWD/build-appi
 
 1. MolFormaをビルドし、AppImageの中身（AppDir）に配置します。RDKitかVTKを使えない場合は、機能の欠けたAppImageを作らずに止まります。
 2. Open Babelのフォーマットプラグインと力場データをコピーし、起動時に `BABEL_LIBDIR`・`BABEL_DATADIR` をその場所に設定します。
-3. linuxdeployで、MolFormaとプラグインが使うライブラリ、Qtの表示部品と翻訳を集めます。
+3. linuxdeployで、MolFormaとプラグインが使うライブラリ、Qtの表示部品と翻訳を集めます。OpenSSLは、Qtが実行時に読み込むPCの `libssl` と版がそろうように、入れません。
 4. 各ライブラリのライセンスを `usr/share/doc` にコピーします。
 5. appimagetoolで1つのファイルにまとめます。
 
@@ -108,6 +109,22 @@ AppImageのファイルを削除します。アプリの設定（`~/.config/MolF
 - **MolForma（GPL-2.0-or-later）、Open Babel（GPL-2.0-only）、Qt**: Open Babelとリンクしたバイナリでは、QtもGPL-2.0の条件で使います（リポジトリの `NOTICE`）。バイナリを配る場合は、対応するソースも入手できるようにします。MolFormaは、AppImageを作ったコミットのソースを示してください。Open Babel・Qtなど同梱したUbuntuのパッケージのソースは、Ubuntu 24.04のソースパッケージです。VTKは、vtk.orgの9.7.1のソースです。
 - **そのほか（RDKit・VTK・Boostなど）**: BSDなどのライセンスで、文面を同梱すれば配布できます。
 
+[Releases](https://github.com/hnakada123/MolForma/releases) に載せるファイルは、ソースのフォルダーで次のように作ります。Ubuntuの配布サイトには最新版のソースしかないので、`UPDATES` に今日の日付を指定して更新を取り込んでから、同じイメージでAppImageとソースをそろえます。
+
+```sh
+docker build --build-arg UPDATES=$(date +%F) -t molforma-appimage packaging/appimage
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src:ro" -v "$PWD/build-appimage:/out" molforma-appimage
+docker run --rm -e OWNER="$(id -u):$(id -g)" -v "$PWD:/src:ro" -v "$PWD/build-appimage:/out" \
+    --entrypoint /src/packaging/appimage/release.sh molforma-appimage
+```
+
+`build-appimage/` に次の2つのファイルができます。リリースのタグは `v<版>`（`SOURCES.txt` が指します）にしてください。
+
+| ファイル | 内容 |
+| --- | --- |
+| `MolForma-1.0.0-x86_64.zip` | AppImage、`README.txt`、`LICENSE`、`NOTICE`、`SOURCES.txt`（ソースの入手先）、`licenses/`（同梱ライブラリのライセンス） |
+| `MolForma-1.0.0-third-party-sources.tar` | AppImageに入っているUbuntuのパッケージのソース（約490 MB） |
+
 ## 困ったとき
 
 | 症状 | 確認・対応 |
@@ -131,6 +148,8 @@ AppImageのファイルを削除します。アプリの設定（`~/.config/MolF
 - **Dockerのコンテナ**: Ubuntu 24.04・Debian 13・Fedora 39・Fedora 40のコンテナで、展開して起動する形（`--appimage-extract-and-run`）で確かめました。コンテナには、デスクトップ相当のライブラリと、XvfbとMesaのソフトウェアOpenGLを入れています。版が1.0.0であること、SMILESから3D構造を作れること、xcbで画面を表示して画面写真を書き出せることを確かめました（Ubuntu 24.04とFedora 40では、3D画面がVTKで描画されていることを画像でも確認）。
 - **Waylandのセッション**: Waylandのセッションに見える環境（`QT_QPA_PLATFORM` が未設定、`wayland;xcb`、`wayland`）でも、xcbで起動しました。
 - **Ubuntu 26.04のコンテナ（`nwchem` パッケージ入り）**: NWChemでの計算が完了しました。
+
+2026-11-05に、Arch Linux（OpenSSL 3.6.5）でAppImageからPDBのエントリーをHTTPSでダウンロードできることも確かめました。
 
 実機のGPUでのVTKの描画と、Waylandのデスクトップでの実際の表示は、AppImageでは確認していません。
 

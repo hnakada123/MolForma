@@ -59,6 +59,11 @@ RUN mkdir -p /opt/appimage \
 RUN apt-get update && apt-get install -y --no-install-recommends libboost-system-dev libboost-regex-dev \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /usr/include/python3.12 /usr/lib/python3/dist-packages/numpy/core/include
+# The updates since the base image: the AppImage should hold them, and the mirror keeps the source of
+# the newest versions only (release.sh). A new UPDATES value (a date) takes the updates again without
+# building VTK again.
+ARG UPDATES=
+RUN echo "Updates of ${UPDATES:-the build}" && apt-get update && apt-get -y upgrade && rm -rf /var/lib/apt/lists/*
 # The tools are AppImages themselves; a container has no FUSE to mount them.
 ENV APPIMAGE_EXTRACT_AND_RUN=1 PATH=/opt/appimage:$PATH
 

@@ -41,14 +41,20 @@ linuxdeploy-x86_64.AppImage --appdir "$appdir" --executable "$appdir/usr/bin/mol
     --desktop-file "$appdir/usr/share/applications/molforma.desktop" \
     --icon-file "$appdir/usr/share/icons/hicolor/256x256/apps/molforma.png" \
     --deploy-deps-only "$appdir/usr/lib/openbabel/$babel" --plugin qt
+# OpenSSL stays the computer's (the Qt plugin has no exclude option): Qt loads its libssl at run time,
+# which cannot load beside an older libcrypto of ours, and its license does not go with the GPL version 2.
+rm -rf "$appdir"/usr/lib/libcrypto.so* "$appdir"/usr/lib/libssl.so* "$appdir/usr/share/doc/libssl3t64"
 
 # The licenses of what it holds: VTK's, and the copyright file of each Ubuntu package a bundled
-# library comes from.
+# library comes from, and of Qt's translations.
 mkdir -p "$appdir/usr/share/doc"
 cp -a /opt/vtk/share/licenses/VTK "$appdir/usr/share/doc/vtk"
-find "$appdir/usr" -name '*.so*' -type f -printf '/%f\n' | sort -u | while read -r name; do
-    dpkg -S "$name" 2>/dev/null | sed 's/: .*//; s/, /\n/g; s/:[a-z0-9]*$//mg' || true
-done | sort -u | while read -r package; do
+{
+    echo qt6-translations-l10n
+    find "$appdir/usr" -name '*.so*' -type f -printf '/%f\n' | sort -u | while read -r name; do
+        dpkg -S "$name" 2>/dev/null | sed 's/: .*//; s/, /\n/g; s/:[a-z0-9]*$//mg' || true
+    done
+} | sort -u | while read -r package; do
     if [ -f "/usr/share/doc/$package/copyright" ]; then
         mkdir -p "$appdir/usr/share/doc/$package"
         cp "/usr/share/doc/$package/copyright" "$appdir/usr/share/doc/$package/"

@@ -21,8 +21,10 @@ offered under GPL-2.0-only; binaries linked with Open Babel use Qt under that op
 Eigen (MPL-2.0), zlib (zlib license), RDKit and VTK (BSD-3-Clause) are compatible with GPL
 version 2.
 The AppImage made with packaging/appimage bundles these libraries and those they use,
-with their license texts in usr/share/doc; whoever distributes it distributes those
-binaries too, under their terms (for Open Babel and Qt, the GPL's source requirement).
+except OpenSSL, which it takes from the computer, with their license texts in
+usr/share/doc; whoever distributes it distributes those binaries too, under their terms
+(for Open Babel and Qt, the GPL's source requirement). Its release ZIP holds those texts in
+licenses/ too, and the release also offers the source of the Ubuntu packages it holds.
 On Windows, "cmake --install" likewise copies the DLLs of Qt, Open Babel, zlib (zlib
 license) and libxml2 (MIT) into the installed folder; whoever passes that folder on
 distributes them under the same terms.

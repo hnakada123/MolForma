@@ -4,14 +4,14 @@ How to make MolForma a single executable file that runs on any Linux distributio
 
 The computer that makes the AppImage can run any distribution: it needs Docker on x86-64 Linux. The computer that runs the AppImage needs an x86-64 Linux desktop with glibc 2.38 or later and the `libstdc++` of GCC 13 or later (Ubuntu 24.04 or later, Debian 13 or later, Fedora 39 or later, Arch Linux and others). These steps are for MolForma 1.0.0. They were checked on 2026-10-28 (see [Verified configuration](#verified-configuration)).
 
-No AppImage is distributed yet (as of 2026-10-28). Make one with these steps.
+A ready-built AppImage is in the ZIP (`MolForma-<version>-x86_64.zip`) on [Releases](https://github.com/hnakada123/MolForma/releases). Unpack it and go to [4. Start it](#4-start-it). To make one yourself, follow these steps.
 
 ## What the AppImage holds
 
 | Kind | Contents |
 | --- | --- |
 | Inside | MolForma, Qt 6.4.2 (the xcb and offscreen platforms and Qt's own translations), Open Babel 3.1.1 (format plugins and force-field data), RDKit 2023.09.3, VTK 9.7.1 (built for Qt 6), the libraries these use such as Boost, and the license of each library (`usr/share/doc`) |
-| Taken from the computer running it | glibc and `libstdc++`, OpenGL (the GPU driver), the basic X11 libraries (`libX11`, `libxcb` and so on), fontconfig, FreeType and HarfBuzz with the fonts, NWChem and MPI |
+| Taken from the computer running it | glibc and `libstdc++`, OpenSSL 3 (HTTPS connections), OpenGL (the GPU driver), the basic X11 libraries (`libX11`, `libxcb` and so on), fontconfig, FreeType and HarfBuzz with the fonts, NWChem and MPI |
 
 Desktops usually have the libraries taken from the computer. For the Japanese interface, a Japanese font must be installed on the computer.
 
@@ -41,6 +41,7 @@ docker build -t molforma-appimage packaging/appimage
 1. Installs the development packages for the build on Ubuntu 24.04. Ubuntu 24.04 is used for its older glibc, so that the AppImage runs on more distributions.
 2. Builds VTK 9.7.1 from source for Qt 6, only the parts MolForma uses. Ubuntu 24.04's VTK is built for Qt 5 and cannot be used as it is.
 3. Gets the tools that make the AppImage (linuxdeploy, linuxdeploy-plugin-qt, appimagetool and the AppImage runtime).
+4. Applies Ubuntu's updates.
 
 What it downloads is pinned by version and SHA-256. Building VTK takes a while: about 23 minutes on a 16-core computer (4 compile jobs at once). The image is about 2 GB. You make it only once and reuse it afterwards.
 
@@ -48,7 +49,7 @@ VTK's build runs 4 compile jobs at once by default. Using all cores at once can 
 
 ## 3. Make the AppImage
 
-In the folder of the source, run the commands below. This makes `build-appimage/MolForma-1.0.0-x86_64.AppImage` (about 100 MB) in about 3 minutes.
+In the folder of the source, run the commands below. This makes `build-appimage/MolForma-1.0.0-x86_64.AppImage` (about 110 MB) in about 3 minutes.
 
 ```sh
 mkdir -p build-appimage
@@ -61,7 +62,7 @@ The source folder is passed read-only, and the build happens inside the containe
 
 1. Builds MolForma and places it in the AppImage's contents (the AppDir). If RDKit or VTK cannot be used, it stops rather than make an AppImage with features missing.
 2. Copies Open Babel's format plugins and force-field data, and sets `BABEL_LIBDIR` and `BABEL_DATADIR` to them at startup.
-3. Gathers, with linuxdeploy, the libraries MolForma and the plugins use, and Qt's platforms and translations.
+3. Gathers, with linuxdeploy, the libraries MolForma and the plugins use, and Qt's platforms and translations. OpenSSL stays out, so that it matches the computer's `libssl`, which Qt loads at run time.
 4. Copies the license of each library to `usr/share/doc`.
 5. Packs everything into one file with appimagetool.
 
@@ -108,6 +109,22 @@ If you give the AppImage to others, follow the licenses of the software it holds
 - **MolForma (GPL-2.0-or-later), Open Babel (GPL-2.0-only) and Qt**: In binaries linked with Open Babel, Qt is used under the GPL-2.0 too (the repository's `NOTICE`). When distributing binaries, make the corresponding source available too. For MolForma, point to the source of the commit the AppImage was made from. The source of Open Babel, Qt and the other Ubuntu packages it holds is Ubuntu 24.04's source packages; VTK's is the 9.7.1 source from vtk.org.
 - **The others (RDKit, VTK, Boost and so on)**: Under BSD and similar licenses, they can be distributed with their license texts, which it holds.
 
+The files for [Releases](https://github.com/hnakada123/MolForma/releases) are made in the folder of the source as below. Ubuntu's mirror keeps the source of the newest versions only, so take the updates by giving `UPDATES` today's date, then make the AppImage and the sources in the same image.
+
+```sh
+docker build --build-arg UPDATES=$(date +%F) -t molforma-appimage packaging/appimage
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src:ro" -v "$PWD/build-appimage:/out" molforma-appimage
+docker run --rm -e OWNER="$(id -u):$(id -g)" -v "$PWD:/src:ro" -v "$PWD/build-appimage:/out" \
+    --entrypoint /src/packaging/appimage/release.sh molforma-appimage
+```
+
+This makes two files in `build-appimage/`. Tag the release `v<version>` (`SOURCES.txt` points to it).
+
+| File | Contents |
+| --- | --- |
+| `MolForma-1.0.0-x86_64.zip` | The AppImage, `README.txt`, `LICENSE`, `NOTICE`, `SOURCES.txt` (where the sources are) and `licenses/` (the licenses of the bundled libraries) |
+| `MolForma-1.0.0-third-party-sources.tar` | The source of the Ubuntu packages the AppImage holds (about 490 MB) |
+
 ## Troubleshooting
 
 | Symptom | Check and fix |
@@ -131,6 +148,8 @@ On 2026-10-28, an AppImage was made with these steps and the following was check
 - **Docker containers**: In Ubuntu 24.04, Debian 13, Fedora 39 and Fedora 40 containers, it was started unpacked (`--appimage-extract-and-run`). The containers had desktop-like libraries plus Xvfb with Mesa's software OpenGL. It reported version 1.0.0, built a 3D structure from SMILES, and showed its window with xcb and wrote a screenshot (on Ubuntu 24.04 and Fedora 40, the image also showed the 3D view drawn with VTK).
 - **Wayland sessions**: In an environment that looks like a Wayland session (`QT_QPA_PLATFORM` unset, `wayland;xcb` or `wayland`), it started with xcb.
 - **Ubuntu 26.04 container (with the `nwchem` package)**: A calculation with NWChem completed.
+
+On 2026-11-05, it was also checked on Arch Linux (OpenSSL 3.6.5) that the AppImage downloads a PDB entry over HTTPS.
 
 VTK rendering on a real GPU and the actual display on a Wayland desktop were not checked with the AppImage.
 
