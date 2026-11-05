@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 MolForma is a native Qt6 Widgets / C++20 molecular editor and NWChem input/run/result front end.
-The UI text and user docs (`README.md`, `docs/`) are Japanese, with an English UI and manual (`docs/en/`).
+The UI text and user docs (`README.md`, `docs/`) are Japanese, with an English UI, README (`README.en.md`) and manual (`docs/en/`).
 `AGENTS.md` has the same repository guidelines in a per-file form.
 
 ## Build and test
@@ -139,7 +139,7 @@ Key cross-cutting designs:
 - Add deterministic regression tests, especially for file compatibility, connectivity, geometry, undo and
   candidates. Preserve project envelope fields in `.molforma.json`.
 - Document feature limitations in the page of the screen in `docs/features/` (Japanese; `docs/features.md` lists the
-  pages); MCP tool changes belong in `docs/mcp.md`. Keep the English manuals `docs/en/features*` / `docs/en/mcp.md`
+  pages); MCP tool changes belong in `docs/mcp.md`. Keep `README.en.md` in step with `README.md`, and the English manuals `docs/en/features*` / `docs/en/mcp.md`
   and the recipes `docs/en/recipes*` (shown by the English UI) in step; `test_translations` compares their headings
   and checks that every embedded page's links and images exist. When a UI change alters a recipe's steps or a screen
   shown in the feature pages, update those pages (and their screenshots) too. `tools/screenshots` (see its README)

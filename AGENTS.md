@@ -115,8 +115,8 @@ Tests must not write the user's settings or data: redirect
 (autosave; MolForma honors them on Windows and macOS too) to temporary directories.
 Document limitations in the page of the screen in `docs/features/` (Japanese;
 `docs/features.md` lists the pages, screenshots in `docs/features/images/`); MCP
-tool changes belong in `docs/mcp.md`. Keep the English manuals
-`docs/en/features*` and `docs/en/mcp.md` in step with them. The recipes (`docs/recipes.md`,
+tool changes belong in `docs/mcp.md`. Keep `README.en.md` in step with `README.md`, and the
+English manuals `docs/en/features*` and `docs/en/mcp.md` in step with them. The recipes (`docs/recipes.md`,
 `docs/recipes/*.md`, screenshots in `docs/recipes/images/`, practice files
 in `docs/recipes/samples/`, embedded with the manual) have English versions under `docs/en/`; update
 both when a UI change alters a recipe's steps. `tools/screenshots` (see its
