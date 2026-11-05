@@ -2018,6 +2018,7 @@ class McpTest : public QObject {
             env.insert("QT_QPA_PLATFORM", "nonexistent-platform-plugin");
             env.insert("XDG_CONFIG_HOME", files.filePath("settings"));
             env.insert("XDG_DATA_HOME", files.filePath("data"));
+            env.insert("MOLFORMA_LANGUAGE", "ja"); // The messages checked here are Japanese.
             process.setProcessEnvironment(env);
             process.start(QCoreApplication::applicationDirPath() + "/molforma", QStringList{"--mcp"} + extra);
             return process.waitForStarted();
