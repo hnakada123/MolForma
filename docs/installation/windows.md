@@ -4,7 +4,9 @@ MolFormaをWindowsでMicrosoft Visual C++（MSVC）を使ってソースから�
 
 対象はWindows 11（x64）とMolForma 1.0.0です。2026-10-28に、Windows 11 HomeとVisual Studio Community 2026で手順を確認しました（[確認した構成](#確認した構成)）。
 
-MolFormaのWindows用のインストーラーや配布ファイルはありません。GitHubのソースからビルドし、`cmake --install` で、実行に必要なQt・Open BabelのファイルをまとめたMolFormaのフォルダーを作ります。NWChemはWindows版が公式には配布されていないため、WSLのUbuntuのパッケージを使い、MolFormaに付属する2つのバッチファイル（`nwchem.cmd`・`mpirun.cmd`）から起動します。WSLを使わずに、NWChemをWindowsネイティブにビルドする方法もあります（[WindowsでNWChemをビルドする](nwchem_mingw64.md)）。
+MolFormaのWindows用のインストーラーはありません。GitHubのソースからビルドし、`cmake --install` で、実行に必要なQt・Open BabelのファイルをまとめたMolFormaのフォルダーを作ります。NWChemはWindows版が公式には配布されていないため、WSLのUbuntuのパッケージを使い、MolFormaに付属する2つのバッチファイル（`nwchem.cmd`・`mpirun.cmd`）から起動します。WSLを使わずに、NWChemをWindowsネイティブにビルドする方法もあります（[WindowsでNWChemをビルドする](nwchem_mingw64.md)）。
+
+ビルド済みのフォルダーは、[Releases](https://github.com/hnakada123/MolForma/releases) のZIP（`MolForma-<版>-windows-x86_64.zip`）にあります。x64のWindows 11なら、ZIPを展開したフォルダーを好きな場所に置き、`bin\molforma.exe` を起動します。署名をしていないため、最初に「WindowsによってPCが保護されました」と表示されたら、「詳細情報」を押してから「実行」を押します。起動できないときは、最新の[Microsoft Visual C++ 再頒布可能パッケージ（x64）](https://aka.ms/vc14/vc_redist.x64.exe)を入れます。計算には[7. NWChemを入れる（WSL）](#7-nwchemを入れるwsl)も行います（`nwchem-wsl` は展開したフォルダーのものを指定します）。自分で作る場合は、次の手順です。
 
 ## 必要なソフトウェア
 
@@ -182,7 +184,9 @@ $s.TargetPath = "$env:LOCALAPPDATA\Programs\MolForma\bin\molforma.exe"
 $s.Save()
 ```
 
-MSVCの実行時ライブラリ（`MSVCP140.dll` など）はフォルダーに含めません。Visual Studioを入れたPCにはあります。フォルダーをほかのPCにコピーして使う場合は、そのPCに「Microsoft Visual C++ 再頒布可能パッケージ」（x64）を入れてください。
+MSVCの実行時ライブラリ（`MSVCP140.dll` など）はフォルダーに含めません。Visual Studioを入れたPCにはあります。フォルダーをほかのPCにコピーして使う場合は、そのPCに「Microsoft Visual C++ 再頒布可能パッケージ」（x64）を入れてください。`windeployqt` が `bin` に入れる `vc_redist.x64.exe` がそのインストーラーです。
+
+このフォルダーを人に配る場合は、[リリースのファイルを作る](#リリースのファイルを作る)の手順で作ってください。
 
 ## 7. NWChemを入れる（WSL）
 
@@ -228,6 +232,29 @@ MolFormaの「編集 → 環境設定」で、実行設定の既定値を次の�
 
 設定は `%APPDATA%\MolForma\MolForma.ini` に、未保存の作業の自動保存は `%LOCALAPPDATA%\MolForma\autosave` に置きます（Windowsのレジストリは使いません）。
 
+## リリースのファイルを作る
+
+[Releases](https://github.com/hnakada123/MolForma/releases) に載せるファイルは、「x64 Native Tools Command Prompt for VS」で、ソースのフォルダーから次のように作ります。上の手順のOpen Babel・RDKit・VTKは必須です。Qtには、ソースのコンポーネント（`C:\Qt\<版>\Src`）も入れておきます。
+
+```bat
+"C:\Program Files\Git\bin\bash.exe" packaging/windows/release.sh
+```
+
+ライブラリのフォルダーは環境変数 `DEV`（既定は `C:/dev`）で、Qtは `QT_PREFIX`（既定は `C:/Qt/6.12.0/msvc2022_64`）で指定します。スクリプトは次のことを行います。4コアのPCで、ビルドを除いて約5分かかります。
+
+1. `build-release` でMolFormaをビルドし、テストを実行します。
+2. `cmake --install` でフォルダーを作り、配布しないものを除きます。QtのOpenSSLのプラグイン（`qopensslbackend.dll`）は、OpenSSLのライセンスがGPL-2.0と両立しないため除きます（QtのTLSはWindowsのSchannelになります）。`windeployqt` が入れる `vc_redist.x64.exe`・`d3dcompiler_47.dll`・`dxcompiler.dll`・`dxil.dll` は、GPLのシステムライブラリの例外が、プログラムに添えて配る部品には及ばないため除き、`opengl32sw.dll`（ソフトウェアOpenGL）も、使わないので除きます。
+3. Qt・Open Babel・RDKit・VTK・vcpkgのライブラリのライセンスの文面と一覧を `licenses/` に集めます。
+4. すべてのプログラムとDLLがフォルダーとWindowsのものだけをリンクしていること、除いたものがないこと、最小のPATHでフォルダーの `molforma.exe` が起動することを確かめます（ウィンドウが一瞬表示されます）。
+5. `build-release/` に次の2つのファイルを作ります。
+
+| ファイル | 内容 |
+| --- | --- |
+| `MolForma-<版>-windows-x86_64.zip` | MolFormaのフォルダーと、`README.txt`、`LICENSE`、`NOTICE`、`SOURCES.txt`（ソースの入手先）、`licenses/`（同梱ライブラリのライセンス） |
+| `MolForma-<版>-windows-third-party-sources.tar` | Qtのモジュール（`qtbase`・`qtsvg`・`qtimageformats`・`qttranslations`）、Open Babel、RDKit、VTK、vcpkgのBoost・Eigen・zlib・libxml2のソースとパッチ（約340 MB） |
+
+`SOURCES.txt` は、作ったコミットのソースとリリースのタグ `v<版>` を指します。ソースを公開するため、スクリプトは変更のない、プッシュしたコミットでだけ動きます。試すときは、環境変数 `DRAFT` に `1` を設定してから実行します。
+
 ## 更新・削除
 
 ### 更新する
@@ -263,6 +290,8 @@ Qtの版を変えた場合は、VTKもそのQtでビルドし直し、MolForma�
 | 整形で「この構造に使える力場パラメータがありません」と出る | Open Babelのデータ（`bin\data`）が見つかっていません。インストールしたフォルダーなら `bin\data` があるか、ビルドしたフォルダーの `molforma.exe` なら `C:\dev\openbabel-install\bin\data` があるか確認します。環境変数 `BABEL_DATADIR` を設定している場合は、その値が優先されます |
 | `build\molforma.exe` やテストが `Qt6Core.dll` などが見つからないというエラーで起動しない | DLLは実行ファイルをリンクしたときに `build` にコピーします。Qt・Open Babel・RDKit・VTKを入れ直した後や、`build` のDLLを消した後は、`build` の `*.exe` を削除して `cmake --build build` で作り直します |
 | 「実行前の確認」でNWChem実行ファイルやMPIランチャーが見つからない | 「3 実行設定」のパスが `nwchem-wsl` の2つのバッチファイルを指しているか確認します |
+| 配布のフォルダーの `molforma.exe` を起動すると `VCRUNTIME140.dll` や `MSVCP140.dll` がないと表示される、またはすぐに終了する | 最新の[Microsoft Visual C++ 再頒布可能パッケージ（x64）](https://aka.ms/vc14/vc_redist.x64.exe)を入れます |
+| 「WindowsによってPCが保護されました」と表示される | 配布のフォルダーは署名をしていません。「詳細情報」を押してから「実行」を押します |
 | 計算がすぐに失敗し、ログ（標準エラー）に `wsl` のエラーが出る | コマンドプロンプトで `wsl nwchem` と `wsl mpirun --version` が動くか確認します。既定でないWSLディストリビューションを使う場合は、バッチファイルの `wsl.exe` の後に `-d <ディストリビューション名>` を加えます |
 | 標準エラーに `your 131072x1 screen size is bogus. expect trouble` と出る | WSLの `ps` などが出す警告で、計算には影響しません |
 
@@ -290,5 +319,14 @@ Qtの版を変えた場合は、VTKもそのQtでビルドし直し、MolForma�
 | NWChem・Open MPI（WSL） | 7.2.2・4.1.6 |
 
 vcpkgは、Visual Studioに付属する `vcpkg.exe` と、それに合う版のポート（タグ `2026.06.24`）を使いました。Windows 10とARM64のWindowsは確認していません。
+
+2026-11-05に、Qt 6.12.0（ほかは上の表と同じ）で `packaging/windows/release.sh` を実行し、CTestの16件すべてが通ることを確かめました。作ったZIP（75 MB）を、空白と日本語を含むパスにPowerShellの `Expand-Archive` で展開し、ダウンロードの印（Zone.Identifier）を付けて、最小のPATHで次のことを確かめました。
+
+- 読み込まれるDLLがフォルダーとWindowsのものだけであり、OpenSSLがないこと。
+- メチルシクロヘキサンのSMILESから3D構造を生成でき、3D画面をVTK（GPUのOpenGL）で描画すること。`MOLFORMA_RENDERER=painter` でも描画できること。
+- PDBからのダウンロード（1CRN）が、WindowsのSchannelでできること。
+- フォルダーの `nwchem-wsl\mpirun.cmd` と `nwchem.cmd` を実行設定に指定し、WSLのNWChemでMPI 2プロセスの水のHF/STO-3G計算が完了すること。
+
+MSVCの実行時ライブラリのないPC、OpenGLを使えないPCでの起動は確認していません。
 
 関連: [OS別インストール・必要パッケージ](../installation.md)、[3D描画](../features/rendering.md)、[「3 実行設定」](../features/execution.md)

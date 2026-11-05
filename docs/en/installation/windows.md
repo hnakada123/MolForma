@@ -4,7 +4,9 @@ How to build MolForma from source on Windows with Microsoft Visual C++ (MSVC) an
 
 The steps are for Windows 11 (x64) and MolForma 1.0.0. They were checked on 2026-10-28 on Windows 11 Home with Visual Studio Community 2026 ([Verified configuration](#verified-configuration)).
 
-There is no installer or binary download of MolForma for Windows. You build it from the source on GitHub, and `cmake --install` makes a MolForma folder that holds the Qt and Open Babel files it needs. NWChem has no official Windows build, so the Ubuntu package in WSL is used, started through two batch files that come with MolForma (`nwchem.cmd` and `mpirun.cmd`). NWChem can also be built as a native Windows program, without WSL ([Building NWChem on Windows](nwchem_mingw64.md)).
+There is no installer of MolForma for Windows. You build it from the source on GitHub, and `cmake --install` makes a MolForma folder that holds the Qt and Open Babel files it needs. NWChem has no official Windows build, so the Ubuntu package in WSL is used, started through two batch files that come with MolForma (`nwchem.cmd` and `mpirun.cmd`). NWChem can also be built as a native Windows program, without WSL ([Building NWChem on Windows](nwchem_mingw64.md)).
+
+A ready-built folder is in the ZIP on [Releases](https://github.com/hnakada123/MolForma/releases) (`MolForma-<version>-windows-x86_64.zip`). On Windows 11 (x64), keep the unpacked folder where you like and start `bin\molforma.exe`. MolForma is not signed, so if “Windows protected your PC” appears the first time, press “More info”, then “Run anyway”. If it does not start, install the latest [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe). Calculations also need [7. Install NWChem (WSL)](#7-install-nwchem-wsl) (with `nwchem-wsl` of the unpacked folder). To make it yourself, follow these steps.
 
 ## Required software
 
@@ -182,7 +184,9 @@ $s.TargetPath = "$env:LOCALAPPDATA\Programs\MolForma\bin\molforma.exe"
 $s.Save()
 ```
 
-The MSVC runtime (`MSVCP140.dll` and others) is not in the folder; a PC with Visual Studio has it. To use the folder on another PC, install the “Microsoft Visual C++ Redistributable” (x64) there.
+The MSVC runtime (`MSVCP140.dll` and others) is not in the folder; a PC with Visual Studio has it. To use the folder on another PC, install the “Microsoft Visual C++ Redistributable” (x64) there: `vc_redist.x64.exe`, which `windeployqt` puts into `bin`, is its installer.
+
+To give this folder to others, make it as in [Making the release files](#making-the-release-files).
 
 ## 7. Install NWChem (WSL)
 
@@ -228,6 +232,29 @@ Start MolForma from “MolForma” in the Start menu or from `%LOCALAPPDATA%\Pro
 
 The settings are kept in `%APPDATA%\MolForma\MolForma.ini` and the autosave copies of unsaved work in `%LOCALAPPDATA%\MolForma\autosave` (the Windows registry is not used).
 
+## Making the release files
+
+The files on [Releases](https://github.com/hnakada123/MolForma/releases) are made in the “x64 Native Tools Command Prompt for VS”, in the source folder, as follows. Open Babel, RDKit and VTK of the steps above are required, and Qt needs its source component too (`C:\Qt\<version>\Src`).
+
+```bat
+"C:\Program Files\Git\bin\bash.exe" packaging/windows/release.sh
+```
+
+The environment variable `DEV` names the folder of the libraries (by default `C:/dev`) and `QT_PREFIX` the Qt (by default `C:/Qt/6.12.0/msvc2022_64`). The script does the following, in about 5 minutes on a 4-core PC apart from the build.
+
+1. It builds MolForma in `build-release` and runs the tests.
+2. It makes the folder with `cmake --install` and takes out what is not distributed. Qt's OpenSSL plugin (`qopensslbackend.dll`) goes because OpenSSL's license does not go with the GPL version 2 (Qt's TLS is then Windows' Schannel). `vc_redist.x64.exe`, `d3dcompiler_47.dll`, `dxcompiler.dll` and `dxil.dll`, which `windeployqt` adds, go because the GPL's exception for system libraries does not reach parts handed out with the program, and `opengl32sw.dll` (software OpenGL) because nothing uses it.
+3. It collects the license texts of Qt, Open Babel, RDKit, VTK and the vcpkg libraries, and a list of them, in `licenses/`.
+4. It checks that all programs and DLLs link only what the folder and Windows have, that what was taken out is gone, and that the folder's `molforma.exe` starts with a minimal PATH (a window appears for a moment).
+5. It makes these two files in `build-release/`.
+
+| File | Contents |
+| --- | --- |
+| `MolForma-<version>-windows-x86_64.zip` | The MolForma folder with `README.txt`, `LICENSE`, `NOTICE`, `SOURCES.txt` (where the sources are) and `licenses/` (the licenses of the bundled libraries) |
+| `MolForma-<version>-windows-third-party-sources.tar` | The sources and patches of Qt's modules (`qtbase`, `qtsvg`, `qtimageformats`, `qttranslations`), Open Babel, RDKit, VTK, and Boost, Eigen, zlib and libxml2 of vcpkg (about 340 MB) |
+
+`SOURCES.txt` points to the source of the commit it was made from and to the release tag `v<version>`. Since the source must be public, the script runs only on a clean, pushed commit. For a trial, set the environment variable `DRAFT` to `1` first.
+
 ## Updating and removing
 
 ### Updating
@@ -262,6 +289,8 @@ Delete the installed folder `%LOCALAPPDATA%\Programs\MolForma` and, if you made 
 | 3D generation from SMILES or parts says that two atoms overlap at the same position (especially for molecules with rings) | Open Babel's data was checked out with CRLF. Get the source again with the `-c` options of `git clone` in [3. Build Open Babel](#3-build-open-babel), delete `build` and `C:\dev\openbabel-install`, and build again |
 | Cleanup says that no force-field parameters fit this structure | Open Babel's data (`bin\data`) is not found. For the installed folder, check that `bin\data` exists; for `molforma.exe` in the build folder, check `C:\dev\openbabel-install\bin\data`. The environment variable `BABEL_DATADIR`, if set, takes precedence |
 | `build\molforma.exe` or the tests do not start because `Qt6Core.dll` or another DLL is missing | The DLLs are copied into `build` when an executable is linked. After reinstalling Qt, Open Babel, RDKit or VTK, or deleting DLLs from `build`, delete the `*.exe` files in `build` and run `cmake --build build` again |
+| `molforma.exe` of the released folder reports that `VCRUNTIME140.dll` or `MSVCP140.dll` is missing, or stops at once | Install the latest [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe) |
+| “Windows protected your PC” appears | The released folder is not signed. Press “More info”, then “Run anyway” |
 | The pre-run check does not find the NWChem executable or the MPI launcher | Check that the paths in “3 Run settings” point to the two batch files in `nwchem-wsl` |
 | The calculation fails at once and the log (standard error) shows an error of `wsl` | Check in the command prompt that `wsl nwchem` and `wsl mpirun --version` work. For a WSL distribution that is not the default, add `-d <distribution name>` after `wsl.exe` in the batch files |
 | Standard error shows `your 131072x1 screen size is bogus. expect trouble` | A warning of `ps` and similar programs in WSL; it does not affect the calculation |
@@ -290,5 +319,14 @@ On 2026-10-28 the following was checked with this configuration:
 | NWChem, Open MPI (WSL) | 7.2.2, 4.1.6 |
 
 vcpkg was the `vcpkg.exe` that comes with Visual Studio, with the ports of the matching version (tag `2026.06.24`). Windows 10 and Windows on ARM64 were not checked.
+
+On 2026-11-05, `packaging/windows/release.sh` ran with Qt 6.12.0 (the rest as in the table above) and all 16 CTest tests passed. The ZIP it made (75 MB) was unpacked with PowerShell's `Expand-Archive` into a path with a space and Japanese, given the mark of a download (Zone.Identifier), and checked with a minimal PATH:
+
+- The DLLs loaded are only those of the folder and Windows, with no OpenSSL.
+- A 3D structure is generated from the SMILES of methylcyclohexane, and the 3D view draws with VTK (GPU OpenGL). It draws with `MOLFORMA_RENDERER=painter` too.
+- Downloading from the PDB (1CRN) works through Windows' Schannel.
+- With the folder's `nwchem-wsl\mpirun.cmd` and `nwchem.cmd` in the run settings, an HF/STO-3G calculation of water with 2 MPI processes completes with NWChem in WSL.
+
+Starting on a PC without the MSVC runtime, or without OpenGL, was not checked.
 
 Related: [Installation and required packages by OS](../installation.md), [3D rendering](../features/rendering.md), [“3 Run settings”](../features/execution.md)

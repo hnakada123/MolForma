@@ -113,7 +113,8 @@ Key cross-cutting designs:
   build is also the check that the code still builds and passes with Qt 6.4. On Windows MSVC builds find Open Babel
   through its CMake package (no pkg-config), keep preferences in an INI file (`model/settings.h`), and `cmake --install`
   makes a self-contained folder with windeployqt plus `packaging/windows/` (batch files that run NWChem in WSL; its
-  `copy_runtime.cmake` also copies the DLLs beside each executable of the build folder after linking); see
+  `copy_runtime.cmake` also copies the DLLs beside each executable of the build folder after linking; `release.sh` makes
+  the release ZIP and the tar of the sources, without Qt's OpenSSL plugin and the Microsoft DLLs windeployqt adds); see
   `docs/installation/windows.md`. On macOS (Homebrew), `cmake --install` / `cpack -G DragNDrop` make `MolForma.app`
   and a disk image (`packaging/macos/`: `Info.plist.in`, the icon, and `bundle.cmake`, which runs macdeployqt for Qt,
   copies Open Babel's plugins, the other libraries and their license files into the bundle, points every reference

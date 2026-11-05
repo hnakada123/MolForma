@@ -29,7 +29,11 @@ holds, of the AppImage's runtime with the libraries it links statically (libfuse
 LGPL version 2.1, and squashfuse, musl, zstd, zlib and mimalloc) and of what makes its AppRun.
 On Windows, "cmake --install" likewise copies the DLLs of Qt, Open Babel, zlib (zlib
 license) and libxml2 (MIT) into the installed folder; whoever passes that folder on
-distributes them under the same terms.
+distributes them under the same terms. The folder of a release (packaging/windows/release.sh)
+leaves out what does not go with the GPL version 2 or MolForma does not need: Qt's OpenSSL
+backend, so that Qt's TLS is Windows' own, and Microsoft's runtime and compiler DLLs, which
+come from the computer. Its release ZIP holds the license texts in licenses/, and the release
+also offers the source of the libraries it holds.
 On macOS, MolForma.app made with "cpack -G DragNDrop" (packaging/macos) holds the Qt,
 Open Babel, RDKit, VTK and other Homebrew libraries it uses, with the license files of
 their packages and a list of those packages and their licenses in
