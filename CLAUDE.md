@@ -119,7 +119,9 @@ Key cross-cutting designs:
   copies Open Babel's plugins, the other libraries and their license files into the bundle, points every reference
   at the copies through `@rpath` and signs it ad hoc); `main()` points `BABEL_LIBDIR`/`BABEL_DATADIR` into the bundle
   and adds Homebrew's `bin` to `PATH`, and opens files sent by Finder; see `docs/installation/macos.md`. The build
-  folder keeps a plain `build/molforma`.
+  folder keeps a plain `build/molforma`. `packaging/macos/release.sh` makes the release ZIP (the disk image, licenses and
+  list of sources) and the tar of the sources in `build-release`, with a Qt it builds without OpenSSL from Homebrew's
+  sources and options: Homebrew's Qt links OpenSSL, whose license does not go with the GPL version 2.
 - `docs/` is also the source of the GitHub Pages site https://hnakada123.github.io/MolForma/: on pushes to main that
   touch `docs/`, `.github/workflows/pages.yml` generates the HTML with Jekyll (`docs/Gemfile` + `Gemfile.lock`, the
   `github-pages` gem) and publishes that HTML (Pages source: GitHub Actions). Preview locally with

@@ -6,6 +6,8 @@ These steps are for macOS 27 on Apple silicon Macs (arm64) and MolForma 1.0.0. T
 
 MolForma has no package in Homebrew (as of 2026-11-04). You build it from the source on GitHub and make a DMG (`MolForma-1.0.0-arm64.dmg`) with CPack, which comes with CMake. `MolForma.app` holds all the libraries it uses (Qt, Open Babel, RDKit, VTK and others) and loads no library from Homebrew's folders. Once installed, it keeps working when Homebrew's libraries are upgraded or removed. NWChem is not included; install it separately.
 
+A ready-built DMG is in the ZIP on [Releases](https://github.com/hnakada123/MolForma/releases) (`MolForma-<version>-macos-arm64.zip`). On an Apple silicon Mac with macOS 27 or later, unpack the ZIP and go to [6. Install](#6-install). The check when opening it the first time is described in [Using it on other Macs and distributing it](#using-it-on-other-macs-and-distributing-it). For calculations, also do [3. Install NWChem](#3-install-nwchem). To make it yourself, follow the steps below.
+
 ## Required packages
 
 The build needs the following (see [1. Install the Command Line Tools and Homebrew](#1-install-the-command-line-tools-and-homebrew) and [2. Install the packages](#2-install-the-packages)).
@@ -169,6 +171,30 @@ The DMG works on Macs of the same kind (Apple silicon) with the same or a newer 
 
 - **Opening it the first time**: As the app is not signed with a Developer ID nor notarized, the app of a DMG received over the internet or AirDrop shows a message such as "“MolForma” can't be opened" the first time. Press "Open Anyway" under "System Settings → Privacy & Security", then open it again. Running `xattr -dr com.apple.quarantine /Applications/MolForma.app` in Terminal after installing it also lets it open. A DMG made on your own Mac opens without this check.
 - **Licenses**: To give the DMG to others, follow the licenses of the software it holds. `MolForma.app/Contents/Resources/licenses` holds the license texts of each package (where the Homebrew package has them) and `packages.txt`, a list of the package names, versions and licenses. For MolForma (GPL-2.0-or-later), Open Babel (GPL-2.0-only) and Qt, which is used under GPL-2.0 because it is linked with Open Babel, make the corresponding source available when you distribute the binaries (see `NOTICE` in the repository). Point to the source of the commit the DMG was made from for MolForma, and to the source of the versions in `packages.txt` for the other packages.
+- **OpenSSL**: Homebrew's Qt links OpenSSL (Apache-2.0), so the DMG of [5. Make the DMG](#5-make-the-dmg) holds OpenSSL too. As OpenSSL's license does not go with GPL-2.0, make a DMG for others as in [Making the release files](#making-the-release-files).
+
+## Making the release files
+
+The files for [Releases](https://github.com/hnakada123/MolForma/releases) are made in the source folder as follows. Of the packages above, RDKit, VTK and `qttranslations` are required for this.
+
+```sh
+packaging/macos/release.sh
+```
+
+The script does the following. The first run, with the build of Qt, takes about 20 minutes and downloads a few hundred MB of sources. Finished stages are not repeated; delete `build-release` to start again.
+
+1. Builds the source and patches of the installed versions of `qtbase` and `qtsvg` with Homebrew's options, without OpenSSL. Qt's TLS is then macOS's SecureTransport (up to TLS 1.2). Vulkan is off too (`molten-vk`, which Homebrew's build uses, is not needed).
+2. Builds MolForma with that Qt and runs the tests.
+3. Downloads the source of the installed versions of the Homebrew packages in the app. Where they are comes from each package's `sbom.spdx.json` and its formula as installed (`.brew/*.rb`). For packages without license texts in Homebrew's folders, it takes the texts from the source and puts them into the app.
+4. Makes the DMG and checks that it holds nothing of OpenSSL, that every Qt module is the one built here, and that no program or library links anything outside the app.
+5. Makes these two files in `build-release/`.
+
+| File | What it is |
+| --- | --- |
+| `MolForma-<version>-macos-arm64.zip` | The DMG, `README.txt`, `LICENSE`, `NOTICE`, `SOURCES.txt` (where the source is), `licenses/` (the licenses of the bundled libraries) |
+| `MolForma-<version>-macos-third-party-sources.tar` | The source of the packages in the DMG, with their patches and Homebrew's formulae (about 570 MB) |
+
+`SOURCES.txt` points to the source of the commit it was made from and to the release tag `v<version>`. As the source must be public, the script runs only on a pushed commit without changes. For a trial, use `DRAFT=1 packaging/macos/release.sh`.
 
 ## Updating and removing
 
@@ -203,6 +229,7 @@ The application settings (`~/Library/Preferences/MolForma/MolForma.ini`), autosa
 | `MolForma rendering: QPainter (Qt6-enabled VTK development package not found)` appears | Install it with `brew install vtk` and start again from configuring |
 | `cpack` stops with `… not found in …` | A library to put into the app is not found in Homebrew's folders. After `brew upgrade`, delete `build` and start again from configuring |
 | Opening it shows "“MolForma” can't be opened", "the developer cannot be verified" or similar | It is the app of a DMG you received. As in [Using it on other Macs and distributing it](#using-it-on-other-macs-and-distributing-it), press "Open Anyway" under "Privacy & Security", or run `xattr -dr com.apple.quarantine /Applications/MolForma.app` |
+| `release.sh` stops with `wrong SHA-256` | A downloaded file differs from Homebrew's record. It may have been altered on the way, so find the cause before going on |
 | "“MolForma” is damaged and can't be opened" appears | Its signature is broken. Make the DMG again and install it again. Changing files inside the app also leads to this message |
 | `molforma: command not found` appears | Make the link and the PATH setting of [6. Install](#6-install) and open Terminal again |
 | "Pre-run check" cannot find NWChem or the MPI launcher | Check `command -v nwchem mpirun` in Terminal. If NWChem is installed elsewhere than `/opt/homebrew/bin` or `/usr/local/bin`, set its path in "3 Run settings" |
@@ -219,6 +246,7 @@ On 2026-11-04 and 05, on an Apple silicon Mac (macOS 27.0.1, arm64, 10 cores, 32
 - The `MolForma.app` copied from the DMG loads no library from Homebrew's folders (`DYLD_PRINT_LIBRARIES`), takes a picture (`--screenshot`) of the window with a project file open, uses the Open Babel plugins in the app for a 3D structure from SMILES, and reads a file opened from Finder (`open -a`).
 - Started with the minimal PATH that apps started from Finder or the Dock get (`/usr/bin:/bin:/usr/sbin:/sbin`), `MolForma.app` finds NWChem and `mpirun` in `/opt/homebrew/bin` with the default run settings and completes a calculation of the hydrogen molecule with 2 MPI processes.
 - Without `~/.nwchemrc`, `mpirun -np 2 nwchem` completes an HF/6-31G* calculation of the hydrogen molecule with an SCF energy of −1.126755317965 Hartree. MolForma's run settings test (the optional test with a real NWChem, see ["3 Run settings"](../features/execution.md)) completes a water HF/STO-3G calculation with 2 MPI processes, with an SCF energy of −74.945628203255 Hartree.
+- On 2026-11-05, the DMG made by `packaging/macos/release.sh` (84 MB) was checked as follows. Every Qt module is the one the script built, and there are no OpenSSL files. All 16 CTest tests pass with that Qt. In a sandbox (`sandbox-exec`) that cannot read `/opt/homebrew` or `/usr/local`, it starts and loads only libraries from the app and from macOS. In the same sandbox, a 3D structure from SMILES and a download from the PDB (1CRN) work (checked on a copy with an added offscreen display plugin, to operate it). With the minimal PATH, an SCF calculation of water with 2 MPI processes completes. `xattr -dr` removes the download mark (`com.apple.quarantine`) from the app of a DMG that carries it.
 
 | Item | Version |
 | --- | --- |
@@ -231,6 +259,6 @@ On 2026-11-04 and 05, on an Apple silicon Mac (macOS 27.0.1, arm64, 10 cores, 32
 | NWChem | 7.3.1 |
 | Open MPI | 5.0.11 |
 
-Intel Macs (where Homebrew goes into `/usr/local`), macOS 26 and earlier, starting on a Mac without Homebrew, the check shown when opening a received DMG, and long interactive use have not been checked.
+Intel Macs (where Homebrew goes into `/usr/local`), macOS 26 and earlier, starting on an actual Mac without Homebrew, the check shown when opening a received DMG, and long interactive use have not been checked.
 
 Related: [Installation and required packages by OS](../installation.md), [3D rendering](../features/rendering.md), ["3 Run settings"](../features/execution.md), [MCP](../mcp.md)

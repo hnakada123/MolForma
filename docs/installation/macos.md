@@ -6,6 +6,8 @@ MolFormaをmacOSでソースからビルドし、アプリケーション（`Mol
 
 MolFormaのパッケージは、Homebrewにはありません（2026-11-04時点）。GitHubのソースからビルドし、CMakeに含まれるCPackでDMG（`MolForma-1.0.0-arm64.dmg`）を作ります。`MolForma.app` は、使うライブラリ（Qt・Open Babel・RDKit・VTKなど）をすべて含み、Homebrewのフォルダーのライブラリを読み込みません。インストールした後は、Homebrewのライブラリを更新・削除しても動きます。NWChemは含まないので、別に入れます。
 
+ビルド済みのDMGは、[Releases](https://github.com/hnakada123/MolForma/releases) のZIP（`MolForma-<版>-macos-arm64.zip`）にあります。Apple siliconのMacでmacOS 27以降なら、ZIPを展開して[6. インストールする](#6-インストールする)に進んでください。初めて開くときの確認は[ほかのMacで使う・配布するとき](#ほかのmacで使う配布するとき)にあります。計算には[3. NWChemを入れる](#3-nwchemを入れる)も行います。自分で作る場合は、次の手順です。
+
 ## 必要なパッケージ
 
 ビルドには、次のものを入れます（[1. Command Line ToolsとHomebrewを入れる](#1-command-line-toolsとhomebrewを入れる)、[2. パッケージを入れる](#2-パッケージを入れる)）。
@@ -169,6 +171,30 @@ DMGは、作ったMacと同じ種類（Apple silicon）で、同じかより新�
 
 - **初めて開くとき**: 開発者IDで署名・公証していないため、インターネットやAirDropで受け取ったDMGのアプリは、初めて開くときに「“MolForma”を開けません」などと表示されます。「システム設定 → プライバシーとセキュリティ」の下に出る「このまま開く」を押してから、もう一度開きます。ターミナルで、インストールした後に `xattr -dr com.apple.quarantine /Applications/MolForma.app` を実行しても開けます。自分のMacで作ったDMGは、この確認なしで開きます。
 - **ライセンス**: DMGを人に配る場合は、含めたソフトウェアのライセンスに従ってください。`MolForma.app/Contents/Resources/licenses` に、各パッケージのライセンスの文面（Homebrewのパッケージにある場合）と、パッケージ名・版・ライセンスの一覧 `packages.txt` があります。MolForma（GPL-2.0-or-later）、Open Babel（GPL-2.0-only）、Open BabelとリンクしたためGPL-2.0の条件で使うQtは、バイナリを配るときに対応するソースも入手できるようにします（リポジトリの `NOTICE`）。MolFormaはDMGを作ったコミットのソースを示し、ほかのパッケージは `packages.txt` の版のソースを示してください。
+- **OpenSSL**: HomebrewのQtはOpenSSL（Apache-2.0）をリンクしていて、[5. DMGを作る](#5-dmgを作る)のDMGにはOpenSSLも入ります。OpenSSLのライセンスはGPL-2.0と両立しないため、人に配るDMGは、[リリースのファイルを作る](#リリースのファイルを作る)の手順で作ってください。
+
+## リリースのファイルを作る
+
+[Releases](https://github.com/hnakada123/MolForma/releases) に載せるファイルは、ソースのフォルダーで次のように作ります。上の手順のパッケージのうち、RDKit・VTK・`qttranslations` は必須です。
+
+```sh
+packaging/macos/release.sh
+```
+
+スクリプトは次のことを行います。Qtのビルドを含めて初回は約20分かかり、数百MBのソースをダウンロードします。終わった段階はやり直さないので、最初から作り直す場合は `build-release` を削除します。
+
+1. インストールされている版の `qtbase`・`qtsvg` のソースとパッチを、Homebrewのものと同じオプションで、OpenSSLを除いてビルドします。QtのTLSは、macOSのSecureTransport（TLS 1.2まで）になります。Vulkanも無効です（Homebrewのビルドで使う `molten-vk` を入れないため）。
+2. そのQtでMolFormaをビルドし、テストを実行します。
+3. アプリに入るHomebrewのパッケージについて、インストールされている版のソースをダウンロードします。ソースの場所は各パッケージの `sbom.spdx.json` と、インストール時のformula（`.brew/*.rb`）にあります。ライセンスの文面がHomebrewのフォルダーにないパッケージは、ソースから取り出してアプリに入れます。
+4. DMGを作り、OpenSSLが入っていないこと、Qtのすべてのモジュールがこのビルドのものであること、すべてのプログラムとライブラリがアプリの外のライブラリをリンクしていないことを確かめます。
+5. `build-release/` に次の2つのファイルを作ります。
+
+| ファイル | 内容 |
+| --- | --- |
+| `MolForma-<版>-macos-arm64.zip` | DMG、`README.txt`、`LICENSE`、`NOTICE`、`SOURCES.txt`（ソースの入手先）、`licenses/`（同梱ライブラリのライセンス） |
+| `MolForma-<版>-macos-third-party-sources.tar` | DMGに入っているパッケージのソース、パッチ、Homebrewのformula（約570 MB） |
+
+`SOURCES.txt` は、作ったコミットのソースとリリースのタグ `v<版>` を指します。ソースを公開するため、スクリプトは変更のない、プッシュしたコミットでだけ動きます。試すときは `DRAFT=1 packaging/macos/release.sh` とします。
 
 ## 更新・削除
 
@@ -203,6 +229,7 @@ MolFormaを終了してから、新しいDMGの `MolForma` を「アプリケー
 | `MolForma rendering: QPainter (Qt6-enabled VTK development package not found)` と出る | `brew install vtk` で入れ、構成からやり直します |
 | `cpack` が `… not found in …` で止まる | アプリに入れるライブラリが、Homebrewのフォルダーに見つかりません。`brew upgrade` の後なら、`build` を削除して構成からやり直します |
 | 開くと「“MolForma”を開けません」「開発元を検証できません」などと表示される | 受け取ったDMGのアプリです。[ほかのMacで使う・配布するとき](#ほかのmacで使う配布するとき)のとおり、「プライバシーとセキュリティ」の「このまま開く」を押すか、`xattr -dr com.apple.quarantine /Applications/MolForma.app` を実行します |
+| `release.sh` が `wrong SHA-256` で止まる | ダウンロードしたファイルが、Homebrewの記録と違います。ネットワークの途中で書き換えられた可能性もあるため、そのまま進めずに原因を確かめてください |
 | 「“MolForma”は壊れているため開けません」と表示される | 署名が壊れています。DMGを作り直し、インストールし直します。アプリの中のファイルを書き換えた場合も、この表示になります |
 | `molforma: command not found` と出る | [6. インストールする](#6-インストールする)のリンクとPATHの設定を行い、ターミナルを開き直します |
 | 「実行前の確認」でNWChemやMPIランチャーが見つからない | ターミナルで `command -v nwchem mpirun` を確認します。`/opt/homebrew/bin`・`/usr/local/bin` 以外にNWChemを入れた場合は、「3 実行設定」でパスを指定します |
@@ -219,6 +246,7 @@ MolFormaを終了してから、新しいDMGの `MolForma` を「アプリケー
 - DMGからコピーした `MolForma.app` で、次のことができること。読み込まれるライブラリ（`DYLD_PRINT_LIBRARIES`）に、Homebrewのフォルダーのものが1つもないこと。プロジェクトファイルを開いた画面の写真（`--screenshot`）を撮れること。SMILESからの3D構造で、アプリの中のOpen Babelのプラグインが使われること。Finderから開いたファイル（`open -a`）が読み込まれること。
 - FinderやDockから起動したときと同じ最小のPATH（`/usr/bin:/bin:/usr/sbin:/sbin`）で起動した `MolForma.app` が、既定の実行設定のまま `/opt/homebrew/bin` のNWChemと `mpirun` を見つけ、MPI 2プロセスの水素分子の計算を完了すること。
 - `~/.nwchemrc` を置かずに `mpirun -np 2 nwchem` で水素分子のHF/6-31G*計算が完了し、SCFエネルギーが −1.126755317965 Hartree になること。MolFormaの実行設定のテスト（実際のNWChemを使う任意のテスト、[「3 実行設定」](../features/execution.md)）で、MPI 2プロセスの水のHF/STO-3G計算が完了し、SCFエネルギーが −74.945628203255 Hartree になること。
+- 2026-11-05に `packaging/macos/release.sh` で作ったDMG（84 MB）で、次のことを確かめました。Qtのすべてのモジュールがこのスクリプトでビルドしたものであり、OpenSSLのファイルがないこと。そのQtでCTestの16件が通ること。`/opt/homebrew`・`/usr/local` を読めなくしたサンドボックス（`sandbox-exec`）で起動し、読み込まれるライブラリがアプリの中とmacOSのものだけであること。同じサンドボックスで、SMILESからの3D構造とPDBからのダウンロード（1CRN）ができること（操作のためにoffscreenの表示部品を足したコピーで確認）。最小のPATHで、MPI 2プロセスの水のSCF計算が完了すること。ダウンロードの印（`com.apple.quarantine`）を付けたDMGのアプリから、`xattr -dr` で印を取り除けること。
 
 | 項目 | 版 |
 | --- | --- |
@@ -231,6 +259,6 @@ MolFormaを終了してから、新しいDMGの `MolForma` を「アプリケー
 | NWChem | 7.3.1 |
 | Open MPI | 5.0.11 |
 
-IntelのMac（Homebrewは `/usr/local` に入ります）、macOS 26以前、Homebrewを入れていないMacでの起動、受け取ったDMGを開くときの確認の表示、画面を操作しての長時間の利用は確認していません。
+IntelのMac（Homebrewは `/usr/local` に入ります）、macOS 26以前、Homebrewを入れていない実機での起動、受け取ったDMGを開くときの確認の表示、画面を操作しての長時間の利用は確認していません。
 
 関連: [OS別インストール・必要パッケージ](../installation.md)、[3D描画](../features/rendering.md)、[「3 実行設定」](../features/execution.md)、[MCP](../mcp.md)

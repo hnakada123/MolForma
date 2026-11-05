@@ -2,7 +2,7 @@
 # Makes MolForma.app self-contained (docs/installation/macos.md); run at install time with
 #   APP          the bundle
 #   MACDEPLOYQT  Qt's macdeployqt
-#   SEARCH       folders of the libraries that @rpath references name (Homebrew's lib folders)
+#   SEARCH       folders of the libraries that @rpath references name (Qt's lib folder, then Homebrew's)
 #   OPENBABEL_PLUGINS  the folder of Open Babel's format plugins (*.so)
 # macdeployqt copies Qt's frameworks and plugins. Then every Mach-O file of the bundle (the executable,
 # the frameworks and libraries, Qt's and Open Babel's plugins) gets the libraries it links outside the
@@ -22,10 +22,35 @@ endforeach()
 execute_process(COMMAND "${MACDEPLOYQT}" "${APP}" ${options} -no-codesign -always-overwrite -verbose=0
     COMMAND_ERROR_IS_FATAL ANY)
 
+# VTK's libraries name the Qt they were built for, and macdeployqt follows that too. A build with another
+# Qt of that version (release.sh) must hold that Qt alone, and not what only Homebrew's Qt links: OpenSSL.
+list(GET SEARCH 0 qt_libraries)
+file(GLOB modules RELATIVE "${frameworks}" "${frameworks}/Qt*.framework")
+foreach(framework IN LISTS modules)
+    string(REGEX REPLACE "\\.framework$" "" module "${framework}")
+    set(binary "${framework}/Versions/A/${module}")
+    if(EXISTS "${qt_libraries}/${binary}")
+        file(REMOVE "${frameworks}/${binary}")
+        file(COPY_FILE "${qt_libraries}/${binary}" "${frameworks}/${binary}")
+        file(CHMOD "${frameworks}/${binary}" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ
+            GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+    endif()
+endforeach()
+execute_process(COMMAND otool -L "${frameworks}/QtNetwork.framework/Versions/A/QtNetwork" OUTPUT_VARIABLE linked
+    COMMAND_ERROR_IS_FATAL ANY)
+if(NOT linked MATCHES "libssl")
+    file(GLOB openssl "${frameworks}/libssl.*" "${frameworks}/libcrypto.*")
+    if(openssl)
+        file(REMOVE ${openssl})
+    endif()
+endif()
+
 # After macdeployqt, which would go through each of them (minutes).
 file(GLOB plugins "${OPENBABEL_PLUGINS}/*.so")
 file(MAKE_DIRECTORY "${contents}/PlugIns/openbabel")
-file(COPY ${plugins} DESTINATION "${contents}/PlugIns/openbabel")
+# Writable, unlike Homebrew's: "xattr -dr com.apple.quarantine" must reach them on a Mac that received the app.
+file(COPY ${plugins} DESTINATION "${contents}/PlugIns/openbabel" FILE_PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ
+    WORLD_READ)
 
 function(macho_files out)
     file(GLOB_RECURSE candidates LIST_DIRECTORIES false "${contents}/MacOS/*" "${contents}/Frameworks/*"
@@ -134,6 +159,9 @@ while(queue)
     if(NOT present)
         list(APPEND changes -add_rpath "${wanted}")
     endif()
+    if(NOT changes) # A library of a Qt built with @rpath references, for one.
+        continue()
+    endif()
     execute_process(COMMAND install_name_tool ${changes} "${file}" RESULT_VARIABLE failed ERROR_VARIABLE warnings)
     string(REGEX REPLACE "[^\n]*will invalidate the code signature[^\n]*\n?" "" warnings "${warnings}")
     if(failed)
@@ -212,6 +240,14 @@ endforeach()
 file(WRITE "${licenses}/packages.txt" "${list}")
 list(LENGTH kegs count)
 message(STATUS "Recorded the licenses of ${count} Homebrew packages")
+# A release (release.sh) adds the license texts that no Homebrew folder holds and the lines of its Qt.
+if(DEFINED ENV{MOLFORMA_RELEASE_LICENSES})
+    file(GLOB extra "$ENV{MOLFORMA_RELEASE_LICENSES}/*")
+    list(REMOVE_ITEM extra "$ENV{MOLFORMA_RELEASE_LICENSES}/packages.txt")
+    file(COPY ${extra} DESTINATION "${licenses}")
+    file(READ "$ENV{MOLFORMA_RELEASE_LICENSES}/packages.txt" lines)
+    file(APPEND "${licenses}/packages.txt" "${lines}")
+endif()
 
 execute_process(COMMAND codesign --force --deep --sign - "${APP}" OUTPUT_QUIET ERROR_QUIET
     COMMAND_ERROR_IS_FATAL ANY)

@@ -32,7 +32,11 @@ On macOS, MolForma.app made with "cpack -G DragNDrop" (packaging/macos) holds th
 Open Babel, RDKit, VTK and other Homebrew libraries it uses, with the license files of
 their packages and a list of those packages and their licenses in
 Contents/Resources/licenses; whoever passes the app or its disk image on distributes
-those binaries too, under their terms.
+those binaries too, under their terms. Homebrew's Qt links OpenSSL (Apache-2.0), whose
+license does not go with the GPL version 2: the disk image of a release
+(packaging/macos/release.sh) holds a Qt built without OpenSSL instead, its release ZIP holds
+the license texts in licenses/ too, and the release also offers the source of the packages
+it holds.
 
 NWChem is not included with MolForma and not linked into it: MolForma writes NWChem
 input files and runs an NWChem installed separately by the user as its own program.
