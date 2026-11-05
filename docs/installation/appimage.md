@@ -123,7 +123,7 @@ docker run --rm -e OWNER="$(id -u):$(id -g)" -v "$PWD:/src:ro" -v "$PWD/build-ap
 | ファイル | 内容 |
 | --- | --- |
 | `MolForma-<版>-linux-x86_64.zip` | AppImage、`README.txt`、`LICENSE`、`NOTICE`、`SOURCES.txt`（ソースの入手先）、`licenses/`（同梱ライブラリのライセンス） |
-| `MolForma-<版>-linux-third-party-sources.tar` | AppImageに入っているUbuntuのパッケージのソース（約490 MB） |
+| `MolForma-<版>-linux-third-party-sources.tar` | AppImageに入っているUbuntuのパッケージとVTKのソース（約550 MB） |
 
 ## 困ったとき
 

@@ -24,7 +24,8 @@ The AppImage made with packaging/appimage bundles these libraries and those they
 except OpenSSL, which it takes from the computer, with their license texts in
 usr/share/doc; whoever distributes it distributes those binaries too, under their terms
 (for Open Babel and Qt, the GPL's source requirement). Its release ZIP holds those texts in
-licenses/ too, and the release also offers the source of the Ubuntu packages it holds.
+licenses/ too, and the release also offers the source of the Ubuntu packages and VTK it
+holds.
 On Windows, "cmake --install" likewise copies the DLLs of Qt, Open Babel, zlib (zlib
 license) and libxml2 (MIT) into the installed folder; whoever passes that folder on
 distributes them under the same terms.

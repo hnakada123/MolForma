@@ -123,7 +123,7 @@ This makes two files in `build-appimage/`. Tag the release `v<version>` (`SOURCE
 | File | Contents |
 | --- | --- |
 | `MolForma-<version>-linux-x86_64.zip` | The AppImage, `README.txt`, `LICENSE`, `NOTICE`, `SOURCES.txt` (where the sources are) and `licenses/` (the licenses of the bundled libraries) |
-| `MolForma-<version>-linux-third-party-sources.tar` | The source of the Ubuntu packages the AppImage holds (about 490 MB) |
+| `MolForma-<version>-linux-third-party-sources.tar` | The source of the Ubuntu packages and VTK the AppImage holds (about 550 MB) |
 
 ## Troubleshooting
 

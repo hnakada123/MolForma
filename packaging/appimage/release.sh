@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Makes the files of a release from /out/MolForma-<version>-x86_64.AppImage (build.sh): a ZIP of the
 # AppImage with the licenses and the list of sources, and a tar of the sources of the Ubuntu packages
-# the AppImage holds. It runs as root in the container of the Dockerfile beside it, with /src and /out
-# as for build.sh (docs/installation/appimage.md). OWNER ("uid:gid") gets the files made. The versions
-# of the sources are those installed in the image, so make the AppImage in the same image.
+# and of VTK the AppImage holds. It runs as root in the container of the Dockerfile beside it, with /src
+# and /out as for build.sh (docs/installation/appimage.md). OWNER ("uid:gid") gets the files made. The
+# versions of the sources are those installed in the image, so make the AppImage in the same image.
 set -euo pipefail
 src=/src
 out=/out
@@ -28,6 +28,11 @@ sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sourc
 apt-get update
 apt-get install -y --no-install-recommends zip
 mkdir "$sources"
+# The image keeps only what it built of VTK; the archive comes again, checked as there.
+vtk=$(pinned VTK_VERSION)
+vtk_url=https://vtk.org/files/release/${vtk%.*}/VTK-$vtk.tar.gz
+curl -fsSL -o "$sources/VTK-$vtk.tar.gz" "$vtk_url"
+echo "$(pinned VTK_SHA256)  $sources/VTK-$vtk.tar.gz" | sha256sum -c -
 (
     cd "$sources"
     while read -r package package_version; do
@@ -42,9 +47,8 @@ mkdir "$release"
     echo "MolForma, with the scripts that build the AppImage (packaging/appimage):"
     echo "  $repository/tree/$tag"
     echo
-    echo "VTK $(pinned VTK_VERSION), built from (SHA-256 $(pinned VTK_SHA256)):"
-    vtk=$(pinned VTK_VERSION)
-    echo "  https://vtk.org/files/release/${vtk%.*}/VTK-$vtk.tar.gz"
+    echo "VTK $vtk, built from VTK-$vtk.tar.gz in $sources.tar (SHA-256 $(pinned VTK_SHA256)), of:"
+    echo "  $vtk_url"
     echo
     echo "The AppImage runtime and its AppRun:"
     echo "  https://github.com/AppImage/type2-runtime/releases/tag/$(pinned RUNTIME)"
