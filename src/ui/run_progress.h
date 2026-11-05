@@ -35,9 +35,13 @@ class RunProgress : public QWidget {
     // Reads only what the log gained since the last call for the same folder.
     void showRun(const QString &directory, RunState state);
     void clear();
+    // The width that the criteria need, whether they are shown now or not. Call it with the style
+    // rules of the tiles set.
+    int criteriaWidth() const;
 
   private:
     QString name;
+    int columns;
     QVBoxLayout *stageList;
     QWidget *criteria;
     QList<QLabel *> criterionLabels;
@@ -49,5 +53,7 @@ class RunProgress : public QWidget {
     int maxSteps = 0;
     void read(const QString &path);
     void setStages(const QStringList &stages);
+    QString criterionText(const QString &criterion, const QColor &stateColor, const QString &state,
+                          const QString &value, const QString &threshold) const;
 };
 } // namespace mf

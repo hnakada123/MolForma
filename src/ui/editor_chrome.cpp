@@ -105,6 +105,16 @@ QPainterPath iconPath(const QString &name, bool &filled) {
     } else if (name == "play") {
         filled = true;
         line({{7, 4.5}, {7, 19.5}, {19.5, 12}}, true);
+    } else if (name == "expand") { // Arrows out to two corners.
+        line({{14, 4}, {20, 4}, {20, 10}});
+        line({{10, 20}, {4, 20}, {4, 14}});
+        line({{20, 4}, {13.5, 10.5}});
+        line({{4, 20}, {10.5, 13.5}});
+    } else if (name == "collapse") { // Arrows in from two corners.
+        line({{13.5, 4.5}, {13.5, 10.5}, {19.5, 10.5}});
+        line({{10.5, 19.5}, {10.5, 13.5}, {4.5, 13.5}});
+        line({{13.5, 10.5}, {20, 4}});
+        line({{10.5, 13.5}, {4, 20}});
     } else if (name == "fit") {
         line({{4, 9}, {4, 4}, {9, 4}});
         line({{20, 9}, {20, 4}, {15, 4}});

@@ -303,11 +303,19 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     auto *rail = new QWidget;
     rail->setObjectName("inputPreviewRail");
     rail->setProperty("canvas", true);
-    rail->setFixedWidth(330);
     auto *railLayout = new QVBoxLayout(rail);
     railLayout->setContentsMargins(0, 16, 16, 16);
     railLayout->setSpacing(12);
-    body->addWidget(rail);
+    // Scrolls below a low window or over the run panel, where the cards would be squeezed.
+    auto *railScroll = new QScrollArea;
+    railScroll->setObjectName("inputPreviewRailScroll");
+    railScroll->setProperty("canvas", true);
+    railScroll->setFixedWidth(330);
+    railScroll->setWidgetResizable(true);
+    railScroll->setFrameShape(QFrame::NoFrame);
+    railScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    railScroll->setWidget(rail);
+    body->addWidget(railScroll);
     summaryCard = new CalculationSummary("inputPreview", tr("この入力"), [this](const QString &link) {
         if (link == "memory")
             window->showSetting(2, "memory_mb");

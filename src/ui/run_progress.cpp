@@ -70,7 +70,7 @@ QString pillRules(const QString &selector, const QString &property, const Chrome
 }
 
 RunProgress::RunProgress(const QString &prefix, int columns, QWidget *parent)
-    : QWidget(parent), name(prefix) {
+    : QWidget(parent), name(prefix), columns(columns) {
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(8);
@@ -97,6 +97,25 @@ RunProgress::RunProgress(const QString &prefix, int columns, QWidget *parent)
 void RunProgress::clear() {
     criteria->hide();
     setStages({});
+}
+int RunProgress::criteriaWidth() const {
+    // A tile with the longest text, as it is styled and in the language shown.
+    auto *tile = criterionLabels.first();
+    const auto shown = tile->text();
+    tile->setText(criterionText("Gmax", {}, tr("未達"), "0.00000", "0.00000"));
+    tile->ensurePolished();
+    const int width = tile->sizeHint().width();
+    tile->setText(shown);
+    return columns * width + (columns - 1) * criteria->layout()->spacing();
+}
+QString RunProgress::criterionText(const QString &criterion, const QColor &stateColor, const QString &state,
+                                   const QString &value, const QString &threshold) const {
+    const auto muted = ChromeColors(palette()).muted.name();
+    return tr("<b>%1</b>　<span style=\"color:%2\">%3</span><br><span "
+              "style=\"font-family:monospace\">%4</span>"
+              "<br><span style=\"color:%5\">目標 %6</span>")
+        .arg(criterion, stateColor.name(), state)
+        .arg(value, muted, threshold);
 }
 void RunProgress::setStages(const QStringList &stages) {
     // Rows in place while their number stays (the views update every second or more often).
@@ -199,17 +218,13 @@ void RunProgress::showRun(const QString &path, RunState state) {
         const auto &criterion = criteria[i];
         const bool met = criterion.met();
         criterionLabels[i]->setText(
-            tr("<b>%1</b>　<span style=\"color:%2\">%3</span><br><span "
-               "style=\"font-family:monospace\">%4</span>"
-               "<br><span style=\"color:%5\">目標 %6</span>")
-                .arg(criterion.name, met ? c.good.name() : c.muted.name(),
-                     met                  ? tr("達成")
-                     : criterion.judged() ? tr("未達")
-                                          : QString("—"))
-                .arg(criterion.measured ? QString::number(criterion.value, 'f', 5) : QString("—"),
-                     c.muted.name(),
-                     std::isfinite(criterion.threshold) ? QString::number(criterion.threshold, 'f', 5)
-                                                        : QString("—")));
+            criterionText(criterion.name, met ? c.good : c.muted,
+                          met                  ? tr("達成")
+                          : criterion.judged() ? tr("未達")
+                                               : QString("—"),
+                          criterion.measured ? QString::number(criterion.value, 'f', 5) : QString("—"),
+                          std::isfinite(criterion.threshold) ? QString::number(criterion.threshold, 'f', 5)
+                                                             : QString("—")));
     }
 }
 } // namespace mf

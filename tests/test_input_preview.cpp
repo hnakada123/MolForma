@@ -56,6 +56,13 @@ class InputPreviewTest : public QObject {
         QCOMPARE(tabs->tabText(3), "4 入力プレビュー");
         widget<QPushButton>(w, "calculationShowPreview")->click(); // The link of "2 計算条件".
         QCOMPARE(tabs->currentIndex(), 3);
+        // The cards at the right scroll in a low window, where they would be squeezed.
+        w.resize(900, 620);
+        w.show();
+        auto *rail = widget<QWidget>(w, "inputPreviewRail");
+        QTRY_VERIFY(rail->isVisible());
+        QTRY_VERIFY(rail->height() > widget<QWidget>(w, "inputPreviewRailScroll")->height());
+        w.hide();
         QVERIFY(text(w)->isReadOnly());
         QCOMPARE(text(w)->toPlainText(), nwchemInput(d));
         widget<QPushButton>(w, "inputPreviewCopy")->click();

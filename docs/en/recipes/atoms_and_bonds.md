@@ -95,9 +95,9 @@ Entering a value and pressing “Apply dimension” moves the side of the atom c
    **Figure 8** “4 Input preview”. The “Input blocks” on the left jump to each block.
 
 2. Before the first run, check the NWChem executable, the MPI process count and the job folder in “3 Run settings” (“Ready to run”).
-3. Press “Run calculation” (F5) in the header. The run panel (“Run status and log”) opens on the right with the optimization steps and their convergence tests (Gmax, Grms, …), then the frequency task.
+3. Press “Run calculation” (F5) in the header. The run panel (“Run status and log”) opens at the bottom of the window with the optimization steps and their convergence tests (Gmax, Grms, …), then the frequency task.
 
-   ![“Run status and log” during the run: “1 Geometry optimization Running”, “2 Frequencies Waiting”, the current values and targets of Gmax, Grms, Xmax and Xrms, and the standard output below](images/atoms_and_bonds/09_run_panel.png)
+   ![“Run status and log” during the run: “1 Geometry optimization Running”, “2 Frequencies Waiting”, the current values and targets of Gmax, Grms, Xmax and Xrms, and the standard output beside them](images/atoms_and_bonds/09_run_panel.png)
 
    **Figure 9** The run panel during the run: the state of each task and the convergence criteria of the optimization (Gmax, Grms, Xmax, Xrms) against their targets.
 

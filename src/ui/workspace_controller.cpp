@@ -25,6 +25,10 @@ WorkspaceController::WorkspaceController(MainWindow &w, ExecutionPanel &e, Histo
     connect(&execution, &ExecutionPanel::resultsRequested, this, &WorkspaceController::openResults);
     connect(&execution, &ExecutionPanel::runFinished, this, &WorkspaceController::runFinished);
     connect(&results, &ResultsPanel::loaded, this, &WorkspaceController::resultLoaded);
+    connect(&window, &MainWindow::panelChanged, this, [this] {
+        if (window.currentPanel() == &results)
+            execution.resultsShown();
+    });
 }
 void WorkspaceController::reuse(const QString &directory) {
     window.checkMcpPath(directory);
@@ -44,6 +48,7 @@ void WorkspaceController::openResults(const QString &directory) {
         return;
     window.showPanel(&results);
     results.openDirectory(directory);
+    execution.resultsShown();
 }
 void WorkspaceController::runFinished(const QString &directory, bool open) {
     summaryDirectory.clear();
@@ -58,5 +63,7 @@ void WorkspaceController::resultLoaded() {
         return;
     execution.setResultSummary(summaryDirectory, results.briefSummary());
     summaryDirectory.clear();
+    if (window.currentPanel() == &results)
+        execution.resultsShown();
 }
 } // namespace mf

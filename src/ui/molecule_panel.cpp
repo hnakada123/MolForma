@@ -512,7 +512,6 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
     applyMoleculeLayout();
     // The properties: one page at a time, chosen with segments (their tab bar stays hidden).
     propertyColumn = new QWidget;
-    propertyColumn->installEventFilter(this);
     propertyColumn->setObjectName("propertyColumn");
     propertyColumn->setAttribute(Qt::WA_StyledBackground);
     propertyColumn->setMinimumWidth(300);
@@ -2328,16 +2327,6 @@ void MoleculePanel::setWorkerRunning(bool running) {
 }
 QString MoleculePanel::layoutMode() const {
     return moleculeLayout->currentData().toString();
-}
-QRect MoleculePanel::propertiesArea(const QWidget *target) const {
-    return propertyColumn->isVisible()
-               ? QRect(propertyColumn->mapTo(target, QPoint()), propertyColumn->size())
-               : QRect();
-}
-bool MoleculePanel::eventFilter(QObject *watched, QEvent *event) {
-    if (watched == propertyColumn && (event->type() == QEvent::Resize || event->type() == QEvent::Move))
-        emit geometryChanged();
-    return QWidget::eventFilter(watched, event);
 }
 void MoleculePanel::edit(const QString &name, const std::function<void(Document &)> &operation,
                          bool preview) {

@@ -291,10 +291,10 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     runStatus = new QToolButton;
     runStatus->setObjectName("runStatusButton");
     runStatus->setAutoRaise(true);
-    runStatus->setToolTip(tr("実行状況とログを表示します。"));
+    runStatus->setToolTip(tr("実行状況とログの表示を切り替えます。"));
     runStatus->hide();
     window->statusBar()->addPermanentWidget(runStatus);
-    connect(runStatus, &QToolButton::clicked, this, [this] { showRunPanel(); });
+    connect(runStatus, &QToolButton::clicked, this, [this] { showRunPanel(!runPanelShown()); });
     connect(&run, &NwchemRun::changed, this, [this] {
         if (run.state() != previousRunState) {
             const bool ended = runStateActive(previousRunState) && !run.active();
@@ -308,21 +308,40 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
     });
 }
 void ExecutionPanel::buildRunPanel() {
-    // Over the tabs at the right of the window, whatever the tab: its title and close, the state of
-    // the run with its folder and progress, and its log.
-    runPanel = new QFrame(window);
+    // Below the tabs, whatever the tab, which give up its height so that it hides nothing: its title
+    // with the state of the run, then the run at the left and its log, at the width of the window,
+    // beside it.
+    runPanel = new QFrame;
     runPanel->setObjectName("runPanel");
     runPanel->setAttribute(Qt::WA_StyledBackground);
     runPanel->hide();
+    panelHeight = window->preference("execution/run_panel_height", 0).toInt();
     auto *panel = new QVBoxLayout(runPanel);
-    panel->setContentsMargins(14, 12, 14, 14);
-    panel->setSpacing(12);
+    panel->setContentsMargins(14, 4, 12, 12);
+    panel->setSpacing(4);
     auto *head = new QHBoxLayout;
+    head->setSpacing(8);
     auto *title = new QLabel(tr("実行状況とログ")); // The name of every way to open it.
     title->setObjectName("runPanelTitle");
     title->setProperty("cardTitle", true);
     head->addWidget(title);
+    statePill = new QLabel;
+    statePill->setObjectName("executionStatePill");
+    head->addWidget(statePill);
+    timing = muted();
+    timing->setObjectName("executionTiming");
+    timing->setWordWrap(false);
+    head->addWidget(timing);
     head->addStretch();
+    maximize = new QToolButton;
+    maximize->setObjectName("runPanelMaximize");
+    maximize->setProperty("flat", true);
+    maximize->setCheckable(true);
+    head->addWidget(maximize);
+    connect(maximize, &QToolButton::clicked, this, [this](bool on) {
+        panelFull = on;
+        placeRunPanel();
+    });
     auto *close = new QToolButton;
     close->setObjectName("runPanelClose");
     close->setIcon(lineIcon("close"));
@@ -332,15 +351,27 @@ void ExecutionPanel::buildRunPanel() {
     head->addWidget(close);
     panel->addLayout(head);
     connect(close, &QToolButton::clicked, this, [this] { showRunPanel(false); });
-    runCard = new SettingsCard(tr("実行状況"));
+
+    auto *columns = new QHBoxLayout;
+    columns->setSpacing(10);
+    panel->addLayout(columns, 1);
+    runCard = new SettingsCard({});
     runCard->setObjectName("executionRunCard");
-    statePill = new QLabel;
-    statePill->setObjectName("executionStatePill");
-    runCard->header()->insertWidget(1, statePill);
-    timing = muted();
-    timing->setObjectName("executionTiming");
-    timing->setWordWrap(false);
-    runCard->header()->insertWidget(2, timing);
+    runCard->setAccessibleName(tr("実行状況"));
+    runCard->layout()->setContentsMargins(14, 10, 14, 10);
+    // The folder and the progress scroll where tasks are many; the actions stay in sight.
+    auto *detailScroll = new QScrollArea;
+    detailScroll->setObjectName("executionRunDetails");
+    detailScroll->setWidgetResizable(true);
+    detailScroll->setFrameShape(QFrame::NoFrame);
+    detailScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto *details = new QWidget;
+    details->setObjectName("executionRunDetailsPage");
+    auto *detail = new QVBoxLayout(details);
+    detail->setContentsMargins(0, 0, 0, 0);
+    detail->setSpacing(7);
+    auto *folder = new QHBoxLayout;
+    folder->setSpacing(6);
     location = new QLabel;
     location->setObjectName("executionLocation");
     location->setProperty("mono", true);
@@ -348,18 +379,25 @@ void ExecutionPanel::buildRunPanel() {
     location->setWordWrap(true);
     location->setTextFormat(Qt::PlainText);
     location->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    runCard->body()->addWidget(location);
+    folder->addWidget(location, 1);
+    openFolder = new QPushButton;
+    openFolder->setObjectName("executionOpenFolder");
+    openFolder->setIcon(lineIcon("folder"));
+    openFolder->setToolTip(tr("保存先を開く"));
+    openFolder->setAccessibleName(tr("保存先を開く"));
+    folder->addWidget(openFolder, 0, Qt::AlignTop);
+    detail->addLayout(folder);
     state = new QLabel;
     state->setObjectName("executionState");
     state->setWordWrap(true);
     state->setTextFormat(Qt::PlainText);
-    runCard->body()->addWidget(state);
-    progress = new RunProgress("execution", 2);
-    runCard->body()->addWidget(progress);
-    auto *actions = new FlowLayout(nullptr, 8, 6); // Wraps where the panel is narrow (over "1 分子").
-    openFolder = new QPushButton(tr("保存先を開く"));
-    openFolder->setObjectName("executionOpenFolder");
-    openFolder->setIcon(lineIcon("folder"));
+    detail->addWidget(state);
+    progress = new RunProgress("execution", 4);
+    detail->addWidget(progress);
+    detail->addStretch();
+    detailScroll->setWidget(details);
+    runCard->body()->addWidget(detailScroll, 1);
+    auto *actions = new FlowLayout(nullptr, 6, 6);
     viewResults = new QPushButton(tr("結果ビューアへ"));
     viewResults->setObjectName("executionResults");
     auto *history = new QPushButton(tr("履歴で見る"));
@@ -371,17 +409,20 @@ void ExecutionPanel::buildRunPanel() {
     stopRun->setToolTip(tr("実行中のNWChemを停止します（確認あり）。"));
     stopRun->hide();
     connect(stopRun, &QPushButton::clicked, this, &ExecutionPanel::confirmStop);
-    for (auto *b : {openFolder, viewResults, history, stopRun})
+    for (auto *b : {viewResults, history, stopRun})
         actions->addWidget(b);
     runCard->body()->addLayout(actions);
     connect(openFolder, &QPushButton::clicked, this,
             [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(saved.directory)); });
     connect(history, &QPushButton::clicked, this, [this] { emit historyRequested(saved.directory); });
     connect(viewResults, &QPushButton::clicked, this, [this] { emit resultsRequested(saved.directory); });
-    panel->addWidget(runCard);
+    columns->addWidget(runCard);
 
-    auto *logCard = new SettingsCard(tr("ログ"));
+    auto *logCard = new SettingsCard({});
     logCard->setObjectName("executionLogCard");
+    logCard->setAccessibleName(tr("ログ"));
+    logCard->layout()->setContentsMargins(12, 8, 12, 12);
+    logCard->layout()->setSpacing(6);
     logChannel = new QComboBox;
     logChannel->setObjectName("executionLogChannel");
     logChannel->addItem(tr("標準出力（末尾128 KiB）"), "output.out");
@@ -389,14 +430,13 @@ void ExecutionPanel::buildRunPanel() {
     auto *channels =
         new ChoiceButtons(logChannel, ChoiceButtons::Segments, {tr("標準出力"), tr("標準エラー")});
     choices << channels;
-    // As the files of "履歴": the file and how much of it, following its end, and copy. The
-    // channels head the body, so that the narrow panel over "1 分子" keeps their names.
-    logCard->body()->addWidget(channels, 0, Qt::AlignLeft);
+    // As the files of "履歴": the channel, the file and how much of it, following its end, and copy.
+    logCard->header()->insertWidget(1, channels);
     logName = caption({});
     logName->setObjectName("executionLogName");
     logName->setWordWrap(false);
     logName->setProperty("mono", true);
-    logCard->body()->addWidget(logName);
+    logCard->header()->insertWidget(2, logName);
     follow = new QCheckBox(tr("追尾"));
     follow->setObjectName("executionFollow");
     follow->setChecked(true);
@@ -411,48 +451,72 @@ void ExecutionPanel::buildRunPanel() {
         if (on)
             log->verticalScrollBar()->setValue(log->verticalScrollBar()->maximum());
     });
-    // The log takes the height left; the state above keeps all of its lines and buttons, also in
-    // the narrow panel over "1 分子" of a small window.
-    log->setMinimumHeight(100);
+    log->setMinimumHeight(60);
     logCard->body()->addWidget(log, 1);
     connect(copyLog, &QToolButton::clicked, this,
             [this] { QApplication::clipboard()->setText(log->toPlainText()); });
-    panel->addWidget(logCard, 1);
-    // The panel follows the area of the tabs, over "1 分子" the pages at its right and over this tab
-    // the settings below its bar (whose height changes as it wraps).
-    toolbar->installEventFilter(this);
-    connect(window, &MainWindow::workspaceGeometryChanged, this, [this] {
-        if (runPanel->isVisible())
-            placeRunPanel();
-    });
-    connect(window, &MainWindow::panelChanged, this, [this] {
-        if (runPanel->isVisible())
-            placeRunPanel();
+    columns->addWidget(logCard, 1);
+}
+void ExecutionPanel::dockRunPanel(QSplitter *split) {
+    dock = split;
+    dock->addWidget(runPanel);
+    // The tabs take what the window gains or loses.
+    dock->setStretchFactor(0, 1);
+    dock->setStretchFactor(1, 0);
+    dock->installEventFilter(this);
+    connect(dock, &QSplitter::splitterMoved, this, [this] {
+        panelHeight = runPanel->height();
+        window->setPreference("execution/run_panel_height", panelHeight);
     });
 }
 void ExecutionPanel::showRunPanel(bool show) {
     if (show) {
-        placeRunPanel();
         runPanel->show();
-        runPanel->raise();
-    } else
+        placeRunPanel();
+    } else {
+        closeOnResults = panelFull = false;
         runPanel->hide();
+        dock->widget(0)->show();
+    }
     window->setRunPanelShown(show);
 }
 bool ExecutionPanel::runPanelShown() const {
-    return runPanel->isVisible();
+    return !runPanel->isHidden();
 }
 void ExecutionPanel::placeRunPanel() {
-    auto area = window->runPanelArea();
-    // Over "3 実行設定" it starts below the bar: the calculation, "終了したら結果ビューアに読み込む"
-    // and "ジョブとして保存" stay in sight.
-    if (window->currentPanel() == this)
-        area.setTop(toolbar->mapTo(window, QPoint(0, toolbar->height())).y());
-    runPanel->setGeometry(area);
+    auto *tabs = dock->widget(0);
+    const int total = dock->height();
+    const int room = total - dock->handleWidth() - tabs->minimumHeight();
+    const int height = std::min(panelHeight > 0 ? panelHeight : std::clamp(total * 3 / 8, 200, 300), room);
+    // A window too low for both: the panel takes the place of the tabs until a tab is asked for.
+    panelTight = room < 200;
+    const bool full = panelFull || panelTight;
+    maximize->setVisible(!panelTight);
+    maximize->setChecked(full);
+    maximize->setIcon(lineIcon(full ? "collapse" : "expand"));
+    const auto label = full ? tr("元の高さに戻す") : tr("全面に広げる");
+    maximize->setToolTip(label);
+    maximize->setAccessibleName(label);
+    tabs->setVisible(!full);
+    if (!full)
+        dock->setSizes({total - height, height});
+}
+void ExecutionPanel::showWorkspace() {
+    if (!dock->widget(0)->isHidden())
+        return;
+    if (panelTight)
+        showRunPanel(false);
+    else {
+        panelFull = false;
+        placeRunPanel();
+    }
+}
+void ExecutionPanel::resultsShown() {
+    if (closeOnResults)
+        showRunPanel(false);
 }
 bool ExecutionPanel::eventFilter(QObject *watched, QEvent *event) {
-    if (watched == toolbar && (event->type() == QEvent::Resize || event->type() == QEvent::Move) &&
-        runPanel->isVisible())
+    if (watched == dock && event->type() == QEvent::Resize && !runPanel->isHidden())
         placeRunPanel();
     return QWidget::eventFilter(watched, event);
 }
@@ -510,6 +574,8 @@ void ExecutionPanel::startCalculation() {
             return;
         window->trustCurrentExecution();
     }
+    closeOnResults = false;
+    logChannel->setCurrentIndex(0);
     run.start(window->document(), baseDirectory());
     showRunPanel();
 }
@@ -735,8 +801,14 @@ void ExecutionPanel::updateRun() {
                               .arg(elapsedClock(seconds))
                               .arg(QDateTime::currentDateTime().addSecs(-seconds).toString("HH:mm"))
                         : tr("所要 %1").arg(elapsedClock(seconds)));
-    openFolder->setEnabled(!saved.directory.isEmpty());
+    openFolder->setVisible(!saved.directory.isEmpty());
     viewResults->setEnabled(!saved.directory.isEmpty() && !resultFiles(saved.directory).isEmpty());
+    // The next step once a run has ended well.
+    const bool nextStep = showingRun && run.state() == RunState::Finished;
+    if (viewResults->property("primary").toBool() != nextStep) {
+        viewResults->setProperty("primary", nextStep);
+        repolish(viewResults);
+    }
     const bool stoppable = run.active() && run.state() != RunState::Stopping;
     stopRun->setVisible(run.active());
     stopRun->setEnabled(stoppable);
@@ -837,6 +909,12 @@ void ExecutionPanel::runEnded() {
         QTimer::singleShot(15000, tray, &QSystemTrayIcon::hide);
     }
     resultSummary.clear();
+    closeOnResults = run.state() == RunState::Finished && runPanelShown();
+    if (run.state() == RunState::Failed) { // Why it failed stays in sight.
+        if (QFileInfo(QDir(directory).filePath("stderr.err")).size() > 0)
+            logChannel->setCurrentIndex(logChannel->findData("stderr.err"));
+        showRunPanel();
+    }
     emit runFinished(directory, openResults->isChecked() && run.state() == RunState::Finished);
 }
 void ExecutionPanel::setResultSummary(const QString &directory, const QString &summary) {
@@ -858,14 +936,17 @@ void ExecutionPanel::applyChromeStyle() {
     const auto pal = static_cast<QWidget *>(window)->palette();
     const QString rules = settingsRules() + R"(
         #executionTab { background: @window; }
-        #runPanel { background: @window; border: none; border-left: 1px solid @line; }
+        #runPanel { background: @window; border: none; border-top: 1px solid @line; }
+        QScrollArea#executionRunDetails, #executionRunDetailsPage { background: @base; border: none; }
         #executionUsage { background: @window; border: 1px solid @line; border-radius: 8px; }
         QLabel#executionStatePill { border-radius: 10px; padding: 2px 9px; font-weight: bold; }
         QLabel#executionRunningNote { background: @tint; color: @accentText; border-radius: 8px; padding: 8px 12px; }
-        QLabel[tile="true"] { background: @window; border: 1px solid @line; border-radius: 8px; padding: 6px 9px; }
+        QLabel[tile="true"] { background: @window; border: 1px solid @line; border-radius: 8px; padding: 4px 6px; }
     )";
     const auto pills = pillRules("QLabel#executionStatePill", "state", ChromeColors(pal));
     setStyleSheet(chromeRules(rules, pal) + pills);
     runPanel->setStyleSheet(chromeRules(rules, pal) + pills);
+    // Wide enough for the four criteria in a row, with a scroll bar beside them.
+    runCard->setFixedWidth(progress->criteriaWidth() + 30 + style()->pixelMetric(QStyle::PM_ScrollBarExtent));
 }
 } // namespace mf

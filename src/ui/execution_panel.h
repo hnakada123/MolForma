@@ -13,6 +13,7 @@ class QLabel;
 class QPlainTextEdit;
 class QPushButton;
 class QSpinBox;
+class QSplitter;
 class QVBoxLayout;
 namespace mf {
 class MainWindow;
@@ -23,7 +24,7 @@ class SettingsCard;
 class StatusCard;
 // "3 実行設定": the settings of a run at the left (programs and folders, resources, environment),
 // and at the right the checks before a run and the command. The run itself, its progress (tasks,
-// DRIVER steps against their thresholds) and its log are in the run panel over the tabs.
+// DRIVER steps against their thresholds) and its log are in the run panel below the tabs.
 class ExecutionPanel : public QWidget {
     Q_OBJECT
   public:
@@ -40,9 +41,15 @@ class ExecutionPanel : public QWidget {
     // "計算を実行" (header, menu, F5): starts when "3 実行設定" allows it, otherwise shows that tab
     // and why.
     void startFromMenu();
-    // The run panel over the tabs (state, progress and log of the current or last run).
+    // The run panel below the tabs (state, progress and log of the current or last run). `split`
+    // holds the tabs, which give up the height of the panel while it is open.
+    void dockRunPanel(QSplitter *split);
     void showRunPanel(bool show = true);
     bool runPanelShown() const;
+    // Gives the tabs their place back where the run panel fills it (a tab is asked for).
+    void showWorkspace();
+    // The result viewer is in view: closes the panel of a run that ended well, left open since then.
+    void resultsShown();
     // Asks before stopping the running NWChem (the stop buttons and "計算 → 停止").
     void confirmStop();
     void saveBundle();
@@ -85,6 +92,12 @@ class ExecutionPanel : public QWidget {
     QPlainTextEdit *command, *log;
     QPushButton *prepare, *openFolder, *viewResults, *showRunLink, *stopRun;
     QFrame *runPanel;
+    QSplitter *dock = nullptr;
+    QToolButton *maximize;
+    int panelHeight = 0;     // As dragged; 0 follows the window.
+    bool panelFull = false;  // Asked to fill the place of the tabs.
+    bool panelTight = false; // The window is too low for the tabs and the panel together.
+    bool closeOnResults = false;
     QFrame *toolbar;        // The calculation, "終了したら結果ビューアに読み込む" and "ジョブとして保存".
     QCheckBox *openResults; // Load the job folder into the result viewer when a run finishes.
     QCheckBox *follow;      // Keep the end of the log in view.

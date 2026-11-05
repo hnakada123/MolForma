@@ -54,7 +54,7 @@ by responsibility, with paired headers and implementations in the same directory
   provides the coordinate table of "1 分子" (a `CoordinateModel` over the shown document),
   shown under the 3D view or in its place (layouts 3D / 3D＋表 / 表). `calculation_panel.*` provides "2 計算条件"; each
   section opens its `nwchem_advanced.*` overrides as "詳細設定". `execution_panel.*`
-  provides the settings of "3 実行設定" and the run panel over the tabs (state,
+  provides the settings of "3 実行設定" and the run panel below the tabs (state,
   `run_progress.*` and log), opened from the header run pill; its form (`execution_form.*`) is
   also that of Preferences. `run_progress.*` also holds the state labels of runs and their colors. `input_preview_panel.*`
   provides the read-only "4 入力プレビュー" tab using the shared NWChem input

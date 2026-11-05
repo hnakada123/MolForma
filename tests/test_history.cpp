@@ -309,6 +309,28 @@ class HistoryTest : public QObject {
         QCOMPARE(*e.energy, -76.1);
         QCOMPARE(e.energyMethod, "DFT");
     }
+    void finishedRunLeavesTheViewerToItsResults() {
+        QTemporaryDir tmp;
+        auto d = water(tmp.filePath("jobs"));
+        setExecutionSetting(d, "environment",
+                            QJsonArray{QJsonObject{
+                                {"enabled", true}, {"name", "MOLFORMA_FAKE_MODE"}, {"value", "frequency"}}});
+        MainWindow w;
+        w.loadDocument(d);
+        w.trustCurrentExecution(); // As if the user confirmed the test engine before the first run.
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentIndex(4);
+        w.show();
+        auto *execution = widget<ExecutionPanel>(w, "executionTab");
+        auto *viewer = widget<ResultsPanel>(w, "resultsTab");
+        QSignalSpy loaded(viewer, &ResultsPanel::loaded);
+        execution->startCalculation();
+        QVERIFY(execution->runPanelShown());
+        QTRY_VERIFY(!execution->running());
+        // Open while the viewer reads the run, closed once it shows the results.
+        QVERIFY(execution->runPanelShown());
+        QTRY_COMPARE_WITH_TIMEOUT(loaded.count(), 1, 10000);
+        QVERIFY(!execution->runPanelShown());
+    }
     void orphanedRecordsAndRepair() {
 #ifdef Q_OS_LINUX
         QTemporaryDir tmp;

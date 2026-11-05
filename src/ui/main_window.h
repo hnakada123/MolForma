@@ -142,8 +142,6 @@ class MainWindow : public QMainWindow {
     void commitPendingSettings();
     QWidget *currentPanel() const;
     int currentPanelIndex() const;
-    QRect runPanelArea() const; // Available overlay area in main-window coordinates.
-    bool moleculePanelVisible() const;
     QString moleculeLayoutMode() const;
     void setPanelDiagnostics(QWidget *panel, bool error, const QString &tip);
     void setRunPanelShown(bool shown);
@@ -178,10 +176,8 @@ class MainWindow : public QMainWindow {
     void runWorker(const QString &mode, const QString &smiles = {}, const Ids &moving = {}, int count = 10);
   signals:
     void panelChanged();
-    void workspaceGeometryChanged();
 
   protected:
-    bool eventFilter(QObject *watched, QEvent *event) override;
     void changeEvent(QEvent *) override;
     void closeEvent(QCloseEvent *) override;
     void dragEnterEvent(QDragEnterEvent *) override;

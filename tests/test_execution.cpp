@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+#include "model/i18n.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "results/results.h"
@@ -407,7 +408,7 @@ class ExecutionTest : public QObject {
         QTRY_VERIFY(runStatus->isVisibleTo(&w) && runStatus->text().contains("最後の計算: 終了"));
         // The message at the left does not repeat it (it would add the summary of the log only).
         QVERIFY(!w.statusBar()->currentMessage().contains("計算が終了しました"));
-        // The run panel is over the tabs, whatever the tab: it opens on a run and from the status bar.
+        // The run panel is below the tabs, whatever the tab: it opens on a run and from the status bar.
         auto *panel = w.findChild<QWidget *>("runPanel");
         QVERIFY(panel->isVisibleTo(&w));
         QCOMPARE(w.findChild<QLabel *>("runPanelTitle")->text(),
@@ -551,7 +552,7 @@ class ExecutionTest : public QObject {
         w.statusBar()->clearMessage();
         QVERIFY(!summary->isHidden());
         // The header shows the run and offers to stop it instead of starting another; the run panel
-        // with its progress opens over the tabs.
+        // with its progress opens below the tabs.
         auto *pill = w.findChild<QToolButton *>("runStatePill");
         QVERIFY(pill->isVisibleTo(&w));
         QVERIFY(pill->text().startsWith("実行中"));
@@ -564,34 +565,6 @@ class ExecutionTest : public QObject {
         tabs->setCurrentIndex(0);
         pill->click(); // From any tab.
         QVERIFY(panel->isVisibleTo(&w));
-        const QRect area(tabs->mapTo(&w, QPoint()), tabs->size());
-        QVERIFY(area.contains(QRect(panel->mapTo(&w, QPoint()), panel->size())));
-        // Over "1 分子" it takes the place of the pages at the right: the view stays in sight.
-        const QRect view(w.canvas()->mapTo(&w, QPoint()), w.canvas()->size());
-        QVERIFY(!QRect(panel->mapTo(&w, QPoint()), panel->size()).intersects(view));
-        tabs->setCurrentIndex(2);
-        QVERIFY(panel->width() >= 420);
-        // Over "3 実行設定" it starts below the bar, so what to do when a run ends stays in sight,
-        // also as a long calculation wraps the bar.
-        auto *toolbar = w.findChild<QWidget *>("executionToolbar");
-        const auto below = [&] {
-            const QRect bar(toolbar->mapTo(&w, QPoint()), toolbar->size());
-            const QRect over(panel->mapTo(&w, QPoint()), panel->size());
-            return !over.intersects(bar) && over.top() == bar.bottom() + 1 && over.bottom() == area.bottom();
-        };
-        QTRY_VERIFY(below());
-        QVERIFY(w.findChild<QCheckBox *>("executionOpenResults")->isVisibleTo(&w));
-        const int barHeight = toolbar->height();
-        auto *context = w.findChild<QLabel *>("executionContext");
-        const auto calculation = context->text();
-        context->setText(calculation.repeated(12));
-        QTRY_VERIFY(toolbar->height() > barHeight);
-        QTRY_VERIFY(below());
-        context->setText(calculation);
-        QTRY_COMPARE(toolbar->height(), barHeight);
-        QTRY_VERIFY(below());
-        tabs->setCurrentIndex(0);
-        QTRY_COMPARE(panel->mapTo(&w, QPoint()).y(), tabs->mapTo(&w, QPoint()).y());
         // The tasks of the input, the current one with its last step, and the four criteria.
         QTRY_VERIFY(w.findChild<QLabel *>("executionStage0") &&
                     w.findChild<QLabel *>("executionStage0")->text().contains("ステップ 1 / 最大 100"));
@@ -616,6 +589,186 @@ class ExecutionTest : public QObject {
         QVERIFY(w.findChild<QToolButton *>("runButton")->isVisibleTo(&w));
         QVERIFY(w.findChild<QLabel *>("executionStage0")->text().contains("未完了"));
         QVERIFY(w.findChild<QLabel *>("executionStatePill")->text().contains("停止"));
+    }
+    void runPanelKeepsTheTabsInSight() {
+        MainWindow w;
+        w.loadDocument(configured());
+        auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
+        auto *split = w.findChild<QSplitter *>("workspaceSplit");
+        auto *panel = w.findChild<QWidget *>("runPanel");
+        auto *maximize = w.findChild<QToolButton *>("runPanelMaximize");
+        w.resize(1380, 900);
+        w.show();
+        w.executionPanel()->showRunPanel();
+        const auto rect = [&](QWidget *widget) { return QRect(widget->mapTo(&w, QPoint()), widget->size()); };
+        // Below every tab, at the width of the window: the tab gives up the height, so nothing is
+        // covered, and the page keeps the width the window gives it.
+        for (int i = 0; i < tabs->count(); ++i) {
+            tabs->setCurrentIndex(i);
+            QTRY_VERIFY(tabs->currentWidget()->isVisible() && panel->isVisible());
+            QVERIFY(!rect(tabs).intersects(rect(panel)));
+            QCOMPARE(rect(panel).left(), rect(tabs).left());
+            QCOMPARE(panel->width(), tabs->width());
+            QCOMPARE(tabs->currentWidget()->width(), w.width());
+            QVERIFY(panel->height() >= 200 && tabs->height() >= 400);
+        }
+        // The whole run with its four criteria fits the panel as it opens.
+        QVERIFY(panel->height() >= 290);
+        // A dragged height stays as the window changes, and is remembered.
+        const int opened = panel->height();
+        auto *handle = split->handle(1);
+        QTRY_VERIFY(handle->isVisible() && handle->y() == tabs->height());
+        const QPointF from = handle->rect().center(), to = from - QPointF(0, 40);
+        QMouseEvent press(QEvent::MouseButtonPress, from, handle->mapToGlobal(from), Qt::LeftButton,
+                          Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(handle, &press);
+        QMouseEvent move(QEvent::MouseMove, to, handle->mapToGlobal(to), Qt::NoButton, Qt::LeftButton,
+                         Qt::NoModifier);
+        QCoreApplication::sendEvent(handle, &move);
+        QMouseEvent release(QEvent::MouseButtonRelease, to, handle->mapToGlobal(to), Qt::LeftButton,
+                            Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(handle, &release);
+        QCOMPARE(panel->height(), opened + 40);
+        QCOMPARE(w.preference("execution/run_panel_height").toInt(), opened + 40);
+        w.resize(1380, 1000);
+        QTRY_VERIFY(tabs->height() > 500);
+        QCOMPARE(panel->height(), opened + 40);
+        w.resize(1380, 900);
+        QTRY_COMPARE(panel->height(), opened + 40);
+        // It can fill the place of the tabs; asking for a tab gives them their place back.
+        tabs->setCurrentIndex(1);
+        maximize->click();
+        QVERIFY(!tabs->isVisible());
+        QTRY_COMPARE(panel->height(), split->height());
+        QVERIFY(maximize->toolTip().contains("元の高さ"));
+        w.findChild<QToolButton *>("workflowStep_2")->click(); // The tab shown already.
+        QVERIFY(tabs->isVisible() && panel->isVisible());
+        QCOMPARE(tabs->currentIndex(), 1);
+        maximize->click();
+        QVERIFY(!tabs->isVisible());
+        tabs->setCurrentIndex(0);
+        QVERIFY(tabs->isVisible() && panel->isVisible());
+        QVERIFY(!maximize->isChecked());
+        // Too low a window for both: the panel takes the place of the tabs until one is asked for.
+        w.resize(900, 620);
+        QTRY_VERIFY(!tabs->isVisible());
+        QVERIFY(!maximize->isVisible());
+        QTRY_COMPARE(panel->height(), split->height());
+        w.resize(1380, 900);
+        QTRY_VERIFY(tabs->isVisible());
+        QVERIFY(maximize->isVisible());
+        w.resize(900, 620);
+        QTRY_VERIFY(!tabs->isVisible());
+        w.findChild<QToolButton *>("workflowStep_3")->click();
+        QVERIFY(tabs->isVisible());
+        QVERIFY(!panel->isVisible());
+        QCOMPARE(tabs->currentIndex(), 2);
+        w.setPreference("execution/run_panel_height", 0);
+    }
+    void criteriaFitInEachLanguage() {
+        for (const bool on : {false, true}) {
+            setEnglish(on);
+            MainWindow w;
+            auto d = configured("optimize");
+            auto s = nwchemSettings(d);
+            s["task"] = "optimize_frequencies";
+            d.data["nwchem"] = s;
+            w.loadDocument(d);
+            w.trustCurrentExecution(); // As if the user confirmed the test engine before the first run.
+            w.resize(1380, 900);
+            w.show();
+            w.findChild<QToolButton *>("runButton")->click();
+            auto *last = w.findChild<QLabel *>("executionCriterion3");
+            QTRY_VERIFY(last->isVisible() && last->text().contains("0.00900"));
+            QTest::qWait(50); // The tiles are laid out for their text.
+            QCOMPARE(last->text().contains("Target"), on);
+            auto *details = w.findChild<QScrollArea *>("executionRunDetails");
+            auto *folder = w.findChild<QPushButton *>("executionOpenFolder");
+            auto *view = details->viewport();
+            QVERIFY(last->mapTo(view, QPoint(last->width(), 0)).x() <= view->width());
+            QVERIFY(folder->mapTo(view, QPoint(folder->width(), 0)).x() <= view->width());
+            auto *run = w.findChild<NwchemRun *>("nwchemRun");
+            run->stop();
+            QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 10000);
+        }
+        setEnglish(false);
+    }
+    void runPanelFollowsTheRun() {
+        const auto finish = [](MainWindow &w) {
+            w.findChild<QToolButton *>("runButton")->click();
+            auto *run = w.findChild<NwchemRun *>("nwchemRun");
+            QVERIFY(run->active());
+            QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 5000);
+        };
+        MainWindow w;
+        w.loadDocument(configured());
+        w.trustCurrentExecution(); // As if the user confirmed the test engine before the first run.
+        auto *loadResults = w.findChild<QCheckBox *>("executionOpenResults");
+        loadResults->setChecked(false); // This test executable is not a result worker.
+        auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
+        auto *panel = w.findChild<QWidget *>("runPanel");
+        auto *toResults = button(w, "executionResults");
+        auto *runStatus = w.findChild<QToolButton *>("runStatusButton");
+        w.resize(1380, 900);
+        w.show();
+        QVERIFY(!toResults->property("primary").toBool());
+        // A run that ended well stays in sight until its results are looked at, then the panel
+        // closes, and "結果ビューアへ" is the next step.
+        finish(w);
+        QCOMPARE(w.findChild<NwchemRun *>("nwchemRun")->state(), RunState::Finished);
+        QVERIFY(panel->isVisibleTo(&w));
+        QVERIFY(toResults->property("primary").toBool());
+        tabs->setCurrentIndex(4);
+        QVERIFY(!panel->isVisibleTo(&w));
+        // Opened again it stays, also on the way back to the viewer.
+        runStatus->click();
+        QVERIFY(panel->isVisibleTo(&w));
+        tabs->setCurrentIndex(0);
+        tabs->setCurrentIndex(4);
+        QVERIFY(panel->isVisibleTo(&w));
+        runStatus->click(); // The same button closes it.
+        QVERIFY(!panel->isVisibleTo(&w));
+        // Started from the viewer it stays until asked for the results of this run.
+        finish(w);
+        QVERIFY(panel->isVisibleTo(&w));
+        QCOMPARE(tabs->currentIndex(), 4);
+        writeFile(QDir(w.executionPanel()->savedDirectory()).filePath("output.out"), "NWChem\n");
+        w.executionPanel()->refresh();
+        toResults->click();
+        QVERIFY(!panel->isVisibleTo(&w));
+        // Closed while it ran, it stays closed.
+        tabs->setCurrentIndex(0);
+        w.findChild<QToolButton *>("runButton")->click();
+        w.findChild<QToolButton *>("runPanelClose")->click();
+        QTRY_VERIFY_WITH_TIMEOUT(!w.findChild<NwchemRun *>("nwchemRun")->active(), 5000);
+        QVERIFY(!panel->isVisibleTo(&w));
+        // A failure shows why, also where the panel was closed, and stays open in the viewer.
+        MainWindow failing;
+        failing.loadDocument(configured("fail"));
+        failing.trustCurrentExecution();
+        auto *failingPanel = failing.findChild<QWidget *>("runPanel");
+        auto *failingTabs = failing.findChild<QTabWidget *>("workspaceTabs");
+        auto *channel = failing.findChild<QComboBox *>("executionLogChannel");
+        failing.resize(1380, 900);
+        failing.show();
+        failing.findChild<QToolButton *>("runButton")->click();
+        failing.findChild<QToolButton *>("runPanelClose")->click();
+        QVERIFY(!failingPanel->isVisibleTo(&failing));
+        auto *run = failing.findChild<NwchemRun *>("nwchemRun");
+        QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 5000);
+        QCOMPARE(run->state(), RunState::Failed);
+        QVERIFY(failingPanel->isVisibleTo(&failing));
+        QCOMPARE(channel->currentData().toString(), "stderr.err");
+        QTRY_VERIFY(
+            failing.findChild<QPlainTextEdit *>("executionLog")->toPlainText().contains("fixture stderr"));
+        QVERIFY(!failing.findChild<QPushButton *>("executionResults")->property("primary").toBool());
+        failingTabs->setCurrentIndex(4);
+        QVERIFY(failingPanel->isVisibleTo(&failing));
+        // The next run starts on its output again.
+        failing.findChild<QToolButton *>("runButton")->click();
+        QCOMPARE(channel->currentData().toString(), "output.out");
+        QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 5000);
+        loadResults->setChecked(true);
     }
     void saveFocusedFieldsAndTeardown() {
         const auto path = files.filePath("settings.molforma.json");

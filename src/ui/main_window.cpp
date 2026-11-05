@@ -226,11 +226,14 @@ void MainWindow::showCoordinateTable() {
     moleculePage->showCoordinateTable();
 }
 void MainWindow::showPanel(QWidget *panel) {
+    execution->showWorkspace();
     workspaceTabs->setCurrentWidget(panel);
 }
 void MainWindow::showPanel(int index) {
-    if (index >= 0 && index < workspaceTabs->count())
+    if (index >= 0 && index < workspaceTabs->count()) {
+        execution->showWorkspace();
         workspaceTabs->setCurrentIndex(index);
+    }
 }
 void MainWindow::showSetting(int tab, const QString &setting, const QString &group) {
     if (setting == "memory_mb")
@@ -265,18 +268,6 @@ QWidget *MainWindow::currentPanel() const {
 int MainWindow::currentPanelIndex() const {
     return workspaceTabs->currentIndex();
 }
-QRect MainWindow::runPanelArea() const {
-    QRect area(workspaceTabs->mapTo(this, QPoint()), workspaceTabs->size());
-    int left = area.right() + 1 - std::clamp(area.width() * 2 / 5, std::min(420, area.width()), 600);
-    if (moleculePanelVisible())
-        if (const auto properties = moleculePage->propertiesArea(this); !properties.isEmpty())
-            left = properties.left();
-    area.setLeft(left);
-    return area;
-}
-bool MainWindow::moleculePanelVisible() const {
-    return currentPanel() == moleculePage;
-}
 QString MainWindow::moleculeLayoutMode() const {
     return moleculePage ? moleculePage->layoutMode() : QString("view");
 }
@@ -303,17 +294,23 @@ void MainWindow::buildUi() {
     outer->setSpacing(0);
     setCentralWidget(central);
     workspaceTabs = new QTabWidget;
-    workspaceTabs->installEventFilter(this);
     workspaceTabs->setObjectName("workspaceTabs");
     workspaceTabs->setDocumentMode(true);
     // The workflow steps of the header switch the tabs, so their own bar stays hidden.
     workspaceTabs->tabBar()->hide();
-    outer->addWidget(workspaceTabs, 1);
+    // Set here, as otherwise the tallest page would leave the run panel no room; a page lower than it
+    // asks for fits as in a low window.
+    workspaceTabs->setMinimumHeight(400);
+    auto *workspaceSplit = new QSplitter(Qt::Vertical);
+    workspaceSplit->setObjectName("workspaceSplit");
+    workspaceSplit->setChildrenCollapsible(false);
+    workspaceSplit->setHandleWidth(6);
+    workspaceSplit->addWidget(workspaceTabs);
+    outer->addWidget(workspaceSplit, 1);
     moleculePage = new MoleculePanel(*this, session, settings);
     view = moleculePage->canvas();
     coordinates = moleculePage->coordinatePanel();
     workspaceTabs->addTab(moleculePage, tr("1 分子"));
-    connect(moleculePage, &MoleculePanel::geometryChanged, this, &MainWindow::workspaceGeometryChanged);
     connect(moleculePage, &MoleculePanel::openRequested, this, &MainWindow::open);
     connect(moleculePage, &MoleculePanel::downloadRequested, this,
             [this] { safe([this] { downloadPdb(); }); });
@@ -321,6 +318,8 @@ void MainWindow::buildUi() {
     workspaceTabs->addTab(calculation, tr("2 計算条件"));
     execution = new ExecutionPanel(this);
     workspaceTabs->addTab(execution, tr("3 実行設定"));
+    execution->dockRunPanel(workspaceSplit);
+    connect(workspaceTabs, &QTabWidget::currentChanged, execution, &ExecutionPanel::showWorkspace);
     inputPreview = new InputPreviewPanel(this);
     workspaceTabs->addTab(inputPreview, tr("4 入力プレビュー"));
     results = new ResultsPanel(this);
@@ -421,7 +420,7 @@ void MainWindow::buildHeader() {
         b->setCheckable(true);
         steps->addWidget(b);
         stepGroup->addButton(b, i);
-        connect(b, &QToolButton::clicked, this, [this, i] { workspaceTabs->setCurrentIndex(i); });
+        connect(b, &QToolButton::clicked, this, [this, i] { showPanel(i); });
     }
     connect(workspaceTabs, &QTabWidget::currentChanged, this, [this](int index) {
         if (auto *b = stepGroup->button(index))
@@ -461,9 +460,10 @@ void MainWindow::buildHeader() {
     });
     runPill = new QToolButton;
     runPill->setObjectName("runStatePill");
-    runPill->setToolTip(tr("実行状況とログを表示します。"));
+    runPill->setToolTip(tr("実行状況とログの表示を切り替えます。"));
     runPill->hide();
-    connect(runPill, &QToolButton::clicked, this, [this] { execution->showRunPanel(); });
+    connect(runPill, &QToolButton::clicked, this,
+            [this] { execution->showRunPanel(!execution->runPanelShown()); });
     right->addSpacing(4);
     right->addWidget(runPill);
     headerStop = new QToolButton;
@@ -766,11 +766,6 @@ void MainWindow::syncWorkflowSteps() {
             b->style()->polish(b);
         }
     }
-}
-bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
-    if (watched == workspaceTabs && (event->type() == QEvent::Resize || event->type() == QEvent::Move))
-        emit workspaceGeometryChanged();
-    return QMainWindow::eventFilter(watched, event);
 }
 void MainWindow::changeEvent(QEvent *e) {
     QMainWindow::changeEvent(e);

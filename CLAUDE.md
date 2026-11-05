@@ -49,7 +49,7 @@ Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#inc
   switch the hidden tab bar), tool rail, flow layout and 3D-view overlays. The numbered tabs are "1 分子" (the 3D
   view with the `coordinates_panel.*` table under it or in its place), "2 計算条件" (`calculation_panel.*`; each
   section opens its advanced overrides as "詳細設定"), "3 実行設定" (`execution_panel.*`, settings only, with the form `execution_form.*` that Preferences shares; the run
-  state and log are its run panel over the tabs, opened from the header run pill) and "4 入力プレビュー"
+  state and log are its run panel below the tabs, a `QSplitter` with them so that it covers nothing, opened from the header run pill) and "4 入力プレビュー"
   (`input_preview_panel.*`); result viewer and history are panels too.
 - `molforma_mcp` — `src/mcp`, links core only. A JSON-RPC MCP server over stdio (protocols 2026-07-28 and legacy
   2025-11-25); see `docs/mcp.md`. `headless.*` adds NWChem runs and result loading to `--mcp`, `tools.*` holds

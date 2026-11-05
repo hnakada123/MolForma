@@ -59,7 +59,6 @@ class MoleculePanel : public QWidget {
     void applyChromeStyle();
     void setWorkerRunning(bool running);
     QString layoutMode() const;
-    QRect propertiesArea(const QWidget *target) const;
     void addEditActions(QMenu *menu);
     void addViewActions(QMenu *menu);
     void showCoordinateTable();
@@ -73,12 +72,8 @@ class MoleculePanel : public QWidget {
     void zMatrixDialog();
     void symmetryDialog();
   signals:
-    void geometryChanged();
     void openRequested();
     void downloadRequested();
-
-  protected:
-    bool eventFilter(QObject *watched, QEvent *event) override;
 
   private:
     MainWindow &window;

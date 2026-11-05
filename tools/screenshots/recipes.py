@@ -9,8 +9,9 @@ the atoms where the earlier screenshot shows them (TARGETS, window pixels of sph
 prints the largest remaining distance; a few pixels is a match. The last operation is repeated right before
 a shot, so that its status bar message (shown for about 5 s) is still there.
 
-Recipes: atoms_and_bonds, atoms_and_bonds_variations (saves, calculates, then figures 13 and 14),
-caffeine_smiles, my_parts, phenoxyl_radical, stereochemistry, aromatic_substitution (default: all).
+Recipes: atoms_and_bonds, atoms_and_bonds_run (figure 9, the run panel during the calculation),
+atoms_and_bonds_variations (saves, calculates, then figures 13 and 14), caffeine_smiles, my_parts,
+phenoxyl_radical, stereochemistry, aromatic_substitution (default: all).
 Shots go to $MOLFORMA_SHOTS_DIR/shots/<language>/recipes/<recipe>/<name>.png.
 """
 import json
@@ -128,6 +129,17 @@ def atoms_and_bonds(g):
     g.confirm()
     g.select_atoms(g.ids("C1", "O8"))
     g.snap("atoms_and_bonds/06_distance")
+
+
+def atoms_and_bonds_run(g):
+    g.open(SAMPLES + "ethanol.molforma.json")
+    g.setup_execution(8)
+    g.select("workspaceTabs", index=3, seconds=0.5)
+    g.tool("calculation", action="start")
+    time.sleep(7)  # Into the first step of the optimization.
+    g.snap("atoms_and_bonds/09_run_panel")
+    g.tool("calculation", action="stop")
+    g.idle(60)
 
 
 def atoms_and_bonds_variations(g):
@@ -313,7 +325,7 @@ def aromatic_substitution(g):
     g.snap("aromatic_substitution")
 
 
-RECIPES = [atoms_and_bonds, atoms_and_bonds_variations, caffeine_smiles, my_parts, phenoxyl_radical,
+RECIPES = [atoms_and_bonds, atoms_and_bonds_run, atoms_and_bonds_variations, caffeine_smiles, my_parts, phenoxyl_radical,
            stereochemistry, aromatic_substitution]
 
 if __name__ == "__main__":
