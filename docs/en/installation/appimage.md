@@ -106,7 +106,7 @@ Delete the AppImage file. The application settings (`~/.config/MolForma/`), auto
 
 If you give the AppImage to others, follow the licenses of the software it holds. Their texts are in the AppImage's `usr/share/doc`, readable after `./MolForma-1.0.0-x86_64.AppImage --appimage-extract`.
 
-- **MolForma (GPL-2.0-or-later), Open Babel (GPL-2.0-only) and Qt**: In binaries linked with Open Babel, Qt is used under the GPL-2.0 too (the repository's `NOTICE`). When distributing binaries, make the corresponding source available too. For MolForma, point to the source of the commit the AppImage was made from. The source of Open Babel, Qt and the other Ubuntu packages it holds is Ubuntu 24.04's source packages; VTK's is the 9.7.1 source from vtk.org.
+- **MolForma (GPL-2.0-or-later), Open Babel (GPL-2.0-only) and Qt**: In binaries linked with Open Babel, Qt is used under the GPL-2.0 too (the repository's `NOTICE`). When distributing binaries, make the corresponding source available too. For MolForma, point to the source of the commit the AppImage was made from. The source of Open Babel, Qt and the other Ubuntu packages it holds is Ubuntu 24.04's source packages; VTK's is the 9.7.1 source from vtk.org. The runtime at the start of the AppImage is a program that links libfuse (LGPL-2.1) and others statically; point also to the source of the runtime, of the libraries it links, and of linuxdeploy, which makes AppRun.
 - **The others (RDKit, VTK, Boost and so on)**: Under BSD and similar licenses, they can be distributed with their license texts, which it holds.
 
 The files for [Releases](https://github.com/hnakada123/MolForma/releases) are made in the folder of the source as below. Ubuntu's mirror keeps the source of the newest versions only, so take the updates by giving `UPDATES` today's date, then make the AppImage and the sources in the same image.
@@ -123,7 +123,7 @@ This makes two files in `build-appimage/`. Tag the release `v<version>` (`SOURCE
 | File | Contents |
 | --- | --- |
 | `MolForma-<version>-linux-x86_64.zip` | The AppImage, `README.txt`, `LICENSE`, `NOTICE`, `SOURCES.txt` (where the sources are) and `licenses/` (the licenses of the bundled libraries) |
-| `MolForma-<version>-linux-third-party-sources.tar` | The source of the Ubuntu packages and VTK the AppImage holds (about 550 MB) |
+| `MolForma-<version>-linux-third-party-sources.tar` | The source of the Ubuntu packages, VTK, the runtime and AppRun the AppImage holds (about 570 MB) |
 
 ## Troubleshooting
 

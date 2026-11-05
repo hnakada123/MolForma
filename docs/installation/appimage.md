@@ -106,7 +106,7 @@ AppImageのファイルを削除します。アプリの設定（`~/.config/MolF
 
 作ったAppImageをほかの人に配る場合は、同梱したソフトウェアのライセンスに従ってください。ライセンスの文面はAppImageの `usr/share/doc` にあり、`./MolForma-1.0.0-x86_64.AppImage --appimage-extract` で展開すると読めます。
 
-- **MolForma（GPL-2.0-or-later）、Open Babel（GPL-2.0-only）、Qt**: Open Babelとリンクしたバイナリでは、QtもGPL-2.0の条件で使います（リポジトリの `NOTICE`）。バイナリを配る場合は、対応するソースも入手できるようにします。MolFormaは、AppImageを作ったコミットのソースを示してください。Open Babel・Qtなど同梱したUbuntuのパッケージのソースは、Ubuntu 24.04のソースパッケージです。VTKは、vtk.orgの9.7.1のソースです。
+- **MolForma（GPL-2.0-or-later）、Open Babel（GPL-2.0-only）、Qt**: Open Babelとリンクしたバイナリでは、QtもGPL-2.0の条件で使います（リポジトリの `NOTICE`）。バイナリを配る場合は、対応するソースも入手できるようにします。MolFormaは、AppImageを作ったコミットのソースを示してください。Open Babel・Qtなど同梱したUbuntuのパッケージのソースは、Ubuntu 24.04のソースパッケージです。VTKは、vtk.orgの9.7.1のソースです。AppImageの先頭のランタイムは、libfuse（LGPL-2.1）などを静的にリンクしたプログラムです。ランタイムとそれがリンクするライブラリ、AppRunを作るlinuxdeployのソースも示してください。
 - **そのほか（RDKit・VTK・Boostなど）**: BSDなどのライセンスで、文面を同梱すれば配布できます。
 
 [Releases](https://github.com/hnakada123/MolForma/releases) に載せるファイルは、ソースのフォルダーで次のように作ります。Ubuntuの配布サイトには最新版のソースしかないので、`UPDATES` に今日の日付を指定して更新を取り込んでから、同じイメージでAppImageとソースをそろえます。
@@ -123,7 +123,7 @@ docker run --rm -e OWNER="$(id -u):$(id -g)" -v "$PWD:/src:ro" -v "$PWD/build-ap
 | ファイル | 内容 |
 | --- | --- |
 | `MolForma-<版>-linux-x86_64.zip` | AppImage、`README.txt`、`LICENSE`、`NOTICE`、`SOURCES.txt`（ソースの入手先）、`licenses/`（同梱ライブラリのライセンス） |
-| `MolForma-<版>-linux-third-party-sources.tar` | AppImageに入っているUbuntuのパッケージとVTKのソース（約550 MB） |
+| `MolForma-<版>-linux-third-party-sources.tar` | AppImageに入っているUbuntuのパッケージ、VTK、ランタイムとAppRunのソース（約570 MB） |
 
 ## 困ったとき
 

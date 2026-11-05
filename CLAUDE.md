@@ -109,7 +109,7 @@ Key cross-cutting designs:
   folder (`dpkg-shlibdeps` finds the libraries; see `docs/installation/ubuntu.md`). `packaging/appimage/` builds an
   AppImage in Docker (Ubuntu 24.04 with Qt 6.4, VTK built for Qt 6; `build.sh` runs linuxdeploy and appimagetool and
   sets Open Babel's `BABEL_LIBDIR`/`BABEL_DATADIR` in an AppRun hook, leaving OpenSSL to the computer; `release.sh` makes the
-  release ZIP and the tar of the Ubuntu and VTK sources; see `docs/installation/appimage.md`). That
+  release ZIP and the tar of the sources (Ubuntu packages, VTK, runtime, AppRun); see `docs/installation/appimage.md`). That
   build is also the check that the code still builds and passes with Qt 6.4. On Windows MSVC builds find Open Babel
   through its CMake package (no pkg-config), keep preferences in an INI file (`model/settings.h`), and `cmake --install`
   makes a self-contained folder with windeployqt plus `packaging/windows/` (batch files that run NWChem in WSL; its

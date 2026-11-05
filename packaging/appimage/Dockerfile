@@ -44,6 +44,11 @@ ARG APPIMAGETOOL=1.9.1
 ARG APPIMAGETOOL_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
 ARG RUNTIME=20251108
 ARG RUNTIME_SHA256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+# The commits of those tags, for the sources of the release (release.sh). A new RUNTIME also needs the
+# libraries it links looked up again there.
+ARG LINUXDEPLOY_COMMIT=cc7b86472c3caa3fd729b9dc502fd2aa78394257
+ARG LINUXDEPLOY_QT_COMMIT=ce5291e25979d7d6417551d787f308b88c1b8d76
+ARG RUNTIME_COMMIT=dd6cebedcbddde9c82f89b011e8e1d40b6e43868
 RUN mkdir -p /opt/appimage \
     && cd /opt/appimage \
     && curl -fsSLO "https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY}/linuxdeploy-x86_64.AppImage" \
