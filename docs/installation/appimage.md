@@ -4,7 +4,7 @@ MolFormaを、Linuxのディストリビューションによらず動く1つの
 
 AppImageを作るPCは、Dockerが使えるx86-64のLinuxであれば、ディストリビューションを問いません。AppImageを動かすPCは、x86-64で、glibc 2.38以上とGCC 13以降の `libstdc++` を持つLinuxのデスクトップです（Ubuntu 24.04以降、Debian 13以降、Fedora 39以降、Arch Linuxなど）。対象はMolForma 1.0.0です。2026-10-28に手順を確認しました（[確認した構成](#確認した構成)）。
 
-ビルド済みのAppImageは、[Releases](https://github.com/hnakada123/MolForma/releases) のZIP（`MolForma-<版>-x86_64.zip`）にあります。展開して、[4. 起動する](#4-起動する)に進んでください。自分で作る場合は、次の手順です。
+ビルド済みのAppImageは、[Releases](https://github.com/hnakada123/MolForma/releases) のZIP（`MolForma-<版>-linux-x86_64.zip`）にあります。展開して、[4. 起動する](#4-起動する)に進んでください。自分で作る場合は、次の手順です。
 
 ## AppImageに入るもの
 
@@ -122,8 +122,8 @@ docker run --rm -e OWNER="$(id -u):$(id -g)" -v "$PWD:/src:ro" -v "$PWD/build-ap
 
 | ファイル | 内容 |
 | --- | --- |
-| `MolForma-1.0.0-x86_64.zip` | AppImage、`README.txt`、`LICENSE`、`NOTICE`、`SOURCES.txt`（ソースの入手先）、`licenses/`（同梱ライブラリのライセンス） |
-| `MolForma-1.0.0-third-party-sources.tar` | AppImageに入っているUbuntuのパッケージのソース（約490 MB） |
+| `MolForma-<版>-linux-x86_64.zip` | AppImage、`README.txt`、`LICENSE`、`NOTICE`、`SOURCES.txt`（ソースの入手先）、`licenses/`（同梱ライブラリのライセンス） |
+| `MolForma-<版>-linux-third-party-sources.tar` | AppImageに入っているUbuntuのパッケージのソース（約490 MB） |
 
 ## 困ったとき
 

@@ -4,7 +4,7 @@ How to make MolForma a single executable file that runs on any Linux distributio
 
 The computer that makes the AppImage can run any distribution: it needs Docker on x86-64 Linux. The computer that runs the AppImage needs an x86-64 Linux desktop with glibc 2.38 or later and the `libstdc++` of GCC 13 or later (Ubuntu 24.04 or later, Debian 13 or later, Fedora 39 or later, Arch Linux and others). These steps are for MolForma 1.0.0. They were checked on 2026-10-28 (see [Verified configuration](#verified-configuration)).
 
-A ready-built AppImage is in the ZIP (`MolForma-<version>-x86_64.zip`) on [Releases](https://github.com/hnakada123/MolForma/releases). Unpack it and go to [4. Start it](#4-start-it). To make one yourself, follow these steps.
+A ready-built AppImage is in the ZIP (`MolForma-<version>-linux-x86_64.zip`) on [Releases](https://github.com/hnakada123/MolForma/releases). Unpack it and go to [4. Start it](#4-start-it). To make one yourself, follow these steps.
 
 ## What the AppImage holds
 
@@ -122,8 +122,8 @@ This makes two files in `build-appimage/`. Tag the release `v<version>` (`SOURCE
 
 | File | Contents |
 | --- | --- |
-| `MolForma-1.0.0-x86_64.zip` | The AppImage, `README.txt`, `LICENSE`, `NOTICE`, `SOURCES.txt` (where the sources are) and `licenses/` (the licenses of the bundled libraries) |
-| `MolForma-1.0.0-third-party-sources.tar` | The source of the Ubuntu packages the AppImage holds (about 490 MB) |
+| `MolForma-<version>-linux-x86_64.zip` | The AppImage, `README.txt`, `LICENSE`, `NOTICE`, `SOURCES.txt` (where the sources are) and `licenses/` (the licenses of the bundled libraries) |
+| `MolForma-<version>-linux-third-party-sources.tar` | The source of the Ubuntu packages the AppImage holds (about 490 MB) |
 
 ## Troubleshooting
 

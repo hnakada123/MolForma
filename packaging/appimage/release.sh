@@ -12,7 +12,8 @@ work=$(mktemp -d)
 version=$(sed -n 's/^project(MolForma VERSION \([0-9.]*\).*/\1/p' "$src/CMakeLists.txt")
 tag=v$version
 name=MolForma-$version-x86_64
-sources=MolForma-$version-third-party-sources
+release=MolForma-$version-linux-x86_64
+sources=MolForma-$version-linux-third-party-sources
 repository=https://github.com/hnakada123/MolForma
 pinned() { sed -n "s/^ARG $1=//p" "$src/packaging/appimage/Dockerfile"; }
 
@@ -34,7 +35,7 @@ mkdir "$sources"
     done <../list
 )
 
-mkdir "$name"
+mkdir "$release"
 {
     echo "The source of MolForma $version and of what its AppImage holds"
     echo
@@ -53,11 +54,11 @@ mkdir "$name"
     echo "  $repository/releases/tag/$tag"
     echo
     sed 's/^/  /' list
-} >"$name/SOURCES.txt"
-cp "$name/SOURCES.txt" "$sources/"
-cp -a "$out/$name.AppImage" "$src/LICENSE" "$src/NOTICE" "$src/packaging/appimage/README.txt" "$name/"
-cp -a "$doc" "$name/licenses"
+} >"$release/SOURCES.txt"
+cp "$release/SOURCES.txt" "$sources/"
+cp -a "$out/$name.AppImage" "$src/LICENSE" "$src/NOTICE" "$src/packaging/appimage/README.txt" "$release/"
+cp -a "$doc" "$release/licenses"
 
-zip -qrX "$out/$name.zip" "$name"
+zip -qrX "$out/$release.zip" "$release"
 tar -cf "$out/$sources.tar" "$sources"
-[ -z "${OWNER:-}" ] || chown "$OWNER" "$out/$name.zip" "$out/$sources.tar"
+[ -z "${OWNER:-}" ] || chown "$OWNER" "$out/$release.zip" "$out/$sources.tar"
