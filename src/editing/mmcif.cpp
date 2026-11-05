@@ -79,7 +79,7 @@ bool isTag(const Token &t) {
 bool reserved(const Token &t) {
     if (t.quoted)
         return false;
-    const auto word = lower(t.text.left(7));
+    const auto word = lower(t.text.first(qMin(t.text.size(), qsizetype(7))));
     for (const char *w : {"data_", "loop_", "save_", "global_", "stop_"})
         if (word.startsWith(w))
             return true;
