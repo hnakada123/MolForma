@@ -131,7 +131,9 @@ generated HTML also works opened as files. The site's sources are
 `_config.yml`, `_layouts/`, `_includes/`, `assets/site.css`, the HTML
 home pages `index.html` / `en/index.html` with feature and recipe cards from
 `_data/features.yml` and `_data/recipes.yml`, which follow the tables of
-`features.md` / `recipes.md` and their English versions). Keep the manual pages plain Markdown without front
+`features.md` / `recipes.md` and their English versions). `_includes/head.html` sends browsers without Japanese
+from the Japanese pages to their English versions (never the other way, and not search engines), unless the
+language links chose a language (`remember_language` from `language.html`, kept in `localStorage`). Keep the manual pages plain Markdown without front
 matter (the app shows them verbatim) and keep `{{` and `{%` out of them.
 
 The interface is Japanese or English (`src/model/i18n.h`). Write user-visible

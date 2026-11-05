@@ -130,6 +130,9 @@ Key cross-cutting designs:
   header with navigation, X share button and language switch, footer), `assets/site.css`, and the home pages `index.html` / `en/index.html`
   (HTML with front matter, not in the app; their feature and recipe cards come from `_data/features.yml` and
   `_data/recipes.yml`, kept in step with the tables of `features.md` / `recipes.md` and their English versions).
+  `_includes/head.html` sends browsers without Japanese from the Japanese pages to their English versions (never
+  the other way, and not search engines), unless the language links chose a language (`remember_language` from
+  `language.html`, kept in `localStorage`).
   The manual pages stay plain Markdown without front matter, since the app shows them verbatim; Jekyll plugins give
   them the layout and turn `.md` links into `.html`. Keep `{{` and `{%` out of `docs/` (`test_translations` checks
   the embedded pages).

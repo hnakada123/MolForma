@@ -1,6 +1,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
+{%- unless en %}
+{%- comment -%} Pages cannot choose a language by the request, so the browser does: a Japanese page sends a browser
+without Japanese to its English version, unless the language link in the header (header.html) chose a language.
+Search engines stay, so that they keep the Japanese pages. Without readable storage nothing moves: the choice of
+Japanese could not be kept, and the reader could never stay on a Japanese page. {%- endcomment %}
+<script>
+(function () {
+  var chosen;
+  try { chosen = localStorage.getItem("molforma-language"); } catch (e) { return; }
+  var languages = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language];
+  var english = chosen ? chosen === "en"
+    : !/bot|crawl|spider|slurp/i.test(navigator.userAgent) &&
+      !languages.some(function (language) { return /^ja\b/i.test(language); });
+  if (english) location.replace("{{ root }}{{ other }}" + location.search + location.hash);
+})();
+</script>
+{%- endunless %}
 {%- capture page_title -%}{% if path == home_page %}{{ page.title }}{% else %}{{ page.title | strip_html }} | MolForma{% endif %}{%- endcapture -%}
 {%- if en -%}{%- assign description = site.description_en -%}{%- else -%}{%- assign description = site.description -%}{%- endif %}
 <title>{{ page_title }}</title>
@@ -23,7 +40,10 @@
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="{{ root }}assets/molforma.svg" type="image/svg+xml">
-<link rel="alternate" hreflang="{% if en %}ja{% else %}en{% endif %}" href="{{ root }}{{ other }}">
+{%- comment -%} For search engines, which need absolute URLs: each language's page, and English for other languages. {%- endcomment %}
+<link rel="alternate" hreflang="ja" href="{{ url_ja | absolute_url }}">
+<link rel="alternate" hreflang="en" href="{{ url_en | absolute_url }}">
+<link rel="alternate" hreflang="x-default" href="{{ url_en | absolute_url }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap">

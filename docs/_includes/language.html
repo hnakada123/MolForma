@@ -10,12 +10,18 @@ root. Links lead there through root (as "../"), so that the generated pages also
   {%- assign en = true -%}
   {%- assign home = 'en/' -%}
   {%- assign other = path | remove_first: 'en/' -%}
+  {%- assign url_en = page.url -%}
+  {%- assign url_ja = page.url | remove_first: '/en' -%}
 {%- else -%}
   {%- assign en = false -%}
   {%- assign home = '' -%}
   {%- assign other = path | prepend: 'en/' -%}
+  {%- assign url_ja = page.url -%}
+  {%- assign url_en = page.url | prepend: '/en' -%}
 {%- endif -%}
 {%- assign home_page = home | append: 'index.html' -%}
+{%- comment -%} On the links to the other language: head.html keeps to the language chosen with them. {%- endcomment -%}
+{%- capture remember_language -%}onclick="try { localStorage.setItem('molforma-language', '{% if en %}ja{% else %}en{% endif %}'); } catch (e) {}"{%- endcapture -%}
 {%- assign recipes = '/' | append: home | append: 'recipes' -%}
 {%- comment -%} The content's links from the site's root (made by relative_url and jekyll-relative-links) are
 turned into links from the page with these. {%- endcomment -%}
