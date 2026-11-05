@@ -149,7 +149,7 @@ On 2026-10-28, an AppImage was made with these steps and the following was check
 - **Wayland sessions**: In an environment that looks like a Wayland session (`QT_QPA_PLATFORM` unset, `wayland;xcb` or `wayland`), it started with xcb.
 - **Ubuntu 26.04 container (with the `nwchem` package)**: A calculation with NWChem completed.
 
-On 2026-11-05, it was also checked on Arch Linux (OpenSSL 3.6.5) that the AppImage downloads a PDB entry over HTTPS.
+On 2026-11-05, the 1.0.0 release, which no longer holds OpenSSL, was checked. On Arch Linux (OpenSSL 3.6.5), it downloaded a PDB entry over HTTPS. In Ubuntu 24.04, Debian 13 and Fedora 40 containers, it was started unpacked and made an offscreen screenshot. The Debian 13 container also got `libcom-err2` and `libgpg-error0`, which a desktop normally has.
 
 VTK rendering on a real GPU and the actual display on a Wayland desktop were not checked with the AppImage.
 

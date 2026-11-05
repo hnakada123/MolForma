@@ -149,7 +149,7 @@ docker run --rm -e OWNER="$(id -u):$(id -g)" -v "$PWD:/src:ro" -v "$PWD/build-ap
 - **Waylandのセッション**: Waylandのセッションに見える環境（`QT_QPA_PLATFORM` が未設定、`wayland;xcb`、`wayland`）でも、xcbで起動しました。
 - **Ubuntu 26.04のコンテナ（`nwchem` パッケージ入り）**: NWChemでの計算が完了しました。
 
-2026-11-05に、Arch Linux（OpenSSL 3.6.5）でAppImageからPDBのエントリーをHTTPSでダウンロードできることも確かめました。
+2026-11-05に、OpenSSLを同梱しなくなった1.0.0の配布版を確かめました。Arch Linux（OpenSSL 3.6.5）では、PDBのエントリーをHTTPSでダウンロードできました。Ubuntu 24.04・Debian 13・Fedora 40のコンテナでは、展開して起動する形で、オフスクリーンの画面写真を作れました。Debian 13のコンテナには、デスクトップには通常入っている `libcom-err2` と `libgpg-error0` も入れています。
 
 実機のGPUでのVTKの描画と、Waylandのデスクトップでの実際の表示は、AppImageでは確認していません。
 
