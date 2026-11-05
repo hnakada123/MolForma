@@ -16,6 +16,35 @@
 
 namespace mf {
 namespace {
+// Keeps the chosen row in sight as a table gets lower (the run panel opens below the tabs). A row
+// that the user scrolled away stays away, and the sideways position stays.
+class ChosenRowInSight : public QObject {
+  public:
+    explicit ChosenRowInSight(QTableWidget *table) : QObject(table), view(table) {
+        table->viewport()->installEventFilter(this);
+    }
+    bool eventFilter(QObject *, QEvent *event) override {
+        if (event->type() != QEvent::Resize)
+            return false;
+        const auto *resize = static_cast<QResizeEvent *>(event);
+        const int before = resize->oldSize().height(), after = resize->size().height();
+        const auto row = view->visualRect(view->currentIndex());
+        if (after < before && row.isValid() && row.top() < before && row.bottom() >= after)
+            // Once the table has its new scroll range.
+            QMetaObject::invokeMethod(
+                this,
+                [this] {
+                    const int sideways = view->horizontalScrollBar()->value();
+                    view->scrollTo(view->currentIndex(), QAbstractItemView::PositionAtCenter);
+                    view->horizontalScrollBar()->setValue(sideways);
+                },
+                Qt::QueuedConnection);
+        return false;
+    }
+
+  private:
+    QTableWidget *view;
+};
 // The tables of the history: no grid, a muted header, the selection in the tint.
 QTableWidget *table(const QStringList &labels, const QString &name) {
     auto *t = new QTableWidget(0, labels.size());
@@ -30,6 +59,7 @@ QTableWidget *table(const QStringList &labels, const QString &name) {
     t->horizontalHeader()->setStretchLastSection(true);
     t->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     t->verticalHeader()->setDefaultSectionSize(26);
+    new ChosenRowInSight(t);
     return t;
 }
 // Numbers in fixed-width digits at the right, so their decimal points line up.

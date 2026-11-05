@@ -761,6 +761,66 @@ class ResultsTest : public QObject {
         QVERIFY(widget<QFrame>(w, "resultsBanner")->isHidden()); // A MOLDEN file has no outcome to judge.
         QCOMPARE(frontierName(panel->result().orbitals, 0), QString("HOMO"));
     }
+    void chosenRowStaysInSightAsTheTableGetsLower() {
+        auto log = "NWChem\n" + geometry() + "                       DFT Final Molecular Orbital Analysis\n";
+        for (int i = 1; i <= 60; ++i)
+            log += QString(" Vector %1  Occ=%2  E=%3D+00\n")
+                       .arg(i, 4)
+                       .arg(i <= 30 ? "2.000000D+00" : "0.000000D+00")
+                       .arg(-3 + i * .1, 9, 'f', 6);
+        const auto path = save("many_orbitals.out", log);
+        MainWindow w;
+        w.resize(1380, 900);
+        w.show();
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentWidget(panel);
+        QSignalSpy done(panel, &ResultsPanel::loaded);
+        panel->openFile(path);
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        auto *details = widget<QTabWidget>(w, "resultsDetails");
+        auto *table = widget<QTableWidget>(w, "resultsOrbitals");
+        for (int i = 0; i < details->count(); ++i)
+            if (details->tabText(i).startsWith("軌道"))
+                details->setCurrentIndex(i);
+        QTRY_VERIFY(table->isVisible() && table->rowCount() == 60);
+        auto *rows = table->viewport();
+        auto *bar = table->verticalScrollBar();
+        const auto inSight = [&] { return rows->rect().contains(table->visualRect(table->currentIndex())); };
+        const auto panelOpen = [&](bool open) {
+            const int height = rows->height();
+            w.executionPanel()->showRunPanel(open);
+            QTRY_VERIFY(open ? rows->height() < height - 100 : rows->height() > height + 100);
+            QTest::qWait(50);
+        };
+        // A row low in the table moves up with it, with its neighbors in sight.
+        table->setCurrentCell(table->rowAt(rows->height() - 30), 0);
+        QVERIFY(inSight());
+        panelOpen(true);
+        QVERIFY(inSight());
+        const auto chosen = table->visualRect(table->currentIndex());
+        QVERIFY(chosen.top() >= chosen.height() && chosen.bottom() + chosen.height() < rows->height());
+        panelOpen(false);
+        QVERIFY(inSight());
+        // A row in sight already stays where it is.
+        table->scrollToTop();
+        table->setCurrentCell(1, 0);
+        panelOpen(true);
+        QCOMPARE(bar->value(), 0);
+        panelOpen(false);
+        // A row scrolled away stays away, on either side.
+        table->setCurrentCell(55, 0);
+        table->scrollToTop();
+        QVERIFY(!inSight());
+        panelOpen(true);
+        QCOMPARE(bar->value(), 0);
+        panelOpen(false);
+        table->setCurrentCell(1, 0);
+        table->scrollToBottom();
+        const int end = bar->value();
+        QVERIFY(end > 0);
+        panelOpen(true);
+        QCOMPARE(bar->value(), end);
+    }
     void fileSelectionLoadsAndCancels() {
         QTemporaryDir job;
         QVERIFY(job.isValid());
