@@ -330,7 +330,18 @@ if(MSVC)
         set(directories \"${dll_directories}\")
         file(GET_RUNTIME_DEPENDENCIES EXECUTABLES \"$<TARGET_FILE:molforma>\" MODULES \${plugins}
             DIRECTORIES \${directories} PRE_EXCLUDE_REGEXES \"^api-ms-\" \"^ext-ms-\" \"^Qt6\"
-            POST_EXCLUDE_REGEXES \"[Ss]ystem32\" RESOLVED_DEPENDENCIES_VAR dlls)
+            POST_EXCLUDE_REGEXES \"[Ss]ystem32\" RESOLVED_DEPENDENCIES_VAR dlls
+            CONFLICTING_DEPENDENCIES_PREFIX conflict)
+        # A DLL copied beside the executable after linking is found there too; take the original.
+        foreach(name IN LISTS conflict_FILENAMES)
+            foreach(path IN LISTS conflict_\${name})
+                get_filename_component(directory \"\${path}\" DIRECTORY)
+                if(NOT directory STREQUAL \"$<TARGET_FILE_DIR:molforma>\")
+                    list(APPEND dlls \"\${path}\")
+                    break()
+                endif()
+            endforeach()
+        endforeach()
         file(INSTALL \${dlls} DESTINATION \"\${CMAKE_INSTALL_PREFIX}/bin\")")
     # NWChem and mpirun of WSL, for "3 Run settings" (packaging/windows).
     install(FILES packaging/windows/nwchem.cmd packaging/windows/mpirun.cmd DESTINATION nwchem-wsl)
