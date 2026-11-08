@@ -219,4 +219,57 @@ Reaction rates and activation free energies require transition-state and IRC val
 
 Additional intermediate single-point calculations could make the electronic-state movie more detailed. Calculations on interpolated coordinates must still be distinguished from an optimized pathway. Autocatalysis and enantiomeric amplification require a catalyst-containing model and a separate investigation of the reaction cycle.
 
+## Additional calculations for a movie of autocatalysis
+
+Explaining autocatalysis computationally requires investigating **how a product-derived catalyst promotes the next addition and how newly formed product supplies further catalyst**. Explaining enantiomeric amplification also requires a kinetic model combining R/S formation with catalyst formation, association and dissociation. One addition event or a HOMO/LUMO image cannot establish this cycle and amplification.
+
+The following is a proposed extension. The separate 73-atom single-point calculation and an earlier simulation using literature rate constants can be reused, but they do not constitute an NWChem validation of the complete catalytic cycle. These autocatalysis explanations are outside the currently published 47-atom movie.
+
+### Catalyst model and system size
+
+First choose the proposed mechanism to investigate. The existing 73-atom structure comes from the zinc hemiacetal-type complex in [Trapp and co-workers' 2020 proposal](https://pmc.ncbi.nlm.nih.gov/articles/PMC7756584/). It provides a starting point, but [Denmark and co-workers have also investigated a tetramer model](https://pmc.ncbi.nlm.nih.gov/articles/PMC7117993/); the chosen model should not be presented as the sole established mechanism. [The Trapp group's 2025 study](https://pmc.ncbi.nlm.nih.gov/articles/PMC12332059/) should also inform checks of substrate, substituent and experimental-condition compatibility.
+
+The 73-atom complex alone does not describe reaction of the next substrate. Keeping the current substituents and adding one aldehyde and one zinc reagent to this complex gives **73 + 26 + 21 = 120 atoms**. This count describes a model for the next addition, not a fixed size for the entire cycle. Subsequent substrate uptake or aggregation may require larger systems.
+
+The catalyst is treated as a zinc alkoxide or its complexes in the reacting solution. Aqueous/acidic workup to the alcohol remains a separate step after the autocatalytic cycle.
+
+### Calculations needed at each stage
+
+| Question | Additional calculations | What the movie could explain |
+| --- | --- | --- |
+| Candidate active catalysts | Starting from the 73-atom structure, optimize alternative configurations, conformations and coordination arrangements under consistent solvent conditions; check minima by frequencies | Product-derived catalyst structures and their substrate-binding arrangements |
+| Addition on the catalyst | For the same catalyst configuration, explore approaches yielding R and S separately; use constrained scans to locate transition states, verify one imaginary mode corresponding to the reaction, and trace both IRC directions | Substrate positioning, C–C bond formation and the competing pathways |
+| Catalyst regeneration and growth | Investigate ligand exchange, product release, reassociation and formation of active species from new product to close the chosen cycle | How the product participates in further reactions |
+| Rates and pathway preference | Compare free energies including zero-point, thermal and entropy corrections, solution standard states and conformer contributions; check key structures with other basis sets and functionals | Barrier-based evidence for catalysis and selectivity |
+| R/S ratio and amplification | Solve kinetic equations for a network containing both enantiomers, active species, aggregates and background reaction | Concentrations, reaction rate, R/S ratio and ee over time |
+| Electronic changes | Calculate density and orbitals at representative points on validated paths; display CUBE/MOLDEN output in MolForma | Changes in electronic distributions across catalyst, substrate and reagent |
+
+An IRC follows the path from a transition state toward reactants and products. Use [NWChem's reaction-path calculations](https://github.com/nwchemgit/nwchem-wiki/blob/master/mepgs.md) and optimize the endpoints to verify the connected structures. Association or dissociation without a distinct transition state requires consideration of equilibrium or diffusion rather than an imposed saddle point.
+
+Catalyzed and uncatalyzed comparisons must balance reactants, catalyst and products and use consistent reference states. **Total energies of 47- and 120-atom systems cannot simply be subtracted.** Nor can the maximum of the current 47-atom scan be adopted as the uncatalyzed activation barrier. The catalyst-free control pathway also needs additional validation, including its transition state.
+
+### Obtaining R/S ratios and reaction times
+
+The activation free-energy difference between R- and S-forming paths on the same catalyst helps estimate selectivity for an elementary reaction. It does not alone determine the final R/S ratio. Time evolution must also account for catalyst abundance, association equilibria, substrate consumption and reverse reactions.
+
+Rate constants can be estimated by transition-state theory from activation free energies at consistent temperature and standard state, or taken from experiments under matching conditions. Label the latter as a literature-based kinetic model, distinct from predictions based on these NWChem calculations. Specify initial concentrations, temperature, product seed loading and seed ee; check mass balance, nonnegative concentrations, numerical accuracy and sensitivity to uncertain rate constants.
+
+For ee, count product units that yield R or S alcohol after workup, including those bound in complexes and aggregates. State whether the reported amounts include the initial seed or only newly formed product.
+
+```text
+ee [%] = 100 × (amount of R − amount of S) / (amount of R + amount of S)
+```
+
+This signed definition is positive for R excess and negative for S excess. Controls should reverse the initial R/S imbalance, start at 50:50, and disable the autocatalytic pathway. Exactly symmetric kinetic equations retain symmetry from an exact 50:50 start; modeling spontaneous imbalance additionally requires an initial perturbation or molecular-number fluctuations. Repeated operations with fresh substrate must be distinguished from a single batch.
+
+### A staged plan for this PC
+
+1. **Extend the literature-based explanatory movie first.** Recheck the existing 73-atom display and kinetic model, then add a schematic catalytic cycle and R/S and ee graphs. Label uncalculated molecular motion as schematic. This explanatory version can be made before completing quantum calculations of the entire cycle.
+2. **Calculate a representative addition on the catalyst.** Reoptimize the 73-atom candidate and benchmark single-point and gradient calculations for the 120-atom candidate to measure time and peak memory. Use literature structures to narrow the candidates, then investigate the main R- and S-forming paths one job at a time. Start exploration with the current PBE-D3(BJ)/def2-SVP and SMD toluene setup, checking important barriers against alternative settings.
+3. **Extend to the complete cycle and rate prediction.** Add regeneration, association, dissociation and competing structures; compare the free energies and kinetic model against experimental time profiles and ee. If resources are insufficient, expand computing capacity or identify explicitly which uncalculated steps use literature parameters.
+
+Since even 47-atom optimizations took hours, transition states, frequencies and multiple pathways for 120 atoms cannot be assumed to finish in comparable time. Estimate resources from benchmarks rather than scaling time linearly with atom count. Avoid concurrent jobs that exhaust memory and retain restart checkpoints.
+
+The future movie could follow catalyst formation, substrate/reagent approach, R/S-forming addition, catalyst regeneration and formation of new active species, then concentration and ee evolution. Interpolate calculated paths for molecular animation, while showing reaction time through kinetic-model graphs. Compare densities under common display settings. Tracking one orbital requires checking orbital overlaps and phase correspondence; independently selected HOMOs/LUMOs must instead be labeled as such and distinguished from real-time electron motion.
+
 [Home](../index.html) · [MolForma result viewer](../features/results.md) · [NWChem calculation settings](../features/calculation.md)
