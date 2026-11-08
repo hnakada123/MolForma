@@ -10,6 +10,8 @@ The calculation produced a structure with a new C–C bond and stereogenic carbo
 
 Production calculations completed on November 8, 2026. The movie's workup explanation was revised on November 9, 2026.
 
+[Watch the movie on YouTube](https://www.youtube.com/watch?v=Bvnd1ZmdwiU) (Japanese captions, no audio.)
+
 ## Plan and choice of model
 
 The aim was to explain the approach of separated molecules, structural changes during addition, electron density and molecular orbitals within a local PC's computing budget. Simplified 13- and 21-atom models were considered first. The final 47-atom model retains the pyrimidine ring, its substituent and the newly formed stereogenic carbon.
