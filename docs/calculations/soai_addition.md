@@ -10,6 +10,8 @@ Codexが計算計画を立案し、MolFormaによる分子の作成・編集と�
 
 本番計算の完了日：2026年11月8日。動画の後処理説明を修正した日：2026年11月9日。
 
+<iframe class="case-video" width="560" height="315" src="https://www.youtube.com/embed/Bvnd1ZmdwiU?si=FVfw8CHtbVpuqiGN" title="硤合反応の47原子付加モデルの計算動画" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
 [動画をYouTubeで見る](https://www.youtube.com/watch?v=Bvnd1ZmdwiU)（日本語字幕・音声なし）
 
 ## 計算計画とモデルの選定

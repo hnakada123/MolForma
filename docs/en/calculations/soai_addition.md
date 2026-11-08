@@ -10,6 +10,8 @@ The calculation produced a structure with a new C–C bond and stereogenic carbo
 
 Production calculations completed on November 8, 2026. The movie's workup explanation was revised on November 9, 2026.
 
+<iframe class="case-video" width="560" height="315" src="https://www.youtube.com/embed/Bvnd1ZmdwiU?si=FVfw8CHtbVpuqiGN" title="Calculation movie of the 47-atom Soai addition model" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
 [Watch the movie on YouTube](https://www.youtube.com/watch?v=Bvnd1ZmdwiU) (Japanese captions, no audio.)
 
 ## Plan and choice of model

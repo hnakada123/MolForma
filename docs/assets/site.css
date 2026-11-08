@@ -123,6 +123,7 @@ strong { font-weight: 650; }
 .case-figures figure { margin: 0; min-width: 0; }
 .case-figures img { display: block; width: 100%; }
 .case-figures figcaption { margin-top: .5em; font-size: .9rem; color: var(--mute); }
+.case-video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border: 0; border-radius: 6px; margin-block: 1.8em .8em; }
 @media (max-width: 600px) {
   .case-figures { grid-template-columns: 1fr; }
 }
