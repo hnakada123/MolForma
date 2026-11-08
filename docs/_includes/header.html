@@ -5,6 +5,7 @@
     <nav aria-label="{% if en %}Site{% else %}サイト{% endif %}">
       <a href="{{ root }}{{ home }}features.html"{% if page.url contains 'features' %} aria-current="page"{% endif %}>{% if en %}Features{% else %}機能と操作{% endif %}</a>
       <a href="{{ root }}{{ home }}recipes.html"{% if page.url contains recipes %} aria-current="page"{% endif %}>{% if en %}Recipes{% else %}題材から選ぶ実習{% endif %}</a>
+      <a href="{{ root }}{{ home }}calculations/soai_addition.html"{% if page.url contains '/calculations/' %} aria-current="page"{% endif %}>{% if en %}Case study{% else %}計算事例{% endif %}</a>
       <a href="{{ root }}{{ home }}mcp.html"{% if page.url contains 'mcp' %} aria-current="page"{% endif %}>{% if en %}MCP server{% else %}MCPサーバー{% endif %}</a>
       <a href="{{ site.repository_url }}">GitHub</a>
       {%- comment -%} Opens X's post form with this page's title (page_title from head.html) and absolute URL; X shows

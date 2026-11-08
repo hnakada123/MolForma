@@ -87,6 +87,8 @@ The manual, recipes and MCP guide are also published as HTML generated from `doc
 
 See [docs/en/features.md](docs/en/features.md) (a list of pages per screen and tab) for the scope of the features, limitations and verified examples. [docs/en/recipes.md](docs/en/recipes.md) has recipes that go from building a molecule to calculating it and checking the results, one subject at a time (16 subjects such as ethanol, a metal complex, a peptide, BSSE correction, a radical and a transition state, with screenshots and practice files). They also open with “Help → Guide and manual”.
 
+The case study [Planning and calculating a Soai addition model with Codex](docs/en/calculations/soai_addition.md) documents a 47-atom model without an autocatalyst, including its plan, method, convergence history, relative energies and interpretation of density and molecular orbitals.
+
 ## Development
 
 Sources are in `src/`, Qt Tests in `tests/`, documentation in `docs/`, and built-in data (parts and element data, the English translation `assets/translations/en.json`) in `assets/`. The data is embedded as Qt Resources and does not depend on the working directory at run time.

@@ -118,6 +118,14 @@ strong { font-weight: 650; }
 /* A figure between paragraphs of the feature pages, with its caption ("**図N** …"). */
 .content > p:has(> img) { margin-block: 1.8em .5em; text-align: center; }
 .content > p:has(> img) + p { margin-bottom: 1.8em; font-size: .9rem; color: var(--mute); }
+/* Paired native calculation images, with captions in each page's language. */
+.case-figures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-block: 1.8em; }
+.case-figures figure { margin: 0; min-width: 0; }
+.case-figures img { display: block; width: 100%; }
+.case-figures figcaption { margin-top: .5em; font-size: .9rem; color: var(--mute); }
+@media (max-width: 600px) {
+  .case-figures { grid-template-columns: 1fr; }
+}
 /* A figure inside a step, with its caption. */
 .content li > p:has(> img) { margin-block: .8em .4em; text-align: center; }
 .content li > p:has(> img) + p { margin-bottom: 1.4em; font-size: .9rem; color: var(--mute); }
