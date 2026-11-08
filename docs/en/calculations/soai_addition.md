@@ -272,4 +272,23 @@ Since even 47-atom optimizations took hours, transition states, frequencies and 
 
 The future movie could follow catalyst formation, substrate/reagent approach, R/S-forming addition, catalyst regeneration and formation of new active species, then concentration and ee evolution. Interpolate calculated paths for molecular animation, while showing reaction time through kinetic-model graphs. Compare densities under common display settings. Tracking one orbital requires checking orbital overlaps and phase correspondence; independently selected HOMOs/LUMOs must instead be labeled as such and distinguished from real-time electron motion.
 
+### Estimated calculation time on this PC
+
+The PC has an **AMD Ryzen 7 2700X (8 cores / 16 threads) and 32 GB of memory**. Extending the explanatory movie is estimated at 1–2 days; substantial calculations of autocatalysis would take weeks to months.
+
+**The 120-atom model has not yet been benchmarked.** These are rough planning estimates informed by the measured 47-atom runs. Long calculations assume continuous, 24-hour operation with one job at a time, starting exploration with the current PBE-D3(BJ)/def2-SVP and SMD toluene setup. Each row estimates the time to reach that scope; the rows are not additive.
+
+| Scope of production or validation | Estimated elapsed time |
+| --- | --- |
+| Reuse the existing 73-atom structure and literature kinetic model for a movie explaining autocatalysis and R/S ratios | **1–2 days**, including editing and review |
+| Explore one representative addition pathway with a constrained scan of the 120-atom model | **3 days to 2 weeks** |
+| Investigate transition states, frequencies, IRCs and free energies for both R/S pathways and make a movie | **About 3–8 weeks** |
+| Quantitatively investigate the complete cycle, including catalyst regeneration, association, dissociation and enantiomeric amplification | **2–6 months or more**, with longer searches extending this further |
+
+Accepted geometry optimizations of the 47-atom model took about 39 minutes to 4 hours 20 minutes each. The 120-atom system increases both the cost per calculation and the number of candidate structures, competing R/S pathways and frequency calculations. Unsuccessful optimizations and additional conformational searches mean that completion within the upper estimates is not guaranteed.
+
+**Frequency calculations** are a particular cost. With the current RI-J setup, the Hessian (the second derivative of the energy) must be obtained by numerical differentiation of gradients rather than analytically, consistent with [NWChem's Hessian and frequency specifications](https://nwchemgit.github.io/Hessians-and-Vibrational-Frequencies.html). Using central differences for all atomic coordinates would require 120 × 3 × 2 = **about 720 gradient evaluations**. If each took 10 minutes, frequencies for just one structure would take about 120 hours, or 5 days. This illustrates the workload under an assumed gradient time; it is not a benchmark result.
+
+The proposed first step is to allocate roughly half a day to preparing the 120-atom model and benchmarking single-point and gradient calculations. Measure elapsed time and peak memory, revise the estimates, then decide whether to complete a representative addition pathway or expand to the entire cycle.
+
 [Home](../index.html) · [MolForma result viewer](../features/results.md) · [NWChem calculation settings](../features/calculation.md)
