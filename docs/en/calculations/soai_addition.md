@@ -81,6 +81,10 @@ end
 
 The chosen coordinate is the distance between aldehyde carbon C2 and carbon C28 of the transferring isopropyl group. These labels refer to the atom order used in this calculation and its display.
 
+[![The two carbons defining the distance constraint: aldehyde carbon C2 is circled in orange and carbon C28 of the zinc reagent's isopropyl group in teal. The C2–C28 distance is 3.60 angstroms](../../calculations/images/soai_addition/constrained_carbons.png)](../../calculations/images/soai_addition/constrained_carbons.png)
+
+**Locations of C2 and C28.** This image from the Japanese-captioned movie shows the associated structure at C–C = 3.60 Å. **C2, circled in orange**, is the aldehyde's carbonyl carbon; **C28, circled in teal**, is the central carbon of the isopropyl group bonded to Zn in the zinc reagent. The distance between these two carbons was constrained. Click the image to view it at full size.
+
 The product was optimized first. The C–C distance was then increased through 2.0, 2.4, 3.0 and 3.6 Å. At each point, other degrees of freedom were optimized while maintaining this distance. An electronic-state single-point calculation followed on the converged coordinates. This explores a constrained path along one distance; it is not an IRC traced from a transition state.
 
 The movie presents the structures in reverse order:
