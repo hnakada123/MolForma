@@ -2,6 +2,12 @@
 
 [Home](../index.html) / Calculation case study
 
+**[Download calculation data (ZIP, 37.74 MB)](https://github.com/hnakada123/MolForma/releases/download/soai-addition47-data-v1/soai_addition47_viewer_data_v1.zip)**
+
+Inspect the 47-atom model's inputs, optimization results and electronic states in MolForma. The archive contains 45 calculation files covering six electronic states and five optimizations: MolForma projects, NWChem inputs and logs, MOLDEN orbitals and electron-density CUBEs. Including instructions and metadata, it occupies about 160 MB after extraction.
+
+Extract the ZIP and follow `README.en.txt`. No NWChem rerun is needed for visualization. This is a viewing dataset; restart data, the 73-atom model, movies and images are excluded. [SHA-256 checksum](https://github.com/hnakada123/MolForma/releases/download/soai-addition47-data-v1/soai_addition47_viewer_data_v1.zip.sha256) · [MolForma result viewer](../features/results.md)
+
 This case study follows a calculation planned and coordinated by Codex, using MolForma to build and edit molecules and display results, and NWChem to perform quantum chemistry calculations. Codex also assembled the explanatory movie. The user and Codex discussed the model, computing budget and presentation throughout the work.
 
 The subject is the addition of diisopropylzinc to a pyrimidine aldehyde in the Soai reaction. A **47-atom model without an autocatalyst** was used for constrained geometry optimizations and electronic-state calculations. Its endpoint is the zinc alkoxide before workup.

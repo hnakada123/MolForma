@@ -2,6 +2,12 @@
 
 [トップページ](../index.html) / 計算事例
 
+**[計算データをダウンロード（ZIP・37.74 MB）](https://github.com/hnakada123/MolForma/releases/download/soai-addition47-data-v1/soai_addition47_viewer_data_v1.zip)**
+
+47原子モデルの入力・最適化結果・電子状態をMolFormaで確認できます。6構造の電子状態と5件の最適化について、MolFormaプロジェクト、NWChem入力・出力ログ、MOLDEN、電子密度CUBEの計45ファイルを収録しています。展開後は説明ファイルなどを含めて約160 MBです。
+
+ZIPを展開し、同梱の `README.ja.txt` に沿って開いてください。可視化にNWChemの再実行は不要です。このセットは閲覧用で、再開用データ、73原子モデル、動画・画像は含みません。[SHA-256チェックサム](https://github.com/hnakada123/MolForma/releases/download/soai-addition47-data-v1/soai_addition47_viewer_data_v1.zip.sha256) · [MolFormaの結果表示](../features/results.md)
+
 Codexが計算計画を立案し、MolFormaによる分子の作成・編集と結果表示、NWChemによる量子化学計算、動画の作成までを進めた事例です。モデルと制作方針はユーザーと相談して決定しました。
 
 扱うのは、硤合反応のうち、ピリミジン環を持つアルデヒドにジイソプロピル亜鉛が付加する段階です。**自己触媒を含まない47原子モデル**について、距離を拘束した構造最適化と電子状態計算を行いました。生成物は後処理前の亜鉛アルコキシドです。
