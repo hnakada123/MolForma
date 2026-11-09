@@ -16,9 +16,9 @@ The calculation produced a structure with a new C–C bond and stereogenic carbo
 
 Production calculations completed on November 8, 2026. The movie's workup explanation was revised on November 9, 2026.
 
-<iframe class="case-video" width="560" height="315" src="https://www.youtube.com/embed/Bvnd1ZmdwiU?si=FVfw8CHtbVpuqiGN" title="Calculation movie of the 47-atom Soai addition model" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+<iframe class="case-video" width="560" height="315" src="https://www.youtube.com/embed/2hMt51ILW5A?si=IiG-8jFtM8g9xzVV" title="English calculation movie of the 47-atom Soai addition model" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 
-[Watch the movie on YouTube](https://www.youtube.com/watch?v=Bvnd1ZmdwiU) (Japanese captions, no audio.)
+[Watch the English movie on YouTube](https://www.youtube.com/watch?v=2hMt51ILW5A) (English captions and interface, no audio.)
 
 ## Plan and choice of model
 
@@ -43,7 +43,7 @@ A separate 73-atom structure from the literature was also examined to support di
 | MolForma | Built molecules, edited coordinates, prepared NWChem input, and displayed structures, density and orbitals |
 | NWChem | Optimized structures, calculated energies and electronic states, and exported CUBE and MOLDEN files |
 
-MolForma was operated through MCP. Production continuation jobs used saved inputs and NWChem launched from the terminal. The movie's application walkthrough shows a pilot calculation on an initial structure and its results, distinguished from the converged production calculations.
+MolForma was operated through MCP. Production continuation jobs used saved inputs and NWChem launched from the terminal. The English movie's application walkthrough was reconstructed in MolForma's English interface using saved pilot inputs and completed results. This pilot used an initial structure, distinct from the converged production calculations. No new NWChem calculation was launched to make the English edition.
 
 For the underlying operations, see [MCP server](../mcp.md), [Calculation settings](../features/calculation.md) and [Result viewer](../features/results.md).
 
@@ -210,7 +210,7 @@ Water and acid are not present in the 47-atom calculation. The workup at the end
 
 ## Movie scope and validation
 
-The revised movie is 5 minutes 50.5 seconds, 1920×1080 at 24 fps, with Japanese captions and no audio. It includes the application walkthrough, approach and addition, mirror-image configurations, six electronic states, interpretation and schematic workup.
+The English movie is 5 minutes 50.5 seconds, 1920×1080 at 24 fps, with English captions and no audio. It includes the application walkthrough in English, approach and addition, mirror-image configurations, six electronic states, interpretation and schematic workup.
 
 | Movie element | Relationship to calculation |
 | --- | --- |
@@ -221,7 +221,7 @@ The revised movie is 5 minutes 50.5 seconds, 1920×1080 at 24 fps, with Japanese
 | R/S comparison | A calculated structure and its reflection, not separate reaction paths or a yield prediction |
 | Workup to alcohol | Explanatory chemical scheme |
 
-Coordinates and occupancies were cross-checked between CUBE, MOLDEN and calculation logs. All 8,412 movie frames passed a decoding check. Visual inspection sampled 44 frames spanning all 11 chapters and the 10 chapter boundaries.
+Coordinates and occupancies were cross-checked between CUBE, MOLDEN and calculation logs. All 8,412 frames of the English movie passed a decoding check. Checks sampled 41 frames across all 11 chapters, including comparisons of the encoded static scenes with the English source artwork. The original molecular animation and electronic-state captures were preserved.
 
 ## Beyond this calculation
 
