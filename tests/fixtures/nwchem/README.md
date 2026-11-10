@@ -8,3 +8,5 @@ host name and source path in the job information were replaced.
 
 When the reading changes on purpose, record it anew with `MOLFORMA_UPDATE_GOLDEN=1 ./build/test_results
 realNwchemLogs` and check the difference of the `.json` files.
+
+The `water_raman`, `methyl_epr`, `peroxide_ecd` and `peroxide_ord` fixtures were generated with explicit small NWChem 7.3.1 inputs, retained as `.nw` files. They exercise normal Raman activities (also `.normal`), g-shifts in ppt and hyperfine tensors in MHz, signed length-gauge rotatory strengths, and undamped GIAO optical-rotation β at two wavelengths. These small-basis calculations test formats and conventions, not quantitative agreement with experiment.

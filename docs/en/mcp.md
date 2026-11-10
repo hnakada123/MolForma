@@ -200,7 +200,7 @@ The following 4 tools are added with `--mcp`. `--mcp-gui` has tools of the same 
 | Tool | Purpose |
 | --- | --- |
 | `get_app_state` | Whether there is a candidate; calculation and result loading state |
-| `calculation` | Run or stop NWChem, save the input set |
+| `calculation` | Run or stop NWChem, save the input set, manage the calculation queue |
 | `get_results` | Summary of the loaded results (`properties` including the calculation's energy `final_energy` (last task, reference structure of frequencies, BSSE-corrected), thermochemistry, dipole, optimization state, each point of scans and IRC, BSSE, solvation, per-atom Mulliken/ESP/RESP charges, NMR shielding and polarizability), structures, energies, orbitals (`number` is the per-spin orbital number, the same as in MOLDEN even if the log lists only some orbitals), frequencies (translations and rotations are `rigid`), excited states, optimization steps, displacements and log |
 | `results_action` | Load, reload or cancel loading a result file or calculation folder |
 
@@ -228,6 +228,12 @@ The following tools are added with `--mcp-gui`.
 When a vibration animation is selected in the GUI file list, `get_results.source` is the path of an original step XYZ file. `results_action(action: "reload")` rereads the original XYZ files of that mode, including added or removed steps.
 
 See the JSON Schema of `tools/list` for argument types and required fields. All tools return both JSON text in `content` and `structuredContent`. Screen captures also return MCP `image` content. Errors in arguments or edits return `isError: true`; invalid JSON-RPC and unknown tools return protocol errors.
+
+### Calculation queue operations
+
+`calculation` with `enqueue` saves the molecule and settings at registration and adds the job to the queue. The queue starts paused. Use `queue_resume` / `queue_pause` to start or pause it. `queue_cancel` cancels a waiting entry by `id`; `queue_move` reorders a waiting `id` to a zero-based `position` in the list. `queue_policy` requires the boolean `stopOnFailure`, controlling whether failure, stop or timeout pauses subsequent jobs (default true). The existing `stop` action stops the active calculation.
+
+Read `get_app_state.calculation.queue`: `paused`, `stopOnFailure`, `pending` and `entries`. Each entry has `id`, `name`, `directory`, `state` and `error`; a waiting entry has state `queued`. Headless `enqueue` also returns `queueId`. In GUI mode, wait for the usual UI command to complete, then read the state. Completion of a queue operation does not mean its calculations have completed. Both modes share sequential execution, trust/access checks at registration and path/snapshot checks before launch. The queue does not automatically resume after the application exits.
 
 ## Resources
 
@@ -365,3 +371,11 @@ Successful results return `resultType: "complete"`. An unsupported version gets 
 ## Tests
 
 `ctest --test-dir build --output-on-failure -R '^mcp$'` tests communication with the new and legacy versions, rejection of revisions, candidates and undo/redo, fixed atoms and keeping the original state on failure, conflicts with the GUI, preservation of unknown envelope fields, file saving and NWChem input generation. It launches the executable as a child process and tests, over MCP only, communication while a dialog is shown, file dialogs, playing and stopping imaginary and real frequencies from a synthetic MOLDEN file, PNG capture, running and canceling a mock NWChem, history scanning, selection and CSV export, and creating candidates from SMILES. Numeric values, the coordinate table and selection operations, rejection of old revisions and destroyed widgets, page limits, UTF-8 and split messages, notifications and exit on EOF are also covered. It also tests `title` / `outputSchema` of all tools, Prompts, the `save_file` overwrite confirmation (approval, decline, tampering, revision change), answering dialogs through Tasks, and tracking until the mock NWChem ends or is stopped. Protection of the run settings (refusing changes over MCP and runs after loading a project, the user's confirmation dialog), allowed directories (symbolic links, file dialogs), cancellation with `tasks/cancel`, resources, and running a mock NWChem and loading its results in headless mode are tested too. The tests need no network or credentials.
+
+## Spectra and energy comparisons
+
+`get_results(section: "spectrum")` returns curve `items` as `[x,y]`; `spectrum_peaks` returns peak records. `parameters.kind` is `nmr`, `raman`, `epr`, `ecd` or `ord`. Required `width` is FWHM in x-axis units (unused for ORD). Optional `minimum`/`maximum` fix the range. Use returned `xUnit`, `yUnit`, `reversed` and completed `parameters`, and paginate with `offset`, `limit` and `nextOffset`.
+
+NMR requires `nucleus: "1H"|"13C"` and `reference_ppm`; optional `weights` maps one-based atom numbers to weights. ESR requires `microwave_ghz` and `nuclei: [{"atom":2,"isotope":"1H"}]`; `derivative: true` selects the first derivative. Raw tensors, Raman activities, ECD rotatory strengths and ORD β remain in `properties`. Limitations match the [Results viewer](features/results.md).
+
+`get_results(section: "energy_profile", profile: {...})` evaluates a `molforma-energy-profile` version 1 specification. Supply ID-bearing `records`, `stages` as `{name, terms:[{record, thermal?, coefficient}]}`, `metric: E|ZPE|H|G`, `unit: hartree|kcal|kj`, `temperature`, the `standard_state` label and a zero-based `reference`. This is the GUI comparison JSON format, preserving electronic-energy and thermal-correction provenance. The response contains stage values, `comparable` and `warnings`.

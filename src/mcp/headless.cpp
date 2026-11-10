@@ -10,7 +10,7 @@
 
 namespace mf {
 McpHeadless::McpHeadless(McpPolicy p, QJsonObject trustedExecution, QObject *parent)
-    : QObject(parent), policy(std::move(p)), trusted(std::move(trustedExecution)) {
+    : QObject(parent), policy(std::move(p)), queue(run), trusted(std::move(trustedExecution)) {
     connect(&run, &NwchemRun::changed, this, [this] {
         if (!run.active() && !runWork.isEmpty() && !finished.contains(runWork))
             finish(runWork, "calculation", "start", "calculation");
@@ -27,6 +27,7 @@ McpHeadless::McpHeadless(McpPolicy p, QJsonObject trustedExecution, QObject *par
 }
 McpHeadless::~McpHeadless() {
     cancelLoad({});
+    queue.shutdown();
     run.shutdown();
 }
 void McpHeadless::attach(const McpServer &owner) {
@@ -81,7 +82,7 @@ QJsonArray McpHeadless::tools() const {
 }
 QJsonObject McpHeadless::state() const {
     return {{"candidate", server && server->candidate().has_value()},
-            {"calculation", calculationJson(run, saved.directory)},
+            {"calculation", calculationJson(run, saved.directory, &queue)},
             {"results", QJsonObject{{"loading", loader.active()},
                                     {"source", data.source},
                                     {"pendingPath", loader.pendingPath()},
@@ -94,6 +95,8 @@ QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
         return resultsJson(data, args, state()["results"].toObject());
     const auto action = args["action"].toString();
     if (name == "calculation") {
+        if (calculationQueueAction(queue, args))
+            return {{"tool", name}, {"action", action}, {"calculation", state()["calculation"]}};
         if (action == "stop") {
             run.stop();
             return {
@@ -109,7 +112,7 @@ QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
             return {
                 {"tool", name}, {"action", action}, {"calculation", calculationJson(run, saved.directory)}};
         }
-        if (run.active())
+        if (run.active() && action != "enqueue")
             fail("A calculation is already running.");
         if (!policy.allowExecutionSettings && protectedExecution(d) != trusted)
             fail("The NWChem executable, MPI launcher, environment overrides or additional NWChem input "
@@ -117,6 +120,11 @@ QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
                  "otherwise nwchem and mpirun from PATH with no overrides and no additional input). MCP "
                  "clients cannot choose them; restart the server with --mcp-allow-execution-settings to "
                  "permit it.");
+        if (action == "enqueue") {
+            const auto id = queue.enqueue(d, base, [policy = policy, d, base] { policy.checkRun(d, base); });
+            return {
+                {"tool", name}, {"action", action}, {"queueId", id}, {"calculation", state()["calculation"]}};
+        }
         runWork = "calculation-" + QString::number(++nextWork);
         run.start(d, base);
         return {{"tool", name},

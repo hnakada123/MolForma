@@ -77,8 +77,9 @@ void ChemistryJob::start(const ChemistryRequest &request) {
                     if (request.mode == "conformers") {
                         for (const auto &v : response["conformers"].toArray()) {
                             const auto c = v.toObject();
-                            result.conformers << Conformer{Document::fromJson(c["document"].toObject()),
-                                                           c["energy"].toDouble()};
+                            result.conformers
+                                << Conformer{Document::fromJson(c["document"].toObject()),
+                                             c["energy"].toDouble(), c["force_field"].toString()};
                         }
                         if (result.conformers.isEmpty())
                             fail(tr("配座が見つかりませんでした。"));
@@ -134,7 +135,8 @@ int chemistryWorker(const QString &input, const QString &output) {
             QJsonArray list;
             for (const auto &c : searchConformers(Document::fromJson(request["document"].toObject()),
                                                   request["count"].toInt(10)))
-                list.append(QJsonObject{{"document", c.document.toJson()}, {"energy", c.energy}});
+                list.append(QJsonObject{
+                    {"document", c.document.toJson()}, {"energy", c.energy}, {"force_field", c.forceField}});
             writeFile(output, QJsonDocument(QJsonObject{{"conformers", list}}).toJson());
         } else {
             const auto d = mode == "smiles" || mode == "fragment"

@@ -6,6 +6,7 @@
 #include <QRectF>
 #include <QVector>
 #include <QWidget>
+#include <optional>
 
 namespace mf {
 // The name of an orbital by its place among the occupied or empty orbitals of its spin: "HOMO",
@@ -32,6 +33,7 @@ class ChartView : public QWidget {
     void clear();
     // Larger x on the left, as IR spectra are drawn in wavenumbers.
     void setReversedX(bool on);
+    void setXRange(double minimum, double maximum);
     // One stick drawn thicker in the accent color (series and point index; -1 for none).
     void setSelectedStick(int series, int index);
     QSize sizeHint() const override {
@@ -58,6 +60,7 @@ class ChartView : public QWidget {
     // The x mapping of the last paint, for clicks.
     QRectF plot;
     double x0 = 0, x1 = 1;
+    std::optional<QPair<double, double>> range;
     double screenX(double x) const;
     QColor color(ChartTone tone) const;
 };

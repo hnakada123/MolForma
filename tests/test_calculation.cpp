@@ -195,6 +195,61 @@ class CalculationTest : public QObject {
         set(d, "scf_convergence", "tight");
         QVERIFY(nwchemInput(d).contains("  convergence energy 1e-08 density 1e-7 gradient 1e-7\n"));
     }
+    void normalRamanInput() {
+        auto d = water();
+        set(d, "prop_raman", true);
+        QVERIFY(errorContains(d, "通常ラマン"));
+        set(d, "method", "dft");
+        set(d, "task", "frequencies");
+        set(d, "raman_wavelength_nm", 532.0);
+        QVERIFY2(validateNwchem(d).errors.isEmpty(), qPrintable(validateNwchem(d).errors.join('\n')));
+        const auto text = nwchemInput(d);
+        QVERIFY(text.contains("task dft frequencies\n"));
+        QVERIFY(text.contains("unset prop:*\nproperty\n  response 1 "));
+        QVERIFY(text.endsWith("raman\n  normal\n  lorentzian\nend\ntask dft raman\n"));
+        const auto imported = importNwchemInput(text);
+        QVERIFY(nwchemSettings(imported.document)["prop_raman"].toBool());
+        QVERIFY(std::abs(nwchemSettings(imported.document)["raman_wavelength_nm"].toDouble() - 532.0) < 1e-8);
+        set(d, "followup", true);
+        QVERIFY(errorContains(d, "通常ラマン"));
+    }
+    void solutionEprInput() {
+        auto d = water();
+        set(d, "prop_epr", true);
+        QVERIFY(errorContains(d, "ESR物性"));
+        d = Document::fromXyz("2\nOH\nO 0 0 0\nH 0 0 .97\n");
+        d.multiplicity = 2;
+        set(d, "method", "dft");
+        set(d, "relativistic", "zora");
+        set(d, "prop_epr", true);
+        QVERIFY2(validateNwchem(d).errors.isEmpty(), qPrintable(validateNwchem(d).errors.join('\n')));
+        QVERIFY(nwchemInput(d).contains("  gshift\n  hyperfine\n"));
+    }
+    void opticalActivityAndFieldsInput() {
+        auto d = water();
+        set(d, "method", "dft");
+        set(d, "tddft", true);
+        set(d, "tddft_cdspectrum", true);
+        QVERIFY(nwchemInput(d).contains("  cdspectrum\n"));
+        QVERIFY(nwchemSettings(importNwchemInput(nwchemInput(d)).document)["tddft_cdspectrum"].toBool());
+        set(d, "tddft", false);
+        set(d, "prop_ord", true);
+        set(d, "ord_points", 3);
+        auto input = nwchemInput(d);
+        QCOMPARE(input.count("  giao\n"), 3);
+        QVERIFY(nwchemSettings(importNwchemInput(input).document)["prop_ord"].toBool());
+        set(d, "ord_start_nm", 800.);
+        QVERIFY(errorContains(d, "ORD"));
+        set(d, "prop_ord", false);
+        set(d, "prop_esp_grid", true);
+        set(d, "prop_efield_grid", true);
+        input = nwchemInput(d);
+        QVERIFY(input.contains("  esp\n  grid pad 4 ngrid 50 output "));
+        QVERIFY(input.contains("  efield\n  grid pad 4 ngrid 50 output "));
+        QVERIFY(nwchemSettings(importNwchemInput(input).document)["prop_esp_grid"].toBool());
+        set(d, "property_grid_points", 200);
+        QVERIFY(!validateNwchem(d).errors.isEmpty());
+    }
     void dftFunctionalsAndTasks() {
         auto d = water();
         set(d, "method", "dft");
@@ -876,6 +931,9 @@ class CalculationTest : public QObject {
                                          {"functional", "custom"},
                                          {"xc_custom", "xpbe96 0.75 cpbe96 1.0 hfexch 0.25"}},
                                         {{"method", "dft"}, {"tddft", true}},
+                                        {{"method", "dft"}, {"task", "frequencies"}, {"prop_raman", true}},
+                                        {{"method", "dft"}, {"prop_ord", true}},
+                                        {{"prop_esp_grid", true}},
                                         {{"method", "mp2"}},
                                         {{"method", "ccsd"}},
                                         {{"task", "optimize"}},
@@ -944,6 +1002,12 @@ class CalculationTest : public QObject {
                     const auto where = named.isEmpty() ? key : key + " with " + named.join(", ");
                     set(d, spec.key, value);
                     // Values that need another setting with them.
+                    if (spec.key == "prop_epr") {
+                        d.charge = 1;
+                        d.multiplicity = 2;
+                        set(d, "method", "dft");
+                        set(d, "relativistic", "zora");
+                    }
                     if (value == "custom")
                         set(d, "xc_custom", "xpbe96 0.75 cpbe96 1.0 hfexch 0.25");
                     if (value == "zora" || value == "smd" || value == "sarc-zora")
@@ -962,7 +1026,11 @@ class CalculationTest : public QObject {
                     if (validateNwchem(initial).errors.isEmpty() && input == nwchemInput(initial))
                         continue;
                     const auto imported = nwchemSettings(importNwchemInput(input).document);
-                    if (imported[spec.key] != value)
+                    const bool realMatches = spec.kind == NwchemSettingKind::Real &&
+                                             imported[spec.key].isDouble() &&
+                                             std::abs(imported[spec.key].toDouble() - value.toDouble()) <=
+                                                 1e-8 * std::max(1., std::abs(value.toDouble()));
+                    if (imported[spec.key] != value && !realMatches)
                         failures << where + " (read " + nwchemAdvancedText(imported[spec.key]) + ")";
                 }
                 if (!tested)

@@ -2,7 +2,7 @@
 
 How to build MolForma from source on Windows with Microsoft Visual C++ (MSVC) and install it into a folder. The libraries for the build (RDKit and VTK among them) come from vcpkg and from source; NWChem for calculations goes into Ubuntu on WSL (Windows Subsystem for Linux).
 
-The steps are for Windows 11 (x64) and MolForma 1.0.0. They were checked on 2026-10-28 on Windows 11 Home with Visual Studio Community 2026 ([Verified configuration](#verified-configuration)).
+The steps are for Windows 11 (x64) and MolForma 1.1.0. The procedure was checked with MolForma 1.0.0 on 2026-10-28 on Windows 11 Home with Visual Studio Community 2026 ([Verified configuration](#verified-configuration)).
 
 There is no installer of MolForma for Windows. You build it from the source on GitHub, and `cmake --install` makes a MolForma folder that holds the Qt and Open Babel files it needs. NWChem has no official Windows build, so the Ubuntu package in WSL is used, started through two batch files that come with MolForma (`nwchem.cmd` and `mpirun.cmd`). NWChem can also be built as a native Windows program, without WSL ([Building NWChem on Windows](nwchem_mingw64.md)).
 
@@ -225,7 +225,7 @@ The defaults are used for new projects and when opening structure files. Change 
 
 Start MolForma from “MolForma” in the Start menu or from `%LOCALAPPDATA%\Programs\MolForma\bin\molforma.exe`. The display language follows the Windows language (“Language (after restart)” in “Edit → Preferences…” switches it; it takes effect after a restart).
 
-1. Open “Help → About MolForma” and check that it reads “MolForma 1.0.0” and, with RDKit and VTK installed, “Stereochemistry and residue recognition (RDKit): Enabled” and “3D rendering: VTK (OpenGL)”. Where OpenGL is unavailable (some remote desktops and virtual machines), it reads “3D rendering: QPainter (CPU)”.
+1. Open “Help → About MolForma” and check that it reads “MolForma 1.1.0” and, with RDKit and VTK installed, “Stereochemistry and residue recognition (RDKit): Enabled” and “3D rendering: VTK (OpenGL)”. Where OpenGL is unavailable (some remote desktops and virtual machines), it reads “3D rendering: QPainter (CPU)”.
 2. Type `CC1CCCCC1` (methylcyclohexane) into the search field of the parts palette and check that “Build 3D from SMILES “CC1CCCCC1”” makes a 3D candidate (this uses Open Babel and its data).
 3. Open “3 Run settings” and check that the pre-run check finds the NWChem executable and the MPI launcher.
 4. Try a calculation on a small molecule; the steps are in [Recipe 1 Building from atoms and bonds](../recipes/atoms_and_bonds.md).

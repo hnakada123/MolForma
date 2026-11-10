@@ -2,7 +2,7 @@
 
 How to make MolForma a single executable file that runs on any Linux distribution (an AppImage). It is built on Ubuntu 24.04 inside Docker, and the libraries MolForma uses, such as Qt, Open Babel, RDKit and VTK, go into one file. The AppImage needs no installation: make it executable and start it.
 
-The computer that makes the AppImage can run any distribution: it needs Docker on x86-64 Linux. The computer that runs the AppImage needs an x86-64 Linux desktop with glibc 2.38 or later and the `libstdc++` of GCC 13 or later (Ubuntu 24.04 or later, Debian 13 or later, Fedora 39 or later, Arch Linux and others). These steps are for MolForma 1.0.0. They were checked on 2026-10-28 (see [Verified configuration](#verified-configuration)).
+The computer that makes the AppImage can run any distribution: it needs Docker on x86-64 Linux. The computer that runs the AppImage needs an x86-64 Linux desktop with glibc 2.38 or later and the `libstdc++` of GCC 13 or later (Ubuntu 24.04 or later, Debian 13 or later, Fedora 39 or later, Arch Linux and others). These steps are for MolForma 1.1.0. The procedure was checked with MolForma 1.0.0 on 2026-10-28 (see [Verified configuration](#verified-configuration)).
 
 A ready-built AppImage is in the ZIP (`MolForma-<version>-linux-x86_64.zip`) on [Releases](https://github.com/hnakada123/MolForma/releases). Unpack it and go to [4. Start it](#4-start-it). To make one yourself, follow these steps.
 
@@ -49,7 +49,7 @@ VTK's build runs 4 compile jobs at once by default. Using all cores at once can 
 
 ## 3. Make the AppImage
 
-In the folder of the source, run the commands below. This makes `build-appimage/MolForma-1.0.0-x86_64.AppImage` (about 110 MB) in about 3 minutes.
+In the folder of the source, run the commands below. This makes `build-appimage/MolForma-1.1.0-x86_64.AppImage` (about 110 MB) in about 3 minutes.
 
 ```sh
 mkdir -p build-appimage
@@ -71,9 +71,9 @@ The source folder is passed read-only, and the build happens inside the containe
 Make it executable and start it. You can also give a file to open.
 
 ```sh
-chmod +x MolForma-1.0.0-x86_64.AppImage
-./MolForma-1.0.0-x86_64.AppImage
-./MolForma-1.0.0-x86_64.AppImage molecule.xyz
+chmod +x MolForma-1.1.0-x86_64.AppImage
+./MolForma-1.1.0-x86_64.AppImage
+./MolForma-1.1.0-x86_64.AppImage molecule.xyz
 ```
 
 - **FUSE**: At startup the AppImage mounts itself with FUSE. It needs `fusermount3` (the `fuse3` package) or `fusermount`, which most desktops have. It does not need `libfuse2`.
@@ -81,7 +81,7 @@ chmod +x MolForma-1.0.0-x86_64.AppImage
 - **Menu**: The AppImage does not add itself to the application menu. To start it from the menu, use an application that manages AppImages (Gear Lever, AppImageLauncher and others).
 - **MCP server**: In an MCP client, register the AppImage's path followed by `--mcp` (or `--mcp-gui` to show the interface) as the server's command (see [MCP server](../mcp.md)).
 
-Once started, open “Help → About MolForma” and check that it reads “MolForma 1.0.0”, “Stereochemistry and residue recognition (RDKit): Enabled” and “3D rendering: VTK (OpenGL)”. Where OpenGL is unavailable, it reads “3D rendering: QPainter (CPU)”.
+Once started, open “Help → About MolForma” and check that it reads “MolForma 1.1.0”, “Stereochemistry and residue recognition (RDKit): Enabled” and “3D rendering: VTK (OpenGL)”. Where OpenGL is unavailable, it reads “3D rendering: QPainter (CPU)”.
 
 The AppImage does not hold NWChem, which calculations use. Install your distribution's NWChem ([the AUR's `nwchem`](arch_linux.md#2-install-nwchem-aur) on Arch Linux, [`apt install nwchem`](ubuntu.md#2-install-nwchem) on Ubuntu). The “3 Run settings” defaults (executable `nwchem`, launch with MPI, MPI launcher `mpirun`, 2 processes) launch it as they are.
 
@@ -104,7 +104,7 @@ Delete the AppImage file. The application settings (`~/.config/MolForma/`), auto
 
 ## When distributing it
 
-If you give the AppImage to others, follow the licenses of the software it holds. Their texts are in the AppImage's `usr/share/doc`, readable after `./MolForma-1.0.0-x86_64.AppImage --appimage-extract`.
+If you give the AppImage to others, follow the licenses of the software it holds. Their texts are in the AppImage's `usr/share/doc`, readable after `./MolForma-1.1.0-x86_64.AppImage --appimage-extract`.
 
 - **MolForma (GPL-2.0-or-later), Open Babel (GPL-2.0-only) and Qt**: In binaries linked with Open Babel, Qt is used under the GPL-2.0 too (the repository's `NOTICE`). When distributing binaries, make the corresponding source available too. For MolForma, point to the source of the commit the AppImage was made from. The source of Open Babel, Qt and the other Ubuntu packages it holds is Ubuntu 24.04's source packages; VTK's is the 9.7.1 source from vtk.org. The runtime at the start of the AppImage is a program that links libfuse (LGPL-2.1) and others statically; point also to the source of the runtime, of the libraries it links, and of linuxdeploy, which makes AppRun.
 - **The others (RDKit, VTK, Boost and so on)**: Under BSD and similar licenses, they can be distributed with their license texts, which it holds.
@@ -134,7 +134,7 @@ This makes two files in `build-appimage/`. Tag the release `v<version>` (`SOURCE
 | The desktop becomes unresponsive or memory runs short during the build | Lower the number of compile jobs at once with `--build-arg JOBS=2` (`docker build`) or `-e JOBS=2` (`docker run`) |
 | It stops with `CMake cannot use VTK` or `CMake cannot use RDKit` | The build environment's image is old or was not made completely. Make it again as in [2. Make the build environment](#2-make-the-build-environment) |
 | It does not start, with `version 'GLIBC_2.38' not found` or `GLIBCXX_3.4.32' not found` | The computer's glibc or `libstdc++` is too old. Use a newer distribution such as Ubuntu 24.04 or later |
-| It cannot mount with FUSE and does not start | Install the `fuse3` package (`fusermount3`). If you cannot, `./MolForma-1.0.0-x86_64.AppImage --appimage-extract-and-run` unpacks it and starts it |
+| It cannot mount with FUSE and does not start | Install the `fuse3` package (`fusermount3`). If you cannot, `./MolForma-1.1.0-x86_64.AppImage --appimage-extract-and-run` unpacks it and starts it |
 | The 3D view shows “Rendering: QPainter (CPU) · simplified, OpenGL unavailable” at its top left | OpenGL 3.2 or later is unavailable. Check the GPU driver. It may be unavailable over remote desktops and in virtual machines |
 | Japanese text shows as boxes | Install a Japanese font on the computer (`noto-fonts-cjk` on Arch Linux, `fonts-noto-cjk` on Ubuntu and Debian, `google-noto-sans-cjk-fonts` on Fedora and so on) |
 | The pre-run check cannot find NWChem or the MPI launcher | Check `command -v nwchem mpirun` in a terminal. If NWChem is installed elsewhere, set its path in “3 Run settings” |

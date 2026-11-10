@@ -228,11 +228,15 @@ void VtkMoleculeRenderer::setPositions(const Document &document) {
     s.bondsDirty = s.plainDirty = true;
     s.updateBounds();
 }
-void VtkMoleculeRenderer::setSurface(const QVector<SurfaceTriangle> &triangles) {
+void VtkMoleculeRenderer::setSurface(const QVector<SurfaceTriangle> &triangles,
+                                     const QVector<QColor> &colors) {
     auto &s = *scene;
     std::array<vtkNew<vtkPoints>, 2> points;
     std::array<vtkNew<vtkCellArray>, 2> cells;
     std::array<vtkNew<vtkFloatArray>, 2> normals;
+    std::array<vtkNew<vtkUnsignedCharArray>, 2> rgb;
+    for (auto &color : rgb)
+        color->SetNumberOfComponents(3);
     for (int i = 0; i < 2; ++i) {
         points[i]->SetDataTypeToDouble();
         normals[i]->SetNumberOfComponents(3);
@@ -246,7 +250,8 @@ void VtkMoleculeRenderer::setSurface(const QVector<SurfaceTriangle> &triangles) 
         }
     };
     std::array<std::unordered_map<std::array<double, 3>, vtkIdType, Hash>, 2> shared;
-    for (const auto &triangle : triangles) {
+    for (int triangleIndex = 0; triangleIndex < triangles.size(); ++triangleIndex) {
+        const auto &triangle = triangles[triangleIndex];
         Vec normal = (triangle.b - triangle.a).cross(triangle.c - triangle.a);
         const double length = normal.norm();
         if (!triangle.a.allFinite() || !triangle.b.allFinite() || !triangle.c.allFinite() ||
@@ -280,8 +285,17 @@ void VtkMoleculeRenderer::setSurface(const QVector<SurfaceTriangle> &triangles) 
             s.surfaceHigh = s.surfaceHigh.cwiseMax(point);
         }
         cells[phase]->InsertNextCell(3, indices);
+        const auto color =
+            colors.size() == triangles.size() ? colors[triangleIndex] : surfaceColor(triangle.positive);
+        const unsigned char tuple[]{static_cast<unsigned char>(color.red()),
+                                    static_cast<unsigned char>(color.green()),
+                                    static_cast<unsigned char>(color.blue())};
+        rgb[phase]->InsertNextTypedTuple(tuple);
     }
     for (int i = 0; i < 2; ++i) {
+        s.surfaces[i].mapper->SetScalarModeToUseCellData();
+        s.surfaces[i].mapper->SetColorModeToDirectScalars();
+        s.surfaces[i].data->GetCellData()->SetScalars(rgb[i]);
         s.surfaces[i].data->SetPoints(points[i]);
         s.surfaces[i].data->SetPolys(cells[i]);
         s.surfaces[i].data->GetPointData()->SetNormals(normals[i]);

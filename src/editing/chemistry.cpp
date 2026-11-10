@@ -444,7 +444,7 @@ QVector<Conformer> searchConformers(const Document &d, int count) {
         });
         if (duplicate)
             continue;
-        result << Conformer{next, f.energy};
+        result << Conformer{next, f.energy, QString::fromStdString(ff->GetID())};
         if (result.size() >= count)
             break;
     }

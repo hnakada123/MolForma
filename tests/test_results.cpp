@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordinates.h"
 #include "nwchem/history.h"
+#include "results/energy_profile.h"
+#include "results/field_analysis.h"
 #include "results/result_summary.h"
+#include "results/spectrum.h"
+#include "ui/conformer_set_dialog.h"
+#include "ui/energy_profile_dialog.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
 #include "ui/molecule_view.h"
+#include "ui/property_geometry_view.h"
 #include "ui/result_charts.h"
 #include "ui/results_panel.h"
 #include "ui/run_progress.h"
+#include "ui/spectroscopy_view.h"
 #include <Eigen/LU>
 #include <QtTest>
 #include <QtWidgets>
@@ -1040,6 +1047,292 @@ class ResultsTest : public QObject {
                      .properties,
                  r.properties);
     }
+    void nmrSpectrum() {
+        ResultData r;
+        r.properties["shielding"] =
+            QJsonArray{QJsonObject{{"atom", 2}, {"element", "H"}, {"isotropic", 29.0}},
+                       QJsonObject{{"atom", 5}, {"element", "C"}, {"isotropic", 180.0}},
+                       QJsonObject{{"atom", 7}, {"element", "H"}, {"isotropic", 30.0}}};
+        QJsonObject p{{"kind", "nmr"}, {"nucleus", "1H"}, {"reference_ppm", 31.0}, {"width", .1}};
+        const auto s = calculateSpectrum(r, p);
+        QCOMPARE(s.sticks.size(), 2);
+        QCOMPARE(s.sticks[0], QPointF(2, 1));
+        QCOMPARE(s.peaks[1].toObject()["atom"].toInt(), 7);
+        QVERIFY(s.reversed);
+        QVERIFY(spectrumCsv(s).contains("peak,2,,2,1"));
+        p["weights"] = QJsonObject{{"2", 3}};
+        QCOMPARE(calculateSpectrum(r, p).sticks[0].y(), 3);
+        p["nucleus"] = "13C";
+        p["reference_ppm"] = 190.;
+        QCOMPARE(calculateSpectrum(r, p).sticks[0], QPointF(10, 1));
+        p.remove("reference_ppm");
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, calculateSpectrum(r, p));
+        p["reference_ppm"] = 190.;
+        p["width"] = 0;
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, calculateSpectrum(r, p));
+        // Subset shielding tables retain source atom numbers, including repeated tasks.
+        const auto path = save(
+            "nmr-spectrum.out",
+            "NWChem\nChemical Shielding Tensors (GIAO, in ppm)\nAtom: 2 H\nisotropic = 28.0\nanisotropy = "
+            "1\nChemical Shielding Tensors (GIAO, in ppm)\nAtom: 3 H\nisotropic = 29.0\nanisotropy = 1\n");
+        auto parsed = readResult(path);
+        QCOMPARE(parsed.properties["shielding"].toArray().size(), 1);
+        QCOMPARE(parsed.properties["shielding"][0].toObject()["atom"].toInt(), 3);
+        MainWindow w;
+        SpectroscopyView view(&w);
+        view.setResult(parsed);
+        p = {{"kind", "nmr"}, {"nucleus", "1H"}, {"reference_ppm", 31.0}, {"width", .05}};
+        view.setParameters(p);
+        QCOMPARE(view.findChild<QTableWidget *>("spectrumPeaks")->item(0, 0)->text(), "3");
+        const auto settingsFile = files.filePath("nmr-settings.json");
+        view.saveSettings(settingsFile);
+        p["reference_ppm"] = 32.;
+        view.setParameters(p);
+        view.loadSettings(settingsFile);
+        QCOMPARE(view.parameters()["reference_ppm"].toDouble(), 31.0);
+        view.exportCsv(files.filePath("nmr-spectrum.csv"));
+        QVERIFY(readFile(files.filePath("nmr-spectrum.csv")).contains("peak,3,,2,1"));
+        parsed.source = save("another-result.out", "NWChem\n");
+        view.setResult(parsed);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, view.loadSettings(settingsFile));
+    }
+    void normalRaman() {
+        const auto root = QString(FIXTURE_DIR) + "/nwchem/";
+        const auto r = readResult(root + "water_raman.out");
+        const auto file = readResult(root + "water_raman.normal");
+        auto afterProperties = r;
+        auto finalEnergy = r.properties["final_energy"].toObject();
+        finalEnergy["source"] = "final";
+        afterProperties.properties["final_energy"] = finalEnergy;
+        const auto record = energyRecord(afterProperties, r.frames.first().molecule, nwchemDefaults());
+        QCOMPARE(record["geometry"].toString(), r.vibrationGeometry.xyz());
+        QCOMPARE(r.properties["raman"].toArray().size(), 3);
+        QCOMPARE(file.properties["raman"].toArray().size(), 3);
+        for (int i = 0; i < 3; ++i) {
+            const auto peak = r.properties["raman"][i].toObject();
+            QVERIFY(peak.contains("mode"));
+            const int mode = peak["mode"].toInt();
+            QVERIFY(std::abs(r.modes[mode].frequency - peak["frequency"].toDouble()) < .02);
+            QVERIFY(!r.modes[mode].displacement.isEmpty());
+            QVERIFY(std::abs(file.properties["raman"][i].toObject()["activity"].toDouble() -
+                             peak["activity"].toDouble()) < .001);
+        }
+        const auto s = calculateSpectrum(r, {{"kind", "raman"}, {"width", 20}});
+        QCOMPARE(s.sticks.size(), 3);
+        QCOMPARE(s.yUnit, "Å⁴/amu");
+        QVERIFY(resultFiles(root).contains("water_raman.normal"));
+        QVERIFY_THROWS_EXCEPTION(
+            std::runtime_error,
+            readResult(save("bad.normal", "normal Raman Scattering Plot\nS [Ang**4/amu]\n1 100 ***\n")));
+    }
+    void energyProfiles() {
+        const auto record = [](const QString &id, double energy, double enthalpy) {
+            return QJsonObject{{"id", id},
+                               {"name", id},
+                               {"normal", true},
+                               {"energy_hartree", energy},
+                               {"composition", QJsonObject{{"H", 2}}},
+                               {"charge", 0},
+                               {"settings", QJsonObject{{"method", "hf"}, {"basis", "sto-3g"}}},
+                               {"thermochemistry", QJsonArray{QJsonObject{{"temperature", 300.},
+                                                                          {"zpe_kcal", 2.},
+                                                                          {"enthalpy_kcal", enthalpy},
+                                                                          {"entropy_cal", 5.}}}}};
+        };
+        QJsonObject p{
+            {"format", "molforma-energy-profile"},
+            {"version", 1},
+            {"metric", "H"},
+            {"unit", "kcal"},
+            {"temperature", 300.},
+            {"standard_state", "1 atm"},
+            {"reference", 0},
+            {"records", QJsonArray{record("a", -1, 3), record("b", -1.01, 4)}},
+            {"stages",
+             QJsonArray{
+                 QJsonObject{{"name", "a"},
+                             {"terms", QJsonArray{QJsonObject{{"record", "a"}, {"coefficient", 1}}}}},
+                 QJsonObject{{"name", "b"},
+                             {"terms", QJsonArray{QJsonObject{{"record", "b"}, {"coefficient", 1}}}}}}}};
+        auto result = evaluateEnergyProfile(p);
+        QCOMPARE(result["comparable"].toBool(), true);
+        QVERIFY(std::abs(result["stages"][0].toObject()["hartree"].toDouble() - (-1 + 3 / 627.509474)) <
+                1e-12); // H includes ZPE already.
+        QVERIFY(std::abs(result["stages"][1].toObject()["relative"].toDouble() - (-.01 * 627.509474 + 1)) <
+                1e-10);
+        p["metric"] = "G";
+        QVERIFY(std::abs(evaluateEnergyProfile(p)["stages"][0].toObject()["hartree"].toDouble() -
+                         (-1 + 1.5 / 627.509474)) < 1e-12);
+        p["temperature"] = 298.15;
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, evaluateEnergyProfile(p));
+        p["temperature"] = 300.;
+        MainWindow w;
+        EnergyProfileDialog dialog(&w);
+        dialog.setSpecification(p);
+        QCOMPARE(dialog.specification()["stages"], p["stages"]);
+        QCOMPARE(dialog.findChild<QTableWidget *>("profileValues")->rowCount(), 2);
+        auto stages = p["stages"].toArray();
+        auto stage = stages[1].toObject();
+        stage["terms"] = QJsonArray{QJsonObject{{"record", "b"}, {"coefficient", 2}}};
+        stages[1] = stage;
+        p["stages"] = stages;
+        QVERIFY(!evaluateEnergyProfile(p)["comparable"].toBool());
+    }
+    void conformerSets() {
+        const auto base = Document::fromXyz("3\nwater\nO 0 0 0\nH .8 0 .6\nH -.8 0 .6\n");
+        auto changed = base;
+        changed.atoms[1].position.x() += .3;
+        MainWindow w;
+        w.loadDocument(base);
+        int queued = 0;
+        ConformerSetDialog dialog(&w, [&](const QVector<Document> &documents, bool frequencies) {
+            queued = documents.size();
+            if (frequencies)
+                return QStringList{};
+            return QStringList{"job-a", "job-b"};
+        });
+        dialog.setConformers(base, {{base, 0., "MMFF94"}, {changed, 1., "MMFF94"}});
+        auto spec = dialog.specification();
+        QCOMPARE(spec["entries"].toArray().size(), 2);
+        dialog.setSpecification(spec);
+        QCOMPARE(dialog.specification(), spec);
+        dialog.queueSelected();
+        QCOMPARE(queued, 2);
+        dialog.findChild<QTableWidget *>("conformerSetTable")->selectRow(1);
+        dialog.applySelected();
+        QVERIFY(w.hasCandidate());
+        QCOMPARE(w.document().toJson(), base.toJson());
+        QVERIFY((w.displayDocument().atoms[1].position - changed.atoms[1].position).norm() < 1e-9);
+        w.confirmCandidate();
+        w.history()->undo();
+        QCOMPARE(w.document().toJson(), base.toJson());
+        spec["entries"] = QJsonArray{QJsonObject{{"geometry", "1\nwrong\nHe 0 0 0\n"}}};
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, dialog.setSpecification(spec));
+        const auto record = [&](QString id, const Document &d, double e) {
+            return QJsonObject{{"id", id},
+                               {"name", id},
+                               {"normal", true},
+                               {"energy_hartree", e},
+                               {"composition", QJsonObject{{"O", 1}, {"H", 2}}},
+                               {"charge", 0},
+                               {"multiplicity", 1},
+                               {"settings", QJsonObject{{"method", "hf"}, {"basis", "sto-3g"}}},
+                               {"geometry", d.xyz()}};
+        };
+        auto translated = base;
+        for (auto &a : translated.atoms)
+            a.position += Vec(2, 3, 4);
+        QJsonArray records{record("a", base, -76.), record("b", translated, -75.999),
+                           record("c", changed, -75.998)};
+        const auto populations = conformerPopulations(records, "E", 300., .01);
+        QCOMPARE(populations[0].toObject()["group"], populations[1].toObject()["group"]);
+        QCOMPARE(populations[1].toObject()["population"].toDouble(), 0.);
+        QVERIFY(std::abs(populations[0].toObject()["population"].toDouble() +
+                         populations[2].toObject()["population"].toDouble() - 1) < 1e-12);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, conformerPopulations(records, "G", 300., .01));
+    }
+    void opticalActivity() {
+        const auto ecd = readResult(QString(FIXTURE_DIR) + "/nwchem/peroxide_ecd.out");
+        const auto rows = ecd.properties["ecd"].toArray();
+        QCOMPARE(rows.size(), 3);
+        QCOMPARE(ecd.excitations.size(), 6);
+        QCOMPARE(rows[0].toObject()["strength"].toDouble(), -8.1592998);
+        QCOMPARE(rows[0].toObject()["excitation"].toInt(), 0);
+        auto spectrum = calculateSpectrum(ecd, {{"kind", "ecd"}, {"width", .2}});
+        QVERIFY(std::any_of(spectrum.curve.begin(), spectrum.curve.end(), [](auto p) { return p.y() < 0; }));
+        const auto ord = readResult(QString(FIXTURE_DIR) + "/nwchem/peroxide_ord.out");
+        QCOMPARE(ord.properties["ord"].toArray().size(), 2);
+        spectrum = calculateSpectrum(ord, {{"kind", "ord"}, {"width", 1.}});
+        QCOMPARE(spectrum.curve.size(), 2);
+        QVERIFY(std::abs(spectrum.curve[0].x() - 532.) < .001);
+        QCOMPARE(spectrum.curve[0].y(), .03106);
+        auto repeated = ord;
+        auto values = ord.properties["ord"].toArray();
+        values.append(values[0]);
+        repeated.properties["ord"] = values;
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 calculateSpectrum(repeated, {{"kind", "ord"}, {"width", 1.}}));
+        MainWindow w;
+        SpectroscopyView view(&w);
+        view.setResult(ecd);
+        QCOMPARE(view.parameters()["kind"].toString(), "ecd");
+        view.setResult(ord);
+        QCOMPARE(view.parameters()["kind"].toString(), "ord");
+        ResultData nmr;
+        nmr.properties["shielding"] =
+            QJsonArray{QJsonObject{{"atom", 1}, {"element", "H"}, {"isotropic", 28.}}};
+        view.setResult(nmr);
+        QCOMPARE(view.parameters()["kind"].toString(), "nmr");
+    }
+    void fieldsAndTensors() {
+        const auto r = readResult(save("field.cube", cubeText()), .1);
+        QCOMPARE(r.values.size(), 8);
+        const Vec point = r.gridOrigin + r.gridAxes * Vec(.25, .5, .75);
+        const auto v = sampleField(r, point);
+        QVERIFY(v.has_value());
+        QVERIFY(std::abs(*v + .25) < 1e-12);
+        QVERIFY(!sampleField(r, r.gridOrigin - r.gridAxes * Vec::Ones()));
+        validateFieldOverlay(r, r);
+        auto wrong = r;
+        wrong.frames[0].molecule.atoms[0].position.x() += .01;
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, validateFieldOverlay(r, wrong));
+        saveResultData(files.filePath("field.transfer"), r);
+        const auto restored = loadResultData(files.filePath("field.transfer"));
+        QCOMPARE(restored.values, r.values);
+        QVERIFY((restored.gridAxes - r.gridAxes).norm() < 1e-12);
+        const auto principal = polarizabilityAxes({2., 1., 0., 1., 2., 0., 0., 0., 4.});
+        QVERIFY((principal.values - Vec(1, 3, 4)).norm() < 1e-12);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 polarizabilityAxes({1., 2., 0., 0., 1., 0., 0., 0., 1.}));
+        MainWindow w;
+        PropertyGeometryView view(&w);
+        view.setResult(r);
+        QVERIFY(view.findChild<MoleculeView *>("propertyGeometryMolecule"));
+    }
+    void ramanPreservesReferenceEnergy() {
+        NwchemEnergySummary summary;
+        for (const auto &line : QStringList{
+                 "NWChem Input Module", "Total DFT energy = -76.0",
+                 "NWChem Nuclear Hessian and Frequency Analysis", "Total DFT energy = -75.9",
+                 "NWChem Input Module", "Raman Analysis", "Total DFT energy = -75.8", "Total times cpu: 2s"})
+            summary.add(line);
+        QCOMPARE(summary.energy()["hartree"].toDouble(), -76.);
+    }
+    void solutionEpr() {
+        const auto r = readResult(QString(FIXTURE_DIR) + "/nwchem/methyl_epr.out");
+        QCOMPARE(r.properties["spin_multiplicity"].toInt(), 2);
+        QCOMPARE(r.properties["epr_gshift_ppt"].toArray().size(), 9);
+        QCOMPARE(r.properties["epr_hyperfine"].toArray().size(), 4);
+        QVERIFY(!r.properties.contains("shielding"));
+        const auto nuclei = eprNuclei(r);
+        QCOMPARE(nuclei[0].toObject()["isotope"].toString(), "13C");
+        QVERIFY(std::abs(nuclei[1].toObject()["isotropic_mhz"].toDouble() + 77.3) < .1);
+        QJsonArray selected;
+        for (int atom = 2; atom <= 4; ++atom)
+            selected.append(QJsonObject{{"atom", atom}, {"isotope", "1H"}});
+        QJsonObject p{{"kind", "epr"}, {"width", .1}, {"microwave_ghz", 9.5}, {"nuclei", selected}};
+        const auto s = calculateSpectrum(r, p);
+        QVERIFY(std::abs(s.parameters["g_isotropic"].toDouble() - 2.00274900436) < 1e-9);
+        double weight = 0;
+        for (const auto &peak : s.sticks) {
+            weight += peak.y();
+            QVERIFY(peak.x() > 330 && peak.x() < 350);
+        }
+        QVERIFY(std::abs(weight - 1) < 1e-12);
+        p["derivative"] = true;
+        const auto derivative = calculateSpectrum(r, p);
+        QVERIFY(
+            std::any_of(derivative.curve.begin(), derivative.curve.end(), [](auto p) { return p.y() < 0; }));
+        QVERIFY(
+            std::any_of(derivative.curve.begin(), derivative.curve.end(), [](auto p) { return p.y() > 0; }));
+        p["nuclei"] = QJsonArray{QJsonObject{{"atom", 2}, {"isotope", "13C"}}};
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, calculateSpectrum(r, p));
+        MainWindow w;
+        SpectroscopyView view(&w);
+        view.setResult(r);
+        QCOMPARE(view.findChild<QTableWidget *>("spectrumEprNuclei")->rowCount(), 4);
+        QCOMPARE(view.parameters()["nuclei"].toArray().size(), 3);
+    }
     void rigidModes() {
         ResultData r;
         r.vibrationGeometry = Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n");
@@ -1126,6 +1419,28 @@ class ResultsTest : public QObject {
         QVERIFY((w.document().atoms[2].position - Vec(-.758, 0, .504)).norm() < 1e-9);
         w.history()->undo();
         QVERIFY((w.document().atoms[2].position - Vec(-.9, 0, .6)).norm() < 1e-12);
+    }
+    void prepareRecalculation() {
+        auto original = Document::fromXyz("3\nwater\nO 0 0 0\nH .9 0 .6\nH -.9 0 .6\n");
+        setNwchemSetting(original, "title", "recalculation snapshot");
+        setExecutionSetting(original, "job_root", files.filePath("recalculate"));
+        const auto bundle = saveExecutionBundle(original, files.path());
+        writeFile(bundle.directory + "/final.xyz", "3\nfinal\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");
+        MainWindow w;
+        w.loadDocument(original);
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        QSignalSpy done(panel, &ResultsPanel::loaded);
+        panel->openFile(bundle.directory + "/final.xyz");
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        panel->prepareRecalculation();
+        QVERIFY(w.hasCandidate());
+        QCOMPARE(w.document().atoms[1].id, original.atoms[1].id);
+        QCOMPARE(nwchemSettings(w.document())["title"].toString(), "recalculation snapshot");
+        QVERIFY((w.displayDocument().atoms[1].position - Vec(.758, 0, .504)).norm() < 1e-12);
+        QVERIFY(!w.executionPanel()->running());
+        w.confirmCandidate();
+        w.history()->undo();
+        QVERIFY((w.document().atoms[1].position - original.atoms[1].position).norm() < 1e-12);
     }
     void viewerPathsPropertiesAndMeasurement() {
         MainWindow w;

@@ -1,0 +1,21 @@
+start ecd_test
+memory total 128 mb
+geometry units angstrom noautoz nocenter noautosym
+ O -.72 0 0
+ O .72 0 0
+ H -1 .9 0
+ H 1 0 .9
+end
+basis
+ * library 6-31g
+end
+dft
+ xc b3lyp
+ grid fine
+end
+tddft
+ nroots 3
+ singlet
+ cdspectrum
+end
+task tddft energy

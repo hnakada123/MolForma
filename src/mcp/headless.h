@@ -3,6 +3,7 @@
 #include "mcp/policy.h"
 #include "mcp/server.h"
 #include "nwchem/nwchem_execution.h"
+#include "nwchem/nwchem_queue.h"
 #include "results/result_loader.h"
 
 namespace mf {
@@ -23,6 +24,7 @@ class McpHeadless : public QObject {
     McpPolicy policy;
     const McpServer *server = nullptr;
     NwchemRun run;
+    NwchemQueue queue;
     ExecutionPlan saved;
     // Without a GUI only the user's saved defaults are trusted: MCP cannot pick another program.
     QJsonObject trusted;

@@ -149,6 +149,8 @@
     "properties": {
         "dipole": {
             "debye": 2.768386380757991,
+            "geometry": "3\nMolForma | H2O | angstrom\nO 0.0000000000 0.0000000000 0.1173000000\nH 0.0000000000 0.7572000000 -0.4692000000\nH 0.0000000000 -0.7572000000 -0.4692000000\n",
+            "origin": "nwchem_multipole_origin",
             "x": 0,
             "y": 0,
             "z": -1.089167
@@ -161,7 +163,8 @@
         "solvation": {
             "gas": -76.384951051676,
             "solution": -76.399928252535
-        }
+        },
+        "spin_multiplicity": 1
     },
     "status": "正常終了マーカーあり（各taskの結果は「概要」とログで確認）",
     "steps": [

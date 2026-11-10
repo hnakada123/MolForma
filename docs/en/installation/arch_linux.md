@@ -2,7 +2,7 @@
 
 How to make MolForma an Arch Linux package and install it with pacman. `makepkg` builds the package `molforma-git` from the repository's `packaging/arch/PKGBUILD`. The dependencies come from the official repositories (core, extra) automatically, and NWChem for calculations from the AUR.
 
-These steps are for Arch Linux (x86-64) and MolForma 1.0.0. They were checked on 2026-10-28 (see [Verified configuration](#verified-configuration)).
+These steps are for Arch Linux (x86-64) and MolForma 1.1.0. The procedure was checked with MolForma 1.0.0 on 2026-10-28 (see [Verified configuration](#verified-configuration)).
 
 MolForma has no package in the official repositories or the AUR (as of 2026-10-28). The PKGBUILD fetches the source of the main branch on GitHub and builds it. As pacman manages the installed package, `pacman -R` removes it.
 
@@ -77,7 +77,7 @@ makepkg -si
 1. Installs the missing dependencies with pacman (`-s`). It asks for the administrator password.
 2. Fetches the source of the main branch on GitHub and builds it. A `-- MolForma rendering: VTK 9.7.1 (Qt6), with QPainter fallback` line along the way means it draws with VTK. If CMake cannot use VTK or RDKit, it stops here with `==> ERROR: CMake cannot use VTK` or similar (see [Troubleshooting](#troubleshooting)).
 3. Runs the tests. They use neither NWChem nor the network. To skip them, use `makepkg -si --nocheck`.
-4. Makes the package (`molforma-git-1.0.0.r<commit count>.g<commit id>-1-x86_64.pkg.tar.zst`) and installs it with pacman (`-i`).
+4. Makes the package (`molforma-git-1.1.0.r<commit count>.g<commit id>-1-x86_64.pkg.tar.zst`) and installs it with pacman (`-i`).
 
 The build uses all CPU cores. If memory runs short, lower the number of compile jobs run at once, as in `CMAKE_BUILD_PARALLEL_LEVEL=2 makepkg -si`.
 
@@ -97,7 +97,7 @@ The package places these files (`pacman -Ql molforma-git` lists them). pacman's 
 
 Run `molforma` in a terminal or choose “MolForma” in the application menu. If it does not appear in the KDE Plasma menu right away, run `kbuildsycoca6`. The interface language follows the system language (“Language (after restart)” in “Edit → Preferences…” switches it; it takes effect after a restart).
 
-1. Open “Help → About MolForma” and check that it reads “MolForma 1.0.0”, “Stereochemistry and residue recognition (RDKit): Enabled” and “3D rendering: VTK (OpenGL)”. Where OpenGL is unavailable, it reads “3D rendering: QPainter (CPU)”.
+1. Open “Help → About MolForma” and check that it reads “MolForma 1.1.0”, “Stereochemistry and residue recognition (RDKit): Enabled” and “3D rendering: VTK (OpenGL)”. Where OpenGL is unavailable, it reads “3D rendering: QPainter (CPU)”.
 2. Open “3 Run settings” and check that below the “NWChem executable” and “MPI launcher” fields appear `/usr/bin/nwchem` and `/usr/bin/mpirun`, where PATH found them.
 3. Try a calculation on a small molecule. The steps are in [recipe 1 Building from atoms and bonds](../recipes/atoms_and_bonds.md).
 

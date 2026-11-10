@@ -125,3 +125,7 @@ CCSD(T) is tested with water/6-31G. In this environment, CCSD(T) of H₂/STO-3G 
 4. Run it with “Run calculation”, and check the BSSE correction and the corrected energy in “Properties” or the summary of the “Result viewer”. If you choose geometry optimization, it optimizes with BSSE-corrected gradients.
 
 See also: [Advanced settings and CUBE/MOLDEN output](advanced.md), [recipe 5 Chains and conformers](../recipes/butane_conformers.md), [recipe 10 Ions and radicals](../recipes/phenoxyl_radical.md), [recipe 13 Transition states and reaction paths](../recipes/sn2_transition_state.md), the list of pages in “[Features](../features.md)”.
+
+## Additional spectroscopy and property grids
+
+Properties now includes normal Raman, doublet DFT/ZORA ESR g and A tensors, closed-shell HF/DFT ORD, and ESP/electric-field grids. Excited states includes ECD rotatory strengths. Unsupported method/reference/task combinations are refused before input generation. Wavelengths, grid padding and point counts are saved with the project. See [Results viewer](results.md) for calculation conditions and display limitations.

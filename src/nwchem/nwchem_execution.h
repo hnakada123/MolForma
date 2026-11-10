@@ -96,6 +96,8 @@ class NwchemRun : public QObject {
     void changed();
 
   private:
+    friend class NwchemQueue;
+    void startPrepared(const ExecutionPlan &plan);
     QProcess process;
     QTimer timer, killTimer;
     QElapsedTimer elapsed;

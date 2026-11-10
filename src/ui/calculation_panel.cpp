@@ -324,6 +324,17 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     flag(properties, tr("ESP・RESP電荷"), "prop_esp");
     flag(properties, tr("NMR遮蔽定数（GIAO）"), "prop_nmr");
     flag(properties, tr("静的分極率"), "prop_polarizability");
+    flag(properties, tr("通常ラマン（閉殻DFTの振動数計算）"), "prop_raman");
+    flag(properties, tr("ESRのg・Aテンソル（二重項DFT・ZORA）"), "prop_epr");
+    real(properties, tr("ラマン励起波長 / nm"), "raman_wavelength_nm");
+    flag(properties, tr("静電ポテンシャルのCUBE"), "prop_esp_grid");
+    flag(properties, tr("電場の大きさのCUBE"), "prop_efield_grid");
+    real(properties, tr("物性格子の余白 / Å"), "property_grid_padding");
+    integer(properties, tr("物性格子の各軸の点数"), "property_grid_points");
+    flag(properties, tr("ORD（GIAO・閉殻HF/DFT）"), "prop_ord");
+    real(properties, tr("ORD開始波長 / nm"), "ord_start_nm");
+    real(properties, tr("ORD終了波長 / nm"), "ord_end_nm");
+    integer(properties, tr("ORD波長点数"), "ord_points");
     help(properties, tr("最後の計算（後続の一点計算があればその条件）の後に計算します。"
                         "結果は「結果ビューア」の「物性」に表示します。"));
 
@@ -332,6 +343,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     integer(excited, tr("励起状態の数（nroots）"), "tddft_roots");
     flag(excited, tr("三重項も計算（閉殻）"), "tddft_triplets");
     flag(excited, tr("Tamm–Dancoff近似（TDA / cis）"), "tddft_tda");
+    flag(excited, tr("ECDの旋光強度（cdspectrum）"), "tddft_cdspectrum");
     help(excited, tr("DFTの一点エネルギーで使えます。結果は「結果ビューア」の「励起状態」に表示します。"));
 
     nav->addHeading(tr("環境・出力"));

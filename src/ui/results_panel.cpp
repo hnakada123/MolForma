@@ -8,7 +8,9 @@
 #include "ui/editor_chrome.h"
 #include "ui/main_window.h"
 #include "ui/molecule_view.h"
+#include "ui/property_geometry_view.h"
 #include "ui/result_charts.h"
+#include "ui/spectroscopy_view.h"
 #include "ui/theme.h"
 #include <QtWidgets>
 #include <algorithm>
@@ -328,6 +330,12 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     applyGeometry->setToolTip(
         tr("表示中の構造の座標を「1 分子」の分子へ候補として適用します。原子の数と順番が同"
            "じ計算結果に使えます。結合・設定は変わりません。"));
+    recalculate = new QPushButton(lineIcon("refresh"), tr("再計算を準備"));
+    recalculate->setObjectName("resultsPrepareRecalculation");
+    recalculate->setToolTip(tr("保存済みの計算条件を読み込み、表示中の構造を候補にします。確定後、新しいジョ"
+                               "ブとして実行できます。"));
+    connect(recalculate, &QPushButton::clicked, this,
+            [this] { window->safe([this] { prepareRecalculation(); }); });
     exportButton = new QToolButton;
     exportButton->setObjectName("resultsExport");
     exportButton->setText(tr("書き出し"));
@@ -340,16 +348,16 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     savePng = exportMenu->addAction(lineIcon("image"), tr("3D表示をPNG画像で書き出す…"));
     savePng->setObjectName("resultsSavePng");
     exportButton->setMenu(exportMenu);
-    for (QWidget *w :
-         {static_cast<QWidget *>(openButton), static_cast<QWidget *>(reload), static_cast<QWidget *>(cancel),
-          static_cast<QWidget *>(divider), static_cast<QWidget *>(compareGeometry),
-          static_cast<QWidget *>(applyGeometry), static_cast<QWidget *>(exportButton)})
+    for (QWidget *w : {static_cast<QWidget *>(openButton), static_cast<QWidget *>(reload),
+                       static_cast<QWidget *>(cancel), static_cast<QWidget *>(divider),
+                       static_cast<QWidget *>(compareGeometry), static_cast<QWidget *>(applyGeometry),
+                       static_cast<QWidget *>(recalculate), static_cast<QWidget *>(exportButton)})
         bar->addWidget(w);
     // Narrow, the actions keep their icons and the bar its one row.
     barFit = new ToolbarFit(resultBar, [this](bool compact) {
         for (QAbstractButton *b :
              {static_cast<QAbstractButton *>(compareGeometry), static_cast<QAbstractButton *>(applyGeometry),
-              static_cast<QAbstractButton *>(exportButton)})
+              static_cast<QAbstractButton *>(recalculate), static_cast<QAbstractButton *>(exportButton)})
             setIconOnly(b, compact);
     });
     layout->addWidget(resultBar);
@@ -1009,6 +1017,22 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     log = logView("resultsLog");
     logLayout->addWidget(log, 1);
     tabs->addTab(logPage, tr("元ファイル"));
+    propertyGeometry = new PropertyGeometryView(window);
+    tabs->addTab(propertyGeometry, tr("物性3D・断面"));
+    spectroscopy = new SpectroscopyView(window);
+    tabs->addTab(spectroscopy, tr("スペクトル"));
+    connect(spectroscopy, &SpectroscopyView::atomSelected, this, [this](int index) {
+        if (index < 0 || data.frames.isEmpty() || index >= data.frames.last().molecule.atoms.size())
+            return;
+        frame->setValue(data.frames.size());
+        picked = {index};
+        setViewDocument(data.frames.last().molecule);
+    });
+    connect(spectroscopy, &SpectroscopyView::modeSelected, this, [this](int index) { selectMode(index); });
+    connect(spectroscopy, &SpectroscopyView::excitationSelected, this, [this](int index) {
+        if (index >= 0 && index < excitations->rowCount())
+            excitations->selectRow(index);
+    });
     connect(copyLog, &QToolButton::clicked, this,
             [this] { QApplication::clipboard()->setText(log->toPlainText()); });
     split->setStretchFactor(0, 3);
@@ -1021,9 +1045,9 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     });
 
     const auto openResultFile = [this] {
-        const auto p = QFileDialog::getOpenFileName(
-            this, tr("結果ファイルを開く"), folder,
-            tr("NWChem・可視化 (*.out *.log *.xyz *.cube *.cub *.molden *.mld *.molde);;すべて (*)"));
+        const auto p = QFileDialog::getOpenFileName(this, tr("結果ファイルを開く"), folder,
+                                                    tr("NWChem・可視化 (*.out *.log *.xyz *.cube *.cub "
+                                                       "*.molden *.mld *.molde *.normal);;すべて (*)"));
         if (!p.isEmpty())
             openFile(p);
     };
@@ -1543,13 +1567,15 @@ void ResultsPanel::updateActions() {
     // Nothing open yet: only "開く…", not a row of buttons that cannot be used.
     const bool shown = !data.source.isEmpty() || loading();
     for (QWidget *w : {static_cast<QWidget *>(reload), static_cast<QWidget *>(compareGeometry),
-                       static_cast<QWidget *>(applyGeometry), static_cast<QWidget *>(exportButton),
-                       findChild<QWidget *>("resultsBarDivider"), static_cast<QWidget *>(viewControlsFrame),
-                       static_cast<QWidget *>(dockFrame)})
+                       static_cast<QWidget *>(applyGeometry), static_cast<QWidget *>(recalculate),
+                       static_cast<QWidget *>(exportButton), findChild<QWidget *>("resultsBarDivider"),
+                       static_cast<QWidget *>(viewControlsFrame), static_cast<QWidget *>(dockFrame)})
         w->setVisible(shown);
     cancel->setVisible(loading());
     saveXyz->setEnabled(ready && !data.frames.isEmpty());
     applyGeometry->setEnabled(ready && !data.frames.isEmpty());
+    recalculate->setEnabled(applyGeometry->isEnabled() &&
+                            QFileInfo::exists(QFileInfo(data.source).absolutePath() + "/run.json"));
     compareGeometry->setEnabled(applyGeometry->isEnabled());
     savePng->setEnabled(ready && !data.frames.isEmpty());
     exportButton->setEnabled(saveXyz->isEnabled() || savePng->isEnabled());
@@ -1589,10 +1615,10 @@ void ResultsPanel::updateActions() {
         data.format == "NWChem" && !data.orbitals.isEmpty()
             ? tr("番号はNWChemの軌道番号です（ログに一部の軌道しかなくてもMOLDENと同じ番号）。")
         : data.format != "MOLDEN" ? tr("MOLDENファイルを開くと分子軌道を表示します。")
-        : rendering
-            ? tr("読込中: %1 %2番 / 等値 ±%3\n準位図か一覧で軌道を選ぶと表示を切り替えます。赤: 正 / 青: 負。")
-                  .arg(data.orbitals[orbitalLoad].spin, orbitals->item(orbitalLoad, 0)->text(),
-                       orbitalIso->text())
+        : rendering ? tr("読込中: %1 %2番 / 等値 ±%3\n準位図か一覧で軌道を選ぶと表示を切り替えます。赤: 正 / "
+                         "青: 負。")
+                          .arg(data.orbitals[orbitalLoad].spin, orbitals->item(orbitalLoad, 0)->text(),
+                               orbitalIso->text())
         : !data.orbitalError.isEmpty() ? data.orbitalError
         : data.selectedOrbital >= 0
             ? tr("表示中: %1 %2番 / 等値 ±%3 / 正規化: "
@@ -1740,6 +1766,8 @@ void ResultsPanel::display(bool orbitalOnly) {
         showIrSpectrum();
         showPath();
         showProperties();
+        spectroscopy->setResult(data);
+        propertyGeometry->setResult(data);
         showOptimization();
         excitations->setRowCount(data.excitations.size());
         for (int i = 0; i < data.excitations.size(); ++i) {
@@ -1808,6 +1836,12 @@ void ResultsPanel::updateTabs() {
                          loaded && properties,
                          loaded && (data.format == "CUBE" || data.format == "MOLDEN"),
                          loaded && !data.log.isEmpty()};
+    details->setTabVisible(details->indexOf(spectroscopy),
+                           loaded && (p.contains("shielding") || p.contains("raman") || p.contains("ecd") ||
+                                      p.contains("ord") || p.contains("epr_gshift_ppt")));
+    details->setTabVisible(
+        details->indexOf(propertyGeometry),
+        loaded && (data.format == "CUBE" || p.contains("dipole") || p.contains("polarizability")));
     // Counts after the names: what each tab lists.
     const int vibrations =
         resultModeCounts(modeKinds).vibrations + std::max(0, int(data.modes.size() - modeKinds.size()));
@@ -2306,11 +2340,18 @@ void ResultsPanel::showProperties() {
     const auto mulliken = data.properties.value("mulliken").toArray(),
                esp = data.properties.value("esp").toArray(), resp = data.properties.value("resp").toArray(),
                shielding = data.properties.value("shielding").toArray();
-    const int count = std::max({mulliken.size(), esp.size(), resp.size(), shielding.size()});
+    QMap<int, QJsonObject> shieldingByAtom;
+    for (const auto &value : shielding) {
+        const auto s = value.toObject();
+        if (s["atom"].toInt() > 0 && s["atom"].toInt() <= 100000)
+            shieldingByAtom[s["atom"].toInt() - 1] = s;
+    }
+    const int count = std::max({int(mulliken.size()), int(esp.size()), int(resp.size()),
+                                shieldingByAtom.isEmpty() ? 0 : shieldingByAtom.lastKey() + 1});
     const Document *molecule = data.frames.isEmpty() ? nullptr : &data.frames.last().molecule;
     atomProperties->setRowCount(count);
     for (int i = 0; i < count; ++i) {
-        const auto nmr = i < shielding.size() ? shielding[i].toObject() : QJsonObject();
+        const auto nmr = shieldingByAtom.value(i);
         const QString symbol =
             molecule && i < molecule->atoms.size() ? molecule->atoms[i].element : nmr["element"].toString();
         const auto charge = [&](const QJsonArray &list) {
@@ -2554,6 +2595,7 @@ void ResultsPanel::pickAtom(const QString &id) {
     if (!d.contains(id))
         return;
     const int n = d.index(id);
+    spectroscopy->selectAtom(n);
     if (picked.contains(n))
         picked.removeAll(n);
     else {
@@ -2614,4 +2656,8 @@ void ResultsPanel::applyStructure() {
             .arg(moved.second, 0, 'f', 4),
         15000);
 }
+void ResultsPanel::prepareRecalculation() {
+    emit recalculationRequested(QFileInfo(data.source).absolutePath(), displayedGeometry());
+}
+
 } // namespace mf

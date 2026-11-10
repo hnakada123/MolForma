@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "model/i18n.h"
+#include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
+#include "nwchem/run_diagnostics.h"
 #include "results/results.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
@@ -61,6 +63,144 @@ class ExecutionTest : public QObject {
         helper = files.filePath("native engine" EXE);
         QVERIFY(QFile::copy(QCoreApplication::applicationDirPath() + "/fake_nwchem" EXE, helper));
         QVERIFY(QFile::setPermissions(helper, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+    }
+    void runDiagnostics() {
+        const auto scf = diagnoseRun(RunState::Failed, "SCF failed to converge in 20 iterations\n", {});
+        QCOMPARE(scf.size(), 1);
+        QCOMPARE(scf[0].toObject()["code"].toString(), "scf_convergence");
+        QCOMPARE(scf[0].toObject()["setting"].toString(), "scf_maxiter");
+        QCOMPARE(scf[0].toObject()["source"].toString(), "stdout");
+        QCOMPARE(diagnoseRun(RunState::Finished, "maxiter 20\nSCF converged\n", {}).size(), 0);
+        const auto memory = diagnoseRun(RunState::Finished, {}, "MA_alloc_get: failed\n");
+        QCOMPARE(memory[0].toObject()["code"].toString(), "memory");
+        QCOMPARE(diagnoseRun(RunState::Failed, {}, {})[0].toObject()["code"].toString(), "process");
+        QCOMPARE(diagnoseRun(RunState::TimedOut, {}, {})[0].toObject()["code"].toString(), "time_limit");
+        QCOMPARE(diagnoseRun(RunState::Failed, {}, {}, "not executable")[0].toObject()["code"].toString(),
+                 "launch");
+        QCOMPARE(diagnoseRun(RunState::Failed, "maximum number of optimization steps exceeded", {})[0]
+                     .toObject()["code"]
+                     .toString(),
+                 "optimization_limit");
+    }
+    void conformerBatchSnapshots() {
+        MainWindow w;
+        auto d = configured();
+        w.loadDocument(d);
+        w.trustCurrentExecution();
+        const auto before = w.document().project();
+        auto other = d;
+        other.atoms[1].position.x() += .2;
+        const auto jobs = w.executionPanel()->enqueueGeometries({d, other}, true);
+        QCOMPARE(jobs.size(), 2);
+        QCOMPARE(w.document().project(), before);
+        const auto first = historyDocument(jobs[0]), second = historyDocument(jobs[1]);
+        QCOMPARE(nwchemSettings(first)["task"].toString(), "optimize_frequencies");
+        QCOMPARE(second.ids(), d.ids());
+        QVERIFY((second.atoms[1].position - other.atoms[1].position).norm() < 1e-9);
+        QVERIFY(!w.executionPanel()->running());
+        auto invalid = other;
+        invalid.atoms[1].element = "He";
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 w.executionPanel()->enqueueGeometries({d, invalid}, false));
+        QCOMPARE(w.executionPanel()->calculationQueue().pending(), 2);
+    }
+    void queueSnapshotsAndOrder() {
+        NwchemRun run;
+        NwchemQueue queue(run);
+        auto first = configured();
+        setNwchemSetting(first, "title", "snapshot one");
+        const auto id1 = queue.enqueue(first, files.path());
+        setNwchemSetting(first, "title", "edited later");
+        const auto id2 = queue.enqueue(first, files.path());
+        const auto path1 = queue.entries()[0].plan.directory;
+        const auto path2 = queue.entries()[1].plan.directory;
+        const auto recorded = readHistoryEntry(path1);
+        QVERIFY2(recorded.valid, qPrintable(recorded.warnings.join('\n')));
+        QCOMPARE(recorded.status, RunState::Prepared);
+        QCOMPARE(readObject(path1 + "/run.json"), queue.entries()[0].plan.manifest);
+        QVERIFY(readFile(path1 + "/input.nw").contains("snapshot one"));
+        QVERIFY(!readFile(path1 + "/input.nw").contains("edited later"));
+        QCOMPARE(queue.pending(), 2);
+        QVERIFY(queue.paused());
+        QVERIFY(!run.active());
+        queue.move(id2, 0);
+        QCOMPARE(queue.entries()[0].id, id2);
+        QStringList started;
+        connect(&run, &NwchemRun::changed, &queue, [&] {
+            if (run.state() == RunState::Starting)
+                started << run.plan().directory;
+        });
+        queue.resume();
+        QTRY_VERIFY_WITH_TIMEOUT(queue.entries()[0].state != RunState::Prepared, 5000);
+        QVERIFY2(queue.entries()[0].state != RunState::Failed, qPrintable(queue.entries()[0].error));
+        QTRY_COMPARE_WITH_TIMEOUT(queue.entries()[1].state, RunState::Finished, 5000);
+        QCOMPARE(started, (QStringList{path2, path1}));
+        QCOMPARE(queue.entries()[1].id, id1);
+        QCOMPARE(queue.pending(), 0);
+        QCOMPARE(readObject(path1 + "/run.json")["status"].toString(), "finished");
+    }
+    void queueFailurePauseAndCancellation() {
+        NwchemRun run;
+        NwchemQueue queue(run);
+        queue.enqueue(configured("fail"), files.path());
+        const auto next = queue.enqueue(configured(), files.path());
+        queue.resume();
+        QTRY_COMPARE_WITH_TIMEOUT(queue.entries()[0].state, RunState::Failed, 5000);
+        QVERIFY(queue.paused());
+        QCOMPARE(queue.pending(), 1);
+        QVERIFY(!QFileInfo::exists(queue.entries()[1].plan.directory + "/captured.json"));
+        queue.cancel(next);
+        QCOMPARE(queue.pending(), 0);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, queue.cancel(next));
+        queue.setStopOnFailure(false);
+        queue.enqueue(configured("fail"), files.path());
+        queue.enqueue(configured(), files.path());
+        queue.resume();
+        QTRY_COMPARE_WITH_TIMEOUT(queue.entries().last().state, RunState::Finished, 5000);
+        QCOMPARE(queue.entries()[2].state, RunState::Failed);
+    }
+    void queueRejectsChangedFilesAndAccess() {
+        NwchemRun run;
+        NwchemQueue queue(run);
+        queue.enqueue(configured(), files.path());
+        const auto directory = queue.entries()[0].plan.directory;
+        writeFile(directory + "/input.nw", "changed\n");
+        queue.resume();
+        QTRY_COMPARE(queue.entries()[0].state, RunState::Failed);
+        QVERIFY(!run.active());
+        QVERIFY(!QFileInfo::exists(directory + "/captured.json"));
+        QVERIFY(!queue.entries()[0].error.isEmpty());
+        bool allowed = true;
+        queue.enqueue(configured(), files.path(), [&] {
+            if (!allowed)
+                throw std::runtime_error("access changed");
+        });
+        allowed = false;
+        queue.resume();
+        QTRY_COMPARE(queue.entries()[1].state, RunState::Failed);
+        QCOMPARE(queue.entries()[1].error, QString("access changed"));
+        queue.enqueue(configured(), files.path());
+        writeFile(queue.entries()[2].plan.directory + "/output.out", "existing output\n");
+        queue.resume();
+        QTRY_COMPARE(queue.entries()[2].state, RunState::Failed);
+        QCOMPARE(readFile(queue.entries()[2].plan.directory + "/output.out"),
+                 QByteArray("existing output\n"));
+    }
+    void queuePauseAndShutdown() {
+        NwchemRun run;
+        NwchemQueue queue(run);
+        queue.enqueue(configured("slow"), files.path());
+        queue.enqueue(configured(), files.path());
+        queue.resume();
+        QTRY_VERIFY(run.active());
+        queue.pause();
+        QVERIFY(run.active());
+        queue.shutdown();
+        run.shutdown();
+        QVERIFY(!run.active());
+        QCOMPARE(queue.pending(), 1);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, queue.resume());
+        QVERIFY(!QFileInfo::exists(queue.entries()[1].plan.directory + "/captured.json"));
     }
     void defaultsAndCompatibility() {
         auto d = water();

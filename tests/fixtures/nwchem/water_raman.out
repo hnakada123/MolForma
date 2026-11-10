@@ -1,0 +1,3010 @@
+ argument  1 = input.nw
+                                         
+                                         
+
+
+             Northwest Computational Chemistry Package (NWChem) 7.3.1
+             --------------------------------------------------------
+
+
+                    Environmental Molecular Sciences Laboratory
+                       Pacific Northwest National Laboratory
+                                Richland, WA 99352
+
+                              Copyright (c) 1994-2025
+                       Pacific Northwest National Laboratory
+                            Battelle Memorial Institute
+
+             NWChem is an open-source computational chemistry package
+                        distributed under the terms of the
+                      Educational Community License (ECL) 2.0
+             A copy of the license is included with this distribution
+                              in the LICENSE.TXT file
+
+                                  ACKNOWLEDGMENT
+                                  --------------
+
+            This software and its documentation were developed at the
+            EMSL at Pacific Northwest National Laboratory, a multiprogram
+            national laboratory, operated for the U.S. Department of Energy
+            by Battelle under Contract Number DE-AC05-76RL01830. Support
+            for this work was provided by the Department of Energy Office
+            of Biological and Environmental Research, Office of Basic
+            Energy Sciences, and the Office of Advanced Scientific Computing.
+
+
+           Job information
+           ---------------
+
+    hostname        = fixture-host
+    program         = nwchem
+    date            = Tue Nov 10 09:47:13 2026
+
+    compiled        = 木_10月_22_15:39:50_2026
+    source          = /opt/nwchem-7.3.1
+    nwchem branch   = 7.3.1
+    nwchem revision = 7a2e210
+    ga revision     = 5.9.2
+    use scalapack   = T
+    input           = input.nw
+    prefix          = raman_test.
+    data base       = ./raman_test.db
+    status          = startup
+    nproc           =        1
+    time left       =     -1s
+
+
+
+           Memory information
+           ------------------
+
+    heap     =      6524472 doubles =       49.8 Mbytes
+    stack    =      6524469 doubles =       49.8 Mbytes
+    global   =      3728270 doubles =       28.4 Mbytes (distinct from heap & stack)
+    total    =     16777211 doubles =      128.0 Mbytes
+    verify   = yes
+    hardfail = no 
+
+
+           Directory information
+           ---------------------
+
+  0 permanent = .
+  0 scratch   = .
+
+
+
+
+                                NWChem Input Module
+                                -------------------
+
+
+
+ Scaling coordinates for geometry "geometry" by  1.889725989
+ (inverse scale =  0.529177249)
+
+
+
+                             Geometry "geometry" -> ""
+                             -------------------------
+
+ Output coordinates in angstroms (scale by  1.889725989 to convert to a.u.)
+
+  No.       Tag          Charge          X              Y              Z
+ ---- ---------------- ---------- -------------- -------------- --------------
+    1 O                    8.0000     0.00000000     0.00000000     0.00000000
+    2 H                    1.0000     0.75800000     0.00000000     0.50400000
+    3 H                    1.0000    -0.75800000     0.00000000     0.50400000
+
+      Atomic Mass 
+      ----------- 
+
+      O                 15.994910
+      H                  1.007825
+
+
+ Effective nuclear repulsion energy (a.u.)       9.6505815003
+
+            Nuclear Dipole moment (a.u.) 
+            ----------------------------
+        X                 Y               Z
+ ---------------- ---------------- ----------------
+     0.0000000000     0.0000000000     1.9048437965
+
+
+            XYZ format geometry
+            -------------------
+     3
+ geometry
+ O                     0.00000000     0.00000000     0.00000000
+ H                     0.75800000     0.00000000     0.50400000
+ H                    -0.75800000     0.00000000     0.50400000
+
+ ==============================================================================
+                                internuclear distances
+ ------------------------------------------------------------------------------
+       center one      |      center two      | atomic units |  angstroms
+ ------------------------------------------------------------------------------
+    2 H                |   1 O                |     1.72015  |     0.91026
+    3 H                |   1 O                |     1.72015  |     0.91026
+ ------------------------------------------------------------------------------
+                         number of included internuclear distances:          2
+ ==============================================================================
+
+
+
+ ==============================================================================
+                                 internuclear angles
+ ------------------------------------------------------------------------------
+        center 1       |       center 2       |       center 3       |  degrees
+ ------------------------------------------------------------------------------
+    2 H                |   1 O                |   3 H                |   112.76
+ ------------------------------------------------------------------------------
+                            number of included internuclear angles:          1
+ ==============================================================================
+
+
+
+
+
+ Summary of "ao basis" -> "" (cartesian)
+ ------------------------------------------------------------------------------
+       Tag                 Description            Shells   Functions and Types
+ ---------------- ------------------------------  ------  ---------------------
+ *                           sto-3g                   on all atoms 
+
+
+  util_pr load raman
+
+                                  Raman Analysis
+                                  --------------
+
+
+
+                   NWChem Nuclear Hessian and Frequency Analysis
+                   ---------------------------------------------
+
+
+
+                              NWChem Analytic Hessian
+                              -----------------------
+
+                      Basis "ao basis" -> "ao basis" (cartesian)
+                      -----
+  O (Oxygen)
+  ----------
+            Exponent  Coefficients 
+       -------------- ---------------------------------------------------------
+  1 S  1.30709320E+02  0.154329
+  1 S  2.38088610E+01  0.535328
+  1 S  6.44360830E+00  0.444635
+
+  2 S  5.03315130E+00 -0.099967
+  2 S  1.16959610E+00  0.399513
+  2 S  3.80389000E-01  0.700115
+
+  3 P  5.03315130E+00  0.155916
+  3 P  1.16959610E+00  0.607684
+  3 P  3.80389000E-01  0.391957
+
+  H (Hydrogen)
+  ------------
+            Exponent  Coefficients 
+       -------------- ---------------------------------------------------------
+  1 S  3.42525091E+00  0.154329
+  1 S  6.23913730E-01  0.535328
+  1 S  1.68855400E-01  0.444635
+
+
+
+ Summary of "ao basis" -> "ao basis" (cartesian)
+ ------------------------------------------------------------------------------
+       Tag                 Description            Shells   Functions and Types
+ ---------------- ------------------------------  ------  ---------------------
+ O                           sto-3g                  3        5   2s1p
+ H                           sto-3g                  1        1   1s
+
+
+  ncent_ecp
+  NO ECPs here                  566
+  HESS GRID fine           
+
+                                 NWChem DFT Module
+                                 -----------------
+
+
+
+
+ Summary of "ao basis" -> "ao basis" (cartesian)
+ ------------------------------------------------------------------------------
+       Tag                 Description            Shells   Functions and Types
+ ---------------- ------------------------------  ------  ---------------------
+ O                           sto-3g                  3        5   2s1p
+ H                           sto-3g                  1        1   1s
+
+
+  Caching 1-el integrals 
+
+            General Information
+            -------------------
+          SCF calculation type: DFT
+          Wavefunction type:  closed shell.
+          No. of atoms     :     3
+          No. of electrons :    10
+           Alpha electrons :     5
+            Beta electrons :     5
+          Charge           :     0
+          Spin multiplicity:     1
+          Use of symmetry is: off; symmetry adaption is: off
+          Maximum number of iterations:  50
+          AO basis - number of functions:     7
+                     number of shells:     5
+          Convergence on energy requested:  1.00D-07
+          Convergence on density requested:  1.00D-05
+          Convergence on gradient requested:  1.00D-06
+
+              XC Information
+              --------------
+                        Slater Exchange Functional  1.000 local    
+                      VWN V Correlation Functional  1.000 local    
+
+             Grid Information
+             ----------------
+          Grid used for XC integration:  fine      
+          Radial quadrature: Mura-Knowles        
+          Angular quadrature: Lebedev. 
+          Tag              B.-S. Rad. Rad. Pts. Rad. Cut. Ang. Pts.
+          ---              ---------- --------- --------- ---------
+          O                   0.60       70           6.0       590
+          H                   0.35       60           8.0       590
+          Grid pruning is: on 
+          Number of quadrature shells:   190
+          Spatial weights used:  Erf1
+
+          Convergence Information
+          -----------------------
+          Convergence aids based upon iterative change in 
+          total energy or number of iterations. 
+          Levelshifting, if invoked, occurs when the 
+          HOMO/LUMO gap drops below (HL_TOL):  1.00D-02
+          DIIS, if invoked, will attempt to extrapolate 
+          using up to (NFOCK): 10 stored Fock matrices.
+
+                    Damping( 0%)  Levelshifting(0.5)       DIIS
+                  --------------- ------------------- ---------------
+          dE  on:    start            ASAP                start   
+          dE off:    2 iters         50 iters            50 iters 
+
+
+      Screening Tolerance Information
+      -------------------------------
+          Density screening/tol_rho:  1.00D-11
+          AO Gaussian exp screening on grid/accAOfunc:  16
+          CD Gaussian exp screening on grid/accCDfunc:  20
+          XC Gaussian exp screening on grid/accXCfunc:  20
+          Schwarz screening/accCoul:  1.00D-12
+
+
+      Superposition of Atomic Density Guess
+      -------------------------------------
+
+ Sum of atomic energies:         -74.71095592
+
+      Non-variational initial energy
+      ------------------------------
+
+ Total energy =     -74.805999
+ 1-e energy   =    -122.575953
+ 2-e energy   =      38.119372
+ HOMO         =      -0.271136
+ LUMO         =       0.543716
+
+   Time after variat. SCF:      0.1
+   Time prior to 1st pass:      0.1
+ Local filesystem for scratch_dir
+
+ #quartets = 1.200D+02 #integrals = 2.560D+02 #direct =  0.0% #cached =100.0%
+
+
+ Integral file          = ./raman_test.aoints.0
+ Record size in doubles =  65536        No. of integs per rec  =  43688
+ Max. records in memory =      3        Max. records in file   =  29764
+ No. of bits per label  =      8        No. of bits per value  =     64
+
+ Local filesystem for scratch_dir
+
+ Grid_pts file          = ./raman_test.gridpts.0
+ Record size in doubles =  12289        No. of grid_pts per rec  =   3070
+ Max. records in memory =     42        Max. recs in file   =    158736
+
+ Grid integrated density:       9.999999849209
+ Requested integration accuracy:   0.10E-13
+
+           Memory utilization after 1st SCF pass: 
+           Heap Space remaining (MW):        5.81             5810896
+          Stack Space remaining (MW):        6.52             6524276
+
+   convergence    iter        energy       DeltaE   RMS-Dens  Diis-err    time
+ ---------------- ----- ----------------- --------- --------- ---------  ------
+ d= 0,ls=0.0,diis     1    -74.6762842125 -8.43D+01  1.16D-01  2.49D-01     0.1
+ Grid integrated density:       9.999999787951
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     2    -74.6865199151 -1.02D-02  5.81D-02  1.41D-01     0.2
+ Grid integrated density:       9.999999931726
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     3    -74.7082541220 -2.17D-02  4.58D-03  1.08D-03     0.2
+ Grid integrated density:       9.999999931434
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     4    -74.7084213376 -1.67D-04  1.03D-04  3.56D-07     0.2
+ Grid integrated density:       9.999999931427
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     5    -74.7084214068 -6.92D-08  2.01D-06  1.07D-10     0.2
+
+
+         Total DFT energy =      -74.708421406815
+      One electron energy =     -123.240960153954
+           Coulomb energy =       47.800360566241
+    Exchange-Corr. energy =       -8.918403319378
+ Nuclear repulsion energy =        9.650581500277
+
+ Numeric. integr. density =        9.999999931427
+
+     Total iterative time =      0.1s
+
+
+
+                       DFT Final Molecular Orbital Analysis
+                       ------------------------------------
+
+ Vector    1  Occ=2.000000D+00  E=-1.825649D+01
+              MO Center= -1.5D-14, -4.5D-16,  3.1D-04, r^2= 1.5D-02
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     1      0.992348  1 O  s                  2      0.035421  1 O  s          
+
+ Vector    2  Occ=2.000000D+00  E=-8.436968D-01
+              MO Center= -5.0D-11, -3.3D-13,  2.5D-01, r^2= 5.4D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     2      0.763687  1 O  s                  1     -0.224963  1 O  s          
+     5      0.215338  1 O  pz                 6      0.186314  2 H  s          
+     7      0.186314  3 H  s          
+
+ Vector    3  Occ=2.000000D+00  E=-4.153662D-01
+              MO Center=  3.0D-11,  3.0D-25,  2.2D-01, r^2= 8.0D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     3      0.605455  1 O  px                 6      0.430735  2 H  s          
+     7     -0.430735  3 H  s          
+
+ Vector    4  Occ=2.000000D+00  E=-1.216045D-01
+              MO Center= -1.6D-11, -3.8D-13, -1.5D-01, r^2= 5.1D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     5      0.795104  1 O  pz                 2     -0.600593  1 O  s          
+     6      0.232363  2 H  s                  7      0.232363  3 H  s          
+     1      0.124252  1 O  s          
+
+ Vector    5  Occ=2.000000D+00  E=-5.616973D-02
+              MO Center= -3.2D-27,  6.6D-13, -9.7D-25, r^2= 4.2D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     4      1.000000  1 O  py         
+
+ Vector    6  Occ=0.000000D+00  E= 3.491415D-01
+              MO Center= -1.7D-10,  4.9D-14,  4.7D-01, r^2= 1.1D+00
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     2      0.988892  1 O  s                  6     -0.840663  2 H  s          
+     7     -0.840663  3 H  s                  5      0.696255  1 O  pz         
+     1     -0.145559  1 O  s          
+
+ Vector    7  Occ=0.000000D+00  E= 4.961399D-01
+              MO Center=  2.0D-10, -2.5D-25,  3.1D-01, r^2= 1.0D+00
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     3      1.040594  1 O  px                 6     -0.884295  2 H  s          
+     7      0.884295  3 H  s          
+
+
+ center of mass
+ --------------
+ x =   0.00000000 y =   0.00000000 z =   0.10659020
+
+ moments of inertia (a.u.)
+ ------------------
+           1.623784724647           0.000000000000           0.000000000000
+           0.000000000000           5.759505463445           0.000000000000
+           0.000000000000           0.000000000000           4.135720738798
+
+     Multipole analysis of the density
+     ---------------------------------
+
+     L   x y z        total         alpha         beta         nuclear
+     -   - - -        -----         -----         ----         -------
+     0   0 0 0     -0.000000     -5.000000     -5.000000     10.000000
+
+     1   1 0 0      0.000000      0.000000      0.000000      0.000000
+     1   0 1 0      0.000000      0.000000      0.000000      0.000000
+     1   0 0 1      0.685566     -0.609639     -0.609639      1.904844
+
+     2   2 0 0     -3.038607     -3.571108     -3.571108      4.103610
+     2   1 1 0     -0.000000     -0.000000     -0.000000      0.000000
+     2   1 0 1      0.000000      0.000000      0.000000      0.000000
+     2   0 2 0     -4.490437     -2.245218     -2.245218      0.000000
+     2   0 1 1      0.000000      0.000000      0.000000      0.000000
+     2   0 0 2     -3.812322     -2.813268     -2.813268      1.814215
+
+
+ Parallel integral file used       1 records with       0 large values
+
+
+ HESSIAN: the one electron contributions are done in       0.0s
+
+
+ HESSIAN: 2-el 1st deriv. term done in                     0.0s
+
+
+ HESSIAN: 2-el 2nd deriv. term done in                     0.0s
+
+  stpr_wrt_fd_from_sq: overwrite of existing file:./raman_test.hess
+ stpr_wrt_fd_dipole: overwrite of existing file./raman_test.fd_ddipole
+
+ HESSIAN: the two electron contributions are done in       0.1s
+
+                                NWChem CPHF Module
+                                ------------------
+
+
+  scftype          =     RHF 
+  nclosed          =        5
+  nopen            =        0
+  variables        =       10
+  # of vectors     =        9
+  tolerance        = 0.10D-03
+  level shift      = 0.00D+00
+  max iterations   =       50
+  max subspace     =       90
+
+ Local filesystem for scratch_dir
+
+ #quartets = 1.200D+02 #integrals = 2.560D+02 #direct =  0.0% #cached =100.0%
+
+
+ Integral file          = ./raman_test.aoints.0
+ Record size in doubles =  65536        No. of integs per rec  =  43688
+ Max. records in memory =      3        Max. records in file   =  29761
+ No. of bits per label  =      8        No. of bits per value  =     64
+
+ Grid integrated density:       9.999999931427
+ Requested integration accuracy:   0.10E-13
+ SCF residual:    3.0781446604806404E-007
+
+
+Iterative solution of linear equations
+  No. of variables       10
+  No. of equations        9
+  Maximum subspace       90
+        Iterations       50
+       Convergence  1.0D-04
+        Start time      0.4
+
+
+   iter   nsub   residual    time
+   ----  ------  --------  ---------
+     1      9    4.72D-01       0.5
+     2     18    8.06D-03       0.5
+     3     27    1.43D-10       0.6
+
+ Parallel integral file used       1 records with       0 large values
+
+ HESSIAN: the CPHF contributions are done
+  stpr_wrt_fd_from_sq: overwrite of existing file:./raman_test.hess
+ stpr_wrt_fd_dipole: overwrite of existing file./raman_test.fd_ddipole
+
+ Derivative Dipole
+
+  
+  
+ X vector of derivative dipole (au) [debye/angstrom]
+ d_dipole_x/<atom=   1,x> =    -0.1050     [   -0.5042]
+ d_dipole_x/<atom=   1,y> =    -0.0000     [   -0.0000]
+ d_dipole_x/<atom=   1,z> =    -0.0000     [   -0.0000]
+ d_dipole_x/<atom=   2,x> =     0.0525     [    0.2521]
+ d_dipole_x/<atom=   2,y> =    -0.0000     [   -0.0000]
+ d_dipole_x/<atom=   2,z> =    -0.2044     [   -0.9818]
+ d_dipole_x/<atom=   3,x> =     0.0525     [    0.2521]
+ d_dipole_x/<atom=   3,y> =     0.0000     [    0.0000]
+ d_dipole_x/<atom=   3,z> =     0.2044     [    0.9818]
+  
+ Y vector of derivative dipole (au) [debye/angstrom]
+ d_dipole_y/<atom=   1,x> =     0.0000     [    0.0000]
+ d_dipole_y/<atom=   1,y> =    -0.7198     [   -3.4574]
+ d_dipole_y/<atom=   1,z> =     0.0000     [    0.0000]
+ d_dipole_y/<atom=   2,x> =     0.0000     [    0.0000]
+ d_dipole_y/<atom=   2,y> =     0.3599     [    1.7287]
+ d_dipole_y/<atom=   2,z> =    -0.0000     [   -0.0000]
+ d_dipole_y/<atom=   3,x> =    -0.0000     [   -0.0000]
+ d_dipole_y/<atom=   3,y> =     0.3599     [    1.7287]
+ d_dipole_y/<atom=   3,z> =    -0.0000     [   -0.0000]
+  
+ Z vector of derivative dipole (au) [debye/angstrom]
+ d_dipole_z/<atom=   1,x> =    -0.0000     [   -0.0000]
+ d_dipole_z/<atom=   1,y> =    -0.0000     [   -0.0000]
+ d_dipole_z/<atom=   1,z> =    -0.0275     [   -0.1321]
+ d_dipole_z/<atom=   2,x> =    -0.1674     [   -0.8043]
+ d_dipole_z/<atom=   2,y> =    -0.0000     [   -0.0000]
+ d_dipole_z/<atom=   2,z> =     0.0138     [    0.0661]
+ d_dipole_z/<atom=   3,x> =     0.1674     [    0.8043]
+ d_dipole_z/<atom=   3,y> =    -0.0000     [   -0.0000]
+ d_dipole_z/<atom=   3,z> =     0.0138     [    0.0661]
+  
+  
+ HESSIAN: the Hessian is done
+
+
+  Vibrational analysis via the FX method 
+
+  See chapter 2 in "Molecular Vibrations" by Wilson, Decius and Cross
+
+  Vib: Default input used 
+
+  Nuclear Hessian passed symmetry test 
+
+
+
+ ---------------------------- Atom information ----------------------------
+     atom    #        X              Y              Z            mass
+ --------------------------------------------------------------------------
+    O        1  0.0000000D+00  0.0000000D+00  0.0000000D+00  1.5994910D+01
+    H        2  1.4324123D+00  0.0000000D+00  9.5242190D-01  1.0078250D+00
+    H        3 -1.4324123D+00  0.0000000D+00  9.5242190D-01  1.0078250D+00
+ --------------------------------------------------------------------------
+
+
+
+
+          ----------------------------------------------------
+          MASS-WEIGHTED NUCLEAR HESSIAN (Hartree/Bohr/Bohr/Kamu)
+          ----------------------------------------------------
+
+
+               1            2            3            4            5            6            7            8            9
+   ----- ----- ----- ----- -----
+    1    8.23049D+01
+    2    2.55321D-10 -1.27611D+01
+    3    1.29025D-08  5.69735D-10  3.21276D+01
+    4   -1.63943D+02 -5.02476D-10 -9.11460D+01  6.67559D+02
+    5   -6.61461D-11  2.54187D+01 -5.34823D-11  1.79536D-10 -8.46298D+01
+    6   -1.25908D+02 -1.42700D-09 -6.39947D+01  4.32350D+02  1.43720D-10  2.60229D+02
+    7   -1.63943D+02  4.99816D-10  9.11460D+01 -1.44431D+01  7.70673D-11  6.92423D+01  6.67559D+02
+    8    6.13333D-11  2.54187D+01 -5.26989D-11 -7.34199D-11 -1.66335D+01  5.89075D-11 -1.82723D-10 -8.46298D+01
+    9    1.25908D+02 -1.42850D-09 -6.39947D+01 -6.92423D+01  6.12598D-11 -5.28705D+00 -4.32350D+02  1.51709D-10  2.60229D+02
+
+
+
+          -------------------------------------------------
+          NORMAL MODE EIGENVECTORS IN CARTESIAN COORDINATES
+          -------------------------------------------------
+                 (Frequencies expressed in cm-1)
+
+                    1           2           3           4           5           6
+ 
+ Frequency      -1735.81    -1466.09    -1340.44       -1.27        2.23        3.13
+ 
+           1    -0.00000    -0.04567     0.00000     0.00000    -0.00001     0.23563
+           2     0.08365     0.00000     0.00000    -0.23563     0.00000     0.00000
+           3    -0.00000     0.00000     0.00000     0.00000     0.23563     0.00001
+           4    -0.00000     0.36240     0.00000     0.00000    -0.00001     0.23563
+           5    -0.66377     0.00000    -0.70436    -0.23563     0.00000     0.00000
+           6     0.00000    -0.59011     0.00000    -0.00000     0.23563     0.00001
+           7     0.00000     0.36240     0.00000     0.00000    -0.00001     0.23563
+           8    -0.66377     0.00000     0.70436    -0.23563     0.00000     0.00000
+           9     0.00000     0.59011     0.00000    -0.00000     0.23563     0.00001
+
+                    7           8           9
+ 
+ Frequency       1167.41     4923.87     5347.78
+ 
+           1    -0.00000    -0.00000    -0.07008
+           2    -0.00000    -0.00000     0.00000
+           3    -0.07137    -0.04362    -0.00000
+           4    -0.36732     0.60099     0.55611
+           5    -0.00000    -0.00000     0.00000
+           6     0.56637     0.34616     0.38456
+           7     0.36732    -0.60099     0.55611
+           8    -0.00000    -0.00000     0.00000
+           9     0.56637     0.34616    -0.38456
+
+
+
+ ----------------------------------------------------------------------------
+ Normal Eigenvalue ||         Derivative Dipole Moments (debye/angs)
+  Mode   [cm**-1]  ||      [d/dqX]             [d/dqY]           [d/dqZ]
+ ------ ---------- || ------------------ ------------------ -----------------
+    1    -1735.813 ||      -0.000              -2.584            -0.000
+    2    -1466.091 ||       1.365              -0.000            -0.000
+    3    -1340.439 ||       0.000              -0.000            -0.000
+    4       -1.273 ||       0.000               0.000             0.000
+    5        2.229 ||      -0.000              -0.000             0.000
+    6        3.133 ||      -0.000               0.000             0.000
+    7     1167.406 ||      -0.000               0.000             0.675
+    8     4923.871 ||       0.000              -0.000            -0.915
+    9     5347.783 ||      -0.439              -0.000             0.000
+ ----------------------------------------------------------------------------
+
+
+
+  
+  
+ ----------------------------------------------------------------------------
+ Normal Eigenvalue ||                 Infra Red Intensities
+  Mode   [cm**-1]  || [atomic units] [(debye/angs)**2] [(KM/mol)] [arbitrary]
+ ------ ---------- || -------------- ----------------- ---------- -----------
+    1    -1735.813 ||    0.289448           6.678       282.168      59.944
+    2    -1466.091 ||    0.080702           1.862        78.673      16.713
+    3    -1340.439 ||    0.000000           0.000         0.000       0.000
+    4       -1.273 ||    0.000000           0.000         0.000       0.000
+    5        2.229 ||    0.000000           0.000         0.000       0.000
+    6        3.133 ||    0.000000           0.000         0.000       0.000
+    7     1167.406 ||    0.019755           0.456        19.258       4.091
+    8     4923.871 ||    0.036305           0.838        35.392       7.519
+    9     5347.783 ||    0.008369           0.193         8.159       1.733
+ ----------------------------------------------------------------------------
+
+
+
+
+
+        Vibrational analysis via the FX method 
+  --- with translations and rotations projected out ---
+  --- via the Eckart algorithm                      ---
+ Projected Nuclear Hessian trans-rot subspace norm:9.5151D-32
+                         (should be close to zero!) 
+
+          --------------------------------------------------------
+          MASS-WEIGHTED PROJECTED HESSIAN (Hartree/Bohr/Bohr/Kamu)
+          --------------------------------------------------------
+
+
+               1            2            3            4            5            6            7            8            9
+   ----- ----- ----- ----- -----
+    1    8.50525D+01
+    2   -3.78774D-26 -2.12514D-15
+    3    5.00184D-09 -9.65677D-26  3.21275D+01
+    4   -1.69416D+02 -4.43593D-27 -9.11460D+01  6.78462D+02
+    5   -9.39171D-26 -6.13644D-15 -4.24395D-25  4.79034D-25 -1.65401D-14
+    6   -1.12646D+02  5.95114D-25 -6.39948D+01  4.05934D+02  9.61617D-25  2.76664D+02
+    7   -1.69416D+02 -9.61808D-26  9.11460D+01 -3.54021D+00 -1.55667D-25  4.28263D+01  6.78462D+02
+    8   -1.17888D-25 -2.67994D-15 -4.21252D-25  5.72963D-25  3.11885D-15  9.83116D-25 -6.57498D-26 -1.37700D-14
+    9    1.12646D+02 -8.90263D-27 -6.39948D+01 -4.28263D+01  6.89025D-25 -2.17207D+01 -4.05934D+02  7.01331D-25  2.76664D+02
+
+ center of mass
+ --------------
+ x =   0.00000000 y =   0.00000000 z =   0.10659020
+
+ moments of inertia (a.u.)
+ ------------------
+           1.623784724647           0.000000000000           0.000000000000
+           0.000000000000           5.759505463445           0.000000000000
+           0.000000000000           0.000000000000           4.135720738798
+
+ Rotational Constants
+ --------------------
+ A=  37.073988 cm-1  ( 53.340007 K)
+ B=  14.556151 cm-1  ( 20.942586 K)
+ C=  10.452317 cm-1  ( 15.038216 K)
+
+
+ Temperature                      =   298.15K
+ frequency scaling parameter      =   1.0000
+
+ Zero-Point correction to Energy  =   16.260 kcal/mol  (  0.025912 au)
+ Thermal correction to Energy     =   18.049 kcal/mol  (  0.028763 au)
+ Thermal correction to Enthalpy   =   18.641 kcal/mol  (  0.029706 au)
+
+ Total Entropy                    =   46.070 cal/mol-K
+   - Translational                =   34.593 cal/mol-K (mol. weight =  18.0106)
+   - Rotational                   =   11.430 cal/mol-K (symmetry #  =        1)
+   - Vibrational                  =    0.047 cal/mol-K
+
+ Cv (constant volume heat capacity) =    6.186 cal/mol-K
+   - Translational                  =    2.979 cal/mol-K
+   - Rotational                     =    2.979 cal/mol-K
+   - Vibrational                    =    0.227 cal/mol-K
+
+
+
+          -------------------------------------------------
+          NORMAL MODE EIGENVECTORS IN CARTESIAN COORDINATES
+          -------------------------------------------------
+             (Projected Frequencies expressed in cm-1)
+
+                    1           2           3           4           5           6
+ 
+ P.Frequency       -0.00       -0.00       -0.00       -0.00       -0.00       -0.00
+ 
+           1     0.04407    -0.01175     0.00000     0.23541     0.00000     0.00000
+           2     0.00000     0.00000     0.00000     0.00000     0.00000     0.25004
+           3     0.06055     0.22772     0.00000     0.00003     0.00000     0.00000
+           4    -0.33946     0.09023     0.00000     0.23741     0.00000     0.00000
+           5     0.00000     0.00000     0.99611     0.00000     0.00000     0.00000
+           6     0.63737     0.07434     0.00000    -0.00299     0.00000     0.00000
+           7    -0.33946     0.09023     0.00000     0.23741     0.00000     0.00000
+           8     0.00000     0.00000     0.00000     0.00000     0.99611     0.00000
+           9    -0.51626     0.38110     0.00000     0.00305     0.00000     0.00000
+
+                    7           8           9
+ 
+ P.Frequency     1167.41     4923.87     5288.36
+ 
+           1     0.00000     0.00000    -0.07088
+           2     0.00000     0.00000     0.00000
+           3    -0.07137    -0.04362    -0.00000
+           4    -0.36732     0.60099     0.56247
+           5     0.00000     0.00000     0.00000
+           6     0.56637     0.34616     0.37399
+           7     0.36732    -0.60099     0.56247
+           8     0.00000     0.00000     0.00000
+           9     0.56637     0.34616    -0.37399
+
+
+
+ ----------------------------------------------------------------------------
+ Normal Eigenvalue ||    Projected Derivative Dipole Moments (debye/angs)
+  Mode   [cm**-1]  ||      [d/dqX]             [d/dqY]           [d/dqZ]
+ ------ ---------- || ------------------ ------------------ -----------------
+    1       -0.000 ||      -1.326               0.000            -0.000
+    2       -0.000 ||       0.353              -0.000            -0.000
+    3       -0.000 ||      -0.000               1.722            -0.000
+    4       -0.000 ||       0.007               0.000             0.000
+    5       -0.000 ||       0.000               1.722            -0.000
+    6       -0.000 ||      -0.000              -0.864            -0.000
+    7     1167.413 ||      -0.000              -0.000             0.675
+    8     4923.871 ||       0.000              -0.000            -0.915
+    9     5288.356 ||      -0.415              -0.000             0.000
+ ----------------------------------------------------------------------------
+
+
+
+  
+  
+ ----------------------------------------------------------------------------
+ Normal Eigenvalue ||           Projected Infra Red Intensities
+  Mode   [cm**-1]  || [atomic units] [(debye/angs)**2] [(KM/mol)] [arbitrary]
+ ------ ---------- || -------------- ----------------- ---------- -----------
+    1       -0.000 ||    0.076213           1.758        74.297      15.784
+    2       -0.000 ||    0.005389           0.124         5.254       1.116
+    3       -0.000 ||    0.128527           2.965       125.295      26.618
+    4       -0.000 ||    0.000002           0.000         0.002       0.000
+    5       -0.000 ||    0.128527           2.965       125.295      26.618
+    6       -0.000 ||    0.032394           0.747        31.579       6.709
+    7     1167.413 ||    0.019755           0.456        19.258       4.091
+    8     4923.871 ||    0.036305           0.838        35.392       7.519
+    9     5288.356 ||    0.007467           0.172         7.279       1.546
+ ----------------------------------------------------------------------------
+
+
+
+ vib:animation  F
+(mode_ini,mode_end)=(    1,    3)
+ task_raman_doit:                no rminfo found
+(begin,last,steps)=(   7,   9,   2)
+  dal ramantype                     1
+ ENTER raman default
+Generating fname_raman3=./raman_test.raman_0007-0009                                                                                                                                                                                                                                   
+(ii,rminfo(ii,1))=(    7,     0.00000000)
+ ramanpolfile=./raman_test.ramanpol_0001-1                                                                                                                                                                                                                                   
+ ramanpol_read: failed to open ./raman_test.ramanpol_0001-1
+                              NWChem Property Module
+                              ----------------------
+
+
+
+                                 NWChem DFT Module
+                                 -----------------
+
+
+
+
+ Summary of "ao basis" -> "ao basis" (cartesian)
+ ------------------------------------------------------------------------------
+       Tag                 Description            Shells   Functions and Types
+ ---------------- ------------------------------  ------  ---------------------
+ O                           sto-3g                  3        5   2s1p
+ H                           sto-3g                  1        1   1s
+
+
+  Caching 1-el integrals 
+
+            General Information
+            -------------------
+          SCF calculation type: DFT
+          Wavefunction type:  closed shell.
+          No. of atoms     :     3
+          No. of electrons :    10
+           Alpha electrons :     5
+            Beta electrons :     5
+          Charge           :     0
+          Spin multiplicity:     1
+          Use of symmetry is: off; symmetry adaption is: off
+          Maximum number of iterations:  50
+          AO basis - number of functions:     7
+                     number of shells:     5
+          Convergence on energy requested:  1.00D-07
+          Convergence on density requested:  1.00D-05
+          Convergence on gradient requested:  1.00D-04
+
+              XC Information
+              --------------
+                        Slater Exchange Functional  1.000 local    
+                      VWN V Correlation Functional  1.000 local    
+
+             Grid Information
+             ----------------
+          Grid used for XC integration:  fine      
+          Radial quadrature: Mura-Knowles        
+          Angular quadrature: Lebedev. 
+          Tag              B.-S. Rad. Rad. Pts. Rad. Cut. Ang. Pts.
+          ---              ---------- --------- --------- ---------
+          O                   0.60       70           6.0       590
+          H                   0.35       60           8.0       590
+          Grid pruning is: on 
+          Number of quadrature shells:   190
+          Spatial weights used:  Erf1
+
+          Convergence Information
+          -----------------------
+          Convergence aids based upon iterative change in 
+          total energy or number of iterations. 
+          Levelshifting, if invoked, occurs when the 
+          HOMO/LUMO gap drops below (HL_TOL):  1.00D-02
+          DIIS, if invoked, will attempt to extrapolate 
+          using up to (NFOCK): 10 stored Fock matrices.
+
+                    Damping( 0%)  Levelshifting(0.5)       DIIS
+                  --------------- ------------------- ---------------
+          dE  on:    start            ASAP                start   
+          dE off:    2 iters         50 iters            50 iters 
+
+
+      Screening Tolerance Information
+      -------------------------------
+          Density screening/tol_rho:  1.00D-11
+          AO Gaussian exp screening on grid/accAOfunc:  16
+          CD Gaussian exp screening on grid/accCDfunc:  20
+          XC Gaussian exp screening on grid/accXCfunc:  20
+          Schwarz screening/accCoul:  1.00D-12
+
+
+ Loading old vectors from job with title :
+
+
+
+   Time after variat. SCF:      0.6
+   Time prior to 1st pass:      0.6
+ Local filesystem for scratch_dir
+
+ #quartets = 1.200D+02 #integrals = 2.560D+02 #direct =  0.0% #cached =100.0%
+
+
+ Integral file          = ./raman_test.aoints.0
+ Record size in doubles =  65536        No. of integs per rec  =  43688
+ Max. records in memory =      3        Max. records in file   =  29761
+ No. of bits per label  =      8        No. of bits per value  =     64
+
+ Local filesystem for scratch_dir
+
+ Grid_pts file          = ./raman_test.gridpts.0
+ Record size in doubles =  12289        No. of grid_pts per rec  =   3070
+ Max. records in memory =     42        Max. recs in file   =    158716
+
+ Grid integrated density:       9.999999945503
+ Requested integration accuracy:   0.10E-13
+
+           Memory utilization after 1st SCF pass: 
+           Heap Space remaining (MW):        5.81             5810896
+          Stack Space remaining (MW):        6.52             6524124
+
+   convergence    iter        energy       DeltaE   RMS-Dens  Diis-err    time
+ ---------------- ----- ----------------- --------- --------- ---------  ------
+ d= 0,ls=0.0,diis     1    -74.7089568815 -8.44D+01  1.57D-03  8.24D-06     0.6
+ Grid integrated density:       9.999999945431
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     2    -74.7089598632 -2.98D-06  3.17D-04  2.71D-06     0.6
+ Grid integrated density:       9.999999945456
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     3    -74.7089602707 -4.08D-07  5.97D-05  2.37D-07     0.7
+ Grid integrated density:       9.999999945451
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     4    -74.7089603055 -3.48D-08  1.41D-07  5.60D-13     0.7
+
+
+         Total DFT energy =      -74.708960305539
+      One electron energy =     -123.234082657321
+           Coulomb energy =       47.794286532430
+    Exchange-Corr. energy =       -8.917923767633
+ Nuclear repulsion energy =        9.648759586985
+
+ Numeric. integr. density =        9.999999945451
+
+     Total iterative time =      0.1s
+
+
+
+                       DFT Final Molecular Orbital Analysis
+                       ------------------------------------
+
+ Vector    1  Occ=2.000000D+00  E=-1.825726D+01
+              MO Center=  1.3D-14,  5.1D-17, -8.8D-05, r^2= 1.5D-02
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     1      0.992349  1 O  s                  2      0.035411  1 O  s          
+
+ Vector    2  Occ=2.000000D+00  E=-8.442971D-01
+              MO Center= -3.5D-13,  4.5D-15,  2.5D-01, r^2= 5.4D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     2      0.763563  1 O  s                  1     -0.224892  1 O  s          
+     5      0.216074  1 O  pz                 6      0.186140  2 H  s          
+     7      0.186140  3 H  s          
+
+ Vector    3  Occ=2.000000D+00  E=-4.145012D-01
+              MO Center= -1.0D-12, -5.4D-27,  2.2D-01, r^2= 8.0D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     3      0.605960  1 O  px                 6      0.431100  2 H  s          
+     7     -0.431100  3 H  s          
+
+ Vector    4  Occ=2.000000D+00  E=-1.230650D-01
+              MO Center= -1.7D-13, -1.8D-14, -1.5D-01, r^2= 5.1D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     5      0.793098  1 O  pz                 2     -0.602883  1 O  s          
+     6      0.233386  2 H  s                  7      0.233386  3 H  s          
+     1      0.124733  1 O  s          
+
+ Vector    5  Occ=2.000000D+00  E=-5.651432D-02
+              MO Center=  1.7D-14,  1.3D-14, -3.9D-04, r^2= 4.2D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     4      1.000000  1 O  py         
+
+ Vector    6  Occ=0.000000D+00  E= 3.496787D-01
+              MO Center= -2.0D-11,  9.5D-16,  4.7D-01, r^2= 1.1D+00
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     2      0.986935  1 O  s                  6     -0.840038  2 H  s          
+     7     -0.840038  3 H  s                  5      0.699736  1 O  pz         
+     1     -0.145208  1 O  s          
+
+ Vector    7  Occ=0.000000D+00  E= 4.945467D-01
+              MO Center=  2.2D-11, -9.9D-27,  3.1D-01, r^2= 1.0D+00
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     3      1.038920  1 O  px                 6     -0.884108  2 H  s          
+     7      0.884108  3 H  s          
+
+
+ center of mass
+ --------------
+ x =   0.00000000 y =   0.00000000 z =   0.10659020
+
+ moments of inertia (a.u.)
+ ------------------
+           1.646579007303           0.000000000000           0.000000000001
+           0.000000000000           5.760173239615           0.000000000000
+           0.000000000001           0.000000000000           4.113594232312
+
+     Multipole analysis of the density
+     ---------------------------------
+
+     L   x y z        total         alpha         beta         nuclear
+     -   - - -        -----         -----         ----         -------
+     0   0 0 0     -0.000000     -5.000000     -5.000000     10.000000
+
+     1   1 0 0      0.000000      0.000000      0.000000     -0.000000
+     1   0 1 0      0.000000      0.000000      0.000000      0.000000
+     1   0 0 1      0.687017     -0.611847     -0.611847      1.910712
+
+     2   2 0 0     -3.050690     -3.566173     -3.566173      4.081655
+     2   1 1 0     -0.000000     -0.000000     -0.000000      0.000000
+     2   1 0 1      0.000000      0.000000      0.000000     -0.000000
+     2   0 2 0     -4.491062     -2.245531     -2.245531      0.000000
+     2   0 1 1      0.000000      0.000000      0.000000      0.000000
+     2   0 0 2     -3.806064     -2.821446     -2.821446      1.836828
+
+
+ Parallel integral file used       1 records with       0 large values
+
+ *** CALLING NEW AORESP DRIVER FOR CLOSED AND OPEN SHELLS ***
+ Entering AOResponse driver routine
+
+
+--------------------------------------------------------------------------------
+
+          ****************
+          *** RESPONSE ***
+          ****************
+
+ Response module for NWChem and dynamic CPKS solver
+ developed by J. Autschbach and coworkers, SUNY Buffalo
+ The methodology used in this program is described in 
+ ChemPhysChem 12 (2011), 3224-3235 (main reference)
+ J. Chem. Phys. 123 (2005), 114103
+ J. Chem. Phys. 122 (2005), 224115
+ J. Chem. Phys. 122 (2005), 074105
+ Comp. Lett. 3 (2007), 131-150 (contact JA for a copy)
+ Please cite this work in publications based on results
+ obtained with this code. Thank you!
+
+ For extension of response module to open shell
+ calculations please acknowledge:
+ F. Aquino, Northwestern University, Schatz Rsrch Group
+ The update to the methodology is described in
+ J. Phys. Chem. A 118 (2014) 517-525
+
+
+
+          -----------------------------------------------
+          Solving response equations for perturbing field
+          -----------------------------------------------
+
+ number of frequencies:     1
+ frequency in a.u.:  0.8564540E-01
+ Perturbing field: electric
+ Using El. Dipole Length Gauge
+
+ Setting up CPKS with frequency omega =      0.08564540 a.u.
+
+
+                            NWChem Dynamic CPHF Module
+                            --------------------------
+
+
+    scftype = RHF 
+    nclosed =    5
+      nopen =    0
+  variables =       20
+  num. vecs =        3
+  tolerance =   1.0D-04
+  max. iter =   50
+
+ Local filesystem for scratch_dir
+
+ #quartets = 1.200D+02 #integrals = 2.560D+02 #direct =  0.0% #cached =100.0%
+
+
+ Integral file          = ./raman_test.aoints.0
+ Record size in doubles =  65536        No. of integs per rec  =  43688
+ Max. records in memory =      3        Max. records in file   =  29761
+ No. of bits per label  =      8        No. of bits per value  =     64
+
+ Grid integrated density:       9.999999945451
+ Requested integration accuracy:   0.10E-13
+ SCF residual:    7.0526048617653839E-008
+
+
+Iterative solution of linear equations
+  No. of variables       20
+  No. of equations        3
+  Maximum subspace       30
+       Convergence  1.0D-04
+        Start time      0.7
+
+ ga_lkain filestub:cphf_sol                                                                                                                                                                                                                                                       
+ ga_lkain filesoln:./raman_test.cphf_sol                                                                                                                                                                                                                                          
+
+   iter   nsub   residual    time 
+   ----  ------  --------  --------- 
+     1      3    1.82D+00       0.7
+     2      6    1.62D-01       0.8
+     3      9    2.68D-03       0.8
+     4     12    5.05D-07       0.9
+
+ Parallel integral file used       1 records with       0 large values
+
+
+ Electric Dipole Response Matrix (nonzero elements):
+
+              1        2        3      
+    1    4.5017   0.0000  -0.0000
+    2   -0.0000   0.0511  -0.0000
+    3   -0.0000   0.0000   1.5421
+
+ ------------------------------------------
+ average:         2.03162 + I       0.00000
+
+
+ DFT Linear Response polarizability / au 
+ Frequency  =       0.0856454 / au
+ Wavelength =     532.0000078 / nm
+              X              Y              Z
+ -----------------------------------------------
+ X       4.5016581      0.0000000     -0.0000000
+ Y      -0.0000000      0.0510691     -0.0000000
+ Z      -0.0000000      0.0000000      1.5421311
+ -----------------------------------------------
+ Eigenvalues =       4.5016581      0.0510691      1.5421311
+ Isotropic   =       2.0316194
+ Anisotropic =       3.9236340
+ -----------------------------------------------
+
+ Magnetic Dipole Response Matrix (nonzero elements):
+ Optical rotation tensor Beta
+
+              1        2        3      
+    1   -0.0000  -0.2579   0.0000
+    2    0.2505  -0.0000   0.0000
+    3    0.0000   0.0000   0.0000
+
+ ------------------------------------------
+ average:        -0.00000 + I       0.00000
+
+ Exiting AOResponse driver routine
+ ramanpolfile=./raman_test.ramanpol_0001-2                                                                                                                                                                                                                                   
+ ramanpol_read: failed to open ./raman_test.ramanpol_0001-2
+                              NWChem Property Module
+                              ----------------------
+
+
+
+                                 NWChem DFT Module
+                                 -----------------
+
+
+
+
+ Summary of "ao basis" -> "ao basis" (cartesian)
+ ------------------------------------------------------------------------------
+       Tag                 Description            Shells   Functions and Types
+ ---------------- ------------------------------  ------  ---------------------
+ O                           sto-3g                  3        5   2s1p
+ H                           sto-3g                  1        1   1s
+
+
+  Caching 1-el integrals 
+
+            General Information
+            -------------------
+          SCF calculation type: DFT
+          Wavefunction type:  closed shell.
+          No. of atoms     :     3
+          No. of electrons :    10
+           Alpha electrons :     5
+            Beta electrons :     5
+          Charge           :     0
+          Spin multiplicity:     1
+          Use of symmetry is: off; symmetry adaption is: off
+          Maximum number of iterations:  50
+          AO basis - number of functions:     7
+                     number of shells:     5
+          Convergence on energy requested:  1.00D-07
+          Convergence on density requested:  1.00D-05
+          Convergence on gradient requested:  1.00D-04
+
+              XC Information
+              --------------
+                        Slater Exchange Functional  1.000 local    
+                      VWN V Correlation Functional  1.000 local    
+
+             Grid Information
+             ----------------
+          Grid used for XC integration:  fine      
+          Radial quadrature: Mura-Knowles        
+          Angular quadrature: Lebedev. 
+          Tag              B.-S. Rad. Rad. Pts. Rad. Cut. Ang. Pts.
+          ---              ---------- --------- --------- ---------
+          O                   0.60       70           6.0       590
+          H                   0.35       60           8.0       590
+          Grid pruning is: on 
+          Number of quadrature shells:   190
+          Spatial weights used:  Erf1
+
+          Convergence Information
+          -----------------------
+          Convergence aids based upon iterative change in 
+          total energy or number of iterations. 
+          Levelshifting, if invoked, occurs when the 
+          HOMO/LUMO gap drops below (HL_TOL):  1.00D-02
+          DIIS, if invoked, will attempt to extrapolate 
+          using up to (NFOCK): 10 stored Fock matrices.
+
+                    Damping( 0%)  Levelshifting(0.5)       DIIS
+                  --------------- ------------------- ---------------
+          dE  on:    start            ASAP                start   
+          dE off:    2 iters         50 iters            50 iters 
+
+
+      Screening Tolerance Information
+      -------------------------------
+          Density screening/tol_rho:  1.00D-11
+          AO Gaussian exp screening on grid/accAOfunc:  16
+          CD Gaussian exp screening on grid/accCDfunc:  20
+          XC Gaussian exp screening on grid/accXCfunc:  20
+          Schwarz screening/accCoul:  1.00D-12
+
+
+ Loading old vectors from job with title :
+
+
+
+   Time after variat. SCF:      0.9
+   Time prior to 1st pass:      0.9
+ Local filesystem for scratch_dir
+
+ #quartets = 1.200D+02 #integrals = 2.560D+02 #direct =  0.0% #cached =100.0%
+
+
+ Integral file          = ./raman_test.aoints.0
+ Record size in doubles =  65536        No. of integs per rec  =  43688
+ Max. records in memory =      3        Max. records in file   =  29761
+ No. of bits per label  =      8        No. of bits per value  =     64
+
+ Local filesystem for scratch_dir
+
+ Grid_pts file          = ./raman_test.gridpts.0
+ Record size in doubles =  12289        No. of grid_pts per rec  =   3070
+ Max. records in memory =     42        Max. recs in file   =    158716
+
+ Grid integrated density:       9.999999918761
+ Requested integration accuracy:   0.10E-13
+
+           Memory utilization after 1st SCF pass: 
+           Heap Space remaining (MW):        5.81             5810896
+          Stack Space remaining (MW):        6.52             6524124
+
+   convergence    iter        energy       DeltaE   RMS-Dens  Diis-err    time
+ ---------------- ----- ----------------- --------- --------- ---------  ------
+ d= 0,ls=0.0,diis     1    -74.7078632019 -8.44D+01  3.14D-03  3.27D-05     0.9
+ Grid integrated density:       9.999999918876
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     2    -74.7078751611 -1.20D-05  6.27D-04  1.05D-05     0.9
+ Grid integrated density:       9.999999918839
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     3    -74.7078767414 -1.58D-06  1.20D-04  9.49D-07     1.0
+ Grid integrated density:       9.999999918846
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     4    -74.7078768811 -1.40D-07  2.24D-07  1.24D-12     1.0
+ Grid integrated density:       9.999999918846
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     5    -74.7078768811 -2.98D-13  1.73D-08  9.47D-15     1.0
+
+
+         Total DFT energy =      -74.707876881060
+      One electron energy =     -123.247526610642
+           Coulomb energy =       47.806292064240
+    Exchange-Corr. energy =       -8.918867273438
+ Nuclear repulsion energy =        9.652224938781
+
+ Numeric. integr. density =        9.999999918846
+
+     Total iterative time =      0.1s
+
+
+
+                       DFT Final Molecular Orbital Analysis
+                       ------------------------------------
+
+ Vector    1  Occ=2.000000D+00  E=-1.825571D+01
+              MO Center= -2.1D-14,  4.3D-17,  7.0D-04, r^2= 1.5D-02
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     1      0.992347  1 O  s                  2      0.035430  1 O  s          
+
+ Vector    2  Occ=2.000000D+00  E=-8.430830D-01
+              MO Center= -1.6D-12,  1.2D-14,  2.5D-01, r^2= 5.4D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     2      0.763814  1 O  s                  1     -0.225034  1 O  s          
+     5      0.214591  1 O  pz                 6      0.186491  2 H  s          
+     7      0.186491  3 H  s          
+
+ Vector    3  Occ=2.000000D+00  E=-4.162132D-01
+              MO Center= -5.2D-14, -1.0D-26,  2.2D-01, r^2= 8.0D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     3      0.604956  1 O  px                 6      0.430374  2 H  s          
+     7     -0.430374  3 H  s          
+
+ Vector    4  Occ=2.000000D+00  E=-1.201448D-01
+              MO Center= -3.7D-13,  6.9D-14, -1.5D-01, r^2= 5.1D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     5      0.797111  1 O  pz                 2     -0.598278  1 O  s          
+     6      0.231335  2 H  s                  7      0.231335  3 H  s          
+     1      0.123766  1 O  s          
+
+ Vector    5  Occ=2.000000D+00  E=-5.581930D-02
+              MO Center= -1.7D-14, -8.1D-14,  3.9D-04, r^2= 4.2D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     4      1.000000  1 O  py         
+
+ Vector    6  Occ=0.000000D+00  E= 3.485741D-01
+              MO Center= -2.1D-11,  5.5D-16,  4.7D-01, r^2= 1.1D+00
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     2      0.990813  1 O  s                  6     -0.841263  2 H  s          
+     7     -0.841263  3 H  s                  5      0.692744  1 O  pz         
+     1     -0.145909  1 O  s          
+
+ Vector    7  Occ=0.000000D+00  E= 4.977232D-01
+              MO Center=  2.3D-11,  5.7D-27,  3.1D-01, r^2= 1.0D+00
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     3      1.042251  1 O  px                 6     -0.884477  2 H  s          
+     7      0.884477  3 H  s          
+
+
+ center of mass
+ --------------
+ x =  -0.00000000 y =   0.00000000 z =   0.10659020
+
+ moments of inertia (a.u.)
+ ------------------
+           1.601149319007           0.000000000000          -0.000000000001
+           0.000000000000           5.759055912635           0.000000000000
+          -0.000000000001           0.000000000000           4.157906593628
+
+     Multipole analysis of the density
+     ---------------------------------
+
+     L   x y z        total         alpha         beta         nuclear
+     -   - - -        -----         -----         ----         -------
+     0   0 0 0     -0.000000     -5.000000     -5.000000     10.000000
+
+     1   1 0 0      0.000000      0.000000      0.000000      0.000000
+     1   0 1 0      0.000000      0.000000      0.000000      0.000000
+     1   0 0 1      0.684081     -0.607447     -0.607447      1.898976
+
+     2   2 0 0     -3.026486     -3.576055     -3.576055      4.125624
+     2   1 1 0      0.000000      0.000000      0.000000      0.000000
+     2   1 0 1      0.000000      0.000000      0.000000      0.000000
+     2   0 2 0     -4.489816     -2.244908     -2.244908      0.000000
+     2   0 1 1      0.000000      0.000000      0.000000      0.000000
+     2   0 0 2     -3.818568     -2.805159     -2.805159      1.791751
+
+
+ Parallel integral file used       1 records with       0 large values
+
+ *** CALLING NEW AORESP DRIVER FOR CLOSED AND OPEN SHELLS ***
+ Entering AOResponse driver routine
+
+
+--------------------------------------------------------------------------------
+
+          ****************
+          *** RESPONSE ***
+          ****************
+
+ Response module for NWChem and dynamic CPKS solver
+ developed by J. Autschbach and coworkers, SUNY Buffalo
+ The methodology used in this program is described in 
+ ChemPhysChem 12 (2011), 3224-3235 (main reference)
+ J. Chem. Phys. 123 (2005), 114103
+ J. Chem. Phys. 122 (2005), 224115
+ J. Chem. Phys. 122 (2005), 074105
+ Comp. Lett. 3 (2007), 131-150 (contact JA for a copy)
+ Please cite this work in publications based on results
+ obtained with this code. Thank you!
+
+ For extension of response module to open shell
+ calculations please acknowledge:
+ F. Aquino, Northwestern University, Schatz Rsrch Group
+ The update to the methodology is described in
+ J. Phys. Chem. A 118 (2014) 517-525
+
+
+
+          -----------------------------------------------
+          Solving response equations for perturbing field
+          -----------------------------------------------
+
+ number of frequencies:     1
+ frequency in a.u.:  0.8564540E-01
+ Perturbing field: electric
+ Using El. Dipole Length Gauge
+
+ Setting up CPKS with frequency omega =      0.08564540 a.u.
+
+
+                            NWChem Dynamic CPHF Module
+                            --------------------------
+
+
+    scftype = RHF 
+    nclosed =    5
+      nopen =    0
+  variables =       20
+  num. vecs =        3
+  tolerance =   1.0D-04
+  max. iter =   50
+
+ Local filesystem for scratch_dir
+
+ #quartets = 1.200D+02 #integrals = 2.560D+02 #direct =  0.0% #cached =100.0%
+
+
+ Integral file          = ./raman_test.aoints.0
+ Record size in doubles =  65536        No. of integs per rec  =  43688
+ Max. records in memory =      3        Max. records in file   =  29761
+ No. of bits per label  =      8        No. of bits per value  =     64
+
+ Grid integrated density:       9.999999918846
+ Requested integration accuracy:   0.10E-13
+ SCF residual:    1.5808367569299126E-010
+
+
+Iterative solution of linear equations
+  No. of variables       20
+  No. of equations        3
+  Maximum subspace       30
+       Convergence  1.0D-04
+        Start time      1.0
+
+ ga_lkain filestub:cphf_sol                                                                                                                                                                                                                                                       
+ ga_lkain filesoln:./raman_test.cphf_sol                                                                                                                                                                                                                                          
+
+   iter   nsub   residual    time 
+   ----  ------  --------  --------- 
+     1      3    1.78D+00       1.0
+     2      6    1.60D-01       1.1
+     3      9    2.83D-03       1.1
+     4     12    3.50D-07       1.2
+
+ Parallel integral file used       1 records with       0 large values
+
+
+ Electric Dipole Response Matrix (nonzero elements):
+
+              1        2        3      
+    1    4.5257   0.0000  -0.0000
+    2   -0.0000   0.0529  -0.0000
+    3   -0.0000  -0.0000   1.4901
+
+ ------------------------------------------
+ average:         2.02288 + I       0.00000
+
+
+ DFT Linear Response polarizability / au 
+ Frequency  =       0.0856454 / au
+ Wavelength =     532.0000078 / nm
+              X              Y              Z
+ -----------------------------------------------
+ X       4.5256946      0.0000000     -0.0000000
+ Y      -0.0000000      0.0528548     -0.0000000
+ Z      -0.0000000     -0.0000000      1.4900910
+ -----------------------------------------------
+ Eigenvalues =       4.5256946      0.0528548      1.4900910
+ Isotropic   =       2.0228801
+ Anisotropic =       3.9551759
+ -----------------------------------------------
+
+ Magnetic Dipole Response Matrix (nonzero elements):
+ Optical rotation tensor Beta
+
+              1        2        3      
+    1   -0.0000  -0.2499   0.0000
+    2    0.2543  -0.0000   0.0000
+    3   -0.0000   0.0000   0.0000
+
+ ------------------------------------------
+ average:        -0.00000 + I       0.00000
+
+ Exiting AOResponse driver routine
+ Stepsize :   1.0445701480817847E-002
+
+ 1167.41  REAL                       6.390182
+ 1167.41  IMAGINARY                  0.000000
+ 1167.41  TOTAL                      6.390182
+
+ Writing mini:./raman_test.raman_0007-0009_nblock                                                                                                                                                                                                                            
+Writing modecounter=    1
+(ii,rminfo(ii,1))=(    8,     0.00000000)
+ ramanpolfile=./raman_test.ramanpol_0002-1                                                                                                                                                                                                                                   
+ ramanpol_read: failed to open ./raman_test.ramanpol_0002-1
+                              NWChem Property Module
+                              ----------------------
+
+
+
+                                 NWChem DFT Module
+                                 -----------------
+
+
+
+
+ Summary of "ao basis" -> "ao basis" (cartesian)
+ ------------------------------------------------------------------------------
+       Tag                 Description            Shells   Functions and Types
+ ---------------- ------------------------------  ------  ---------------------
+ O                           sto-3g                  3        5   2s1p
+ H                           sto-3g                  1        1   1s
+
+
+  Caching 1-el integrals 
+
+            General Information
+            -------------------
+          SCF calculation type: DFT
+          Wavefunction type:  closed shell.
+          No. of atoms     :     3
+          No. of electrons :    10
+           Alpha electrons :     5
+            Beta electrons :     5
+          Charge           :     0
+          Spin multiplicity:     1
+          Use of symmetry is: off; symmetry adaption is: off
+          Maximum number of iterations:  50
+          AO basis - number of functions:     7
+                     number of shells:     5
+          Convergence on energy requested:  1.00D-07
+          Convergence on density requested:  1.00D-05
+          Convergence on gradient requested:  1.00D-04
+
+              XC Information
+              --------------
+                        Slater Exchange Functional  1.000 local    
+                      VWN V Correlation Functional  1.000 local    
+
+             Grid Information
+             ----------------
+          Grid used for XC integration:  fine      
+          Radial quadrature: Mura-Knowles        
+          Angular quadrature: Lebedev. 
+          Tag              B.-S. Rad. Rad. Pts. Rad. Cut. Ang. Pts.
+          ---              ---------- --------- --------- ---------
+          O                   0.60       70           6.0       590
+          H                   0.35       60           8.0       590
+          Grid pruning is: on 
+          Number of quadrature shells:   190
+          Spatial weights used:  Erf1
+
+          Convergence Information
+          -----------------------
+          Convergence aids based upon iterative change in 
+          total energy or number of iterations. 
+          Levelshifting, if invoked, occurs when the 
+          HOMO/LUMO gap drops below (HL_TOL):  1.00D-02
+          DIIS, if invoked, will attempt to extrapolate 
+          using up to (NFOCK): 10 stored Fock matrices.
+
+                    Damping( 0%)  Levelshifting(0.5)       DIIS
+                  --------------- ------------------- ---------------
+          dE  on:    start            ASAP                start   
+          dE off:    2 iters         50 iters            50 iters 
+
+
+      Screening Tolerance Information
+      -------------------------------
+          Density screening/tol_rho:  1.00D-11
+          AO Gaussian exp screening on grid/accAOfunc:  16
+          CD Gaussian exp screening on grid/accCDfunc:  20
+          XC Gaussian exp screening on grid/accXCfunc:  20
+          Schwarz screening/accCoul:  1.00D-12
+
+
+ Loading old vectors from job with title :
+
+
+
+   Time after variat. SCF:      1.2
+   Time prior to 1st pass:      1.2
+ Local filesystem for scratch_dir
+
+ #quartets = 1.200D+02 #integrals = 2.560D+02 #direct =  0.0% #cached =100.0%
+
+
+ Integral file          = ./raman_test.aoints.0
+ Record size in doubles =  65536        No. of integs per rec  =  43688
+ Max. records in memory =      3        Max. records in file   =  29761
+ No. of bits per label  =      8        No. of bits per value  =     64
+
+ Local filesystem for scratch_dir
+
+ Grid_pts file          = ./raman_test.gridpts.0
+ Record size in doubles =  12289        No. of grid_pts per rec  =   3070
+ Max. records in memory =     42        Max. recs in file   =    158716
+
+ Grid integrated density:       9.999999922826
+ Requested integration accuracy:   0.10E-13
+
+           Memory utilization after 1st SCF pass: 
+           Heap Space remaining (MW):        5.81             5810896
+          Stack Space remaining (MW):        6.52             6524124
+
+   convergence    iter        energy       DeltaE   RMS-Dens  Diis-err    time
+ ---------------- ----- ----------------- --------- --------- ---------  ------
+ d= 0,ls=0.0,diis     1    -74.7103305458 -8.43D+01  3.54D-03  6.54D-05     1.2
+ Grid integrated density:       9.999999922580
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     2    -74.7103421834 -1.16D-05  9.51D-04  3.48D-05     1.2
+ Grid integrated density:       9.999999922682
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     3    -74.7103476323 -5.45D-06  8.48D-05  5.33D-07     1.3
+ Grid integrated density:       9.999999922672
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     4    -74.7103477096 -7.73D-08  1.56D-06  6.12D-11     1.3
+
+
+         Total DFT energy =      -74.710347709604
+      One electron energy =     -123.172886258022
+           Coulomb energy =       47.767902894204
+    Exchange-Corr. energy =       -8.915177317459
+ Nuclear repulsion energy =        9.609812971672
+
+ Numeric. integr. density =        9.999999922672
+
+     Total iterative time =      0.1s
+
+
+
+                       DFT Final Molecular Orbital Analysis
+                       ------------------------------------
+
+ Vector    1  Occ=2.000000D+00  E=-1.825664D+01
+              MO Center=  8.0D-14,  3.8D-17,  6.8D-05, r^2= 1.5D-02
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     1      0.992359  1 O  s                  2      0.035302  1 O  s          
+
+ Vector    2  Occ=2.000000D+00  E=-8.417072D-01
+              MO Center=  4.4D-14,  1.1D-15,  2.5D-01, r^2= 5.4D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     2      0.765080  1 O  s                  1     -0.225081  1 O  s          
+     5      0.214355  1 O  pz                 6      0.186217  2 H  s          
+     7      0.186217  3 H  s          
+
+ Vector    3  Occ=2.000000D+00  E=-4.137229D-01
+              MO Center= -2.4D-12, -5.8D-28,  2.2D-01, r^2= 8.1D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     3      0.605112  1 O  px                 6      0.431126  2 H  s          
+     7     -0.431126  3 H  s          
+
+ Vector    4  Occ=2.000000D+00  E=-1.218330D-01
+              MO Center= -5.9D-13,  1.6D-14, -1.5D-01, r^2= 5.1D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     5      0.793954  1 O  pz                 2     -0.600671  1 O  s          
+     6      0.234352  2 H  s                  7      0.234352  3 H  s          
+     1      0.124293  1 O  s          
+
+ Vector    5  Occ=2.000000D+00  E=-5.571773D-02
+              MO Center=  8.3D-14, -1.8D-14, -2.4D-04, r^2= 4.2D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     4      1.000000  1 O  py         
+
+ Vector    6  Occ=0.000000D+00  E= 3.453638D-01
+              MO Center= -3.2D-11,  4.9D-16,  4.7D-01, r^2= 1.1D+00
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     2      0.980890  1 O  s                  6     -0.837435  2 H  s          
+     7     -0.837435  3 H  s                  5      0.696473  1 O  pz         
+     1     -0.144914  1 O  s          
+
+ Vector    7  Occ=0.000000D+00  E= 4.917864D-01
+              MO Center=  3.4D-11, -1.2D-27,  3.1D-01, r^2= 1.0D+00
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     3      1.037945  1 O  px                 6     -0.880171  2 H  s          
+     7      0.880171  3 H  s          
+
+
+ center of mass
+ --------------
+ x =  -0.00000000 y =   0.00000000 z =   0.10659020
+
+ moments of inertia (a.u.)
+ ------------------
+           1.637349899839           0.000000000000           0.000000000005
+           0.000000000000           5.808493676204           0.000000000000
+           0.000000000005           0.000000000000           4.171143776366
+
+     Multipole analysis of the density
+     ---------------------------------
+
+     L   x y z        total         alpha         beta         nuclear
+     -   - - -        -----         -----         ----         -------
+     0   0 0 0     -0.000000     -5.000000     -5.000000     10.000000
+
+     1   1 0 0      0.000000      0.000000      0.000000     -0.000000
+     1   0 1 0      0.000000      0.000000      0.000000      0.000000
+     1   0 0 1      0.683614     -0.612363     -0.612363      1.908341
+
+     2   2 0 0     -3.036419     -3.587588     -3.587588      4.138758
+     2   1 1 0      0.000000      0.000000      0.000000      0.000000
+     2   1 0 1      0.000000      0.000000      0.000000     -0.000000
+     2   0 2 0     -4.493159     -2.246579     -2.246579      0.000000
+     2   0 1 1      0.000000      0.000000      0.000000      0.000000
+     2   0 0 2     -3.813178     -2.820425     -2.820425      1.827673
+
+
+ Parallel integral file used       1 records with       0 large values
+
+ *** CALLING NEW AORESP DRIVER FOR CLOSED AND OPEN SHELLS ***
+ Entering AOResponse driver routine
+
+
+--------------------------------------------------------------------------------
+
+          ****************
+          *** RESPONSE ***
+          ****************
+
+ Response module for NWChem and dynamic CPKS solver
+ developed by J. Autschbach and coworkers, SUNY Buffalo
+ The methodology used in this program is described in 
+ ChemPhysChem 12 (2011), 3224-3235 (main reference)
+ J. Chem. Phys. 123 (2005), 114103
+ J. Chem. Phys. 122 (2005), 224115
+ J. Chem. Phys. 122 (2005), 074105
+ Comp. Lett. 3 (2007), 131-150 (contact JA for a copy)
+ Please cite this work in publications based on results
+ obtained with this code. Thank you!
+
+ For extension of response module to open shell
+ calculations please acknowledge:
+ F. Aquino, Northwestern University, Schatz Rsrch Group
+ The update to the methodology is described in
+ J. Phys. Chem. A 118 (2014) 517-525
+
+
+
+          -----------------------------------------------
+          Solving response equations for perturbing field
+          -----------------------------------------------
+
+ number of frequencies:     1
+ frequency in a.u.:  0.8564540E-01
+ Perturbing field: electric
+ Using El. Dipole Length Gauge
+
+ Setting up CPKS with frequency omega =      0.08564540 a.u.
+
+
+                            NWChem Dynamic CPHF Module
+                            --------------------------
+
+
+    scftype = RHF 
+    nclosed =    5
+      nopen =    0
+  variables =       20
+  num. vecs =        3
+  tolerance =   1.0D-04
+  max. iter =   50
+
+ Local filesystem for scratch_dir
+
+ #quartets = 1.200D+02 #integrals = 2.560D+02 #direct =  0.0% #cached =100.0%
+
+
+ Integral file          = ./raman_test.aoints.0
+ Record size in doubles =  65536        No. of integs per rec  =  43688
+ Max. records in memory =      3        Max. records in file   =  29761
+ No. of bits per label  =      8        No. of bits per value  =     64
+
+ Grid integrated density:       9.999999922672
+ Requested integration accuracy:   0.10E-13
+ SCF residual:    4.8106376344982717E-008
+
+
+Iterative solution of linear equations
+  No. of variables       20
+  No. of equations        3
+  Maximum subspace       30
+       Convergence  1.0D-04
+        Start time      1.3
+
+ ga_lkain filestub:cphf_sol                                                                                                                                                                                                                                                       
+ ga_lkain filesoln:./raman_test.cphf_sol                                                                                                                                                                                                                                          
+
+   iter   nsub   residual    time 
+   ----  ------  --------  --------- 
+     1      3    1.83D+00       1.3
+     2      6    1.64D-01       1.4
+     3      9    2.80D-03       1.4
+     4     12    5.10D-07       1.4
+
+ Parallel integral file used       1 records with       0 large values
+
+
+ Electric Dipole Response Matrix (nonzero elements):
+
+              1        2        3      
+    1    4.5678   0.0000  -0.0000
+    2   -0.0000   0.0522  -0.0000
+    3   -0.0000  -0.0000   1.5359
+
+ ------------------------------------------
+ average:         2.05199 + I       0.00000
+
+
+ DFT Linear Response polarizability / au 
+ Frequency  =       0.0856454 / au
+ Wavelength =     532.0000078 / nm
+              X              Y              Z
+ -----------------------------------------------
+ X       4.5678352      0.0000000     -0.0000000
+ Y      -0.0000000      0.0522106     -0.0000000
+ Z      -0.0000000     -0.0000000      1.5359326
+ -----------------------------------------------
+ Eigenvalues =       4.5678352      0.0522106      1.5359326
+ Isotropic   =       2.0519928
+ Anisotropic =       3.9865230
+ -----------------------------------------------
+
+ Magnetic Dipole Response Matrix (nonzero elements):
+ Optical rotation tensor Beta
+
+              1        2        3      
+    1    0.0000  -0.2580   0.0000
+    2    0.2593  -0.0000   0.0000
+    3   -0.0000   0.0000   0.0000
+
+ ------------------------------------------
+ average:         0.00000 + I       0.00000
+
+ Exiting AOResponse driver routine
+ ramanpolfile=./raman_test.ramanpol_0002-2                                                                                                                                                                                                                                   
+ ramanpol_read: failed to open ./raman_test.ramanpol_0002-2
+                              NWChem Property Module
+                              ----------------------
+
+
+
+                                 NWChem DFT Module
+                                 -----------------
+
+
+
+
+ Summary of "ao basis" -> "ao basis" (cartesian)
+ ------------------------------------------------------------------------------
+       Tag                 Description            Shells   Functions and Types
+ ---------------- ------------------------------  ------  ---------------------
+ O                           sto-3g                  3        5   2s1p
+ H                           sto-3g                  1        1   1s
+
+
+  Caching 1-el integrals 
+
+            General Information
+            -------------------
+          SCF calculation type: DFT
+          Wavefunction type:  closed shell.
+          No. of atoms     :     3
+          No. of electrons :    10
+           Alpha electrons :     5
+            Beta electrons :     5
+          Charge           :     0
+          Spin multiplicity:     1
+          Use of symmetry is: off; symmetry adaption is: off
+          Maximum number of iterations:  50
+          AO basis - number of functions:     7
+                     number of shells:     5
+          Convergence on energy requested:  1.00D-07
+          Convergence on density requested:  1.00D-05
+          Convergence on gradient requested:  1.00D-04
+
+              XC Information
+              --------------
+                        Slater Exchange Functional  1.000 local    
+                      VWN V Correlation Functional  1.000 local    
+
+             Grid Information
+             ----------------
+          Grid used for XC integration:  fine      
+          Radial quadrature: Mura-Knowles        
+          Angular quadrature: Lebedev. 
+          Tag              B.-S. Rad. Rad. Pts. Rad. Cut. Ang. Pts.
+          ---              ---------- --------- --------- ---------
+          O                   0.60       70           6.0       590
+          H                   0.35       60           8.0       590
+          Grid pruning is: on 
+          Number of quadrature shells:   190
+          Spatial weights used:  Erf1
+
+          Convergence Information
+          -----------------------
+          Convergence aids based upon iterative change in 
+          total energy or number of iterations. 
+          Levelshifting, if invoked, occurs when the 
+          HOMO/LUMO gap drops below (HL_TOL):  1.00D-02
+          DIIS, if invoked, will attempt to extrapolate 
+          using up to (NFOCK): 10 stored Fock matrices.
+
+                    Damping( 0%)  Levelshifting(0.5)       DIIS
+                  --------------- ------------------- ---------------
+          dE  on:    start            ASAP                start   
+          dE off:    2 iters         50 iters            50 iters 
+
+
+      Screening Tolerance Information
+      -------------------------------
+          Density screening/tol_rho:  1.00D-11
+          AO Gaussian exp screening on grid/accAOfunc:  16
+          CD Gaussian exp screening on grid/accCDfunc:  20
+          XC Gaussian exp screening on grid/accXCfunc:  20
+          Schwarz screening/accCoul:  1.00D-12
+
+
+ Loading old vectors from job with title :
+
+
+
+   Time after variat. SCF:      1.5
+   Time prior to 1st pass:      1.5
+ Local filesystem for scratch_dir
+
+ #quartets = 1.200D+02 #integrals = 2.560D+02 #direct =  0.0% #cached =100.0%
+
+
+ Integral file          = ./raman_test.aoints.0
+ Record size in doubles =  65536        No. of integs per rec  =  43688
+ Max. records in memory =      3        Max. records in file   =  29761
+ No. of bits per label  =      8        No. of bits per value  =     64
+
+ Local filesystem for scratch_dir
+
+ Grid_pts file          = ./raman_test.gridpts.0
+ Record size in doubles =  12289        No. of grid_pts per rec  =   3070
+ Max. records in memory =     42        Max. recs in file   =    158716
+
+ Grid integrated density:       9.999999938824
+ Requested integration accuracy:   0.10E-13
+
+           Memory utilization after 1st SCF pass: 
+           Heap Space remaining (MW):        5.81             5810896
+          Stack Space remaining (MW):        6.52             6524124
+
+   convergence    iter        energy       DeltaE   RMS-Dens  Diis-err    time
+ ---------------- ----- ----------------- --------- --------- ---------  ------
+ d= 0,ls=0.0,diis     1    -74.7063758534 -8.44D+01  4.00D-03  1.57D-04     1.5
+ Grid integrated density:       9.999999938961
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     2    -74.7063891229 -1.33D-05  1.36D-03  6.93D-05     1.5
+ Grid integrated density:       9.999999938922
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     3    -74.7063996614 -1.05D-05  1.63D-04  1.73D-06     1.5
+ Grid integrated density:       9.999999938926
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     4    -74.7063999171 -2.56D-07  2.56D-06  1.77D-10     1.6
+ Grid integrated density:       9.999999938926
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     5    -74.7063999171 -3.21D-11  5.66D-08  1.08D-13     1.6
+
+
+         Total DFT energy =      -74.706399917111
+      One electron energy =     -123.309352264627
+           Coulomb energy =       47.832899094470
+    Exchange-Corr. energy =       -8.921644139861
+ Nuclear repulsion energy =        9.691697392906
+
+ Numeric. integr. density =        9.999999938926
+
+     Total iterative time =      0.1s
+
+
+
+                       DFT Final Molecular Orbital Analysis
+                       ------------------------------------
+
+ Vector    1  Occ=2.000000D+00  E=-1.825636D+01
+              MO Center= -8.9D-14,  4.4D-17,  5.4D-04, r^2= 1.5D-02
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     1      0.992337  1 O  s                  2      0.035541  1 O  s          
+
+ Vector    2  Occ=2.000000D+00  E=-8.457063D-01
+              MO Center= -2.7D-12,  5.0D-15,  2.5D-01, r^2= 5.4D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     2      0.762309  1 O  s                  1     -0.224848  1 O  s          
+     5      0.216325  1 O  pz                 6      0.186397  2 H  s          
+     7      0.186397  3 H  s          
+
+ Vector    3  Occ=2.000000D+00  E=-4.170207D-01
+              MO Center=  2.1D-12, -3.2D-26,  2.2D-01, r^2= 8.0D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     3      0.605812  1 O  px                 6      0.430337  2 H  s          
+     7     -0.430337  3 H  s          
+
+ Vector    4  Occ=2.000000D+00  E=-1.213894D-01
+              MO Center= -1.3D-13, -2.4D-14, -1.5D-01, r^2= 5.1D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     5      0.796257  1 O  pz                 2     -0.600482  1 O  s          
+     6      0.230367  2 H  s                  7      0.230367  3 H  s          
+     1      0.124205  1 O  s          
+
+ Vector    5  Occ=2.000000D+00  E=-5.663556D-02
+              MO Center= -8.3D-14,  1.9D-14,  2.4D-04, r^2= 4.2D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     4      1.000000  1 O  py         
+
+ Vector    6  Occ=0.000000D+00  E= 3.529433D-01
+              MO Center= -7.6D-12,  6.1D-17,  4.7D-01, r^2= 1.1D+00
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     2      0.996960  1 O  s                  6     -0.843924  2 H  s          
+     7     -0.843924  3 H  s                  5      0.696045  1 O  pz         
+     1     -0.146202  1 O  s          
+
+ Vector    7  Occ=0.000000D+00  E= 5.005200D-01
+              MO Center=  9.2D-12, -5.0D-27,  3.1D-01, r^2= 1.0D+00
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     3      1.043269  1 O  px                 6     -0.888472  2 H  s          
+     7      0.888472  3 H  s          
+
+
+ center of mass
+ --------------
+ x =   0.00000000 y =   0.00000000 z =   0.10659020
+
+ moments of inertia (a.u.)
+ ------------------
+           1.610275976066           0.000000000000          -0.000000000005
+           0.000000000000           5.710724732764           0.000000000000
+          -0.000000000005           0.000000000000           4.100448756698
+
+     Multipole analysis of the density
+     ---------------------------------
+
+     L   x y z        total         alpha         beta         nuclear
+     -   - - -        -----         -----         ----         -------
+     0   0 0 0     -0.000000     -5.000000     -5.000000     10.000000
+
+     1   1 0 0      0.000000      0.000000      0.000000      0.000000
+     1   0 1 0      0.000000      0.000000      0.000000      0.000000
+     1   0 0 1      0.687496     -0.606926     -0.606926      1.901347
+
+     2   2 0 0     -3.040828     -3.554720     -3.554720      4.068612
+     2   1 1 0     -0.000000     -0.000000     -0.000000      0.000000
+     2   1 0 1      0.000000      0.000000      0.000000      0.000000
+     2   0 2 0     -4.487703     -2.243851     -2.243851      0.000000
+     2   0 1 1      0.000000      0.000000      0.000000      0.000000
+     2   0 0 2     -3.811454     -2.806132     -2.806132      1.800810
+
+
+ Parallel integral file used       1 records with       0 large values
+
+ *** CALLING NEW AORESP DRIVER FOR CLOSED AND OPEN SHELLS ***
+ Entering AOResponse driver routine
+
+
+--------------------------------------------------------------------------------
+
+          ****************
+          *** RESPONSE ***
+          ****************
+
+ Response module for NWChem and dynamic CPKS solver
+ developed by J. Autschbach and coworkers, SUNY Buffalo
+ The methodology used in this program is described in 
+ ChemPhysChem 12 (2011), 3224-3235 (main reference)
+ J. Chem. Phys. 123 (2005), 114103
+ J. Chem. Phys. 122 (2005), 224115
+ J. Chem. Phys. 122 (2005), 074105
+ Comp. Lett. 3 (2007), 131-150 (contact JA for a copy)
+ Please cite this work in publications based on results
+ obtained with this code. Thank you!
+
+ For extension of response module to open shell
+ calculations please acknowledge:
+ F. Aquino, Northwestern University, Schatz Rsrch Group
+ The update to the methodology is described in
+ J. Phys. Chem. A 118 (2014) 517-525
+
+
+
+          -----------------------------------------------
+          Solving response equations for perturbing field
+          -----------------------------------------------
+
+ number of frequencies:     1
+ frequency in a.u.:  0.8564540E-01
+ Perturbing field: electric
+ Using El. Dipole Length Gauge
+
+ Setting up CPKS with frequency omega =      0.08564540 a.u.
+
+
+                            NWChem Dynamic CPHF Module
+                            --------------------------
+
+
+    scftype = RHF 
+    nclosed =    5
+      nopen =    0
+  variables =       20
+  num. vecs =        3
+  tolerance =   1.0D-04
+  max. iter =   50
+
+ Local filesystem for scratch_dir
+
+ #quartets = 1.200D+02 #integrals = 2.560D+02 #direct =  0.0% #cached =100.0%
+
+
+ Integral file          = ./raman_test.aoints.0
+ Record size in doubles =  65536        No. of integs per rec  =  43688
+ Max. records in memory =      3        Max. records in file   =  29761
+ No. of bits per label  =      8        No. of bits per value  =     64
+
+ Grid integrated density:       9.999999938926
+ Requested integration accuracy:   0.10E-13
+ SCF residual:    4.0550184350475740E-010
+
+
+Iterative solution of linear equations
+  No. of variables       20
+  No. of equations        3
+  Maximum subspace       30
+       Convergence  1.0D-04
+        Start time      1.6
+
+ ga_lkain filestub:cphf_sol                                                                                                                                                                                                                                                       
+ ga_lkain filesoln:./raman_test.cphf_sol                                                                                                                                                                                                                                          
+
+   iter   nsub   residual    time 
+   ----  ------  --------  --------- 
+     1      3    1.77D+00       1.6
+     2      6    1.58D-01       1.7
+     3      9    2.71D-03       1.7
+     4     12    3.48D-07       1.8
+
+ Parallel integral file used       1 records with       0 large values
+
+
+ Electric Dipole Response Matrix (nonzero elements):
+
+              1        2        3      
+    1    4.4599   0.0000  -0.0000
+    2    0.0000   0.0517  -0.0000
+    3    0.0000   0.0000   1.4963
+
+ ------------------------------------------
+ average:         2.00264 + I       0.00000
+
+
+ DFT Linear Response polarizability / au 
+ Frequency  =       0.0856454 / au
+ Wavelength =     532.0000078 / nm
+              X              Y              Z
+ -----------------------------------------------
+ X       4.4599049      0.0000000     -0.0000000
+ Y       0.0000000      0.0516855     -0.0000000
+ Z       0.0000000      0.0000000      1.4963283
+ -----------------------------------------------
+ Eigenvalues =       4.4599049      0.0516855      1.4963283
+ Isotropic   =       2.0026396
+ Anisotropic =       3.8924399
+ -----------------------------------------------
+
+ Magnetic Dipole Response Matrix (nonzero elements):
+ Optical rotation tensor Beta
+
+              1        2        3      
+    1    0.0000  -0.2498   0.0000
+    2    0.2457  -0.0000   0.0000
+    3    0.0000   0.0000  -0.0000
+
+ ------------------------------------------
+ average:         0.00000 + I       0.00000
+
+ Exiting AOResponse driver routine
+ Stepsize :   1.0185334488279739E-002
+
+ 4923.87  REAL                      32.440330
+ 4923.87  IMAGINARY                  0.000000
+ 4923.87  TOTAL                     32.440330
+
+ Writing mini:./raman_test.raman_0007-0009_nblock                                                                                                                                                                                                                            
+Writing modecounter=    2
+(ii,rminfo(ii,1))=(    9,     0.00000000)
+ ramanpolfile=./raman_test.ramanpol_0003-1                                                                                                                                                                                                                                   
+ ramanpol_read: failed to open ./raman_test.ramanpol_0003-1
+                              NWChem Property Module
+                              ----------------------
+
+
+
+                                 NWChem DFT Module
+                                 -----------------
+
+
+
+
+ Summary of "ao basis" -> "ao basis" (cartesian)
+ ------------------------------------------------------------------------------
+       Tag                 Description            Shells   Functions and Types
+ ---------------- ------------------------------  ------  ---------------------
+ O                           sto-3g                  3        5   2s1p
+ H                           sto-3g                  1        1   1s
+
+
+  Caching 1-el integrals 
+
+            General Information
+            -------------------
+          SCF calculation type: DFT
+          Wavefunction type:  closed shell.
+          No. of atoms     :     3
+          No. of electrons :    10
+           Alpha electrons :     5
+            Beta electrons :     5
+          Charge           :     0
+          Spin multiplicity:     1
+          Use of symmetry is: off; symmetry adaption is: off
+          Maximum number of iterations:  50
+          AO basis - number of functions:     7
+                     number of shells:     5
+          Convergence on energy requested:  1.00D-07
+          Convergence on density requested:  1.00D-05
+          Convergence on gradient requested:  1.00D-04
+
+              XC Information
+              --------------
+                        Slater Exchange Functional  1.000 local    
+                      VWN V Correlation Functional  1.000 local    
+
+             Grid Information
+             ----------------
+          Grid used for XC integration:  fine      
+          Radial quadrature: Mura-Knowles        
+          Angular quadrature: Lebedev. 
+          Tag              B.-S. Rad. Rad. Pts. Rad. Cut. Ang. Pts.
+          ---              ---------- --------- --------- ---------
+          O                   0.60       70           6.0       590
+          H                   0.35       60           8.0       590
+          Grid pruning is: on 
+          Number of quadrature shells:   190
+          Spatial weights used:  Erf1
+
+          Convergence Information
+          -----------------------
+          Convergence aids based upon iterative change in 
+          total energy or number of iterations. 
+          Levelshifting, if invoked, occurs when the 
+          HOMO/LUMO gap drops below (HL_TOL):  1.00D-02
+          DIIS, if invoked, will attempt to extrapolate 
+          using up to (NFOCK): 10 stored Fock matrices.
+
+                    Damping( 0%)  Levelshifting(0.5)       DIIS
+                  --------------- ------------------- ---------------
+          dE  on:    start            ASAP                start   
+          dE off:    2 iters         50 iters            50 iters 
+
+
+      Screening Tolerance Information
+      -------------------------------
+          Density screening/tol_rho:  1.00D-11
+          AO Gaussian exp screening on grid/accAOfunc:  16
+          CD Gaussian exp screening on grid/accCDfunc:  20
+          XC Gaussian exp screening on grid/accXCfunc:  20
+          Schwarz screening/accCoul:  1.00D-12
+
+
+ Loading old vectors from job with title :
+
+
+
+   Time after variat. SCF:      1.8
+   Time prior to 1st pass:      1.8
+ Local filesystem for scratch_dir
+
+ #quartets = 1.200D+02 #integrals = 2.600D+02 #direct =  0.0% #cached =100.0%
+
+
+ Integral file          = ./raman_test.aoints.0
+ Record size in doubles =  65536        No. of integs per rec  =  43688
+ Max. records in memory =      3        Max. records in file   =  29761
+ No. of bits per label  =      8        No. of bits per value  =     64
+
+ Local filesystem for scratch_dir
+
+ Grid_pts file          = ./raman_test.gridpts.0
+ Record size in doubles =  12289        No. of grid_pts per rec  =   3070
+ Max. records in memory =     42        Max. recs in file   =    158716
+
+ Grid integrated density:       9.999999934940
+ Requested integration accuracy:   0.10E-13
+
+           Memory utilization after 1st SCF pass: 
+           Heap Space remaining (MW):        5.81             5810896
+          Stack Space remaining (MW):        6.52             6524124
+
+   convergence    iter        energy       DeltaE   RMS-Dens  Diis-err    time
+ ---------------- ----- ----------------- --------- --------- ---------  ------
+ d= 0,ls=0.0,diis     1    -74.7083546491 -8.44D+01  2.15D-03  6.92D-05     1.8
+ Grid integrated density:       9.999999934793
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     2    -74.7083593845 -4.74D-06  8.16D-04  1.90D-05     1.9
+ Grid integrated density:       9.999999934856
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     3    -74.7083621882 -2.80D-06  1.78D-04  1.71D-06     1.9
+ Grid integrated density:       9.999999934844
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     4    -74.7083624460 -2.58D-07  2.06D-05  7.91D-09     1.9
+ Grid integrated density:       9.999999934844
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     5    -74.7083624480 -1.91D-09  8.00D-07  1.31D-11     1.9
+
+
+         Total DFT energy =      -74.708362447960
+      One electron energy =     -123.241137002641
+           Coulomb energy =       47.800422346366
+    Exchange-Corr. energy =       -8.918412565611
+ Nuclear repulsion energy =        9.650764773925
+
+ Numeric. integr. density =        9.999999934844
+
+     Total iterative time =      0.1s
+
+
+
+                       DFT Final Molecular Orbital Analysis
+                       ------------------------------------
+
+ Vector    1  Occ=2.000000D+00  E=-1.825649D+01
+              MO Center= -4.0D-04,  1.8D-14,  3.1D-04, r^2= 1.5D-02
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     1      0.992348  1 O  s                  2      0.035422  1 O  s          
+
+ Vector    2  Occ=2.000000D+00  E=-8.437195D-01
+              MO Center= -5.1D-03, -7.6D-13,  2.5D-01, r^2= 5.4D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     2      0.763668  1 O  s                  1     -0.224961  1 O  s          
+     5      0.215343  1 O  pz                 7      0.188511  3 H  s          
+     6      0.184103  2 H  s          
+
+ Vector    3  Occ=2.000000D+00  E=-4.153573D-01
+              MO Center=  7.1D-03, -8.7D-16,  2.2D-01, r^2= 8.0D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     3      0.605455  1 O  px                 6      0.432521  2 H  s          
+     7     -0.428929  3 H  s          
+
+ Vector    4  Occ=2.000000D+00  E=-1.216062D-01
+              MO Center=  5.7D-04, -2.7D-12, -1.5D-01, r^2= 5.1D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     5      0.795108  1 O  pz                 2     -0.600589  1 O  s          
+     6      0.232847  2 H  s                  7      0.231868  3 H  s          
+     1      0.124251  1 O  s          
+
+ Vector    5  Occ=2.000000D+00  E=-5.617440D-02
+              MO Center= -3.9D-04,  3.4D-12, -6.9D-14, r^2= 4.2D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     4      1.000000  1 O  py         
+
+ Vector    6  Occ=0.000000D+00  E= 3.490293D-01
+              MO Center=  3.5D-02,  1.0D-13,  4.7D-01, r^2= 1.1D+00
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     2      0.988278  1 O  s                  6     -0.862115  2 H  s          
+     7     -0.818332  3 H  s                  5      0.695918  1 O  pz         
+     1     -0.145481  1 O  s                  3      0.028390  1 O  px         
+
+ Vector    7  Occ=0.000000D+00  E= 4.962776D-01
+              MO Center= -3.4D-02, -2.0D-16,  3.1D-01, r^2= 1.0D+00
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     3      1.040219  1 O  px                 7      0.912126  3 H  s          
+     6     -0.855994  2 H  s                  2     -0.037128  1 O  s          
+
+
+ center of mass
+ --------------
+ x =   0.00000000 y =   0.00000000 z =   0.10659020
+
+ moments of inertia (a.u.)
+ ------------------
+           1.623815452139           0.000000000000          -0.022545980662
+           0.000000000000           5.759614452742           0.000000000000
+          -0.022545980662           0.000000000000           4.135799000603
+
+     Multipole analysis of the density
+     ---------------------------------
+
+     L   x y z        total         alpha         beta         nuclear
+     -   - - -        -----         -----         ----         -------
+     0   0 0 0     -0.000000     -5.000000     -5.000000     10.000000
+
+     1   1 0 0     -0.000902     -0.003363     -0.003363      0.005824
+     1   0 1 0      0.000000      0.000000      0.000000      0.000000
+     1   0 0 1      0.685576     -0.609634     -0.609634      1.904844
+
+     2   2 0 0     -3.038578     -3.571131     -3.571131      4.103683
+     2   1 1 0      0.000000      0.000000      0.000000      0.000000
+     2   1 0 1      0.004321     -0.009025     -0.009025      0.022371
+     2   0 2 0     -4.490428     -2.245214     -2.245214      0.000000
+     2   0 1 1      0.000000      0.000000      0.000000      0.000000
+     2   0 0 2     -3.812306     -2.813276     -2.813276      1.814245
+
+
+ Parallel integral file used       1 records with       0 large values
+
+ *** CALLING NEW AORESP DRIVER FOR CLOSED AND OPEN SHELLS ***
+ Entering AOResponse driver routine
+
+
+--------------------------------------------------------------------------------
+
+          ****************
+          *** RESPONSE ***
+          ****************
+
+ Response module for NWChem and dynamic CPKS solver
+ developed by J. Autschbach and coworkers, SUNY Buffalo
+ The methodology used in this program is described in 
+ ChemPhysChem 12 (2011), 3224-3235 (main reference)
+ J. Chem. Phys. 123 (2005), 114103
+ J. Chem. Phys. 122 (2005), 224115
+ J. Chem. Phys. 122 (2005), 074105
+ Comp. Lett. 3 (2007), 131-150 (contact JA for a copy)
+ Please cite this work in publications based on results
+ obtained with this code. Thank you!
+
+ For extension of response module to open shell
+ calculations please acknowledge:
+ F. Aquino, Northwestern University, Schatz Rsrch Group
+ The update to the methodology is described in
+ J. Phys. Chem. A 118 (2014) 517-525
+
+
+
+          -----------------------------------------------
+          Solving response equations for perturbing field
+          -----------------------------------------------
+
+ number of frequencies:     1
+ frequency in a.u.:  0.8564540E-01
+ Perturbing field: electric
+ Using El. Dipole Length Gauge
+
+ Setting up CPKS with frequency omega =      0.08564540 a.u.
+
+
+                            NWChem Dynamic CPHF Module
+                            --------------------------
+
+
+    scftype = RHF 
+    nclosed =    5
+      nopen =    0
+  variables =       20
+  num. vecs =        3
+  tolerance =   1.0D-04
+  max. iter =   50
+
+ Local filesystem for scratch_dir
+
+ #quartets = 1.200D+02 #integrals = 2.600D+02 #direct =  0.0% #cached =100.0%
+
+
+ Integral file          = ./raman_test.aoints.0
+ Record size in doubles =  65536        No. of integs per rec  =  43688
+ Max. records in memory =      3        Max. records in file   =  29761
+ No. of bits per label  =      8        No. of bits per value  =     64
+
+ Grid integrated density:       9.999999934844
+ Requested integration accuracy:   0.10E-13
+ SCF residual:    4.3262954508556967E-007
+
+
+Iterative solution of linear equations
+  No. of variables       20
+  No. of equations        3
+  Maximum subspace       30
+       Convergence  1.0D-04
+        Start time      1.9
+
+ ga_lkain filestub:cphf_sol                                                                                                                                                                                                                                                       
+ ga_lkain filesoln:./raman_test.cphf_sol                                                                                                                                                                                                                                          
+
+   iter   nsub   residual    time 
+   ----  ------  --------  --------- 
+     1      3    1.80D+00       2.0
+     2      6    1.61D-01       2.0
+     3      9    2.75D-03       2.1
+     4     12    4.28D-07       2.1
+
+ Parallel integral file used       1 records with       0 large values
+
+
+ Electric Dipole Response Matrix (nonzero elements):
+
+              1        2        3      
+    1    4.5137   0.0000   0.0258
+    2   -0.0000   0.0520  -0.0000
+    3    0.0258   0.0000   1.5161
+
+ ------------------------------------------
+ average:         2.02726 + I       0.00000
+
+
+ DFT Linear Response polarizability / au 
+ Frequency  =       0.0856454 / au
+ Wavelength =     532.0000078 / nm
+              X              Y              Z
+ -----------------------------------------------
+ X       4.5137466      0.0000000      0.0258076
+ Y      -0.0000000      0.0519543     -0.0000000
+ Z       0.0258076      0.0000000      1.5160730
+ -----------------------------------------------
+ Eigenvalues =       4.5139688      0.0519543      1.5158508
+ Isotropic   =       2.0272580
+ Anisotropic =       3.9396242
+ -----------------------------------------------
+
+ Magnetic Dipole Response Matrix (nonzero elements):
+ Optical rotation tensor Beta
+
+              1        2        3      
+    1    0.0000  -0.2541   0.0000
+    2    0.2525   0.0000  -0.0070
+    3    0.0000  -0.0100   0.0000
+
+ ------------------------------------------
+ average:         0.00000 + I       0.00000
+
+ Exiting AOResponse driver routine
+ ramanpolfile=./raman_test.ramanpol_0003-2                                                                                                                                                                                                                                   
+ ramanpol_read: failed to open ./raman_test.ramanpol_0003-2
+                              NWChem Property Module
+                              ----------------------
+
+
+
+                                 NWChem DFT Module
+                                 -----------------
+
+
+
+
+ Summary of "ao basis" -> "ao basis" (cartesian)
+ ------------------------------------------------------------------------------
+       Tag                 Description            Shells   Functions and Types
+ ---------------- ------------------------------  ------  ---------------------
+ O                           sto-3g                  3        5   2s1p
+ H                           sto-3g                  1        1   1s
+
+
+  Caching 1-el integrals 
+
+            General Information
+            -------------------
+          SCF calculation type: DFT
+          Wavefunction type:  closed shell.
+          No. of atoms     :     3
+          No. of electrons :    10
+           Alpha electrons :     5
+            Beta electrons :     5
+          Charge           :     0
+          Spin multiplicity:     1
+          Use of symmetry is: off; symmetry adaption is: off
+          Maximum number of iterations:  50
+          AO basis - number of functions:     7
+                     number of shells:     5
+          Convergence on energy requested:  1.00D-07
+          Convergence on density requested:  1.00D-05
+          Convergence on gradient requested:  1.00D-04
+
+              XC Information
+              --------------
+                        Slater Exchange Functional  1.000 local    
+                      VWN V Correlation Functional  1.000 local    
+
+             Grid Information
+             ----------------
+          Grid used for XC integration:  fine      
+          Radial quadrature: Mura-Knowles        
+          Angular quadrature: Lebedev. 
+          Tag              B.-S. Rad. Rad. Pts. Rad. Cut. Ang. Pts.
+          ---              ---------- --------- --------- ---------
+          O                   0.60       70           6.0       590
+          H                   0.35       60           8.0       590
+          Grid pruning is: on 
+          Number of quadrature shells:   190
+          Spatial weights used:  Erf1
+
+          Convergence Information
+          -----------------------
+          Convergence aids based upon iterative change in 
+          total energy or number of iterations. 
+          Levelshifting, if invoked, occurs when the 
+          HOMO/LUMO gap drops below (HL_TOL):  1.00D-02
+          DIIS, if invoked, will attempt to extrapolate 
+          using up to (NFOCK): 10 stored Fock matrices.
+
+                    Damping( 0%)  Levelshifting(0.5)       DIIS
+                  --------------- ------------------- ---------------
+          dE  on:    start            ASAP                start   
+          dE off:    2 iters         50 iters            50 iters 
+
+
+      Screening Tolerance Information
+      -------------------------------
+          Density screening/tol_rho:  1.00D-11
+          AO Gaussian exp screening on grid/accAOfunc:  16
+          CD Gaussian exp screening on grid/accCDfunc:  20
+          XC Gaussian exp screening on grid/accXCfunc:  20
+          Schwarz screening/accCoul:  1.00D-12
+
+
+ Loading old vectors from job with title :
+
+
+
+   Time after variat. SCF:      2.1
+   Time prior to 1st pass:      2.1
+ Local filesystem for scratch_dir
+
+ #quartets = 1.200D+02 #integrals = 2.600D+02 #direct =  0.0% #cached =100.0%
+
+
+ Integral file          = ./raman_test.aoints.0
+ Record size in doubles =  65536        No. of integs per rec  =  43688
+ Max. records in memory =      3        Max. records in file   =  29761
+ No. of bits per label  =      8        No. of bits per value  =     64
+
+ Local filesystem for scratch_dir
+
+ Grid_pts file          = ./raman_test.gridpts.0
+ Record size in doubles =  12289        No. of grid_pts per rec  =   3070
+ Max. records in memory =     42        Max. recs in file   =    158716
+
+ Grid integrated density:       9.999999934934
+ Requested integration accuracy:   0.10E-13
+
+           Memory utilization after 1st SCF pass: 
+           Heap Space remaining (MW):        5.81             5810896
+          Stack Space remaining (MW):        6.52             6524124
+
+   convergence    iter        energy       DeltaE   RMS-Dens  Diis-err    time
+ ---------------- ----- ----------------- --------- --------- ---------  ------
+ d= 0,ls=0.0,diis     1    -74.7083554178 -8.44D+01  1.50D-03  1.19D-04     2.2
+ Grid integrated density:       9.999999934874
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     2    -74.7083614951 -6.08D-06  5.83D-04  3.82D-06     2.2
+ Grid integrated density:       9.999999934898
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     3    -74.7083623622 -8.67D-07  1.41D-04  3.39D-07     2.2
+ Grid integrated density:       9.999999934892
+ Requested integration accuracy:   0.10E-13
+ d= 0,ls=0.0,diis     4    -74.7083624479 -8.57D-08  5.19D-06  7.67D-10     2.2
+
+
+         Total DFT energy =      -74.708362447858
+      One electron energy =     -123.241081794413
+           Coulomb energy =       47.800361023361
+    Exchange-Corr. energy =       -8.918406450749
+ Nuclear repulsion energy =        9.650764773944
+
+ Numeric. integr. density =        9.999999934892
+
+     Total iterative time =      0.1s
+
+
+
+                       DFT Final Molecular Orbital Analysis
+                       ------------------------------------
+
+ Vector    1  Occ=2.000000D+00  E=-1.825650D+01
+              MO Center=  4.0D-04,  3.5D-14,  3.1D-04, r^2= 1.5D-02
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     1      0.992348  1 O  s                  2      0.035422  1 O  s          
+
+ Vector    2  Occ=2.000000D+00  E=-8.437210D-01
+              MO Center=  5.1D-03, -1.5D-12,  2.5D-01, r^2= 5.4D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     2      0.763669  1 O  s                  1     -0.224961  1 O  s          
+     5      0.215343  1 O  pz                 6      0.188510  2 H  s          
+     7      0.184102  3 H  s          
+
+ Vector    3  Occ=2.000000D+00  E=-4.153583D-01
+              MO Center= -7.1D-03,  3.4D-15,  2.2D-01, r^2= 8.0D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     3      0.605456  1 O  px                 7     -0.432519  3 H  s          
+     6      0.428928  2 H  s          
+
+ Vector    4  Occ=2.000000D+00  E=-1.216079D-01
+              MO Center= -5.7D-04, -4.9D-12, -1.5D-01, r^2= 5.1D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     5      0.795109  1 O  pz                 2     -0.600588  1 O  s          
+     6      0.231866  2 H  s                  7      0.232847  3 H  s          
+     1      0.124250  1 O  s          
+
+ Vector    5  Occ=2.000000D+00  E=-5.617635D-02
+              MO Center=  3.9D-04,  6.3D-12,  6.9D-14, r^2= 4.2D-01
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     4      1.000000  1 O  py         
+
+ Vector    6  Occ=0.000000D+00  E= 3.490285D-01
+              MO Center= -3.5D-02,  1.8D-13,  4.7D-01, r^2= 1.1D+00
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     2      0.988278  1 O  s                  7     -0.862116  3 H  s          
+     6     -0.818332  2 H  s                  5      0.695917  1 O  pz         
+     1     -0.145481  1 O  s                  3     -0.028391  1 O  px         
+
+ Vector    7  Occ=0.000000D+00  E= 4.962765D-01
+              MO Center=  3.4D-02,  9.4D-16,  3.1D-01, r^2= 1.0D+00
+   Bfn.  Coefficient  Atom+Function         Bfn.  Coefficient  Atom+Function  
+  ----- ------------  ---------------      ----- ------------  ---------------
+     3      1.040218  1 O  px                 6     -0.912127  2 H  s          
+     7      0.855994  3 H  s                  2      0.037130  1 O  s          
+
+
+ center of mass
+ --------------
+ x =  -0.00000000 y =   0.00000000 z =   0.10659020
+
+ moments of inertia (a.u.)
+ ------------------
+           1.623815452131           0.000000000000           0.022545980662
+           0.000000000000           5.759614452720           0.000000000000
+           0.022545980662           0.000000000000           4.135799000589
+
+     Multipole analysis of the density
+     ---------------------------------
+
+     L   x y z        total         alpha         beta         nuclear
+     -   - - -        -----         -----         ----         -------
+     0   0 0 0     -0.000000     -5.000000     -5.000000     10.000000
+
+     1   1 0 0      0.000902      0.003363      0.003363     -0.005824
+     1   0 1 0      0.000000      0.000000      0.000000      0.000000
+     1   0 0 1      0.685580     -0.609632     -0.609632      1.904844
+
+     2   2 0 0     -3.038565     -3.571124     -3.571124      4.103683
+     2   1 1 0      0.000000      0.000000      0.000000      0.000000
+     2   1 0 1     -0.004322      0.009025      0.009025     -0.022371
+     2   0 2 0     -4.490426     -2.245213     -2.245213      0.000000
+     2   0 1 1      0.000000      0.000000      0.000000      0.000000
+     2   0 0 2     -3.812300     -2.813273     -2.813273      1.814245
+
+
+ Parallel integral file used       1 records with       0 large values
+
+ *** CALLING NEW AORESP DRIVER FOR CLOSED AND OPEN SHELLS ***
+ Entering AOResponse driver routine
+
+
+--------------------------------------------------------------------------------
+
+          ****************
+          *** RESPONSE ***
+          ****************
+
+ Response module for NWChem and dynamic CPKS solver
+ developed by J. Autschbach and coworkers, SUNY Buffalo
+ The methodology used in this program is described in 
+ ChemPhysChem 12 (2011), 3224-3235 (main reference)
+ J. Chem. Phys. 123 (2005), 114103
+ J. Chem. Phys. 122 (2005), 224115
+ J. Chem. Phys. 122 (2005), 074105
+ Comp. Lett. 3 (2007), 131-150 (contact JA for a copy)
+ Please cite this work in publications based on results
+ obtained with this code. Thank you!
+
+ For extension of response module to open shell
+ calculations please acknowledge:
+ F. Aquino, Northwestern University, Schatz Rsrch Group
+ The update to the methodology is described in
+ J. Phys. Chem. A 118 (2014) 517-525
+
+
+
+          -----------------------------------------------
+          Solving response equations for perturbing field
+          -----------------------------------------------
+
+ number of frequencies:     1
+ frequency in a.u.:  0.8564540E-01
+ Perturbing field: electric
+ Using El. Dipole Length Gauge
+
+ Setting up CPKS with frequency omega =      0.08564540 a.u.
+
+
+                            NWChem Dynamic CPHF Module
+                            --------------------------
+
+
+    scftype = RHF 
+    nclosed =    5
+      nopen =    0
+  variables =       20
+  num. vecs =        3
+  tolerance =   1.0D-04
+  max. iter =   50
+
+ Local filesystem for scratch_dir
+
+ #quartets = 1.200D+02 #integrals = 2.600D+02 #direct =  0.0% #cached =100.0%
+
+
+ Integral file          = ./raman_test.aoints.0
+ Record size in doubles =  65536        No. of integs per rec  =  43688
+ Max. records in memory =      3        Max. records in file   =  29761
+ No. of bits per label  =      8        No. of bits per value  =     64
+
+ Grid integrated density:       9.999999934893
+ Requested integration accuracy:   0.10E-13
+ SCF residual:    1.1702652124937373E-005
+
+
+Iterative solution of linear equations
+  No. of variables       20
+  No. of equations        3
+  Maximum subspace       30
+       Convergence  1.0D-04
+        Start time      2.2
+
+ ga_lkain filestub:cphf_sol                                                                                                                                                                                                                                                       
+ ga_lkain filesoln:./raman_test.cphf_sol                                                                                                                                                                                                                                          
+
+   iter   nsub   residual    time 
+   ----  ------  --------  --------- 
+     1      3    1.80D+00       2.3
+     2      6    1.61D-01       2.3
+     3      9    2.75D-03       2.4
+     4     12    4.28D-07       2.4
+
+ Parallel integral file used       1 records with       0 large values
+
+
+ Electric Dipole Response Matrix (nonzero elements):
+
+              1        2        3      
+    1    4.5137   0.0000  -0.0258
+    2   -0.0000   0.0520  -0.0000
+    3   -0.0258   0.0000   1.5161
+
+ ------------------------------------------
+ average:         2.02726 + I       0.00000
+
+
+ DFT Linear Response polarizability / au 
+ Frequency  =       0.0856454 / au
+ Wavelength =     532.0000078 / nm
+              X              Y              Z
+ -----------------------------------------------
+ X       4.5137420      0.0000000     -0.0258093
+ Y      -0.0000000      0.0519541     -0.0000000
+ Z      -0.0258093      0.0000000      1.5160708
+ -----------------------------------------------
+ Eigenvalues =       4.5139642      0.0519541      1.5158486
+ Isotropic   =       2.0272556
+ Anisotropic =       3.9396204
+ -----------------------------------------------
+
+ Magnetic Dipole Response Matrix (nonzero elements):
+ Optical rotation tensor Beta
+
+              1        2        3      
+    1    0.0000  -0.2541   0.0000
+    2    0.2525   0.0000   0.0070
+    3    0.0000   0.0100   0.0000
+
+ ------------------------------------------
+ average:         0.00000 + I       0.00000
+
+ Exiting AOResponse driver routine
+ Stepsize :   1.0439793374823611E-002
+
+ 5288.36  REAL                      10.063849
+ 5288.36  IMAGINARY                  0.000000
+ 5288.36  TOTAL                     10.063849
+
+ Writing mini:./raman_test.raman_0007-0009_nblock                                                                                                                                                                                                                            
+Writing modecounter=    3
+ Showing rminfo:
+(start,last,rmmodes,nfreq,plot,width)=(   1,   9,   3,   1,normal          ,    20.00000000)
+rminfo(   1)=(  1167.41320947,     6.39018232,     0.00000000,     6.39018232)
+rminfo(   2)=(  4923.87147204,    32.44032971,     0.00000000,    32.44032971)
+rminfo(   3)=(  5288.35589005,    10.06384920,     0.00000000,    10.06384920)
+
+ Raman scattering data written to ./raman_test.normal
+
+
+ Task  times  cpu:        2.4s     wall:        2.4s
+
+
+                                NWChem Input Module
+                                -------------------
+
+
+ Summary of allocated global arrays
+-----------------------------------
+  No active global arrays
+
+
+MA_summarize_allocated_blocks: starting scan ...
+MA_summarize_allocated_blocks: scan completed: 0 heap blocks, 0 stack blocks
+MA usage statistics:
+
+	allocation statistics:
+					      heap	     stack
+					      ----	     -----
+	current number of blocks	         0	         0
+	maximum number of blocks	        25	        56
+	current total bytes		         0	         0
+	maximum total bytes		   5708600	  63955336
+	maximum total K-bytes		      5709	     63956
+	maximum total M-bytes		         6	        64
+
+
+                                     CITATION
+                                     --------
+                Please cite the following reference when publishing
+                           results obtained with NWChem:
+
+          E. Apra, E. J. Bylaska, W. A. de Jong, N. Govind, K. Kowalski,
+       T. P. Straatsma, M. Valiev, H. J. J. van Dam, Y. Alexeev, J. Anchell,
+       V. Anisimov, F. W. Aquino, R. Atta-Fynn, J. Autschbach, N. P. Bauman,
+     J. C. Becca, D. E. Bernholdt, K. Bhaskaran-Nair, S. Bogatko, P. Borowski,
+         J. Boschen, J. Brabec, A. Bruner, E. Cauet, Y. Chen, G. N. Chuev,
+      C. J. Cramer, J. Daily, M. J. O. Deegan, T. H. Dunning Jr., M. Dupuis,
+   K. G. Dyall, G. I. Fann, S. A. Fischer, A. Fonari, H. Fruchtl, L. Gagliardi,
+      J. Garza, N. Gawande, S. Ghosh, K. Glaesemann, A. W. Gotz, J. Hammond,
+       V. Helms, E. D. Hermes, K. Hirao, S. Hirata, M. Jacquelin, L. Jensen,
+   B. G. Johnson, H. Jonsson, R. A. Kendall, M. Klemm, R. Kobayashi, V. Konkov,
+      S. Krishnamoorthy, M. Krishnan, Z. Lin, R. D. Lins, R. J. Littlefield,
+      A. J. Logsdail, K. Lopata, W. Ma, A. V. Marenich, J. Martin del Campo,
+   D. Mejia-Rodriguez, J. E. Moore, J. M. Mullin, T. Nakajima, D. R. Nascimento,
+    J. A. Nichols, P. J. Nichols, J. Nieplocha, A. Otero-de-la-Roza, B. Palmer,
+    A. Panyala, T. Pirojsirikul, B. Peng, R. Peverati, J. Pittner, L. Pollack,
+   R. M. Richard, P. Sadayappan, G. C. Schatz, W. A. Shelton, D. W. Silverstein,
+   D. M. A. Smith, T. A. Soares, D. Song, M. Swart, H. L. Taylor, G. S. Thomas,
+            V. Tipparaju, D. G. Truhlar, K. Tsemekhman, T. Van Voorhis,
+      A. Vazquez-Mayagoitia, P. Verma, O. Villa, A. Vishnu, K. D. Vogiatzis,
+        D. Wang, J. H. Weare, M. J. Williamson, T. L. Windus, K. Wolinski,
+        A. T. Wong, Q. Wu, C. Yang, Q. Yu, M. Zacharias, Z. Zhang, Y. Zhao,
+                                and R. J. Harrison
+                        "NWChem: Past, present, and future
+                         J. Chem. Phys. 152, 184102 (2020)
+                               doi:10.1063/5.0004997
+
+                                      AUTHORS
+                                      -------
+        E. Apra, E. J. Bylaska, N. Govind, K. Kowalski, D. Mejia-Rodriguez,
+        N. P. Bauman, A. Panyala, R. J. Harrison, M. Valiev, W. A. de Jong,
+       T. P. Straatsma, H. J. J. van Dam, D. Wang, T. L. Windus, J. Hammond,
+     J. Autschbach, R. de P. Soares, A. Kunitsa, K. Bhaskaran-Nair, J. Brabec,
+      K. Lopata, S. A. Fischer, S. Krishnamoorthy, M. Jacquelin, R. Goswami,
+       A. Woods, W. Ma, M. Klemm, O. Villa, Y. Chen, V. Anisimov, F. Aquino,
+     S. Hirata, M. T. Hackler, E. Hermes, L. Jensen, J. E. Moore, J. C. Becca,
+      V. Konjkov, T. Risthaus, M. Malagoli, A. Marenich, A. Otero-de-la-Roza,
+        J. Mullin, P. Nichols, R. Peverati, J. Pittner, Y. Zhao, P.-D. Fan,
+        A. Fonari, M. J. Williamson, J. R. Rehr, M. Dupuis, D. Silverstein,
+    D. M. A. Smith, J. Nieplocha, V. Tipparaju, M. Krishnan, B. E. Van Kuiken,
+        A. Vazquez-Mayagoitia, M. Swart, Q. Wu, T. Van Voorhis, A. A. Auer,
+     M. Nooijen, L. D. Crosby, E. Brown, G. Cisneros, G. I. Fann, H. Fruchtl,
+   J. Garza, K. Hirao, R. A. Kendall, J. A. Nichols, K. Tsemekhman, K. Wolinski,
+     J. Anchell, D. E. Bernholdt, P. Borowski, T. Clark, D. Clerc, H. Dachsel,
+   M. J. O. Deegan, K. Dyall, D. Elwood, E. Glendening, M. Gutowski, A. C. Hess,
+         J. Jaffe, B. G. Johnson, J. Ju, R. Kobayashi, R. Kutteh, Z. Lin,
+   R. Littlefield, X. Long, B. Meng, T. Nakajima, S. Niu, L. Pollack, M. Rosing,
+   K. Glaesemann, G. Sandrone, M. Stave, H. Taylor, G. Thomas, J. H. van Lenthe,
+                               A. T. Wong, Z. Zhang.
+
+ Total times  cpu:        2.4s     wall:        2.4s

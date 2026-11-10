@@ -2,7 +2,7 @@
 
 MolFormaを、Linuxのディストリビューションによらず動く1つの実行ファイル（AppImage）にする手順です。Dockerの中のUbuntu 24.04でビルドし、MolFormaが使うQt・Open Babel・RDKit・VTKなどのライブラリを1つのファイルにまとめます。作ったAppImageは、インストールせずに、実行の許可を付けるだけで起動できます。
 
-AppImageを作るPCは、Dockerが使えるx86-64のLinuxであれば、ディストリビューションを問いません。AppImageを動かすPCは、x86-64で、glibc 2.38以上とGCC 13以降の `libstdc++` を持つLinuxのデスクトップです（Ubuntu 24.04以降、Debian 13以降、Fedora 39以降、Arch Linuxなど）。対象はMolForma 1.0.0です。2026-10-28に手順を確認しました（[確認した構成](#確認した構成)）。
+AppImageを作るPCは、Dockerが使えるx86-64のLinuxであれば、ディストリビューションを問いません。AppImageを動かすPCは、x86-64で、glibc 2.38以上とGCC 13以降の `libstdc++` を持つLinuxのデスクトップです（Ubuntu 24.04以降、Debian 13以降、Fedora 39以降、Arch Linuxなど）。対象はMolForma 1.1.0です。2026-10-28にMolForma 1.0.0の手順を確認しました（[確認した構成](#確認した構成)）。
 
 ビルド済みのAppImageは、[Releases](https://github.com/hnakada123/MolForma/releases) のZIP（`MolForma-<版>-linux-x86_64.zip`）にあります。展開して、[4. 起動する](#4-起動する)に進んでください。自分で作る場合は、次の手順です。
 
@@ -49,7 +49,7 @@ VTKのビルドで同時に動かすコンパイルの数は、既定で4です�
 
 ## 3. AppImageを作る
 
-取得したソースのフォルダーで、次を実行します。`build-appimage/MolForma-1.0.0-x86_64.AppImage`（約110 MB）ができます。所要時間は3分ほどです。
+取得したソースのフォルダーで、次を実行します。`build-appimage/MolForma-1.1.0-x86_64.AppImage`（約110 MB）ができます。所要時間は3分ほどです。
 
 ```sh
 mkdir -p build-appimage
@@ -71,9 +71,9 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src:ro" -v "$PWD/build-appi
 実行の許可を付けて起動します。ファイルを指定して開くこともできます。
 
 ```sh
-chmod +x MolForma-1.0.0-x86_64.AppImage
-./MolForma-1.0.0-x86_64.AppImage
-./MolForma-1.0.0-x86_64.AppImage molecule.xyz
+chmod +x MolForma-1.1.0-x86_64.AppImage
+./MolForma-1.1.0-x86_64.AppImage
+./MolForma-1.1.0-x86_64.AppImage molecule.xyz
 ```
 
 - **FUSE**: AppImageは、起動時に自分自身をFUSEでマウントします。`fusermount3`（`fuse3` パッケージ）か `fusermount` が必要です。多くのデスクトップには入っています。`libfuse2` は不要です。
@@ -81,7 +81,7 @@ chmod +x MolForma-1.0.0-x86_64.AppImage
 - **メニュー**: AppImageは自分ではアプリケーションメニューに登録しません。メニューから起動したい場合は、AppImageを管理するアプリ（Gear Lever、AppImageLauncherなど）を使ってください。
 - **MCPサーバー**: MCPクライアントには、AppImageのパスに `--mcp`（GUIを表示する場合は `--mcp-gui`）を付けたものを、サーバーの起動コマンドとして登録します（[MCPサーバー](../mcp.md)）。
 
-起動したら、「ヘルプ → MolFormaについて」で、版が「MolForma 1.0.0」で、「立体判定・残基認識（RDKit）: 有効」「3D描画: VTK（OpenGL）」と表示されることを確認します。OpenGLを使えない環境では「3D描画: QPainter（CPU）」になります。
+起動したら、「ヘルプ → MolFormaについて」で、版が「MolForma 1.1.0」で、「立体判定・残基認識（RDKit）: 有効」「3D描画: VTK（OpenGL）」と表示されることを確認します。OpenGLを使えない環境では「3D描画: QPainter（CPU）」になります。
 
 計算に使うNWChemは、AppImageに入っていません。ディストリビューションのものを入れてください（Arch Linuxは[AURの `nwchem`](arch_linux.md#2-nwchemを入れるaur)、Ubuntuは[`apt install nwchem`](ubuntu.md#2-nwchemを入れる)）。「3 実行設定」の既定（実行ファイル `nwchem`、MPIで起動、MPIランチャー `mpirun`、2プロセス）のままで起動できます。
 
@@ -104,7 +104,7 @@ AppImageのファイルを削除します。アプリの設定（`~/.config/MolF
 
 ## 配布するとき
 
-作ったAppImageをほかの人に配る場合は、同梱したソフトウェアのライセンスに従ってください。ライセンスの文面はAppImageの `usr/share/doc` にあり、`./MolForma-1.0.0-x86_64.AppImage --appimage-extract` で展開すると読めます。
+作ったAppImageをほかの人に配る場合は、同梱したソフトウェアのライセンスに従ってください。ライセンスの文面はAppImageの `usr/share/doc` にあり、`./MolForma-1.1.0-x86_64.AppImage --appimage-extract` で展開すると読めます。
 
 - **MolForma（GPL-2.0-or-later）、Open Babel（GPL-2.0-only）、Qt**: Open Babelとリンクしたバイナリでは、QtもGPL-2.0の条件で使います（リポジトリの `NOTICE`）。バイナリを配る場合は、対応するソースも入手できるようにします。MolFormaは、AppImageを作ったコミットのソースを示してください。Open Babel・Qtなど同梱したUbuntuのパッケージのソースは、Ubuntu 24.04のソースパッケージです。VTKは、vtk.orgの9.7.1のソースです。AppImageの先頭のランタイムは、libfuse（LGPL-2.1）などを静的にリンクしたプログラムです。ランタイムとそれがリンクするライブラリ、AppRunを作るlinuxdeployのソースも示してください。
 - **そのほか（RDKit・VTK・Boostなど）**: BSDなどのライセンスで、文面を同梱すれば配布できます。
@@ -134,7 +134,7 @@ docker run --rm -e OWNER="$(id -u):$(id -g)" -v "$PWD:/src:ro" -v "$PWD/build-ap
 | ビルド中にデスクトップが応答しにくくなる、メモリーが不足する | `--build-arg JOBS=2`（`docker build`）や `-e JOBS=2`（`docker run`）で、同時に動かすコンパイルの数を減らします |
 | `CMake cannot use VTK` または `CMake cannot use RDKit` で止まる | ビルド環境のイメージが古いか、作成が途中で失敗しています。[2. ビルド環境を作る](#2-ビルド環境を作る)をやり直します |
 | `version 'GLIBC_2.38' not found` や `GLIBCXX_3.4.32' not found` で起動しない | 動かすPCのglibcや `libstdc++` が古すぎます。Ubuntu 24.04以降など、新しいディストリビューションで使ってください |
-| FUSEでマウントできず起動しない | `fuse3` パッケージ（`fusermount3`）を入れます。入れられない場合は、`./MolForma-1.0.0-x86_64.AppImage --appimage-extract-and-run` で、展開してから起動できます |
+| FUSEでマウントできず起動しない | `fuse3` パッケージ（`fusermount3`）を入れます。入れられない場合は、`./MolForma-1.1.0-x86_64.AppImage --appimage-extract-and-run` で、展開してから起動できます |
 | 3D画面の左上に「描画: QPainter（CPU）· OpenGLを使えないため簡易表示」と出る | OpenGL 3.2以上を使えません。GPUドライバーを確認します。リモートデスクトップや仮想マシンでは使えない場合があります |
 | 日本語が四角で表示される | 日本語のフォントをPCに入れます（Arch Linuxは `noto-fonts-cjk`、Ubuntu・Debianは `fonts-noto-cjk`、Fedoraは `google-noto-sans-cjk-fonts` など） |
 | 「実行前の確認」でNWChemやMPIランチャーが見つからない | 端末で `command -v nwchem mpirun` を確認します。NWChemを別の場所に入れた場合は、「3 実行設定」でパスを指定します |

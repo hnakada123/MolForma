@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "mcp/tools.h"
 #include "model/units.h"
+#include "nwchem/run_diagnostics.h"
+#include "results/energy_profile.h"
 #include "results/result_summary.h"
+#include "results/spectrum.h"
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -96,13 +99,28 @@ McpToolSpec resultsTool() {
             "Frequencies retain negative values for imaginary modes; rigid marks translations and rotations, "
             "and significant marks imaginary frequencies below -10 cm-1 (smaller ones are often numerical "
             "noise).",
-        .properties = {{"section", QJsonObject{{"type", "string"},
-                                               {"enum", QJsonArray{"summary", "frames", "energies",
-                                                                   "orbitals", "modes", "excitations",
-                                                                   "steps", "mode_displacements", "log"}}}},
-                       {"offset", integer(0, 10000000)},
-                       {"limit", integer(1, 65536)},
-                       {"index", integer(0, 1000000)}},
+        .properties =
+            {{"section",
+              QJsonObject{{"type", "string"},
+                          {"enum", QJsonArray{"summary", "frames", "energies", "orbitals", "modes",
+                                              "excitations", "steps", "mode_displacements", "spectrum",
+                                              "spectrum_peaks", "energy_profile", "log"}}}},
+             {"parameters",
+              QJsonObject{
+                  {"type", "object"},
+                  {"description",
+                   "Spectrum parameters: kind nmr/raman/epr/ecd/ord and width (FWHM), optional "
+                   "minimum/maximum. NMR "
+                   "needs nucleus 1H/13C and reference_ppm, optional weights keyed by 1-based atom number. "
+                   "EPR needs microwave_ghz, nuclei [{atom,isotope}], optional derivative."}}},
+             {"profile",
+              QJsonObject{{"type", "object"},
+                          {"description",
+                           "For energy_profile: molforma-energy-profile v1 specification; records, "
+                           "stages, metric, unit, temperature, standard_state, reference."}}},
+             {"offset", integer(0, 10000000)},
+             {"limit", integer(1, 65536)},
+             {"index", integer(0, 1000000)}},
         .meta = {{"anthropic/maxResultSizeChars", McpLargeResultChars}},
     };
 }
@@ -111,20 +129,58 @@ McpToolSpec calculationTool(const QString &description, const QJsonObject &outpu
         .name = "calculation",
         .title = "Run NWChem",
         .description = description,
-        .properties = {{"action", QJsonObject{{"type", "string"},
-                                              {"enum", QJsonArray{"start", "stop", "save_bundle"}}}}},
+        .properties = {{"action",
+                        QJsonObject{{"type", "string"},
+                                    {"enum", QJsonArray{"start", "stop", "save_bundle", "enqueue",
+                                                        "queue_resume", "queue_pause", "queue_cancel",
+                                                        "queue_move", "queue_policy"}}}},
+                       {"id", QJsonObject{{"type", "string"}}},
+                       {"position", integer(0, 999)},
+                       {"stopOnFailure", QJsonObject{{"type", "boolean"}}}},
         .required = {"action"},
         .mutation = true,
         .output = output,
         .meta = confirm ? QJsonObject{{"anthropic/requiresUserInteraction", true}} : QJsonObject{},
     };
 }
-QJsonObject calculationJson(const NwchemRun &run, const QString &savedBundle) {
-    return {{"active", run.active()},     {"state", runStateKey(run.state())},
-            {"message", run.message()},   {"directory", run.plan().directory},
-            {"savedBundle", savedBundle}, {"elapsedSeconds", double(run.elapsedSeconds())}};
+bool calculationQueueAction(NwchemQueue &queue, const QJsonObject &args) {
+    const auto action = args["action"].toString();
+    if (action == "queue_resume")
+        queue.resume();
+    else if (action == "queue_pause")
+        queue.pause();
+    else if (action == "queue_cancel")
+        queue.cancel(args["id"].toString());
+    else if (action == "queue_move") {
+        if (!args.contains("position"))
+            fail("Specify the zero-based queue position.");
+        queue.move(args["id"].toString(), args["position"].toInt());
+    } else if (action == "queue_policy") {
+        if (!args.contains("stopOnFailure"))
+            fail("Specify stopOnFailure.");
+        queue.setStopOnFailure(args["stopOnFailure"].toBool());
+    } else
+        return false;
+    return true;
+}
+QJsonObject calculationJson(const NwchemRun &run, const QString &savedBundle, const NwchemQueue *queue) {
+    QJsonObject result{{"active", run.active()},     {"state", runStateKey(run.state())},
+                       {"message", run.message()},   {"directory", run.plan().directory},
+                       {"savedBundle", savedBundle}, {"elapsedSeconds", double(run.elapsedSeconds())}};
+    if (queue)
+        result["queue"] = queue->json();
+    QJsonArray diagnostics;
+    for (const auto &value : run.plan().manifest["diagnostics"].toArray()) {
+        auto item = value.toObject();
+        item["message"] = runDiagnosisText(item["code"].toString());
+        diagnostics.append(item);
+    }
+    result["diagnostics"] = diagnostics;
+    return result;
 }
 QJsonObject resultsJson(const ResultData &r, const QJsonObject &args, QJsonObject out) {
+    if (args["section"] == "energy_profile")
+        return evaluateEnergyProfile(args["profile"].toObject());
     out["format"] = r.format;
     out["status"] = r.status;
     out["selectedOrbital"] = r.selectedOrbital;
@@ -146,7 +202,21 @@ QJsonObject resultsJson(const ResultData &r, const QJsonObject &args, QJsonObjec
     int offset = args["offset"].toInt(), limit = std::min(args["limit"].toInt(100), 1000);
     QJsonArray rows;
     qsizetype bytes = 0;
-    if (section == "mode_displacements") {
+    if (section == "spectrum" || section == "spectrum_peaks") {
+        const auto spectrum = calculateSpectrum(r, args["parameters"].toObject());
+        out["parameters"] = spectrum.parameters;
+        out["xUnit"] = spectrum.xUnit;
+        out["yUnit"] = spectrum.yUnit;
+        out["reversed"] = spectrum.reversed;
+        const int count = section == "spectrum" ? spectrum.curve.size() : spectrum.peaks.size();
+        for (int i = std::max(0, offset); i < std::min(count, offset + limit); ++i)
+            rows.append(section == "spectrum"
+                            ? QJsonValue(QJsonArray{spectrum.curve[i].x(), spectrum.curve[i].y()})
+                            : spectrum.peaks[i]);
+        out["total"] = count;
+        out["offset"] = std::max(0, offset);
+        out["nextOffset"] = std::max(0, offset) + rows.size();
+    } else if (section == "mode_displacements") {
         int i = index(args["index"].toInt(-1), r.modes.size());
         out["frequency"] = r.modes[i].frequency;
         out["geometry"] = r.vibrationGeometry.xyz();

@@ -200,7 +200,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | ツール | 用途 |
 | --- | --- |
 | `get_app_state` | 候補の有無、計算・結果読込の状態 |
-| `calculation` | NWChem実行・停止、入力一式の保存 |
+| `calculation` | NWChem実行・停止、入力一式の保存、計算キュー |
 | `get_results` | 読込済み結果の要約（計算のエネルギー `final_energy`（最後のtask・振動数の参照構造・BSSE補正後）・熱化学・双極子・最適化状態・スキャンとIRCの各点・BSSE・溶媒和・原子ごとのMulliken/ESP/RESP電荷・NMR遮蔽・分極率を含む `properties`）、構造列・エネルギー・軌道（`number` はスピンごとの軌道番号で、ログに一部の軌道しかなくてもMOLDENと同じ番号）・振動数（並進・回転は `rigid`）・励起状態・最適化ステップ・変位・ログ |
 | `results_action` | 結果ファイル・計算フォルダーの読込、再読込、読込の取消 |
 
@@ -228,6 +228,12 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 GUIのファイル一覧で振動アニメーションを選んだ場合、`get_results.source` は元のステップXYZのパスです。`results_action(action: "reload")` は同じモードの元XYZ群を読み直し、ステップの追加・削除も反映します。
 
 引数の型と必須項目は `tools/list` のJSON Schemaを参照してください。全ツールは `content` のJSONテキストと `structuredContent` の両方を返します。画面取得は追加でMCPの `image` コンテンツを返します。引数や編集内容のエラーは `isError: true`、不正なJSON-RPCや未知のツールはプロトコルエラーを返します。
+
+### 計算キューの操作
+
+`calculation` の `enqueue` は、登録時の分子・条件を保存してキューへ追加します。既定でキューは一時停止中です。`queue_resume` / `queue_pause` で開始・一時停止し、`queue_cancel` は `id` の待機項目を取り消します。`queue_move` は `id` と一覧内の0始まりの `position` で待機項目を並べ替えます。`queue_policy` は必須の真偽値 `stopOnFailure` で、失敗・停止・時間切れの際に後続を一時停止するかを指定します（既定true）。実行中の停止は従来の `stop` です。
+
+状態は `get_app_state.calculation.queue` の `paused`、`stopOnFailure`、`pending`、`entries` で確認します。各項目は `id`、`name`、`directory`、`state`、`error` を持ちます。待機状態は `queued` です。画面なしの `enqueue` は `queueId` も返します。GUIでは通常どおりUIコマンドの完了後に状態を取得します。キュー操作の完了は個々の計算の完了を意味しません。GUI・画面なしとも同じ逐次実行を使い、登録時の信頼・アクセス検査と、開始時のパス・固定コピーの再検査を行います。終了後の自動再開はありません。
 
 ## リソース
 
@@ -365,3 +371,11 @@ GUI変更は `documentId` と `expectedRevision` を必要とし、`queued` の 
 ## 検証
 
 `ctest --test-dir build --output-on-failure -R '^mcp$'` で、新旧版の通信、版の拒否、候補とUndo/Redo、固定原子・失敗時の原状保持、GUIとの競合、未知のenvelope保持、ファイル保存、NWChem入力生成を検証します。実行ファイルを子プロセスとして起動し、ダイアログ表示中の通信、ファイル選択、合成MOLDENの虚振動・正振動の再生と停止、PNG取得、模擬NWChemの実行と取消、履歴走査・選択・CSV出力、SMILES候補作成までMCPのみで検証します。数値・座標表・選択操作、古い版と破棄済み部品の拒否、ページ上限、UTF-8と分割メッセージ、通知、EOF終了も対象です。全ツールの `title` / `outputSchema`、Prompts、`save_file` の上書き確認（承認・拒否・改ざん・版の変更）、Tasksによるダイアログへの回答と、模擬NWChemの終了・停止までの追跡も検証します。実行設定の保護（MCPからの変更・プロジェクト読込後の実行の拒否、利用者の確認ダイアログ）、許可ディレクトリ（シンボリックリンク、ファイル選択ダイアログ）、`tasks/cancel` による取消、リソース、画面なしモードでの模擬NWChemの実行と結果読込も検証します。テストにネットワークや資格情報は不要です。
+
+## スペクトル・エネルギー比較
+
+`get_results(section: "spectrum")`は曲線の`items`（`[x,y]`）、`spectrum_peaks`はピーク表を返します。`parameters.kind`は`nmr`、`raman`、`epr`、`ecd`、`ord`、`width`は横軸単位の半値全幅（ORDでは未使用ですが必須）です。任意の`minimum`／`maximum`で範囲を固定します。返り値の`xUnit`、`yUnit`、`reversed`、補完した`parameters`を使い、`offset`／`limit`／`nextOffset`でページングします。
+
+NMRは`nucleus: "1H"|"13C"`、`reference_ppm`を必須とし、`weights`に1始まり原子番号をキーとする重みを指定できます。ESRは`microwave_ghz`、`nuclei: [{"atom":2,"isotope":"1H"}]`を必須とし、`derivative: true`で一次微分にします。元テンソル・ラマン活性・ECD旋光強度・ORD βは`properties`に保持します。適用範囲は[結果ビューア](features/results.md)と共通です。
+
+`get_results(section: "energy_profile", profile: {...})`は`molforma-energy-profile` version 1の比較仕様を評価します。`records`はID付き計算結果、`stages`は`{name, terms:[{record, thermal?, coefficient}]}`、`metric`は`E|ZPE|H|G`、`unit`は`hartree|kcal|kj`、`temperature`、`standard_state`（ラベル）、0始まりの`reference`を指定します。GUIの比較JSONと同じ形式で、元のエネルギー・補正の出典を維持します。返り値は段階ごとの値、`comparable`、`warnings`です。

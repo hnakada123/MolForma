@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/workspace_controller.h"
+#include "editing/coordinates.h"
 #include "nwchem/history.h"
 #include "ui/execution_panel.h"
 #include "ui/history_panel.h"
 #include "ui/main_window.h"
 #include "ui/results_panel.h"
+#include <QDir>
 #include <QFileInfo>
 #include <QStatusBar>
 namespace mf {
@@ -24,6 +26,8 @@ WorkspaceController::WorkspaceController(MainWindow &w, ExecutionPanel &e, Histo
     });
     connect(&execution, &ExecutionPanel::resultsRequested, this, &WorkspaceController::openResults);
     connect(&execution, &ExecutionPanel::runFinished, this, &WorkspaceController::runFinished);
+    connect(&results, &ResultsPanel::recalculationRequested, this,
+            &WorkspaceController::prepareRecalculation);
     connect(&results, &ResultsPanel::loaded, this, &WorkspaceController::resultLoaded);
     connect(&window, &MainWindow::panelChanged, this, [this] {
         if (window.currentPanel() == &results)
@@ -65,5 +69,22 @@ void WorkspaceController::resultLoaded() {
     summaryDirectory.clear();
     if (window.currentPanel() == &results)
         execution.resultsShown();
+}
+void WorkspaceController::prepareRecalculation(const QString &directory, const Document &geometry) {
+    if (window.hasCandidate() || window.chemistryRunning() || execution.running())
+        fail(tr("候補・分子処理・実行中の計算を終了してから再計算を準備してください。"));
+    window.checkMcpPath(directory);
+    for (const auto *file : {"run.json", "project.molforma.json", "input.nw"})
+        window.checkMcpPath(QDir(directory).filePath(file));
+    const auto original = historyDocument(directory);
+    auto candidate = original;
+    applyResultGeometry(candidate, geometry); // Check atom order and fixed atoms before replacing anything.
+    if (!window.replaceUnsavedDocument(original))
+        return;
+    window.edit(tr("計算結果の構造を適用"), [&](Document &d) { applyResultGeometry(d, geometry); }, true);
+    window.showPanel(0);
+    window.statusBar()->showMessage(
+        tr("保存した条件で再計算を準備しました。構造と条件を確認して新しいジョブを実行してください。"),
+        15000);
 }
 } // namespace mf

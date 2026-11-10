@@ -74,6 +74,9 @@ QStringList nwchemOutputFiles(const Document &d, const NwchemValidation &v) {
         files << nwchemPermanentFile(d, nwchemSettings(d)["start"].toString() + ".molden");
     if (a["cube_output"].toBool())
         files << nwchemPermanentFile(d, cubeName(d, v));
+    for (const auto &kind : {QString("esp"), QString("efield")})
+        if (nwchemSettings(d)["prop_" + kind + "_grid"].toBool())
+            files << nwchemSettings(d)["start"].toString() + "_" + kind + "_grid.cube";
     return files;
 }
 void validateNwchemOutput(const Document &d, NwchemValidation &v) {
@@ -148,8 +151,9 @@ NwchemGeneratedInput nwchemOutputLines(const Document &d, const NwchemValidation
     if (calculation.frequencies())
         out.advancedBlock("task", "task " + theory + " energy\n", {"molden_output", "cube_output"},
                           "visualization");
-    const bool properties =
-        s["prop_mulliken"].toBool() || s["prop_nmr"].toBool() || s["prop_polarizability"].toBool();
+    const bool properties = s["prop_mulliken"].toBool() || s["prop_nmr"].toBool() ||
+                            s["prop_polarizability"].toBool() || s["prop_epr"].toBool() ||
+                            s["prop_esp_grid"].toBool() || s["prop_efield_grid"].toBool();
     if (a["molden_output"].toBool()) {
         if (properties)
             out.advancedBlock("unset", "\nunset prop:*\n", {"molden_output"}, "visualization");

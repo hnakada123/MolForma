@@ -1,0 +1,25 @@
+start epr_test
+memory total 128 mb
+geometry units angstrom noautoz nocenter noautosym
+ C 0 0 0
+ H 1.08 0 0
+ H -.54 .935307 0
+ H -.54 -.935307 0
+end
+basis spherical
+ * library 6-31g
+end
+relativistic
+ zora on
+end
+dft
+ odft
+ mult 2
+ xc b3lyp
+ grid fine
+end
+property
+ gshift
+ hyperfine
+end
+task dft property

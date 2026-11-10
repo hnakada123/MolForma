@@ -298,7 +298,7 @@ void MoleculeView::renderScene() {
         positionsDirty = false;
     }
     if (surfaceDirty) {
-        renderer->setSurface(surface);
+        renderer->setSurface(surface, surfaceColors);
         surfaceDirty = false;
     }
     renderer->setSurfaceStyle(positiveSurface, negativeSurface, surfaceOpacity);
@@ -405,9 +405,11 @@ void MoleculeView::setSelection(const Ids &ids) {
     selectedIds = QSet<QString>(ids.begin(), ids.end());
     scheduleOverlay();
 }
-void MoleculeView::setSurface(const QVector<SurfaceTriangle> &triangles) {
+void MoleculeView::setSurface(const QVector<SurfaceTriangle> &triangles, const QVector<QColor> &colors) {
     // Result-frame navigation can supply the same implicitly shared mesh repeatedly.
-    if (surface.constData() != triangles.constData() || surface.size() != triangles.size()) {
+    if (surface.constData() != triangles.constData() || surface.size() != triangles.size() ||
+        surfaceColors != colors) {
+        surfaceColors = colors;
         surface = triangles;
         surfaceDirty = true;
     }
@@ -657,7 +659,8 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             const auto &t = surface.at(item.index);
             const Vec smooth = t.na + t.nb + t.nc;
             const Vec normal = r * (smooth.isZero() ? (t.b - t.a).cross(t.c - t.a) : smooth).normalized();
-            QColor color = surfaceColor(t.positive);
+            QColor color =
+                surfaceColors.size() == surface.size() ? surfaceColors[item.index] : surfaceColor(t.positive);
             color = color.lighter(80 + qRound(30 * std::abs(normal.z())));
             color.setAlpha(surfaceOpacity);
             p.setPen(Qt::NoPen);
@@ -974,6 +977,9 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
         p.setPen(QColor("#4b2a66"));
         p.drawText(placed, Qt::AlignCenter, text);
     }
+    p.setPen(QPen(QColor("#9c6ab0"), 1.5));
+    for (const auto &[a, b] : overlayLines)
+        p.drawLine(project(a), project(b));
     for (const auto &[from, vector] : arrows) {
         const QPointF a = project(from), b = project(from + vector), v = b - a;
         const double length = QLineF(a, b).length();

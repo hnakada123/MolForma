@@ -13,6 +13,7 @@
 #include "nwchem/nwchem_import.h"
 #include "ui/calculation_panel.h"
 #include "ui/candidate_controls.h"
+#include "ui/conformer_set_dialog.h"
 #include "ui/coordinates_panel.h"
 #include "ui/editor_chrome.h"
 #include "ui/execution_form.h"
@@ -597,6 +598,9 @@ void MainWindow::buildMenus() {
         if (ok)
             runWorker("conformers", {}, {}, count);
     })->setObjectName("conformerAction");
+    action(toolsMenu, tr("配座セット…"), {}, "newman", [this] {
+        conformerSetDialog()->show();
+    })->setObjectName("conformerSetAction");
     auto *regenerate = action(toolsMenu, tr("3Dを再生成"), {}, "cube", [this] { runWorker("regenerate"); });
     regenerate->setObjectName("regenerateAction");
     regenerate->setToolTip(tr("結合から3D座標を作り直し、力場で整えます。結果は候補として表示します。"));
@@ -660,6 +664,7 @@ void MainWindow::buildMenus() {
         QMessageBox::about(
             this, "MolForma",
             tr("MolForma %1\nNWChem向けの分子作成・計算入力・実行・結果表示（Qt6 / C++）\n"
+               "作者: Hiroshi Nakada\n"
                "ライセンス: GNU GPL バージョン2以降\n"
                "化学ファイル・力場: Open Babel\n立体判定・残基認識（RDKit）: %2\n3D描画: %3")
                 .arg(MOLFORMA_VERSION, hasStereochemistryBackend() ? tr("有効") : tr("無効"),
@@ -1039,24 +1044,23 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
     chemistry.start({mode, smiles, moving, count, mcp.depth > 0});
     statusBar()->showMessage(tr("構造を生成・整形しています…"));
 }
+ConformerSetDialog *MainWindow::conformerSetDialog() {
+    if (!conformerSet)
+        conformerSet =
+            new ConformerSetDialog(this, [this](const QVector<Document> &geometries, bool frequencies) {
+                return execution->enqueueGeometries(geometries, frequencies);
+            });
+    return conformerSet;
+}
 void MainWindow::chemistryReady(const ChemistryResult &result) {
     const auto &request = result.request;
     int chosen = 0;
-    if (request.mode == "conformers" && !request.remote && result.conformers.size() > 1) {
-        const double lowest = result.conformers[0].energy;
-        QStringList labels;
-        for (int i = 0; i < result.conformers.size(); ++i)
-            labels << tr("%1: ΔE %2 kcal/mol（力場エネルギー %3）")
-                          .arg(i + 1)
-                          .arg(result.conformers[i].energy - lowest, 0, 'f', 2)
-                          .arg(result.conformers[i].energy, 0, 'f', 2);
-        bool ok;
-        const auto item = QInputDialog::getItem(
-            this, tr("配座探索"), tr("%1個の配座が見つかりました。候補にする配座").arg(labels.size()), labels,
-            0, false, &ok);
-        if (!ok)
-            fail(tr("配座の選択を取り消しました。"));
-        chosen = labels.indexOf(item);
+    if (request.mode == "conformers" && !request.remote) {
+        auto *dialog = conformerSetDialog();
+        dialog->setConformers(result.base, result.conformers);
+        dialog->show();
+        dialog->raise();
+        return;
     }
     const bool proposed = chemistry.propose(result, chosen);
     if (request.mode == "smiles")
@@ -1415,6 +1419,14 @@ void MainWindow::showManual() {
     dialog.exec();
 }
 void MainWindow::closeEvent(QCloseEvent *e) {
+    if (execution->calculationQueue().pending() &&
+        QMessageBox::question(this, tr("計算キュー"),
+                              tr("待機中の計算があります。入力一式を履歴に残して終了しますか？"
+                                 "次の起動時には自動再開しません。"),
+                              QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {
+        e->ignore();
+        return;
+    }
     if (execution->running() &&
         QMessageBox::question(this, tr("NWChemを実行中"),
                               tr("実行中の計算を停止してウィンドウを閉じますか？ログは保存先に残ります。"),

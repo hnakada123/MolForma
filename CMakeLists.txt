@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(MolForma VERSION 1.0.0 LANGUAGES C CXX)
+project(MolForma VERSION 1.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -65,9 +65,12 @@ endif()
 
 find_package(Threads REQUIRED)
 add_library(molforma_results STATIC
+    src/results/field_analysis.cpp
+    src/results/energy_profile.cpp
     src/results/molden_orbitals.cpp
     src/results/result_loader.cpp
     src/results/result_summary.cpp
+    src/results/spectrum.cpp
     src/results/results.cpp)
 target_link_libraries(molforma_results PUBLIC molforma_model PRIVATE Threads::Threads)
 
@@ -79,6 +82,8 @@ add_library(molforma_nwchem STATIC
     src/nwchem/nwchem_geometry.cpp
     src/nwchem/nwchem_import.cpp
     src/nwchem/nwchem_output.cpp
+    src/nwchem/nwchem_queue.cpp
+    src/nwchem/run_diagnostics.cpp
     src/nwchem/run_state.cpp)
 target_link_libraries(molforma_nwchem PUBLIC molforma_model PRIVATE molforma_editing molforma_results ${MOLFORMA_OPENBABEL})
 if(MSVC)
@@ -95,6 +100,8 @@ foreach(target molforma_model molforma_editing molforma_results molforma_nwchem 
     target_compile_options(${target} PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 endforeach()
 add_library(molforma_ui STATIC
+    src/ui/conformer_set_dialog.cpp
+    src/ui/energy_profile_dialog.cpp
     src/ui/calculation_panel.cpp
     src/ui/coordinates_panel.cpp
     src/ui/diagnostics_list.cpp
@@ -114,6 +121,8 @@ add_library(molforma_ui STATIC
     src/ui/pdb_download.cpp
     src/ui/periodic_table.cpp
     src/ui/result_charts.cpp
+    src/ui/property_geometry_view.cpp
+    src/ui/spectroscopy_view.cpp
     src/ui/results_panel.cpp
     src/ui/structure_import.cpp
     src/ui/workspace_controller.cpp

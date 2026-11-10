@@ -62,6 +62,9 @@ struct ResultData {
     QVector<SurfaceTriangle> surface;
     QVector<int> datasets;
     std::array<int, 3> grid{};
+    QVector<double> values; // Selected CUBE dataset; bounded to two million values.
+    Vec gridOrigin = Vec::Zero();
+    Mat gridAxes = Mat::Identity();
     int dataset = 0;
     double isovalue = .03, minimum = 0, maximum = 0;
     bool orbitalBasis = false;
@@ -92,7 +95,7 @@ class NwchemEnergySummary {
         double first = 0, last = 0, corrected = 0, supermolecular = 0, error = 0, nwchemError = 0,
                monomerSum = qQNaN(); // The monomers in their own bases.
         QString firstMethod, lastMethod;
-        bool energy = false, frequency = false, bsse = false;
+        bool energy = false, frequency = false, bsse = false, raman = false;
         // The energies since the monomers were listed (or since the last correction), for the sum.
         int monomers = 0;
         QVector<QPair<QString, double>> since;
@@ -138,6 +141,8 @@ class NwchemLog {
     bool busy = false; // The current task has printed something since its input banner.
     bool recognized = false, fatal = false;
     QString abort, orbitalSpin, ircDirection, shieldingElement;
+    QString responseGauge;
+    double responseFrequency = 0;
     QStringList recent; // The lines before this one, for the message that precedes an error.
     QVector<ResultOrbital> orbitals;
     QJsonArray thermochemistry, ircPoints, shielding;

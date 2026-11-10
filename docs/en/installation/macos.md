@@ -2,9 +2,9 @@
 
 How to build MolForma from source on macOS, make a disk image (DMG) of the application (`MolForma.app`) and install it into the Applications folder. The libraries for the build and NWChem for calculations come from the package manager [Homebrew](https://brew.sh/).
 
-These steps are for macOS 27 on Apple silicon Macs (arm64) and MolForma 1.0.0. They were checked on 2026-11-04 with macOS 27.0.1 and Homebrew 7.0.10 (see [Verified configuration](#verified-configuration)).
+These steps are for macOS 27 on Apple silicon Macs (arm64) and MolForma 1.1.0. The procedure was checked with MolForma 1.0.0 on 2026-11-04 with macOS 27.0.1 and Homebrew 7.0.10 (see [Verified configuration](#verified-configuration)).
 
-MolForma has no package in Homebrew (as of 2026-11-04). You build it from the source on GitHub and make a DMG (`MolForma-1.0.0-arm64.dmg`) with CPack, which comes with CMake. `MolForma.app` holds all the libraries it uses (Qt, Open Babel, RDKit, VTK and others) and loads no library from Homebrew's folders. Once installed, it keeps working when Homebrew's libraries are upgraded or removed. NWChem is not included; install it separately.
+MolForma has no package in Homebrew (as of 2026-11-04). You build it from the source on GitHub and make a DMG (`MolForma-1.1.0-arm64.dmg`) with CPack, which comes with CMake. `MolForma.app` holds all the libraries it uses (Qt, Open Babel, RDKit, VTK and others) and loads no library from Homebrew's folders. Once installed, it keeps working when Homebrew's libraries are upgraded or removed. NWChem is not included; install it separately.
 
 A ready-built DMG is in the ZIP on [Releases](https://github.com/hnakada123/MolForma/releases) (`MolForma-<version>-macos-arm64.zip`). On an Apple silicon Mac with macOS 27 or later, unpack the ZIP and go to [6. Install](#6-install). The check when opening it the first time is described in [Using it on other Macs and distributing it](#using-it-on-other-macs-and-distributing-it). For calculations, also do [3. Install NWChem](#3-install-nwchem). To make it yourself, follow the steps below.
 
@@ -126,7 +126,7 @@ cd build
 cpack -G DragNDrop
 ```
 
-In a minute or two, `build` holds `MolForma-1.0.0-arm64.dmg` (about 85 MB). CPack does the following, then puts `MolForma.app` and a link to the Applications folder into the DMG:
+In a minute or two, `build` holds `MolForma-1.1.0-arm64.dmg` (about 85 MB). CPack does the following, then puts `MolForma.app` and a link to the Applications folder into the DMG:
 
 1. It assembles `MolForma.app`: the executable, the icon, `Info.plist` (with the file types and more), Open Babel's format plugins and force-field data, and Qt's Japanese translation.
 2. Qt's `macdeployqt` copies Qt's frameworks and plugins.
@@ -141,7 +141,7 @@ To make only `MolForma.app` without a DMG, run `cmake --install build --prefix <
 Open the DMG and drag `MolForma` to the Applications folder. The DMG also opens from Terminal:
 
 ```sh
-open MolForma-1.0.0-arm64.dmg
+open MolForma-1.1.0-arm64.dmg
 ```
 
 When copying is done, eject the DMG with the eject button beside "MolForma" in Finder's sidebar. You can delete the DMG unless you want it for other Macs.
@@ -159,7 +159,7 @@ If `~/.local/bin` is not in PATH, add it with `echo 'export PATH="$HOME/.local/b
 
 Start "MolForma" from Launchpad or the Applications folder. The interface language follows the system language ("Language (after restart)" in Preferences (⌘,) switches it; it takes effect after a restart). On macOS, the "Preferences…" and "About MolForma" items may move to the "MolForma" menu of the menu bar, depending on the interface language.
 
-1. Open "About MolForma" (in the "Help" menu or the "MolForma" menu) and check that the version is "MolForma 1.0.0" and, if you installed RDKit and VTK, that it shows "Stereochemistry and residue recognition (RDKit): Enabled" and "3D rendering: VTK (OpenGL)".
+1. Open "About MolForma" (in the "Help" menu or the "MolForma" menu) and check that the version is "MolForma 1.1.0" and, if you installed RDKit and VTK, that it shows "Stereochemistry and residue recognition (RDKit): Enabled" and "3D rendering: VTK (OpenGL)".
 2. Open "3 Run settings" and check that `/opt/homebrew/bin/nwchem` and `/opt/homebrew/bin/mpirun`, found through PATH, are shown under the "NWChem executable" and "MPI launcher" fields. If they are not, see [Troubleshooting](#troubleshooting).
 3. Try a calculation on a small molecule. The steps are in [recipe 1 Building from atoms and bonds](../recipes/atoms_and_bonds.md).
 

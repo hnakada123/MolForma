@@ -504,7 +504,8 @@ QJsonObject McpGui::state() const {
             {"tab", window.currentPanelIndex()},
             {"chemistryRunning", window.chemistryRunning()},
             {"status", window.statusBar()->currentMessage()},
-            {"calculation", calculationJson(run, window.executionPanel()->savedDirectory())},
+            {"calculation", calculationJson(run, window.executionPanel()->savedDirectory(),
+                                            &window.executionPanel()->calculationQueue())},
             {"results",
              QJsonObject{{"loading", r->loading()},
                          {"source", r->result().source},
@@ -1132,7 +1133,11 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
         }
     } else if (name == "calculation") {
         const auto action = args["action"].toString();
-        if (action == "start")
+        if (calculationQueueAction(window.executionPanel()->calculationQueue(), args)) {
+            // Queue changes are synchronous; its runs are followed through get_app_state.
+        } else if (action == "enqueue")
+            window.executionPanel()->enqueueCalculation();
+        else if (action == "start")
             window.executionPanel()->startCalculation();
         else if (action == "stop")
             window.executionPanel()->stopCalculation();

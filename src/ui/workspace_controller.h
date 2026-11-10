@@ -2,6 +2,7 @@
 #pragma once
 #include <QObject>
 namespace mf {
+class Document;
 class MainWindow;
 class ExecutionPanel;
 class HistoryPanel;
@@ -23,5 +24,6 @@ class WorkspaceController : public QObject {
     void openResults(const QString &directory);
     void runFinished(const QString &directory, bool open);
     void resultLoaded();
+    void prepareRecalculation(const QString &directory, const Document &geometry);
 };
 } // namespace mf

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "nwchem/nwchem_execution.h"
+#include "nwchem/nwchem_queue.h"
 #include "results/results.h"
 #include <optional>
 
@@ -29,7 +30,9 @@ McpToolSpec resultsTool();
 // confirm: Claude Code asks a person before every call (when MCP may choose the program).
 McpToolSpec calculationTool(const QString &description, const QJsonObject &output, bool confirm);
 
-QJsonObject calculationJson(const NwchemRun &run, const QString &savedBundle);
+QJsonObject calculationJson(const NwchemRun &run, const QString &savedBundle,
+                            const NwchemQueue *queue = nullptr);
+bool calculationQueueAction(NwchemQueue &queue, const QJsonObject &args);
 // get_results: summary plus one paginated section of the loaded result.
 QJsonObject resultsJson(const ResultData &result, const QJsonObject &args, QJsonObject summary);
 

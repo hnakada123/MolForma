@@ -85,11 +85,11 @@ QString tagElement(QString tag, bool &ghost) {
     const auto one = tag.left(1).toUpper();
     return valid(one) ? one : QString();
 }
-const QStringList blockNames{"geometry", "basis",    "ecp",   "so",      "scf",          "dft",     "mp2",
-                             "ccsd",     "tce",      "tddft", "cosmo",   "relativistic", "driver",  "freq",
-                             "vib",      "property", "esp",   "bsse",    "constraints",  "dplot",   "python",
-                             "nwpw",     "qmmm",     "md",    "prepare", "mepgs",        "stepper", "hessian",
-                             "bq",       "smd",      "neb",   "string",  "fragment",     "rt_tddft"};
+const QStringList blockNames{
+    "geometry",    "basis", "ecp",          "so",     "scf",    "dft",      "mp2",      "ccsd",  "tce",
+    "tddft",       "cosmo", "relativistic", "driver", "freq",   "vib",      "property", "esp",   "bsse",
+    "constraints", "dplot", "python",       "nwpw",   "qmmm",   "md",       "prepare",  "mepgs", "stepper",
+    "hessian",     "bq",    "smd",          "neb",    "string", "fragment", "rt_tddft", "raman"};
 } // namespace
 QStringList nwchemStatements(const QString &text) {
     return statements(text);
@@ -103,6 +103,9 @@ NwchemImport importNwchemInput(const QString &text) {
     QStringList tasks;
     bool haveGeometry = false;
     int multiplicity = 0;
+    double responseFrequency = 0;
+    QVector<double> ordWavelengths;
+    bool normalRaman = true;
     QJsonObject overrides;
     QSet<int> fixedAtoms;
     int fixedBudget = 1000000;   // Atom numbers expanded from ranges, however often they repeat.
@@ -341,6 +344,8 @@ NwchemImport importNwchemInput(const QString &text) {
                 const auto option = row.value(0).toLower();
                 if (option == "nroots")
                     settings["tddft_roots"] = row.value(1).toInt();
+                else if (option == "cdspectrum")
+                    settings["tddft_cdspectrum"] = true;
                 else if (option == "cis")
                     settings["tddft_tda"] = true;
                 else if (option == "notriplet" || option == "singlet")
@@ -377,15 +382,52 @@ NwchemImport importNwchemInput(const QString &text) {
                     settings["opt_convergence"] = option;
             }
         } else if (keyword == "property") {
+            const auto propertyText = body.join('\n');
+            if (propertyText.contains(
+                    QRegularExpression("\\bgshift\\b", QRegularExpression::CaseInsensitiveOption)) &&
+                propertyText.contains(
+                    QRegularExpression("\\bhyperfine\\b", QRegularExpression::CaseInsensitiveOption)))
+                settings["prop_epr"] = true;
+            double blockFrequency = 0;
+            QString gridKind;
+            QStringList grid;
+            bool giao = false;
             for (const auto &line : body) {
-                const auto option = words(line).value(0).toLower();
+                const auto tokens = words(line);
+                const auto option = tokens.value(0).toLower();
+                if (option == "giao")
+                    giao = true;
+                if (option == "esp" || option == "efield")
+                    gridKind = option;
+                if (option == "grid")
+                    grid = tokens;
+                if (option == "response" || option == "aoresponse")
+                    number(tokens.value(2), blockFrequency);
                 if (option == "mulliken")
                     settings["prop_mulliken"] = true;
                 else if (option == "shielding")
                     settings["prop_nmr"] = true;
-                else if (option == "aoresponse")
-                    settings["prop_polarizability"] = true;
+                else if (option == "aoresponse" || option == "response") {
+                    const auto tokens = words(line);
+                    if (number(tokens.value(2), responseFrequency) && responseFrequency == 0)
+                        settings["prop_polarizability"] = true;
+                }
             }
+            if (giao && blockFrequency > 0)
+                ordWavelengths.append(45.5633525316 / blockFrequency);
+            if (!gridKind.isEmpty() && !grid.isEmpty()) {
+                settings["prop_" + gridKind + "_grid"] = true;
+                const int pad = grid.indexOf("pad"), ngrid = grid.indexOf("ngrid");
+                double padding;
+                if (pad >= 0 && number(grid.value(pad + 1), padding))
+                    settings["property_grid_padding"] = padding;
+                if (ngrid >= 0)
+                    settings["property_grid_points"] = grid.value(ngrid + 1).toInt();
+            }
+        } else if (keyword == "raman") {
+            for (const auto &line : body)
+                if (words(line).value(0).toLower() == "resonance")
+                    normalRaman = false;
         } else if (keyword == "constraints") {
             for (const auto &line : body) {
                 const auto row = words(line);
@@ -428,6 +470,22 @@ NwchemImport importNwchemInput(const QString &text) {
     }
     if (d.atoms.isEmpty())
         fail(tr("NWChem入力にCartesian座標のGEOMETRYがありません。"));
+    if (ordWavelengths.size() >= 2 && ordWavelengths.size() <= 50) {
+        std::sort(ordWavelengths.begin(), ordWavelengths.end());
+        bool uniform = ordWavelengths.last() > ordWavelengths.first();
+        for (int i = 0; i < ordWavelengths.size(); ++i)
+            uniform &= std::abs(ordWavelengths[i] -
+                                (ordWavelengths.first() + (ordWavelengths.last() - ordWavelengths.first()) *
+                                                              i / (ordWavelengths.size() - 1))) < 1e-4;
+        if (uniform) {
+            settings["prop_ord"] = true;
+            settings["ord_start_nm"] = ordWavelengths.first();
+            settings["ord_end_nm"] = ordWavelengths.last();
+            settings["ord_points"] = int(ordWavelengths.size());
+        } else
+            notes << tr("等間隔でないORD波長列は取り込みません。");
+    } else if (!ordWavelengths.isEmpty())
+        notes << tr("ORD波長列は2〜50点を取り込めます。");
     // Tasks: theory and operation; optimization followed by frequencies becomes one choice.
     QStringList operations;
     QString theory;
@@ -441,6 +499,18 @@ NwchemImport importNwchemInput(const QString &text) {
         if (first == "tddft") {
             settings["tddft"] = true;
             theory = "dft";
+            continue;
+        }
+        if (first == "dft" && operation == "raman" && normalRaman) {
+            settings["prop_raman"] = true;
+            if (responseFrequency > 0)
+                settings["raman_wavelength_nm"] = 45.5633525316 / responseFrequency;
+            if (!operations.contains("frequencies"))
+                operations << "frequencies";
+            if (theory.isEmpty())
+                theory = "dft";
+            if (parts.contains("numerical"))
+                settings["numerical_frequencies"] = true;
             continue;
         }
         if (!QStringList{"scf", "dft", "mp2", "ccsd", "ccsd(t)"}.contains(first)) {

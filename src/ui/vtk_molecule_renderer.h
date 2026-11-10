@@ -17,7 +17,7 @@ class VtkMoleculeRenderer : public QVTKOpenGLNativeWidget {
                      const QVector<std::pair<int, int>> &trace = {});
     // The same atoms (as the last setMolecule) at new positions: a drag or a vibration frame.
     void setPositions(const Document &document);
-    void setSurface(const QVector<SurfaceTriangle> &triangles);
+    void setSurface(const QVector<SurfaceTriangle> &triangles, const QVector<QColor> &colors = {});
     void setSurfaceStyle(bool positive, bool negative, int opacity);
     void setCamera(const Mat &rotation, const Vec &center, double scale, const QPointF &pan);
     bool draw();

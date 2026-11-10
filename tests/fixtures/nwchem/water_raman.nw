@@ -1,0 +1,22 @@
+start raman_test
+memory total 128 mb
+geometry units angstrom noautoz nocenter noautosym
+ O 0 0 0
+ H .758 0 .504
+ H -.758 0 .504
+end
+basis
+ * library sto-3g
+end
+dft
+ xc slater vwn_5
+ grid coarse
+end
+property
+ response 1 0.08564539912
+end
+raman
+ normal
+ lorentzian
+end
+task dft raman

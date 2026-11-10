@@ -2,7 +2,7 @@
 
 MolFormaをArch Linuxのパッケージとして作り、pacmanでインストールする手順です。リポジトリの `packaging/arch/PKGBUILD` から `makepkg` でパッケージ `molforma-git` を作ります。依存パッケージは公式リポジトリ（core・extra）から自動で入り、計算に使うNWChemはAURから入れます。
 
-対象はArch Linux（x86-64）とMolForma 1.0.0です。2026-10-28に手順を確認しました（[確認した構成](#確認した構成)）。
+対象はArch Linux（x86-64）とMolForma 1.1.0です。2026-10-28にMolForma 1.0.0の手順を確認しました（[確認した構成](#確認した構成)）。
 
 MolFormaのパッケージは公式リポジトリにもAURにもありません（2026-10-28時点）。PKGBUILDはGitHubのmainブランチのソースを取得してビルドします。インストールしたパッケージはpacmanで管理するので、削除は `pacman -R` で行えます。
 
@@ -77,7 +77,7 @@ makepkg -si
 1. 足りない依存パッケージをpacmanで入れます（`-s`）。管理者のパスワードを聞かれます。
 2. GitHubのmainブランチのソースを取得してビルドします。途中で `-- MolForma rendering: VTK 9.7.1 (Qt6), with QPainter fallback` の行が出れば、VTKで描画する構成です。CMakeがVTKやRDKitを使えない場合は、`==> ERROR: CMake cannot use VTK` などと出てここで止まります（[困ったとき](#困ったとき)）。
 3. テストを実行します。NWChem・ネットワークは使いません。省く場合は `makepkg -si --nocheck` とします。
-4. パッケージ（`molforma-git-1.0.0.r<コミット数>.g<コミットID>-1-x86_64.pkg.tar.zst`）を作り、pacmanでインストールします（`-i`）。
+4. パッケージ（`molforma-git-1.1.0.r<コミット数>.g<コミットID>-1-x86_64.pkg.tar.zst`）を作り、pacmanでインストールします（`-i`）。
 
 ビルドはCPUのコアをすべて使います。メモリーが足りない場合は、`CMAKE_BUILD_PARALLEL_LEVEL=2 makepkg -si` のように同時に動かすコンパイルの数を減らしてください。
 
@@ -97,7 +97,7 @@ makepkg -si
 
 端末で `molforma` を実行するか、アプリケーションメニューの「MolForma」を選びます。KDE Plasmaでメニューにすぐ出ない場合は `kbuildsycoca6` を実行します。表示言語はシステムの言語に従います（「編集 → 環境設定」の「表示言語 / Language」で切り替え、再起動後に反映）。
 
-1. 「ヘルプ → MolFormaについて」を開き、版が「MolForma 1.0.0」で、「立体判定・残基認識（RDKit）: 有効」「3D描画: VTK（OpenGL）」と表示されることを確認します。OpenGLを使えない環境では「3D描画: QPainter（CPU）」になります。
+1. 「ヘルプ → MolFormaについて」を開き、版が「MolForma 1.1.0」で、「立体判定・残基認識（RDKit）: 有効」「3D描画: VTK（OpenGL）」と表示されることを確認します。OpenGLを使えない環境では「3D描画: QPainter（CPU）」になります。
 2. 「3 実行設定」を開き、「NWChem実行ファイル」と「MPIランチャー」の欄の下に、PATHで見つかった `/usr/bin/nwchem`・`/usr/bin/mpirun` が表示されることを確認します。
 3. 小さな分子で計算してみます。手順は[題材1 原子と結合から組む](../recipes/atoms_and_bonds.md)にあります。
 

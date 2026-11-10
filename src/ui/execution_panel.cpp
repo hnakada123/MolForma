@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/execution_panel.h"
+#include "editing/coordinates.h"
 #include "model/i18n.h"
 #include "nwchem/nwchem.h"
+#include "nwchem/run_diagnostics.h"
 #include "ui/editor_chrome.h"
 #include "ui/execution_form.h"
 #include "ui/main_window.h"
@@ -109,7 +111,8 @@ QString endedMessage(RunState state) {
 }
 } // namespace
 
-ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner), run(this) {
+ExecutionPanel::ExecutionPanel(MainWindow *owner)
+    : QWidget(owner), window(owner), run(this), queue(run, this) {
     setObjectName("executionTab");
     setAttribute(Qt::WA_StyledBackground);
     run.setObjectName("nwchemRun");
@@ -152,6 +155,22 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner) : QWidget(owner), window(owner
                            "（別のPCで実行するときなど）。"));
     tools->addWidget(prepare);
     connect(prepare, &QPushButton::clicked, this, [this] { window->safe([this] { saveBundle(); }); });
+    enqueue = new QPushButton(tr("キューに追加"));
+    enqueue->setObjectName("executionEnqueue");
+    enqueue->setToolTip(tr("現在の分子と条件を保存し、順番に実行する計算へ登録します。"));
+    tools->addWidget(enqueue);
+    connect(enqueue, &QPushButton::clicked, this, [this] {
+        window->safe([this] {
+            if (!enqueueCalculation().isEmpty())
+                showQueue();
+        });
+    });
+    queueButton = new QPushButton(tr("計算キュー"));
+    queueButton->setObjectName("executionQueue");
+    tools->addWidget(queueButton);
+    connect(queueButton, &QPushButton::clicked, this, &ExecutionPanel::showQueue);
+    connect(&queue, &NwchemQueue::changed, this,
+            [this] { queueButton->setText(tr("計算キュー（待機 %n 件）", nullptr, queue.pending())); });
     auto *split = new QSplitter;
     split->setChildrenCollapsible(false);
     outer->addWidget(split, 1);
@@ -392,6 +411,18 @@ void ExecutionPanel::buildRunPanel() {
     state->setWordWrap(true);
     state->setTextFormat(Qt::PlainText);
     detail->addWidget(state);
+    diagnosisSetting = new QPushButton(tr("診断に関係する設定を開く"));
+    diagnosisSetting->setObjectName("executionDiagnosisSetting");
+    detail->addWidget(diagnosisSetting);
+    connect(diagnosisSetting, &QPushButton::clicked, this, [this] {
+        for (const auto &value : run.plan().manifest["diagnostics"].toArray()) {
+            const auto item = value.toObject();
+            if (!item["setting"].toString().isEmpty()) {
+                window->showSetting(item["tab"].toInt(), item["setting"].toString());
+                break;
+            }
+        }
+    });
     progress = new RunProgress("execution", 4);
     detail->addWidget(progress);
     detail->addStretch();
@@ -558,6 +589,14 @@ void ExecutionPanel::startCalculation() {
     if (window->hasCandidate() || window->chemistryRunning() || run.active())
         fail(tr("候補・整形・実行中は新しい計算を開始できません。"));
     commitPendingEdits();
+    if (!authorizeCalculation())
+        return;
+    closeOnResults = false;
+    logChannel->setCurrentIndex(0);
+    run.start(window->document(), baseDirectory());
+    showRunPanel();
+}
+bool ExecutionPanel::authorizeCalculation() {
     const auto *policy = window->accessPolicy();
     const bool remote = window->remoteRequest();
     if (policy && remote)
@@ -571,13 +610,146 @@ void ExecutionPanel::startCalculation() {
                     "自動保存の読込による）。MCPからはこの設定で実行できません。"
                     "利用者が「2 計算条件」「3 実行設定」タブで設定を確認してください。"));
         if (!confirmExecution())
-            return;
+            return false;
         window->trustCurrentExecution();
     }
-    closeOnResults = false;
-    logChannel->setCurrentIndex(0);
-    run.start(window->document(), baseDirectory());
-    showRunPanel();
+    return true;
+}
+QString ExecutionPanel::enqueueCalculation() {
+    if (window->hasCandidate() || window->chemistryRunning())
+        fail(tr("候補を確定・取消し、整形の終了後に実行できます。"));
+    commitPendingEdits();
+    if (!authorizeCalculation())
+        return {};
+    const auto document = window->document();
+    const auto base = baseDirectory();
+    std::function<void()> check;
+    if (const auto *policy = window->accessPolicy(); policy && window->remoteRequest())
+        check = [policy = *policy, document, base] { policy.checkRun(document, base); };
+    const auto id = queue.enqueue(document, base, check);
+    emit bundleChanged(queue.entries().last().plan.directory);
+    return id;
+}
+void ExecutionPanel::showQueue() {
+    if (auto *existing = findChild<QDialog *>("calculationQueueDialog")) {
+        existing->show();
+        existing->raise();
+        return;
+    }
+    auto *dialog = new QDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setObjectName("calculationQueueDialog");
+    dialog->setWindowTitle(tr("計算キュー"));
+    dialog->resize(820, 420);
+    auto *layout = new QVBoxLayout(dialog);
+    auto *hint = new QLabel(tr("登録時の分子・条件で1件ずつ実行します。一時停止は次の計算から有効です。"
+                               "アプリ終了後は自動再開せず、待機分の入力一式は履歴に残ります。"));
+    hint->setWordWrap(true);
+    layout->addWidget(hint);
+    auto *table = new QTableWidget(0, 4);
+    table->setObjectName("calculationQueueTable");
+    table->setHorizontalHeaderLabels({tr("計算名"), tr("状態"), tr("保存先"), tr("詳細")});
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setSelectionMode(QAbstractItemView::SingleSelection);
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    table->horizontalHeader()->setStretchLastSection(true);
+    layout->addWidget(table, 1);
+    auto *controls = new QHBoxLayout;
+    layout->addLayout(controls);
+    auto *resume = new QPushButton(tr("キューを開始・再開"));
+    resume->setObjectName("calculationQueueResume");
+    auto *pause = new QPushButton(tr("キューを一時停止"));
+    pause->setObjectName("calculationQueuePause");
+    auto *up = new QPushButton(tr("上へ"));
+    auto *down = new QPushButton(tr("下へ"));
+    auto *cancel = new QPushButton(tr("登録を取消"));
+    auto *stop = new QPushButton(tr("実行中を停止"));
+    for (auto *button : {resume, pause, up, down, cancel, stop})
+        controls->addWidget(button);
+    auto *stopOnFailure = new QCheckBox(tr("失敗・停止・時間切れでキューを一時停止"));
+    stopOnFailure->setObjectName("calculationQueueStopOnFailure");
+    layout->addWidget(stopOnFailure);
+    const auto selected = [table] {
+        auto *item = table->item(table->currentRow(), 0);
+        return item ? item->data(Qt::UserRole).toString() : QString();
+    };
+    const auto update = [this, table, selected, resume, pause, stop, stopOnFailure] {
+        const auto id = selected();
+        table->setRowCount(queue.entries().size());
+        int row = 0;
+        for (const auto &entry : queue.entries()) {
+            const QStringList values{
+                entry.name, entry.state == RunState::Prepared ? tr("待機中") : runStateName(entry.state),
+                entry.plan.directory, entry.error};
+            for (int column = 0; column < values.size(); ++column) {
+                auto *cell = new QTableWidgetItem(values[column]);
+                cell->setToolTip(values[column]);
+                table->setItem(row, column, cell);
+            }
+            table->item(row, 0)->setData(Qt::UserRole, entry.id);
+            if (entry.id == id)
+                table->selectRow(row);
+            ++row;
+        }
+        resume->setEnabled(queue.paused() && queue.pending());
+        pause->setEnabled(!queue.paused());
+        stop->setEnabled(run.active());
+        const QSignalBlocker blocker(stopOnFailure);
+        stopOnFailure->setChecked(queue.stopOnFailure());
+    };
+    connect(&queue, &NwchemQueue::changed, dialog, update);
+    connect(&run, &NwchemRun::changed, dialog, [this, stop] { stop->setEnabled(run.active()); });
+    connect(resume, &QPushButton::clicked, dialog, [this] { queue.resume(); });
+    connect(pause, &QPushButton::clicked, dialog, [this] { queue.pause(); });
+    connect(stopOnFailure, &QCheckBox::toggled, &queue, &NwchemQueue::setStopOnFailure);
+    connect(cancel, &QPushButton::clicked, dialog,
+            [this, selected] { window->safe([&] { queue.cancel(selected()); }); });
+    const auto move = [this, selected, table](int direction) {
+        window->safe([&] {
+            for (int row = table->currentRow() + direction; row >= 0 && row < queue.entries().size();
+                 row += direction)
+                if (queue.entries()[row].state == RunState::Prepared) {
+                    queue.move(selected(), row);
+                    break;
+                }
+        });
+    };
+    connect(up, &QPushButton::clicked, dialog, [move] { move(-1); });
+    connect(down, &QPushButton::clicked, dialog, [move] { move(1); });
+    connect(stop, &QPushButton::clicked, dialog, [this] { confirmStop(); });
+    update();
+    dialog->show();
+}
+QStringList ExecutionPanel::enqueueGeometries(const QVector<Document> &geometries, bool frequencies) {
+    if (window->hasCandidate() || window->chemistryRunning())
+        fail(tr("候補を確定・取消し、整形の終了後に実行できます。"));
+    if (geometries.isEmpty() || geometries.size() + queue.entries().size() > 1000)
+        fail(tr("キューにはこのセッションで1000件まで登録できます。"));
+    commitPendingEdits();
+    if (!authorizeCalculation())
+        return {};
+    QVector<Document> documents;
+    const auto base = baseDirectory();
+    for (int i = 0; i < geometries.size(); ++i) {
+        auto d = window->document();
+        applyResultGeometry(d, geometries[i]);
+        setNwchemSetting(d, "task", frequencies ? "optimize_frequencies" : "optimize");
+        setNwchemSetting(d, "start", nwchemSettings(d)["start"].toString() + QString("_conf%1").arg(i + 1));
+        executionPlan(d, base, {}, true); // Validate the entire batch before writing any bundle.
+        documents.append(d);
+    }
+    QStringList directories;
+    for (const auto &d : documents) {
+        std::function<void()> check;
+        if (const auto *policy = window->accessPolicy(); policy && window->remoteRequest())
+            check = [policy = *policy, d, base] { policy.checkRun(d, base); };
+        queue.enqueue(d, base, check);
+        directories << queue.entries().last().plan.directory;
+        emit bundleChanged(directories.last());
+    }
+    showQueue();
+    return directories;
 }
 bool ExecutionPanel::confirmExecution() {
     // A person started the run: confirm in a dialog that MCP cannot see or press.
@@ -742,6 +914,7 @@ void ExecutionPanel::refresh() {
     diagnostics->setProperty("bad", !runnable || !editable);
     repolish(diagnostics);
     prepare->setEnabled(editable && !run.active() && portable);
+    enqueue->setEnabled(editable && runnable && portable);
     startable = editable && !run.active() && runnable && portable;
     const int problems = report.errors.size() + int(!editable) + int(runnable != report.errors.isEmpty());
     checkCard->setState(run.active() ? StatusCard::Waiting
@@ -773,6 +946,12 @@ void ExecutionPanel::updateRun() {
                           ? tr("結果: %1（「結果ビューア」に読み込みました）").arg(resultSummary)
                           : tr("結果は「結果ビューアへ」で確認できます。"));
         lines << run.message();
+        for (const auto &value : run.plan().manifest["diagnostics"].toArray()) {
+            const auto item = value.toObject();
+            lines << runDiagnosisText(item["code"].toString());
+            if (!item["evidence"].toString().isEmpty())
+                lines << item["evidence"].toString();
+        }
         lines.removeAll(QString());
     }
     const auto stateText = showingRun ? lines.join('\n')
@@ -781,6 +960,10 @@ void ExecutionPanel::updateRun() {
                                : tr("入力一式を保存しました（NWChemは起動していません）。");
     if (state->text() != stateText)
         state->setText(stateText);
+    bool hasSetting = false;
+    for (const auto &value : run.plan().manifest["diagnostics"].toArray())
+        hasSetting |= !value.toObject()["setting"].toString().isEmpty();
+    diagnosisSetting->setVisible(showingRun && !run.active() && hasSetting);
     location->setText(displayPath(saved.directory));
     location->setToolTip(saved.directory);
     location->setVisible(!saved.directory.isEmpty());
@@ -930,6 +1113,7 @@ void ExecutionPanel::stopEditing() {
     run.disconnect(this);
 }
 void ExecutionPanel::shutdown() {
+    queue.shutdown();
     run.shutdown();
 }
 void ExecutionPanel::applyChromeStyle() {

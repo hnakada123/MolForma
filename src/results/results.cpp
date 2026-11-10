@@ -168,8 +168,8 @@ std::optional<std::pair<QString, QString>> totalEnergy(const QString &line) {
 } // namespace
 bool NwchemEnergySummary::relevant(QByteArrayView line) {
     return line.contains("energy") || line.contains("NWChem Input Module") ||
-           line.contains("Frequency Analysis") || line.contains("Total times") ||
-           line.contains("number of monomers") || line.contains("BSSE error");
+           line.contains("Frequency Analysis") || line.contains("Raman Analysis") ||
+           line.contains("Total times") || line.contains("number of monomers") || line.contains("BSSE error");
 }
 void NwchemEnergySummary::add(const QString &line) {
     static const QRegularExpression corrected(R"(^\s*Corrected energy\s*=\s*([-+0-9.eEdD]+)\s*$)");
@@ -184,8 +184,10 @@ void NwchemEnergySummary::add(const QString &line) {
     auto &task = tasks.last();
     double value;
     if (line.contains(u"NWChem Input Module")) {
-        if (task.energy || task.frequency)
+        if (task.energy || task.frequency || task.raman)
             tasks.append(Task{});
+    } else if (line.contains(u"Raman Analysis")) {
+        task.raman = true;
     } else if (line.contains(u"NWChem Nuclear Hessian and Frequency Analysis"))
         task.frequency = true;
     else if (line.contains(u"Total times  cpu:"))
@@ -240,7 +242,7 @@ void NwchemEnergySummary::add(const QString &line) {
 }
 QJsonObject NwchemEnergySummary::energy() const {
     for (auto it = tasks.crbegin(); it != tasks.crend(); ++it) {
-        if (!it->energy)
+        if (!it->energy || (it->raman && !it->frequency))
             continue;
         if (it->bsse)
             return {{"hartree", it->corrected}, {"method", it->lastMethod}, {"source", "bsse_corrected"}};
@@ -843,6 +845,9 @@ GridValues cubeValues(ResultData &r, QString text) {
 }
 // The surface of the CUBE's values at r.isovalue.
 void cubeSurface(ResultData &r, const GridValues &g) {
+    r.values = g.values;
+    r.gridOrigin = g.origin;
+    r.gridAxes = g.axes;
     auto bounds = std::minmax_element(g.values.begin(), g.values.end());
     r.minimum = *bounds.first;
     r.maximum = *bounds.second;
@@ -964,6 +969,79 @@ void NwchemLog::read(const QString &line) {
     const auto has = [&](QStringView word) { return line.contains(word); };
     const auto unmatched = QRegularExpressionMatch();
     recognized |= line.contains(u"NWChem");
+    if (line.contains(u"Spin multiplicity:"))
+        r.properties["spin_multiplicity"] = value(words(line.section(':', 1)).value(0));
+    if (line.contains(u"ZORA NMR Hyperfine"))
+        r.properties["epr_hyperfine"] = QJsonArray();
+    if (line.contains(u"Total hyperfine coupling tensor:")) {
+        const int atom = shieldingAtom;
+        const auto element = shieldingElement;
+        shieldingAtom = 0;
+        sections << [&r, atom, element, tensor = QJsonArray(), left = 6](const QString *text) mutable {
+            if (!text || --left < 0)
+                return false;
+            const auto tokens = words(*text);
+            if (tokens.size() != 6 || !fortranNumber(tokens[0]))
+                return true;
+            for (int k = 3; k < 6; ++k) {
+                const auto n = fortranNumber(tokens[k]);
+                if (!n)
+                    return false;
+                tensor.append(*n);
+            }
+            if (tensor.size() < 9)
+                return true;
+            auto rows = r.properties["epr_hyperfine"].toArray();
+            const QJsonObject row{{"atom", atom}, {"element", element}, {"tensor_mhz", tensor}};
+            bool replaced = false;
+            for (int i = 0; i < rows.size(); ++i)
+                if (rows[i].toObject()["atom"] == atom) {
+                    rows[i] = row;
+                    replaced = true;
+                    break;
+                }
+            if (!replaced && atom > 0 && rows.size() < 4096)
+                rows.append(row);
+            r.properties["epr_hyperfine"] = rows;
+            return false;
+        };
+    }
+    if (line.contains(u"Total g shift Tensor")) {
+        shieldingAtom = 0; // This isotropic value belongs to g, never to the previous atom's shielding.
+        r.properties.remove("epr_gshift_ppt");
+        sections << [&r, tensor = QJsonArray()](const QString *text) mutable {
+            if (!text)
+                return false;
+            const auto tokens = words(*text);
+            if (tokens.size() != 3)
+                return false;
+            for (const auto &token : tokens) {
+                const auto n = fortranNumber(token);
+                if (!n)
+                    return false;
+                tensor.append(*n);
+            }
+            if (tensor.size() < 9)
+                return true;
+            r.properties["epr_gshift_ppt"] = tensor;
+            return false;
+        };
+    }
+    if (line.contains(u"Showing rminfo:"))
+        r.properties["raman"] = QJsonArray();
+    if (line.trimmed().startsWith(u"rminfo(")) {
+        static const QRegularExpression raman(
+            R"(^\s*rminfo\(\s*(\d+)\)\s*=\(\s*([^,]+),[^,]+,[^,]+,([^\)]+)\))");
+        const auto match = raman.match(line);
+        if (match.hasMatch()) {
+            auto rows = r.properties["raman"].toArray();
+            if (rows.size() < 4096)
+                rows.append(QJsonObject{{"raman_index", match.captured(1).toInt()},
+                                        {"frequency", value(match.captured(2))},
+                                        {"activity", value(match.captured(3))}});
+            r.properties["raman"] = rows;
+        }
+    }
     // errquit prints its message, framed by dashes, just above "current input line :".
     if (QStringView(line).trimmed().startsWith(u"current input line") && abort.isEmpty())
         for (int j = recent.size() - 1; j >= 0; --j) {
@@ -1064,6 +1142,10 @@ void NwchemLog::read(const QString &line) {
                 return false;
             };
     // GIAO shielding tensors: "Atom:  n  X" followed by "isotropic =" and "anisotropy =".
+    if (line.contains(u"Chemical Shielding Tensors")) {
+        shielding = {};
+        shieldingAtom = 0;
+    }
     if (const auto t = QStringView(line).trimmed(); t.startsWith(u"Atom:")) {
         const auto w = words(t);
         shieldingAtom = w.value(1).toInt();
@@ -1083,6 +1165,40 @@ void NwchemLog::read(const QString &line) {
         shielding[shielding.size() - 1] = last;
         shieldingAtom = 0;
     }
+    if (line.contains(u"NWChem Input Module")) {
+        responseGauge.clear();
+        responseFrequency = 0;
+    }
+    if (line.contains(u"Using GIAO formalism for OptRot"))
+        responseGauge = "giao";
+    if (line.trimmed().startsWith("Frequency  ="))
+        responseFrequency = value(words(line.section('=', 1)).value(0));
+    if (line.contains(u"Optical rotation tensor Beta") && responseGauge == "giao" && responseFrequency > 0)
+        sections << [&r, value, frequency = responseFrequency, tensor = QJsonArray(),
+                     left = 15](const QString *text) mutable {
+            if (!text || --left < 0)
+                return false;
+            const auto row = words(*text);
+            if (row.size() == 4 && row[0].toInt() == tensor.size() / 3 + 1)
+                for (int k = 1; k < 4; ++k)
+                    tensor.append(value(row[k]));
+            if (tensor.size() == 9 && text->trimmed().startsWith("average:")) {
+                const double iso = value(row.value(1)), imaginary = value(row.value(4));
+                if (std::isfinite(iso) && imaginary == 0) {
+                    auto rows = r.properties["ord"].toArray();
+                    if (rows.size() < 2000)
+                        rows.append(QJsonObject{{"frequency_au", frequency},
+                                                {"wavelength_nm", 45.5633525316 / frequency},
+                                                {"isotropic", iso},
+                                                {"tensor", tensor},
+                                                {"unit", "au"},
+                                                {"gauge", "giao"}});
+                    r.properties["ord"] = rows;
+                }
+                return false;
+            }
+            return true;
+        };
     if (line.contains(u"Linear Response polarizability / au"))
         sections << [&r, value, tensor = QJsonArray(), polarizability = QJsonObject(),
                      left = 15](const QString *text) mutable {
@@ -1101,6 +1217,8 @@ void NwchemLog::read(const QString &line) {
             }
             if (tensor.size() == 9 && polarizability.contains(u"isotropic")) {
                 polarizability["tensor"] = tensor;
+                if (!r.frames.isEmpty())
+                    polarizability["geometry"] = r.frames.last().molecule.xyz();
                 r.properties["polarizability"] = polarizability;
             }
             return false;
@@ -1108,21 +1226,40 @@ void NwchemLog::read(const QString &line) {
     if (auto m = has(u"Root") ? root.match(line) : unmatched; m.hasMatch() && r.excitations.size() < 2000) {
         ResultExcitation x{m.captured(1).toInt(), m.captured(2), m.captured(3), value(m.captured(5))};
         if (x.root == 1 && std::any_of(r.excitations.begin(), r.excitations.end(),
-                                       [&](const auto &e) { return e.root == 1 && e.spin == x.spin; }))
+                                       [&](const auto &e) { return e.root == 1 && e.spin == x.spin; })) {
             r.excitations.clear(); // A later TDDFT task replaces the earlier one.
+            r.properties.remove("ecd");
+        }
         // Its <S2> and oscillator strength follow, before the next root.
-        sections << [&r, value, x, left = 39](const QString *text) mutable {
-            if (text && --left >= 0 && !root.match(*text).hasMatch()) {
-                if (text->contains("<S2> ="))
-                    x.s2 = value(words(*text).value(2));
-                if (text->contains("Dipole Oscillator Strength"))
-                    x.oscillator = value(words(*text).last());
-                return true;
-            }
-            if (std::isfinite(x.ev))
-                r.excitations << x;
-            return false;
-        };
+        sections <<
+            [&r, value, x, rotation = qQNaN(), gauge = QString(), left = 80](const QString *text) mutable {
+                if (text && --left >= 0 && !root.match(*text).hasMatch()) {
+                    if (text->contains("Magnetic Transition Dipole (Length)"))
+                        gauge = "length";
+                    if (text->contains("Rotatory Strength (1E-40 esu**2cm**2):"))
+                        rotation = value(words(*text).last());
+                    if (text->contains("<S2> ="))
+                        x.s2 = value(words(*text).value(2));
+                    if (text->contains("Dipole Oscillator Strength"))
+                        x.oscillator = value(words(*text).last());
+                    return true;
+                }
+                if (std::isfinite(x.ev)) {
+                    if (std::isfinite(rotation) && gauge == "length") {
+                        auto rows = r.properties["ecd"].toArray();
+                        rows.append(QJsonObject{{"root", x.root},
+                                                {"spin", x.spin},
+                                                {"ev", x.ev},
+                                                {"strength", rotation},
+                                                {"unit", "1e-40 esu^2 cm^2"},
+                                                {"gauge", gauge},
+                                                {"excitation", int(r.excitations.size())}});
+                        r.properties["ecd"] = rows;
+                    }
+                    r.excitations << x;
+                }
+                return false;
+            };
     }
     if (line.contains(u"Optimization converged"))
         r.properties["optimization"] = "converged";
@@ -1148,6 +1285,9 @@ void NwchemLog::read(const QString &line) {
                 const double au =
                     std::hypot(dipole["x"].toDouble(), dipole["y"].toDouble(), dipole["z"].toDouble());
                 dipole["debye"] = au * 2.541746473;
+                if (!r.frames.isEmpty())
+                    dipole["geometry"] = r.frames.last().molecule.xyz();
+                dipole["origin"] = "nwchem_multipole_origin";
                 r.properties["dipole"] = dipole;
             }
             return false;
@@ -1318,6 +1458,29 @@ void NwchemLog::finish() {
     }
     if (!shielding.isEmpty())
         r.properties["shielding"] = shielding;
+    if (r.properties.contains("raman")) {
+        auto rows = r.properties["raman"].toArray();
+        QSet<int> matched;
+        const auto rigid = resultRigidModes(r);
+        for (int i = 0; i < rows.size(); ++i) {
+            auto row = rows[i].toObject();
+            int best = -1;
+            double distance = .02; // Printed Raman/mode frequencies are rounded to 0.01 cm⁻¹.
+            for (int j = 0; j < r.modes.size(); ++j) {
+                const auto delta = std::abs(r.modes[j].frequency - row["frequency"].toDouble());
+                if (!rigid.value(j) && !matched.contains(j) && delta < distance) {
+                    best = j;
+                    distance = delta;
+                }
+            }
+            if (best >= 0) {
+                row["mode"] = best;
+                matched.insert(best);
+                rows[i] = row;
+            }
+        }
+        r.properties["raman"] = rows;
+    }
     if (!solvation.isEmpty())
         r.properties["solvation"] = solvation;
     if (!r.steps.isEmpty() && !r.properties.contains("optimization"))
@@ -1444,6 +1607,39 @@ ResultData readResult(const QString &path, double iso, int dataset, int orbital,
         if (!r.frames.isEmpty())
             cache.store(r, data);
         moldenSurface(r, data, orbital, cache);
+    } else if (suffix == "normal") {
+        r.format = "Raman";
+        if (!text.contains("normal") || !text.contains("Raman Scattering Plot") ||
+            !text.contains("S [Ang**4/amu]"))
+            fail(tr("通常ラマンの出力ファイルを認識できません。"));
+        QJsonArray peaks;
+        bool table = false;
+        QSet<int> seen;
+        for (const auto &line : lines) {
+            if (line.contains("S [Ang**4/amu]")) {
+                table = true;
+                continue;
+            }
+            if (line.contains("Excitation wavelength"))
+                r.properties["raman_wavelength_nm"] = logNumber(words(line).value(2));
+            const auto tokens = words(line);
+            if (!table || tokens.isEmpty() || line.trimmed().startsWith('-'))
+                continue;
+            if (tokens.size() == 2)
+                break; // The broadened cross section that follows is not activity.
+            bool ok;
+            const int index = tokens.value(0).toInt(&ok);
+            const auto frequency = fortranNumber(tokens.value(1)), activity = fortranNumber(tokens.value(2));
+            if (!ok || index <= 0 || seen.contains(index) || !frequency || !activity || tokens.size() != 3 ||
+                peaks.size() >= 4096)
+                fail(tr("通常ラマンのピーク表が不正です。"));
+            seen.insert(index);
+            peaks.append(
+                QJsonObject{{"raman_index", index}, {"frequency", *frequency}, {"activity", *activity}});
+        }
+        if (peaks.isEmpty())
+            fail(tr("通常ラマンのピーク表がありません。"));
+        r.properties["raman"] = peaks;
     } else if (suffix == "xyz") {
         r.format = "XYZ";
         xyz(r, lines);
@@ -1454,7 +1650,7 @@ ResultData readResult(const QString &path, double iso, int dataset, int orbital,
             log.add(line);
         log.finish();
     }
-    if (r.format != "NWChem" && r.frames.isEmpty())
+    if (r.format != "NWChem" && r.format != "Raman" && r.frames.isEmpty())
         fail(tr("表示可能な原子座標がありません。"));
     return r;
 }
@@ -1479,7 +1675,7 @@ QByteArray resultBytes(const ResultData &r) {
     QByteArray bytes;
     QDataStream s(&bytes, QIODevice::WriteOnly);
     s.setVersion(QDataStream::Qt_6_4);
-    s << QString("MolFormaResult6") << r.source << r.format << r.status << r.log << r.warnings
+    s << QString("MolFormaResult7") << r.source << r.format << r.status << r.log << r.warnings
       << qint32(r.outcome);
     s << r.orbitalBasis << qint32(r.selectedOrbital) << qint32(r.orbitalFrame) << qint32(r.orbitalDivisions)
       << r.orbitalError << r.orbitalNormalization << r.normalizationRequest;
@@ -1522,6 +1718,12 @@ QByteArray resultBytes(const ResultData &r) {
     for (const auto &t : r.steps)
         s << qint32(t.step) << t.energy << t.deltaE << t.gmax << t.grms << t.xrms << t.xmax << t.seconds;
     s << QJsonDocument(r.properties).toJson(QJsonDocument::Compact);
+    vec(r.gridOrigin);
+    for (int i = 0; i < 9; ++i)
+        s << r.gridAxes.data()[i];
+    s << qint32(r.values.size());
+    for (double value : r.values)
+        s << value;
     if (s.status() != QDataStream::Ok)
         fail(tr("結果の転送データを保存できません。"));
     return bytes;
@@ -1540,7 +1742,7 @@ ResultData resultFromBytes(const QByteArray &bytes) {
     s.setVersion(QDataStream::Qt_6_4);
     QString magic;
     s >> magic;
-    if (magic != "MolFormaResult6")
+    if (magic != "MolFormaResult7")
         fail(tr("結果の転送形式が不正です。"));
     ResultData r;
     s >> r.source >> r.format >> r.status >> r.log >> r.warnings;
@@ -1640,6 +1842,16 @@ ResultData resultFromBytes(const QByteArray &bytes) {
     QByteArray properties;
     s >> properties;
     r.properties = QJsonDocument::fromJson(properties).object();
+    r.gridOrigin = vec();
+    for (int i = 0; i < 9; ++i)
+        s >> r.gridAxes.data()[i];
+    for (int n = count(maxPoints); n--;) {
+        double value;
+        s >> value;
+        if (!std::isfinite(value))
+            fail(tr("結果ファイルの数値が不正です: %1").arg(value));
+        r.values.append(value);
+    }
     if (s.status() != QDataStream::Ok || !s.atEnd())
         fail(tr("結果の転送データが不完全です。"));
     return r;
@@ -1720,7 +1932,7 @@ QString resultOutcome(const ResultData &data) {
 }
 QStringList resultFiles(const QString &directory) {
     auto files = QDir(directory).entryList(
-        {"*.out", "*.log", "*.xyz", "*.cube", "*.cub", "*.molden", "*.mld", "*.molde"},
+        {"*.out", "*.log", "*.xyz", "*.cube", "*.cub", "*.molden", "*.mld", "*.molde", "*.normal"},
         QDir::Files | QDir::Readable, QDir::Name);
     // Generated files can live in permanent_dir; do not recursively scan it or trust the saved cwd.
     QFile record(QDir(directory).filePath("run.json"));

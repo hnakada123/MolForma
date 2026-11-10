@@ -931,6 +931,22 @@ class McpTest : public QObject {
         QCOMPARE(summary["counts"].toObject()["excitations"].toInt(), 2);
         QCOMPARE(summary["properties"].toObject()["dipole"].toObject()["debye"].toDouble(), 1.7);
     }
+    void spectrumSections() {
+        ResultData r;
+        r.properties["shielding"] =
+            QJsonArray{QJsonObject{{"atom", 3}, {"element", "H"}, {"isotropic", 28.}}};
+        const QJsonObject p{{"kind", "nmr"}, {"nucleus", "1H"}, {"reference_ppm", 31.}, {"width", .1}};
+        const auto peaks = resultsJson(r, {{"section", "spectrum_peaks"}, {"parameters", p}}, {});
+        QCOMPARE(peaks["items"].toArray().size(), 1);
+        QCOMPARE(peaks["items"].toArray()[0].toObject()["atom"].toInt(), 3);
+        QCOMPARE(peaks["items"].toArray()[0].toObject()["x"].toDouble(), 3.);
+        QVERIFY(peaks["reversed"].toBool());
+        const auto curve =
+            resultsJson(r, {{"section", "spectrum"}, {"parameters", p}, {"offset", 7}, {"limit", 11}}, {});
+        QCOMPARE(curve["items"].toArray().size(), 11);
+        QCOMPARE(curve["nextOffset"].toInt(), 18);
+        QCOMPARE(curve["xUnit"].toString(), "ppm");
+    }
     void appendXyz() {
         McpServer server;
         const QString xyz = "3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n";
@@ -2006,6 +2022,42 @@ class McpTest : public QObject {
         process.closeWriteChannel();
         QVERIFY(process.waitForFinished(10000));
         QCOMPARE(process.exitCode(), 0);
+    }
+    void headlessCalculationQueue() {
+        QTemporaryDir files;
+        McpPolicy policy;
+        policy.allowExecutionSettings = true;
+        McpHeadless runtime(policy);
+        McpServer server(runtime.editor(), policy);
+        runtime.attach(server);
+        QVERIFY(!failed(
+            change(server, "import_document",
+                   {{"format", "xyz"}, {"text", "2\nH2\nH 0 0 0\nH 0 0 .74\n"}, {"preview", false}})));
+        QVERIFY(!failed(
+            change(server, "set_execution",
+                   {{"settings",
+                     QJsonObject{{"mode", "direct"},
+                                 {"executable", QCoreApplication::applicationDirPath() + "/fake_nwchem" EXE},
+                                 {"job_root", files.path()}}},
+                    {"preview", false}})));
+        const auto first = change(server, "calculation", {{"action", "enqueue"}});
+        QVERIFY(!failed(first));
+        const auto id = data(first)["queueId"].toString();
+        QVERIFY(!id.isEmpty());
+        QVERIFY(!failed(change(server, "calculation", {{"action", "enqueue"}})));
+        const auto queue = [&] {
+            return data(call(server, "get_app_state", scoped(server)))["calculation"]
+                .toObject()["queue"]
+                .toObject();
+        };
+        QCOMPARE(queue()["pending"].toInt(), 2);
+        QVERIFY(failed(change(server, "calculation", {{"action", "queue_move"}, {"id", id}})));
+        QVERIFY(!failed(change(server, "calculation", {{"action", "queue_cancel"}, {"id", id}})));
+        QCOMPARE(queue()["pending"].toInt(), 1);
+        QVERIFY(!failed(change(server, "calculation", {{"action", "queue_resume"}})));
+        QTRY_COMPARE_WITH_TIMEOUT(queue()["entries"].toArray()[1].toObject()["state"].toString(), "finished",
+                                  5000);
+        QCOMPARE(queue()["entries"].toArray()[0].toObject()["state"].toString(), "cancelled");
     }
     void headlessCalculationAndResults() {
         QTemporaryDir files;

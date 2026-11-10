@@ -181,6 +181,8 @@
     "properties": {
         "dipole": {
             "debye": 2.460819807046153,
+            "geometry": "3\nMolForma | H2O | angstrom\nO 0.0000000000 0.0000000000 0.1173000000\nH 0.0000000000 0.7572000000 -0.4692000000\nH 0.0000000000 -0.7572000000 -0.4692000000\n",
+            "origin": "nwchem_multipole_origin",
             "x": 0,
             "y": 0,
             "z": -0.968161
@@ -189,7 +191,8 @@
             "hartree": -76.384951051676,
             "method": "DFT",
             "source": "final"
-        }
+        },
+        "spin_multiplicity": 1
     },
     "status": "正常終了マーカーあり（各taskの結果は「概要」とログで確認）",
     "steps": [

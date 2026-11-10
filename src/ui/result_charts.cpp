@@ -79,6 +79,10 @@ void ChartView::setReversedX(bool on) {
     reversed = on;
     update();
 }
+void ChartView::setXRange(double minimum, double maximum) {
+    range = qMakePair(minimum, maximum);
+    update();
+}
 void ChartView::setSelectedStick(int s, int index) {
     if (s == selectedSeries && index == selectedIndex)
         return;
@@ -123,6 +127,8 @@ void ChartView::paintEvent(QPaintEvent *) {
     plot = QRectF();
     for (const auto &s : series)
         for (const auto &point : s.points) {
+            if (range && (point.x() < range->first || point.x() > range->second))
+                continue;
             x0 = std::min(x0, point.x()); // Keep the x range even where a log axis cannot show y.
             x1 = std::max(x1, point.x());
             if (logY && !(point.y() > 0))
@@ -136,6 +142,10 @@ void ChartView::paintEvent(QPaintEvent *) {
             y1 = std::max(y1, transformY(level));
         }
     p.setPen(text);
+    if (range) {
+        x0 = range->first;
+        x1 = range->second;
+    }
     if (!std::isfinite(x0) || !std::isfinite(y0)) {
         p.drawText(rect(), Qt::AlignCenter, tr("表示するデータがありません"));
         return;

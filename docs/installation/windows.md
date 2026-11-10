@@ -2,7 +2,7 @@
 
 MolFormaをWindowsでMicrosoft Visual C++（MSVC）を使ってソースからビルドし、フォルダーにインストールする手順です。ビルドに使うライブラリはvcpkgとソースから（RDKitとVTKを含む）、計算に使うNWChemはWSL（Windows Subsystem for Linux）のUbuntuに入れます。
 
-対象はWindows 11（x64）とMolForma 1.0.0です。2026-10-28に、Windows 11 HomeとVisual Studio Community 2026で手順を確認しました（[確認した構成](#確認した構成)）。
+対象はWindows 11（x64）とMolForma 1.1.0です。2026-10-28に、Windows 11 HomeとVisual Studio Community 2026でMolForma 1.0.0の手順を確認しました（[確認した構成](#確認した構成)）。
 
 MolFormaのWindows用のインストーラーはありません。GitHubのソースからビルドし、`cmake --install` で、実行に必要なQt・Open BabelのファイルをまとめたMolFormaのフォルダーを作ります。NWChemはWindows版が公式には配布されていないため、WSLのUbuntuのパッケージを使い、MolFormaに付属する2つのバッチファイル（`nwchem.cmd`・`mpirun.cmd`）から起動します。WSLを使わずに、NWChemをWindowsネイティブにビルドする方法もあります（[WindowsでNWChemをビルドする](nwchem_mingw64.md)）。
 
@@ -225,7 +225,7 @@ MolFormaの「編集 → 環境設定」で、実行設定の既定値を次の�
 
 スタートメニューの「MolForma」か、`%LOCALAPPDATA%\Programs\MolForma\bin\molforma.exe` から起動します。表示言語はWindowsの言語に従います（「編集 → 環境設定」の「表示言語 / Language」で切り替え、再起動後に反映）。
 
-1. 「ヘルプ → MolFormaについて」を開き、版が「MolForma 1.0.0」で、RDKit・VTKを入れた場合は「立体判定・残基認識（RDKit）: 有効」「3D描画: VTK（OpenGL）」と表示されることを確認します。OpenGLを使えない環境（一部のリモートデスクトップや仮想マシン）では「3D描画: QPainter（CPU）」になります。
+1. 「ヘルプ → MolFormaについて」を開き、版が「MolForma 1.1.0」で、RDKit・VTKを入れた場合は「立体判定・残基認識（RDKit）: 有効」「3D描画: VTK（OpenGL）」と表示されることを確認します。OpenGLを使えない環境（一部のリモートデスクトップや仮想マシン）では「3D描画: QPainter（CPU）」になります。
 2. 部品パレットの検索欄に `CC1CCCCC1`（メチルシクロヘキサン）と入力し、「SMILES「CC1CCCCC1」から3Dで作成」で3D構造の候補ができることを確認します（Open Babelとそのデータを使います）。
 3. 「3 実行設定」を開き、「実行前の確認」でNWChem実行ファイルとMPIランチャーが見つかっていることを確認します。
 4. 小さな分子で計算してみます。手順は[題材1 原子と結合から組む](../recipes/atoms_and_bonds.md)にあります。

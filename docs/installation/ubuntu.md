@@ -2,9 +2,9 @@
 
 MolFormaをUbuntuでソースからビルドし、debパッケージを作ってaptでインストールする手順です。ビルドに使う開発用パッケージと、計算に使うNWChemは、Ubuntuの公式リポジトリから入れます。
 
-対象はUbuntu 26.04 LTS（amd64）とMolForma 1.0.0です。2026-10-28に、Dockerの `ubuntu:26.04`（26.04.1 LTS）で手順を確認しました（[確認した構成](#確認した構成)）。
+対象はUbuntu 26.04 LTS（amd64）とMolForma 1.1.0です。2026-10-28に、Dockerの `ubuntu:26.04`（26.04.1 LTS）でMolForma 1.0.0の手順を確認しました（[確認した構成](#確認した構成)）。
 
-MolFormaのパッケージは、Ubuntuの公式リポジトリにもPPAにもありません（2026-10-28時点）。GitHubのソースからビルドし、CMakeに含まれるCPackでdebパッケージ（`molforma_1.0.0_amd64.deb`）を作ります。インストールしたパッケージはaptで管理するので、削除は `apt remove` で行えます。
+MolFormaのパッケージは、Ubuntuの公式リポジトリにもPPAにもありません（2026-10-28時点）。GitHubのソースからビルドし、CMakeに含まれるCPackでdebパッケージ（`molforma_1.1.0_amd64.deb`）を作ります。インストールしたパッケージはaptで管理するので、削除は `apt remove` で行えます。
 
 ## 必要なパッケージ
 
@@ -93,7 +93,7 @@ ctest --test-dir build --output-on-failure
 ```sh
 cd build
 cpack -G DEB
-sudo apt install ./molforma_1.0.0_amd64.deb
+sudo apt install ./molforma_1.1.0_amd64.deb
 ```
 
 `cpack` は、実行ファイルが使う共有ライブラリから依存関係を割り出して（`dpkg-shlibdeps`）、パッケージに書き込みます。パッケージは次のファイルを配置します（`dpkg -L molforma` で一覧できます）。ファイルの種類やメニューの情報は、インストール時に自動で更新されます。
@@ -110,7 +110,7 @@ sudo apt install ./molforma_1.0.0_amd64.deb
 
 端末で `molforma` を実行するか、アプリの一覧から「MolForma」を選びます。表示言語はシステムの言語に従います（「編集 → 環境設定」の「表示言語 / Language」で切り替え、再起動後に反映）。
 
-1. 「ヘルプ → MolFormaについて」を開き、版が「MolForma 1.0.0」で、RDKit・VTKを入れた場合は「立体判定・残基認識（RDKit）: 有効」「3D描画: VTK（OpenGL）」と表示されることを確認します。OpenGLを使えない環境では「3D描画: QPainter（CPU）」になります。
+1. 「ヘルプ → MolFormaについて」を開き、版が「MolForma 1.1.0」で、RDKit・VTKを入れた場合は「立体判定・残基認識（RDKit）: 有効」「3D描画: VTK（OpenGL）」と表示されることを確認します。OpenGLを使えない環境では「3D描画: QPainter（CPU）」になります。
 2. 「3 実行設定」を開き、「NWChem実行ファイル」と「MPIランチャー」の欄の下に、PATHで見つかった `/usr/bin/nwchem`・`/usr/bin/mpirun` が表示されることを確認します。
 3. 小さな分子で計算してみます。手順は[題材1 原子と結合から組む](../recipes/atoms_and_bonds.md)にあります。
 
@@ -126,7 +126,7 @@ git pull --ff-only
 cmake --build build -j 4
 cd build
 cpack -G DEB
-sudo apt install --reinstall ./molforma_1.0.0_amd64.deb
+sudo apt install --reinstall ./molforma_1.1.0_amd64.deb
 ```
 
 Ubuntuを新しいリリースに上げると、Qt・Open Babel・RDKit・VTKなどのライブラリの版が変わり、MolFormaが起動しなくなったり、依存関係が満たせず削除されたりします。その場合は、`build` を削除して[3. ソースを取得してビルドする](#3-ソースを取得してビルドする)の構成からやり直し、パッケージを作り直してインストールしてください。
@@ -147,7 +147,7 @@ sudo apt remove molforma
 | 構成が `The link interface of target "RDKit::rdkit_base" contains: Boost::serialization … but the target was not found` のエラーで止まる | `librdkit-dev` はBoostの開発用パッケージを入れません。`libboost-iostreams-dev`・`libboost-serialization-dev` を入れ、構成からやり直します |
 | `MolForma rendering: QPainter (Qt6-enabled VTK development package not found)` と出る | `libvtk9-dev`・`libvtk9-qt-dev` を入れたか確認します。`VTK development dependency unavailable:` の行に出たものを入れ、構成からやり直します |
 | `cpack` が `CPackDeb: file utility is not available` で止まる | `sudo apt install file` で `file` を入れ、`cpack -G DEB` をやり直します |
-| 更新したのに `molforma is already the newest version` と出て入れ直されない | 版番号が同じため、`sudo apt install --reinstall ./molforma_1.0.0_amd64.deb` とします |
+| 更新したのに `molforma is already the newest version` と出て入れ直されない | 版番号が同じため、`sudo apt install --reinstall ./molforma_1.1.0_amd64.deb` とします |
 | 3D画面の左上に「描画: QPainter（CPU）· OpenGLを使えないため簡易表示」と出る | OpenGL 3.2以上を使えません。GPUドライバーを確認します（`mesa-utils` の `glxinfo -B` で、使われているOpenGLの実装と版が分かります）。リモートデスクトップや仮想マシンでは使えない場合があります |
 | VTKで描画しているのに回転が遅い | `glxinfo -B` で `llvmpipe` などと出る場合は、ソフトウェアのOpenGLで描画しています |
 | 日本語が四角で表示される | `fonts-noto-cjk` などの日本語フォントを入れます |

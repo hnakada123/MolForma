@@ -14,6 +14,7 @@ Document refine(const Document &d, bool regenerate = false, const Ids &moving = 
 struct Conformer {
     Document document;
     double energy = 0; // Force-field energy in kcal/mol.
+    QString forceField;
 };
 // Rotor search with the MMFF94 (else UFF) force field: up to `count` distinct conformers, lowest
 // energy first, each minimized. The atoms and their order stay; fixed atoms are not allowed.

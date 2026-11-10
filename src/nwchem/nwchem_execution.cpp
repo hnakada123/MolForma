@@ -6,6 +6,7 @@
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_output.h"
+#include "nwchem/run_diagnostics.h"
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
@@ -547,7 +548,12 @@ qint64 NwchemRun::elapsedSeconds() const {
 void NwchemRun::start(const Document &d, const QString &base) {
     if (active())
         fail(tr("計算は既に実行中です。"));
-    current = saveExecutionBundle(d, base, true);
+    startPrepared(saveExecutionBundle(d, base, true));
+}
+void NwchemRun::startPrepared(const ExecutionPlan &plan) {
+    if (active())
+        fail(tr("計算は既に実行中です。"));
+    current = plan;
     status = RunState::Starting;
     detail.clear();
     timedOut = false;
@@ -621,6 +627,16 @@ void NwchemRun::finish(int code, QProcess::ExitStatus exitStatus, const QString 
     } catch (const std::exception &) {
         current.manifest.remove("summary");
     }
+    QString output, errors;
+    try {
+        output = historyText(current.directory, "output.out", true);
+    } catch (const std::exception &) {
+    }
+    try {
+        errors = historyText(current.directory, "stderr.err", true);
+    } catch (const std::exception &) {
+    }
+    current.manifest["diagnostics"] = diagnoseRun(status, output, errors, error);
     record();
     emit changed();
 }

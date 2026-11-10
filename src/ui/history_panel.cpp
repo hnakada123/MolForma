@@ -3,7 +3,9 @@
 #include "model/i18n.h"
 #include "model/units.h"
 #include "nwchem/nwchem_execution.h"
+#include "nwchem/run_diagnostics.h"
 #include "ui/editor_chrome.h"
+#include "ui/energy_profile_dialog.h"
 #include "ui/main_window.h"
 #include "ui/run_progress.h"
 #include <QtWidgets>
@@ -606,6 +608,19 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
     auto *moreMenu = new QMenu(more);
     csv = moreMenu->addAction(lineIcon("export"), tr("一覧をCSVで書き出す…"));
     csv->setObjectName("historyCsv");
+    auto *profile = moreMenu->addAction(tr("熱補正・反応エネルギー図…"));
+    profile->setObjectName("historyEnergyProfile");
+    connect(profile, &QAction::triggered, this, [this] {
+        window->safe([this] {
+            auto *dialog = window->findChild<EnergyProfileDialog *>("energyProfileDialog");
+            if (!dialog)
+                dialog = new EnergyProfileDialog(window);
+            dialog->show();
+            dialog->raise();
+            if (!selectedDirectory().isEmpty())
+                dialog->addJob(selectedDirectory());
+        });
+    });
     csv->setToolTip(tr("表示中の一覧を、絞り込みと並び順のままCSVに書き出します。"));
     more->setMenu(moreMenu);
     tools->addWidget(more);
@@ -1732,6 +1747,15 @@ void HistoryPanel::showFacts(const HistoryEntry &e, bool owned) {
                                                       : tr("%1 · 正常終了の記録なし").arg(code));
     }
     text("integrity", tr("入力照合"), historyIntegrity(e));
+    QStringList diagnoses;
+    for (const auto &value : e.manifest["diagnostics"].toArray()) {
+        const auto item = value.toObject();
+        diagnoses << runDiagnosisText(item["code"].toString());
+        if (!item["evidence"].toString().isEmpty())
+            diagnoses << item["evidence"].toString();
+    }
+    if (!diagnoses.isEmpty())
+        text("diagnosis", tr("診断"), diagnoses.join('\n'));
     // A repaired record keeps its note in Japanese (see repairHistoryEntry).
     if (!e.manifest["error"].toString().isEmpty())
         text("error", tr("実行エラー"), translated(e.manifest["error"].toString()));

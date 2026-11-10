@@ -186,6 +186,23 @@ class RenderingTest : public QObject {
             }
         QVERIFY(colored > 1000);
     }
+    void mappedSurfaceColors() {
+        MoleculeView view;
+        view.resize(640, 480);
+        const auto surface = sphereMesh(16, 24);
+        view.setSurface(surface, QVector<QColor>(surface.size(), QColor("#23bc63")));
+        view.show();
+        view.fit();
+        settle();
+        const auto image = view.grab().toImage();
+        int green = 0;
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x) {
+                const auto c = image.pixelColor(x, y);
+                green += c.green() > c.red() + 25 && c.green() > c.blue() + 20;
+            }
+        QVERIFY(green > 1000);
+    }
     void vtkProjectionAndRetainedSurface() {
 #ifdef MOLFORMA_HAS_VTK
         MoleculeView view;

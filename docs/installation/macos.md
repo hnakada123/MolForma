@@ -2,9 +2,9 @@
 
 MolFormaをmacOSでソースからビルドし、アプリケーション（`MolForma.app`）のディスクイメージ（DMG）を作って、「アプリケーション」フォルダーにインストールする手順です。ビルドに使うライブラリと、計算に使うNWChemは、パッケージマネージャーの[Homebrew](https://brew.sh/)で入れます。
 
-対象はApple siliconのMac（arm64）のmacOS 27とMolForma 1.0.0です。2026-11-04に、macOS 27.0.1とHomebrew 7.0.10で手順を確認しました（[確認した構成](#確認した構成)）。
+対象はApple siliconのMac（arm64）のmacOS 27とMolForma 1.1.0です。2026-11-04に、macOS 27.0.1とHomebrew 7.0.10でMolForma 1.0.0の手順を確認しました（[確認した構成](#確認した構成)）。
 
-MolFormaのパッケージは、Homebrewにはありません（2026-11-04時点）。GitHubのソースからビルドし、CMakeに含まれるCPackでDMG（`MolForma-1.0.0-arm64.dmg`）を作ります。`MolForma.app` は、使うライブラリ（Qt・Open Babel・RDKit・VTKなど）をすべて含み、Homebrewのフォルダーのライブラリを読み込みません。インストールした後は、Homebrewのライブラリを更新・削除しても動きます。NWChemは含まないので、別に入れます。
+MolFormaのパッケージは、Homebrewにはありません（2026-11-04時点）。GitHubのソースからビルドし、CMakeに含まれるCPackでDMG（`MolForma-1.1.0-arm64.dmg`）を作ります。`MolForma.app` は、使うライブラリ（Qt・Open Babel・RDKit・VTKなど）をすべて含み、Homebrewのフォルダーのライブラリを読み込みません。インストールした後は、Homebrewのライブラリを更新・削除しても動きます。NWChemは含まないので、別に入れます。
 
 ビルド済みのDMGは、[Releases](https://github.com/hnakada123/MolForma/releases) のZIP（`MolForma-<版>-macos-arm64.zip`）にあります。Apple siliconのMacでmacOS 27以降なら、ZIPを展開して[6. インストールする](#6-インストールする)に進んでください。初めて開くときの確認は[ほかのMacで使う・配布するとき](#ほかのmacで使う配布するとき)にあります。計算には[3. NWChemを入れる](#3-nwchemを入れる)も行います。自分で作る場合は、次の手順です。
 
@@ -126,7 +126,7 @@ cd build
 cpack -G DragNDrop
 ```
 
-1〜2分で、`build` に `MolForma-1.0.0-arm64.dmg`（約85 MB）ができます。CPackは、次のことを行ってから、`MolForma.app` と「アプリケーション」フォルダーへのリンクをDMGに入れます。
+1〜2分で、`build` に `MolForma-1.1.0-arm64.dmg`（約85 MB）ができます。CPackは、次のことを行ってから、`MolForma.app` と「アプリケーション」フォルダーへのリンクをDMGに入れます。
 
 1. `MolForma.app` を組み立てます。実行ファイル、アイコン、ファイルの種類などを書いた `Info.plist`、Open Babelのフォーマットプラグインと力場データ、Qtの日本語訳を入れます。
 2. Qtの `macdeployqt` で、Qtのフレームワークとプラグインをコピーします。
@@ -141,7 +141,7 @@ DMGを作らずに `MolForma.app` だけを作る場合は、`cmake --install bu
 DMGを開き、`MolForma` を「アプリケーション」フォルダーへドラッグします。DMGはターミナルからも開けます。
 
 ```sh
-open MolForma-1.0.0-arm64.dmg
+open MolForma-1.1.0-arm64.dmg
 ```
 
 コピーが終わったら、Finderのサイドバーの「MolForma」の取り出しボタンでDMGを取り出します。DMGは、ほかのMacで使う場合のほかは削除してもかまいません。
@@ -159,7 +159,7 @@ ln -sf /Applications/MolForma.app/Contents/MacOS/molforma ~/.local/bin/molforma
 
 Launchpad、または「アプリケーション」フォルダーの「MolForma」から起動します。表示言語はシステムの言語に従います（環境設定（⌘,）の「表示言語 / Language」で切り替え、再起動後に反映）。macOSでは、「環境設定…」「MolFormaについて」の項目が、表示言語によってメニューバーの「MolForma」メニューに移ることがあります。
 
-1. 「MolFormaについて」（「ヘルプ」メニュー、または「MolForma」メニュー）を開き、版が「MolForma 1.0.0」で、RDKit・VTKを入れた場合は「立体判定・残基認識（RDKit）: 有効」「3D描画: VTK（OpenGL）」と表示されることを確認します。
+1. 「MolFormaについて」（「ヘルプ」メニュー、または「MolForma」メニュー）を開き、版が「MolForma 1.1.0」で、RDKit・VTKを入れた場合は「立体判定・残基認識（RDKit）: 有効」「3D描画: VTK（OpenGL）」と表示されることを確認します。
 2. 「3 実行設定」を開き、「NWChem実行ファイル」と「MPIランチャー」の欄の下に、PATHで見つかった `/opt/homebrew/bin/nwchem`・`/opt/homebrew/bin/mpirun` が表示されることを確認します。表示されない場合は、[困ったとき](#困ったとき)を参照してください。
 3. 小さな分子で計算してみます。手順は[題材1 原子と結合から組む](../recipes/atoms_and_bonds.md)にあります。
 

@@ -3,7 +3,7 @@
 # Install it with "makepkg -si" in the folder of this file (docs/installation/arch_linux.md).
 
 pkgname=molforma-git
-pkgver=1.0.0
+pkgver=1.1.0
 pkgrel=1
 pkgdesc='Molecular editor, input builder and result viewer for NWChem'
 arch=('x86_64')

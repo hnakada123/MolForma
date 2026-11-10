@@ -321,7 +321,8 @@ Document followupDocument(const Document &d) {
 }
 bool anyProperty(const QJsonObject &s) {
     return s["prop_mulliken"].toBool() || s["prop_esp"].toBool() || s["prop_nmr"].toBool() ||
-           s["prop_polarizability"].toBool();
+           s["prop_polarizability"].toBool() || s["prop_epr"].toBool() || s["prop_esp_grid"].toBool() ||
+           s["prop_efield_grid"].toBool();
 }
 // Input that MolForma does not interpret. Shell tasks and Python blocks would run programs.
 QString extraInputError(const QString &text) {
@@ -535,6 +536,7 @@ const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
             {"tddft_roots", Kind::Integer, 10, 1, 100, 0, Scope::Excited},
             {"tddft_triplets", Kind::Flag, false, 0, 0, 0, Scope::Excited},
             {"tddft_tda", Kind::Flag, false, 0, 0, 0, Scope::Excited},
+            {"tddft_cdspectrum", Kind::Flag, false, 0, 0, 0, Scope::Excited},
             project({"constraints", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Driver}),
             project({"scan_atoms", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Scan}),
             project({"scan_start", Kind::Real, 1.0, -180, 180, 4, Scope::Scan}),
@@ -558,6 +560,17 @@ const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
             {"prop_esp", Kind::Flag, false},
             {"prop_nmr", Kind::Flag, false},
             {"prop_polarizability", Kind::Flag, false},
+            {"prop_raman", Kind::Flag, false},
+            {"prop_epr", Kind::Flag, false},
+            {"prop_ord", Kind::Flag, false},
+            {"prop_esp_grid", Kind::Flag, false},
+            {"prop_efield_grid", Kind::Flag, false},
+            {"property_grid_padding", Kind::Real, 4., .5, 20, 2},
+            {"property_grid_points", Kind::Integer, 50, 5, 100},
+            {"ord_start_nm", Kind::Real, 400., 100, 5000, 3},
+            {"ord_end_nm", Kind::Real, 700., 100, 5000, 3},
+            {"ord_points", Kind::Integer, 7, 2, 50},
+            {"raman_wavelength_nm", Kind::Real, 532.0, 100, 5000, 3},
             project({"extra_input", Kind::String, ""}),
             project({"extra_tasks", Kind::String, ""})};
         for (auto &spec : list)
@@ -1161,6 +1174,27 @@ static NwchemValidation validation(const Document &d) {
                 tr("NMR遮蔽定数（GIAO）を計算します。化学シフトには同じ条件の基準物質（TMS等）の値との差を"
                    "使ってください。"));
     }
+    if ((s["prop_esp_grid"].toBool() || s["prop_efield_grid"].toBool()) && (ghosts || s["bsse"].toBool()))
+        result.error("property_grid.geometry", "prop_esp_grid",
+                     tr("ESP・電場の格子出力はゴースト中心・BSSEと併用できません。"));
+    if (s["prop_ord"].toBool() &&
+        ((!calc.dft() && calc.method != NwchemMethod::Hf) || mult != 1 || result.reference != "rhf" ||
+         s["followup"].toBool() || s["bsse"].toBool() || scan || calc.task == NwchemTask::Irc || ghosts ||
+         s["ord_start_nm"].toDouble() >= s["ord_end_nm"].toDouble()))
+        result.error("ord.method", "prop_ord",
+                     tr("ORDは閉殻HF・DFTで、開始波長を終了波長より小さくしてください。後続計算・BSSE・スキャ"
+                        "ン・IRC・ゴースト中心には対応しません。"));
+    if (s["prop_epr"].toBool() && (!calc.dft() || mult != 2 || result.reference != "uhf" ||
+                                   s["relativistic"] != "zora" || s["followup"].toBool() || ghosts))
+        result.error("epr.method", "prop_epr",
+                     tr("ESR物性は二重項の非制限DFT・ZORAで使用してください。後続計算・ゴースト中心との併用に"
+                        "は対応しません。"));
+    if (s["prop_raman"].toBool() &&
+        (!calc.dft() || !calc.frequencies() || calc.saddle() || s["followup"].toBool() ||
+         s["tddft"].toBool() || s["bsse"].toBool() || mult != 1 || result.reference == "uhf" || ghosts))
+        result.error("raman.method", "prop_raman",
+                     tr("通常ラマンは閉殻DFTの振動数または最適化＋振動数で使用してください。後続計算・TDDFT・"
+                        "BSSE・ゴースト中心との併用には対応しません。"));
     if (s["followup"].toBool()) {
         if (!calc.optimization())
             result.error("followup.task", "followup",
@@ -1507,6 +1541,8 @@ static NwchemGeneratedInput generation(const Document &d) {
             text += "  notriplet\n";
         if (s["tddft_tda"].toBool())
             text += "  cis\n";
+        if (s["tddft_cdspectrum"].toBool())
+            text += "  cdspectrum\n";
         out.block("tddft", text + "end\n", "tddft");
     }
     if (calc.driver()) {
@@ -1622,12 +1658,15 @@ static NwchemGeneratedInput generation(const Document &d) {
     }
     if (anyProperty(s)) {
         const auto level = theoryOf(nwchemSettings(last)["method"].toString());
-        if (s["prop_mulliken"].toBool() || s["prop_nmr"].toBool() || s["prop_polarizability"].toBool()) {
+        if (s["prop_mulliken"].toBool() || s["prop_nmr"].toBool() || s["prop_polarizability"].toBool() ||
+            s["prop_epr"].toBool()) {
             QString text = "\nproperty\n";
             if (s["prop_mulliken"].toBool())
                 text += "  mulliken\n";
             if (s["prop_nmr"].toBool())
                 text += "  shielding\n";
+            if (s["prop_epr"].toBool())
+                text += "  gshift\n  hyperfine\n";
             if (s["prop_polarizability"].toBool())
                 text += "  aoresponse 1 0.0\n";
             out.block("property", text + "end\n", "prop_mulliken");
@@ -1638,11 +1677,48 @@ static NwchemGeneratedInput generation(const Document &d) {
             out.block("task", "task esp\n", "prop_esp");
         }
     }
+    for (const auto &kind : {QString("esp"), QString("efield")})
+        if (s["prop_" + kind + "_grid"].toBool()) {
+            out.block("unset", "\nunset prop:*\n", "prop_" + kind + "_grid");
+            out.block("property",
+                      "property\n  " + kind + "\n  grid pad " +
+                          shortest(s["property_grid_padding"].toDouble()) + " ngrid " +
+                          integer("property_grid_points") + " output " + str("start") + "_" + kind +
+                          "_grid.cube\nend\n",
+                      "prop_" + kind + "_grid");
+            out.block("task", "task " + theoryOf(nwchemSettings(last)["method"].toString()) + " property\n",
+                      "prop_" + kind + "_grid");
+        }
     out.append(nwchemOutputLines(last, lastCheck));
+    if (s["prop_raman"].toBool()) {
+        const double frequency = 45.5633525316 / s["raman_wavelength_nm"].toDouble(); // hc/Eh in nm.
+        out.block("unset", "\nunset prop:*\n", "prop_raman");
+        out.block("property", "property\n  response 1 " + QString::number(frequency, 'g', 14) + "\nend\n",
+                  "raman_wavelength_nm");
+        out.block("raman", "raman\n  normal\n  lorentzian\nend\n", "prop_raman");
+        out.block("task", "task dft raman\n", "prop_raman");
+    }
+    if (s["prop_ord"].toBool()) {
+        const int points = s["ord_points"].toInt();
+        for (int i = 0; i < points; ++i) {
+            const double wavelength =
+                s["ord_start_nm"].toDouble() +
+                (s["ord_end_nm"].toDouble() - s["ord_start_nm"].toDouble()) * i / (points - 1);
+            out.block("unset", "\nunset prop:*\n", "prop_ord");
+            out.block("property",
+                      "property\n  response 1 " + QString::number(45.5633525316 / wavelength, 'g', 14) +
+                          "\n  giao\nend\n",
+                      "prop_ord");
+            out.block("task", "task " + theoryOf(str("method")) + " property\n", "prop_ord");
+        }
+    }
     extraInput(out, str("extra_tasks"), "extra_tasks");
     return out.result;
 }
 QString nwchemInput(const Document &d) {
     return generateNwchemInput(d).text;
+}
+QJsonObject nwchemFinalSettings(const Document &d) {
+    return nwchemSettings(nwchemSettings(d)["followup"].toBool() ? followupDocument(d) : d);
 }
 } // namespace mf

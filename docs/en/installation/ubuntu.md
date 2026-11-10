@@ -2,9 +2,9 @@
 
 How to build MolForma from source on Ubuntu, make a deb package and install it with apt. The development packages for the build and NWChem for calculations come from Ubuntu's official repositories.
 
-These steps are for Ubuntu 26.04 LTS (amd64) and MolForma 1.0.0. They were checked on 2026-10-28 in Docker's `ubuntu:26.04` (26.04.1 LTS) (see [Verified configuration](#verified-configuration)).
+These steps are for Ubuntu 26.04 LTS (amd64) and MolForma 1.1.0. The procedure was checked with MolForma 1.0.0 on 2026-10-28 in Docker's `ubuntu:26.04` (26.04.1 LTS) (see [Verified configuration](#verified-configuration)).
 
-MolForma has no package in Ubuntu's official repositories or in a PPA (as of 2026-10-28). You build it from the source on GitHub and make a deb package (`molforma_1.0.0_amd64.deb`) with CPack, which comes with CMake. As apt manages the installed package, `apt remove` removes it.
+MolForma has no package in Ubuntu's official repositories or in a PPA (as of 2026-10-28). You build it from the source on GitHub and make a deb package (`molforma_1.1.0_amd64.deb`) with CPack, which comes with CMake. As apt manages the installed package, `apt remove` removes it.
 
 ## Required packages
 
@@ -93,7 +93,7 @@ Make the deb package in `build` and install it with apt. With `./`, apt takes it
 ```sh
 cd build
 cpack -G DEB
-sudo apt install ./molforma_1.0.0_amd64.deb
+sudo apt install ./molforma_1.1.0_amd64.deb
 ```
 
 `cpack` works out the dependencies from the shared libraries the executable uses (`dpkg-shlibdeps`) and writes them into the package. The package places these files (`dpkg -L molforma` lists them). The file type and menu information is updated automatically when it is installed.
@@ -110,7 +110,7 @@ sudo apt install ./molforma_1.0.0_amd64.deb
 
 Run `molforma` in a terminal or choose “MolForma” in the list of applications. The interface language follows the system language (“Language (after restart)” in “Edit → Preferences…” switches it; it takes effect after a restart).
 
-1. Open “Help → About MolForma” and check that it reads “MolForma 1.0.0” and, with RDKit and VTK installed, “Stereochemistry and residue recognition (RDKit): Enabled” and “3D rendering: VTK (OpenGL)”. Where OpenGL is unavailable, it reads “3D rendering: QPainter (CPU)”.
+1. Open “Help → About MolForma” and check that it reads “MolForma 1.1.0” and, with RDKit and VTK installed, “Stereochemistry and residue recognition (RDKit): Enabled” and “3D rendering: VTK (OpenGL)”. Where OpenGL is unavailable, it reads “3D rendering: QPainter (CPU)”.
 2. Open “3 Run settings” and check that below the “NWChem executable” and “MPI launcher” fields appear `/usr/bin/nwchem` and `/usr/bin/mpirun`, where PATH found them.
 3. Try a calculation on a small molecule. The steps are in [recipe 1 Building from atoms and bonds](../recipes/atoms_and_bonds.md).
 
@@ -126,7 +126,7 @@ git pull --ff-only
 cmake --build build -j 4
 cd build
 cpack -G DEB
-sudo apt install --reinstall ./molforma_1.0.0_amd64.deb
+sudo apt install --reinstall ./molforma_1.1.0_amd64.deb
 ```
 
 Upgrading Ubuntu to a new release changes the versions of libraries such as Qt, Open Babel, RDKit and VTK; MolForma may then stop starting, or be removed because its dependencies cannot be met. In that case, delete `build`, start again from the configuration in [3. Get the source and build](#3-get-the-source-and-build), make the package again and install it.
@@ -147,7 +147,7 @@ The application settings (`~/.config/MolForma/`), autosaves (`~/.local/share/Mol
 | The configuration stops with `The link interface of target "RDKit::rdkit_base" contains: Boost::serialization … but the target was not found` | `librdkit-dev` does not install Boost's development packages. Install `libboost-iostreams-dev` and `libboost-serialization-dev` and start again from the configuration |
 | It reports `MolForma rendering: QPainter (Qt6-enabled VTK development package not found)` | Check that `libvtk9-dev` and `libvtk9-qt-dev` are installed. Install what the `VTK development dependency unavailable:` lines name and start again from the configuration |
 | `cpack` stops with `CPackDeb: file utility is not available` | Install `file` with `sudo apt install file` and run `cpack -G DEB` again |
-| After updating, apt says `molforma is already the newest version` and does not install it again | The version number is the same; use `sudo apt install --reinstall ./molforma_1.0.0_amd64.deb` |
+| After updating, apt says `molforma is already the newest version` and does not install it again | The version number is the same; use `sudo apt install --reinstall ./molforma_1.1.0_amd64.deb` |
 | The 3D view shows “Rendering: QPainter (CPU) · simplified, OpenGL unavailable” at its top left | OpenGL 3.2 or later is unavailable. Check the GPU driver (`glxinfo -B` from `mesa-utils` shows the OpenGL implementation and version in use). It may be unavailable over remote desktops and in virtual machines |
 | Rotation is slow although VTK draws | If `glxinfo -B` reports `llvmpipe` or similar, OpenGL is rendered in software |
 | Japanese text shows as boxes | Install a Japanese font such as `fonts-noto-cjk` |

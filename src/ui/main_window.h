@@ -44,6 +44,7 @@ class ExecutionPanel;
 class InputPreviewPanel;
 class ResultsPanel;
 class HistoryPanel;
+class ConformerSetDialog;
 class MainWindow : public QMainWindow {
     Q_OBJECT
   public:
@@ -200,6 +201,8 @@ class MainWindow : public QMainWindow {
     QSettings settings;
     DocumentStorage storage;
     ChemistryJob chemistry;
+    ConformerSetDialog *conformerSet = nullptr;
+    ConformerSetDialog *conformerSetDialog();
     bool refreshing = false;
     MoleculePanel *moleculePage = nullptr;
     MoleculeView *view = nullptr;

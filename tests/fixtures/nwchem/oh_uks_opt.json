@@ -310,6 +310,8 @@
     "properties": {
         "dipole": {
             "debye": 1.786245376604899,
+            "geometry": "2\nMolForma | HO | angstrom\nO 0.0000000000 0.0000000000 -0.0232998600\nH 0.0000000000 0.0000000000 0.9932998600\n",
+            "origin": "nwchem_multipole_origin",
             "x": 0,
             "y": 0,
             "z": 0.702763
@@ -320,6 +322,7 @@
             "source": "final"
         },
         "optimization": "converged",
+        "spin_multiplicity": 2,
         "thresholds": {
             "gmax": 0.00045,
             "grms": 3e-04,

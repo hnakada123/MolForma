@@ -20,7 +20,11 @@ class MoleculeView : public QWidget {
     QString rendererName() const;
     void setDocument(const Document &d);
     void setSelection(const Ids &ids);
-    void setSurface(const QVector<SurfaceTriangle> &triangles);
+    void setSurface(const QVector<SurfaceTriangle> &triangles, const QVector<QColor> &colors = {});
+    void setOverlayLines(const QVector<std::pair<Vec, Vec>> &lines) {
+        overlayLines = lines;
+        scheduleOverlay();
+    }
     void setSurfaceStyle(bool positive, bool negative, int opacity);
     // Arrows drawn over the molecule: (origin, vector) in Å, e.g. normal-mode displacements.
     void setArrows(const QVector<std::pair<Vec, Vec>> &list) {
@@ -202,6 +206,8 @@ class MoleculeView : public QWidget {
     Qt::KeyboardModifiers pressModifiers;
     QVector<Marker> markers;
     QVector<SurfaceTriangle> surface;
+    QVector<QColor> surfaceColors;
+    QVector<std::pair<Vec, Vec>> overlayLines;
     QVector<std::pair<Vec, Vec>> arrows;
     QString displayStyle = "ball_and_stick";
     QSet<QString> hidden;

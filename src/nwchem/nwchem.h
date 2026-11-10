@@ -113,6 +113,8 @@ struct NwchemValidation : ValidationReport {
     bool numericalFrequencies = false;
 };
 QJsonObject nwchemDefaults();
+// Resolved settings of the last electronic calculation (including an optional follow-up).
+QJsonObject nwchemFinalSettings(const Document &document);
 QJsonObject nwchemSettings(const Document &document);
 QVector<NwchemChoice> nwchemChoices(const QString &key);
 QVector<NwchemPreset> nwchemPresets();

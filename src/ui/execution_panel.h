@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "nwchem/nwchem_execution.h"
+#include "nwchem/nwchem_queue.h"
 #include "results/results.h"
 #include <QStringDecoder>
 #include <QWidget>
@@ -38,6 +39,12 @@ class ExecutionPanel : public QWidget {
         return run.active();
     }
     void startCalculation();
+    QString enqueueCalculation();
+    QStringList enqueueGeometries(const QVector<Document> &geometries, bool frequencies);
+    void showQueue();
+    NwchemQueue &calculationQueue() {
+        return queue;
+    }
     // "計算を実行" (header, menu, F5): starts when "3 実行設定" allows it, otherwise shows that tab
     // and why.
     void startFromMenu();
@@ -77,8 +84,10 @@ class ExecutionPanel : public QWidget {
   private:
     // Asks the user whether to run with execution settings they have not entered or confirmed.
     bool confirmExecution();
+    bool authorizeCalculation();
     MainWindow *window;
     NwchemRun run;
+    NwchemQueue queue;
     bool busy = false, startable = false;
     QWidget *form, *cpuMeter;
     ExecutionForm *settingsForm; // Programs and folders, resources and environment.
@@ -91,6 +100,8 @@ class ExecutionPanel : public QWidget {
     RunProgress *progress;
     QPlainTextEdit *command, *log;
     QPushButton *prepare, *openFolder, *viewResults, *showRunLink, *stopRun;
+    QPushButton *enqueue, *queueButton;
+    QPushButton *diagnosisSetting;
     QFrame *runPanel;
     QSplitter *dock = nullptr;
     QToolButton *maximize;
