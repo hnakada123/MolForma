@@ -332,9 +332,17 @@ QJsonArray McpGui::tools() const {
     add("history_action", "Manage calculation history",
         "Scan/select/reuse/open/repair/trash saved calculations, cancel a scan, or export history CSV. "
         "Repair marks a record left running on this computer, whose process has ended, as interrupted. "
-        "Reuse and trash retain the normal GUI confirmation dialogs. Poll get_app_state and get_ui.",
+        "continue prepares a new document that restarts the selected unfinished job from its NWChem "
+        "database (structure and orbitals as they were left); restart_hessian a transition-state search "
+        "with the Hessian of the selected frequency job; reuse_hessian frequencies and thermochemistry "
+        "again from that Hessian (other temperatures or isotopes); reuse_orbitals a calculation that "
+        "starts from the selected job's molecular orbitals. import registers a calculation run outside "
+        "MolForma (path: NWChem's output or its folder); register completes the selected job that was "
+        "saved without running, from the output.out copied back into its folder. Reuse, the four "
+        "preparations and trash retain the normal GUI confirmation dialogs. Poll get_app_state and get_ui.",
         {{"action",
-          choice({"scan", "cancel", "select", "reuse", "open_results", "repair", "trash", "save_csv"})},
+          choice({"scan", "cancel", "select", "reuse", "open_results", "repair", "trash", "save_csv",
+                  "continue", "restart_hessian", "reuse_hessian", "reuse_orbitals", "import", "register"})},
          {"path", type("string")},
          {"overwrite", boolean}},
         {"action"}, true);
@@ -1199,6 +1207,10 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
         } else if (action == "save_csv") {
             writeOutput(args["path"].toString(), historyCsv(p->visibleEntries()).toUtf8(),
                         args["overwrite"].toBool());
+        } else if (action == "import") {
+            if (args["path"].toString().isEmpty())
+                fail("Specify the path of NWChem's output or of its folder.");
+            p->importRun(args["path"].toString());
         } else {
             if (p->selectedDirectory().isEmpty())
                 fail("Select a history entry first.");
@@ -1211,6 +1223,17 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
                 p->repairSelected();
             else if (action == "trash")
                 p->trashSelected();
+            else if (action == "register")
+                p->importRun();
+            else {
+                static const QMap<QString, QString> modes{{"continue", "continue"},
+                                                          {"restart_hessian", "hessian"},
+                                                          {"reuse_hessian", "reuse"},
+                                                          {"reuse_orbitals", "orbitals"}};
+                if (!modes.contains(action))
+                    fail("Unknown history action.");
+                p->restartSelected(modes[action]);
+            }
         }
     } else
         fail("Unknown GUI operation.");

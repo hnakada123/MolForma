@@ -41,6 +41,27 @@ struct ResultCriterion {
 // log printed ({gmax, grms, xmax, xrms}; a missing one is not judged).
 std::array<ResultCriterion, 4> resultCriteria(const ResultStep &step, const QJsonObject &thresholds);
 
+// An occupied → virtual orbital pair of an excited state: its X amplitude, its Y amplitude where
+// NWChem printed one (else NaN), and its weight X² − Y² as a percentage of the sum over the pairs
+// printed for the state (NaN when that sum is not positive). NWChem prints the amplitudes above 0.05,
+// so the weights of the pairs it left out are shared among the printed ones.
+struct ResultTransition {
+    int from = 0, to = 0;
+    QString spin; // "alpha" / "beta", or empty for restricted states.
+    double x = 0, y = std::numeric_limits<double>::quiet_NaN(),
+           weight = std::numeric_limits<double>::quiet_NaN();
+};
+// The pairs of a state, the heaviest first.
+QVector<ResultTransition> resultTransitions(const ResultExcitation &state);
+// The number of the highest occupied orbital of a spin ("beta"; anything else is alpha, which
+// restricted states use) in the reference of the excited states: from the electrons the log counted
+// ("tddft" of the properties), else from its orbital analysis; 0 when neither tells.
+int resultHomoNumber(const ResultData &data, const QString &spin);
+// "HOMO−1", "HOMO", "LUMO", "LUMO+2" for an orbital number against the HOMO's; the number without one.
+QString resultFrontierLabel(int number, int homo);
+// "HOMO−1 → LUMO" ("12 → 14" without the HOMO's number), after "α " / "β " for unrestricted states.
+QString resultTransitionText(const ResultData &data, const ResultTransition &transition);
+
 // One line: the optimization state, the calculation energy, imaginary frequencies and excited states.
 QString resultBriefSummary(const ResultData &data);
 // How a loaded result is reported: its reading status, then the brief summary; empty without one.

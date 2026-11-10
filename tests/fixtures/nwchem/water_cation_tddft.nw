@@ -1,0 +1,20 @@
+start molforma
+title "water cation unrestricted TDDFT"
+charge 1
+geometry units angstroms noautosym nocenter
+  O  0.000000  0.000000  0.117300
+  H  0.000000  0.757200 -0.469200
+  H  0.000000 -0.757200 -0.469200
+end
+basis
+  * library 6-31G*
+end
+dft
+  xc b3lyp
+  odft
+  mult 2
+end
+tddft
+  nroots 3
+end
+task tddft energy

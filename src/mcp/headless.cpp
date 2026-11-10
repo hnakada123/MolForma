@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "mcp/headless.h"
 #include "mcp/tools.h"
+#include "model/settings.h"
 #include "results/result_summary.h"
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QSettings>
 
 namespace mf {
 McpHeadless::McpHeadless(McpPolicy p, QJsonObject trustedExecution, QObject *parent)
@@ -14,7 +16,24 @@ McpHeadless::McpHeadless(McpPolicy p, QJsonObject trustedExecution, QObject *par
     connect(&run, &NwchemRun::changed, this, [this] {
         if (!run.active() && !runWork.isEmpty() && !finished.contains(runWork))
             finish(runWork, "calculation", "start", "calculation");
+        // The next session looks for a run this one leaves to its supervisor.
+        if (policy.keepRuns)
+            QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
+                .setValue("execution/running", run.active() ? run.plan().directory : QString());
     });
+    if (policy.keepRuns) {
+        run.setSupervisor(runSupervisorProgram());
+        const auto last = QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
+                              .value("execution/running")
+                              .toString();
+        if (!last.isEmpty()) {
+            try {
+                policy.checkPath(last);
+                run.attach(last);
+            } catch (const std::exception &) {
+            }
+        }
+    }
     connect(&loader, &ResultLoader::loaded, this, [this](ResultData next, const QString &) {
         data = std::move(next);
         loadMessage = resultMessage(data); // As the result viewer reports it.
@@ -28,7 +47,10 @@ McpHeadless::McpHeadless(McpPolicy p, QJsonObject trustedExecution, QObject *par
 McpHeadless::~McpHeadless() {
     cancelLoad({});
     queue.shutdown();
-    run.shutdown();
+    if (policy.keepRuns)
+        run.release();
+    else
+        run.shutdown();
 }
 void McpHeadless::attach(const McpServer &owner) {
     server = &owner;

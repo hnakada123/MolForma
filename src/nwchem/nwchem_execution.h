@@ -62,6 +62,14 @@ ExecutionPlan executionPlan(const Document &document, const QString &projectDire
 ExecutionPlan executionPreviewPlan(const Document &document, const QString &projectDirectory,
                                    bool checkLocal = false);
 QString executionCommand(const ExecutionPlan &plan);
+// The script "ジョブとして保存" puts beside the input (job.sh) for running the job on another computer:
+// a plain shell script, or one for sbatch (Slurm) or qsub (PBS), by the setting "job_script"; empty for
+// "none". It starts NWChem as "3 実行設定" names it, in the folder of the script.
+QString executionJobScript(const Document &document);
+// Lines the user wants in every job script before NWChem starts ("module load nwchem"): kept in
+// Preferences only, never in a project, since they are run as they are.
+QString executionJobPrelude();
+void saveExecutionJobPrelude(const QString &lines);
 ExecutionPlan saveExecutionBundle(const Document &document, const QString &projectDirectory,
                                   bool forRun = false);
 // Where a run's process lives, recorded in run.json when it starts: host, boot ID and, on Linux,
@@ -70,15 +78,44 @@ QJsonObject executionProcessIdentity(qint64 pid);
 // For a record left as starting/running/stopping: true when its process is known to have ended
 // (recorded on this host, and the PID is gone or reused, or the system restarted since).
 bool executionProcessGone(const QJsonObject &manifest);
+// The supervisor mode of the executable ("--run-job <job folder>"): runs the job that folder was just
+// prepared for, records its states in run.json and stops it when stop.request appears in the folder
+// (or on SIGTERM), so that the calculation goes on when the application that started it ends.
+// Returns -1 when the arguments ask for something else.
+int runJobMain(int argc, char **argv);
+// The program that supervises runs: this executable, or the AppImage it was started from (which
+// stays mounted for as long as one of its processes runs).
+QString runSupervisorProgram();
+// Asks the supervisor of a running job to stop it. False when the job has no supervisor on this
+// computer (then only the application that runs it can stop it).
+bool requestRunStop(const QString &jobDirectory);
+// Whether a record left as starting/running/stopping still has its supervisor.
+bool runSupervised(const QJsonObject &manifest);
+// For such a record: true when the run is known to have ended, its supervisor (if it had one) and
+// NWChem alike (see executionProcessGone).
+bool executionRunGone(const QJsonObject &manifest);
 // One immutable calculation snapshot per run. Results never modify the editor document.
 class NwchemRun : public QObject {
     Q_OBJECT
   public:
     explicit NwchemRun(QObject *parent = nullptr);
     ~NwchemRun() override;
+    // With a program (this executable), runs go to a supervisor of their own (runJobMain) and are
+    // followed through run.json; without one, NWChem is a child process that ends with this object.
+    void setSupervisor(const QString &program) {
+        supervisor = program;
+    }
+    bool supervised() const {
+        return !supervisor.isEmpty();
+    }
     void start(const Document &document, const QString &projectDirectory);
+    // Follows a supervised job that another session started, if it is still running: true then.
+    bool attach(const QString &jobDirectory);
     void stop();
+    // Stops the run and waits for its end.
     void shutdown();
+    // Leaves a supervised run to its supervisor and forgets it (the application ends).
+    void release();
     bool active() const {
         return runStateActive(status);
     }
@@ -97,15 +134,19 @@ class NwchemRun : public QObject {
 
   private:
     friend class NwchemQueue;
+    friend int runJobMain(int argc, char **argv);
     void startPrepared(const ExecutionPlan &plan);
     QProcess process;
     QTimer timer, killTimer;
     QElapsedTimer elapsed;
     ExecutionPlan current;
     RunState status = RunState::Idle;
-    QString detail;
-    bool timedOut = false;
-    qint64 groupId = 0, duration = 0;
+    QString detail, supervisor;
+    bool timedOut = false, watching = false; // watching: the run is its supervisor's.
+    qint64 groupId = 0, duration = 0, supervisorPid = 0;
+    int unreadable = 0; // Polls in a row that could not read run.json.
+    void launch();
+    void poll();
     void signalProcess(bool force);
     void finish(int exitCode, QProcess::ExitStatus exitStatus, const QString &error = {});
     void record();

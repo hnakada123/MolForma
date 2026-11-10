@@ -1,5 +1,39 @@
 # Changes
 
+## Next version (in development)
+
+This update adds ways to keep long calculations going, reads values that the logs already hold, and adds thermochemistry post-processing.
+
+| Addition or change | Where to start | Scope |
+| --- | --- | --- |
+| Restarting calculations | [History](features/history.md#restarting-and-carrying-over-calculations) → Prepare to continue | Go on, as a new job, from the structure, molecular orbitals and Hessian that a failed, stopped or timed-out calculation left in NWChem’s database; an interrupted numerical Hessian after the displacements already done |
+| Carrying over Hessians and orbitals | [History](features/history.md#restarting-and-carrying-over-calculations) → Next calculation from this result | A transition-state search with the Hessian of a frequency job, frequencies for other temperatures or isotopes that reuse the Hessian, a recalculation that starts from the molecular orbitals |
+| Calculations that outlive the window | [3 Run settings](features/execution.md#keep-calculations-running-after-the-window-closes) | A supervisor process manages the calculation, which goes on when the window closes. The next session follows it again, and History can stop calculations of other windows |
+| Restoring the queue | [3 Run settings](features/execution.md#calculation-queue) | The waiting calculations and their order are saved and restored, paused, at the next startup |
+| Job scripts | [3 Run settings](features/execution.md#run-on-another-computer-job-script) → Job script | “Save as job” adds a `job.sh` for a shell, Slurm or PBS |
+| Importing calculations run elsewhere | [History](features/history.md#import-calculations-run-elsewhere) | Register the output brought back from another computer, or turn the output of an NWChem run made without MolForma into a job |
+| Orbital contributions of excited states | [Result viewer](features/results.md) → Excited states | The contributions and weights of occupied-to-virtual orbital pairs for each TDDFT excited state |
+| Bond indices | [Result viewer](features/results.md) → Properties | The bond indices and valencies of the Mulliken analysis |
+| Thermochemistry corrections and rate constants | [History](features/history.md#thermochemistry-corrections-and-rate-constants) → More | Frequency scaling, quasi-RRHO entropies for low-frequency modes (Grimme/Truhlar), a 1 mol/L standard state, Eyring rate constants and exp(−ΔG/RT) |
+| Conformer-averaged spectra | [Tools → Conformer set…](features/molecule_pages.md#conformer-averaged-spectra) | Population-weighted IR, normal Raman, UV–Vis and ECD spectra and mean NMR shieldings |
+| MCP | [MCP server](mcp.md) | Restarting, carrying over and importing from the history; `--mcp-keep-runs` (calculations go on when the connection ends) |
+
+### Before using the next version
+
+- A restart copies the database of the original job into a new job folder and begins with `restart`. Coordinate scans, IRC and BSSE-corrected calculations, and calculations whose `permanent_dir` or `scratch_dir` is outside the job, cannot be restarted. A restarted calculation cannot change the molecule or the constraints.
+- What goes on after the window closes is the one running calculation. The waiting queue is restored at the next startup but starts nothing until you resume it. Whether a calculation survives a restart of the computer or a logout depends on the operating system’s settings.
+- Transfer, submission and monitoring over SSH are not supported. `job.sh` is a template for one node; copying to the other computer and bringing the results back is manual.
+- The thermochemistry corrections replace only the vibrational parts of the values NWChem printed. The defaults (scale 1, harmonic oscillators, 1 atm) keep NWChem’s values. Rate constants use the Eyring equation with a transmission coefficient of 1, taking the free-energy difference from the reference stage as the barrier.
+- Bond indices depend on the basis set and can be unreliable with diffuse functions.
+
+### Saving and compatibility of the next version
+
+Existing projects, jobs, energy comparisons and conformer sets are read and written as before. The restart settings (`document.nwchem.restart`) and the kind of job script (`document.nwchem_execution.job_script`, `job_queue`) are saved in the project. Jobs run with earlier versions can be restarted as long as their folder still holds the database. Records left as running by earlier versions have no supervisor, so History cannot stop them.
+
+### Verification of the next version
+
+The build and all 16 CTest suites were checked on Linux. Restarts were checked with real NWChem 7.3.1 calculations of small molecules (going on with an “Optimize → Frequencies” stopped by its step limit, going on with a numerical Hessian, a transition-state search with the Hessian of a frequency job, and `reuse` of `freq`). Going on after the window closes and following again were checked with the test process; they have not been checked on Windows, macOS or from an AppImage.
+
 ## 1.1.0 (2026-11-10)
 
 This update adds tools for running multiple calculations locally and visualizing properties calculated by NWChem.

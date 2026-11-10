@@ -5,7 +5,9 @@
 #include "mcp/stdio_transport.h"
 #include "model/i18n.h"
 #include "model/settings.h"
+#include "nwchem/nwchem_execution.h"
 #include "results/results.h"
+#include "ui/execution_panel.h"
 #include "ui/main_window.h"
 #include "ui/mcp_gui.h"
 #include "ui/translations.h"
@@ -75,11 +77,13 @@ void addMcpOptions(QCommandLineParser &parser) {
                       "directory"});
     parser.addOption({"mcp-allow-execution-settings",
                       mf::tr("MCPクライアントにNWChem実行ファイル・ランチャー・環境変数の変更を許可する")});
+    parser.addOption({"mcp-keep-runs", mf::tr("MCPの接続が終わっても、実行中の計算を止めずに続ける")});
 }
 // MCP restrictions come only from the command line that the user configured in the client.
 mf::McpPolicy mcpPolicy(const QCommandLineParser &parser) {
     mf::McpPolicy policy;
     policy.allowExecutionSettings = parser.isSet("mcp-allow-execution-settings");
+    policy.keepRuns = parser.isSet("mcp-keep-runs");
     for (const auto &directory : parser.values("mcp-allow-dir"))
         policy.allowDirectory(directory);
     return policy;
@@ -98,6 +102,9 @@ int main(int argc, char **argv) {
     prepareBundle();
 #endif
 #endif
+    // The supervisor of a calculation: outlives the window that started it, and needs no display.
+    if (const int code = mf::runJobMain(argc, argv); code >= 0)
+        return code;
     // Check before QApplication so headless MCP needs no display or platform plugin.
     bool headlessMcp = false, guiMcp = false;
     for (int i = 1; i < argc; ++i) {
@@ -193,8 +200,10 @@ int main(int argc, char **argv) {
     try {
         // Refuse contradictory options before a window opens, a file loads or autosave starts.
         if (!parser.isSet("mcp-gui") &&
-            (parser.isSet("mcp-allow-dir") || parser.isSet("mcp-allow-execution-settings")))
-            mf::fail("--mcp-allow-dir and --mcp-allow-execution-settings require --mcp or --mcp-gui.");
+            (parser.isSet("mcp-allow-dir") || parser.isSet("mcp-allow-execution-settings") ||
+             parser.isSet("mcp-keep-runs")))
+            mf::fail("--mcp-allow-dir, --mcp-allow-execution-settings and --mcp-keep-runs require --mcp or "
+                     "--mcp-gui.");
         if (parser.isSet("mcp-gui") && parser.isSet("screenshot"))
             mf::fail("--mcp-gui and --screenshot cannot be combined.");
         const auto policy = mcpPolicy(parser);
@@ -209,9 +218,22 @@ int main(int argc, char **argv) {
 #endif
         if (!parser.isSet("screenshot")) {
             window.startAutosave();
-            // A person decides about recovered work; MCP sessions start without the question.
-            if (!guiMcp)
-                QTimer::singleShot(0, &window, [&window] { window.safe([&] { window.offerRecovery(); }); });
+            // Calculations get a supervisor of their own, and go on when the window closes. From an
+            // AppImage that is the image itself, which stays mounted for as long as it runs.
+            window.executionPanel()->superviseRuns(mf::runSupervisorProgram());
+            // A person decides about recovered work and about what the last session left running or
+            // waiting. An MCP session starts without the question and the queue; with --mcp-keep-runs
+            // it finds the calculation the last one left running.
+            const bool keepRuns = policy.keepRuns;
+            if (!guiMcp || keepRuns)
+                QTimer::singleShot(0, &window, [&window, guiMcp] {
+                    window.safe([&] {
+                        if (const auto note = window.executionPanel()->restoreRuns(!guiMcp); !note.isEmpty())
+                            window.statusBar()->showMessage(note, 20000);
+                        if (!guiMcp)
+                            window.offerRecovery();
+                    });
+                });
         }
         std::unique_ptr<mf::McpServer> server;
         std::unique_ptr<mf::McpGui> gui;
@@ -221,7 +243,12 @@ int main(int argc, char **argv) {
             server = std::make_unique<mf::McpServer>(gui->editor(), policy);
             transport = std::make_unique<mf::McpStdioTransport>(server.get());
             QObject::connect(transport.get(), &mf::McpStdioTransport::finished, &app,
-                             &QCoreApplication::exit);
+                             [&window, keep = policy.keepRuns](int code) {
+                                 // The session ends: its calculation ends with it unless it is to go on.
+                                 if (keep)
+                                     window.executionPanel()->shutdown(true);
+                                 QCoreApplication::exit(code);
+                             });
             transport->start();
             window.statusBar()->addPermanentWidget(new QLabel(mf::tr("MCP stdio 接続中"), &window));
             // The dialogs of what to read (PDB, mmCIF, XYZ frames) and of load errors must already be

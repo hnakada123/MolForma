@@ -59,6 +59,41 @@ ExecutionForm::ExecutionForm(Scope scope, const QString &name, QWidget *parent)
             [this] { emit changed("mode", mode->currentData().toString()); });
     pathField(paths, tr("MPIランチャー"), "launcher", false);
     pathField(paths, tr("ジョブ保存先"), "job_root", true);
+    {
+        // A start script for jobs that are saved to run on another computer.
+        const int row = paths->rowCount();
+        jobScript = new QComboBox;
+        jobScript->setObjectName(prefix + "_job_script");
+        jobScript->addItem(tr("作らない"), "none");
+        jobScript->addItem(tr("シェルスクリプト"), "shell");
+        jobScript->addItem(tr("Slurm（sbatch）"), "slurm");
+        jobScript->addItem(tr("PBS（qsub）"), "pbs");
+        jobScript->setToolTip(
+            tr("「ジョブとして保存」のフォルダーに、NWChemを起動する job.sh を加えます。フォルダー"
+               "を別の計算機へ複写して実行し、戻した出力を「履歴」で登録します。"));
+        fields["job_script"] = jobScript;
+        auto *queue = new QLineEdit;
+        queue->setObjectName(prefix + "_job_queue");
+        queue->setPlaceholderText(tr("キュー・パーティション名（任意）"));
+        queue->setMaximumWidth(260);
+        fields["job_queue"] = queue;
+        auto *cell = new QHBoxLayout;
+        cell->setSpacing(8);
+        cell->addWidget(jobScript);
+        cell->addWidget(queue, 1);
+        cell->addStretch();
+        auto *name = new QLabel(tr("ジョブスクリプト"));
+        name->setBuddy(jobScript);
+        paths->addWidget(name, row, 0);
+        paths->addLayout(cell, row, 1, 1, 2);
+        connect(jobScript, &QComboBox::currentIndexChanged, this,
+                [this] { emit changed("job_script", jobScript->currentData().toString()); });
+        connect(queue, &QLineEdit::editingFinished, this, [this, queue] {
+            if (queue->isModified())
+                emit changed("job_queue", queue->text().trimmed());
+            queue->setModified(false);
+        });
+    }
     if (scope == Scope::Project) {
         pathField(paths, tr("参照ファイルの基準"), "reference_directory", true);
         qobject_cast<QLineEdit *>(fields["reference_directory"])
@@ -229,17 +264,20 @@ void ExecutionForm::setSettings(const QJsonObject &s) {
         } else if (auto *spin = qobject_cast<QSpinBox *>(it.value()))
             spin->setValue(s[it.key()].toInt());
         else if (auto *combo = qobject_cast<QComboBox *>(it.value())) {
-            while (combo->count() > 2)
-                combo->removeItem(2);
+            // After its own choices, a value of a newer version shows as it is.
+            const int choices = combo == jobScript ? 4 : 2;
+            while (combo->count() > choices)
+                combo->removeItem(choices);
             int index = combo->findData(s[it.key()].toString());
             if (index < 0) {
                 combo->addItem(tr("未対応: %1").arg(s[it.key()].toVariant().toString()), s[it.key()]);
-                index = 2;
+                index = choices;
             }
             combo->setCurrentIndex(index);
         }
     }
     modes->sync();
+    fields["job_queue"]->setEnabled(s["job_script"] == "slurm" || s["job_script"] == "pbs");
     mpi = s["mode"] == "mpi";
     fields["launcher"]->setEnabled(mpi);
     fields["mpi_ranks"]->setEnabled(mpi);

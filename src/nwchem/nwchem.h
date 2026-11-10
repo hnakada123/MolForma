@@ -140,6 +140,25 @@ QVector<QVector<int>> nwchemBsseMonomers(const Document &document);
 // The SCF/DFT convergence threshold written for scf_convergence ("1e-7"); empty for "default",
 // which leaves NWChem's own thresholds.
 QString nwchemScfThreshold(const QJsonObject &settings);
+// A calculation that continues another job's NWChem database (settings "restart"): "continue" runs
+// the tasks that job did not finish, "hessian" searches a transition state with the Hessian of its
+// frequency calculation, "reuse" derives frequencies and thermochemistry again from that Hessian
+// (other temperatures or isotopes). The input then says "restart", has no geometry (NWChem keeps the
+// one of the database) and, for "continue", lacks the tasks listed in "done" (their lines in the
+// job's input). "geometry" is nwchemRestartDigest() of the document the restart was prepared for.
+struct NwchemRestart {
+    QString mode, job, geometry;
+    QStringList done;
+    bool active() const {
+        return !mode.isEmpty();
+    }
+};
+NwchemRestart nwchemRestart(const QJsonObject &settings);
+// What a restart cannot change, as a digest: the atoms (elements, ghosts, positions, fixed flags and,
+// except for "reuse", masses) and the internal-coordinate constraints.
+QString nwchemRestartDigest(const Document &document, bool masses);
+// The task lines of an NWChem input in their order ("task dft optimize").
+QStringList nwchemTaskLines(const QString &input);
 // Why a section of "2 計算条件" takes no part in the current calculation ("最適化のみ"), or empty
 // when it does. Sections: "path" (IRC・座標スキャン), "constraints", "optimization" (最適化・振動数),
 // "followup", "bsse" and "excited" (TDDFT); the others always take part.

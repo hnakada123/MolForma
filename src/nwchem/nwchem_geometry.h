@@ -14,6 +14,9 @@ struct NwchemGeometryOptions {
 struct NwchemGeometryFragment {
     QString geometry, constraints, comments;
 };
+// The mass NWChem is given for an atom (amu): that of its isotope, else its own; 0 for NWChem's
+// default, and not a positive number for an isotope without a known mass.
+double nwchemAtomMass(const Atom &atom);
 NwchemGeometryFragment nwchemGeometryFragment(const Document &document, CoordinateUnit unit,
                                               const NwchemGeometryOptions &options = {});
 // NWChem input fragment, not a complete calculation (basis/method/task are configured separately).

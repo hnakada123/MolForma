@@ -21,6 +21,7 @@ class WorkspaceController : public QObject {
     ResultsPanel &results;
     QString summaryDirectory;
     void reuse(const QString &directory);
+    void restart(const QString &directory, const QString &mode);
     void openResults(const QString &directory);
     void runFinished(const QString &directory, bool open);
     void resultLoaded();

@@ -125,7 +125,7 @@ If `failed (0 tools)` and `connection closed` during initialization appear, chec
 
 ## Safety restrictions
 
-MCP clients (and the LLMs behind them) can be influenced by the content of files they read and of calculation results. MolForma applies the following restrictions on the server side. Both can be changed only with launch arguments, not by MCP requests. `policy` of `get_execution` shows the current restrictions.
+MCP clients (and the LLMs behind them) can be influenced by the content of files they read and of calculation results. MolForma applies the following restrictions on the server side. All of them can be changed only with launch arguments, not by MCP requests. `policy` of `get_execution` shows the current restrictions.
 
 ### Protecting the executable, launcher, environment variables and additional input
 
@@ -136,6 +136,7 @@ Changing the NWChem executable (`executable`), the MPI launcher (`launcher`) or 
 - Loading a project, a history entry or an autosave copy also changes these values, so they are checked again when a calculation starts. For each setting, MolForma treats as “trusted” the value saved in “Edit → Preferences” and the values the user entered in the window or accepted in the confirmation dialog before a run. Values read from a file (including a file given at startup or a project MCP saved), the history or an autosave copy are not trusted until accepted. Calculations started over MCP run only if all values are trusted. The values do not become trusted when the user applies “Confirm changes” to a candidate created by MCP, or undoes or redoes an edit. Changing one setting in the window does not make the other settings trusted.
 - If the user presses “Run calculation” with settings that are not trusted, a confirmation dialog showing the settings appears, whether or not MCP is connected ([“3 Run settings”](features/execution.md)). MCP cannot read or operate this dialog, and it does not become an Elicitation. Choosing “Yes” makes those values trusted.
 - In headless `--mcp`, only the values the user saved in the GUI under “Edit → Preferences…” are trusted (if not set, `nwchem` and `mpirun` on `PATH` and no additional environment variables), and the document starts with those values. MCP cannot operate the Preferences dialog or menu.
+- A restart (`restart` of `set_nwchem`) names a job folder to copy from, so it cannot be set directly (only released with an empty object). Restarts are prepared from a job of the history with `continue` and the other actions of `history_action`.
 - To let MCP specify the executable and the other settings, add `--mcp-allow-execution-settings` to the launch arguments.
 - With `--mcp-allow-execution-settings`, `set_execution` and `calculation` carry the mark that makes Claude Code ask the user on every call ([Registering in Claude Code](#registering-in-claude-code)).
 
@@ -151,11 +152,25 @@ With `--mcp-allow-dir <directory>` in the launch arguments, MCP reads and writes
   - Document tools: `open_file`, `save_file`, `job_root` / `reference_directory` of `set_execution`, absolute paths in `set_advanced`
   - GUI tools: paths of `results_action` / `history_action` / `capture_screenshot` / `ui_file_dialog`, and the targets of reusing history entries, showing results and moving to the trash
   - The GUI operated with `ui_*`: the destination of “Save project” (Ctrl+S); the targets of “Reuse molecule and settings”, “Open in result viewer”, “Open folder” and “Move to trash” in the history; loading the list when the History tab is shown; loading the input and log when a row is selected
-  - Calculations and input sets saved over MCP: job folder, reference directory, input movecs, scratch and permanent directories, output movecs
+  - Calculations and input sets saved over MCP: job folder, reference directory, input movecs, scratch and permanent directories, output movecs, the job folder a restart goes on from
 - Paths are checked after following symbolic links. Dangling links are refused. `~` and `~/` are treated as the home directory, as at run time. Paths containing `..` are refused (after a symbolic link, `..` leads to the parent of the link's target, not of the folder holding the link).
 - When a result folder is opened, the file actually read (a symbolic link in the folder, or a visualization file recorded in `run.json`) is checked as well as the folder.
 - In GUI mode, file dialogs can be operated only with `ui_file_dialog`, and the selected path is checked when the dialog is accepted. The widgets inside the dialog and the “Job folder” field of the history cannot be operated with `ui_*`.
 - Not covered: files that are replaced between the check and the read or write, and files that NWChem itself reads besides the input (basis set libraries, etc.).
+
+### Keeping calculations running after the session
+
+By default, when the MCP connection ends (the client exits or disconnects), NWChem running in that session is stopped. With the launch argument `--mcp-keep-runs`, the calculation is left to its supervisor process and goes on, and the next session can follow it. Use it when starting calculations over MCP that take hours.
+
+```json
+"args": ["--mcp-gui", "--mcp-keep-runs"]
+```
+
+- It works with both `--mcp-gui` and `--mcp`. Started again with the same arguments, the server follows the calculation the last session left if it is still running: `calculation` of `get_app_state` returns `active: true` and its job folder, and `stop` of `calculation` stops it. If it has ended, open its results with `history_action` or `results_action`.
+- Only the one running calculation is taken up. A waiting queue is not restored in MCP sessions.
+- With `--mcp-allow-dir`, a job folder of the last session outside the allowed directories is not taken up.
+- The calculation keeps using resources while no client is watching. With a time limit (`timeout_seconds` of `set_execution`), the supervisor stops it after that time.
+- `policy.keepRuns` of `get_execution` shows the current setting.
 
 ## Editing workflow
 
@@ -201,7 +216,7 @@ The following 4 tools are added with `--mcp`. `--mcp-gui` has tools of the same 
 | --- | --- |
 | `get_app_state` | Whether there is a candidate; calculation and result loading state |
 | `calculation` | Run or stop NWChem, save the input set, manage the calculation queue |
-| `get_results` | Summary of the loaded results (`properties` including the calculation's energy `final_energy` (last task, reference structure of frequencies, BSSE-corrected), thermochemistry, dipole, optimization state, each point of scans and IRC, BSSE, solvation, per-atom Mulliken/ESP/RESP charges, NMR shielding and polarizability), structures, energies, orbitals (`number` is the per-spin orbital number, the same as in MOLDEN even if the log lists only some orbitals), frequencies (translations and rotations are `rigid`), excited states, optimization steps, displacements and log |
+| `get_results` | Summary of the loaded results (`properties` including the calculation's energy `final_energy` (last task, reference structure of frequencies, BSSE-corrected), thermochemistry, dipole, optimization state, each point of scans and IRC, BSSE, solvation, per-atom Mulliken/ESP/RESP charges, NMR shielding and polarizability; for a log with a Mulliken analysis also the per-atom valency `valency` and number of free electrons `free_electrons`, and `bond_indices` (`{a, b, value}`, atoms numbered from 1): the atom pairs whose bond index (Mayer bond order, basis-set dependent) is 0.05 or more in magnitude), structures, energies, orbitals (`number` is the per-spin orbital number, the same as in MOLDEN even if the log lists only some orbitals), frequencies (translations and rotations are `rigid`), excited states (`contributions` lists the occupied → virtual orbital pairs `{from, to, spin, x, y, weight, transition}`, the heaviest first: the pairs NWChem prints with amplitudes above 0.05, `y` only where it was printed, `weight` X² − Y² as a percentage of the sum over the printed pairs, `transition` in the form `HOMO−1 → LUMO`, with the HOMO's number from the α and β electron counts in `properties.tddft`), optimization steps, displacements and log. `section: "bond_indices"` returns every atom pair whose bond index was read (`counts.bondIndices` of them) as `{a, b, value, elements, distance}` (distance in Å in the last structure); for molecules with more than 20,000 atom pairs, the pairs below 0.05 in magnitude are not read and `properties.bond_indices_omitted` gives their number |
 | `results_action` | Load, reload or cancel loading a result file or calculation folder |
 
 Calculations and loading in headless mode run in the background, and `calculation` / `results_action` return immediately. Check completion with a task or `get_app_state`. Calculations stop when MolForma exits (standard input closed). Showing, playing and capturing results is available only in GUI mode.
@@ -223,7 +238,7 @@ The following tools are added with `--mcp-gui`.
 | `chemistry` | Build from SMILES (replaces the structure), add a fragment from SMILES (`fragment`), clean up all or locally, regenerate 3D, conformer search (`conformers`; makes the most stable conformer the candidate, and makes no candidate if it equals the current structure), cancel. Results are reviewed as candidates |
 | `calculation` | Save the input set, run or stop NWChem |
 | `get_results` / `results_action` | Load results or cancel loading; get structures, energies, orbitals, frequencies, excited states, optimization steps, displacements and log; select, play, stop; save XYZ; `apply_structure`, which makes the shown structure a candidate for the document |
-| `history_action` | Scan the history or cancel the scan; select, reuse and show the results of jobs; repair records (`repair`: marks jobs recorded as running on this PC whose process has ended as “Interrupted”); move to the trash; save the filtered list as CSV |
+| `history_action` | Scan the history or cancel the scan; select, reuse and show the results of jobs; repair records (`repair`: marks jobs recorded as running on this PC whose process has ended as “Interrupted”); move to the trash; save the filtered list as CSV. From the selected job, prepare the next calculation with `continue` (the rest of a calculation that did not end), `restart_hessian` (a transition-state search with the Hessian of a frequency job), `reuse_hessian` (frequencies that reuse the Hessian) or `reuse_orbitals` (carrying over the molecular orbitals); `import` a calculation run elsewhere (`path`: NWChem’s output or its folder) and `register` the `output.out` brought back into the selected “Saved only” job |
 
 When a vibration animation is selected in the GUI file list, `get_results.source` is the path of an original step XYZ file. `results_action(action: "reload")` rereads the original XYZ files of that mode, including added or removed steps.
 
@@ -374,8 +389,12 @@ Successful results return `resultType: "complete"`. An unsupported version gets 
 
 ## Spectra and energy comparisons
 
-`get_results(section: "spectrum")` returns curve `items` as `[x,y]`; `spectrum_peaks` returns peak records. `parameters.kind` is `nmr`, `raman`, `epr`, `ecd` or `ord`. Required `width` is FWHM in x-axis units (unused for ORD). Optional `minimum`/`maximum` fix the range. Use returned `xUnit`, `yUnit`, `reversed` and completed `parameters`, and paginate with `offset`, `limit` and `nextOffset`.
+`get_results(section: "spectrum")` returns curve `items` as `[x,y]`; `spectrum_peaks` returns peak records. `parameters.kind` is `nmr`, `raman`, `epr`, `ecd`, `ord`, `ir` or `uv`. Required `width` is FWHM in x-axis units (unused for ORD). `ir` broadens the IR intensities (km/mol) of the vibrations without translations, rotations and imaginary modes with a Lorentzian over cm⁻¹; `uv` broadens oscillator strengths with a Gaussian over eV (the line shapes of the charts in the result viewer's “Vibrations” and “Excited states” tabs). Optional `minimum`/`maximum` fix the range. Use returned `xUnit`, `yUnit`, `reversed` and completed `parameters`, and paginate with `offset`, `limit` and `nextOffset`.
 
 NMR requires `nucleus: "1H"|"13C"` and `reference_ppm`; optional `weights` maps one-based atom numbers to weights. ESR requires `microwave_ghz` and `nuclei: [{"atom":2,"isotope":"1H"}]`; `derivative: true` selects the first derivative. Raw tensors, Raman activities, ECD rotatory strengths and ORD β remain in `properties`. Limitations match the [Results viewer](features/results.md).
 
 `get_results(section: "energy_profile", profile: {...})` evaluates a `molforma-energy-profile` version 1 specification. Supply ID-bearing `records`, `stages` as `{name, terms:[{record, thermal?, coefficient}]}`, `metric: E|ZPE|H|G`, `unit: hartree|kcal|kj`, `temperature`, the `standard_state` label and a zero-based `reference`. This is the GUI comparison JSON format, preserving electronic-energy and thermal-correction provenance. The response contains stage values, `comparable` and `warnings`.
+
+Thermochemistry corrections are optional: `frequency_scale` (0.5–1.5, default 1), `entropy_model` (`rrho|grimme|truhlar`, default `rrho`), `entropy_cutoff` (cm⁻¹, 10–500, default 100) and `standard_state_correction` (`none|1M`, default `none`). Without them NWChem's printed values are used. The scale and the entropy models need `vibrations` in the `records` used for thermal corrections (the wavenumbers NWChem's thermochemistry used, in cm⁻¹; the GUI records them from the log) and fail without it. The response contains the four settings used and `standard_state_shift_kcal` (added to G of each component at 1 mol/L); each stage's `sources` hold the corrected `zpe_kcal` or `enthalpy_kcal`, `entropy_cal` and `correction_kcal`. With `metric: "G"` each stage has `boltzmann_factor` (exp(−ΔG/RT)) relative to the reference stage, and stages with ΔG > 0 have `rate_constant` (Eyring rate constant, transmission coefficient 1, s⁻¹). Models and limitations match [History](features/history.md#thermochemistry-corrections-and-rate-constants).
+
+For each temperature, a log's `properties.thermochemistry` also returns the entropy parts `entropy_translational_cal`, `entropy_rotational_cal` and `entropy_vibrational_cal`, and NWChem's own frequency scale `nwchem_frequency_scale` (`vib:scalefreq` of the input, normally 1). Conformer-set populations and conformer-averaged spectra have no dedicated tool; operate the GUI dialogs with `ui_*`.

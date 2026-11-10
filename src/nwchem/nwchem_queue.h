@@ -6,6 +6,7 @@
 namespace mf {
 struct QueuedCalculation {
     QString id, name, base, error;
+    QString record; // The digest of the job's run.json as it was registered.
     Document document;
     ExecutionPlan plan;
     RunState state = RunState::Prepared;
@@ -17,6 +18,13 @@ class NwchemQueue : public QObject {
     Q_OBJECT
   public:
     explicit NwchemQueue(NwchemRun &runner, QObject *parent = nullptr);
+    // Keeps the waiting and running entries in a file from now on, so that another session can take
+    // them up (restore). Without one the queue lasts as long as this object.
+    void setStore(const QString &path);
+    // Takes up the entries a session left in the store: those still waiting, with the documents of
+    // their job folders, and the one that is still running (the runner follows it). The queue stays
+    // paused. Entries whose job has changed since are dropped. Returns the number taken up.
+    int restore();
     QString enqueue(const Document &document, const QString &base, std::function<void()> checkAccess = {});
     void resume();
     void pause();                   // The active calculation continues.
@@ -41,7 +49,8 @@ class NwchemQueue : public QObject {
   private:
     NwchemRun &run;
     QVector<QueuedCalculation> items;
-    QString currentId;
+    QString currentId, store;
+    void save() const;
     bool isPaused = true, stopOnError = true, scheduled = false, closed = false;
     int index(const QString &id) const;
     void schedule();

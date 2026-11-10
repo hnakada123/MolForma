@@ -1419,27 +1419,59 @@ void MainWindow::showManual() {
     dialog.exec();
 }
 void MainWindow::closeEvent(QCloseEvent *e) {
-    if (execution->calculationQueue().pending() &&
-        QMessageBox::question(this, tr("計算キュー"),
-                              tr("待機中の計算があります。入力一式を履歴に残して終了しますか？"
-                                 "次の起動時には自動再開しません。"),
-                              QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {
-        e->ignore();
-        return;
-    }
-    if (execution->running() &&
-        QMessageBox::question(this, tr("NWChemを実行中"),
-                              tr("実行中の計算を停止してウィンドウを閉じますか？ログは保存先に残ります。"),
-                              QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {
-        e->ignore();
-        return;
+    bool keepRunning = false;
+    if (execution->runsSupervised() && execution->running()) {
+        // The calculation has a supervisor of its own: it need not end with the window.
+        const int waiting = execution->calculationQueue().pending();
+        QMessageBox box(QMessageBox::Question, tr("NWChemを実行中"),
+                        tr("実行中の計算があります。計算を続けたままウィンドウを閉じますか？"),
+                        QMessageBox::NoButton, this);
+        box.setObjectName("closeWhileRunning");
+        box.setInformativeText(
+            tr("続けた計算は、次に起動したときに実行状況とログを確認・停止できます。") +
+            (waiting ? tr("\n待機中のキュー %n 件は次の起動時に復元しますが、自動では開始しません。", nullptr,
+                          waiting)
+                     : QString()));
+        auto *keep = box.addButton(tr("計算を続けて閉じる"), QMessageBox::AcceptRole);
+        keep->setObjectName("closeKeepRunning");
+        auto *end = box.addButton(tr("計算を停止して閉じる"), QMessageBox::DestructiveRole);
+        end->setObjectName("closeStopRunning");
+        box.addButton(QMessageBox::Cancel);
+        box.setDefaultButton(keep);
+        box.exec();
+        if (box.clickedButton() != keep && box.clickedButton() != end) {
+            e->ignore();
+            return;
+        }
+        keepRunning = box.clickedButton() == keep;
+    } else {
+        if (execution->calculationQueue().pending() &&
+            QMessageBox::question(
+                this, tr("計算キュー"),
+                execution->runsSupervised()
+                    ? tr("待機中の計算があります。終了しますか？次の起動時にキューを復元しますが、"
+                         "自動では開始しません。")
+                    : tr("待機中の計算があります。入力一式を履歴に残して終了しますか？"
+                         "次の起動時には自動再開しません。"),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {
+            e->ignore();
+            return;
+        }
+        if (execution->running() &&
+            QMessageBox::question(
+                this, tr("NWChemを実行中"),
+                tr("実行中の計算を停止してウィンドウを閉じますか？ログは保存先に残ります。"),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {
+            e->ignore();
+            return;
+        }
     }
     if (!confirmDiscard()) {
         e->ignore();
         return;
     }
     cancelWorker();
-    execution->shutdown();
+    execution->shutdown(keepRunning);
     settings.setValue("geometry", saveGeometry());
     moleculePage->savePreferences();
     removeAutosave();
@@ -1484,6 +1516,17 @@ void MainWindow::preferences() {
         layout->addWidget(c);
         return rows;
     };
+    auto *script = card(tr("ジョブスクリプト（別の計算機で実行）"));
+    auto *prelude = new QPlainTextEdit(executionJobPrelude());
+    prelude->setObjectName("preferences_job_prelude");
+    prelude->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    prelude->setLineWrapMode(QPlainTextEdit::NoWrap);
+    prelude->setFixedHeight(prelude->fontMetrics().lineSpacing() * 4 + 16);
+    prelude->setPlaceholderText(tr("例: module load nwchem/7.3.1"));
+    prelude->setToolTip(
+        tr("job.sh でNWChemを起動する前に実行する行です（モジュールの読込みなど）。プロジェクトには保存"
+           "せず、このPCで作るすべてのジョブスクリプトに加えます。"));
+    script->addRow(tr("準備の行"), prelude);
     auto *startup = card(tr("起動・表示"));
     auto *water = new QCheckBox(tr("起動時に水分子を読み込む"));
     water->setObjectName("preferences_startupWater");
@@ -1534,6 +1577,7 @@ void MainWindow::preferences() {
                     errors << diagnostic.message;
             if (!errors.isEmpty())
                 fail(errors.join('\n'));
+            saveExecutionJobPrelude(prelude->toPlainText());
             saveExecutionPreferences(chosen);
             settings.setValue("startupWater", water->isChecked());
             settings.setValue("view/renderer", renderer->currentData().toString());

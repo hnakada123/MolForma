@@ -119,7 +119,7 @@ HistoryEntry readHistoryEntry(const QString &directory) {
         if (std::isfinite(seconds) && seconds >= 0 && seconds < 1e12)
             e.seconds = qint64(seconds);
         e.valid = true;
-        e.orphaned = runStateActive(e.status) && executionProcessGone(e.manifest);
+        e.orphaned = runStateActive(e.status) && executionRunGone(e.manifest);
         auto calculation = e.manifest["calculation"].toObject();
         if (calculation.isEmpty()) {
             const auto project = parseJson(bytes(e.directory, "project.molforma.json", projectLimit));
@@ -210,7 +210,7 @@ QJsonObject nwchemLogSummary(const QString &path) {
 }
 void repairHistoryEntry(const QString &directory) {
     auto m = manifest(directory);
-    if (!runStateActive(runStateFromKey(m["status"].toString())) || !executionProcessGone(m))
+    if (!runStateActive(runStateFromKey(m["status"].toString())) || !executionRunGone(m))
         fail(
             tr("実行中の可能性がある記録は修復できません（このPCで記録され、プロセスが終了したものだけ）。"));
     m["status"] = runStateKey(RunState::Interrupted);

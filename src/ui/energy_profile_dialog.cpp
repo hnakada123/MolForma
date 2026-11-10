@@ -33,18 +33,58 @@ EnergyProfileDialog::EnergyProfileDialog(MainWindow *owner) : QDialog(owner), wi
     temperature->setRange(.01, 10000);
     temperature->setValue(298.15);
     temperature->setSuffix(" K");
-    standard = new QLineEdit("1 atm");
-    standard->setObjectName("profileStandardState");
-    standard->setToolTip(tr("標準状態の記録用ラベルです。入力してもエネルギーの換算は行いません。"));
     reference = new QComboBox;
     reference->setObjectName("profileReference");
     settings->addWidget(metric);
     settings->addWidget(unit);
     settings->addWidget(temperature);
-    settings->addWidget(new QLabel(tr("標準状態")));
-    settings->addWidget(standard);
     settings->addWidget(new QLabel(tr("基準")));
-    settings->addWidget(reference);
+    settings->addWidget(reference, 1);
+    // Corrections to the thermochemistry NWChem printed (results/energy_profile.h).
+    auto *corrections = new QHBoxLayout;
+    layout->addLayout(corrections);
+    frequencyScale = new QDoubleSpinBox;
+    frequencyScale->setObjectName("profileFrequencyScale");
+    frequencyScale->setDecimals(4);
+    frequencyScale->setRange(.5, 1.5);
+    frequencyScale->setSingleStep(.01);
+    frequencyScale->setValue(1);
+    frequencyScale->setToolTip(tr("ZPE・熱振動エネルギー・振動エントロピーに使う振動数すべてに掛けます。1は"
+                                  "NWChemの出力のままです。"));
+    entropyModel = new QComboBox;
+    entropyModel->setObjectName("profileEntropyModel");
+    entropyModel->addItem(tr("調和振動子（NWChemの値）"), "rrho");
+    entropyModel->addItem(tr("準RRHO（Grimme）"), "grimme");
+    entropyModel->addItem(tr("準調和（Truhlar）"), "truhlar");
+    entropyModel->setToolTip(tr("Gの振動エントロピーだけを変えます。Grimmeはしきい値付近から下のモードを自由"
+                                "回転子のエントロピーへ滑らかに置き換え、Truhlarはしきい値より低い振動数をし"
+                                "きい値に引き上げます。"));
+    entropyCutoff = new QDoubleSpinBox;
+    entropyCutoff->setObjectName("profileEntropyCutoff");
+    entropyCutoff->setDecimals(1);
+    entropyCutoff->setRange(10, 500);
+    entropyCutoff->setValue(100);
+    entropyCutoff->setPrefix(tr("しきい値 "));
+    entropyCutoff->setSuffix(" cm⁻¹");
+    standardCorrection = new QComboBox;
+    standardCorrection->setObjectName("profileStandardCorrection");
+    standardCorrection->addItem(tr("1 atm（NWChemの値）"), "none");
+    standardCorrection->addItem(tr("1 mol/L（溶液）"), "1M");
+    standardCorrection->setToolTip(tr("1 mol/Lでは各成分のGにRT·ln(R′T)（298.15 Kで+1.894 kcal/mol）を加えま"
+                                      "す。E・E + ZPE・Hは変わりません。"));
+    standard = new QLineEdit("1 atm");
+    standard->setObjectName("profileStandardState");
+    standard->setToolTip(tr("標準状態の記録用ラベルです。換算は左の「標準状態」の選択で行い、ラベルの文字"
+                            "では行いません。"));
+    corrections->addWidget(new QLabel(tr("振動数スケール")));
+    corrections->addWidget(frequencyScale);
+    corrections->addWidget(new QLabel(tr("エントロピー")));
+    corrections->addWidget(entropyModel);
+    corrections->addWidget(entropyCutoff);
+    corrections->addWidget(new QLabel(tr("標準状態")));
+    corrections->addWidget(standardCorrection);
+    corrections->addWidget(new QLabel(tr("記録用ラベル")));
+    corrections->addWidget(standard, 1);
     auto *split = new QSplitter;
     layout->addWidget(split, 1);
     auto *left = new QWidget;
@@ -114,9 +154,11 @@ EnergyProfileDialog::EnergyProfileDialog(MainWindow *owner) : QDialog(owner), wi
     chart = new ChartView;
     chart->setObjectName("profileChart");
     rl->addWidget(chart, 2);
-    values = new QTableWidget(0, 3);
+    values = new QTableWidget(0, 5);
     values->setObjectName("profileValues");
-    values->setHorizontalHeaderLabels({tr("反応段階"), "E / Hartree", tr("相対値")});
+    // The last two columns are shown for G: against the reference stage.
+    values->setHorizontalHeaderLabels(
+        {tr("反応段階"), "E / Hartree", tr("相対値"), "exp(−ΔG/RT)", tr("k（Eyring）/ s⁻¹")});
     values->setEditTriggers(QAbstractItemView::NoEditTriggers);
     values->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     rl->addWidget(values, 1);
@@ -153,15 +195,26 @@ EnergyProfileDialog::EnergyProfileDialog(MainWindow *owner) : QDialog(owner), wi
         if (path.isEmpty())
             return;
         window->checkMcpPath(path);
-        QByteArray csv = "stage,hartree,relative,unit,metric,temperature,standard_state\n";
+        // The rate constant (s⁻¹, Eyring) and exp(−ΔG/RT) are empty unless G is compared.
+        QByteArray csv = "stage,hartree,relative,unit,metric,temperature,standard_state,frequency_scale,"
+                         "entropy_model,entropy_cutoff,standard_state_correction,boltzmann_factor,"
+                         "rate_constant\n";
         const auto quote = [](QString s) { return ('"' + s.replace('"', "\"\"") + '"').toUtf8(); };
+        const auto optional = [](const QJsonObject &row, const char *key) {
+            return row.contains(key) ? QByteArray::number(row[key].toDouble(), 'g', 16) : QByteArray();
+        };
         for (const auto &value : result["stages"].toArray()) {
             const auto row = value.toObject();
             csv += quote(row["name"].toString()) + ',' +
                    QByteArray::number(row["hartree"].toDouble(), 'g', 16) + ',' +
                    QByteArray::number(row["relative"].toDouble(), 'g', 16) + ',' +
                    unit->currentData().toString().toUtf8() + ',' + metric->currentData().toString().toUtf8() +
-                   ',' + QByteArray::number(temperature->value()) + ',' + quote(standard->text()) + '\n';
+                   ',' + QByteArray::number(temperature->value()) + ',' + quote(standard->text()) + ',' +
+                   QByteArray::number(result["frequency_scale"].toDouble()) + ',' +
+                   result["entropy_model"].toString().toUtf8() + ',' +
+                   QByteArray::number(result["entropy_cutoff"].toDouble()) + ',' +
+                   result["standard_state_correction"].toString().toUtf8() + ',' +
+                   optional(row, "boltzmann_factor") + ',' + optional(row, "rate_constant") + '\n';
         }
         writeFile(path, csv);
     });
@@ -186,9 +239,16 @@ EnergyProfileDialog::EnergyProfileDialog(MainWindow *owner) : QDialog(owner), wi
             updateProfile();
         });
     });
-    for (auto *combo : {metric, unit, reference})
+    for (auto *combo : {metric, unit, reference, entropyModel})
         connect(combo, &QComboBox::currentIndexChanged, this, &EnergyProfileDialog::updateProfile);
-    connect(temperature, &QDoubleSpinBox::valueChanged, this, &EnergyProfileDialog::updateProfile);
+    for (auto *spin : {temperature, frequencyScale, entropyCutoff})
+        connect(spin, &QDoubleSpinBox::valueChanged, this, &EnergyProfileDialog::updateProfile);
+    connect(standardCorrection, &QComboBox::currentIndexChanged, this, [this] {
+        // The label follows the choice while it is one of the two standard texts.
+        if (standard->text() == "1 atm" || standard->text() == "1 mol/L")
+            standard->setText(standardCorrection->currentData() == "1M" ? "1 mol/L" : "1 atm");
+        updateProfile();
+    });
     connect(standard, &QLineEdit::editingFinished, this, &EnergyProfileDialog::updateProfile);
     connect(terms, &QTableWidget::cellChanged, this, &EnergyProfileDialog::updateProfile);
     updateProfile();
@@ -287,12 +347,17 @@ QJsonObject EnergyProfileDialog::specification() const {
             {"unit", unit->currentData().toString()},
             {"temperature", temperature->value()},
             {"standard_state", standard->text()},
+            {"frequency_scale", frequencyScale->value()},
+            {"entropy_model", entropyModel->currentData().toString()},
+            {"entropy_cutoff", entropyCutoff->value()},
+            {"standard_state_correction", standardCorrection->currentData().toString()},
             {"reference", std::max(0, reference->currentIndex())}};
 }
 void EnergyProfileDialog::setSpecification(const QJsonObject &p) {
     evaluateEnergyProfile(p);
     loader.cancel();
-    const QSignalBlocker bm(metric), bu(unit), bt(temperature), br(reference), bterms(terms);
+    const QSignalBlocker bm(metric), bu(unit), bt(temperature), br(reference), bterms(terms),
+        bs(frequencyScale), be(entropyModel), bc(entropyCutoff), bstate(standardCorrection);
     terms->setRowCount(0);
     records = p["records"].toArray();
     rebuildSources();
@@ -300,6 +365,12 @@ void EnergyProfileDialog::setSpecification(const QJsonObject &p) {
     unit->setCurrentIndex(unit->findData(p["unit"].toString()));
     temperature->setValue(p["temperature"].toDouble());
     standard->setText(p["standard_state"].toString());
+    // Comparisons saved before these corrections have none of the fields.
+    frequencyScale->setValue(p["frequency_scale"].toDouble(1));
+    entropyModel->setCurrentIndex(entropyModel->findData(p["entropy_model"].toString("rrho")));
+    entropyCutoff->setValue(p["entropy_cutoff"].toDouble(100));
+    standardCorrection->setCurrentIndex(
+        standardCorrection->findData(p["standard_state_correction"].toString("none")));
     for (const auto &value : p["stages"].toArray())
         for (const auto &term : value.toObject()["terms"].toArray())
             addTerm(value.toObject()["name"].toString(), term.toObject());
@@ -320,6 +391,10 @@ void EnergyProfileDialog::updateProfile() {
         reference->setCurrentIndex(std::max(0, reference->findText(selected)));
     }
     p["reference"] = std::max(0, reference->currentIndex());
+    const bool gibbs = metric->currentData() == "G";
+    entropyCutoff->setEnabled(entropyModel->currentData() != "rrho");
+    values->setColumnHidden(3, !gibbs);
+    values->setColumnHidden(4, !gibbs);
     try {
         const auto result = evaluateEnergyProfile(p);
         const auto rows = result["stages"].toArray();
@@ -327,8 +402,12 @@ void EnergyProfileDialog::updateProfile() {
         QVector<QPointF> points;
         for (int i = 0; i < rows.size(); ++i) {
             const auto r = rows[i].toObject();
+            const auto optional = [&](const char *key) {
+                return r.contains(key) ? QString::number(r[key].toDouble(), 'g', 4) : QString("—");
+            };
             const QStringList cells{r["name"].toString(), QString::number(r["hartree"].toDouble(), 'g', 14),
-                                    QString::number(r["relative"].toDouble(), 'f', 4)};
+                                    QString::number(r["relative"].toDouble(), 'f', 4),
+                                    optional("boltzmann_factor"), optional("rate_constant")};
             for (int j = 0; j < cells.size(); ++j)
                 values->setItem(i, j, new QTableWidgetItem(cells[j]));
             points << QPointF(i + .75, r["relative"].toDouble())
@@ -336,8 +415,26 @@ void EnergyProfileDialog::updateProfile() {
         }
         chart->setChart(tr("反応エネルギー図"), tr("反応段階"), unit->currentText(),
                         {{metric->currentText(), points}});
-        QStringList messages{tr("熱補正はZPEを二重加算せず、HまたはH−TSとして加えます。同じ段階名の行は係数付"
-                                "きで合計します。標準状態のラベル変更による換算は行いません。")};
+        QStringList messages{tr(
+            "熱補正はZPEを二重加算せず、HまたはH−TSとして加えます。同じ段階名の行は係数付きで合計します。")};
+        // Which corrections change the values NWChem printed.
+        QStringList applied;
+        if (metric->currentData() != "E" && frequencyScale->value() != 1)
+            applied << tr("振動数スケール %1（ZPE・熱振動エネルギー・振動エントロピー）")
+                           .arg(frequencyScale->value(), 0, 'g', 6);
+        if (gibbs && entropyModel->currentData() != "rrho")
+            applied << tr("振動エントロピーは%1（しきい値 %2 cm⁻¹）")
+                           .arg(entropyModel->currentText())
+                           .arg(entropyCutoff->value(), 0, 'g', 6);
+        if (gibbs && standardCorrection->currentData() == "1M")
+            applied << tr("標準状態 1 mol/L（各成分のGに +%1 kcal/mol）")
+                           .arg(result["standard_state_shift_kcal"].toDouble(), 0, 'f', 3);
+        messages << (applied.isEmpty()
+                         ? tr("熱補正はNWChemの出力値（調和振動子・理想気体・1 atm）のままです。")
+                         : tr("NWChemの出力値に適用した補正: %1。").arg(applied.join(tr("、"))));
+        if (gibbs)
+            messages << tr("exp(−ΔG/RT)とk＝(k_BT/h)·exp(−ΔG/RT)（透過係数1、ΔG＞0の段階）は基準段階に対する"
+                           "値です。");
         for (const auto &warning : result["warnings"].toArray())
             messages << warning.toString();
         message->setText(messages.join('\n'));

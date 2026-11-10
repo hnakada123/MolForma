@@ -2,6 +2,7 @@
 #include "model/settings.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
+#include "nwchem/nwchem_restart.h"
 #include "ui/execution_panel.h"
 #include "ui/history_panel.h"
 #include "ui/main_window.h"
@@ -649,6 +650,191 @@ class HistoryTest : public QObject {
         widget<QPushButton>(w, "executionHistory")->click();
         QTRY_VERIFY(!history->scanning());
         QCOMPARE(history->selectedDirectory(), directory);
+    }
+    // The output of a run of NWChem elsewhere: a structure, an energy, and the closing line if it ended.
+    static QByteArray externalLog(bool ended) {
+        QByteArray log = "              Northwest Computational Chemistry Package (NWChem) 7.3.1\n"
+                         "                NWChem Input Module\n"
+                         "   Output coordinates in angstroms (scale by  1.889725989 to convert to a.u.)\n\n"
+                         "  No.       Tag          Charge          X              Y              Z\n"
+                         " ---- ---------------- ---------- -------------- -------------- --------------\n"
+                         "    1 O                    8.0000     0.00000000     0.00000000     0.11700000\n"
+                         "    2 H                    1.0000     0.75700000     0.00000000    -0.46900000\n"
+                         "    3 H                    1.0000    -0.75700000     0.00000000    -0.46900000\n\n"
+                         "         Total DFT energy =      -76.380000000000\n";
+        if (ended)
+            log += " Total times  cpu:       12.3s     wall:       45.6s\n";
+        return log;
+    }
+    void importsRunsMadeElsewhere() {
+        QTemporaryDir tmp;
+        const auto root = tmp.filePath("jobs");
+        // A run from a terminal: output, input of the same name, and what it wrote under its names.
+        const auto work = tmp.filePath("cluster work");
+        QVERIFY(QDir().mkpath(work));
+        writeFile(work + "/h2o_opt.out", externalLog(true));
+        writeFile(work + "/h2o_opt.nw",
+                  "start h2o\ngeometry units angstrom\n O 0 0 0.117\n H 0.757 0 -0.469\n"
+                  " H -0.757 0 -0.469\nend\nbasis\n * library 6-31g*\nend\n"
+                  "dft\n xc b3lyp\nend\ntask dft optimize\n");
+        writeFile(work + "/h2o.movecs", "orbitals");
+        writeFile(work + "/h2o.db", "database");
+        writeFile(work + "/other.out", "not NWChem");
+        writeFile(work + "/unrelated.dat", "x");
+        const auto job = importExternalRun(work + "/h2o_opt.out", root);
+        QCOMPARE(QFileInfo(job).absolutePath(), root);
+        auto e = readHistoryEntry(job);
+        QVERIFY2(e.valid, qPrintable(e.warnings.join('\n')));
+        QCOMPARE(e.status, RunState::Finished);
+        QCOMPARE(e.name, "h2o");
+        QCOMPARE(e.formula, "H2O");
+        QVERIFY(e.method.contains("B3LYP"));
+        QCOMPARE(*e.energy, -76.38);
+        QCOMPARE(e.seconds, 45);
+        QVERIFY(e.manifest["external"].toBool());
+        QCOMPARE(e.manifest["imported_from"].toString(), work + "/h2o_opt.out");
+        QCOMPARE(readFile(job + "/output.out"), externalLog(true));
+        QCOMPARE(readFile(job + "/h2o.movecs"), QByteArray("orbitals"));
+        QVERIFY(QFileInfo::exists(job + "/h2o.db"));
+        QVERIFY(!QFileInfo::exists(job + "/unrelated.dat") && !QFileInfo::exists(job + "/other.out"));
+        // The molecule and conditions are reusable like those of any job.
+        const auto d = historyDocument(job);
+        QCOMPARE(d.atoms.size(), 3);
+        QCOMPARE(nwchemSettings(d)["task"].toString(), "optimize");
+        QCOMPARE(nwchemSettings(d)["basis"].toString(), "6-31g*");
+        // The folder is taken for its one NWChem output; without an input the log gives the structure.
+        const auto bare = tmp.filePath("bare");
+        QVERIFY(QDir().mkpath(bare));
+        writeFile(bare + "/run 1.log", externalLog(false));
+        const auto second = importExternalRun(bare, root);
+        e = readHistoryEntry(second);
+        QCOMPARE(e.status, RunState::Interrupted);
+        QCOMPARE(e.formula, "H2O");
+        QVERIFY(e.manifest["error"].toString().contains("正常終了の記録"));
+        QCOMPARE(historyDocument(second).atoms.size(), 3);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, importExternalRun(work + "/other.out", root));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, importExternalRun(tmp.filePath("missing"), root));
+        writeFile(bare + "/again.out", externalLog(true));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, importExternalRun(bare, root)); // Which of the two?
+        // A job saved here, run elsewhere: the output that came back completes its record in place.
+        auto base = water(root);
+        setExecutionSetting(base, "job_script", "slurm");
+        const auto saved = saveExecutionBundle(base, tmp.path());
+        QVERIFY(QFileInfo::exists(saved.directory + "/job.sh"));
+        QVERIFY(!externalRunWaiting(readHistoryEntry(saved.directory)));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, importExternalRun(saved.directory, root));
+        writeFile(saved.directory + "/output.out", externalLog(true));
+        QVERIFY(externalRunWaiting(readHistoryEntry(saved.directory)));
+        MainWindow w;
+        w.loadDocument(base);
+        showHistory(w);
+        auto *panel = widget<HistoryPanel>(w, "historyTab");
+        panel->selectDirectory(saved.directory);
+        QTRY_VERIFY(!panel->scanning());
+        QCOMPARE(row(w, saved.directory)->text(0), "保存のみ");
+        QVERIFY(widget<QPushButton>(w, "historyRegister")->isVisibleTo(&w));
+        QVERIFY(!widget<QPushButton>(w, "historyContinue")->isVisibleTo(&w));
+        widget<QPushButton>(w, "historyRegister")->click();
+        QTRY_VERIFY(!panel->scanning());
+        QCOMPARE(panel->selectedDirectory(), saved.directory);
+        QCOMPARE(row(w, saved.directory)->text(0), "終了");
+        QVERIFY(!widget<QPushButton>(w, "historyRegister")->isVisibleTo(&w));
+        e = readHistoryEntry(saved.directory);
+        QCOMPARE(e.status, RunState::Finished);
+        QCOMPARE(*e.energy, -76.38);
+        QVERIFY(e.manifest["external"].toBool());
+        historyDocument(saved.directory);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, importExternalRun(saved.directory, root)); // Once.
+        // The same job brought back as a copy elsewhere is copied into the list.
+        const auto away = saveExecutionBundle(base, tmp.path());
+        const auto returned = tmp.filePath("returned/" + QFileInfo(away.directory).fileName());
+        QVERIFY(QDir().mkpath(QFileInfo(returned).absolutePath()));
+        QVERIFY(QDir().rename(away.directory, returned));
+        writeFile(returned + "/output.out", externalLog(true));
+        writeFile(returned + "/molforma.movecs", "orbitals");
+        panel->importRun(returned + "/output.out");
+        QTRY_VERIFY(!panel->scanning());
+        const auto third = panel->selectedDirectory();
+        QVERIFY(third != returned && QFileInfo(third).absolutePath() == root);
+        QCOMPARE(readHistoryEntry(third).status, RunState::Finished);
+        QCOMPARE(readFile(third + "/molforma.movecs"), QByteArray("orbitals"));
+        QVERIFY(w.findChild<QAction *>("historyImport"));
+    }
+    void continuesAStoppedJob() {
+        QTemporaryDir tmp;
+        auto d = water(tmp.filePath("jobs"));
+        setExecutionSetting(d, "environment",
+                            QJsonArray{QJsonObject{
+                                {"enabled", true}, {"name", "MOLFORMA_FAKE_MODE"}, {"value", "optimize"}}});
+        setNwchemSetting(d, "task", "optimize");
+        MainWindow w;
+        w.loadDocument(d);
+        w.trustCurrentExecution();
+        showHistory(w);
+        auto *history = widget<HistoryPanel>(w, "historyTab");
+        auto *execution = widget<ExecutionPanel>(w, "executionTab");
+        execution->startCalculation();
+        const auto directory = execution->currentRun().plan().directory;
+        history->selectDirectory(directory);
+        QTRY_VERIFY(!history->scanning());
+        QTRY_VERIFY(widget<QPushButton>(w, "historyStop")->isEnabled());
+        // While it runs there is nothing to go on from.
+        QVERIFY(!widget<QPushButton>(w, "historyContinue")->isVisibleTo(&w));
+        QVERIFY(!widget<QPushButton>(w, "historyNext")->isVisibleTo(&w));
+        acceptQuestion(&w);
+        widget<QPushButton>(w, "historyStop")->click();
+        QTRY_VERIFY_WITH_TIMEOUT(!execution->running(), 10000);
+        QTRY_VERIFY(widget<QPushButton>(w, "historyContinue")->isVisibleTo(&w));
+        // Without NWChem's database the reason is given; with it the calculation can go on.
+        QVERIFY(!widget<QPushButton>(w, "historyContinue")->isEnabled());
+        QVERIFY(widget<QPushButton>(w, "historyContinue")->toolTip().contains("molforma.db"));
+        QVERIFY(!widget<QPushButton>(w, "executionContinue")->isVisibleTo(&w));
+        writeFile(directory + "/molforma.db", "database");
+        writeFile(directory + "/molforma.movecs", "orbitals");
+        // The cache of the reason follows the job and its state: a changed record looks again.
+        auto record = parseJson(readFile(directory + "/run.json"));
+        record["status"] = "timed_out";
+        writeFile(directory + "/run.json", QJsonDocument(record).toJson());
+        history->refresh();
+        QTRY_VERIFY(!history->scanning());
+        history->selectDirectory(directory);
+        QTRY_VERIFY(widget<QPushButton>(w, "historyContinue")->isEnabled());
+        // "この結果から次の計算": a Hessian needs finished frequencies, the orbitals are there.
+        auto *menu = widget<QMenu>(w, "historyNextMenu");
+        emit menu->aboutToShow();
+        QVERIFY(!w.findChild<QAction *>("historyNext_hessian")->isEnabled());
+        QVERIFY(!w.findChild<QAction *>("historyNext_hessian")->toolTip().isEmpty());
+        QVERIFY(w.findChild<QAction *>("historyNext_orbitals")->isEnabled());
+        widget<QPushButton>(w, "historyContinue")->click();
+        QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 1);
+        const auto restart = nwchemRestart(nwchemSettings(w.document()));
+        QCOMPARE(restart.mode, "continue");
+        QCOMPARE(restart.job, directory);
+        QVERIFY(widget<QFrame>(w, "calculationRestartBanner")->isVisibleTo(&w));
+        QVERIFY(
+            widget<QLabel>(w, "calculationRestartMessage")->text().contains(QFileInfo(directory).fileName()));
+        QVERIFY(nwchemInput(w.document()).contains("\nrestart molforma\n"));
+        // Going on runs as a new job with the database of the old one.
+        w.trustCurrentExecution();
+        execution->startCalculation();
+        const auto second = execution->currentRun().plan().directory;
+        QVERIFY(second != directory);
+        QCOMPARE(readFile(second + "/molforma.db"), QByteArray("database"));
+        QCOMPARE(readFile(second + "/molforma.movecs"), QByteArray("orbitals"));
+        acceptQuestion(&w);
+        execution->confirmStop();
+        QTRY_VERIFY_WITH_TIMEOUT(!execution->running(), 10000);
+        // The run panel offers the same for the run it shows.
+        writeFile(second + "/molforma.db", "database");
+        QTRY_VERIFY(widget<QPushButton>(w, "executionContinue")->isVisibleTo(&w) ||
+                    !widget<QWidget>(w, "executionRunDetailsPage")->isVisibleTo(&w));
+        // Released, it is an ordinary calculation from the structure shown.
+        widget<QPushButton>(w, "calculationRestartRelease")->click();
+        QVERIFY(!nwchemRestart(nwchemSettings(w.document())).active());
+        QVERIFY(!widget<QFrame>(w, "calculationRestartBanner")->isVisibleTo(&w));
+        QVERIFY(nwchemInput(w.document()).contains("\nstart molforma\n"));
+        w.history()->undo();
+        QVERIFY(nwchemRestart(nwchemSettings(w.document())).active());
     }
     void reuseCancellationCandidatesAndTrashGuards() {
         QTemporaryDir tmp;

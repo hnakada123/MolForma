@@ -3,8 +3,10 @@
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_queue.h"
 #include "results/results.h"
+#include <QLockFile>
 #include <QStringDecoder>
 #include <QWidget>
+#include <memory>
 class QCheckBox;
 class QComboBox;
 class QFrame;
@@ -32,7 +34,18 @@ class ExecutionPanel : public QWidget {
     explicit ExecutionPanel(MainWindow *owner);
     void refresh();
     void stopEditing();
-    void shutdown();
+    // Ends the session: stops the run, or with keepRunning leaves a supervised run to go on
+    // (the waiting queue entries are kept for the next session either way, where they are stored).
+    void shutdown(bool keepRunning = false);
+    // Interactive sessions: runs get a supervisor of their own (this executable) and go on when the
+    // window closes, and the queue is kept in a file of the application's data folder.
+    void superviseRuns(const QString &program);
+    bool runsSupervised() const {
+        return run.supervised();
+    }
+    // Takes up what an earlier session left running or waiting. Returns what to tell the user about it
+    // (empty when there was nothing).
+    QString restoreRuns(bool withQueue = true);
     void commitPendingEdits();
     void showField(const QString &key); // Focuses this panel's own setting control.
     bool running() const {
@@ -75,6 +88,8 @@ class ExecutionPanel : public QWidget {
   signals:
     void bundleChanged(QString directory);
     void historyRequested(QString directory);
+    // Going on from the run the panel shows, which did not end ("continue" of NwchemRestart).
+    void restartRequested(QString directory, QString mode);
     void resultsRequested(QString directory);
     void runFinished(QString directory, bool openResults);
 
@@ -88,6 +103,7 @@ class ExecutionPanel : public QWidget {
     MainWindow *window;
     NwchemRun run;
     NwchemQueue queue;
+    std::unique_ptr<QLockFile> queueLock; // One session at a time keeps the stored queue.
     bool busy = false, startable = false;
     QWidget *form, *cpuMeter;
     ExecutionForm *settingsForm; // Programs and folders, resources and environment.
@@ -101,7 +117,9 @@ class ExecutionPanel : public QWidget {
     QPlainTextEdit *command, *log;
     QPushButton *prepare, *openFolder, *viewResults, *showRunLink, *stopRun;
     QPushButton *enqueue, *queueButton;
-    QPushButton *diagnosisSetting;
+    QPushButton *diagnosisSetting, *continueRun;
+    QString continueKey; // The run and state continueRun was looked up for, and what it found.
+    bool continuable = false;
     QFrame *runPanel;
     QSplitter *dock = nullptr;
     QToolButton *maximize;

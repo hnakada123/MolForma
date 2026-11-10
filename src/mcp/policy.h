@@ -15,6 +15,8 @@ bool isProtectedNwchemKey(const QString &key);
 struct McpPolicy {
     // --mcp-allow-execution-settings: MCP may change the executable, launcher and environment.
     bool allowExecutionSettings = false;
+    // --mcp-keep-runs: a calculation goes on when the MCP session ends, and the next session finds it.
+    bool keepRuns = false;
     // --mcp-allow-dir: canonical directories MCP file access stays within; empty means unrestricted.
     QStringList directories;
     bool restricted() const {

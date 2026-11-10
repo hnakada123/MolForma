@@ -76,6 +76,7 @@ target_link_libraries(molforma_results PUBLIC molforma_model PRIVATE Threads::Th
 
 add_library(molforma_nwchem STATIC
     src/nwchem/history.cpp
+    src/nwchem/history_import.cpp
     src/nwchem/nwchem.cpp
     src/nwchem/nwchem_advanced.cpp
     src/nwchem/nwchem_execution.cpp
@@ -83,6 +84,7 @@ add_library(molforma_nwchem STATIC
     src/nwchem/nwchem_import.cpp
     src/nwchem/nwchem_output.cpp
     src/nwchem/nwchem_queue.cpp
+    src/nwchem/nwchem_restart.cpp
     src/nwchem/run_diagnostics.cpp
     src/nwchem/run_state.cpp)
 target_link_libraries(molforma_nwchem PUBLIC molforma_model PRIVATE molforma_editing molforma_results ${MOLFORMA_OPENBABEL})
@@ -229,7 +231,7 @@ if(BUILD_TESTING)
     add_dependencies(test_mcp fake_nwchem)
     add_executable(test_execution tests/test_execution.cpp)
     target_link_libraries(test_execution PRIVATE molforma_ui Qt6::Test)
-    add_dependencies(test_execution fake_nwchem)
+    add_dependencies(test_execution fake_nwchem molforma)
     add_test(NAME execution COMMAND test_execution)
     add_executable(test_input_preview tests/test_input_preview.cpp)
     target_link_libraries(test_input_preview PRIVATE molforma_ui Qt6::Test)
@@ -240,7 +242,7 @@ if(BUILD_TESTING)
     add_test(NAME results COMMAND test_results)
     add_executable(test_history tests/test_history.cpp)
     target_link_libraries(test_history PRIVATE molforma_ui Qt6::Test)
-    add_dependencies(test_history fake_nwchem)
+    add_dependencies(test_history fake_nwchem molforma)
     add_test(NAME history COMMAND test_history)
     add_executable(test_output tests/test_output.cpp)
     target_link_libraries(test_output PRIVATE molforma_ui Qt6::Test)

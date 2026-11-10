@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
+#include <algorithm>
 #include <cmath>
 
 namespace mf {
@@ -96,6 +97,11 @@ McpToolSpec resultsTool() {
             "NMR shielding, polarizability in a.u.) or paginated frames/energies/orbitals/modes/excitations "
             "(TDDFT)/steps (optimization)/log. mode_displacements returns one mode with its reference "
             "geometry. "
+            "Excitations list their orbital contributions (occupied -> virtual orbital numbers, X/Y "
+            "amplitudes NWChem printed above 0.05, weight in % of the printed pairs). A Mulliken analysis "
+            "adds valency and free_electrons per atom and bond_indices {a, b, value} (Mayer bond orders, "
+            "basis-set dependent; 1-based atoms) to properties: the pairs of |value| >= 0.05, with every "
+            "pair and its distance in section bond_indices. "
             "Frequencies retain negative values for imaginary modes; rigid marks translations and rotations, "
             "and significant marks imaginary frequencies below -10 cm-1 (smaller ones are often numerical "
             "noise).",
@@ -104,20 +110,24 @@ McpToolSpec resultsTool() {
               QJsonObject{{"type", "string"},
                           {"enum", QJsonArray{"summary", "frames", "energies", "orbitals", "modes",
                                               "excitations", "steps", "mode_displacements", "spectrum",
-                                              "spectrum_peaks", "energy_profile", "log"}}}},
+                                              "spectrum_peaks", "energy_profile", "bond_indices", "log"}}}},
              {"parameters",
               QJsonObject{
                   {"type", "object"},
                   {"description",
-                   "Spectrum parameters: kind nmr/raman/epr/ecd/ord and width (FWHM), optional "
-                   "minimum/maximum. NMR "
+                   "Spectrum parameters: kind nmr/raman/epr/ecd/ord/ir/uv and width (FWHM), optional "
+                   "minimum/maximum. ir is over cm-1 and uv (oscillator strengths, Gaussian) over eV. NMR "
                    "needs nucleus 1H/13C and reference_ppm, optional weights keyed by 1-based atom number. "
                    "EPR needs microwave_ghz, nuclei [{atom,isotope}], optional derivative."}}},
              {"profile",
               QJsonObject{{"type", "object"},
                           {"description",
                            "For energy_profile: molforma-energy-profile v1 specification; records, "
-                           "stages, metric, unit, temperature, standard_state, reference."}}},
+                           "stages, metric, unit, temperature, standard_state, reference. Optional "
+                           "corrections of NWChem's thermochemistry: frequency_scale (0.5-1.5, default 1), "
+                           "entropy_model rrho/grimme/truhlar with entropy_cutoff (cm-1, default 100), "
+                           "standard_state_correction none/1M (1 mol/L). With metric G the stages hold "
+                           "boltzmann_factor and rate_constant (Eyring, s-1) against the reference."}}},
              {"offset", integer(0, 10000000)},
              {"limit", integer(1, 65536)},
              {"index", integer(0, 1000000)}},
@@ -189,6 +199,9 @@ QJsonObject resultsJson(const ResultData &r, const QJsonObject &args, QJsonObjec
     out["warnings"] = QJsonArray::fromStringList(r.warnings);
     const auto kinds = resultModeKinds(r);
     const auto modeCounts = resultModeCounts(kinds);
+    // Every pair of the bond-index matrix is in its own section; the properties list the bonds.
+    auto properties = r.properties;
+    const auto bondIndices = r.properties.value("bond_indices").toArray();
     out["counts"] = QJsonObject{{"frames", r.frames.size()},
                                 {"energies", r.energies.size()},
                                 {"orbitals", r.orbitals.size()},
@@ -196,8 +209,16 @@ QJsonObject resultsJson(const ResultData &r, const QJsonObject &args, QJsonObjec
                                 {"imaginaryModes", modeCounts.imaginary},
                                 {"significantImaginaryModes", modeCounts.significant},
                                 {"excitations", r.excitations.size()},
-                                {"steps", r.steps.size()}};
-    out["properties"] = r.properties;
+                                {"steps", r.steps.size()},
+                                {"bondIndices", bondIndices.size()}};
+    if (properties.contains("bond_indices")) {
+        QJsonArray notable;
+        for (const auto &pair : bondIndices)
+            if (std::abs(pair.toObject()["value"].toDouble()) >= NotableBondIndex)
+                notable.append(pair);
+        properties["bond_indices"] = notable;
+    }
+    out["properties"] = properties;
     const auto section = args["section"].toString("summary");
     int offset = args["offset"].toInt(), limit = std::min(args["limit"].toInt(100), 1000);
     QJsonArray rows;
@@ -226,13 +247,16 @@ QJsonObject resultsJson(const ResultData &r, const QJsonObject &args, QJsonObjec
         out["text"] = r.log.mid(offset, args["limit"].toInt(4096));
         out["total"] = r.log.size();
     } else {
-        int count = section == "frames"        ? r.frames.size()
-                    : section == "energies"    ? r.energies.size()
-                    : section == "orbitals"    ? r.orbitals.size()
-                    : section == "modes"       ? r.modes.size()
-                    : section == "excitations" ? r.excitations.size()
-                    : section == "steps"       ? r.steps.size()
-                                               : 0;
+        int count = section == "frames"         ? r.frames.size()
+                    : section == "energies"     ? r.energies.size()
+                    : section == "orbitals"     ? r.orbitals.size()
+                    : section == "modes"        ? r.modes.size()
+                    : section == "excitations"  ? r.excitations.size()
+                    : section == "steps"        ? r.steps.size()
+                    : section == "bond_indices" ? bondIndices.size()
+                                                : 0;
+        // Distances of atom pairs in the last structure, which a Mulliken analysis is of.
+        const Document *molecule = r.frames.isEmpty() ? nullptr : &r.frames.last().molecule;
         for (int i = offset; i < std::min(count, offset + limit); ++i) {
             QJsonObject row{{"index", i}};
             if (section == "frames") {
@@ -270,6 +294,33 @@ QJsonObject resultsJson(const ResultData &r, const QJsonObject &args, QJsonObjec
                 row["nm"] = EvNanometer / x.ev;
                 row["oscillator"] = x.oscillator;
                 row["s2"] = std::isfinite(x.s2) ? QJsonValue(x.s2) : QJsonValue();
+                QJsonArray contributions;
+                for (const auto &p : resultTransitions(x)) {
+                    QJsonObject pair{{"from", p.from},
+                                     {"to", p.to},
+                                     {"spin", p.spin},
+                                     {"x", p.x},
+                                     {"transition", resultTransitionText(r, p)}};
+                    if (std::isfinite(p.y))
+                        pair["y"] = p.y;
+                    if (std::isfinite(p.weight))
+                        pair["weight"] = p.weight;
+                    contributions.append(pair);
+                }
+                row["contributions"] = contributions;
+            }
+            if (section == "bond_indices") {
+                const auto pair = bondIndices[i].toObject();
+                const int a = pair["a"].toInt(), b = pair["b"].toInt();
+                row["a"] = a;
+                row["b"] = b;
+                row["value"] = pair["value"];
+                if (molecule && a >= 1 && b >= 1 && std::max(a, b) <= molecule->atoms.size()) {
+                    row["elements"] =
+                        QJsonArray{molecule->atoms[a - 1].element, molecule->atoms[b - 1].element};
+                    row["distance"] =
+                        (molecule->atoms[a - 1].position - molecule->atoms[b - 1].position).norm();
+                }
             }
             if (section == "steps") {
                 const auto &t = r.steps[i];

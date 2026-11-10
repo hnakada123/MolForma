@@ -3,6 +3,7 @@
 #include "model/i18n.h"
 #include "model/units.h"
 #include "nwchem/nwchem_execution.h"
+#include "nwchem/nwchem_restart.h"
 #include "nwchem/run_diagnostics.h"
 #include "ui/editor_chrome.h"
 #include "ui/energy_profile_dialog.h"
@@ -622,6 +623,21 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
         });
     });
     csv->setToolTip(tr("表示中の一覧を、絞り込みと並び順のままCSVに書き出します。"));
+    auto *import = moreMenu->addAction(tr("外部で実行した計算を取り込む…"));
+    import->setObjectName("historyImport");
+    import->setToolTip(
+        tr("別の計算機や端末で実行したNWChemの出力（.out・.log）を選び、この保存先のジョブとして"
+           "登録します。同じ名前の入力（.nw）と軌道などのファイルも複写します。"));
+    moreMenu->setToolTipsVisible(true);
+    connect(import, &QAction::triggered, this, [this] {
+        window->safe([this] {
+            const auto path =
+                QFileDialog::getOpenFileName(this, tr("外部で実行した計算を取り込む"), root,
+                                             tr("NWChemの出力 (*.out *.log);;すべてのファイル (*)"));
+            if (!path.isEmpty())
+                importRun(path);
+        });
+    });
     more->setMenu(moreMenu);
     tools->addWidget(more);
 
@@ -896,6 +912,49 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
     viewer = action(tr("結果ビューアで開く"), "historyResults", "primary");
     reuse = action(tr("分子・条件を再利用"), "historyReuse");
     reuse->setToolTip(tr("保存した分子と条件を、新しい未保存のプロジェクトとして開きます。"));
+    registerRun = action(tr("外部で実行した結果を登録"), "historyRegister", "primary");
+    registerRun->setToolTip(
+        tr("このジョブフォルダーに戻した output.out を読み、実行済みのジョブとして記録します。"));
+    resume = action(restartLabel("continue"), "historyContinue");
+    resume->setToolTip(
+        tr("終わらなかった計算を、NWChemのデータベースに残った最新の構造と分子軌道から続けます。"
+           "新しいジョブとして実行します。"));
+    next = action(tr("この結果から次の計算"), "historyNext");
+    auto *nextMenu = new QMenu(next);
+    nextMenu->setObjectName("historyNextMenu");
+    nextMenu->setToolTipsVisible(true);
+    next->setMenu(nextMenu);
+    for (const QString mode : {"hessian", "reuse", "orbitals"}) {
+        auto *item = nextMenu->addAction(mode == "orbitals" ? tr("分子軌道を引き継いで再計算を準備")
+                                                            : restartLabel(mode));
+        item->setObjectName("historyNext_" + mode);
+        item->setData(mode);
+        connect(item, &QAction::triggered, this,
+                [this, mode] { window->safe([&] { restartSelected(mode); }); });
+    }
+    // The reasons need the job's files: looked up when the menu opens.
+    connect(nextMenu, &QMenu::aboutToShow, this, [this, nextMenu] {
+        const auto directory = selectedDirectory();
+        QVector<RestartChoice> choices;
+        if (!directory.isEmpty())
+            choices = restartChoices(directory);
+        const bool free = !window->hasCandidate() && !window->chemistryRunning();
+        for (auto *item : nextMenu->actions()) {
+            QString reason = free ? QString() : tr("候補を確定・取消し、整形の終了後に準備してください。");
+            for (const auto &choice : std::as_const(choices))
+                if (choice.mode == item->data().toString() && reason.isEmpty())
+                    reason = choice.reason;
+            item->setEnabled(!directory.isEmpty() && reason.isEmpty());
+            item->setToolTip(
+                !reason.isEmpty()           ? reason
+                : item->data() == "hessian" ? tr("振動数計算のHessianを最初のHessianにして、遷移状態を探索"
+                                                 "します。")
+                : item->data() == "reuse"   ? tr("Hessianを計算し直さずに、別の温度・同位体で振動数と熱化学"
+                                                 "を求めます。")
+                                            : tr("このジョブの分子軌道を初期値にして、同じ原子順・基底の計"
+                                                 "算を始めます。"));
+        }
+    });
     folder = action(tr("保存先を開く"), "historyFolder");
     folder->setIcon(lineIcon("folder"));
     stop = action(tr("この計算を停止"), "historyStop", "danger");
@@ -1087,6 +1146,8 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
     connect(filesToggle, &QToolButton::clicked, this, [this](bool on) { setFilesOpen(on); });
     connect(viewer, &QPushButton::clicked, this, [this] { window->safe([this] { openResult(); }); });
     connect(reuse, &QPushButton::clicked, this, [this] { window->safe([this] { reuseSelected(); }); });
+    connect(resume, &QPushButton::clicked, this,
+            [this] { window->safe([this] { restartSelected("continue"); }); });
     connect(folder, &QPushButton::clicked, this, [this] {
         window->safe([this] {
             if (selectedDirectory().isEmpty())
@@ -1096,9 +1157,30 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
                 fail(tr("保存先を開けません。"));
         });
     });
+    connect(registerRun, &QPushButton::clicked, this, [this] { window->safe([this] { importRun(); }); });
     connect(stop, &QPushButton::clicked, this, [this] {
-        if (!selectedDirectory().isEmpty() && selectedDirectory() == activeDirectory())
+        const auto directory = selectedDirectory();
+        if (directory.isEmpty())
+            return;
+        if (directory == activeDirectory()) {
             emit stopRequested();
+            return;
+        }
+        // A calculation another session left to its supervisor: the supervisor is asked.
+        window->safe([&] {
+            window->checkMcpPath(directory);
+            if (QMessageBox::question(
+                    this, tr("NWChemを停止"),
+                    tr("別のウィンドウまたは前回の起動で始めた計算を停止しますか？ログは保存先に"
+                       "残ります。"),
+                    QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+                return;
+            if (!requestRunStop(directory))
+                fail(tr("この計算を見張るプロセスがありません。計算が終わっていれば「記録を修復」を使ってくだ"
+                        "さい。"));
+            window->statusBar()->showMessage(tr("計算の停止を依頼しました。"), 8000);
+            QTimer::singleShot(3000, this, [this] { refresh(); });
+        });
     });
     connect(setReference, &QPushButton::clicked, this, [this] {
         const auto *e = selectedEntry();
@@ -1783,7 +1865,7 @@ void HistoryPanel::showFacts(const HistoryEntry &e, bool owned) {
     add("folder", tr("フォルダー"), place);
 }
 void HistoryPanel::arrangeActions(const HistoryEntry *e, bool owned) {
-    for (auto *b : {viewer, reuse, folder, stop, setReference, showExecution}) {
+    for (auto *b : {viewer, reuse, folder, stop, setReference, showExecution, resume, next, registerRun}) {
         actionGrid->removeWidget(b);
         b->hide();
     }
@@ -1791,7 +1873,10 @@ void HistoryPanel::arrangeActions(const HistoryEntry *e, bool owned) {
         actionGrid->addWidget(b, row, column, 1, span);
         b->show();
     };
-    const bool running = e && owned && runStateActive(e->status);
+    // The run of this window, or one that another session left to a supervisor that can be asked.
+    const bool elsewhere =
+        e && !owned && runStateActive(e->status) && !e->orphaned && runSupervised(e->manifest);
+    const bool running = e && (owned || elsewhere) && runStateActive(e->status);
     viewer->setText(running ? tr("途中のログを開く") : tr("結果ビューアで開く"));
     setFlag(viewer, "primary", !running);
     setReference->setText(comparing ? tr("このジョブを基準にする") : tr("このジョブを基準にΔEを比べる"));
@@ -1800,8 +1885,10 @@ void HistoryPanel::arrangeActions(const HistoryEntry *e, bool owned) {
         place(stop, 0, 0, 2);
         place(viewer, 1, 0);
         place(folder, 1, 1);
-        actionGrid->addWidget(showExecution, 2, 0, 1, 2, Qt::AlignLeft);
-        showExecution->show();
+        if (owned) {
+            actionGrid->addWidget(showExecution, 2, 0, 1, 2, Qt::AlignLeft);
+            showExecution->show();
+        }
     } else if (comparing) {
         place(viewer, 0, 0, 2);
         place(setReference, 1, 0);
@@ -1810,8 +1897,20 @@ void HistoryPanel::arrangeActions(const HistoryEntry *e, bool owned) {
         place(viewer, 0, 0, 2);
         place(reuse, 1, 0);
         place(folder, 1, 1);
+        // What can go on from a job that ran: the unfinished calculation, or another one from its results.
+        const bool ran =
+            e && e->valid && e->status != RunState::Prepared && (!runStateActive(e->status) || e->orphaned);
+        const bool unfinished = ran && e->status != RunState::Finished;
+        int row = 2;
+        // A job saved to run elsewhere, with the output that came back.
+        if (e && externalRunWaiting(*e))
+            place(registerRun, row++, 0, 2);
+        if (unfinished)
+            place(resume, row, 0);
+        if (ran)
+            place(next, row++, unfinished ? 1 : 0, unfinished ? 1 : 2);
         if (e && e->energy && !runStateActive(e->status)) {
-            actionGrid->addWidget(setReference, 2, 0, 1, 2, Qt::AlignLeft);
+            actionGrid->addWidget(setReference, row, 0, 1, 2, Qt::AlignLeft);
             setReference->show();
         }
     }
@@ -1848,7 +1947,28 @@ void HistoryPanel::updateActions() {
     viewer->setEnabled(exists && !resultFiles(e->directory).isEmpty());
     folder->setEnabled(exists);
     reuse->setEnabled(exists && e->valid && !window->hasCandidate() && !window->chemistryRunning());
-    stop->setEnabled(exists && owned && run.state() != RunState::Stopping);
+    next->setEnabled(exists && e->valid);
+    // Whether the job left a database is looked up once per job and state, not at every refresh.
+    if (resume->isVisibleTo(detail) || !resume->isHidden()) {
+        const auto key = exists ? e->directory + '|' + runStateKey(e->status) : QString();
+        if (key != resumeKey) {
+            resumeKey = key;
+            resumeReason = tr("ジョブを選んでください。");
+            if (exists)
+                for (const auto &choice : restartChoices(e->directory))
+                    if (choice.mode == "continue")
+                        resumeReason = choice.reason;
+        }
+        const bool free = !window->hasCandidate() && !window->chemistryRunning();
+        resume->setEnabled(exists && free && resumeReason.isEmpty());
+        resume->setToolTip(!resumeReason.isEmpty() ? resumeReason
+                                                   : tr("終わらなかった計算を、NWChemのデータベースに残った最"
+                                                        "新の構造と分子軌道から続けます。新しい"
+                                                        "ジョブとして実行します。"));
+    }
+    stop->setEnabled(exists && (owned ? run.state() != RunState::Stopping
+                                      : runStateActive(e->status) && runSupervised(e->manifest)));
+    registerRun->setEnabled(exists && !window->hasCandidate());
     const bool unfinished = e && runStateActive(e->status);
     repair->setEnabled(exists && e->valid && e->orphaned && !owned);
     repairBox->setVisible(e && e->orphaned && !owned && !comparing);
@@ -1925,6 +2045,12 @@ void HistoryPanel::reuseSelected() {
         return;
     emit reuseRequested(directory);
 }
+void HistoryPanel::restartSelected(const QString &mode) {
+    const auto directory = selectedDirectory();
+    if (directory.isEmpty())
+        return;
+    emit restartRequested(directory, mode);
+}
 void HistoryPanel::openResult() {
     const auto directory = selectedDirectory();
     if (directory.isEmpty())
@@ -1956,6 +2082,18 @@ void HistoryPanel::repairSelected() {
         fail(tr("このウィンドウで実行中の計算です。"));
     repairHistoryEntry(directory);
     refresh();
+}
+void HistoryPanel::importRun(const QString &path) {
+    const auto source = path.isEmpty() ? selectedDirectory() : path;
+    if (source.isEmpty())
+        return;
+    window->checkMcpPath(source);
+    window->checkMcpPath(root);
+    const auto job = importExternalRun(source, root);
+    refresh();
+    selectDirectory(job);
+    window->statusBar()->showMessage(
+        tr("外部で実行した計算を登録しました: %1").arg(QFileInfo(job).fileName()), 8000);
 }
 void HistoryPanel::repairOrphans() {
     for (const auto &e : std::as_const(entries))

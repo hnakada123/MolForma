@@ -1218,6 +1218,10 @@ void McpServer::registerTools() {
              for (auto it = requested.begin(); it != requested.end(); ++it) {
                  if (!defaults.contains(it.key()) || defaults[it.key()].type() != it.value().type())
                      fail("Unknown NWChem setting or incorrect type: " + it.key());
+                 // A restart names a job folder to copy from: prepared from the history, never set here.
+                 if (it.key() == "restart" && !it.value().toObject().isEmpty() &&
+                     it.value() != settings[it.key()])
+                     fail("restart is prepared from a saved job, not set directly; {} releases it.");
                  if (!policy.allowExecutionSettings && isProtectedNwchemKey(it.key()) &&
                      it.value() != settings[it.key()])
                      fail(it.key() +

@@ -125,7 +125,7 @@ env_vars = ["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XAUTHORITY", "DBUS
 
 ## 安全のための制限
 
-MCPクライアント（とその背後のLLM）は、読み込んだファイルや計算結果の内容に影響されることがあります。MolFormaは次の制限をサーバー側で適用します。どちらも起動引数でだけ変更でき、MCPのリクエストからは変更できません。現在の制限は `get_execution` の `policy` で確認できます。
+MCPクライアント（とその背後のLLM）は、読み込んだファイルや計算結果の内容に影響されることがあります。MolFormaは次の制限をサーバー側で適用します。いずれも起動引数でだけ変更でき、MCPのリクエストからは変更できません。現在の制限は `get_execution` の `policy` で確認できます。
 
 ### 実行ファイル・ランチャー・環境変数・追加入力の保護
 
@@ -136,6 +136,7 @@ NWChem実行ファイル（`executable`）、MPIランチャー（`launcher`）�
 - プロジェクト・履歴・自動保存の読込でも値は変わるため、計算の開始時にも確認します。MolFormaは項目ごとに、「編集 → 環境設定」に保存した値と、利用者が画面で入力した値・実行前の確認ダイアログで承認した値を「信頼済み」とします。ファイル（起動時に指定したファイルや、MCPが保存したプロジェクトを含む）・履歴・自動保存から読み込んだ値は、承認されるまで信頼済みになりません。MCPから開始する計算は、すべての値が信頼済みの場合だけ実行します。MCPが作成した候補を利用者が「変更を確定」した場合や、編集を利用者がUndo/Redoした場合も、その値は信頼済みになりません。ほかの項目を画面で変更しても、変更していない項目は信頼済みになりません。
 - 信頼済みでない設定で利用者が「実行」を押すと、MCPの接続の有無にかかわらず、設定内容を示す確認ダイアログを表示します（[「3 実行設定」](features/execution.md)）。このダイアログはMCPから取得・操作できず、Elicitationにもなりません。「はい」を選ぶと、その値が信頼済みになります。
 - 画面なしの `--mcp` では、利用者がGUIの「編集 → 環境設定」で保存した値（未設定なら `PATH` 上の `nwchem` と `mpirun`、追加の環境変数なし）だけを信頼し、その値で文書を開始します。環境設定のダイアログとメニューはMCPから操作できません。
+- 計算の再開（`set_nwchem` の `restart`）は、複写元のジョブフォルダーを指す設定なので直接は設定できません（空のオブジェクトによる解除だけできます）。再開は `history_action` の `continue` などで履歴のジョブから準備します。
 - MCPから実行ファイルなどを指定させる場合は、起動引数に `--mcp-allow-execution-settings` を加えます。
 - `--mcp-allow-execution-settings` を指定した場合は、`set_execution` と `calculation` に、Claude Codeが呼び出しのたびに利用者に確認する印を付けます（[Claude Codeでの登録](#claude-codeでの登録)）。
 
@@ -151,11 +152,25 @@ NWChem実行ファイル（`executable`）、MPIランチャー（`launcher`）�
   - 文書ツール: `open_file`、`save_file`、`set_execution` の `job_root` / `reference_directory`、`set_advanced` の絶対パス
   - GUIツール: `results_action` / `history_action` / `capture_screenshot` / `ui_file_dialog` のパス、履歴の再利用・結果表示・ごみ箱の対象
   - `ui_*` で操作したGUI: 「プロジェクトを保存」（Ctrl+S）の保存先、履歴の「分子・条件を再利用」「結果ビューアで開く」「保存先を開く」「ごみ箱へ」の対象、履歴タブを表示したときの一覧の読込、行を選んだときの入力・ログの読込
-  - MCPから開始する計算と入力一式の保存: ジョブ保存先、参照ディレクトリ、入力movecs、作業・永続ディレクトリ、出力movecs
+  - MCPから開始する計算と入力一式の保存: ジョブ保存先、参照ディレクトリ、入力movecs、作業・永続ディレクトリ、出力movecs、再開元のジョブフォルダー
 - パスはシンボリックリンクをたどって判定します。リンク先のないリンクは拒否します。`~` と `~/` は実行時と同じくホームディレクトリとして判定します。`..` を含むパスは拒否します（シンボリックリンクの後の `..` は、リンクを置いたフォルダーではなくリンク先の親を指すためです）。
 - 結果のフォルダーを開く場合は、フォルダーに加えて、実際に読み込むファイル（フォルダー内のシンボリックリンクや、`run.json` に記録された可視化ファイル）も判定します。
 - GUIモードでは、ファイル選択ダイアログを `ui_file_dialog` でだけ操作でき、確定時に選択されたパスを確認します。ダイアログ内の部品や履歴の保存先欄を `ui_*` で操作することはできません。
 - 判定後の読み書きまでの間にファイルを置き換えられる場合や、NWChem自体が入力以外に参照するファイル（基底ライブラリなど）は対象外です。
+
+### セッションを終えても計算を続ける
+
+既定では、MCPの接続が終わると（クライアントの終了や切断）、そのセッションで実行中のNWChemを停止します。起動引数に `--mcp-keep-runs` を加えると、計算は見張り用のプロセスに任せたまま続き、次のセッションで続きを確認できます。数時間以上かかる計算をMCPから始める場合に使います。
+
+```json
+"args": ["--mcp-gui", "--mcp-keep-runs"]
+```
+
+- `--mcp-gui` と `--mcp` のどちらでも使えます。次に同じ引数で起動すると、前のセッションが残した計算がまだ実行中なら監視を再開し、`get_app_state` の `calculation` が `active: true` とそのジョブフォルダーを返します。`calculation` の `stop` で停止できます。終わっていた場合は、`history_action` や `results_action` で結果を開きます。
+- 引き継ぐのは実行中の1件だけです。待機中のキューはMCPのセッションでは復元しません。
+- `--mcp-allow-dir` を指定している場合、前のセッションのジョブフォルダーがその外にあれば引き継ぎません。
+- 計算はクライアントが見ていない間も資源を使い続けます。時間制限（`set_execution` の `timeout_seconds`）を指定しておくと、見張り用のプロセスがその時間で停止します。
+- 現在の設定は `get_execution` の `policy.keepRuns` で確認できます。
 
 ## 編集の流れ
 
@@ -201,7 +216,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | --- | --- |
 | `get_app_state` | 候補の有無、計算・結果読込の状態 |
 | `calculation` | NWChem実行・停止、入力一式の保存、計算キュー |
-| `get_results` | 読込済み結果の要約（計算のエネルギー `final_energy`（最後のtask・振動数の参照構造・BSSE補正後）・熱化学・双極子・最適化状態・スキャンとIRCの各点・BSSE・溶媒和・原子ごとのMulliken/ESP/RESP電荷・NMR遮蔽・分極率を含む `properties`）、構造列・エネルギー・軌道（`number` はスピンごとの軌道番号で、ログに一部の軌道しかなくてもMOLDENと同じ番号）・振動数（並進・回転は `rigid`）・励起状態・最適化ステップ・変位・ログ |
+| `get_results` | 読込済み結果の要約（計算のエネルギー `final_energy`（最後のtask・振動数の参照構造・BSSE補正後）・熱化学・双極子・最適化状態・スキャンとIRCの各点・BSSE・溶媒和・原子ごとのMulliken/ESP/RESP電荷・NMR遮蔽・分極率を含む `properties`。Mulliken解析のあるログでは原子ごとの原子価 `valency`・自由電子数 `free_electrons` と、結合指数（Mayerの結合次数。基底関数に依存）が絶対値0.05以上の原子対 `bond_indices`（`{a, b, value}`、原子番号は1始まり）も含む）、構造列・エネルギー・軌道（`number` はスピンごとの軌道番号で、ログに一部の軌道しかなくてもMOLDENと同じ番号）・振動数（並進・回転は `rigid`）・励起状態（`contributions` は占有→仮想軌道の対 `{from, to, spin, x, y, weight, transition}` を重みの大きい順に並べたもの。NWChemが出力する係数0.05超の対で、`y` は出力されたときだけ、`weight` は X² − Y² の出力された対の合計に対する百分率、`transition` は `HOMO−1 → LUMO` の形で、HOMOの番号は `properties.tddft` のα・β電子数による）・最適化ステップ・変位・ログ。`section: "bond_indices"` は結合指数を読み込んだ全部の原子対（`counts.bondIndices` 件）を `{a, b, value, elements, distance}`（距離は最後の構造のÅ）で返す。原子対が2万を超える分子では絶対値0.05未満の対を読み込まず、その数が `properties.bond_indices_omitted` |
 | `results_action` | 結果ファイル・計算フォルダーの読込、再読込、読込の取消 |
 
 画面なしモードの計算と読込はバックグラウンドで進み、`calculation` / `results_action` はすぐに戻ります。完了はタスクか `get_app_state` で確認します。計算はMolFormaの終了（標準入力を閉じる）とともに停止します。結果の表示・再生・画像取得はGUIモードだけです。
@@ -223,7 +238,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `chemistry` | SMILES生成（置換）、SMILESからの断片の追加（`fragment`）、全体・局所整形、3D再生成、配座探索（`conformers`、最安定の配座を候補にする。今の構造と同じなら候補を作らない）、中止。結果は候補として確認 |
 | `calculation` | 入力一式の保存、NWChem実行・停止 |
 | `get_results` / `results_action` | 結果読込・取消、構造列・エネルギー・軌道・振動数・励起状態・最適化ステップ・変位・ログ取得、選択・再生・停止、XYZ保存、表示中の構造を文書の候補にする `apply_structure` |
-| `history_action` | 履歴の走査・取消、ジョブ選択・再利用・結果表示、記録の修復（`repair`: このPCで実行中と記録されたままプロセスが終了したジョブを「中断」に直す）、ごみ箱への移動、絞り込まれた一覧のCSV保存 |
+| `history_action` | 履歴の走査・取消、ジョブ選択・再利用・結果表示、記録の修復（`repair`: このPCで実行中と記録されたままプロセスが終了したジョブを「中断」に直す）、ごみ箱への移動、絞り込まれた一覧のCSV保存。選んだジョブから次の計算を準備する `continue`（終わらなかった計算の続き）・`restart_hessian`（振動数計算のHessianで遷移状態探索）・`reuse_hessian`（Hessianを再利用した振動数）・`reuse_orbitals`（分子軌道の引き継ぎ）、外部で実行した計算の `import`（`path`: NWChemの出力またはそのフォルダー）と `register`（選んだ「保存のみ」のジョブに戻した `output.out` の登録） |
 
 GUIのファイル一覧で振動アニメーションを選んだ場合、`get_results.source` は元のステップXYZのパスです。`results_action(action: "reload")` は同じモードの元XYZ群を読み直し、ステップの追加・削除も反映します。
 
@@ -374,8 +389,12 @@ GUI変更は `documentId` と `expectedRevision` を必要とし、`queued` の 
 
 ## スペクトル・エネルギー比較
 
-`get_results(section: "spectrum")`は曲線の`items`（`[x,y]`）、`spectrum_peaks`はピーク表を返します。`parameters.kind`は`nmr`、`raman`、`epr`、`ecd`、`ord`、`width`は横軸単位の半値全幅（ORDでは未使用ですが必須）です。任意の`minimum`／`maximum`で範囲を固定します。返り値の`xUnit`、`yUnit`、`reversed`、補完した`parameters`を使い、`offset`／`limit`／`nextOffset`でページングします。
+`get_results(section: "spectrum")`は曲線の`items`（`[x,y]`）、`spectrum_peaks`はピーク表を返します。`parameters.kind`は`nmr`、`raman`、`epr`、`ecd`、`ord`、`ir`、`uv`、`width`は横軸単位の半値全幅（ORDでは未使用ですが必須）です。`ir`は並進・回転と虚振動を除いたIR強度（km/mol）をcm⁻¹軸のLorentz関数で、`uv`は振動子強度をeV軸のGauss関数で広げます（結果ビューアの「振動」「励起状態」タブのチャートと同じ線形）。任意の`minimum`／`maximum`で範囲を固定します。返り値の`xUnit`、`yUnit`、`reversed`、補完した`parameters`を使い、`offset`／`limit`／`nextOffset`でページングします。
 
 NMRは`nucleus: "1H"|"13C"`、`reference_ppm`を必須とし、`weights`に1始まり原子番号をキーとする重みを指定できます。ESRは`microwave_ghz`、`nuclei: [{"atom":2,"isotope":"1H"}]`を必須とし、`derivative: true`で一次微分にします。元テンソル・ラマン活性・ECD旋光強度・ORD βは`properties`に保持します。適用範囲は[結果ビューア](features/results.md)と共通です。
 
 `get_results(section: "energy_profile", profile: {...})`は`molforma-energy-profile` version 1の比較仕様を評価します。`records`はID付き計算結果、`stages`は`{name, terms:[{record, thermal?, coefficient}]}`、`metric`は`E|ZPE|H|G`、`unit`は`hartree|kcal|kj`、`temperature`、`standard_state`（ラベル）、0始まりの`reference`を指定します。GUIの比較JSONと同じ形式で、元のエネルギー・補正の出典を維持します。返り値は段階ごとの値、`comparable`、`warnings`です。
+
+熱化学の補正は、任意の`frequency_scale`（0.5〜1.5、既定1）、`entropy_model`（`rrho|grimme|truhlar`、既定`rrho`）、`entropy_cutoff`（cm⁻¹、10〜500、既定100）、`standard_state_correction`（`none|1M`、既定`none`）で指定します。省略するとNWChemの出力値のままです。スケールとエントロピーのモデルには、熱補正に使う`records`の`vibrations`（NWChemの熱化学が使った振動数、cm⁻¹。GUIがログから記録）が必要で、ない場合はエラーにします。返り値は使った4つの設定と`standard_state_shift_kcal`（1 mol/Lで各成分のGに加えた値）を含み、段階の`sources`には補正後の`zpe_kcal`または`enthalpy_kcal`、`entropy_cal`、`correction_kcal`が入ります。`metric: "G"`では各段階に基準段階に対する`boltzmann_factor`（exp(−ΔG/RT)）が、ΔG > 0 の段階には`rate_constant`（Eyringの速度定数、透過係数1、s⁻¹）が付きます。モデルと制限は[「履歴」](features/history.md#熱化学の補正と速度定数)と共通です。
+
+ログの`properties.thermochemistry`は温度ごとに、エントロピーの内訳`entropy_translational_cal`・`entropy_rotational_cal`・`entropy_vibrational_cal`と、NWChem自身の振動数スケール`nwchem_frequency_scale`（入力の`vib:scalefreq`、通常1）も返します。配座セットの分布と配座平均スペクトルには専用のツールがなく、GUIのダイアログを`ui_*`で操作します。

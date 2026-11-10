@@ -9,7 +9,10 @@
 #include "nwchem/nwchem_geometry.h"
 #include "nwchem/nwchem_import.h"
 #include "nwchem/nwchem_output.h"
+#include <QCryptographicHash>
+#include <QFileInfo>
 #include <QHash>
+#include <QJsonDocument>
 #include <QLocale>
 #include <QRegularExpression>
 #include <algorithm>
@@ -408,6 +411,38 @@ QJsonObject nwchemSettings(const Document &d) {
         settings[it.key()] = it.value();
     return settings;
 }
+NwchemRestart nwchemRestart(const QJsonObject &settings) {
+    const auto stored = settings["restart"].toObject();
+    NwchemRestart restart;
+    restart.mode = stored["mode"].toString();
+    restart.job = stored["job"].toString();
+    restart.geometry = stored["geometry"].toString();
+    for (const auto &line : stored["done"].toArray())
+        restart.done << line.toString();
+    return restart;
+}
+QString nwchemRestartDigest(const Document &d, bool masses) {
+    QCryptographicHash hash(QCryptographicHash::Sha1);
+    const auto number = [](double value) { return QString::number(value, 'g', 17); };
+    for (const auto &a : d.atoms)
+        hash.addData(QStringList{a.element, a.ghost ? "g" : "", a.fixed ? "f" : "", number(a.position.x()),
+                                 number(a.position.y()), number(a.position.z()),
+                                 masses ? QString::number(a.isotope) : QString(),
+                                 masses ? number(a.mass) : QString()}
+                         .join(' ')
+                         .toUtf8() +
+                     '\n');
+    hash.addData(
+        QJsonDocument(d.data["nwchem"].toObject()["constraints"].toArray()).toJson(QJsonDocument::Compact));
+    return QString::fromLatin1(hash.result().toHex());
+}
+QStringList nwchemTaskLines(const QString &input) {
+    QStringList lines;
+    for (const auto &line : input.split('\n'))
+        if (line.startsWith("task "))
+            lines << line.simplified();
+    return lines;
+}
 namespace {
 // The choices of a setting, with their labels in the source language.
 QVector<ChoiceSource> choiceSources(const QString &key) {
@@ -572,7 +607,8 @@ const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
             {"ord_points", Kind::Integer, 7, 2, 50},
             {"raman_wavelength_nm", Kind::Real, 532.0, 100, 5000, 3},
             project({"extra_input", Kind::String, ""}),
-            project({"extra_tasks", Kind::String, ""})};
+            project({"extra_tasks", Kind::String, ""}),
+            project({"restart", Kind::Object, QJsonObject()})};
         for (auto &spec : list)
             for (const auto &choice : choiceSources(spec.key))
                 spec.choices << NwchemChoice{choice.value, choice.label};
@@ -1331,6 +1367,76 @@ static NwchemValidation validation(const Document &d) {
                                                             : ns["method"].toString().toUpper(),
                                 ns["basis"].toString()));
     }
+    if (!s["restart"].toObject().isEmpty()) {
+        const auto restart = nwchemRestart(s);
+        const std::optional<DiagnosticFix> release =
+            DiagnosticFix{"restart", tr("再開を解除する"), QJsonObject()};
+        if (!QStringList{"continue", "hessian", "reuse"}.contains(restart.mode) || restart.job.isEmpty() ||
+            restart.job.size() > 4096 || restart.job.contains(QRegularExpression("[\\x00-\\x1f\\x7f]")) ||
+            restart.done.size() > 1000)
+            result.error("restart.settings", "restart", tr("再開の設定が不正です。再開を解除してください。"),
+                         release);
+        else {
+            const bool reuse = restart.mode == "reuse";
+            if (calc.task == NwchemTask::Scan || calc.task == NwchemTask::Irc || s["bsse"].toBool())
+                result.error(
+                    "restart.task", "restart",
+                    tr("座標スキャン・IRC・BSSE補正の計算は再開できません。再開を解除してください。"),
+                    release);
+            else if (restart.mode == "hessian" && !calc.saddle())
+                result.error(
+                    "restart.task", "task",
+                    tr("振動数計算のHessianは遷移状態探索に使います。計算目的を遷移状態探索にするか、"
+                       "再開を解除してください。"),
+                    DiagnosticFix{"task", tr("計算目的を「遷移状態探索」にする"), "saddle"});
+            else if (reuse && calc.task != NwchemTask::Frequencies)
+                result.error(
+                    "restart.task", "task",
+                    tr("Hessianの再利用は「振動数」の計算で行います。計算目的を振動数にするか、再開を"
+                       "解除してください。"),
+                    DiagnosticFix{"task", tr("計算目的を「振動数」にする"), "frequencies"});
+            if (restart.geometry != nwchemRestartDigest(d, !reuse))
+                result.error(
+                    "restart.geometry", "restart",
+                    reuse ? tr("原子の座標・固定または拘束が再開元と異なります。Hessianの再利用で変えら"
+                               "れるのは同位体・質量だけです。元に戻すか、再開を解除してください。")
+                          : tr("分子（座標・同位体・固定）または拘束が再開元と異なります。再開では変更"
+                               "できません。元に戻すか、再開を解除してください。"),
+                    release);
+            if (advanced["vectors_guess"] == "file")
+                result.error("restart.vectors", "advanced:vectors_guess",
+                             tr("再開では再開元の分子軌道を使うため、入力movecsは指定できません。"));
+            if (errors.isEmpty() && restart.mode == "continue") {
+                // The tasks the job finished must still be the first ones of this calculation.
+                auto plain = d;
+                setNwchemSetting(plain, "restart", QJsonObject());
+                QStringList tasks;
+                try {
+                    tasks = nwchemTaskLines(generateNwchemInput(plain).text);
+                } catch (const std::exception &) {
+                }
+                if (!tasks.isEmpty() && (tasks.size() <= restart.done.size() ||
+                                         tasks.mid(0, restart.done.size()) != restart.done))
+                    result.error(
+                        "restart.tasks", "restart",
+                        tr("再開元で終わったタスク（%1）が、今の計算条件のタスク（%2）の先頭と合いませ"
+                           "ん。計算目的・物性・出力の設定を再開元に戻すか、再開を解除してください。")
+                            .arg(restart.done.join(tr("、")), tasks.join(tr("、"))),
+                        release);
+            }
+            result.warning(
+                "restart.notice", "restart",
+                restart.mode == "continue"
+                    ? tr("「%1」の続きを計算します。構造・拘束・分子軌道は再開元のデータベースの値を使"
+                         "い、入力に座標を出力しません。")
+                          .arg(QFileInfo(restart.job).fileName())
+                : reuse ? tr("「%1」のHessianを再利用して、振動数と熱化学を求め直します（温度・同位体"
+                             "の変更用。電子状態の計算は行いません）。")
+                              .arg(QFileInfo(restart.job).fileName())
+                        : tr("「%1」の振動数計算のHessianと構造から、遷移状態を探索します。")
+                              .arg(QFileInfo(restart.job).fileName()));
+        }
+    }
     errors.removeDuplicates();
     return result;
 }
@@ -1466,6 +1572,36 @@ void extraInput(NwchemInputBuilder &out, const QString &text, const QString &key
     // Free-form input is one opaque region, even if it contains nested blocks or repeated directives.
     out.block("additional", body.result, key, {}, {2}, text.trimmed().section('\n', 0, 0));
 }
+// Takes a block and its lines out of a generated input; the lines after it move up.
+void removeBlock(NwchemGeneratedInput &input, int index) {
+    const auto block = input.outline.blocks[index];
+    auto lines = input.text.split('\n');
+    int first = block.line, count = block.lines;
+    // With the block goes one of the empty lines around it, when it stood between two.
+    if (first > 0 && lines.value(first - 1).isEmpty() && lines.value(first + count).isEmpty()) {
+        --first;
+        ++count;
+    }
+    lines.remove(first, count);
+    input.text = lines.join('\n');
+    input.outline.blocks.remove(index);
+    for (auto &other : input.outline.blocks)
+        if (other.line >= first + count)
+            other.line -= count;
+    const auto shifted = [&](const QSet<int> &set) {
+        QSet<int> result;
+        for (const int line : set)
+            if (line < first)
+                result.insert(line);
+            else if (line >= first + count)
+                result.insert(line - count);
+        return result;
+    };
+    input.outline.advanced = shifted(input.outline.advanced);
+    input.outline.extra = shifted(input.outline.extra);
+    for (auto &set : input.outline.settings)
+        set = shifted(set);
+}
 } // namespace
 static NwchemGeneratedInput generation(const Document &d);
 NwchemGeneratedInput generateNwchemInput(const Document &d) {
@@ -1485,15 +1621,20 @@ static NwchemGeneratedInput generation(const Document &d) {
     const double scale = coordinateScale(unit);
     const bool scan = calc.task == NwchemTask::Scan, relaxedScan = scan && s["scan_relaxed"].toBool();
     NwchemInputBuilder out;
+    const auto restart = nwchemRestart(s);
     out.append("# Generated by MolForma for NWChem\n");
-    out.block("start", "start " + str("start") + '\n', "start");
+    if (restart.active()) // NWChem keeps the geometry, constraints and orbitals of the database.
+        out.block("restart", "restart " + str("start") + '\n', "restart");
+    else
+        out.block("start", "start " + str("start") + '\n', "start");
     if (!str("title").isEmpty())
         out.block("title", "title \"" + str("title") + "\"\n", "title");
     out.block("memory", "memory total " + integer("memory_mb") + " mb\n", "memory_mb", {}, {3});
     out.append(nwchemAdvancedLines(d, "files"));
     out.block("charge", "charge " + QString::number(d.charge) + '\n', "charge");
-    out.append("\n");
-    if (!scan) {
+    if (!restart.active())
+        out.append("\n");
+    if (!scan && !restart.active()) {
         Document geometry = d;
         if (calc.optimization())
             for (auto &a : geometry.atoms)
@@ -1548,20 +1689,33 @@ static NwchemGeneratedInput generation(const Document &d) {
     if (calc.driver()) {
         NwchemInputBuilder body;
         body.append("\ndriver\n  maxiter " + integer("opt_maxiter") + "\n  " + str("opt_convergence") + '\n');
+        if (restart.mode == "hessian") // Not the Hessian the DRIVER kept from an optimization.
+            body.sourced("  clear\n  inhess 2\n", {"restart"});
         body.append(nwchemAdvancedLines(d, "driver"));
         body.append("end\n");
         out.block("driver", body.result, "opt_maxiter", "driver");
     }
     if (calc.frequencies()) {
         const auto lines = nwchemAdvancedLines(d, "frequency");
-        if (!lines.text.isEmpty()) {
+        const bool reuse = restart.mode == "reuse";
+        if (!lines.text.isEmpty() || reuse) {
             NwchemInputBuilder body;
-            body.sourced("\nfreq\n", {"frequency"}, true);
+            if (reuse) {
+                // The masses of the geometry block, which a restart leaves out: by atom number.
+                QString text = "\nfreq\n  reuse\n";
+                for (int i = 0; i < d.atoms.size(); ++i)
+                    if (const double mass = nwchemAtomMass(d.atoms[i]); mass > 0)
+                        text += QString("  mass %1 %2\n")
+                                    .arg(i + 1)
+                                    .arg(QString::number(mass, 'g', QLocale::FloatingPointShortest));
+                body.sourced(text, {"restart"});
+            } else
+                body.sourced("\nfreq\n", {"frequency"}, true);
             body.append(lines);
-            body.sourced("end\n", {"frequency"}, true);
-            out.block("freq", body.result, {}, "frequency");
+            body.sourced("end\n", {"frequency"}, !reuse);
+            out.block("freq", body.result, reuse ? "restart" : QString(), "frequency");
         }
-        if (!check.numericalFrequencies && advanced.contains("hessian_thresh"))
+        if (!reuse && !check.numericalFrequencies && advanced.contains("hessian_thresh"))
             out.advancedBlock("hessian",
                               "\nhessian\n  thresh " + nwchemAdvancedNumber(d, "hessian_thresh", "1e-6") +
                                   "\nend\n",
@@ -1623,7 +1777,8 @@ static NwchemGeneratedInput generation(const Document &d) {
         if (calc.frequencies()) {
             NwchemInputBuilder body;
             body.sourced("task " + theory + " frequencies" +
-                             (check.numericalFrequencies ? " numerical" : "") + '\n',
+                             (check.numericalFrequencies && restart.mode != "reuse" ? " numerical" : "") +
+                             '\n',
                          {"numerical_frequencies"});
             out.block("task", body.result, "task");
         } else if (calc.dft() && s["tddft"].toBool())
@@ -1713,6 +1868,13 @@ static NwchemGeneratedInput generation(const Document &d) {
         }
     }
     extraInput(out, str("extra_tasks"), "extra_tasks");
+    // A continued job starts at the task the other job did not finish (validateNwchem checked the match).
+    for (qsizetype done = 0, i = 0; done < restart.done.size() && i < out.result.outline.blocks.size();)
+        if (out.result.outline.blocks[i].keyword == "task") {
+            removeBlock(out.result, int(i));
+            ++done;
+        } else
+            ++i;
     return out.result;
 }
 QString nwchemInput(const Document &d) {

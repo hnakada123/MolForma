@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <numeric>
 
 namespace mf {
@@ -25,7 +26,70 @@ QJsonObject level(const QJsonObject &s) {
         out[key] = s[key];
     return out;
 }
+// The entropy of a harmonic oscillator in units of R, for x = hcν/kT.
+double harmonicEntropy(double x) {
+    return x / std::expm1(x) - std::log(-std::expm1(-x));
+}
 } // namespace
+ThermalOptions thermalOptions(const QJsonObject &p) {
+    ThermalOptions o;
+    if (p.contains("frequency_scale"))
+        o.scale = number(p, "frequency_scale");
+    if (p.contains("entropy_cutoff"))
+        o.cutoff = number(p, "entropy_cutoff");
+    for (const auto *key : {"entropy_model", "standard_state_correction"})
+        if (p.contains(key) && !p[key].isString())
+            fail(tr("エネルギー比較の %1 が不足または不正です。").arg(key));
+    o.model = p["entropy_model"].toString("rrho");
+    const auto state = p["standard_state_correction"].toString("none");
+    if (!(o.scale >= .5 && o.scale <= 1.5))
+        fail(tr("振動数のスケール因子は0.5〜1.5にしてください。"));
+    if (!QStringList{"rrho", "grimme", "truhlar"}.contains(o.model) || !(o.cutoff >= 10 && o.cutoff <= 500))
+        fail(tr("エントロピーのモデルはrrho・grimme・truhlar、低振動数のしきい値は10〜500 cm⁻¹にしてくだ"
+                "さい。"));
+    if (state != "none" && state != "1M")
+        fail(tr("標準状態の補正はnone（1 atm）または1M（1 mol/L）を指定してください。"));
+    o.molar = state == "1M";
+    return o;
+}
+VibrationalTerms vibrationalTerms(const QVector<double> &wavenumbers, double temperature,
+                                  const ThermalOptions &o) {
+    VibrationalTerms terms;
+    for (const double wavenumber : wavenumbers) {
+        const double scaled = o.scale * wavenumber;
+        if (!(scaled > 0) || !std::isfinite(scaled) || !(temperature > 0))
+            fail(tr("熱補正の振動数または温度が不正です。"));
+        const double theta = WavenumberToKelvin * scaled, x = theta / temperature;
+        terms.zpe += GasConstantKcal * theta / 2;
+        terms.thermal += GasConstantKcal * theta / std::expm1(x);
+        double entropy = harmonicEntropy(
+            o.model == "truhlar" ? std::max(x, WavenumberToKelvin * o.cutoff / temperature) : x);
+        if (o.model == "grimme") {
+            // Grimme, Chem. Eur. J. 2012, 18, 9955: a free rotor of the same frequency, whose moment of
+            // inertia μ = h/(8π²cν) is limited by B_av = 1e-44 kg m²: S = R[1/2 + ln √(8π³μ′kT/h²)].
+            const double pi = std::numbers::pi, average = 1e-44;
+            const double moment = PlanckConstant / (8 * pi * pi * LightSpeedCm * scaled),
+                         limited = moment * average / (moment + average);
+            const double rotor = .5 + std::log(std::sqrt(8 * pi * pi * pi * limited * BoltzmannConstant *
+                                                         temperature / (PlanckConstant * PlanckConstant)));
+            const double weight = 1 / (1 + std::pow(o.cutoff / scaled, 4));
+            entropy = weight * entropy + (1 - weight) * rotor;
+        }
+        terms.entropy += 1000 * GasConstantKcal * entropy;
+    }
+    return terms;
+}
+double standardStateShift(double temperature) {
+    // R′ in L atm mol⁻¹ K⁻¹: an ideal gas at 1 atm takes R′T litres per mole.
+    const double liters = 1000 * BoltzmannConstant * AvogadroConstant / AtmosphereToPascal;
+    return GasConstantKcal * temperature * std::log(liters * temperature);
+}
+double boltzmannFactor(double energy, double temperature) {
+    return std::exp(-energy / (GasConstantKcal * temperature));
+}
+double eyringRate(double barrier, double temperature) {
+    return BoltzmannConstant * temperature / PlanckConstant * boltzmannFactor(barrier, temperature);
+}
 QJsonObject energyRecord(const ResultData &r, const Document &original, const QJsonObject &settings) {
     const auto final = r.properties["final_energy"].toObject();
     const double energy = number(final, "hartree");
@@ -40,20 +104,33 @@ QJsonObject energyRecord(const ResultData &r, const Document &original, const QJ
                               ? r.vibrationGeometry
                           : r.frames.isEmpty() ? original
                                                : r.frames.last().molecule;
-    return {{"id", QUuid::createUuid().toString(QUuid::WithoutBraces)},
-            {"name", settings["start"]},
-            {"source", r.source},
-            {"energy_hartree", energy},
-            {"energy_source", final},
-            {"settings", settings},
-            {"composition", composition},
-            {"charge", original.charge},
-            {"multiplicity", original.multiplicity},
-            {"geometry", geometry.xyz()},
-            {"normal", r.outcome == ResultOutcome::Normal},
-            {"thermochemistry", r.properties["thermochemistry"]},
-            {"imaginary", r.modes.isEmpty() ? QJsonValue()
-                                            : QJsonValue(resultModeCounts(resultModeKinds(r)).significant)}};
+    // What NWChem's thermochemistry sums over (vib_wrtfreq.F): its scale factor (vib:scalefreq) times
+    // every projected frequency, if above 0.1 cm⁻¹. That leaves out imaginary modes and the
+    // translations and rotations, which are left out here by their kind too.
+    const auto thermochemistry = r.properties["thermochemistry"].toArray();
+    const double scale = thermochemistry.at(0).toObject()["nwchem_frequency_scale"].toDouble(1);
+    const auto kinds = resultModeKinds(r);
+    QJsonArray vibrations;
+    for (int i = 0; i < r.modes.size(); ++i)
+        if (kinds[i] == ResultModeKind::Vibration && scale * r.modes[i].frequency > .1)
+            vibrations.append(scale * r.modes[i].frequency);
+    QJsonObject record{
+        {"id", QUuid::createUuid().toString(QUuid::WithoutBraces)},
+        {"name", settings["start"]},
+        {"source", r.source},
+        {"energy_hartree", energy},
+        {"energy_source", final},
+        {"settings", settings},
+        {"composition", composition},
+        {"charge", original.charge},
+        {"multiplicity", original.multiplicity},
+        {"geometry", geometry.xyz()},
+        {"normal", r.outcome == ResultOutcome::Normal},
+        {"thermochemistry", r.properties["thermochemistry"]},
+        {"imaginary", r.modes.isEmpty() ? QJsonValue() : QJsonValue(resultModeCounts(kinds).significant)}};
+    if (!r.modes.isEmpty() && !thermochemistry.isEmpty())
+        record["vibrations"] = vibrations;
+    return record;
 }
 QJsonObject evaluateEnergyProfile(const QJsonObject &p) {
     if (p["format"] != "molforma-energy-profile" || p["version"] != 1)
@@ -65,6 +142,10 @@ QJsonObject evaluateEnergyProfile(const QJsonObject &p) {
     const double temperature = number(p, "temperature");
     if (temperature <= 0 || temperature > 10000 || p["standard_state"].toString().trimmed().isEmpty())
         fail(tr("温度と標準状態を指定してください。"));
+    const auto options = thermalOptions(p);
+    // The entropy model changes G only; the scale factor every thermal correction.
+    const bool vibrational = options.scale != 1 || (metric == "G" && options.vibrational());
+    const double shift = metric == "G" && options.molar ? standardStateShift(temperature) : 0;
     QMap<QString, QJsonObject> records;
     const auto input = p["records"].toArray(), stages = p["stages"].toArray();
     if (input.size() > 200 || stages.isEmpty() || stages.size() > 200)
@@ -103,6 +184,7 @@ QJsonObject evaluateEnergyProfile(const QJsonObject &p) {
                 fail(tr("化学量論係数は0より大きく1000以下にしてください。"));
             double correction = 0;
             QString thermalId;
+            QJsonObject applied;
             if (metric != "E") {
                 thermalId = term["thermal"].toString(id);
                 if (!records.contains(thermalId))
@@ -119,9 +201,34 @@ QJsonObject evaluateEnergyProfile(const QJsonObject &p) {
                     }
                 if (thermal.isEmpty())
                     fail(tr("指定した温度の熱補正がありません: %1").arg(t["name"].toString()));
-                correction = metric == "ZPE" ? number(thermal, "zpe_kcal") : number(thermal, "enthalpy_kcal");
-                if (metric == "G")
-                    correction -= temperature * number(thermal, "entropy_cal") / 1000;
+                double zpe = metric == "ZPE" ? number(thermal, "zpe_kcal") : 0,
+                       enthalpy = metric == "ZPE" ? 0 : number(thermal, "enthalpy_kcal"),
+                       entropy = metric == "G" ? number(thermal, "entropy_cal") : 0;
+                if (vibrational) {
+                    // NWChem's totals with their vibrational parts replaced: the difference of the
+                    // model at the scaled wavenumbers from the harmonic oscillators NWChem summed.
+                    if (!t["vibrations"].isArray())
+                        fail(tr("%1: "
+                                "振動数の記録がない結果には、スケール因子・エントロピーの補正を適用できません"
+                                "。振動数計算のジョブを追加し直してください。")
+                                 .arg(t["name"].toString()));
+                    QVector<double> wavenumbers;
+                    for (const auto &wavenumber : t["vibrations"].toArray())
+                        wavenumbers << wavenumber.toDouble();
+                    const auto printed = vibrationalTerms(wavenumbers, temperature),
+                               model = vibrationalTerms(wavenumbers, temperature, options);
+                    zpe += model.zpe - printed.zpe;
+                    enthalpy += model.zpe + model.thermal - (printed.zpe + printed.thermal);
+                    entropy += model.entropy - printed.entropy;
+                }
+                // 1 atm → 1 mol/L lowers the translational entropy by R·ln(R′T).
+                entropy -= 1000 * shift / temperature;
+                correction = metric == "ZPE" ? zpe : enthalpy;
+                applied[metric == "ZPE" ? "zpe_kcal" : "enthalpy_kcal"] = correction;
+                if (metric == "G") {
+                    correction -= temperature * entropy / 1000;
+                    applied["entropy_cal"] = entropy;
+                }
                 if (thermalId != id)
                     warnings << tr("%1: 別ジョブの熱補正を使用（%2）。")
                                     .arg(r["name"].toString(), t["source"].toString());
@@ -144,11 +251,12 @@ QJsonObject evaluateEnergyProfile(const QJsonObject &p) {
             for (auto it = atoms.begin(); it != atoms.end(); ++it)
                 composition[it.key()] =
                     composition[it.key()].toDouble() + coefficient * number(atoms, it.key());
-            sources.append(QJsonObject{{"record", id},
-                                       {"thermal", thermalId},
-                                       {"coefficient", coefficient},
-                                       {"electronic_hartree", e},
-                                       {"correction_kcal", correction}});
+            applied["record"] = id;
+            applied["thermal"] = thermalId;
+            applied["coefficient"] = coefficient;
+            applied["electronic_hartree"] = e;
+            applied["correction_kcal"] = correction;
+            sources.append(applied);
         }
         if (!stageIndex) {
             firstComposition = composition;
@@ -172,6 +280,16 @@ QJsonObject evaluateEnergyProfile(const QJsonObject &p) {
     for (int i = 0; i < evaluated.size(); ++i) {
         auto row = evaluated[i].toObject();
         row["relative"] = (row["hartree"].toDouble() - base) * scale;
+        if (metric == "G") {
+            // Against the reference stage; a rate constant only for a barrier.
+            const double delta = (row["hartree"].toDouble() - base) * HartreeToKcal,
+                         factor = boltzmannFactor(delta, temperature);
+            if (std::isfinite(factor)) {
+                row["boltzmann_factor"] = factor;
+                if (delta > 0)
+                    row["rate_constant"] = eyringRate(delta, temperature);
+            }
+        }
         evaluated[i] = row;
     }
     warnings.removeDuplicates();
@@ -180,11 +298,16 @@ QJsonObject evaluateEnergyProfile(const QJsonObject &p) {
             {"unit", unit},
             {"temperature", temperature},
             {"standard_state", p["standard_state"]},
+            {"frequency_scale", options.scale},
+            {"entropy_model", options.model},
+            {"entropy_cutoff", options.cutoff},
+            {"standard_state_correction", options.molar ? "1M" : "none"},
+            {"standard_state_shift_kcal", shift},
             {"comparable", comparable},
             {"warnings", QJsonArray::fromStringList(warnings)}};
 }
 QJsonArray conformerPopulations(const QJsonArray &records, const QString &metric, double temperature,
-                                double tolerance) {
+                                double tolerance, const QJsonObject &thermal) {
     if (records.isEmpty() || records.size() > 100 || !std::isfinite(tolerance) || tolerance < .001 ||
         tolerance > 2)
         fail(tr("配座比較は1〜100件、RMSD許容値は0.001〜2 Åにしてください。"));
@@ -203,15 +326,20 @@ QJsonArray conformerPopulations(const QJsonArray &records, const QString &metric
         if (geometries.last().atoms.size() * records.size() * records.size() > 2000000)
             fail(tr("RMSD比較が大きすぎます。比較する配座を減らしてください。"));
     }
-    const auto evaluated = evaluateEnergyProfile({{"format", "molforma-energy-profile"},
-                                                  {"version", 1},
-                                                  {"records", records},
-                                                  {"stages", stages},
-                                                  {"metric", metric},
-                                                  {"unit", "kcal"},
-                                                  {"temperature", temperature},
-                                                  {"standard_state", "as calculated"},
-                                                  {"reference", 0}});
+    QJsonObject profile{{"format", "molforma-energy-profile"},
+                        {"version", 1},
+                        {"records", records},
+                        {"stages", stages},
+                        {"metric", metric},
+                        {"unit", "kcal"},
+                        {"temperature", temperature},
+                        {"standard_state", "as calculated"},
+                        {"reference", 0}};
+    // The standard state shifts every conformer alike, so it is left out.
+    for (const auto *key : {"frequency_scale", "entropy_model", "entropy_cutoff"})
+        if (thermal.contains(key))
+            profile[key] = thermal[key];
+    const auto evaluated = evaluateEnergyProfile(profile);
     if (!evaluated["comparable"].toBool())
         fail(tr("組成・電荷・計算条件の異なる配座から分布を計算できません。"));
     const auto energies = evaluated["stages"].toArray();
@@ -239,7 +367,7 @@ QJsonArray conformerPopulations(const QJsonArray &records, const QString &metric
     double total = 0;
     for (int index : representatives) {
         const double delta = (energies[index].toObject()["hartree"].toDouble() - lowest) * HartreeToKcal;
-        weights[index] = std::exp(-delta / (.00198720425864 * temperature));
+        weights[index] = boltzmannFactor(delta, temperature);
         total += weights[index];
     }
     QJsonArray rows;

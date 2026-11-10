@@ -1,0 +1,20 @@
+start molforma
+title "formaldehyde TDA"
+geometry units angstroms noautosym nocenter
+  C  0.000000  0.000000 -0.529000
+  O  0.000000  0.000000  0.676000
+  H  0.000000  0.935000 -1.109000
+  H  0.000000 -0.935000 -1.109000
+end
+basis
+  * library 6-31G*
+end
+dft
+  xc b3lyp
+end
+tddft
+  nroots 3
+  notriplet
+  cis
+end
+task tddft energy

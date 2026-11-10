@@ -1,0 +1,18 @@
+start ammonia_planar_scaled
+memory total 256 mb
+geometry units angstrom noautoz nocenter noautosym
+ N 0.00000000 0.00000000 0.00000000
+ H 1.00547944 0.00000000 0.00000000
+ H -0.50273972 0.87077069 0.00000000
+ H -0.50273972 -0.87077069 0.00000000
+end
+basis
+ * library sto-3g
+end
+scf
+ singlet
+ rhf
+ thresh 1e-8
+end
+set vib:scalefreq 0.9
+task scf freq

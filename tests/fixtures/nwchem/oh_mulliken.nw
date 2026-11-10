@@ -1,0 +1,18 @@
+start molforma
+title "OH radical Mulliken bond indices"
+geometry units angstroms noautosym nocenter
+  O  0.000000  0.000000  0.000000
+  H  0.000000  0.000000  0.970000
+end
+basis
+  * library 6-31G*
+end
+dft
+  xc b3lyp
+  odft
+  mult 2
+end
+property
+  mulliken
+end
+task dft property

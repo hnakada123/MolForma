@@ -27,7 +27,7 @@ QT_QPA_PLATFORM=offscreen ./build/test_editor someTestFunction   # one Qt Test s
   `advanced`, `execution`, `input_preview`, `results`, `history`, `output`, `molden`, `rendering`, `translations`, `mcp`).
   All run with `QT_QPA_PLATFORM=offscreen` and need no network, credentials or NWChem install:
   `tests/fake_nwchem.cpp` builds a stand-in NWChem used by execution/history/output/mcp tests.
-  `test_mcp` launches the built `molforma` binary. Fixtures live in `tests/fixtures/` (`FIXTURE_DIR` in `test_core`).
+  `test_mcp` launches the built `molforma` binary; `test_execution` uses it as the supervisor of runs. Fixtures live in `tests/fixtures/` (`FIXTURE_DIR` in `test_core`).
   Tests must not touch the user's files: MolForma's settings use `mf::SettingsFormat` (`model/settings.h`: NativeFormat,
   an INI file on Windows and macOS), so redirect `QSettings::setPath` for both NativeFormat and IniFormat and set
   `XDG_CONFIG_HOME` / `XDG_DATA_HOME` (honored on Windows and macOS too)
@@ -57,7 +57,8 @@ Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#inc
 - `molforma` executable (`src/main.cpp`) links all of them and has several modes selected by argv:
   normal GUI, `--screenshot`, `--mcp` (headless, `QCoreApplication`), `--mcp-gui` (MCP driving a real
   `MainWindow` via `src/ui/mcp_gui.*`), and the internal `--worker` / `--result-worker <in> <out>` /
-  `--result-worker-ready` modes (test executables that load results handle them through `resultWorkerMain`).
+  `--result-worker-ready` modes (test executables that load results handle them through `resultWorkerMain`)
+  and `--run-job <job folder>` (`runJobMain`: the supervisor of one NWChem run, see below).
 
 Key cross-cutting designs:
 
@@ -92,6 +93,16 @@ Key cross-cutting designs:
   overrides (blank = default) on the base settings; `nwchem_output.*` adds CUBE/MOLDEN tasks; `nwchem_execution.*`
   saves immutable run bundles and controls NWChem/MPI processes; `history.*` scans those bundles. The Input preview
   tab and the MCP tools reuse the same generator and execution plan — don't fork generation logic in the UI.
+- **Runs that outlive the window**: `NwchemRun` either owns NWChem as a child process (tests, `--mcp`) or, with
+  `setSupervisor` (interactive sessions, `--mcp-keep-runs`), starts the executable again as `--run-job <job>`:
+  that supervisor owns NWChem, writes every state to `run.json` and stops on `stop.request` in the job folder,
+  so a run goes on when the window closes and another session can `attach` to it. `NwchemQueue` keeps waiting
+  entries in `queue.json` of the data folder (restored paused; a job whose `run.json` changed is dropped).
+- **Restarts**: `nwchem/nwchem_restart.*` prepares a document that goes on from a job's NWChem database
+  (`document.nwchem.restart`: `continue`, `hessian`, `reuse`); the generator then writes `restart`, no geometry
+  and only the unfinished tasks, and `saveExecutionBundle` copies the database files into the new job. MCP
+  cannot set `restart` directly (it names a folder to copy from). `history_import.cpp` registers runs made
+  outside MolForma, and `executionJobScript` writes `job.sh` for running a saved job elsewhere.
 - **Rendering**: `ui/molecule_view.*` owns camera, input and Qt annotations and has a QPainter fallback;
   `ui/vtk_molecule_renderer.*` is compiled only with VTK. Both draw bonds and isosurfaces by `ui/bond_style.h`. Offscreen/minimal Qt platforms or missing OpenGL 3.2
   automatically fall back to QPainter.

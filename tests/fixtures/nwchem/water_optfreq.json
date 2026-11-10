@@ -477,6 +477,10 @@
                 "energy_kcal": 17.067,
                 "enthalpy_kcal": 17.659,
                 "entropy_cal": 46.638,
+                "entropy_rotational_cal": 12.045,
+                "entropy_translational_cal": 34.593,
+                "entropy_vibrational_cal": 0.001,
+                "nwchem_frequency_scale": 1,
                 "symmetry_number": 1,
                 "temperature": 298.15,
                 "zpe_kcal": 15.29

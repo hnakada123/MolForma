@@ -110,10 +110,10 @@ class CalculationPanel : public QWidget {
     QComboBox *changeFilter; // All rows or the changed ones, behind its segments.
     ChoiceButtons *changeFilters;
     QMenu *presetMenu;
-    QFrame *banner;
+    QFrame *banner, *restartBanner;
     CalculationSummary *summaryCard;
     StatusCard *validationCard;
-    QLabel *message, *changeCount, *noChanges, *reference, *passed;
+    QLabel *message, *restartMessage, *changeCount, *noChanges, *reference, *passed;
     DiagnosticsList *validation;
     QTreeWidget *changes;
     QPushButton *formalCharge;

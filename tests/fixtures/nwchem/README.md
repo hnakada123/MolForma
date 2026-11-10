@@ -10,3 +10,14 @@ When the reading changes on purpose, record it anew with `MOLFORMA_UPDATE_GOLDEN
 realNwchemLogs` and check the difference of the `.json` files.
 
 The `water_raman`, `methyl_epr`, `peroxide_ecd` and `peroxide_ord` fixtures were generated with explicit small NWChem 7.3.1 inputs, retained as `.nw` files. They exercise normal Raman activities (also `.normal`), g-shifts in ppt and hyperfine tensors in MHz, signed length-gauge rotatory strengths, and undamped GIAO optical-rotation β at two wavelengths. These small-basis calculations test formats and conventions, not quantitative agreement with experiment.
+
+The `peroxide_thermo` and `ammonia_planar_scaled` fixtures (explicit inputs, retained as `.nw`) are for the thermochemistry corrections. H2O2 at HF/STO-3G has a torsion of 184.64 cm⁻¹ and thermochemistry at 298.15 K and 350 K. Planar NH3 (the inversion transition state at HF/STO-3G) has an imaginary mode and `set vib:scalefreq 0.9`, which NWChem applies in its thermochemistry only. NWChem computes the thermochemistry with its own constants (`vib_wrtfreq.F`: h = 6.626e-27 erg s, c = 2.998e10 cm/s, k = 1.3807e-16 erg/K, R = 1.9863 cal/(mol K)) over the scaled projected frequencies above 0.1 cm⁻¹; `thermochemistryOfLogsRecomputed` reproduces the printed values with them.
+
+`conformers/` holds two conformers for the conformer-set tests (populations with corrections, averaged spectra): cis- and trans-HONO at B3LYP/STO-3G, 0.82 kcal/mol apart, each run as optimization (from the optimized structure), frequencies, TDDFT with `cdspectrum` and NMR shieldings. They have no `.json` beside them and are not part of `realNwchemLogs`; the tests state the numbers they use.
+
+`water_cation_tddft` (unrestricted TDDFT of H2O+), `formaldehyde_tda` (Tamm–Dancoff, `cis`), `ethanol_mulliken`
+and `oh_mulliken` (`property; mulliken` of nine atoms, whose bond-index matrix wraps after eight columns, and of
+the open-shell OH radical) were generated the same way, with their inputs as `.nw` files. They give the layouts
+of the amplitudes under each excited state (`Occ. … --- Virt. …` with `alpha`/`beta`, with and without X/Y) and
+of the bond indices and valencies of the Mulliken analysis; `water_tddft` and `peroxide_ecd` have the
+restricted amplitudes (X, and X with Y).

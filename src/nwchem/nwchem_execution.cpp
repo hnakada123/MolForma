@@ -6,7 +6,9 @@
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_output.h"
+#include "nwchem/nwchem_restart.h"
 #include "nwchem/run_diagnostics.h"
+#include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
@@ -52,6 +54,9 @@ QString untrustedNetworkPath(const Document &d) {
     for (const auto *key : {"vectors_input", "vectors_output", "scratch_dir", "permanent_dir"})
         if (const auto value = advanced[key].toString(); networkPath(value))
             return value;
+    if (const auto job = nwchemRestart(nwchemSettings(d)).job;
+        networkPath(job) && !networkPath(preferred["job_root"].toString()))
+        return job;
     return {};
 }
 namespace {
@@ -106,14 +111,126 @@ QString processStart(qint64 pid) {
 QString executionRoot(const QJsonObject &s, const QString &base) {
     return absolutePath(s["job_root"].toString(), base);
 }
+// The file that asks the supervisor of a job to stop it.
+QString stopRequest(const QString &directory) {
+    return QDir(directory).filePath("stop.request");
+}
+// Ends the process group of a run (Unix), or the whole tree of its first process (Windows).
+void signalGroup(qint64 group, bool force) {
+    if (group <= 0)
+        return;
+#ifdef Q_OS_UNIX
+    ::kill(-pid_t(group), force ? SIGKILL : SIGTERM);
+#elif defined(Q_OS_WIN)
+    // No process groups and no signal a console program would heed: the forced stop ends the whole
+    // tree (cmd, wsl.exe, mpiexec and NWChem), not only the program MolForma started.
+    if (force)
+        windowsTerminateTree(group);
+#else
+    Q_UNUSED(force);
+#endif
+}
+#ifdef Q_OS_UNIX
+volatile std::sig_atomic_t stopSignalled = 0;
+void stopSignal(int) {
+    stopSignalled = 1;
+}
+#endif
 } // namespace
+bool runSupervised(const QJsonObject &manifest) {
+    const auto supervisor = manifest["supervisor"].toObject();
+    return supervisor["pid"].toInteger() > 0 &&
+           supervisor["host"].toString() == QSysInfo::machineHostName() && !executionProcessGone(supervisor);
+}
+QString runSupervisorProgram() {
+    const auto image = qEnvironmentVariable("APPIMAGE");
+    return QFileInfo(image).isFile() ? image : QCoreApplication::applicationFilePath();
+}
+bool executionRunGone(const QJsonObject &manifest) {
+    const auto supervisor = manifest["supervisor"].toObject();
+    if (supervisor.isEmpty())
+        return executionProcessGone(manifest);
+    return executionProcessGone(supervisor) && (!manifest.contains("pid") || executionProcessGone(manifest));
+}
+bool requestRunStop(const QString &directory) {
+    QJsonObject manifest;
+    try {
+        manifest = parseJson(readFile(QDir(directory).filePath("run.json")));
+    } catch (const std::exception &) {
+        return false;
+    }
+    if (!runStateActive(runStateFromKey(manifest["status"].toString())) || !runSupervised(manifest))
+        return false;
+    QFile request(stopRequest(directory));
+    return request.open(QIODevice::WriteOnly);
+}
+int runJobMain(int argc, char **argv) {
+    if (argc != 3 || QString::fromLocal8Bit(argv[1]) != "--run-job")
+        return -1;
+    QCoreApplication app(argc, argv);
+    const auto directory = QDir::cleanPath(QFileInfo(QString::fromLocal8Bit(argv[2])).absoluteFilePath());
+    ExecutionPlan plan;
+    try {
+        // Only the job MolForma has just prepared and marked as starting, with the input it saved.
+        const auto manifest = parseJson(readFile(QDir(directory).filePath("run.json")));
+        const auto input = readFile(QDir(directory).filePath("input.nw"));
+        if (manifest["format"] != "molforma-nwchem-run" ||
+            runStateFromKey(manifest["status"].toString()) != RunState::Starting ||
+            manifest["input_sha256"].toString() !=
+                QString::fromLatin1(QCryptographicHash::hash(input, QCryptographicHash::Sha256).toHex()))
+            return 2;
+        plan.directory = directory;
+        plan.program = manifest["program"].toString();
+        for (const auto &argument : manifest["arguments"].toArray())
+            plan.arguments << argument.toString();
+        const auto overrides = manifest["environment_overrides"].toObject();
+        for (auto it = overrides.begin(); it != overrides.end(); ++it)
+            plan.environment[it.key()] = it.value().toString();
+        plan.timeoutSeconds = manifest["timeout_seconds"].toInt();
+        plan.manifest = manifest;
+        plan.manifest["supervisor"] = executionProcessIdentity(QCoreApplication::applicationPid());
+    } catch (const std::exception &) {
+        return 2;
+    }
+#ifdef Q_OS_UNIX
+    for (const int signal : {SIGTERM, SIGINT, SIGHUP})
+        std::signal(signal, stopSignal);
+#endif
+    NwchemRun run;
+    QTimer requests;
+    requests.setInterval(250);
+    QObject::connect(&requests, &QTimer::timeout, &run, [&] {
+        bool asked = QFileInfo::exists(stopRequest(directory));
+#ifdef Q_OS_UNIX
+        asked |= stopSignalled != 0;
+#endif
+        if (asked)
+            run.stop();
+    });
+    QObject::connect(&run, &NwchemRun::changed, &app, [&] {
+        if (!run.active())
+            QTimer::singleShot(0, &app, &QCoreApplication::quit);
+    });
+    run.startPrepared(plan);
+    requests.start();
+    const int code = run.active() ? app.exec() : 0;
+    QFile::remove(stopRequest(directory));
+    return code;
+}
 QJsonObject executionDefaults() {
-    return {{"executable", "nwchem"},     {"mode", "mpi"},
-            {"launcher", "mpirun"},       {"mpi_ranks", 2},
-            {"omp_threads", 1},           {"blas_threads", 1},
-            {"omp_stacksize", ""},        {"job_root", QDir::home().filePath("MolForma/jobs")},
-            {"reference_directory", ""},  {"timeout_seconds", 0},
-            {"environment", QJsonArray{}}};
+    return {{"executable", "nwchem"},
+            {"mode", "mpi"},
+            {"launcher", "mpirun"},
+            {"mpi_ranks", 2},
+            {"omp_threads", 1},
+            {"blas_threads", 1},
+            {"omp_stacksize", ""},
+            {"job_root", QDir::home().filePath("MolForma/jobs")},
+            {"reference_directory", ""},
+            {"timeout_seconds", 0},
+            {"environment", QJsonArray{}},
+            {"job_script", "none"},
+            {"job_queue", ""}};
 }
 const QVector<ExecutionRange> &executionRanges() {
     static const QVector<ExecutionRange> ranges{{"mpi_ranks", 1, 4096},
@@ -129,8 +246,8 @@ ExecutionRange executionRange(const QString &key) {
     fail("Unknown execution setting: " + key);
 }
 QStringList executionPreferenceKeys() {
-    return {"executable",   "mode",          "launcher", "mpi_ranks",       "omp_threads",
-            "blas_threads", "omp_stacksize", "job_root", "timeout_seconds", "environment"};
+    return {"executable",    "mode",     "launcher",        "mpi_ranks",   "omp_threads", "blas_threads",
+            "omp_stacksize", "job_root", "timeout_seconds", "environment", "job_script",  "job_queue"};
 }
 QJsonObject executionPreferences() {
     const auto stored =
@@ -207,6 +324,12 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
             r.error("execution.required", key, tr("%1 を指定してください。").arg(key), {}, 2);
     if (mpi && s["launcher"].toString().trimmed().isEmpty())
         r.error("execution.launcher", "launcher", tr("MPIランチャーを指定してください。"), {}, 2);
+    if (!QStringList{"none", "shell", "slurm", "pbs"}.contains(s["job_script"].toString()))
+        r.error("execution.job_script", "job_script",
+                tr("ジョブスクリプトは、作らない・シェル・Slurm・PBSから選んでください。"), {}, 2);
+    if (!QRegularExpression("^[A-Za-z0-9_.@:+-]{0,64}$").match(s["job_queue"].toString()).hasMatch())
+        r.error("execution.job_queue", "job_queue",
+                tr("キュー・パーティション名は英数字と _ . @ : + - の64文字以内で指定してください。"), {}, 2);
     const auto stack = s["omp_stacksize"].toString();
     if (!stack.isEmpty() && !QRegularExpression("^[1-9][0-9]{0,8}[BKMGbkmg]?$").match(stack).hasMatch())
         r.error("execution.stack", "omp_stacksize",
@@ -285,6 +408,14 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
         const auto root = executionRoot(s, base);
         check("job_root", tr("ジョブ保存先"), writableDirectory(root, true), root,
               tr("ジョブ保存先にディレクトリを作成できません。"));
+        if (nwchemRestart(nwchemSettings(d)).active()) {
+            const auto database = restartSource(d);
+            const QFileInfo info(database);
+            check("restart", tr("再開元のデータベース"),
+                  !database.isEmpty() && info.isFile() && !info.isSymLink() && info.isReadable(), database,
+                  tr("再開元のジョブフォルダーにNWChemのデータベース（計算名.db）がありません。計算名とper"
+                     "manent_dirを再開元のままにするか、「2 計算条件」で再開を解除してください。"));
+        }
         const auto basis = r.environment.value("NWCHEM_BASIS_LIBRARY");
         if (!basis.isEmpty())
             check("environment", "NWCHEM_BASIS_LIBRARY", QFileInfo(basis).isDir(), basis,
@@ -356,7 +487,9 @@ ExecutionPlan executionPlan(const Document &d, const QString &base, const QStrin
         if (QString(key) == "vectors_output") {
             if (!absolute && bundleFiles.contains(clean))
                 fail(tr("出力movecsにはジョブ保存用ファイルと異なる名前を指定してください。"));
-            if (local && (QFileInfo::exists(target) || QFileInfo(target).isSymLink()))
+            // A restart goes on writing the orbitals it copied from the job it continues.
+            if (local && !nwchemRestart(nwchemSettings(d)).active() &&
+                (QFileInfo::exists(target) || QFileInfo(target).isSymLink()))
                 fail(tr("出力movecsは既に存在します。別の名前を指定してください: %1").arg(target));
             if (local && QDir::isAbsolutePath(actual) &&
                 !writableDirectory(QFileInfo(target).absolutePath(), false))
@@ -427,6 +560,76 @@ QString executionCommand(const ExecutionPlan &p) {
         command += ' ' + quote(arg);
     return command + " > output.out 2> stderr.err";
 }
+QString executionJobPrelude() {
+    return QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
+        .value("execution/job_prelude")
+        .toString();
+}
+void saveExecutionJobPrelude(const QString &lines) {
+    if (lines.size() > 4000 || lines.contains(QRegularExpression("[\\x00-\\x08\\x0b-\\x1f\\x7f]")))
+        fail(tr("ジョブスクリプトの準備の行は、制御文字を含めず4000文字以内で指定してください。"));
+    QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
+        .setValue("execution/job_prelude", lines.trimmed());
+}
+QString executionJobScript(const Document &d) {
+    const auto s = executionSettings(d);
+    const auto kind = s["job_script"].toString();
+    if (kind == "none")
+        return {};
+    const auto report = validateExecution(d, QDir::homePath(), false);
+    if (!report.errors.isEmpty())
+        throw ValidationFailure(report);
+    const bool mpi = s["mode"] == "mpi";
+    const int ranks = mpi ? s["mpi_ranks"].toInt() : 1;
+    const int threads = std::max(s["omp_threads"].toInt(), s["blas_threads"].toInt());
+    const int limit = s["timeout_seconds"].toInt();
+    const auto time = QString("%1:%2:%3")
+                          .arg(limit / 3600, 2, 10, QChar('0'))
+                          .arg(limit / 60 % 60, 2, 10, QChar('0'))
+                          .arg(limit % 60, 2, 10, QChar('0'));
+    const auto name = nwchemSettings(d)["start"].toString(), queue = s["job_queue"].toString();
+    QStringList lines{"#!/bin/bash"};
+    if (kind == "slurm") {
+        lines << "#SBATCH --job-name=" + name << "#SBATCH --nodes=1"
+              << QString("#SBATCH --ntasks=%1").arg(ranks)
+              << QString("#SBATCH --cpus-per-task=%1").arg(threads);
+        if (limit)
+            lines << "#SBATCH --time=" + time;
+        if (!queue.isEmpty())
+            lines << "#SBATCH --partition=" + queue;
+        lines << "#SBATCH --output=scheduler-%j.log";
+    } else if (kind == "pbs") {
+        lines << "#PBS -N " + name
+              << QString("#PBS -l select=1:ncpus=%1:mpiprocs=%2:ompthreads=%3")
+                     .arg(ranks * threads)
+                     .arg(ranks)
+                     .arg(s["omp_threads"].toInt());
+        if (limit)
+            lines << "#PBS -l walltime=" + time;
+        if (!queue.isEmpty())
+            lines << "#PBS -q " + queue;
+        lines << "#PBS -j oe";
+    }
+    lines << "# Generated by MolForma. Runs NWChem in the folder of this script; copy the folder back and"
+          << "# register output.out in MolForma's history afterwards.";
+    lines << (kind == "slurm" ? "cd \"${SLURM_SUBMIT_DIR:-$(dirname \"$0\")}\" || exit 1"
+              : kind == "pbs" ? "cd \"${PBS_O_WORKDIR:-$(dirname \"$0\")}\" || exit 1"
+                              : "cd \"$(dirname \"$0\")\" || exit 1");
+    if (const auto prelude = executionJobPrelude(); !prelude.isEmpty())
+        lines << prelude;
+    for (auto it = report.environment.begin(); it != report.environment.end(); ++it) {
+        // The resources are this job's; other variables name places of the computer they were set on.
+        const auto line = "export " + it.key() + '=' + quote(it.value());
+        lines << (managedEnvironment.contains(it.key()) ? line : "# " + line);
+    }
+    // The programs as they are named in the settings, not where this computer found them.
+    QStringList command;
+    if (mpi)
+        command << quote(s["launcher"].toString()) << "-np" << QString::number(ranks);
+    command << quote(s["executable"].toString()) << "input.nw";
+    lines << command.join(' ') + " > output.out 2> stderr.err";
+    return lines.join('\n') + '\n';
+}
 ExecutionPlan saveExecutionBundle(const Document &d, const QString &base, bool forRun) {
     const auto report = validateExecution(d, base, forRun);
     if (!report.errors.isEmpty())
@@ -463,6 +666,14 @@ ExecutionPlan saveExecutionBundle(const Document &d, const QString &base, bool f
     writeFile(directory.filePath("project.molforma.json"), project);
     plan.manifest["project_sha256"] =
         QString::fromLatin1(QCryptographicHash::hash(project, QCryptographicHash::Sha256).toHex());
+    copyRestartFiles(d, directory.path());
+    // A job saved to run elsewhere takes its start script along.
+    if (const auto script = forRun ? QString() : executionJobScript(d); !script.isEmpty()) {
+        const auto path = directory.filePath("job.sh");
+        writeFile(path, script.toUtf8());
+        QFile::setPermissions(path, QFile::permissions(path) | QFile::ExeOwner | QFile::ExeUser);
+        plan.manifest["job_script"] = "job.sh";
+    }
     writeManifest(plan);
     directory.setAutoRemove(false);
     return plan;
@@ -512,6 +723,10 @@ NwchemRun::NwchemRun(QObject *parent) : QObject(parent) {
     killTimer.setInterval(2000);
     connect(&killTimer, &QTimer::timeout, this, [this] { signalProcess(true); });
     connect(&timer, &QTimer::timeout, this, [this] {
+        if (watching) {
+            poll();
+            return;
+        }
         if (status != RunState::Stopping && current.timeoutSeconds &&
             elapsedSeconds() >= current.timeoutSeconds) {
             timedOut = true;
@@ -543,7 +758,14 @@ NwchemRun::~NwchemRun() {
     shutdown();
 }
 qint64 NwchemRun::elapsedSeconds() const {
-    return active() ? elapsed.elapsed() / 1000 : duration;
+    if (!active())
+        return duration;
+    // A run that another session started has only its record to tell the time by.
+    if (const auto started =
+            QDateTime::fromString(current.manifest["started_at"].toString(), Qt::ISODateWithMs);
+        watching && started.isValid())
+        return std::max<qint64>(0, started.secsTo(QDateTime::currentDateTimeUtc()));
+    return elapsed.elapsed() / 1000;
 }
 void NwchemRun::start(const Document &d, const QString &base) {
     if (active())
@@ -557,9 +779,14 @@ void NwchemRun::startPrepared(const ExecutionPlan &plan) {
     status = RunState::Starting;
     detail.clear();
     timedOut = false;
+    watching = false;
     groupId = 0;
     duration = 0;
     elapsed.start();
+    if (!supervisor.isEmpty()) {
+        launch();
+        return;
+    }
     auto environment = QProcessEnvironment::systemEnvironment();
     for (auto it = current.environment.begin(); it != current.environment.end(); ++it)
         environment.insert(it.key(), it.value());
@@ -582,28 +809,155 @@ void NwchemRun::signalProcess(bool force) {
     // Defer graceful cancellation to started(); a hung startup can still be killed.
     if (!active() || (!force && process.state() != QProcess::Running))
         return;
-#ifdef Q_OS_UNIX
-    if (groupId > 0)
-        ::kill(-pid_t(groupId), force ? SIGKILL : SIGTERM);
-#elif defined(Q_OS_WIN)
-    // No process groups and no signal a console program would heed: the forced stop ends the whole
-    // tree (cmd, wsl.exe, mpiexec and NWChem), not only the program MolForma started.
-    if (force && groupId > 0)
-        windowsTerminateTree(groupId);
-#endif
+    signalGroup(groupId, force);
     if (force)
         process.kill();
     else
         process.terminate();
 }
+void NwchemRun::launch() {
+    current.manifest["started_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    QFile::remove(stopRequest(current.directory));
+    record();
+    // The supervisor must not hold the streams of this process (an MCP client reads them).
+    QProcess starter;
+    starter.setProgram(supervisor);
+    starter.setArguments({"--run-job", current.directory});
+    starter.setWorkingDirectory(current.directory);
+    starter.setStandardInputFile(QProcess::nullDevice());
+    starter.setStandardOutputFile(QProcess::nullDevice());
+    starter.setStandardErrorFile(QProcess::nullDevice());
+    supervisorPid = 0;
+    if (!starter.startDetached(&supervisorPid)) {
+        finish(-1, QProcess::CrashExit, tr("計算を実行するプロセスを起動できません: %1").arg(supervisor));
+        return;
+    }
+    watching = true;
+    unreadable = 0;
+    timer.start();
+    emit changed();
+}
+bool NwchemRun::attach(const QString &directory) {
+    if (active())
+        fail(tr("計算は既に実行中です。"));
+    const auto job = QDir::cleanPath(QFileInfo(directory).absoluteFilePath());
+    QJsonObject manifest;
+    try {
+        manifest = parseJson(readFile(QDir(job).filePath("run.json")));
+    } catch (const std::exception &) {
+        return false;
+    }
+    const auto state = runStateFromKey(manifest["status"].toString());
+    if (manifest["format"] != "molforma-nwchem-run" || !runStateActive(state) || !runSupervised(manifest))
+        return false;
+    current = {};
+    current.directory = job;
+    current.program = manifest["program"].toString();
+    for (const auto &argument : manifest["arguments"].toArray())
+        current.arguments << argument.toString();
+    current.timeoutSeconds = manifest["timeout_seconds"].toInt();
+    current.manifest = manifest;
+    status = state;
+    detail = manifest["error"].toString();
+    timedOut = false;
+    watching = true;
+    supervisorPid = unreadable = 0;
+    groupId = duration = 0;
+    timer.start();
+    emit changed();
+    return true;
+}
+void NwchemRun::poll() {
+    QJsonObject manifest;
+    try {
+        manifest = parseJson(readFile(QDir(current.directory).filePath("run.json")));
+    } catch (const std::exception &) {
+        manifest = {};
+    }
+    auto state = runStateFromKey(manifest["status"].toString());
+    if (manifest.isEmpty() || state == RunState::Invalid) {
+        // The record is replaced in one step, so this is no half-written file: the folder is gone.
+        if (++unreadable < 20)
+            return;
+        manifest = current.manifest;
+        state = RunState::Interrupted;
+        manifest["error"] = tr("実行記録を読めなくなりました。");
+    }
+    unreadable = 0;
+    // Before the supervisor has written its own identity, the process this object started stands
+    // for it: a supervisor that ended at once left a record without any process.
+    if (runStateActive(state) && !manifest.contains("supervisor") && supervisorPid > 0 &&
+        executionProcessGone(executionProcessIdentity(supervisorPid))) {
+        try {
+            manifest = parseJson(readFile(QDir(current.directory).filePath("run.json")));
+            if (runStateActive(runStateFromKey(manifest["status"].toString())) &&
+                !manifest.contains("supervisor")) {
+                manifest["supervisor"] = executionProcessIdentity(supervisorPid);
+                auto plan = current;
+                plan.manifest = manifest;
+                writeManifest(plan);
+            }
+        } catch (const std::exception &) {
+        }
+        state = runStateFromKey(manifest["status"].toString());
+    }
+    if (runStateActive(state) && executionRunGone(manifest)) {
+        // The supervisor ended without recording the end, and NWChem is not running either. Its last
+        // word may have come between the reading and the look at the processes: the repair reads again.
+        try {
+            repairHistoryEntry(current.directory);
+        } catch (const std::exception &) {
+        }
+        try {
+            manifest = parseJson(readFile(QDir(current.directory).filePath("run.json")));
+        } catch (const std::exception &) {
+        }
+        state = runStateFromKey(manifest["status"].toString());
+        if (state == RunState::Invalid)
+            state = RunState::Interrupted;
+    }
+    // The stop this object asked for shows before the supervisor has recorded it.
+    const auto shown = status == RunState::Stopping && runStateActive(state) ? RunState::Stopping : state;
+    current.manifest = manifest;
+    status = shown;
+    detail = manifest["error"].toString();
+    if (!runStateActive(state)) {
+        timer.stop();
+        watching = false;
+        duration = qint64(manifest["elapsed_seconds"].toDouble());
+        QFile::remove(stopRequest(current.directory));
+    }
+    emit changed(); // Also for the time that passed.
+}
 void NwchemRun::stop() {
     if (status != RunState::Starting && status != RunState::Running)
         return;
     status = RunState::Stopping;
+    if (watching) {
+        // The supervisor finds the request when it next looks, even one that has only just been started.
+        QFile request(stopRequest(current.directory));
+        const bool asked = request.open(QIODevice::WriteOnly);
+        const auto keeper = current.manifest["supervisor"].toObject();
+        const bool gone = keeper.isEmpty() ? supervisorPid > 0 &&
+                                                 executionProcessGone(executionProcessIdentity(supervisorPid))
+                                           : executionProcessGone(keeper);
+        // No supervisor to ask: the processes it left are ended here.
+        if (!asked || gone)
+            signalGroup(current.manifest["pid"].toInteger(), true);
+        emit changed();
+        return;
+    }
     signalProcess(false);
     killTimer.start();
     record();
     emit changed();
+}
+void NwchemRun::release() {
+    if (!watching)
+        return;
+    timer.stop();
+    watching = false;
+    status = RunState::Idle;
 }
 void NwchemRun::finish(int code, QProcess::ExitStatus exitStatus, const QString &error) {
     if (!active())
@@ -654,6 +1008,16 @@ void NwchemRun::shutdown() {
     if (!active())
         return;
     stop();
+    if (watching) {
+        // The supervisor asks NWChem to end, then ends it after two seconds.
+        QElapsedTimer waited;
+        waited.start();
+        while (watching && waited.elapsed() < 8000) {
+            QThread::msleep(100);
+            poll();
+        }
+        return;
+    }
     if (!process.waitForFinished(2000)) {
         signalProcess(true);
         process.waitForFinished(2000);

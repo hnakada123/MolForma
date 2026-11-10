@@ -899,9 +899,28 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     excitations = table({tr("状態"), tr("スピン"), tr("対称", "an excited-state column"),
                          tr("励起エネルギー / eV", "an excited-state column"),
                          tr("波長 / nm", "an excited-state column"),
-                         tr("振動子強度", "an excited-state column"), "<S²>"},
+                         tr("振動子強度", "an excited-state column"), "<S²>", tr("主な遷移")},
                         "resultsExcitations");
-    el->addWidget(excitations, 1);
+    el->addWidget(excitations, 3);
+    // The orbital pairs of the chosen state: only for a log that lists them. A few rows, so that the
+    // states and the spectrum keep their room; a state with more pairs scrolls.
+    contributionsBlock = new QWidget;
+    auto *cl = new QVBoxLayout(contributionsBlock);
+    cl->setContentsMargins(0, 0, 0, 0);
+    contributionsTitle = new QLabel;
+    contributionsTitle->setObjectName("resultsContributionsTitle");
+    contributionsTitle->setWordWrap(true);
+    cl->addWidget(contributionsTitle);
+    contributions =
+        table({tr("占有軌道"), tr("仮想軌道"), tr("遷移", "an orbital pair"), "X", "Y", tr("重み / %")},
+              "resultsContributions");
+    contributions->verticalHeader()->hide();
+    contributions->setMaximumHeight(contributions->horizontalHeader()->sizeHint().height() +
+                                    5 * contributions->verticalHeader()->defaultSectionSize());
+    cl->addWidget(contributions, 1);
+    el->addWidget(contributionsBlock);
+    connect(excitations, &QTableWidget::currentCellChanged, this, &ResultsPanel::showContributions);
+    connect(contributions, &QTableWidget::cellDoubleClicked, this, &ResultsPanel::openTransitionOrbital);
     auto *spectrumRow = new QHBoxLayout;
     el->addLayout(spectrumRow);
     spectrumAxis = new QComboBox;
@@ -920,7 +939,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     spectrumRow->addStretch();
     spectrum = new ChartView;
     spectrum->setObjectName("resultsSpectrum");
-    el->addWidget(spectrum, 1);
+    el->addWidget(spectrum, 2);
     auto *spectrumHint =
         new QLabel(tr("各状態の振動子強度（棒）に、エネルギー軸で指定した半値全幅のガウス関数を掛けて重ね"
                       "た表示用の曲線です。三重項など振動子強度0の状態は棒に現れません。"));
@@ -962,11 +981,48 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     propertySummary->setWordWrap(true);
     propertySummary->setTextInteractionFlags(Qt::TextSelectableByMouse);
     ppl->addWidget(propertySummary);
-    atomProperties = table({tr("番号"), tr("元素"), tr("Mulliken電荷"), tr("ESP電荷"), tr("RESP電荷"),
-                            tr("NMR遮蔽 / ppm"), tr("異方性 / ppm")},
+    atomProperties = table({tr("番号"), tr("元素"), tr("Mulliken電荷"), tr("原子価"), tr("ESP電荷"),
+                            tr("RESP電荷"), tr("NMR遮蔽 / ppm"), tr("異方性 / ppm")},
                            "resultsAtomProperties");
     atomProperties->verticalHeader()->hide();
     ppl->addWidget(atomProperties, 1);
+    // The bond indices of the Mulliken analysis: only for a log with them.
+    bondBlock = new QWidget;
+    auto *bl = new QVBoxLayout(bondBlock);
+    bl->setContentsMargins(0, 0, 0, 0);
+    auto *bondHead = new QHBoxLayout;
+    bondTitle = new QLabel;
+    bondTitle->setObjectName("resultsBondIndicesTitle");
+    bondHead->addWidget(bondTitle, 1);
+    allBondIndices = new QCheckBox(tr("すべての原子対を表示"));
+    allBondIndices->setObjectName("resultsBondIndicesAll");
+    allBondIndices->setToolTip(tr("オフのときは、結合指数の絶対値が0.05以上の原子対だけを表示します。"));
+    bondHead->addWidget(allBondIndices);
+    bl->addLayout(bondHead);
+    bondIndices = table({tr("原子対"), tr("結合指数"), tr("距離 / Å")}, "resultsBondIndices");
+    bondIndices->verticalHeader()->hide();
+    bl->addWidget(bondIndices, 1);
+    auto *bondHint =
+        new QLabel(tr("NWChemのMulliken解析が出力する結合指数（Mayerの結合次数）と原子価です。基底関数に"
+                      "依存し、diffuse関数を含む基底では信頼できません。距離は最後の構造の値で、行を選ぶと"
+                      "その2原子を3Dビューで選択します。"));
+    bondHint->setWordWrap(true);
+    bl->addWidget(bondHint);
+    ppl->addWidget(bondBlock, 1);
+    connect(allBondIndices, &QCheckBox::toggled, this, &ResultsPanel::showBondIndices);
+    connect(bondIndices, &QTableWidget::currentCellChanged, this, [this](int row) {
+        const auto *item = row >= 0 ? bondIndices->item(row, 0) : nullptr;
+        if (!item || data.frames.isEmpty())
+            return;
+        // The last structure, which the analysis is of, with the two atoms picked as for a measurement.
+        const auto pair = item->data(Qt::UserRole).toPoint();
+        if (pair.x() < 0 || pair.y() >= data.frames.last().molecule.atoms.size())
+            return;
+        stopAnimation();
+        picked = {pair.x(), pair.y()};
+        frame->setValue(data.frames.size());
+        showFrame();
+    });
     tabs->addTab(propertyPage, tr("物性"));
     auto *surfaces = new QWidget;
     auto *sf = new FormLayout(surfaces);
@@ -1769,17 +1825,45 @@ void ResultsPanel::display(bool orbitalOnly) {
         spectroscopy->setResult(data);
         propertyGeometry->setResult(data);
         showOptimization();
-        excitations->setRowCount(data.excitations.size());
-        for (int i = 0; i < data.excitations.size(); ++i) {
-            const auto &x = data.excitations[i];
-            row(excitations, i,
-                {QString::number(x.root),
-                 x.spin.isEmpty()      ? tr("非制限")
-                 : x.spin == "singlet" ? tr("一重項")
-                                       : tr("三重項"),
-                 x.symmetry, fixed(x.ev, 4), fixed(EvNanometer / x.ev, 1), fixed(x.oscillator, 5),
-                 std::isfinite(x.s2) ? fixed(x.s2, 4) : "—"});
+        {
+            const QSignalBlocker guard(excitations);
+            excitations->setRowCount(data.excitations.size());
+            bool listed = false; // The orbital pairs of the states, in a log that prints them.
+            bool spinSquares = false;
+            QSet<QString> symmetries;
+            for (int i = 0; i < data.excitations.size(); ++i) {
+                const auto &x = data.excitations[i];
+                spinSquares |= std::isfinite(x.s2);
+                symmetries << x.symmetry.trimmed().toLower();
+                // The heaviest orbital pair, with its share of the pairs NWChem printed.
+                const auto pairs = resultTransitions(x);
+                listed |= !pairs.isEmpty();
+                const auto main =
+                    pairs.isEmpty() ? QString("—")
+                    : std::isfinite(pairs[0].weight)
+                        ? tr("%1（%2%）").arg(resultTransitionText(data, pairs[0]), fixed(pairs[0].weight, 0))
+                        : resultTransitionText(data, pairs[0]);
+                row(excitations, i,
+                    {QString::number(x.root),
+                     x.spin.isEmpty()      ? tr("非制限")
+                     : x.spin == "singlet" ? tr("一重項")
+                                           : tr("三重項"),
+                     x.symmetry, fixed(x.ev, 4), fixed(EvNanometer / x.ev, 1), fixed(x.oscillator, 5),
+                     std::isfinite(x.s2) ? fixed(x.s2, 4) : "—", main});
+                excitations->item(i, 7)->setToolTip(main); // In full where the column is narrow.
+            }
+            // Columns that would say the same on every row stay hidden (no symmetry labels, restricted
+            // states without <S²>) and so do the row numbers, which leaves the room to the transitions.
+            excitations->setColumnHidden(2, listed && symmetries.size() <= 1);
+            excitations->setColumnHidden(6, listed && !spinSquares);
+            excitations->verticalHeader()->setVisible(!listed);
+            excitations->setColumnHidden(7, !listed);
+            contributionsBlock->setVisible(listed);
+            // The first state is chosen, so that its orbital pairs are listed at once.
+            excitations->clearSelection();
+            excitations->setCurrentCell(data.excitations.isEmpty() ? -1 : 0, 0);
         }
+        showContributions();
         showSpectrum();
         // Energies of the frames that scan and IRC points name, against the lowest of them.
         frameEnergies = QVector<double>(data.frames.size(), std::numeric_limits<double>::quiet_NaN());
@@ -1825,7 +1909,7 @@ void ResultsPanel::updateTabs() {
     const bool loaded = !data.source.isEmpty();
     const bool properties = p.contains("mulliken") || p.contains("esp") || p.contains("resp") ||
                             p.contains("shielding") || p.contains("polarizability") || p.contains("bsse") ||
-                            p.contains("solvation");
+                            p.contains("solvation") || p.contains("bond_indices") || p.contains("valency");
     const bool visible[]{true,
                          loaded && !data.energies.isEmpty(),
                          loaded && (!data.orbitals.isEmpty() || data.format == "MOLDEN"),
@@ -2242,6 +2326,117 @@ void ResultsPanel::showSpectrum() {
         tr("吸収スペクトル（表示用）"), nm ? tr("波長 / nm") : tr("励起エネルギー / eV"), tr("振動子強度"),
         {{tr("広がり"), curve, ChartTone::Accent}, {tr("各状態"), sticks, ChartTone::Contrast, true}});
 }
+void ResultsPanel::showContributions() {
+    const int state = excitations->currentRow();
+    const auto pairs = state >= 0 && state < data.excitations.size()
+                           ? resultTransitions(data.excitations[state])
+                           : QVector<ResultTransition>();
+    bool spins = false, deexcitations = false;
+    for (const auto &x : data.excitations)
+        for (const auto &c : x.contributions) {
+            spins |= !c.spin.isEmpty();
+            deexcitations |= c.deexcitation;
+        }
+    contributions->setRowCount(pairs.size());
+    for (int i = 0; i < pairs.size(); ++i) {
+        const auto &p = pairs[i];
+        row(contributions, i,
+            {QString::number(p.from), QString::number(p.to), resultTransitionText(data, p), fixed(p.x, 5),
+             fixed(p.y, 5), fixed(p.weight, 1)});
+    }
+    // Columns that say nothing stay hidden: the pair again in numbers (restricted states whose
+    // frontier orbitals are not known), and Y without such amplitudes (Tamm–Dancoff).
+    contributions->setColumnHidden(2, !spins && resultHomoNumber(data, {}) <= 0);
+    contributions->setColumnHidden(4, !deexcitations);
+    contributions->clearSelection();
+    contributions->setCurrentCell(-1, -1);
+    const auto molden = jobMolden();
+    QString text = state < 0 || state >= data.excitations.size()
+                       ? tr("状態を選ぶと、その状態への軌道の寄与を表示します。")
+                   : pairs.isEmpty()
+                       ? tr("状態 %1 への軌道の寄与はログにありません。").arg(data.excitations[state].root)
+                       : tr("状態 %1 への軌道の寄与（NWChemが出力する、係数が0.05を超える占有→仮想軌道の"
+                            "対）。重みは対ごとの X² − Y² が、出力された対の合計に占める割合です。")
+                             .arg(data.excitations[state].root);
+    if (!pairs.isEmpty() && !molden.isEmpty())
+        text +=
+            '\n' +
+            tr("軌道番号をダブルクリックすると、同じジョブの %1 からその軌道の形を表示します。").arg(molden);
+    contributionsTitle->setText(text);
+}
+void ResultsPanel::openTransitionOrbital(int row, int column) {
+    const int state = excitations->currentRow();
+    if (loading() || state < 0 || state >= data.excitations.size())
+        return;
+    const auto pairs = resultTransitions(data.excitations[state]);
+    if (row < 0 || row >= pairs.size())
+        return;
+    // The virtual orbital from its column, the occupied one from the others.
+    const int number = column == 1 ? pairs[row].to : pairs[row].from;
+    const QString spin = pairs[row].spin == "beta" ? "Beta" : "Alpha";
+    const auto molden = jobMolden();
+    if (const int index = molden.isEmpty() ? -1 : files->findData(molden); index >= 0) {
+        // Chosen in the MOLDEN file once it has loaded, like a log orbital whose shape is opened.
+        pendingOrbital = {QFileInfo(QDir(folder).filePath(molden)).absoluteFilePath(), spin, number};
+        files->setCurrentIndex(index);
+        return;
+    }
+    // Without a MOLDEN file: the orbital's energy in "軌道", if the log's analysis lists it.
+    for (int i = 0; i < data.orbitals.size(); ++i)
+        if (data.orbitals[i].spin == spin && data.orbitals[i].number == number) {
+            details->setCurrentIndex(2);
+            orbitals->selectRow(i);
+            return;
+        }
+}
+void ResultsPanel::showBondIndices() {
+    const auto list = data.properties.value("bond_indices").toArray();
+    const Document *molecule = data.frames.isEmpty() ? nullptr : &data.frames.last().molecule;
+    struct Pair {
+        int a, b; // From 0.
+        double value;
+    };
+    QVector<Pair> pairs;
+    int notable = 0;
+    for (const auto &value : list) {
+        const auto o = value.toObject();
+        const Pair pair{o["a"].toInt() - 1, o["b"].toInt() - 1, o["value"].toDouble()};
+        if (pair.a < 0 || pair.b <= pair.a)
+            continue;
+        const bool bond = std::abs(pair.value) >= NotableBondIndex;
+        notable += bond;
+        if (bond || allBondIndices->isChecked())
+            pairs << pair;
+    }
+    // The largest first; equal ones in the order of the atoms.
+    std::stable_sort(pairs.begin(), pairs.end(),
+                     [](const Pair &p, const Pair &q) { return p.value > q.value; });
+    const auto label = [&](int atom) {
+        return (molecule && atom < molecule->atoms.size() ? molecule->atoms[atom].element : QString()) +
+               QString::number(atom + 1);
+    };
+    const QSignalBlocker guard(bondIndices);
+    bondIndices->setRowCount(pairs.size());
+    for (int i = 0; i < pairs.size(); ++i) {
+        const auto &p = pairs[i];
+        const bool known = molecule && p.b < molecule->atoms.size();
+        row(bondIndices, i,
+            {label(p.a) + "–" + label(p.b), fixed(p.value, 5),
+             known ? fixed((molecule->atoms[p.a].position - molecule->atoms[p.b].position).norm(), 4)
+                   : QString("—")});
+        bondIndices->item(i, 0)->setData(Qt::UserRole, known ? QPoint(p.a, p.b) : QPoint(-1, -1));
+    }
+    bondIndices->clearSelection();
+    bondIndices->setCurrentCell(-1, -1);
+    bondBlock->setVisible(!list.isEmpty());
+    const int omitted = data.properties.value("bond_indices_omitted").toInt();
+    bondTitle->setText(
+        omitted > 0 ? tr("結合指数（絶対値0.05以上: %1対。原子対が多いため、それ未満の %2対は省いています）")
+                          .arg(notable)
+                          .arg(omitted)
+                    : tr("結合指数（絶対値0.05以上: %1対、全 %2対）").arg(notable).arg(list.size()));
+    allBondIndices->setVisible(omitted == 0 && notable < list.size());
+}
 void ResultsPanel::showEnergies() {
     const auto unit = energyUnit->currentData().toString();
     const double factor = unit == "kcal"         ? HartreeToKcal
@@ -2346,7 +2541,8 @@ void ResultsPanel::showProperties() {
         if (s["atom"].toInt() > 0 && s["atom"].toInt() <= 100000)
             shieldingByAtom[s["atom"].toInt() - 1] = s;
     }
-    const int count = std::max({int(mulliken.size()), int(esp.size()), int(resp.size()),
+    const auto valency = data.properties.value("valency").toArray();
+    const int count = std::max({int(mulliken.size()), int(valency.size()), int(esp.size()), int(resp.size()),
                                 shieldingByAtom.isEmpty() ? 0 : shieldingByAtom.lastKey() + 1});
     const Document *molecule = data.frames.isEmpty() ? nullptr : &data.frames.last().molecule;
     atomProperties->setRowCount(count);
@@ -2358,10 +2554,12 @@ void ResultsPanel::showProperties() {
             return i < list.size() ? fixed(list[i].toDouble(), 4) : QString("—");
         };
         row(atomProperties, i,
-            {QString::number(i + 1), symbol, charge(mulliken), charge(esp), charge(resp),
+            {QString::number(i + 1), symbol, charge(mulliken), charge(valency), charge(esp), charge(resp),
              nmr.contains("isotropic") ? fixed(nmr["isotropic"].toDouble(), 3) : "—",
              nmr.contains("anisotropy") ? fixed(nmr["anisotropy"].toDouble(), 3) : "—"});
     }
+    atomProperties->setColumnHidden(3, valency.isEmpty()); // Only of a Mulliken analysis.
+    showBondIndices();
     auto text = resultPropertyLines(data);
     if (data.properties.contains("dipole")) {
         const auto d = data.properties.value("dipole").toObject();

@@ -10,6 +10,10 @@ The features are described on one page per screen or tab. Open the page of the s
 
 The [changes](changes.md) list the additions and their limits. Register multiple jobs in the queue in “3 Run settings”, and save or batch-evaluate conformer-search results in “Tools → Conformer set…”. History adds thermal corrections and reaction profiles. The Result viewer adds NMR, normal Raman, solution ESR, ECD, ORD (β), properties in 3D and grid slices.
 
+## Added in the next version
+
+The [changes](changes.md) list the additions and their limits. A calculation that stopped goes on from NWChem’s database with “Prepare to continue” in “History”, and calculations keep running when the window closes. Results of runs on another computer are registered in “History”. The Result viewer adds the orbital contributions of excited states and bond indices, and the thermal corrections of “History” add frequency scaling, quasi-RRHO entropies, a standard-state correction and rate constants.
+
 ## Getting started: the basic workflow
 
 1. **Build a molecule (“1 Molecule”)**: Use “From SMILES” or “Open” (for a structure file) in the file-name menu at the left of the header (or in the “File” menu), or use the parts palette. Common elements have buttons in the palette (H, C, N, O, F, P, S, Cl, Br, I); choose any other element with “Periodic table…”. Clicking an atom or part in the palette switches to the “Place” tool, and you place it by clicking in the 3D view. When you choose a tool in the column at the left edge (or with keys such as S, A, B), its settings appear above the 3D view and what a click does appears below it. Changes such as deletion, cleanup and ligands are shown as candidates: “Confirm changes” (Ctrl+Enter) applies them, Esc discards them and Ctrl+Z undoes them ([“1 Molecule”: layout, tools and selection](features/molecule.md)).
@@ -53,10 +57,11 @@ Each page describes the features and their limitations. Keyboard operations are 
 | Calculation preparation | Total charge and multiplicity (“2 Calculation”), fixing atoms, ghost atoms, structure checks, atom-mapping CSV |
 | Edit history | Confirming and discarding candidates, Undo/Redo, rollback of failed edits, unsaved indicator, handling candidates before saving |
 | Cleanup | Open Babel MMFF94 / UFF, whole and local cleanup, 3D regeneration, keeping fixed atoms, cancelling |
-| Running calculations | Local queue, saved input/settings at registration, sequential runs, reordering, cancellation, pausing, failure explanations and links to settings |
+| Running calculations | Local queue, saved input/settings at registration, sequential runs, reordering, cancellation, pausing, saving and restoring the queue, failure explanations and links to settings, going on and following again after the window closes, job scripts for running on another computer |
+| Restarting and carrying over | Going on with a stopped calculation (from NWChem’s database), a transition-state search with the Hessian of a frequency job, frequencies that reuse the Hessian, carrying over molecular orbitals, importing calculations run elsewhere |
 | Evaluating conformers | JSON conformer sets and multi-frame XYZ, batch optimization and frequencies, duplicate grouping and within-set E/G populations |
-| Comparing energies | E, E + ZPE, H and G, corrections from another job, weighted reaction stages, temperature/settings/imaginary-frequency checks, CSV/PNG |
-| Spectroscopy | Unsplit NMR, normal Raman, S = 1/2 solution ESR, ECD and ORD β alongside IR and UV–Vis; JSON display settings, curve/peak CSV and chart PNG |
+| Comparing energies | E, E + ZPE, H and G, corrections from another job, weighted reaction stages, temperature/settings/imaginary-frequency checks, frequency scaling, quasi-RRHO entropies, a 1 mol/L standard state, Eyring rate constants, CSV/PNG |
+| Spectroscopy | Unsplit NMR, normal Raman, S = 1/2 solution ESR, ECD and ORD β alongside IR and UV–Vis; orbital contributions of excited states, conformer-averaged spectra; JSON display settings, curve/peak CSV and chart PNG |
 | Visualizing properties | Dipoles and polarizabilities in 3D, ESP-colored electron-density surfaces, CUBE slices, unit labels and shared color scales |
 | Recalculation | Prepare a new job from saved settings and the displayed result geometry; inspect and confirm coordinates as a candidate |
 
@@ -64,7 +69,7 @@ Each page describes the features and their limitations. Keyboard operations are 
 
 The main limitations and unsupported features are:
 
-- Queue restoration, concurrent or remote execution, NWChem database restart, NMR J splitting, powder/high-spin ESR and specific-rotation conversion are unsupported. See the [1.1.0 changes](changes.md) and the individual feature pages.
+- Concurrent execution, transfer, submission and monitoring over SSH, restarts of coordinate scans, IRC and BSSE-corrected calculations, NMR J splitting, powder/high-spin ESR and specific-rotation conversion are unsupported. See the [changes](changes.md) and the individual feature pages.
 - PDB repair: “Residue → PDB diagnosis and repair…” diagnoses each residue, makes candidates that complete missing atoms and recognizes residues again; you check and confirm them in the main window. Completion covers residues with the backbone N/CA/C and a standard amino-acid template; unknown residues and missing backbones are not repaired automatically. The MODEL/ALTLOC choice, atom names and chain information are kept.
 - Fragment assignment (FMO, counterpoise, SAPT0) and its validation. As it cannot be converted to NWChem input, there is no UI to create or edit it ([“1 Molecule” right-hand pages and NWChem](features/molecule_pages.md)). Counterpoise correction can be calculated with the BSSE correction of “2 Calculation” (one monomer per bonded molecule). FMO and SAPT0 are not supported.
 - Migration of v1 projects.

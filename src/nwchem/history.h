@@ -36,6 +36,14 @@ QString historyEnergyMethod(const QString &method);
 QJsonObject nwchemLogSummary(const QString &path);
 // Marks an orphaned record (see HistoryEntry::orphaned) "interrupted", with its log summary.
 void repairHistoryEntry(const QString &directory);
+// A calculation that ran outside MolForma (another computer, a terminal) becomes a job of the history.
+// `log` is NWChem's output, or a job folder. A job that MolForma saved ("保存のみ") and that now holds
+// its output.out is completed where it is when it lies in root, and copied there first when it does
+// not; any other log gets a new job folder in root with the input beside it (same name, .nw) and the
+// files named after them. Returns the job folder.
+QString importExternalRun(const QString &log, const QString &root);
+// Whether a job saved without running holds an output that importExternalRun would register.
+bool externalRunWaiting(const HistoryEntry &entry);
 QString historyChoice(const QString &key, const QString &value);
 // Reads only fixed bundle filenames, rejects symlinks and bounds all reads.
 QString historyText(const QString &directory, const QString &name, bool tail = false);

@@ -137,6 +137,11 @@ class ResultsPanel : public QWidget {
     QScrollArea *overviewScroll;
     QPlainTextEdit *status, *log;
     QTableWidget *energy, *orbitals, *modes, *steps, *excitations, *path, *atomProperties;
+    // The orbital pairs of the chosen excited state, and the bond indices of a Mulliken analysis.
+    QTableWidget *contributions, *bondIndices;
+    QWidget *contributionsBlock, *bondBlock;
+    QLabel *contributionsTitle, *bondTitle;
+    QCheckBox *allBondIndices; // Also the pairs below NotableBondIndex.
     ChartView *energyChart, *gradientChart, *spectrum, *pathChart, *irSpectrum;
     SpectroscopyView *spectroscopy;
     PropertyGeometryView *propertyGeometry;
@@ -182,9 +187,14 @@ class ResultsPanel : public QWidget {
     void showFrame();
     void showMode();
     void showSpectrum();
+    void showContributions();
+    // An orbital of a pair listed for the chosen state: its shape from the job's MOLDEN file, else
+    // its row in "軌道".
+    void openTransitionOrbital(int row, int column);
     void showEnergies();
     void showPath();
     void showProperties();
+    void showBondIndices();
     void showIrSpectrum();
     void showOptimization();
     void showArrows();

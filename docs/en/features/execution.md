@@ -41,7 +41,7 @@ Some MPI-PR builds do not work with 1 MPI process. Specify an NWChem executable 
 
 Later edits do not affect registered calculations. Before launch, the saved input, project, run record and execution conditions are checked again; changes or output collisions refuse the run. External input movecs and executables themselves are not copied. History shows entries as saved-only until they start, then follows their normal run states. Cancelling a queue entry keeps its input bundle.
 
-The queue holds up to 1,000 entries per session. Closing the app keeps waiting input bundles in History but does not automatically resume them on the next startup. Ordering, pause state and failure policy last for this session. Concurrent execution and continuing after the app closes are not supported.
+The queue holds up to 1,000 entries. The waiting calculations, their order and the failure policy are recorded in `queue.json` in MolForma’s data folder and restored at the next startup. A restored queue is paused and starts nothing until you press “Start / resume queue”. A job whose run record (`run.json`) has changed since it was registered is not restored. A second window opened under the same account keeps its queue for the session only, as before. Sessions started with `--mcp-gui` do not restore the queue. Concurrent execution is not supported.
 
 ### Run several jobs in sequence
 
@@ -53,6 +53,37 @@ The queue holds up to 1,000 entries per session. Closing the app keeps waiting i
 ![Two waiting entries in the calculation queue: water Raman and methyl-radical ESR, with start/resume, reorder, cancel and failure-policy controls](images/execution/03_queue.png)
 
 **Figure 3** Jobs run one at a time using their saved molecules and settings. Waiting bundles are also accessible from History.
+
+## Keep calculations running after the window closes
+
+A calculation is started and managed by a supervisor process that MolForma launches (the same executable in its `--run-job` mode). It runs apart from the window, so the calculation goes on when MolForma is closed, and also when MolForma ends abnormally. The supervisor records the state, exit code, time limit and diagnoses in `run.json`.
+
+- **When closing**: with a calculation running you choose between “Keep running and close”, “Stop and close” and “Cancel”. If you keep it running, the waiting queue entries are saved, and the next one does not start by itself when the running calculation ends.
+- **At the next startup**: a calculation that is still running is followed again and shown as running in the header, the run panel and “History” (the status bar says so). It can be stopped. If it has ended meanwhile, the status bar shows its state.
+- **Calculations of other windows**: selecting a running job in “History” lets you stop a calculation that another window or an earlier session started, with “Stop this calculation” (asking first). Stopping asks the supervisor through a `stop.request` file in the job folder.
+- **When the supervisor is lost**: while NWChem is still running, the job stays “Running”, and stopping it ends NWChem’s processes directly. If NWChem has ended as well, the job becomes “Interrupted, no process” and “Repair record” fixes it.
+
+The supervisor runs only a job that MolForma has just saved (its state is “Starting” and the SHA-256 of its input matches the record). Pointing it at the folder of a job that has ended starts nothing. Whether a calculation survives a restart of the computer or a logout depends on the operating system’s settings. From an AppImage, the AppImage itself is started as the supervisor.
+
+## Run on another computer (job script)
+
+MolForma does not transfer files over SSH or submit to schedulers. Instead it can add a start script, `job.sh`, to the folder of “Save as job”, and register the output that comes back in “History”.
+
+1. Choose “Shell script”, “Slurm (sbatch)” or “PBS (qsub)” for “Job script” in “3 Run settings”. For Slurm and PBS you can also name the queue or partition (optional).
+2. Create the job folder with “Save as job”. `job.sh` holds the number of MPI processes and threads, the time limit (if set), and the names of the executable and MPI launcher exactly as “3 Run settings” has them.
+3. Copy the whole folder to where it runs, and start it with `sbatch job.sh` (Slurm), `qsub job.sh` (PBS) or `./job.sh`. The output goes to `output.out` and `stderr.err` in the same folder.
+4. Bring `output.out` (and, if needed, files such as the orbitals) back into the original job folder, select the job in “History” and press “Register the result of a run elsewhere” ([“History”](history.md#import-calculations-run-elsewhere)).
+
+| Kind | Head of the script | Working directory |
+| --- | --- | --- |
+| Shell script | none | The folder of the script |
+| Slurm | `#SBATCH --job-name`, `--nodes=1`, `--ntasks` (MPI processes), `--cpus-per-task` (threads), `--time`, `--partition` | `SLURM_SUBMIT_DIR` |
+| PBS | `#PBS -N`, `-l select=1:ncpus=…:mpiprocs=…:ompthreads=…`, `-l walltime`, `-q` | `PBS_O_WORKDIR` |
+
+- Lines to run before NWChem, such as loading modules, go into “Job script (running on another computer)” in “Edit → Preferences”. They are not saved in projects and are added to every `job.sh` made on this PC (so the contents of a project you received never enter a script as they are).
+- The thread-count variables (`OMP_NUM_THREADS` and the like) are exported. Rows of “Additional environment variables” usually name places of this PC, so they are written as comments (`# export …`); enable what the other computer needs.
+- The script is a template for a run on one node. Add several nodes, an account name, GPUs and the like by editing the saved `job.sh`. Absolute paths such as an input movecs are written into the input as paths of this PC.
+- Jobs that run locally (“Run calculation” and the queue) get no `job.sh`.
 
 ## Environment and paths
 
@@ -77,26 +108,30 @@ The NWChem executable, MPI launcher, additional environment variables and the ad
 | `project.molforma.json` | A copy of the project with the molecule, calculation settings, advanced settings and run settings at launch |
 | `run.json` | Executable, arguments, overriding environment variables, working directory, SHA-256 of the input, times, state, exit code. The full parent environment is not recorded |
 | `output.out` / `stderr.err` | Full stdout/stderr, saved directly from the process |
+| `job.sh` | The start script, when “Job script” is chosen for “Save as job” |
+| Files of the job restarted from | For a restart, NWChem’s database, molecular orbitals and Hessians (`name.db`, `.movecs`, `.hess` and the like) copied from the job it goes on from |
 
 Calculations run asynchronously. Running and saving the complete input are disabled while a candidate is shown or a cleanup is running. After launch the run uses the confirmed copy; editing the molecule or settings, or loading another project, does not affect a running calculation. When the calculation ends, the molecule, coordinates and existing result references are not changed either. The screen shows the last 128 KiB of stdout and stderr; “Open folder” gives access to the full text.
 
-Stopping and the time limit first request termination and kill the process if it does not respond within 2 seconds. On Unix the run gets its own process group, so its child processes are stopped too. Windows has neither process groups nor a termination request that console programs heed, so the forced stop after 2 seconds ends the launched process together with its descendants (`cmd.exe`, `wsl.exe`, and `mpirun` and NWChem in WSL, for example). Closing the window during a run asks you to confirm stopping. Runs do not continue in the background after the app exits.
+For stopping and the time limit, the supervisor first requests termination and kills the process if it does not respond within 2 seconds. On Unix the run gets its own process group, so its child processes are stopped too. Windows has neither process groups nor a termination request that console programs heed, so the forced stop after 2 seconds ends the launched process together with its descendants (`cmd.exe`, `wsl.exe`, and `mpirun` and NWChem in WSL, for example). Closing the window during a run asks whether to keep the calculation running or stop it ([Keep calculations running after the window closes](#keep-calculations-running-after-the-window-closes)).
 
 Launch failure, nonzero exit, stop and time limit are shown and recorded separately. “Exit code 0” means that the process ended normally. When a job that ended normally is loaded into the result viewer, the optimization convergence, calculation energy, number of imaginary frequencies and number of excited states read from the log are shown in one line in “Run status” of the run panel and in the status bar. See the log for the details of each task.
 
 The settings are saved in `document.nwchem_execution` and support the shared Undo/Redo, Ctrl+S and reloading. In “Edit → Preferences” (with the same cards and environment variable table as this tab) you can save to the app settings the defaults for the executable, launch mode, MPI launcher, MPI processes, threads, OpenMP stack, job folder, time limit and additional environment variables, as well as whether to load a water molecule at startup (off by default, so the app starts with a new, empty state), the 3D rendering method and the display language (both take effect after a restart). The defaults are used for new projects and when opening structure files other than projects (XYZ, SDF, PDB, etc.); settings saved in a project are not changed. “Load current run settings” imports the values of the project being shown. Ctrl+S also commits an entry being typed in the environment variable table. Unknown fields are preserved. Applying a calculation preset does not change the run settings.
 
-Currently each window runs one calculation at a time. SSH, Slurm/PBS, arbitrary extra MPI arguments, monitoring runs after a restart, and restarts from the NWChem database are not supported. An optimized structure can be brought in with “Apply as candidate” in the “Result viewer”. The MPI-PR build configuration and the contents of the basis library are not detected automatically.
+Currently each window runs one calculation at a time. Transfer, submission and monitoring over SSH, job scripts for several nodes and arbitrary extra MPI arguments are not supported. A calculation that did not end can go on from NWChem’s database with “Prepare to continue” in “History” or the run panel ([Restarting and carrying over calculations](history.md#restarting-and-carrying-over-calculations)). An optimized structure can be brought in with “Apply as candidate” in the “Result viewer”. The MPI-PR build configuration and the contents of the basis library are not detected automatically.
 
 You can start a calculation from any tab with “Run calculation” in the header or “Calculation → Run calculation” (F5) (if it cannot start, “3 Run settings” opens and shows the reason in the check card). The “Calculation” menu also has stop, save as job, open result file and history. When a calculation ends (finished, failed, stopped or time limit), the result is shown in the run status at the right of the status bar (the summary of a log loaded into the result viewer also appears on the left); if MolForma is in the background, the taskbar alerts you, and a desktop notification is shown where supported. With “Load into result viewer when done” enabled (on by default, saved in the app settings), a job folder that ended normally is loaded into the result viewer. The tab does not switch. The log field of the run panel appends only what has been added to the file, so a text selection is not lost (it shows up to the last 128 Ki characters). New lines are shown while “Follow” is on (the default) or while the field is scrolled to the end. The log switch (stdout, stderr), file name, follow and copy are the same as in the file area of “History”. The state and elapsed time of the running or last calculation are always shown in the status bar at the bottom of the window; clicking it opens or closes the run panel. While running, the header also shows the elapsed time and “Stop”. “Stop” always asks for confirmation, wherever you press it.
 
 ## Failure diagnosis
 
-The run panel shows recognized SCF convergence failures, optimization step limits, insufficient memory, unreadable basis files, timeouts and launch failures, along with the supporting log line. “Open settings related to this diagnosis” opens the relevant setting. Diagnoses are saved in `run.json`, shown in history and exposed by MCP. Classification uses common messages in the final 128 KiB of stdout/stderr and can miss other errors. It does not change calculation settings automatically. See [preparing a new calculation from a result](results.md#prepare-a-new-calculation-from-a-result-geometry).
+The run panel shows recognized SCF convergence failures, optimization step limits, insufficient memory, unreadable basis files, timeouts and launch failures, along with the supporting log line. A calculation that ended by failure, stop or timeout and left NWChem’s database also gets “Prepare to continue”. “Open settings related to this diagnosis” opens the relevant setting. Diagnoses are saved in `run.json`, shown in history and exposed by MCP. Classification uses common messages in the final 128 KiB of stdout/stderr and can miss other errors. It does not change calculation settings automatically. See [preparing a new calculation from a result](results.md#prepare-a-new-calculation-from-a-result-geometry).
 
 ## Run settings verification
 
-The Qt Test `execution` uses a test process written in C++ to check the arguments, environment and working directory, the frozen copy of the input, protection of paths and existing files, save compatibility, launch failure, nonzero exit, stop, time limit and termination of Unix child processes, the log size limit, Undo/Redo, candidates, Ctrl+S while editing, shutdown, each item of the pre-run check, progress read from the running log (task stages, DRIVER steps and convergence criteria), opening, closing and placement of the run panel (the tabs stay uncovered, the height is remembered, filling the place of the tabs, low windows), its closing when the result viewer opens, stderr after a failure, “Stop…” and the header display, and the text below the executable field (only for names found in PATH). Regular CTest needs no NWChem, MPI or network.
+The Qt Test `execution` uses a test process written in C++ to check the arguments, environment and working directory, the frozen copy of the input, protection of paths and existing files, save compatibility, launch failure, nonzero exit, stop, time limit and termination of Unix child processes, the log size limit, Undo/Redo, candidates, Ctrl+S while editing, shutdown, each item of the pre-run check, progress read from the running log (task stages, DRIVER steps and convergence criteria), opening, closing and placement of the run panel (the tabs stay uncovered, the height is remembered, filling the place of the tabs, low windows), its closing when the result viewer opens, stderr after a failure, “Stop…” and the header display, and the text below the executable field (only for names found in PATH). Regular CTest needs no NWChem, MPI or network. It also checks running, stopping and the time limit through the supervisor, going on and following again after the window closes, calculations that lost their supervisor, saving and restoring the queue, the contents of the job scripts, and the input and copied files of restarts.
+
+On 2026-11-10, on Linux with NWChem 7.3.1 (2 MPI processes), an HF/STO-3G “Optimize → Frequencies” of HCN was stopped by a step limit of 2 and restarted with “Prepare to continue”: the calculation began at the energy of the structure it had stopped at (−91.57693978 Eh), converged, and completed the frequencies. Going on after the window closes was checked with the test process; it has not been checked on Windows, macOS or from an AppImage.
 
 Where NWChem is available, the following optional test checks an MPI run from the tab, stopping a calculation midway, and screenshots.
 

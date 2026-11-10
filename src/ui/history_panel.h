@@ -49,6 +49,8 @@ class HistoryPanel : public QWidget {
         return scan.active();
     }
     void reuseSelected();
+    // Prepares a calculation that goes on from the selected job (restartRequested).
+    void restartSelected(const QString &mode);
     // The listed jobs in their order, as the CSV export writes them.
     QVector<HistoryEntry> visibleEntries() const;
     void exportCsv(const QString &path) const;
@@ -67,9 +69,15 @@ class HistoryPanel : public QWidget {
     void openResult();
     void trashSelected();
     void repairSelected();
+    // Makes a calculation that ran outside MolForma a job of this list (importExternalRun): the output
+    // of NWChem, or a job folder; the selected job saved without running when path is empty.
+    void importRun(const QString &path = {});
 
   signals:
     void reuseRequested(QString directory);
+    // A calculation that goes on from the selected job: "continue", "hessian", "reuse" (see
+    // NwchemRestart) or "orbitals" (its molecular orbitals as the initial guess).
+    void restartRequested(QString directory, QString mode);
     void resultsRequested(QString directory);
     void executionCommitRequested();
     void stopRequested();
@@ -94,8 +102,9 @@ class HistoryPanel : public QWidget {
     QVector<HistoryEntry> entries;
     QStringList listed; // The job folders in the list, in their order.
     QString root, pendingSelection;
-    QString reference;     // The job folder whose energy ΔE refers to.
-    QString memoDirectory; // The job whose memo is in the memo field.
+    QString reference;               // The job folder whose energy ΔE refers to.
+    QString resumeKey, resumeReason; // The job and state "続きから実行を準備" was looked up for.
+    QString memoDirectory;           // The job whose memo is in the memo field.
     QSet<QString> changedJobs;
     QHash<QString, std::optional<HistoryMolecule>> molecules;
     bool followsExecution = true, scanned = false, comparing = false, loadingMemo = false;
@@ -138,6 +147,7 @@ class HistoryPanel : public QWidget {
     QWidget *memoBox;
     QPlainTextEdit *memo;
     QLabel *memoStatus, *trashNote;
+    QPushButton *resume, *next, *registerRun;
     QPushButton *viewer, *reuse, *folder, *stop, *repair, *trash, *setReference, *showExecution,
         *stopComparing;
     // The empty folder.

@@ -115,8 +115,12 @@ class ResultsTest : public QObject {
             modes << QJsonObject{
                 {"frequency", m.frequency}, {"intensity", m.intensity}, {"displacement", displacement}};
         }
-        for (const auto &x : r.excitations)
-            excitations << QJsonArray{x.root, x.spin, x.symmetry, x.ev, x.oscillator, x.s2};
+        for (const auto &x : r.excitations) {
+            QJsonArray contributions;
+            for (const auto &c : x.contributions)
+                contributions << QJsonArray{c.from, c.to, c.spin, c.coefficient, c.deexcitation ? "Y" : "X"};
+            excitations << QJsonArray{x.root, x.spin, x.symmetry, x.ev, x.oscillator, x.s2, contributions};
+        }
         NwchemLog progress; // As the run panel feeds it.
         for (const auto &line : readFile(path).split('\n'))
             progress.addBytes(line);
@@ -487,6 +491,203 @@ class ResultsTest : public QObject {
         QCOMPARE(loaded.excitations[2].s2, 0.7528);
         QCOMPARE(loaded.steps.size(), 2);
         QCOMPARE(loaded.properties, r.properties);
+    }
+    void excitationContributions() {
+        // The amplitudes NWChem 7.3.1 prints under each excited state, in its three layouts.
+        const QDir dir(FIXTURE_DIR "/nwchem");
+        const auto pairText = [](const ResultData &r, int state) {
+            QStringList rows;
+            for (const auto &p : resultTransitions(r.excitations[state]))
+                rows << QString("%1 %2 %3").arg(resultTransitionText(r, p)).arg(p.x).arg(p.weight, 0, 'f', 2);
+            return rows.join(" | ");
+        };
+        // Restricted TDDFT: "Occ.    3  a   ---  Virt.    7  a    0.10795 X".
+        auto r = readResult(dir.filePath("water_tddft.out"));
+        QCOMPARE(r.properties["tddft"].toObject()["alpha_electrons"].toInt(), 5);
+        QCOMPARE(r.excitations.size(), 4);
+        const auto &second = r.excitations[1].contributions;
+        QCOMPARE(second.size(), 2);
+        QCOMPARE(second[0].from, 3);
+        QCOMPARE(second[0].to, 7);
+        QCOMPARE(second[0].coefficient, 0.10795);
+        QVERIFY(second[0].spin.isEmpty() && !second[0].deexcitation);
+        QCOMPARE(second[1].coefficient, -0.99396);
+        // The heaviest pair first, against the frontier orbitals (five occupied ones).
+        QCOMPARE(pairText(r, 1), QString("HOMO−1 → LUMO -0.99396 98.83 | HOMO−2 → LUMO+1 0.10795 1.17"));
+        QCOMPARE(resultHomoNumber(r, {}), 5);
+        // X and Y of the same pair: the weight is X² − Y².
+        r = readResult(dir.filePath("peroxide_ecd.out"));
+        QCOMPARE(r.excitations[0].contributions.size(), 3);
+        QVERIFY(r.excitations[0].contributions[1].deexcitation);
+        auto pairs = resultTransitions(r.excitations[0]);
+        QCOMPARE(pairs.size(), 2);
+        QCOMPARE(pairs[0].x, 0.99487);
+        QCOMPARE(pairs[0].y, -0.05366);
+        const double x2 = 0.99487 * 0.99487 - 0.05366 * 0.05366, other = 0.10767 * 0.10767;
+        QVERIFY(std::abs(pairs[0].weight - 100 * x2 / (x2 + other)) < 1e-9);
+        QVERIFY(std::isnan(pairs[1].y));
+        QVERIFY(std::abs(pairs[0].weight + pairs[1].weight - 100) < 1e-9);
+        // Unrestricted: "Occ.    4 beta  a   ---  Virt.    6 beta  a   -0.83332 X", each spin against
+        // its own frontier orbitals (five α and four β electrons).
+        r = readResult(dir.filePath("water_cation_tddft.out"));
+        QCOMPARE(r.excitations.size(), 3);
+        QCOMPARE(r.properties["tddft"].toObject()["beta_electrons"].toInt(), 4);
+        const auto &third = r.excitations[2].contributions;
+        QCOMPARE(third.size(), 4);
+        QCOMPARE(third[1].spin, QString("alpha"));
+        QCOMPARE(third[1].from, 5);
+        QCOMPARE(third[1].coefficient, 0.54022);
+        QCOMPARE(third[3].spin, QString("beta"));
+        QCOMPARE(pairText(r, 0), QString("β HOMO → LUMO -0.99984 100.00"));
+        QCOMPARE(pairText(r, 2), QString("β HOMO → LUMO+1 -0.83332 69.83 | α HOMO → LUMO 0.54022 29.34 | "
+                                         "α HOMO−2 → LUMO+1 0.0754 0.57 | β HOMO−1 → LUMO+2 -0.05064 0.26"));
+        // Tamm–Dancoff: "Occ.    7  a   ---  Virt.    9  a       -0.76260", X only.
+        r = readResult(dir.filePath("formaldehyde_tda.out"));
+        QCOMPARE(r.excitations.size(), 3);
+        QCOMPARE(r.excitations[2].contributions.size(), 7);
+        QCOMPARE(r.excitations[2].contributions[4].coefficient, -0.7626);
+        QVERIFY(!r.excitations[2].contributions[4].deexcitation);
+        pairs = resultTransitions(r.excitations[2]);
+        QCOMPARE(resultTransitionText(r, pairs[0]), QString("HOMO−1 → LUMO"));
+        QCOMPARE(resultTransitionText(r, pairs[1]), QString("HOMO → LUMO+2"));
+        QVERIFY(std::abs(pairs[0].weight - 58.745) < 0.001); // 0.7626² of the sum of the seven squares.
+        // The worker transfer keeps them.
+        const auto path = files.filePath("contributions.bin");
+        saveResultData(path, r);
+        const auto loaded = loadResultData(path);
+        QCOMPARE(loaded.excitations[2].contributions.size(), 7);
+        QCOMPARE(loaded.excitations[2].contributions[6].to, 15);
+        QCOMPARE(loaded.excitations[2].contributions[6].coefficient, 0.05814);
+        // A log that ends within the amplitudes of a state (between lines, within a line, or before
+        // anything follows them) keeps the state without them; with the next text, both.
+        const auto text = QString::fromUtf8(readFile(dir.filePath("formaldehyde_tda.out")));
+        const auto last = text.indexOf("     Occ.    8  a   ---  Virt.   11  a       -0.60613");
+        const auto next = text.indexOf("              Target root =", last);
+        QVERIFY(last > 0 && next > last);
+        for (const auto end : {last, last + 30, last + 51, next}) {
+            r = readResult(save("tda-cut.out", text.left(end)));
+            QCOMPARE(r.excitations.size(), 3);
+            QCOMPARE(r.excitations[1].contributions.size(), 2);
+            QVERIFY2(r.excitations[2].contributions.isEmpty(), qPrintable(text.mid(last, end - last)));
+        }
+        r = readResult(save("tda-cut-after.out", text.left(next + 20)));
+        QCOMPARE(r.excitations[2].contributions.size(), 7);
+        // The fifty largest of a state, in their order; an irreducible representation of four
+        // characters touches a negative amplitude. Without the electron counts, the frontier orbitals
+        // are those of the orbital analysis, and without that the numbers stay.
+        QString many =
+            "NWChem\n  Root   1 singlet a1'            0.100000000 a.u.                2.7211 eV \n"
+            "     Dipole Oscillator Strength                    0.0100000000\n\n"
+            "     Occ.    5  a1''---  Virt.    6  a2''-0.90000 X\n";
+        for (int k = 1; k <= 59; ++k)
+            many += QString("     Occ.    4  e'  ---  Virt.%1  e'' %2 X\n")
+                        .arg(k + 6, 5)
+                        .arg(.05 + k * .001, 0, 'f', 5);
+        many += "  ----------------------------------------------------------------------------\n";
+        r = readResult(save("many.out", many));
+        QCOMPARE(r.excitations[0].contributions.size(), ResultExcitation::maxContributions);
+        QCOMPARE(r.excitations[0].contributions[0].coefficient, -0.9);
+        QCOMPARE(r.excitations[0].contributions[1].to, 17); // 0.061: the ten smallest are left out.
+        QCOMPARE(r.excitations[0].contributions.last().to, 65);
+        QCOMPARE(resultTransitionText(r, resultTransitions(r.excitations[0])[0]), QString("5 → 6"));
+        r = readResult(
+            save("many-analysis.out", many + "                       DFT Final Molecular Orbital Analysis\n"
+                                             " Vector    5  Occ=2.000000D+00  E=-3.907179D-01\n"
+                                             " Vector    6  Occ=0.000000D+00  E= 6.054023D-01\n"));
+        QCOMPARE(resultTransitionText(r, resultTransitions(r.excitations[0])[0]), QString("HOMO → LUMO"));
+    }
+    void bondIndicesAndValencies() {
+        // The Mulliken analysis of NWChem 7.3.1: the whole matrix, eight columns at a time.
+        const QDir dir(FIXTURE_DIR "/nwchem");
+        const auto index = [](const ResultData &r, int a, int b) {
+            for (const auto &value : r.properties["bond_indices"].toArray())
+                if (value.toObject()["a"].toInt() == a && value.toObject()["b"].toInt() == b)
+                    return value.toObject()["value"].toDouble();
+            return std::numeric_limits<double>::quiet_NaN();
+        };
+        auto r = readResult(dir.filePath("ethanol_mulliken.out"));
+        QCOMPARE(r.properties["bond_indices"].toArray().size(), 36); // Nine atoms.
+        QVERIFY(!r.properties.contains("bond_indices_omitted"));
+        QCOMPARE(r.properties["bond_indices"].toArray()[0].toObject(),
+                 (QJsonObject{{"a", 1}, {"b", 2}, {"value", 1.00216}}));
+        QCOMPARE(index(r, 2, 3), 1.00439);
+        QCOMPARE(index(r, 3, 9), 0.93779); // From the second set of columns.
+        QCOMPARE(index(r, 8, 9), 0.00031);
+        QCOMPARE(r.properties["valency"].toArray().size(), 9);
+        QCOMPARE(r.properties["valency"].toArray()[0].toDouble(), 3.95907);
+        QCOMPARE(r.properties["free_electrons"].toArray()[2].toDouble(), 6.26658);
+        QCOMPARE(r.properties["mulliken"].toArray().size(), 9);
+        // Open shell: the valency is more than the sum of the bond indices.
+        r = readResult(dir.filePath("oh_mulliken.out"));
+        QCOMPARE(r.properties["bond_indices"].toArray(),
+                 (QJsonArray{QJsonObject{{"a", 1}, {"b", 2}, {"value", 0.79181}}}));
+        QCOMPARE(r.properties["valency"].toArray(), (QJsonArray{1.79514, 0.79287}));
+        QCOMPARE(r.properties["free_electrons"].toArray(), (QJsonArray{7.61019, -0.19381}));
+        QCOMPARE(index(readResult(dir.filePath("water_properties.out")), 2, 3), -0.00026);
+        // A matrix or a table that the log ends in is not read; an earlier complete one stays, and a
+        // later complete one replaces it.
+        const auto text = QString::fromUtf8(readFile(dir.filePath("ethanol_mulliken.out")));
+        const auto cut = [&](const QString &before) {
+            const auto at = text.indexOf(before);
+            Q_ASSERT(at > 0);
+            return text.left(at);
+        };
+        r = readResult(save("bonds-cut.out", cut("  1- 9   0.00972")));
+        QVERIFY(!r.properties.contains("bond_indices") && !r.properties.contains("valency"));
+        QCOMPARE(r.properties["mulliken"].toArray().size(), 9);
+        r = readResult(save("bonds-cut-row.out", cut("  9- 2   0.01327")));
+        QVERIFY(!r.properties.contains("bond_indices"));
+        // Eight rows of eight columns are no matrix of eight atoms without the list after them.
+        r = readResult(save("bonds-cut-eight.out", cut("  9- 1   0.00972")));
+        QVERIFY(!r.properties.contains("bond_indices"));
+        r = readResult(save("valency-cut.out", cut("     9  H       0.96387")));
+        QCOMPARE(r.properties["bond_indices"].toArray().size(), 36);
+        QVERIFY(!r.properties.contains("valency") && !r.properties.contains("free_electrons"));
+        const QString water = "          ----- Bond indices -----\n"
+                              "  1- 1   0.00000  1- 2   %1  1- 3   0.82927\n"
+                              "  2- 1   %1  2- 2   0.00000  2- 3  -0.00026\n"
+                              "  3- 1   0.82927  3- 2  -0.00026  3- 3   0.00000\n\n"
+                              " Large bond indices\n";
+        r = readResult(save("bonds-twice.out", "NWChem\n" + water.arg("0.80000") + water.arg("0.90000") +
+                                                   "          ----- Bond indices -----\n"
+                                                   "  1- 1   0.00000  1- 2   0.70000  1- 3   0.82927\n"));
+        QCOMPARE(r.properties["bond_indices"].toArray().size(), 3);
+        QCOMPARE(index(r, 1, 2), 0.9);
+        // From the 100th atom on NWChem prints "**" for the numbers: 101 atoms, where each pair has
+        // the index (a + b) / 1000, are read by their places.
+        const auto matrix = [](int atoms, const std::function<double(int, int)> &value) {
+            QString text = "NWChem\n          ----- Bond indices -----\n";
+            const auto number = [](int n) { return n < 100 ? QString("%1").arg(n, 2) : QString("**"); };
+            for (int first = 1; first <= atoms; first += 8)
+                for (int row = 1; row <= atoms; ++row) {
+                    for (int column = first; column <= std::min(first + 7, atoms); ++column)
+                        text +=
+                            QString(" %1-%2%3")
+                                .arg(number(row), number(column))
+                                .arg(row == column ? 0 : value(std::min(row, column), std::max(row, column)),
+                                     10, 'f', 5);
+                    text += '\n';
+                }
+            return text + "\n Large bond indices\n";
+        };
+        r = readResult(save("bonds-101.out", matrix(101, [](int a, int b) { return (a + b) / 1000.; })));
+        QCOMPARE(r.properties["bond_indices"].toArray().size(), 101 * 100 / 2);
+        QCOMPARE(index(r, 1, 2), 0.003);
+        QCOMPARE(index(r, 99, 100), 0.199);
+        QCOMPARE(index(r, 100, 101), 0.201);
+        QCOMPARE(r.properties["bond_indices"].toArray().last().toObject()["a"].toInt(), 100);
+        // More pairs than are kept (201 atoms: 20100): only the bonds, here of neighbours in a chain,
+        // and how many pairs were left out.
+        r = readResult(
+            save("bonds-201.out", matrix(201, [](int a, int b) { return b == a + 1 ? 1.5 : 0.001; })));
+        QCOMPARE(r.properties["bond_indices"].toArray().size(), 200);
+        QCOMPARE(r.properties["bond_indices_omitted"].toInt(), 20100 - 200);
+        QCOMPARE(index(r, 200, 201), 1.5);
+        // A matrix whose rows do not go on as counted is not NWChem's.
+        r = readResult(save("bonds-odd.out", "NWChem\n          ----- Bond indices -----\n"
+                                             "  1- 1   0.00000  1- 2   0.80000\n"
+                                             "  3- 1   0.80000  3- 2   0.00000\n\n"));
+        QVERIFY(!r.properties.contains("bond_indices"));
     }
     void calculationEnergyByTask() {
         // Optimization, then numerical frequencies: the displaced structures' energies come last.
@@ -1231,6 +1432,599 @@ class ResultsTest : public QObject {
                          populations[2].toObject()["population"].toDouble() - 1) < 1e-12);
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, conformerPopulations(records, "G", 300., .01));
     }
+    // A picture of a dialog for a look at it, into the folder MOLFORMA_RESULTS_ARTIFACTS names.
+    static void picture(QWidget *widget, const QString &name) {
+        const auto artifacts = qEnvironmentVariable("MOLFORMA_RESULTS_ARTIFACTS");
+        if (artifacts.isEmpty())
+            return;
+        QVERIFY(QDir().mkpath(artifacts));
+        widget->show();
+        QTest::qWait(100);
+        QVERIFY(widget->grab().save(QDir(artifacts).filePath(name)));
+    }
+    // The energy record of a fixture log, named after it.
+    static QJsonObject logRecord(const QString &name) {
+        const auto r = readResult(QString(FIXTURE_DIR) + "/nwchem/" + name + ".out");
+        auto record = energyRecord(r, r.frames.last().molecule, nwchemDefaults());
+        record["id"] = name;
+        record["name"] = name;
+        return record;
+    }
+    static QVector<double> recordVibrations(const QJsonObject &record) {
+        QVector<double> wavenumbers;
+        for (const auto &value : record["vibrations"].toArray())
+            wavenumbers << value.toDouble();
+        return wavenumbers;
+    }
+    static QJsonObject profileOf(const QJsonArray &records, const QString &metric, double temperature) {
+        QJsonArray stages;
+        for (const auto &record : records)
+            stages.append(QJsonObject{
+                {"name", record.toObject()["name"]},
+                {"terms", QJsonArray{QJsonObject{{"record", record.toObject()["id"]}, {"coefficient", 1}}}}});
+        return {{"format", "molforma-energy-profile"},
+                {"version", 1},
+                {"metric", metric},
+                {"unit", "kcal"},
+                {"temperature", temperature},
+                {"standard_state", "1 atm"},
+                {"reference", 0},
+                {"records", records},
+                {"stages", stages}};
+    }
+    void thermochemistryOfLogsRecomputed() {
+        // The wavenumbers of an energy record are those NWChem's thermochemistry summed (vib_wrtfreq.F:
+        // its scale factor times the projected frequencies above 0.1 cm⁻¹). Recomputed with NWChem's
+        // own constants (h = 6.626e-27 erg s, c = 2.998e10 cm/s, k = 1.3807e-16 erg/K, R = 1.9863
+        // cal/(mol K)), the zero-point energy, the thermal energy and the vibrational entropy are the
+        // printed ones: these are rounded to 0.001 and the frequencies to 0.01 cm⁻¹.
+        const double kelvin = 6.626e-27 * 2.998e10 / 1.3807e-16, r = 1.9863e-3;
+        int temperatures = 0;
+        for (const auto *name : {"water_optfreq", "peroxide_thermo", "ammonia_planar_scaled",
+                                 "conformers/nitrous_acid_cis", "conformers/nitrous_acid_trans"}) {
+            const auto record = logRecord(name);
+            const auto wavenumbers = recordVibrations(record);
+            QVERIFY2(!wavenumbers.isEmpty(), name);
+            for (const auto &value : record["thermochemistry"].toArray()) {
+                const auto t = value.toObject();
+                const double temperature = t["temperature"].toDouble();
+                double zpe = 0, thermal = 0, entropy = 0;
+                for (const double wavenumber : wavenumbers) {
+                    const double x = kelvin * wavenumber / temperature;
+                    zpe += r * kelvin * wavenumber / 2;
+                    thermal += r * kelvin * wavenumber / (std::exp(x) - 1);
+                    entropy += 1000 * r * (x / (std::exp(x) - 1) - std::log(1 - std::exp(-x)));
+                }
+                QVERIFY2(std::abs(zpe - t["zpe_kcal"].toDouble()) < 6e-4, name);
+                // "Thermal correction to Energy" adds 3RT of translation and rotation (not linear).
+                QVERIFY2(std::abs(zpe + thermal + 3 * r * temperature - t["energy_kcal"].toDouble()) < 6e-4,
+                         name);
+                QVERIFY2(std::abs(entropy - t["entropy_vibrational_cal"].toDouble()) < 6e-4, name);
+                QVERIFY2(std::abs(t["entropy_translational_cal"].toDouble() +
+                                  t["entropy_rotational_cal"].toDouble() +
+                                  t["entropy_vibrational_cal"].toDouble() - t["entropy_cal"].toDouble()) <
+                             2.1e-3,
+                         name);
+                // CODATA 2018 constants give 0.048 % more: NWChem's gas constant is 1.9863 cal/(mol K).
+                const auto codata = vibrationalTerms(wavenumbers, temperature);
+                QVERIFY2(std::abs(codata.zpe / zpe - 1.000478) < 2e-6, name);
+                QVERIFY2(std::abs(codata.zpe + codata.thermal - (zpe + thermal)) < 6e-4 * (zpe + thermal),
+                         name);
+                QVERIFY2(std::abs(codata.entropy - entropy) < 6e-4 * entropy + 1e-6, name);
+                ++temperatures;
+            }
+        }
+        QCOMPARE(temperatures, 6);
+        // Two temperatures and a torsion of low frequency.
+        const auto peroxide = logRecord("peroxide_thermo");
+        QCOMPARE(peroxide["thermochemistry"].toArray().size(), 2);
+        QCOMPARE(peroxide["thermochemistry"][1].toObject()["temperature"].toDouble(), 350.);
+        QCOMPARE(peroxide["thermochemistry"][1].toObject()["entropy_translational_cal"].toDouble(), 37.283);
+        QCOMPARE(peroxide["thermochemistry"][1].toObject()["entropy_rotational_cal"].toDouble(), 18.4);
+        QCOMPARE(peroxide["thermochemistry"][1].toObject()["entropy_vibrational_cal"].toDouble(), 2.645);
+        QCOMPARE(recordVibrations(peroxide),
+                 (QVector<double>{184.64, 1486.95, 1589.64, 1781.05, 4140.89, 4148.28}));
+        // Planar NH3 with "set vib:scalefreq 0.9": the imaginary mode (-1081.38 cm⁻¹) is left out as
+        // NWChem does, and the wavenumbers are the scaled ones its thermochemistry used.
+        const auto ammonia = logRecord("ammonia_planar_scaled");
+        QCOMPARE(ammonia["thermochemistry"][0].toObject()["nwchem_frequency_scale"].toDouble(), .9);
+        QCOMPARE(ammonia["imaginary"].toInt(), 1);
+        const auto scaled = recordVibrations(ammonia);
+        QCOMPARE(scaled.size(), 5);
+        QVERIFY(std::abs(scaled[0] - .9 * 1866.45) < 1e-9);
+        QVERIFY(std::abs(scaled[4] - .9 * 4363.45) < 1e-9);
+        // A result without thermochemistry keeps no list.
+        QVERIFY(!logRecord("water_tddft").contains("vibrations"));
+    }
+    void thermalCorrectionModels() {
+        // One oscillator with x = hcν/kT = 1 at 300 K: ν = 300 K/(hc/k) = 300/1.4387768775 =
+        // 208.510440146 cm⁻¹. Then ZPE = RT/2, the thermal energy is RT/(e − 1) and
+        // S = R[1/(e − 1) − ln(1 − 1/e)] = 1.0406517749 R, with R = k·N_A = 1.98720425864 cal/(mol K).
+        const double one = 208.51044014583823, r = 1.9872042586408316e-3;
+        const auto same = [](const VibrationalTerms &t, double zpe, double thermal, double entropy) {
+            return std::abs(t.zpe - zpe) < 1e-12 && std::abs(t.thermal - thermal) < 1e-12 &&
+                   std::abs(t.entropy - entropy) < 1e-10;
+        };
+        QVERIFY(std::abs(r * 300 / 2 - .29808063879612473) < 1e-15);
+        QVERIFY(
+            same(vibrationalTerms({one}, 300.), .29808063879612473, .3469519770961477, 2.067987792566404));
+        // A scale factor of 0.5 on twice the wavenumber is the same oscillator; two modes add up.
+        QVERIFY(same(vibrationalTerms({2 * one}, 300., {.scale = .5}), .29808063879612473, .3469519770961477,
+                     2.067987792566404));
+        QVERIFY(same(vibrationalTerms({one, 2 * one}, 300., {.scale = .5}), .29808063879612473 * 1.5,
+                     .3469519770961477 + .459489540823015, 2.067987792566404 + 3.3852008068756057));
+        // Truhlar: a mode below the cutoff counts as one at the cutoff, in the entropy alone. At
+        // x = 1/2 the thermal energy is RT·(1/2)/(√e − 1) and the harmonic entropy 1.7034991 R.
+        QVERIFY(same(vibrationalTerms({one / 2}, 300.), .29808063879612473 / 2, .459489540823015,
+                     3.3852008068756057));
+        QVERIFY(same(vibrationalTerms({one / 2}, 300., {.model = "truhlar", .cutoff = one}),
+                     .29808063879612473 / 2, .459489540823015, 2.067987792566404));
+        QVERIFY(same(vibrationalTerms({one}, 300., {.model = "truhlar", .cutoff = 100}), .29808063879612473,
+                     .3469519770961477, 2.067987792566404));
+        // Grimme at 298.15 K with the cutoff of 100 cm⁻¹. A mode of 100 cm⁻¹ has w = 1/2: its free
+        // rotor has μ = h/(8π²cν) = 2.79928e-48 kg m², μ′ = μB/(μ + B) = 2.79850e-48 with B = 1e-44
+        // and S = R[1/2 + ln √(8π³μ′kT/h²)] = 1.43655 R = 2.8547015505 cal/(mol K); the oscillator
+        // (x = 0.482568) has 3.4543174674: the mean is 3.1545095090. A mode of 50 cm⁻¹ has
+        // w = 1/17: (4.8173856768 + 16 × 3.5431360452)/17 = 3.6180919059.
+        const ThermalOptions grimme{.model = "grimme"};
+        QVERIFY(std::abs(vibrationalTerms({100.}, 298.15).entropy - 3.4543174673879418) < 1e-10);
+        QVERIFY(std::abs(vibrationalTerms({100.}, 298.15, grimme).entropy - 3.1545095089507953) < 1e-10);
+        QVERIFY(std::abs(vibrationalTerms({50.}, 298.15, grimme).entropy - 3.6180919058919234) < 1e-10);
+        // Energies are those of the oscillator, and a stretch far above the cutoff keeps its entropy.
+        QCOMPARE(vibrationalTerms({50.}, 298.15, grimme).thermal, vibrationalTerms({50.}, 298.15).thermal);
+        QVERIFY(std::abs(vibrationalTerms({3000.}, 298.15, grimme).entropy -
+                         vibrationalTerms({3000.}, 298.15).entropy) < 1e-6);
+        // 1 atm → 1 mol/L: an ideal gas at 1 atm and 298.15 K takes R′T = 0.0820573661 × 298.15 =
+        // 24.4654 L/mol, and RT·ln 24.4654 = 0.592485 × 3.197262 = 1.8943 kcal/mol.
+        QVERIFY(std::abs(standardStateShift(298.15) - 1.8943284454941451) < 1e-12);
+        QVERIFY(std::abs(standardStateShift(298.15) - 1.894) < 5e-4);
+        // Eyring: k_B·T/h = 6.212438e12 s⁻¹ at 298.15 K and exp(−20/0.592485) = 2.187249e-15 for a
+        // barrier of 20 kcal/mol: k = 1.358815e-2 s⁻¹.
+        QVERIFY(std::abs(boltzmannFactor(20, 298.15) / 2.1872492033246132e-15 - 1) < 1e-12);
+        QVERIFY(std::abs(eyringRate(20, 298.15) / 1.358815004787466e-2 - 1) < 1e-12);
+        // Options out of range are refused; missing ones are the defaults.
+        QVERIFY(!thermalOptions({}).vibrational() && !thermalOptions({}).molar);
+        QVERIFY(thermalOptions({{"standard_state_correction", "1M"}}).molar);
+        for (const auto &bad : {QJsonObject{{"frequency_scale", 1.6}}, QJsonObject{{"frequency_scale", "1"}},
+                                QJsonObject{{"entropy_model", "free"}}, QJsonObject{{"entropy_cutoff", 5}},
+                                QJsonObject{{"standard_state_correction", "1 bar"}}})
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error, thermalOptions(bad));
+    }
+    void energyProfileCorrections() {
+        // H2O2 at HF/STO-3G (tests/fixtures/nwchem/peroxide_thermo.out) at 298.15 K: NWChem printed
+        // ZPE 19.049, H 21.791 kcal/mol and S 56.713 cal/(mol K).
+        const auto peroxide = logRecord("peroxide_thermo");
+        const double e = peroxide["energy_hartree"].toDouble(), zpe = 19.049, h = 21.791, s = 56.713;
+        auto p = profileOf({peroxide}, "G", 298.15);
+        const auto stage = [](const QJsonObject &profile) {
+            return evaluateEnergyProfile(profile)["stages"][0].toObject();
+        };
+        const auto hartree = [&](const QJsonObject &profile) { return stage(profile)["hartree"].toDouble(); };
+        // Without the corrections, left out or at their defaults, the values are the printed ones to
+        // the last bit, also for a record saved without its wavenumbers.
+        auto defaults = p;
+        defaults["frequency_scale"] = 1.;
+        defaults["entropy_model"] = "rrho";
+        defaults["entropy_cutoff"] = 100.;
+        defaults["standard_state_correction"] = "none";
+        auto older = peroxide;
+        older.remove("vibrations");
+        const auto old = profileOf({older}, "G", 298.15);
+        for (const auto &pair : {qMakePair(QString("ZPE"), e + zpe / HartreeToKcal),
+                                 qMakePair(QString("H"), e + h / HartreeToKcal),
+                                 qMakePair(QString("G"), e + (h - 298.15 * s / 1000) / HartreeToKcal),
+                                 qMakePair(QString("E"), e)})
+            for (auto profile : {p, defaults, old}) {
+                profile["metric"] = pair.first;
+                QVERIFY2(hartree(profile) == pair.second, qPrintable(pair.first));
+            }
+        QCOMPARE(evaluateEnergyProfile(p)["entropy_model"].toString(), "rrho");
+        QCOMPARE(evaluateEnergyProfile(p)["frequency_scale"].toDouble(), 1.);
+        // Corrections that need the wavenumbers say so; the standard state does not need them.
+        auto refused = old;
+        refused["frequency_scale"] = .97;
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, evaluateEnergyProfile(refused));
+        refused = old;
+        refused["entropy_model"] = "grimme";
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, evaluateEnergyProfile(refused));
+        refused["metric"] = "H"; // The entropy model changes G only.
+        QVERIFY(hartree(refused) == e + h / HartreeToKcal);
+        refused = old;
+        refused["standard_state_correction"] = "1M";
+        QVERIFY(std::abs((hartree(refused) - hartree(old)) * HartreeToKcal - 1.8943284454941451) < 1e-9);
+        // A scale factor of 0.9 with CODATA 2018 constants on the six wavenumbers (sum 13331.45 cm⁻¹):
+        // ΔZPE = −0.1 × ½ × 2.8591435382e-3 kcal cm/mol × 13331.45 = −1.9058264561, ΔH = −1.8808983933
+        // (ZPE and the thermal energy Σ hcν/(e^x − 1)) and ΔS = +0.2199610546 cal/(mol K). They are
+        // added to the printed values, so 0.9 × 19.049 = 17.144 is met within NWChem's constants.
+        auto scaled = p;
+        scaled["frequency_scale"] = .9;
+        scaled["metric"] = "ZPE";
+        QVERIFY(std::abs((hartree(scaled) - e) * HartreeToKcal - (zpe - 1.9058264561233351)) < 1e-9);
+        QVERIFY(std::abs((hartree(scaled) - e) * HartreeToKcal - .9 * zpe) < 2e-3);
+        scaled["metric"] = "H";
+        QVERIFY(std::abs((hartree(scaled) - e) * HartreeToKcal - (h - 1.8808983932684837)) < 1e-9);
+        scaled["metric"] = "G";
+        auto source = stage(scaled)["sources"][0].toObject();
+        QVERIFY(std::abs(source["enthalpy_kcal"].toDouble() - (h - 1.8808983932684837)) < 1e-9);
+        QVERIFY(std::abs(source["entropy_cal"].toDouble() - (s + .2199610545580574)) < 1e-9);
+        QVERIFY(std::abs(source["correction_kcal"].toDouble() -
+                         (h - 1.8808983932684837 - 298.15 * (s + .2199610545580574) / 1000)) < 1e-9);
+        // Quasi-RRHO changes the entropy alone, mostly of the torsion at 184.64 cm⁻¹: Grimme with the
+        // cutoff of 100 cm⁻¹ gives ΔS = −0.0028052094 over the six modes, Truhlar with 300 cm⁻¹
+        // S_HO(300) − S_HO(184.64) = −0.8640741536 cal/(mol K).
+        auto model = p;
+        model["entropy_model"] = "grimme";
+        source = stage(model)["sources"][0].toObject();
+        QCOMPARE(source["enthalpy_kcal"].toDouble(), h);
+        QVERIFY(std::abs(source["entropy_cal"].toDouble() - (s - .002805209394948247)) < 1e-9);
+        model["entropy_model"] = "truhlar";
+        QCOMPARE(stage(model)["sources"][0].toObject()["entropy_cal"].toDouble(), s); // All above 100.
+        model["entropy_cutoff"] = 300.;
+        QVERIFY(std::abs(stage(model)["sources"][0].toObject()["entropy_cal"].toDouble() -
+                         (s - .8640741536148497)) < 1e-9);
+        QVERIFY(std::abs((hartree(model) - hartree(p)) * HartreeToKcal - 298.15 * .8640741536148497 / 1000) <
+                1e-9);
+        // 1 mol/L adds RT·ln(R′T) = 1.8943 kcal/mol to G of each mole, and nothing to H or ZPE; at
+        // 350 K it is 0.695522 × ln 28.7201 = 2.3353.
+        auto molar = p;
+        molar["standard_state_correction"] = "1M";
+        auto stages = molar["stages"].toArray();
+        stages[0] = QJsonObject{
+            {"name", "2 H2O2"},
+            {"terms", QJsonArray{QJsonObject{{"record", "peroxide_thermo"}, {"coefficient", 2}}}}};
+        molar["stages"] = stages;
+        auto gas = molar;
+        gas.remove("standard_state_correction");
+        QVERIFY(std::abs((hartree(molar) - hartree(gas)) * HartreeToKcal - 2 * 1.8943284454941451) < 1e-9);
+        QVERIFY(std::abs(evaluateEnergyProfile(molar)["standard_state_shift_kcal"].toDouble() - 1.894) <
+                5e-4);
+        QCOMPARE(evaluateEnergyProfile(molar)["standard_state_correction"].toString(), "1M");
+        molar["temperature"] = 350.;
+        gas["temperature"] = 350.;
+        QVERIFY(std::abs((hartree(molar) - hartree(gas)) * HartreeToKcal - 2 * 2.3353) < 2e-4);
+        for (const auto *metric : {"H", "ZPE", "E"}) {
+            molar["metric"] = metric;
+            gas["metric"] = metric;
+            QVERIFY(hartree(molar) == hartree(gas));
+            QCOMPARE(evaluateEnergyProfile(molar)["standard_state_shift_kcal"].toDouble(), 0.);
+        }
+    }
+    void energyProfileRates() {
+        // A stage 20 kcal/mol above the reference in G at 298.15 K: exp(−ΔG/RT) = 2.187249e-15 and the
+        // Eyring rate constant (k_B·T/h)·exp(−ΔG/RT) = 6.212438e12 × 2.187249e-15 = 1.358815e-2 s⁻¹.
+        const auto record = [](const QString &id, double energy) {
+            return QJsonObject{{"id", id},
+                               {"name", id},
+                               {"normal", true},
+                               {"energy_hartree", energy},
+                               {"composition", QJsonObject{{"H", 2}}},
+                               {"charge", 0},
+                               {"settings", QJsonObject{{"method", "hf"}, {"basis", "sto-3g"}}},
+                               {"thermochemistry", QJsonArray{QJsonObject{{"temperature", 298.15},
+                                                                          {"zpe_kcal", 2.},
+                                                                          {"enthalpy_kcal", 3.},
+                                                                          {"entropy_cal", 5.}}}}};
+        };
+        auto p = profileOf({record("reactant", -1), record("barrier", -1 + 20 / HartreeToKcal)}, "G", 298.15);
+        auto stages = evaluateEnergyProfile(p)["stages"].toArray();
+        QVERIFY(std::abs(stages[1].toObject()["relative"].toDouble() - 20) < 1e-9);
+        QVERIFY(std::abs(stages[1].toObject()["boltzmann_factor"].toDouble() / 2.1872492033246132e-15 - 1) <
+                1e-8);
+        QVERIFY(std::abs(stages[1].toObject()["rate_constant"].toDouble() / 1.358815004787466e-2 - 1) < 1e-8);
+        QCOMPARE(stages[0].toObject()["boltzmann_factor"].toDouble(), 1.);
+        QVERIFY(!stages[0].toObject().contains("rate_constant")); // No barrier.
+        // Downhill from the other stage: a factor above 1 and no rate constant.
+        p["reference"] = 1;
+        stages = evaluateEnergyProfile(p)["stages"].toArray();
+        QVERIFY(std::abs(stages[0].toObject()["boltzmann_factor"].toDouble() * 2.1872492033246132e-15 - 1) <
+                1e-8);
+        QVERIFY(!stages[0].toObject().contains("rate_constant"));
+        // Only free energies give rates.
+        p["reference"] = 0;
+        for (const auto *metric : {"E", "ZPE", "H"}) {
+            p["metric"] = metric;
+            const auto other = evaluateEnergyProfile(p)["stages"][1].toObject();
+            QVERIFY(!other.contains("rate_constant") && !other.contains("boltzmann_factor"));
+        }
+        // The dialog shows both for G, keeps the choices of the corrections and labels the standard state.
+        p["metric"] = "G";
+        MainWindow w;
+        EnergyProfileDialog dialog(&w);
+        dialog.setSpecification(p);
+        auto *values = dialog.findChild<QTableWidget *>("profileValues");
+        QVERIFY(!values->isColumnHidden(3) && !values->isColumnHidden(4));
+        QCOMPARE(values->item(1, 4)->text(), "0.01359");
+        QCOMPARE(values->item(0, 4)->text(), "—");
+        QCOMPARE(dialog.specification()["frequency_scale"].toDouble(), 1.);
+        QCOMPARE(dialog.specification()["entropy_model"].toString(), "rrho");
+        QCOMPARE(dialog.specification()["entropy_cutoff"].toDouble(), 100.);
+        QCOMPARE(dialog.specification()["standard_state_correction"].toString(), "none");
+        QVERIFY(dialog.findChild<QLabel *>("profileMessage")->text().contains("NWChemの出力値"));
+        dialog.findChild<QComboBox *>("profileStandardCorrection")->setCurrentIndex(1);
+        QCOMPARE(dialog.specification()["standard_state_correction"].toString(), "1M");
+        QCOMPARE(dialog.specification()["standard_state"].toString(), "1 mol/L");
+        QVERIFY(dialog.findChild<QLabel *>("profileMessage")->text().contains("1.894"));
+        picture(&dialog, "energy-profile.png");
+        dialog.findChild<QComboBox *>("profileMetric")->setCurrentIndex(2); // H
+        QVERIFY(values->isColumnHidden(3) && values->isColumnHidden(4));
+        // Records without wavenumbers: the reason replaces the table.
+        dialog.findChild<QDoubleSpinBox *>("profileFrequencyScale")->setValue(.97);
+        QCOMPARE(values->rowCount(), 0);
+        QVERIFY(dialog.findChild<QLabel *>("profileMessage")->text().contains("振動数の記録がない"));
+        auto saved = p;
+        saved["frequency_scale"] = 1.;
+        saved["entropy_model"] = "truhlar";
+        saved["entropy_cutoff"] = 250.;
+        saved["standard_state_correction"] = "1M";
+        saved["standard_state"] = "1 M in water";
+        saved["metric"] = "H";
+        dialog.setSpecification(saved);
+        for (const auto *key : {"frequency_scale", "entropy_model", "entropy_cutoff",
+                                "standard_state_correction", "standard_state"})
+            QCOMPARE(dialog.specification()[key], saved[key]);
+    }
+    void conformerThermalCorrections() {
+        // cis- and trans-HONO at B3LYP/STO-3G (tests/fixtures/nwchem/conformers/): trans is
+        // 0.001305350416 Eh = 0.81912 kcal/mol above cis, and with the printed corrections
+        // (H 15.287/15.345 kcal/mol, S 59.456/59.654 cal/(mol K)) 0.81809 kcal/mol in G at 298.15 K.
+        const QJsonArray records{logRecord("conformers/nitrous_acid_cis"),
+                                 logRecord("conformers/nitrous_acid_trans")};
+        const double rt = 1.9872042586408316e-3 * 298.15;
+        const auto cis = [](const QJsonArray &rows) { return rows[0].toObject()["population"].toDouble(); };
+        auto rows = conformerPopulations(records, "E", 298.15, .1);
+        QVERIFY(std::abs(rows[1].toObject()["relative_kcal"].toDouble() - .81912) < 1e-5);
+        QVERIFY(std::abs(cis(rows) - 1 / (1 + std::exp(-.001305350416 * HartreeToKcal / rt))) < 1e-9);
+        rows = conformerPopulations(records, "G", 298.15, .1);
+        const double printed =
+            .001305350416 * HartreeToKcal + (15.345 - 298.15 * .059654) - (15.287 - 298.15 * .059456);
+        QVERIFY(std::abs(printed - .81809) < 1e-5);
+        QVERIFY(std::abs(rows[1].toObject()["relative_kcal"].toDouble() - printed) < 1e-9);
+        QVERIFY(std::abs(cis(rows) - 1 / (1 + std::exp(-printed / rt))) < 1e-9);
+        // Default options are the same; every HONO vibration is above 500 cm⁻¹, where Truhlar's
+        // raising ends.
+        const QJsonObject defaults{
+            {"frequency_scale", 1.}, {"entropy_model", "rrho"}, {"entropy_cutoff", 100.}};
+        QCOMPARE(conformerPopulations(records, "G", 298.15, .1, defaults), rows);
+        QCOMPARE(conformerPopulations(
+                     records, "G", 298.15, .1,
+                     {{"frequency_scale", 1.}, {"entropy_model", "truhlar"}, {"entropy_cutoff", 500.}}),
+                 rows);
+        // A scale factor and Grimme's entropy move G by the differences of the vibrational terms of
+        // the two conformers.
+        const QJsonObject options{
+            {"frequency_scale", .95}, {"entropy_model", "grimme"}, {"entropy_cutoff", 500.}};
+        const auto corrected = conformerPopulations(records, "G", 298.15, .1, options);
+        const ThermalOptions o{.scale = .95, .model = "grimme", .cutoff = 500};
+        double shift = 0;
+        for (int i = 0; i < 2; ++i) {
+            const auto wavenumbers = recordVibrations(records[i].toObject());
+            const auto harmonic = vibrationalTerms(wavenumbers, 298.15),
+                       model = vibrationalTerms(wavenumbers, 298.15, o);
+            shift += (i ? 1 : -1) * (model.zpe + model.thermal - harmonic.zpe - harmonic.thermal -
+                                     298.15 * (model.entropy - harmonic.entropy) / 1000);
+        }
+        QVERIFY(std::abs(shift) > 1e-3);
+        QVERIFY(std::abs(corrected[1].toObject()["relative_kcal"].toDouble() - (printed + shift)) < 1e-9);
+        QVERIFY(std::abs(cis(corrected) - 1 / (1 + std::exp(-(printed + shift) / rt))) < 1e-9);
+        // With E the options have nothing to change.
+        QCOMPARE(conformerPopulations(records, "E", 298.15, .1, options),
+                 conformerPopulations(records, "E", 298.15, .1));
+    }
+    void conformerAveragedSpectra() {
+        const QString root = QString(FIXTURE_DIR) + "/nwchem/";
+        const auto cis = readResult(root + "conformers/nitrous_acid_cis.out"),
+                   trans = readResult(root + "conformers/nitrous_acid_trans.out");
+        // What the logs hold: six vibrations, four excited states (with rotatory strengths, all zero
+        // in a planar molecule) and the shieldings of the four atoms.
+        const auto cisSpectra = spectrumContributions(cis), transSpectra = spectrumContributions(trans);
+        QCOMPARE(cisSpectra.keys(), (QStringList{"ecd", "ir", "shielding", "uv"}));
+        QCOMPARE(cisSpectra["ir"].toArray().size(), 6);
+        QCOMPARE(cisSpectra["uv"].toArray().size(), 4);
+        QCOMPARE(cisSpectra["ecd"].toArray().size(), 4);
+        QCOMPARE(cisSpectra["shielding"].toArray().size(), 4);
+        QVERIFY(spectrumContributions(readResult(root + "water_tddft.out")).keys() == QStringList{"uv"});
+        // The kinds of the viewer's own charts are those of calculateSpectrum too.
+        const auto ir = calculateSpectrum(cis, {{"kind", "ir"}, {"width", 20.}});
+        QCOMPARE(ir.sticks.size(), 6);
+        QCOMPARE(ir.sticks[0], QPointF(567.87, 6.5));
+        QCOMPARE(ir.peaks[0].toObject()["mode"].toInt(), 6);
+        QVERIFY(ir.reversed);
+        const auto uv = calculateSpectrum(cis, {{"kind", "uv"}, {"width", .3}});
+        QCOMPARE(uv.sticks[1], QPointF(5.7917, .0262739527));
+        QCOMPARE(uv.peaks[1].toObject()["root"].toInt(), 2);
+        // Weights of 80 % and 20 %; a duplicate (weight 0) adds nothing.
+        QJsonArray members{QJsonObject{{"name", "cis"}, {"weight", .8}, {"spectra", cisSpectra}},
+                           QJsonObject{{"name", "trans"}, {"weight", .2}, {"spectra", transSpectra}},
+                           QJsonObject{{"name", "copy"}, {"weight", 0.}, {"spectra", cisSpectra}}};
+        auto s = averagedSpectrum(members, {{"kind", "ir"}, {"width", 20.}});
+        QCOMPARE(s.sticks.size(), 12);
+        QVERIFY(std::abs(s.sticks[0].y() - .8 * 6.5) < 1e-12); // cis, 567.87 cm⁻¹: 6.500 km/mol
+        QCOMPARE(s.sticks[6].x(), 558.04);                     // trans: 57.571 km/mol
+        QVERIFY(std::abs(s.sticks[6].y() - .2 * 57.571) < 1e-12);
+        QCOMPARE(s.peaks[0].toObject()["conformer"].toString(), "cis");
+        QCOMPARE(s.peaks[6].toObject()["conformer"].toString(), "trans");
+        QCOMPARE(s.peaks[6].toObject()["mode"].toInt(), 6);
+        QCOMPARE(s.parameters["conformers"].toArray().size(), 2);
+        QVERIFY(s.parameters["omitted"].toArray().isEmpty());
+        QCOMPARE(s.xUnit, "cm⁻¹");
+        QVERIFY(s.reversed);
+        // Broadened once: at every point the sum of the weighted Lorentzians (FWHM 20 cm⁻¹) of the
+        // vibrations of both logs.
+        const auto vibrationsOf = [](const ResultData &r) {
+            QVector<QPointF> sticks;
+            for (int i = 6; i < r.modes.size(); ++i)
+                sticks << QPointF(r.modes[i].frequency, r.modes[i].intensity);
+            return sticks;
+        };
+        const auto excitationsOf = [](const ResultData &r) {
+            QVector<QPointF> sticks;
+            for (const auto &x : r.excitations)
+                sticks << QPointF(x.ev, x.oscillator);
+            return sticks;
+        };
+        const auto same = [&](const SpectrumData &spectrum, const QVector<QPointF> &first,
+                              const QVector<QPointF> &second, const std::function<double(double)> &shape) {
+            double top = 0;
+            for (const auto &point : spectrum.curve)
+                top = std::max(top, point.y());
+            for (const auto &point : spectrum.curve) {
+                double y = 0;
+                for (const auto &stick : first)
+                    y += .8 * stick.y() *
+                         shape((point.x() - stick.x()) / spectrum.parameters["width"].toDouble());
+                for (const auto &stick : second)
+                    y += .2 * stick.y() *
+                         shape((point.x() - stick.x()) / spectrum.parameters["width"].toDouble());
+                if (std::abs(point.y() - y) > 1e-12 * top)
+                    return false;
+            }
+            return top > 0 && spectrum.curve.size() > 4000;
+        };
+        QVERIFY(
+            same(s, vibrationsOf(cis), vibrationsOf(trans), [](double d) { return 1 / (1 + 4 * d * d); }));
+        // UV–Vis over eV: Gaussians of FWHM 0.3 eV, as the absorption chart of the viewer.
+        s = averagedSpectrum(members, {{"kind", "uv"}, {"width", .3}});
+        QCOMPARE(s.sticks.size(), 8);
+        QVERIFY(std::abs(s.sticks[1].y() - .8 * .0262739527) < 1e-15);
+        QCOMPARE(s.xUnit, "eV");
+        QVERIFY(same(s, excitationsOf(cis), excitationsOf(trans),
+                     [](double d) { return std::exp(-4 * std::log(2.) * d * d); }));
+        // One conformer alone is its own spectrum.
+        s = averagedSpectrum({members[1]}, {{"kind", "ir"}, {"width", 20.}});
+        const auto alone = calculateSpectrum(trans, {{"kind", "ir"}, {"width", 20.}});
+        QCOMPARE(s.sticks, alone.sticks);
+        QCOMPARE(s.curve, alone.curve);
+        // NMR in fast exchange: the weighted mean shielding of each atom. H (atom 4) has 17.0295 ppm
+        // in cis and 13.5408 ppm in trans: 16.33176, and δ = 31 − 16.33176.
+        QJsonObject nmr{{"kind", "nmr"}, {"nucleus", "1H"}, {"reference_ppm", 31.}, {"width", .05}};
+        s = averagedSpectrum(members, nmr);
+        QCOMPARE(s.sticks.size(), 1);
+        QCOMPARE(s.peaks[0].toObject()["atom"].toInt(), 4);
+        QVERIFY(std::abs(s.peaks[0].toObject()["shielding_ppm"].toDouble() - 16.33176) < 1e-9);
+        QVERIFY(std::abs(s.sticks[0].x() - (31 - 16.33176)) < 1e-9);
+        // A conformer without the data is left out and named, and the others weigh 1 together.
+        members.append(QJsonObject{{"name", "bare"}, {"weight", .25}, {"spectra", QJsonObject()}});
+        s = averagedSpectrum(members, nmr);
+        QCOMPARE(s.parameters["omitted"].toArray(), QJsonArray{"bare"});
+        QVERIFY(std::abs(s.sticks[0].x() - (31 - 16.33176)) < 1e-9);
+        QVERIFY(std::abs(s.parameters["conformers"][0].toObject()["weight"].toDouble() - .8) < 1e-12);
+        s = averagedSpectrum(members, {{"kind", "ir"}, {"width", 20.}});
+        QVERIFY(std::abs(s.sticks[0].y() - .8 * 6.5) < 1e-12);
+        const auto csv = spectrumCsv(s);
+        QVERIFY(csv.startsWith("type,atom,mode,x,weight,conformer\n"));
+        QVERIFY(csv.contains("peak,,6,558.04,11.514")); // 0.2 × 57.571 km/mol
+        QVERIFY(csv.contains(",\"trans\"\n"));
+        QVERIFY(csv.contains("\ncurve,,,"));
+        // No conformer has Raman activities, and shieldings of other atoms cannot be averaged.
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 averagedSpectrum(members, {{"kind", "raman"}, {"width", 20.}}));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 averagedSpectrum(members, {{"kind", "epr"}, {"width", 1.}}));
+        auto other = members;
+        other[1] = QJsonObject{
+            {"name", "other"},
+            {"weight", .2},
+            {"spectra", QJsonObject{{"shielding", QJsonArray{QJsonObject{
+                                                      {"atom", 9}, {"element", "H"}, {"isotropic", 30.}}}}}}};
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, averagedSpectrum(other, nmr));
+        // ECD keeps its signs: H2O2 and its mirror image in equal amounts cancel, and 3:1 leave half.
+        const auto ecd = readResult(root + "peroxide_ecd.out");
+        const auto handed = spectrumContributions(ecd);
+        auto mirrored = handed["ecd"].toArray();
+        for (int i = 0; i < mirrored.size(); ++i) {
+            auto row = mirrored[i].toObject();
+            row["weight"] = -row["weight"].toDouble();
+            mirrored[i] = row;
+        }
+        const auto pair = [&](double first, double second) {
+            return QJsonArray{
+                QJsonObject{{"name", "P"}, {"weight", first}, {"spectra", handed}},
+                QJsonObject{{"name", "M"}, {"weight", second}, {"spectra", QJsonObject{{"ecd", mirrored}}}}};
+        };
+        s = averagedSpectrum(pair(.5, .5), {{"kind", "ecd"}, {"width", .2}});
+        QCOMPARE(s.sticks.size(), 6);
+        QVERIFY(std::all_of(s.curve.begin(), s.curve.end(), [](auto p) { return std::abs(p.y()) < 1e-12; }));
+        s = averagedSpectrum(pair(3, 1), {{"kind", "ecd"}, {"width", .2}});
+        const auto single = calculateSpectrum(ecd, {{"kind", "ecd"}, {"width", .2}});
+        QCOMPARE(s.curve.size(), single.curve.size());
+        for (int i = 0; i < s.curve.size(); ++i)
+            QVERIFY(std::abs(s.curve[i].y() - single.curve[i].y() / 2) < 1e-10);
+        // The conformer set weighs by its populations: G at 298.15 K gives cis 79.9 % (ΔG 0.81809).
+        const auto entry = [&](const QString &name, const QString &log, const QJsonObject &spectra) {
+            const auto record = logRecord(log);
+            return QJsonObject{{"name", name},
+                               {"selected", true},
+                               {"geometry", record["geometry"]},
+                               {"result", record},
+                               {"spectra", spectra}};
+        };
+        MainWindow w;
+        ConformerSetDialog dialog(&w, [](const QVector<Document> &, bool) { return QStringList{}; });
+        auto *button = dialog.findChild<QPushButton *>("conformerSpectrum");
+        QVERIFY(!button->isEnabled());
+        QJsonObject spec{
+            {"format", "molforma-conformer-set"},
+            {"version", 1},
+            {"original", cis.frames.last().molecule.project()},
+            {"entries", QJsonArray{entry("cis", "conformers/nitrous_acid_cis", cisSpectra),
+                                   entry("trans", "conformers/nitrous_acid_trans", QJsonObject())}},
+            {"metric", "G"},
+            {"temperature", 298.15},
+            {"rmsd", .1}};
+        dialog.setSpecification(spec);
+        QVERIFY(button->isEnabled());
+        const double population = 1 / (1 + std::exp(-.81809 / (1.9872042586408316e-3 * 298.15)));
+        auto shown = dialog.spectrumMembers();
+        QCOMPARE(shown.size(), 2);
+        QVERIFY(std::abs(shown[0].toObject()["weight"].toDouble() - population) < 1e-5);
+        QCOMPARE(dialog.findChild<QTableWidget *>("conformerSetTable")->item(0, 8)->text(),
+                 QString::number(100 * shown[0].toObject()["weight"].toDouble(), 'f', 3));
+        // The corrections of G are kept with the set and change the weights.
+        dialog.findChild<QDoubleSpinBox *>("conformerFrequencyScale")->setValue(.95);
+        dialog.findChild<QComboBox *>("conformerEntropyModel")->setCurrentIndex(1);
+        dialog.findChild<QDoubleSpinBox *>("conformerEntropyCutoff")->setValue(500);
+        QCOMPARE(dialog.specification()["frequency_scale"].toDouble(), .95);
+        QCOMPARE(dialog.specification()["entropy_model"].toString(), "grimme");
+        QCOMPARE(dialog.specification()["entropy_cutoff"].toDouble(), 500.);
+        QVERIFY(std::abs(dialog.spectrumMembers()[0].toObject()["weight"].toDouble() - population) > 1e-4);
+        dialog.setSpecification(spec);
+        QCOMPARE(dialog.specification()["frequency_scale"].toDouble(), 1.);
+        QCOMPARE(dialog.specification()["entropy_model"].toString(), "rrho");
+        // The trans log was read before the spectra were kept: IR of cis alone, and trans is named.
+        auto *spectrum = dialog.showSpectrum();
+        QCOMPARE(spectrum->parameters()["kind"].toString(), "ir");
+        auto *message = spectrum->findChild<QLabel *>("conformerSpectrumMessage");
+        QVERIFY(message->text().contains("cis 100.0%"));
+        QVERIFY(message->text().contains("除いた配座: trans"));
+        // With both, the dialog follows the set.
+        auto entries = spec["entries"].toArray();
+        entries[1] = entry("trans", "conformers/nitrous_acid_trans", transSpectra);
+        spec["entries"] = entries;
+        dialog.setSpecification(spec);
+        QVERIFY(message->text().contains("cis 79.9%、trans 20.1%"));
+        QVERIFY(!message->text().contains("除いた配座"));
+        picture(&dialog, "conformer-set.png");
+        picture(spectrum, "conformer-spectrum-ir.png");
+        spectrum->exportCsv(files.filePath("conformers-ir.csv"));
+        QVERIFY(readFile(files.filePath("conformers-ir.csv")).contains(",\"trans\"\n"));
+        spectrum->setParameters({{"kind", "uv"}, {"width", .3}});
+        picture(spectrum, "conformer-spectrum-uv.png");
+        nmr["reference_ppm"] = 31.5;
+        spectrum->setParameters(nmr);
+        QCOMPARE(spectrum->parameters(), nmr);
+        QVERIFY(message->text().contains("速い交換"));
+        picture(spectrum, "conformer-spectrum-nmr.png");
+        spectrum->exportCsv(files.filePath("conformers-nmr.csv"));
+        QVERIFY(
+            readFile(files.filePath("conformers-nmr.csv")).startsWith("type,atom,mode,x,weight\npeak,4,,"));
+        // Without the populations of every chosen conformer there is nothing to weigh by.
+        entries[1] = QJsonObject{
+            {"name", "trans"}, {"selected", true}, {"geometry", entries[1].toObject()["geometry"]}};
+        spec["entries"] = entries;
+        dialog.setSpecification(spec);
+        QVERIFY(!button->isEnabled());
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, dialog.showSpectrum());
+    }
     void opticalActivity() {
         const auto ecd = readResult(QString(FIXTURE_DIR) + "/nwchem/peroxide_ecd.out");
         const auto rows = ecd.properties["ecd"].toArray();
@@ -1492,6 +2286,137 @@ class ResultsTest : public QObject {
         QCOMPARE(atoms->item(0, 2)->text(), QString("-0.7781"));
         QCOMPARE(atoms->item(1, 1)->text(), QString("H"));
         QVERIFY(view->monitorList().isEmpty()); // Measurements belong to the previous result.
+        // Valencies and bond indices only with a log that has them.
+        QVERIFY(atoms->isColumnHidden(3));
+        QVERIFY(widget<QTableWidget>(w, "resultsBondIndices")->parentWidget()->isHidden());
+    }
+    void orbitalContributionsOfStates() {
+        MainWindow w;
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentWidget(panel);
+        w.show();
+        QSignalSpy done(panel, &ResultsPanel::loaded);
+        const QDir dir(FIXTURE_DIR "/nwchem");
+        auto *states = widget<QTableWidget>(w, "resultsExcitations");
+        auto *pairs = widget<QTableWidget>(w, "resultsContributions");
+        auto *title = widget<QLabel>(w, "resultsContributionsTitle");
+        const auto cells = [&](int row) {
+            QStringList texts;
+            for (int column = 0; column < pairs->columnCount(); ++column)
+                if (!pairs->isColumnHidden(column))
+                    texts << pairs->item(row, column)->text();
+            return texts.join(" | ");
+        };
+        // Unrestricted states: the heaviest pair of each in the table, with its spin, and the pairs of
+        // the chosen state (the first one at once) under it.
+        panel->openFile(dir.filePath("water_cation_tddft.out"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        QCOMPARE(states->rowCount(), 3);
+        QVERIFY(!states->isColumnHidden(7) && !pairs->parentWidget()->isHidden());
+        QCOMPARE(states->item(0, 7)->text(), QString("β HOMO → LUMO（100%）"));
+        QCOMPARE(states->item(2, 7)->text(), QString("β HOMO → LUMO+1（70%）"));
+        QCOMPARE(states->item(2, 7)->toolTip(), states->item(2, 7)->text()); // Where the column is narrow.
+        // The transitions take the room of what says the same on every row: one symmetry label here.
+        QVERIFY(states->isColumnHidden(2) && !states->isColumnHidden(6));
+        QCOMPARE(states->currentRow(), 0);
+        QCOMPARE(pairs->rowCount(), 1);
+        QVERIFY(title->text().contains("状態 1 "));
+        states->selectRow(2);
+        QCOMPARE(pairs->rowCount(), 4);
+        QCOMPARE(cells(0), QString("4 | 6 | β HOMO → LUMO+1 | -0.83332 | 69.8")); // No Y amplitudes.
+        QCOMPARE(cells(1), QString("5 | 6 | α HOMO → LUMO | 0.54022 | 29.3"));
+        QVERIFY(title->text().contains("状態 3 "));
+        // X and Y amplitudes of restricted states.
+        panel->openFile(dir.filePath("peroxide_ecd.out"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 2, 10000);
+        QCOMPARE(states->item(0, 7)->text(), QString("HOMO−1 → LUMO（99%）"));
+        QVERIFY(states->isColumnHidden(6)); // No <S²> of restricted states.
+        QCOMPARE(pairs->rowCount(), 2);
+        QCOMPARE(cells(0), QString("8 | 10 | HOMO−1 → LUMO | 0.99487 | -0.05366 | 98.8"));
+        QCOMPARE(cells(1), QString("8 | 12 | HOMO−1 → LUMO+2 | 0.10767 | — | 1.2"));
+        // Without a MOLDEN file, a double click chooses the orbital among the energies of the log.
+        auto *details = widget<QTabWidget>(w, "resultsDetails");
+        auto *orbitals = widget<QTableWidget>(w, "resultsOrbitals");
+        emit pairs->cellDoubleClicked(0, 1);
+        QCOMPARE(details->currentIndex(), 2);
+        QVERIFY(orbitals->currentRow() >= 0);
+        QCOMPARE(orbitals->item(orbitals->currentRow(), 0)->text(), QString("10"));
+        // A log without the pairs keeps the table as it was; one whose frontier orbitals are not
+        // known gives the numbers.
+        panel->openFile(
+            save("states-only.out",
+                 "NWChem\n  Root   1 singlet a              0.313760064 a.u.                "
+                 "8.5378 eV \n     Dipole Oscillator Strength                    0.0198731899\n"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 3, 10000);
+        QVERIFY(states->isColumnHidden(7) && pairs->parentWidget()->isHidden());
+        QVERIFY(!states->isColumnHidden(2) && !states->isColumnHidden(6));
+        const QString log =
+            "NWChem\n  Root   1 singlet a              0.313760064 a.u.                "
+            "8.5378 eV \n     Dipole Oscillator Strength                    0.0198731899\n\n"
+            "     Occ.    1  a   ---  Virt.    2  a    0.99000 X\n"
+            "  ----------------------------------------------------------------------------\n";
+        panel->openFile(save("states-numbers.out", log));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 4, 10000);
+        QCOMPARE(states->item(0, 7)->text(), QString("1 → 2（100%）"));
+        QCOMPARE(cells(0), QString("1 | 2 | 0.99000 | 100.0"));
+        // With the MOLDEN file of the job, a double click on the virtual orbital shows its shape.
+        QTemporaryDir job;
+        writeFile(job.filePath("output.out"), log.toUtf8());
+        writeFile(job.filePath("job.molden"), "[Molden Format]\n[Atoms] AU\nH 1 1 0 0 0\nH 2 1 0 0 1.4\n"
+                                              "[GTO]\n1 0\ns 1 1.0\n1.0 1.0\n\n2 0\ns 1 1.0\n1.0 1.0\n\n"
+                                              "[MO]\nSym= a\nEne= -0.5\nSpin= Alpha\nOccup= 2\n1 0.5\n2 0.5\n"
+                                              "Sym= b\nEne= 0.3\nSpin= Alpha\nOccup= 0\n1 0.7\n2 -0.7\n");
+        panel->openDirectory(job.path());
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 5, 10000);
+        QVERIFY(panel->result().source.endsWith("output.out"));
+        QVERIFY(title->text().contains("job.molden"));
+        emit pairs->cellDoubleClicked(0, 1);
+        QTRY_VERIFY_WITH_TIMEOUT(panel->result().source.endsWith("job.molden") &&
+                                     panel->result().selectedOrbital == 1 && !panel->loading(),
+                                 10000);
+        QCOMPARE(details->currentIndex(), 2);
+    }
+    void bondIndicesInViewer() {
+        MainWindow w;
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        widget<QTabWidget>(w, "workspaceTabs")->setCurrentWidget(panel);
+        w.show();
+        QSignalSpy done(panel, &ResultsPanel::loaded);
+        panel->openFile(FIXTURE_DIR "/nwchem/ethanol_mulliken.out");
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        // The valency beside the Mulliken charge of each atom.
+        auto *atoms = widget<QTableWidget>(w, "resultsAtomProperties");
+        QCOMPARE(atoms->rowCount(), 9);
+        QVERIFY(!atoms->isColumnHidden(3));
+        QCOMPARE(atoms->item(0, 3)->text(), QString("3.9591"));
+        QCOMPARE(atoms->item(2, 3)->text(), QString("2.0215"));
+        // The bonds (0.05 and more), the largest index first, with the distance in the structure.
+        auto *bonds = widget<QTableWidget>(w, "resultsBondIndices");
+        auto *all = widget<QCheckBox>(w, "resultsBondIndicesAll");
+        QVERIFY(!bonds->parentWidget()->isHidden() && !all->isHidden() && !all->isChecked());
+        QCOMPARE(bonds->rowCount(), 8);
+        const auto cells = [&](int row) {
+            return bonds->item(row, 0)->text() + " " + bonds->item(row, 1)->text() + " " +
+                   bonds->item(row, 2)->text();
+        };
+        QCOMPARE(cells(0), QString("C2–O3 1.00439 1.4207"));
+        QCOMPARE(cells(1), QString("C1–C2 1.00216 1.5191"));
+        QCOMPARE(cells(7), QString("O3–H9 0.93779 0.9658"));
+        QVERIFY(widget<QLabel>(w, "resultsBondIndicesTitle")->text().contains("8"));
+        // Choosing a row picks its two atoms in the view, as for a measurement.
+        auto *view = widget<MoleculeView>(w, "resultsView");
+        QVERIFY(view->selection().isEmpty());
+        bonds->selectRow(0);
+        const auto &molecule = view->documentRef();
+        QCOMPARE(view->selection(), (Ids{molecule.atoms[1].id, molecule.atoms[2].id}));
+        QVERIFY(widget<QLabel>(w, "resultsMeasurement")->text().contains("距離 1.4207 Å"));
+        // Every pair on request.
+        all->setChecked(true);
+        QCOMPARE(bonds->rowCount(), 36);
+        QCOMPARE(cells(8), QString("O3–H7 0.02891 2.0779"));
+        QCOMPARE(bonds->item(35, 1)->text(), QString("0.00011"));
+        all->setChecked(false);
+        QCOMPARE(bonds->rowCount(), 8);
     }
     void animationFilesGrouped() {
         // NWChem "freq animate": one XYZ per mode and step, shown as one entry per mode.

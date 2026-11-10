@@ -9,6 +9,10 @@
 namespace mf {
 static NwchemGeometryFragment geometryFragment(const Document &document, CoordinateUnit unit,
                                                const NwchemGeometryOptions &options);
+double nwchemAtomMass(const Atom &atom) {
+    return atom.isotope ? OpenBabel::OBElements::GetExactMass(element(atom.element).number, atom.isotope)
+                        : atom.mass;
+}
 NwchemGeometryFragment nwchemGeometryFragment(const Document &document, CoordinateUnit unit,
                                               const NwchemGeometryOptions &options) {
     // The coordinates table checks it on every change, and the input generation writes the same block.
@@ -42,12 +46,9 @@ static NwchemGeometryFragment geometryFragment(const Document &document, Coordin
         const QString tag = (atom.ghost ? "bq" : "") + atom.element;
         const Vec p = atom.position / coordinateScale(unit);
         text += QString("  %1 %2 %3 %4").arg(tag, number(p.x()), number(p.y()), number(p.z()));
-        double mass = atom.mass;
-        if (atom.isotope) {
-            mass = OpenBabel::OBElements::GetExactMass(element(atom.element).number, atom.isotope);
-            if (!std::isfinite(mass) || mass <= 0)
-                fail(tr("原子%1: 同位体の質量が不明です。amuを小数で指定してください。").arg(i + 1));
-        }
+        const double mass = nwchemAtomMass(atom);
+        if (atom.isotope && !(std::isfinite(mass) && mass > 0))
+            fail(tr("原子%1: 同位体の質量が不明です。amuを小数で指定してください。").arg(i + 1));
         if (mass > 0)
             text += " mass " + number(mass);
         text += '\n';

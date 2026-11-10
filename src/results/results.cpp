@@ -858,6 +858,111 @@ void cubeSurface(ResultData &r, const GridValues &g) {
         "CUBEの値はファイルの単位を使用します。赤が正、青が負です。密度と軌道の区別はタイトル・生成"
         "条件を確認してください。");
 }
+// The largest amplitudes of an excited state, in the order they had.
+void keepLargest(QVector<ResultContribution> &list) {
+    if (list.size() <= ResultExcitation::maxContributions)
+        return;
+    QVector<double> sizes;
+    for (const auto &c : std::as_const(list))
+        sizes << std::abs(c.coefficient);
+    std::sort(sizes.begin(), sizes.end(), std::greater<>());
+    const double least = sizes[ResultExcitation::maxContributions - 1];
+    QVector<ResultContribution> kept;
+    for (const auto &c : std::as_const(list))
+        if (std::abs(c.coefficient) >= least && kept.size() < ResultExcitation::maxContributions)
+            kept << c;
+    list = kept;
+}
+// The bond indices of the Mulliken analysis. NWChem prints the whole matrix, eight columns at a time
+// with all the rows of each ("  1- 9   0.00972"). Rows and columns are counted here: the two digits
+// printed for them are "**" from the 100th atom on.
+class BondIndexTable {
+  public:
+    // A row of the matrix; false for any other line, which ends the table.
+    bool add(const QString &line) {
+        static const QRegularExpression entry(R"(\s*(\d+|\*+)-\s*(\d+|\*+)\s*(-?\d+\.\d+))");
+        QRegularExpressionMatch entries[8];
+        int count = 0;
+        qsizetype at = 0;
+        for (; count < 8; ++count) {
+            entries[count] = entry.match(line, at, QRegularExpression::NormalMatch,
+                                         QRegularExpression::AnchorAtOffsetMatchOption);
+            if (!entries[count].hasMatch())
+                break;
+            at = entries[count].capturedEnd();
+        }
+        if (count == 0 || !QStringView(line).mid(at).trimmed().isEmpty())
+            return false;
+        // The first row again: the next eight columns.
+        if (row > 0 && entries[0].capturedView(1) == u"1") {
+            if (columns != 8 || (atoms > 0 && row != atoms))
+                return valid = false;
+            atoms = row;
+            row = 0;
+            ++block;
+        }
+        if (++row == 1)
+            columns = count;
+        if (count != columns || row > maxAtoms || (atoms > 0 && (row > atoms || 8 * block + count > atoms)))
+            return valid = false;
+        const auto labelled = [](QStringView label, int number) {
+            return label.startsWith('*') || label == QString::number(number);
+        };
+        for (int k = 0; k < count; ++k) {
+            const int column = 8 * block + k + 1;
+            const auto value = fortranNumber(entries[k].captured(3));
+            if (!labelled(entries[k].capturedView(1), row) || !labelled(entries[k].capturedView(2), column) ||
+                !value)
+                return valid = false;
+            if (row >= column)
+                continue; // The matrix is symmetric, with zeros on its diagonal.
+            ++pairs;
+            const Pair pair{row, column, *value};
+            if (std::abs(*value) >= NotableBondIndex && notable.size() < maxBondIndices)
+                notable << pair;
+            if (!large && all.size() == maxBondIndices) {
+                large = true;
+                all = {};
+            }
+            if (!large)
+                all << pair;
+        }
+        return true;
+    }
+    // The table into the properties, if all of it was read: every pair, or the notable ones of a
+    // large molecule. Returns the number of atoms, 0 for a table that is not complete.
+    int store(QJsonObject &properties) const {
+        const int count = atoms > 0 ? atoms : row;
+        if (!valid || count < 1 || row != count || 8 * block + columns != count ||
+            pairs != qint64(count) * (count - 1) / 2)
+            return 0;
+        auto list = large ? notable : all;
+        std::sort(list.begin(), list.end(),
+                  [](const Pair &p, const Pair &q) { return p.a != q.a ? p.a < q.a : p.b < q.b; });
+        QJsonArray indices;
+        for (const auto &pair : std::as_const(list))
+            indices << QJsonObject{{"a", pair.a}, {"b", pair.b}, {"value", pair.value}};
+        if (count > 1)
+            properties["bond_indices"] = indices;
+        else
+            properties.remove("bond_indices"); // An atom has no pairs.
+        if (large)
+            properties["bond_indices_omitted"] = double(pairs - list.size());
+        else
+            properties.remove("bond_indices_omitted");
+        return count;
+    }
+
+  private:
+    struct Pair {
+        int a, b; // Atom numbers from 1, a < b.
+        double value;
+    };
+    QVector<Pair> all, notable; // `all` while the pairs are at most maxBondIndices.
+    bool valid = true, large = false;
+    int atoms = 0, row = 0, block = 0, columns = 0; // The row and the columns of the last line.
+    qint64 pairs = 0;
+};
 } // namespace
 NwchemLog::NwchemLog(ResultData *data) : result(data) {
     if (result) {
@@ -954,6 +1059,13 @@ void NwchemLog::read(const QString &line) {
     static const QRegularExpression code(R"(\s+-?\d+\s*$)");
     static const QRegularExpression root(
         R"(^\s*Root\s+(\d+)\s+(?:(singlet|triplet)\s+)?(\S+)\s+(-?[\d.]+)\s+a\.u\.\s+(-?[\d.]+)\s+eV)");
+    // "Occ.    5  a   ---  Virt.    6  a   -1.00014 X" (or Y; neither for Tamm–Dancoff states), with
+    // "alpha" / "beta" after the numbers of unrestricted states. An irreducible representation of four
+    // characters is not separated from a negative amplitude.
+    static const QRegularExpression amplitude(
+        R"(^\s*Occ\.\s*(\d+)\s+(?:(alpha|beta)\s+)?\S{0,4}\s*---\s*Virt\.\s*(\d+)\s+(?:(alpha|beta)\s+)?)"
+        R"(\S{0,4}?\s*(-?\d*\.\d+)(?:\s+([XY]))?\s*$)");
+    static const QRegularExpression electrons(R"(^\s*(Alpha|Beta) electrons\s*:\s*(\d+)\s*$)");
     static const QRegularExpression orbitalHeader(R"(Final (Alpha |Beta )?Molecular Orbital Analysis)");
     static const QRegularExpression vector(
         R"(^\s*Vector\s+(\d+)\s+Occ=\s*(\S+)\s+E=\s*(\S+)(?:\s+Symmetry=\s*(\S+))?)");
@@ -1114,6 +1226,46 @@ void NwchemLog::read(const QString &line) {
                 r.properties["mulliken"] = charges;
             return false;
         };
+    // Bond indices of the same analysis: the last complete matrix of the log counts, as for the charges.
+    // A log may end anywhere (that of a running job even within a line), so that only a matrix with
+    // the list of the large indices after it is complete.
+    if (line.contains(u"----- Bond indices -----")) {
+        bondAtoms = 0;
+        sections << [this, table = BondIndexTable(), rows = false, blank = 0](const QString *text) mutable {
+            if (!text)
+                return false;
+            if ((!rows || blank == 0) && table.add(*text)) {
+                rows = true;
+                blank = 0;
+                return true;
+            }
+            if (text->trimmed().isEmpty() && ++blank <= 2)
+                return true;
+            if (rows && text->contains(u"Large bond indices"))
+                bondAtoms = table.store(result->properties);
+            return false;
+        };
+    }
+    // Its valencies and numbers of free electrons, under the heading that ends
+    // "=Mulliken charge     = Net spin population": complete with a row for each atom of the matrix.
+    if (bondAtoms > 0 && line.contains(u"=Mulliken charge") && line.contains(u"Valency"))
+        sections << [this, valency = QJsonArray(), free = QJsonArray()](const QString *text) mutable {
+            // Number, element, valency, free electrons, sum of bond indices, population and spin.
+            const auto row = text ? words(*text) : QStringList();
+            if ((row.size() != 6 && row.size() != 7) || !index.match(row[0]).hasMatch() ||
+                row[0].toInt() != valency.size() + 1)
+                return false;
+            const auto v = fortranNumber(row[row.size() - 5]), f = fortranNumber(row[row.size() - 4]);
+            if (!v || !f)
+                return false;
+            valency << *v;
+            free << *f;
+            if (valency.size() < bondAtoms)
+                return true;
+            result->properties["valency"] = valency;
+            result->properties["free_electrons"] = free;
+            return false;
+        };
     // ESP (and RESP with "restrain") charges of the ESP module.
     if (line.contains(u"Atom") && line.contains(u"Coordinates") && line.contains(u"Charge"))
         // The rows start within seven lines of the heading; a log repeating the heading must not keep
@@ -1223,43 +1375,75 @@ void NwchemLog::read(const QString &line) {
             }
             return false;
         };
+    // The electrons of each spin, as the DFT and TDDFT modules print them before the excited states.
+    if (auto m = has(u"electrons :") ? electrons.match(line) : unmatched; m.hasMatch())
+        (m.captured(1) == "Alpha" ? alphaElectrons : betaElectrons) = m.captured(2).toInt();
     if (auto m = has(u"Root") ? root.match(line) : unmatched; m.hasMatch() && r.excitations.size() < 2000) {
         ResultExcitation x{m.captured(1).toInt(), m.captured(2), m.captured(3), value(m.captured(5))};
         if (x.root == 1 && std::any_of(r.excitations.begin(), r.excitations.end(),
                                        [&](const auto &e) { return e.root == 1 && e.spin == x.spin; })) {
             r.excitations.clear(); // A later TDDFT task replaces the earlier one.
             r.properties.remove("ecd");
+            r.properties.remove("tddft");
         }
-        // Its <S2> and oscillator strength follow, before the next root.
-        sections <<
-            [&r, value, x, rotation = qQNaN(), gauge = QString(), left = 80](const QString *text) mutable {
-                if (text && --left >= 0 && !root.match(*text).hasMatch()) {
-                    if (text->contains("Magnetic Transition Dipole (Length)"))
-                        gauge = "length";
-                    if (text->contains("Rotatory Strength (1E-40 esu**2cm**2):"))
-                        rotation = value(words(*text).last());
-                    if (text->contains("<S2> ="))
-                        x.s2 = value(words(*text).value(2));
-                    if (text->contains("Dipole Oscillator Strength"))
-                        x.oscillator = value(words(*text).last());
-                    return true;
+        if (alphaElectrons >= 0 && betaElectrons >= 0)
+            r.properties["tddft"] =
+                QJsonObject{{"alpha_electrons", alphaElectrons}, {"beta_electrons", betaElectrons}};
+        // Its <S2> and oscillator strength follow, before the next root, and then its amplitudes in one
+        // block, which are not counted among the lines (a large molecule has many). A log may end
+        // anywhere (that of a running job even within a line): the block is complete once a line with
+        // other text follows it, after blank ones or not.
+        enum { Before, Within, Closing, After };
+        sections << [&r, value, x, rotation = qQNaN(), gauge = QString(), left = 80,
+                     block = int(Before)](const QString *text) mutable {
+            if (const auto m = text && block <= Within && text->contains(u"Virt.")
+                                   ? amplitude.match(*text)
+                                   : QRegularExpressionMatch();
+                m.hasMatch()) {
+                block = Within;
+                if (const double coefficient = value(m.captured(5)); std::isfinite(coefficient))
+                    x.contributions << ResultContribution{m.captured(1).toInt(), m.captured(3).toInt(),
+                                                          m.captured(2), coefficient, m.captured(6) == "Y"};
+                if (x.contributions.size() >= 8 * ResultExcitation::maxContributions)
+                    keepLargest(x.contributions);
+                return true;
+            }
+            if (text && (block == Within || block == Closing)) {
+                const auto after = QStringView(*text).trimmed();
+                block = after.isEmpty() ? Closing : After;
+                if (after.startsWith(u"Occ.") || (block == After && QStringView(u"Occ.").startsWith(after)))
+                    x.contributions.clear(); // An amplitude cut short.
+            }
+            if (text && --left >= 0 && !root.match(*text).hasMatch()) {
+                if (text->contains("Magnetic Transition Dipole (Length)"))
+                    gauge = "length";
+                if (text->contains("Rotatory Strength (1E-40 esu**2cm**2):"))
+                    rotation = value(words(*text).last());
+                if (text->contains("<S2> ="))
+                    x.s2 = value(words(*text).value(2));
+                if (text->contains("Dipole Oscillator Strength"))
+                    x.oscillator = value(words(*text).last());
+                return true;
+            }
+            if (block == Within || block == Closing)
+                x.contributions.clear(); // The log ends in them.
+            keepLargest(x.contributions);
+            if (std::isfinite(x.ev)) {
+                if (std::isfinite(rotation) && gauge == "length") {
+                    auto rows = r.properties["ecd"].toArray();
+                    rows.append(QJsonObject{{"root", x.root},
+                                            {"spin", x.spin},
+                                            {"ev", x.ev},
+                                            {"strength", rotation},
+                                            {"unit", "1e-40 esu^2 cm^2"},
+                                            {"gauge", gauge},
+                                            {"excitation", int(r.excitations.size())}});
+                    r.properties["ecd"] = rows;
                 }
-                if (std::isfinite(x.ev)) {
-                    if (std::isfinite(rotation) && gauge == "length") {
-                        auto rows = r.properties["ecd"].toArray();
-                        rows.append(QJsonObject{{"root", x.root},
-                                                {"spin", x.spin},
-                                                {"ev", x.ev},
-                                                {"strength", rotation},
-                                                {"unit", "1e-40 esu^2 cm^2"},
-                                                {"gauge", gauge},
-                                                {"excitation", int(r.excitations.size())}});
-                        r.properties["ecd"] = rows;
-                    }
-                    r.excitations << x;
-                }
-                return false;
-            };
+                r.excitations << x;
+            }
+            return false;
+        };
     }
     if (line.contains(u"Optimization converged"))
         r.properties["optimization"] = "converged";
@@ -1307,6 +1491,14 @@ void NwchemLog::read(const QString &line) {
                 field("Thermal correction to Enthalpy", "enthalpy_kcal"); // kcal/mol
                 field("Total Entropy", "entropy_cal");                    // cal/(mol K)
                 field("Cv (constant volume heat capacity)", "cv_cal");    // cal/(mol K)
+                // NWChem's own scale factor (vib:scalefreq), and the parts of the entropy: the heat
+                // capacity, which follows them, repeats their labels.
+                field("frequency scaling parameter", "nwchem_frequency_scale");
+                if (!t.contains(u"cv_cal")) {
+                    field("- Translational", "entropy_translational_cal");
+                    field("- Rotational", "entropy_rotational_cal");
+                    field("- Vibrational", "entropy_vibrational_cal");
+                }
                 if (text->contains("symmetry #"))
                     t["symmetry_number"] = value(text->section('=', -1).remove(')').trimmed());
                 return true;
@@ -1675,7 +1867,7 @@ QByteArray resultBytes(const ResultData &r) {
     QByteArray bytes;
     QDataStream s(&bytes, QIODevice::WriteOnly);
     s.setVersion(QDataStream::Qt_6_4);
-    s << QString("MolFormaResult7") << r.source << r.format << r.status << r.log << r.warnings
+    s << QString("MolFormaResult8") << r.source << r.format << r.status << r.log << r.warnings
       << qint32(r.outcome);
     s << r.orbitalBasis << qint32(r.selectedOrbital) << qint32(r.orbitalFrame) << qint32(r.orbitalDivisions)
       << r.orbitalError << r.orbitalNormalization << r.normalizationRequest;
@@ -1712,8 +1904,12 @@ QByteArray resultBytes(const ResultData &r) {
     for (int n : r.grid)
         s << qint32(n);
     s << qint32(r.excitations.size());
-    for (const auto &x : r.excitations)
-        s << qint32(x.root) << x.spin << x.symmetry << x.ev << x.oscillator << x.s2;
+    for (const auto &x : r.excitations) {
+        s << qint32(x.root) << x.spin << x.symmetry << x.ev << x.oscillator << x.s2
+          << qint32(x.contributions.size());
+        for (const auto &c : x.contributions)
+            s << qint32(c.from) << qint32(c.to) << c.spin << c.coefficient << c.deexcitation;
+    }
     s << qint32(r.steps.size());
     for (const auto &t : r.steps)
         s << qint32(t.step) << t.energy << t.deltaE << t.gmax << t.grms << t.xrms << t.xmax << t.seconds;
@@ -1742,7 +1938,7 @@ ResultData resultFromBytes(const QByteArray &bytes) {
     s.setVersion(QDataStream::Qt_6_4);
     QString magic;
     s >> magic;
-    if (magic != "MolFormaResult7")
+    if (magic != "MolFormaResult8")
         fail(tr("結果の転送形式が不正です。"));
     ResultData r;
     s >> r.source >> r.format >> r.status >> r.log >> r.warnings;
@@ -1830,6 +2026,14 @@ ResultData resultFromBytes(const QByteArray &bytes) {
         qint32 root;
         s >> root >> x.spin >> x.symmetry >> x.ev >> x.oscillator >> x.s2;
         x.root = root;
+        for (int k = count(ResultExcitation::maxContributions); k--;) {
+            ResultContribution c;
+            qint32 from, to;
+            s >> from >> to >> c.spin >> c.coefficient >> c.deexcitation;
+            c.from = from;
+            c.to = to;
+            x.contributions << c;
+        }
         r.excitations << x;
     }
     for (int n = count(20000); n--;) {

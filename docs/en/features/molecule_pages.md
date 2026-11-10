@@ -103,6 +103,19 @@ Local “Conformer search…” results are retained in a conformer set. Reopen 
 
 Once every selected result is available, all-atom RMSD after Kabsch alignment groups duplicates with the same atom order, taking the lowest-energy member as representative. Boltzmann populations use E or G and the chosen temperature. G requires corrections at that temperature and no significant imaginary frequencies. Composition, charge, multiplicity and calculation settings must agree. Duplicate entries receive zero weight; each group has degeneracy one. Atomic permutations and undiscovered conformers are excluded. These are populations within the selected set. JSON retains the original molecule, structures, jobs and imported results; selected conformers can be exported as multi-frame XYZ.
 
+Populations from G can use the same [thermochemistry corrections](history.md#thermochemistry-corrections-and-rate-constants) as the comparison in History, in the “Corrections of G” row: the frequency scale (0.5–1.5) and the entropy treatment (harmonic oscillator, quasi-RRHO (Grimme) or quasi-harmonic (Truhlar), with a cutoff of 10–500 cm⁻¹). The defaults keep NWChem's printed values. The standard-state correction (1 mol/L) adds the same amount to every conformer and does not change populations, so it is not offered here. The settings are saved in the set's JSON. Results loaded before these corrections existed lack the recorded wavenumbers: read them again with “Update results” before choosing a correction.
+
+### Conformer-averaged spectra
+
+Once populations are shown, “Averaged spectrum…” averages the spectra of the set's conformers with the populations as weights.
+
+- **IR, normal Raman, UV–Vis and ECD**: each conformer's sticks (positions and intensities) are multiplied by its weight, combined and broadened once. Line shapes and widths are specified as in the result viewer's charts. IR (km/mol) and Raman (Å⁴/amu) use a cm⁻¹ axis and ECD (10⁻⁴⁰ esu² cm², signed) an eV axis, with a Lorentzian of the given FWHM; UV–Vis broadens oscillator strengths over eV with a Gaussian (FWHM in eV).
+- **NMR**: fast exchange between conformers is assumed. Each atom's isotropic shielding is averaged with the weights, and lines at δ ≈ reference σ − mean σ are drawn for ¹H or ¹³C. Enter the reference shielding yourself, as in the [Results viewer](results.md#nmr-normal-raman-and-solution-esr-spectra). Conformers of a set have the same atom order, so atoms are matched by number.
+
+Each conformer's data is saved in the set when “Update results” reads its log: IR for calculations with frequencies, and Raman, TDDFT, ECD or NMR shieldings when the calculation settings include them. Conformers without data of the chosen kind are left out and named, and the weights of the others are rescaled to a sum of 1. Conformers merged as duplicates (weight 0) do not contribute. For sets saved before this feature, read the results again with “Update results”. “CSV…” exports the curve and the weighted sticks with their conformer names; “PNG…” exports the chart. While open, the dialog follows changes of the populations (temperature, E/G, corrections, selection).
+
+The populations are model values within the selected set and exclude undiscovered conformers. The frequency scale is used for the populations (G) only; the spectrum's axis keeps the calculated values. UV–Vis uses the eV axis only, and averaging ORD or ESR is not supported. NMR J splitting, averaging of equivalent nuclei (such as the three H of a methyl group) and conversion of ECD to Δε are not performed. Up to 32768 peaks in total are supported. MCP has no dedicated tool for this; operate the dialog with `ui_*` like other dialogs.
+
 ### From conformer search to batch calculations
 
 1. Generate conformers with “Tools → Conformer search…”. Results appear in the conformer-set table with their force-field energies.

@@ -930,6 +930,49 @@ class McpTest : public QObject {
         const auto summary = resultsJson(r, {}, {});
         QCOMPARE(summary["counts"].toObject()["excitations"].toInt(), 2);
         QCOMPARE(summary["properties"].toObject()["dipole"].toObject()["debye"].toDouble(), 1.7);
+        QVERIFY(excited["items"].toArray()[0].toObject()["contributions"].toArray().isEmpty());
+        QVERIFY(!summary["properties"].toObject().contains("bond_indices"));
+        QCOMPARE(summary["counts"].toObject()["bondIndices"].toInt(), 0);
+        // The orbital pairs of a state, the heaviest first, with X² − Y² as their weights and the
+        // frontier orbitals of five occupied ones.
+        r.excitations[0].contributions = {
+            {3, 7, "", 0.6, false}, {4, 6, "", -0.8, false}, {4, 6, "", 0.1, true}};
+        r.properties["tddft"] = QJsonObject{{"alpha_electrons", 5}, {"beta_electrons", 5}};
+        const auto pairs = resultsJson(r, {{"section", "excitations"}}, {})["items"]
+                               .toArray()[0]
+                               .toObject()["contributions"]
+                               .toArray();
+        QCOMPARE(pairs.size(), 2);
+        QCOMPARE(pairs[0].toObject()["from"].toInt(), 4);
+        QCOMPARE(pairs[0].toObject()["to"].toInt(), 6);
+        QCOMPARE(pairs[0].toObject()["x"].toDouble(), -0.8);
+        QCOMPARE(pairs[0].toObject()["y"].toDouble(), 0.1);
+        QVERIFY(std::abs(pairs[0].toObject()["weight"].toDouble() - 100 * .63 / .99) < 1e-9);
+        QCOMPARE(pairs[0].toObject()["transition"].toString(), QString("HOMO−1 → LUMO"));
+        QCOMPARE(pairs[1].toObject()["transition"].toString(), QString("HOMO−2 → LUMO+1"));
+        QVERIFY(!pairs[1].toObject().contains("y") && pairs[1].toObject()["spin"].toString().isEmpty());
+        // Bond indices: the bonds in the properties of every view, all pairs with their distances
+        // in a section of their own.
+        ResultFrame frame;
+        frame.molecule = Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n");
+        r.frames = {frame};
+        r.properties["valency"] = QJsonArray{1.66, 0.83, 0.83};
+        r.properties["bond_indices"] = QJsonArray{QJsonObject{{"a", 1}, {"b", 2}, {"value", 0.83}},
+                                                  QJsonObject{{"a", 1}, {"b", 3}, {"value", 0.83}},
+                                                  QJsonObject{{"a", 2}, {"b", 3}, {"value", -0.0003}}};
+        const auto bonded = resultsJson(r, {{"section", "steps"}}, {});
+        QCOMPARE(bonded["properties"].toObject()["bond_indices"].toArray().size(), 2);
+        QCOMPARE(bonded["properties"].toObject()["valency"].toArray().size(), 3);
+        QCOMPARE(bonded["counts"].toObject()["bondIndices"].toInt(), 3);
+        const auto all = resultsJson(r, {{"section", "bond_indices"}, {"offset", 1}}, {});
+        QCOMPARE(all["total"].toInt(), 3);
+        QCOMPARE(all["items"].toArray().size(), 2);
+        const auto last = all["items"].toArray()[1].toObject();
+        QCOMPARE(last["a"].toInt(), 2);
+        QCOMPARE(last["b"].toInt(), 3);
+        QCOMPARE(last["value"].toDouble(), -0.0003);
+        QCOMPARE(last["elements"].toArray(), (QJsonArray{"H", "H"}));
+        QVERIFY(std::abs(last["distance"].toDouble() - 1.516) < 1e-12);
     }
     void spectrumSections() {
         ResultData r;
@@ -946,6 +989,66 @@ class McpTest : public QObject {
         QCOMPARE(curve["items"].toArray().size(), 11);
         QCOMPARE(curve["nextOffset"].toInt(), 18);
         QCOMPARE(curve["xUnit"].toString(), "ppm");
+    }
+    void chartKindsAndCorrectedProfile() {
+        // The IR and absorption charts of the result viewer are spectrum kinds too.
+        ResultData r;
+        r.modes.append({1600., 50., {}});
+        r.excitations.append({1, "singlet", "a", 5., .1});
+        auto peaks = resultsJson(
+            r, {{"section", "spectrum_peaks"}, {"parameters", QJsonObject{{"kind", "ir"}, {"width", 20.}}}},
+            {});
+        QCOMPARE(peaks["xUnit"].toString(), "cm⁻¹");
+        QCOMPARE(peaks["items"].toArray()[0].toObject()["x"].toDouble(), 1600.);
+        QCOMPARE(peaks["items"].toArray()[0].toObject()["mode"].toInt(), 0);
+        peaks = resultsJson(
+            r, {{"section", "spectrum_peaks"}, {"parameters", QJsonObject{{"kind", "uv"}, {"width", .3}}}},
+            {});
+        QCOMPARE(peaks["xUnit"].toString(), "eV");
+        QCOMPARE(peaks["items"].toArray()[0].toObject()["weight"].toDouble(), .1);
+        // A comparison with corrections of the thermochemistry. One vibration of 417.0209 cm⁻¹ has
+        // hcν/kT = 2 at 300 K and a zero-point energy of RT = 0.596161 kcal/mol; a scale factor of
+        // 0.5 takes half of it from the printed 2 kcal/mol.
+        QJsonObject profile{
+            {"format", "molforma-energy-profile"},
+            {"version", 1},
+            {"metric", "ZPE"},
+            {"unit", "kcal"},
+            {"temperature", 300.},
+            {"standard_state", "1 atm"},
+            {"reference", 0},
+            {"frequency_scale", .5},
+            {"records",
+             QJsonArray{QJsonObject{{"id", "a"},
+                                    {"name", "a"},
+                                    {"normal", true},
+                                    {"energy_hartree", -1.},
+                                    {"composition", QJsonObject{{"H", 2}}},
+                                    {"charge", 0},
+                                    {"vibrations", QJsonArray{2 * 208.51044014583823}},
+                                    {"thermochemistry", QJsonArray{QJsonObject{{"temperature", 300.},
+                                                                               {"zpe_kcal", 2.},
+                                                                               {"enthalpy_kcal", 3.},
+                                                                               {"entropy_cal", 5.}}}}}}},
+            {"stages",
+             QJsonArray{QJsonObject{
+                 {"name", "a"}, {"terms", QJsonArray{QJsonObject{{"record", "a"}, {"coefficient", 1}}}}}}}};
+        auto evaluated = resultsJson({}, {{"section", "energy_profile"}, {"profile", profile}}, {});
+        QCOMPARE(evaluated["frequency_scale"].toDouble(), .5);
+        QCOMPARE(evaluated["entropy_model"].toString(), "rrho");
+        QVERIFY(std::abs(evaluated["stages"][0].toObject()["sources"][0].toObject()["zpe_kcal"].toDouble() -
+                         (2 - .29808063879612473)) < 1e-12);
+        // G at 1 mol/L: the shift at 300 K is 0.596161 × ln(0.0820573661 × 300) = 1.9098 kcal/mol,
+        // and the stages carry exp(−ΔG/RT) against the reference.
+        profile["metric"] = "G";
+        profile["frequency_scale"] = 1.;
+        profile["standard_state_correction"] = "1M";
+        evaluated = resultsJson({}, {{"section", "energy_profile"}, {"profile", profile}}, {});
+        QVERIFY(std::abs(evaluated["standard_state_shift_kcal"].toDouble() - 1.9098) < 1e-4);
+        QCOMPARE(evaluated["stages"][0].toObject()["boltzmann_factor"].toDouble(), 1.);
+        QVERIFY(std::abs(
+                    evaluated["stages"][0].toObject()["sources"][0].toObject()["correction_kcal"].toDouble() -
+                    (3 - 300 * 5 / 1000. + 1.9098)) < 1e-4);
     }
     void appendXyz() {
         McpServer server;
@@ -1481,6 +1584,91 @@ class McpTest : public QObject {
         // Without the extension the same tool keeps returning a pollable commandId.
         const auto plain = data(change(s, "set_selection", {{"ids", QJsonArray{}}}));
         QCOMPARE(plain["state"].toString(), QString("queued"));
+    }
+    void keptRunsOutliveTheSession() {
+        QTemporaryDir files;
+        auto env = QProcessEnvironment::systemEnvironment();
+        env.insert("QT_QPA_PLATFORM", "offscreen");
+        env.insert("MOLFORMA_RENDERER", "painter");
+        env.insert("XDG_CONFIG_HOME", files.filePath("settings"));
+        env.insert("XDG_DATA_HOME", files.filePath("data"));
+        const auto launch = [&](QProcess &process, const QString &mode, bool keep) {
+            QStringList arguments{mode, "--mcp-allow-execution-settings"};
+            if (keep)
+                arguments << "--mcp-keep-runs";
+            process.setProcessEnvironment(env);
+            process.start(QCoreApplication::applicationDirPath() + "/molforma", arguments);
+            QVERIFY(process.waitForStarted());
+        };
+        const auto prepare = [&](QProcess &process) {
+            QVERIFY(!failed(processCall(
+                process, "import_document",
+                {{"format", "xyz"}, {"text", "2\nH2\nH 0 0 0\nH 0 0 .74\n"}, {"preview", false}}, true)));
+            QVERIFY(!failed(processCall(
+                process, "set_execution",
+                {{"settings",
+                  QJsonObject{{"mode", "direct"},
+                              {"executable", QCoreApplication::applicationDirPath() + "/fake_nwchem" EXE},
+                              {"job_root", files.filePath("jobs")},
+                              {"environment",
+                               QJsonArray{QJsonObject{
+                                   {"enabled", true}, {"name", "MOLFORMA_FAKE_MODE"}, {"value", "slow"}}}}}},
+                 {"preview", false}},
+                true)));
+        };
+        const auto calculation = [&](QProcess &process) {
+            return data(processCall(process, "get_app_state"))["calculation"].toObject();
+        };
+        const auto status = [](const QString &job) {
+            return QJsonDocument::fromJson(readFile(job + "/run.json")).object()["status"].toString();
+        };
+        for (const QString mode : {"--mcp", "--mcp-gui"}) {
+            // Without the option a session's calculation ends with it, as before.
+            QString job;
+            {
+                QProcess process;
+                launch(process, mode, false);
+                prepare(process);
+                QVERIFY(
+                    !data(processCall(process, "get_execution"))["policy"].toObject()["keepRuns"].toBool());
+                QVERIFY(!failed(processCall(process, "calculation", {{"action", "start"}}, true)));
+                QTRY_COMPARE_WITH_TIMEOUT(calculation(process)["state"].toString(), QString("running"),
+                                          15000);
+                job = calculation(process)["directory"].toString();
+                process.closeWriteChannel();
+                QVERIFY(process.waitForFinished(20000));
+            }
+            QCOMPARE(status(job), QString("cancelled"));
+            // With it the calculation goes on, and the next session finds and stops it.
+            {
+                QProcess process;
+                launch(process, mode, true);
+                prepare(process);
+                QVERIFY(
+                    data(processCall(process, "get_execution"))["policy"].toObject()["keepRuns"].toBool());
+                QVERIFY(!failed(processCall(process, "calculation", {{"action", "start"}}, true)));
+                QTRY_COMPARE_WITH_TIMEOUT(calculation(process)["state"].toString(), QString("running"),
+                                          15000);
+                job = calculation(process)["directory"].toString();
+                process.closeWriteChannel();
+                QVERIFY(process.waitForFinished(20000));
+            }
+            QTest::qWait(500);
+            QCOMPARE(status(job), QString("running"));
+            QProcess next;
+            launch(next, mode, true);
+            QTRY_VERIFY_WITH_TIMEOUT(calculation(next)["active"].toBool(), 15000);
+            QCOMPARE(calculation(next)["directory"].toString(), job);
+            if (mode == "--mcp")
+                QVERIFY(!failed(processCall(next, "calculation", {{"action", "stop"}}, true)));
+            else
+                QCOMPARE(processCommand(next, "calculation", {{"action", "stop"}})["state"].toString(),
+                         "done");
+            QTRY_COMPARE_WITH_TIMEOUT(calculation(next)["state"].toString(), QString("cancelled"), 15000);
+            QCOMPARE(status(job), QString("cancelled"));
+            next.closeWriteChannel();
+            QVERIFY(next.waitForFinished(20000));
+        }
     }
     void subprocessTaskTracksCalculation() {
         QTemporaryDir files;

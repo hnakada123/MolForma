@@ -1,0 +1,20 @@
+start peroxide_thermo
+memory total 256 mb
+geometry units angstrom noautoz nocenter noautosym
+ O -0.67068113 0.19816932 -0.19381603
+ O 0.67068120 0.19816898 0.19381635
+ H -1.09804488 0.65183076 0.58961488
+ H 1.09804480 0.65183094 -0.58961520
+end
+basis
+ * library sto-3g
+end
+scf
+ singlet
+ rhf
+ thresh 1e-8
+end
+freq
+ temp 2 298.15 350.0
+end
+task scf freq

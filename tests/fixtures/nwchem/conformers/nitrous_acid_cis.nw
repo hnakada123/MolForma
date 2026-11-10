@@ -1,0 +1,29 @@
+start nitrous_acid_cis
+memory total 256 mb
+geometry units angstrom noautoz nocenter noautosym
+ N -0.01363593 -0.05545145 0.00000000
+ O -0.43969452 1.15003917 0.00000000
+ O 1.45405900 -0.04466629 0.00000000
+ H 1.64527145 0.98357857 0.00000000
+end
+basis
+ * library sto-3g
+end
+dft
+ xc b3lyp
+ grid fine
+ convergence energy 1e-9
+end
+tddft
+ nroots 4
+ singlet
+ notriplet
+ cdspectrum
+end
+property
+ shielding
+end
+task dft optimize
+task dft freq
+task tddft energy
+task dft property

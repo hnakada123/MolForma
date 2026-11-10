@@ -2,6 +2,7 @@
 #include "ui/workspace_controller.h"
 #include "editing/coordinates.h"
 #include "nwchem/history.h"
+#include "nwchem/nwchem_restart.h"
 #include "ui/execution_panel.h"
 #include "ui/history_panel.h"
 #include "ui/main_window.h"
@@ -14,6 +15,8 @@ WorkspaceController::WorkspaceController(MainWindow &w, ExecutionPanel &e, Histo
     : QObject(&w), window(w), execution(e), history(h), results(r) {
     connect(&execution, &ExecutionPanel::bundleChanged, &history, &HistoryPanel::notifyJob);
     connect(&history, &HistoryPanel::reuseRequested, this, &WorkspaceController::reuse);
+    connect(&history, &HistoryPanel::restartRequested, this, &WorkspaceController::restart);
+    connect(&execution, &ExecutionPanel::restartRequested, this, &WorkspaceController::restart);
     connect(&history, &HistoryPanel::resultsRequested, this, &WorkspaceController::openResults);
     connect(&history, &HistoryPanel::executionCommitRequested, &execution,
             &ExecutionPanel::commitPendingEdits);
@@ -44,6 +47,27 @@ void WorkspaceController::reuse(const QString &directory) {
     window.showSetting(1);
     window.statusBar()->showMessage(
         tr("履歴から新しい未保存プロジェクトを作成しました。実行前に条件・参照ファイルを確認してください。"),
+        15000);
+}
+void WorkspaceController::restart(const QString &directory, const QString &mode) {
+    window.checkMcpPath(directory);
+    for (const auto *file : {"run.json", "project.molforma.json", "input.nw", "output.out"})
+        window.checkMcpPath(QDir(directory).filePath(file));
+    if (window.hasCandidate() || window.chemistryRunning())
+        fail(tr("候補を確定・取消し、整形の終了後に準備してください。"));
+    const auto next = mode == "orbitals" ? orbitalReuseDocument(directory) : restartDocument(directory, mode);
+    if (!window.replaceUnsavedDocument(next))
+        return;
+    window.showSetting(1);
+    window.statusBar()->showMessage(
+        mode == "orbitals" ? tr("分子軌道を引き継ぐ新しい未保存プロジェクトを作成しました。同じ原子順・基底で"
+                                "実行してください。")
+        : mode == "continue"
+            ? tr("続きから実行する新しい未保存プロジェクトを作成しました。条件を確認して「計算を実行」を押し"
+                 "て"
+                 "ください。")
+            : tr("Hessianを引き継ぐ新しい未保存プロジェクトを作成しました。条件を確認して「計算を実行」を押し"
+                 "てください。"),
         15000);
 }
 void WorkspaceController::openResults(const QString &directory) {

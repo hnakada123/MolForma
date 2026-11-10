@@ -1,0 +1,23 @@
+start molforma
+title "ethanol Mulliken bond indices"
+geometry units angstroms noautosym nocenter
+  C   -1.168  -0.395   0.000
+  C    0.089   0.458   0.000
+  O    1.209  -0.416   0.000
+  H   -2.062   0.238   0.000
+  H   -1.185  -1.035   0.888
+  H   -1.185  -1.035  -0.888
+  H    0.107   1.106   0.887
+  H    0.107   1.106  -0.887
+  H    2.007   0.128   0.000
+end
+basis
+  * library sto-3g
+end
+dft
+  xc b3lyp
+end
+property
+  mulliken
+end
+task dft property

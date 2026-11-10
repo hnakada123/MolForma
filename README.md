@@ -128,3 +128,5 @@ MolFormaは [GNU General Public License](LICENSE) バージョン2、または�
 MolFormaはNWChemを同梱していません。計算には別にインストールしたNWChemを使い、NWChemはそれ自身のライセンス（[Educational Community License 2.0](https://github.com/nwchemgit/nwchem/blob/master/LICENSE.TXT)）に従います。MolFormaはNWChemの開発元とは関係のない独立したソフトウェアです。NWChemで得た結果を発表する際は、NWChemの文献（E. Aprà et al., “NWChem: Past, present, and future”, *J. Chem. Phys.* 152, 184102 (2020), [doi:10.1063/5.0004997](https://doi.org/10.1063/5.0004997)）を引用してください。
 
 ローカルの逐次計算キュー、失敗原因の案内、最終構造からの再計算、熱補正付きの反応エネルギー図、配座セットの保存・一括最適化に対応します。NMR・通常ラマン・溶液ESR・ECD・ORD（β）のチャートと、ESP表面色付け・格子断面・双極子／分極率の3D表示も利用できます。操作と対応条件は[結果ビューア](docs/features/results.md)、[履歴](docs/features/history.md)、[配座セット](docs/features/molecule_pages.md)を参照してください。
+
+次の版（開発中）では、止まった計算をNWChemのデータベースから続ける再開、振動数計算のHessianや分子軌道の引き継ぎ、ウィンドウを閉じても続く計算とキューの復元、別の計算機で実行するためのジョブスクリプトと結果の取込みに対応します。結果の表示には励起状態の軌道の内訳と結合次数を、熱補正には振動数スケール・準RRHO・標準状態の補正と速度定数、配座平均スペクトルを追加しました。内容と制限は[変更履歴](docs/changes.md)を参照してください。

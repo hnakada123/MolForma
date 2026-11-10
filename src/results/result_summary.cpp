@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "results/result_summary.h"
 #include "model/i18n.h"
+#include <algorithm>
 
 namespace mf {
 QVector<ResultModeKind> resultModeKinds(const ResultData &data) {
@@ -46,6 +47,61 @@ std::array<ResultCriterion, 4> resultCriteria(const ResultStep &step, const QJso
         c.measured = c.key[0] == 'g' || step.step > 0;
     }
     return criteria;
+}
+QVector<ResultTransition> resultTransitions(const ResultExcitation &state) {
+    QVector<ResultTransition> pairs;
+    for (const auto &c : state.contributions) {
+        auto pair = std::find_if(pairs.begin(), pairs.end(), [&](const ResultTransition &p) {
+            return p.from == c.from && p.to == c.to && p.spin == c.spin;
+        });
+        if (pair == pairs.end())
+            pair = pairs.insert(pairs.end(), ResultTransition{c.from, c.to, c.spin});
+        (c.deexcitation ? pair->y : pair->x) = c.coefficient;
+    }
+    const auto share = [](const ResultTransition &p) {
+        return p.x * p.x - (std::isfinite(p.y) ? p.y * p.y : 0);
+    };
+    double sum = 0;
+    for (const auto &p : std::as_const(pairs))
+        sum += share(p);
+    if (sum > 0)
+        for (auto &p : pairs)
+            p.weight = 100 * share(p) / sum;
+    std::stable_sort(pairs.begin(), pairs.end(), [&](const ResultTransition &p, const ResultTransition &q) {
+        return share(p) > share(q);
+    });
+    return pairs;
+}
+int resultHomoNumber(const ResultData &data, const QString &spin) {
+    const bool beta = spin == "beta";
+    const auto electrons = data.properties.value("tddft").toObject();
+    if (const auto count = electrons[beta ? "beta_electrons" : "alpha_electrons"]; count.isDouble())
+        return count.toInt();
+    // The analysis lists the orbitals around the frontier: the last occupied one before an empty one.
+    int homo = 0, lumo = 0;
+    for (const auto &o : data.orbitals) {
+        if (o.spin != (beta ? "Beta" : "Alpha") || o.number <= 0)
+            continue;
+        if (o.occupation > 1e-8)
+            homo = std::max(homo, o.number);
+        else if (!lumo || o.number < lumo)
+            lumo = o.number;
+    }
+    return lumo == homo + 1 ? homo : 0;
+}
+QString resultFrontierLabel(int number, int homo) {
+    if (homo <= 0 || number <= 0)
+        return QString::number(number);
+    if (number <= homo)
+        return number == homo ? QString("HOMO") : QString("HOMO−%1").arg(homo - number);
+    return number == homo + 1 ? QString("LUMO") : QString("LUMO+%1").arg(number - homo - 1);
+}
+QString resultTransitionText(const ResultData &data, const ResultTransition &t) {
+    const int homo = resultHomoNumber(data, t.spin);
+    return (t.spin == "alpha"  ? "α "
+            : t.spin == "beta" ? "β "
+                               : "") +
+           QString("%1 → %2").arg(resultFrontierLabel(t.from, homo), resultFrontierLabel(t.to, homo));
 }
 QString resultBriefSummary(const ResultData &data) {
     QStringList parts;

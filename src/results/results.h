@@ -33,11 +33,25 @@ struct ResultMode {
     double frequency = 0, intensity = std::numeric_limits<double>::quiet_NaN();
     QVector<Vec> displacement;
 };
+// One amplitude of an excited state, as NWChem prints those above 0.05: from an occupied orbital to a
+// virtual one (their numbers within the spin, counted from 1 like ResultOrbital::number; a frozen core
+// does not shift them). spin is "alpha" / "beta", or empty for restricted states. An X amplitude
+// (excitation), or a Y one (deexcitation); Tamm–Dancoff states have X only.
+struct ResultContribution {
+    int from = 0, to = 0;
+    QString spin;
+    double coefficient = 0;
+    bool deexcitation = false;
+};
 // One TDDFT excited state. spin is "singlet" / "triplet", or empty for unrestricted states.
 struct ResultExcitation {
+    static constexpr int maxContributions = 50;
     int root = 0;
     QString spin, symmetry;
     double ev = 0, oscillator = 0, s2 = std::numeric_limits<double>::quiet_NaN();
+    // The largest amplitudes (at most maxContributions) in NWChem's order; none when the log ends
+    // within them.
+    QVector<ResultContribution> contributions = {};
 };
 // One DRIVER optimization step ("@" lines): energy / Hartree, gradients / Hartree·Bohr⁻¹, steps / Bohr.
 struct ResultStep {
@@ -45,6 +59,10 @@ struct ResultStep {
     double energy = 0, deltaE = 0, gmax = 0, grms = 0, xrms = 0, xmax = 0, seconds = 0;
 };
 enum class ResultOutcome { NotApplicable, Incomplete, Normal, Error };
+// A bond index of this size or more (in magnitude) is listed as a bond; the reader keeps at most
+// maxBondIndices atom pairs of a log.
+inline constexpr double NotableBondIndex = .05;
+inline constexpr int maxBondIndices = 20000;
 struct ResultData {
     ResultOutcome outcome = ResultOutcome::NotApplicable;
     QString source, format, status, log;
@@ -56,7 +74,12 @@ struct ResultData {
     QVector<ResultExcitation> excitations;
     QVector<ResultStep> steps; // Steps of the last optimization in the log.
     // Log summaries: "thermochemistry" (one object per temperature), "dipole" {x, y, z, debye} in
-    // a.u./Debye, "thresholds" {gmax, grms, xmax, xrms} of the DRIVER, "optimization" state.
+    // a.u./Debye, "thresholds" {gmax, grms, xmax, xrms} of the DRIVER, "optimization" state. Of the
+    // Mulliken analysis: "mulliken" (charges), "valency" and "free_electrons" per atom, and
+    // "bond_indices" [{a, b, value}] with atom numbers a < b from 1: every pair, or with
+    // "bond_indices_omitted" (their number) without the pairs below NotableBondIndex of a molecule
+    // with more than maxBondIndices pairs. "tddft" {alpha_electrons, beta_electrons} of the excited
+    // states' reference.
     QJsonObject properties;
     Document vibrationGeometry;
     QVector<SurfaceTriangle> surface;
@@ -143,6 +166,8 @@ class NwchemLog {
     QString abort, orbitalSpin, ircDirection, shieldingElement;
     QString responseGauge;
     double responseFrequency = 0;
+    int alphaElectrons = -1, betaElectrons = -1; // As last printed (-1: not yet).
+    int bondAtoms = 0;  // The atoms of the bond-index matrix just read, for the valencies after it.
     QStringList recent; // The lines before this one, for the message that precedes an error.
     QVector<ResultOrbital> orbitals;
     QJsonArray thermochemistry, ircPoints, shielding;

@@ -2,7 +2,9 @@
 #include "ui/execution_panel.h"
 #include "editing/coordinates.h"
 #include "model/i18n.h"
+#include "nwchem/history.h"
 #include "nwchem/nwchem.h"
+#include "nwchem/nwchem_restart.h"
 #include "nwchem/run_diagnostics.h"
 #include "ui/editor_chrome.h"
 #include "ui/execution_form.h"
@@ -318,6 +320,9 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner)
         if (run.state() != previousRunState) {
             const bool ended = runStateActive(previousRunState) && !run.active();
             previousRunState = run.state();
+            // The next session looks for a run this one may leave to its supervisor.
+            if (run.supervised())
+                window->setPreference("execution/running", run.active() ? run.plan().directory : QString());
             refresh();
             emit bundleChanged(run.plan().directory);
             if (ended)
@@ -423,6 +428,14 @@ void ExecutionPanel::buildRunPanel() {
             }
         }
     });
+    continueRun = new QPushButton(restartLabel("continue"));
+    continueRun->setObjectName("executionContinue");
+    continueRun->setToolTip(
+        tr("終わらなかった計算を、NWChemのデータベースに残った最新の構造と分子軌道から続けます。"
+           "新しいジョブとして実行します。"));
+    detail->addWidget(continueRun);
+    connect(continueRun, &QPushButton::clicked, this,
+            [this] { window->safe([this] { emit restartRequested(run.plan().directory, "continue"); }); });
     progress = new RunProgress("execution", 4);
     detail->addWidget(progress);
     detail->addStretch();
@@ -964,6 +977,19 @@ void ExecutionPanel::updateRun() {
     for (const auto &value : run.plan().manifest["diagnostics"].toArray())
         hasSetting |= !value.toObject()["setting"].toString().isEmpty();
     diagnosisSetting->setVisible(showingRun && !run.active() && hasSetting);
+    // A run that did not end leaves NWChem's database: the calculation can go on from it.
+    const bool unfinished =
+        showingRun && (run.state() == RunState::Failed || run.state() == RunState::Cancelled ||
+                       run.state() == RunState::TimedOut);
+    if (const auto key = unfinished ? saved.directory + '|' + runStateKey(run.state()) : QString();
+        key != continueKey) {
+        continueKey = key;
+        continuable = false;
+        if (unfinished)
+            for (const auto &choice : restartChoices(saved.directory))
+                continuable |= choice.mode == "continue" && choice.available();
+    }
+    continueRun->setVisible(unfinished && continuable);
     location->setText(displayPath(saved.directory));
     location->setToolTip(saved.directory);
     location->setVisible(!saved.directory.isEmpty());
@@ -1112,9 +1138,52 @@ void ExecutionPanel::stopEditing() {
     busy = true;
     run.disconnect(this);
 }
-void ExecutionPanel::shutdown() {
+void ExecutionPanel::shutdown(bool keepRunning) {
     queue.shutdown();
-    run.shutdown();
+    if (keepRunning && run.supervised())
+        run.release();
+    else
+        run.shutdown();
+}
+void ExecutionPanel::superviseRuns(const QString &program) {
+    run.setSupervisor(program);
+    // Beside the autosave copies, in the application's data folder.
+    const auto folder = QFileInfo(MainWindow::autosaveDirectory()).absolutePath();
+    if (folder.isEmpty() || !QDir().mkpath(folder))
+        return;
+    // A second window on the same account keeps its queue to itself, as before.
+    queueLock = std::make_unique<QLockFile>(QDir(folder).filePath("queue.lock"));
+    queueLock->setStaleLockTime(0);
+    if (queueLock->tryLock(0))
+        queue.setStore(QDir(folder).filePath("queue.json"));
+    else
+        queueLock.reset();
+}
+QString ExecutionPanel::restoreRuns(bool withQueue) {
+    QStringList notes;
+    if (withQueue && queueLock)
+        queue.restore();
+    const int waiting = queue.pending();
+    if (waiting)
+        notes << tr(
+            "前回のキューの待機中 %n 件を復元しました（「計算キュー」の「キューを開始・再開」で続けます）。",
+            nullptr, waiting);
+    // The run of the last session, if the queue has not taken it up already.
+    const auto last = window->preference("execution/running").toString();
+    if (!last.isEmpty() && !run.active() && !run.attach(last)) {
+        window->setPreference("execution/running", {});
+        try {
+            const auto entry = readHistoryEntry(last);
+            if (entry.valid)
+                notes << tr("前回実行していた計算「%1」は%2の状態です（履歴で確認できます）。")
+                             .arg(entry.name, runStateName(entry.status));
+        } catch (const std::exception &) {
+        }
+    }
+    if (run.active())
+        notes
+            << tr("実行中の計算「%1」の監視を再開しました。").arg(QFileInfo(run.plan().directory).fileName());
+    return notes.join(' ');
 }
 void ExecutionPanel::applyChromeStyle() {
     const auto pal = static_cast<QWidget *>(window)->palette();

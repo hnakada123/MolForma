@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "results/spectrum.h"
 #include "model/i18n.h"
+#include "results/result_summary.h"
 #include <QSet>
 #include <algorithm>
 #include <cmath>
@@ -44,12 +45,16 @@ QJsonArray eprNuclei(const ResultData &result) {
     }
     return rows;
 }
-SpectrumData calculateSpectrum(const ResultData &result, const QJsonObject &p) {
-    SpectrumData out;
-    out.parameters = p;
+namespace {
+double spectrumWidth(const QJsonObject &p) {
     const double width = required(p, "width");
     if (width <= 0 || width > 1e5)
         fail(tr("スペクトルの半値全幅は0より大きく100000以下にしてください。"));
+    return width;
+}
+// The peaks, sticks and axes of a result for the kind of out.parameters.
+void collectPeaks(const ResultData &result, SpectrumData &out) {
+    const auto p = out.parameters;
     if (p["kind"] == "nmr") {
         if (result.properties.contains("spin_multiplicity") && result.properties["spin_multiplicity"] != 1)
             fail(tr("分裂なしNMRは一重項の反磁性分子を対象にしています。"));
@@ -187,13 +192,41 @@ SpectrumData calculateSpectrum(const ResultData &result, const QJsonObject &p) {
         out.sticks = merged;
         for (const auto &s : out.sticks)
             out.peaks.append(QJsonObject{{"x", s.x()}, {"weight", s.y()}});
+    } else if (p["kind"] == "ir") {
+        // As the IR chart of the result viewer: the real vibrations with an intensity.
+        out.xUnit = "cm⁻¹";
+        out.yUnit = "km/mol";
+        out.reversed = true;
+        const auto kinds = resultModeKinds(result);
+        for (int i = 0; i < result.modes.size(); ++i) {
+            const auto &m = result.modes[i];
+            if (kinds[i] == ResultModeKind::Rigid || m.frequency <= 0 || !std::isfinite(m.intensity))
+                continue;
+            out.peaks.append(QJsonObject{{"x", m.frequency}, {"weight", m.intensity}, {"mode", i}});
+            out.sticks.append({m.frequency, m.intensity});
+        }
+    } else if (p["kind"] == "uv") {
+        // As the absorption chart of the result viewer: the states with an oscillator strength.
+        out.xUnit = "eV";
+        out.yUnit = tr("振動子強度");
+        for (int i = 0; i < result.excitations.size(); ++i) {
+            const auto &x = result.excitations[i];
+            if (!(x.ev > 0) || !(x.oscillator > 0))
+                continue;
+            out.peaks.append(
+                QJsonObject{{"x", x.ev}, {"weight", x.oscillator}, {"root", x.root}, {"excitation", i}});
+            out.sticks.append({x.ev, x.oscillator});
+        }
     } else {
         fail(tr("対応していないスペクトルの種類です。"));
     }
+}
+// The display range of the sticks and their broadened curve.
+void broaden(SpectrumData &out) {
+    const auto p = out.parameters;
+    const double width = spectrumWidth(p);
     if (out.sticks.isEmpty())
         fail(tr("指定した種類のスペクトルに必要な計算結果がありません。"));
-    if (out.sticks.size() > 4096)
-        fail(tr("スペクトルは4096本までのピークに対応します。"));
     double low = out.sticks.first().x(), high = low;
     for (const auto &point : out.sticks) {
         if (!std::isfinite(point.x()) || !std::isfinite(point.y()))
@@ -215,43 +248,166 @@ SpectrumData calculateSpectrum(const ResultData &result, const QJsonObject &p) {
         for (int i = 1; i < out.curve.size(); ++i)
             if (std::abs(out.curve[i].x() - out.curve[i - 1].x()) < 1e-5)
                 fail(tr("ORDに同じ波長の結果が重複しています。別の計算を分けて読み込んでください。"));
-        return out;
+        return;
     }
-    // Include each peak position as well as the regular grid so narrow peaks are never missed.
+    // Include each peak position as well as the regular grid so narrow peaks are never missed (the
+    // many sticks of a conformer set are drawn over the grid alone).
     QVector<double> xs;
     for (int i = 0; i <= 4096; ++i)
         xs.append(low + (high - low) * i / 4096);
-    for (const auto &point : out.sticks)
-        for (double offset : {0., -width / (2 * std::sqrt(3.)), width / (2 * std::sqrt(3.))})
-            if (point.x() + offset >= low && point.x() + offset <= high)
-                xs.append(point.x() + offset);
+    if (out.sticks.size() <= 4096)
+        for (const auto &point : out.sticks)
+            for (double offset : {0., -width / (2 * std::sqrt(3.)), width / (2 * std::sqrt(3.))})
+                if (point.x() + offset >= low && point.x() + offset <= high)
+                    xs.append(point.x() + offset);
     std::sort(xs.begin(), xs.end());
     xs.erase(std::unique(xs.begin(), xs.end()), xs.end());
+    // A Lorentzian of the given full width at half maximum, its derivative for ESR, or the Gaussian
+    // of the absorption chart; the height at a peak is its weight.
     const double gamma = width / 2;
+    const bool derivative = p["kind"] == "epr" && p["derivative"].toBool(), gaussian = p["kind"] == "uv";
     for (double x : xs) {
         double y = 0;
         for (const auto &point : out.sticks) {
             const double dx = (x - point.x()) / gamma;
-            y += p["kind"] == "epr" && p["derivative"].toBool()
-                     ? -2 * point.y() * dx / (gamma * std::pow(1 + dx * dx, 2))
-                     : point.y() / (1 + dx * dx);
+            y += derivative ? -2 * point.y() * dx / (gamma * std::pow(1 + dx * dx, 2))
+                 : gaussian ? point.y() * std::exp(-std::log(2.) * dx * dx)
+                            : point.y() / (1 + dx * dx);
         }
         out.curve.append({x, y});
     }
+}
+} // namespace
+SpectrumData calculateSpectrum(const ResultData &result, const QJsonObject &p) {
+    SpectrumData out;
+    out.parameters = p;
+    spectrumWidth(p);
+    collectPeaks(result, out);
+    if (out.sticks.size() > 4096)
+        fail(tr("スペクトルは4096本までのピークに対応します。"));
+    broaden(out);
+    return out;
+}
+QJsonObject spectrumContributions(const ResultData &result) {
+    QJsonObject spectra;
+    for (const auto *kind : {"ir", "raman", "uv", "ecd"}) {
+        SpectrumData s;
+        s.parameters = {{"kind", kind}};
+        try {
+            collectPeaks(result, s);
+        } catch (const std::exception &) {
+            continue; // Data MolForma does not draw, such as another ECD gauge.
+        }
+        if (!s.peaks.isEmpty())
+            spectra[kind] = s.peaks;
+    }
+    if (!result.properties.contains("spin_multiplicity") || result.properties["spin_multiplicity"] == 1) {
+        QJsonArray shielding;
+        for (const auto &value : result.properties["shielding"].toArray()) {
+            const auto row = value.toObject();
+            if (row["isotropic"].isDouble())
+                shielding.append(QJsonObject{
+                    {"atom", row["atom"]}, {"element", row["element"]}, {"isotropic", row["isotropic"]}});
+        }
+        if (!shielding.isEmpty())
+            spectra["shielding"] = shielding;
+    }
+    return spectra;
+}
+SpectrumData averagedSpectrum(const QJsonArray &members, const QJsonObject &p) {
+    const auto kind = p["kind"].toString();
+    if (!QStringList{"ir", "raman", "uv", "ecd", "nmr"}.contains(kind))
+        fail(tr("配座平均はIR・通常ラマン・UV–Vis・ECD・NMRに対応します。"));
+    const QString key = kind == "nmr" ? "shielding" : kind;
+    QJsonArray included, omitted;
+    double total = 0;
+    for (const auto &value : members) {
+        const auto member = value.toObject();
+        const double weight = member["weight"].toDouble();
+        if (!(weight > 0) || !std::isfinite(weight))
+            continue; // A duplicate of another conformer.
+        if (member["spectra"].toObject()[key].toArray().isEmpty()) {
+            omitted.append(member["name"]);
+            continue;
+        }
+        included.append(member);
+        total += weight;
+    }
+    if (included.isEmpty())
+        fail(tr("この種類のスペクトルのデータを持つ配座がありません。"));
+    SpectrumData out;
+    QJsonArray conformers;
+    if (kind != "nmr") {
+        out.parameters = p;
+        spectrumWidth(p);
+        collectPeaks(ResultData(), out); // The axes of the kind.
+    }
+    QMap<int, QJsonObject> shielding; // The mean of each atom.
+    for (const auto &value : included) {
+        const auto member = value.toObject();
+        const double fraction = member["weight"].toDouble() / total;
+        conformers.append(QJsonObject{{"name", member["name"]}, {"weight", fraction}});
+        const auto rows = member["spectra"].toObject()[key].toArray();
+        QSet<int> atoms;
+        for (const auto &row : rows) {
+            auto peak = row.toObject();
+            if (kind == "nmr") {
+                const int atom = peak["atom"].toInt();
+                if (conformers.size() == 1)
+                    shielding[atom] = {{"atom", atom}, {"element", peak["element"]}, {"isotropic", 0.}};
+                if (!shielding.contains(atom) || shielding[atom]["element"] != peak["element"] ||
+                    atoms.contains(atom))
+                    fail(tr("配座の間でNMR遮蔽定数の原子が一致しません。"));
+                atoms.insert(atom);
+                shielding[atom]["isotropic"] =
+                    shielding[atom]["isotropic"].toDouble() + fraction * required(peak, "isotropic");
+                continue;
+            }
+            const double x = required(peak, "x"), weight = fraction * required(peak, "weight");
+            peak["weight"] = weight;
+            peak["conformer"] = member["name"];
+            out.peaks.append(peak);
+            out.sticks.append({x, weight});
+        }
+        if (kind == "nmr" && atoms.size() != shielding.size())
+            fail(tr("配座の間でNMR遮蔽定数の原子が一致しません。"));
+    }
+    if (kind == "nmr") {
+        // Fast exchange: one line per atom at the population-weighted mean shielding.
+        ResultData ensemble;
+        QJsonArray rows;
+        for (const auto &row : shielding)
+            rows.append(row);
+        ensemble.properties["shielding"] = rows;
+        out = calculateSpectrum(ensemble, p);
+    } else {
+        if (out.sticks.size() > 32768)
+            fail(tr("配座平均スペクトルは32768本までのピークに対応します。"));
+        broaden(out);
+    }
+    out.parameters["conformers"] = conformers;
+    out.parameters["omitted"] = omitted;
     return out;
 }
 QByteArray spectrumCsv(const SpectrumData &s) {
-    QByteArray text = "type,atom,mode,x,weight\n";
+    // The sticks of an averaged spectrum name their conformer in a last column.
+    const bool conformers = std::any_of(s.peaks.begin(), s.peaks.end(), [](const auto &peak) {
+        return peak.toObject().contains("conformer");
+    });
+    QByteArray text = conformers ? "type,atom,mode,x,weight,conformer\n" : "type,atom,mode,x,weight\n";
     for (const auto &value : s.peaks) {
         const auto p = value.toObject();
         text += "peak," + (p.contains("atom") ? QByteArray::number(p["atom"].toInt()) : QByteArray()) + ',' +
                 (p.contains("mode") ? QByteArray::number(p["mode"].toInt()) : QByteArray()) + ',' +
                 QByteArray::number(p["x"].toDouble(), 'g', 16) + ',' +
-                QByteArray::number(p["weight"].toDouble(), 'g', 16) + '\n';
+                QByteArray::number(p["weight"].toDouble(), 'g', 16);
+        if (conformers)
+            text += ",\"" + p["conformer"].toString().replace('"', "\"\"").toUtf8() + '"';
+        text += '\n';
     }
     for (const auto &point : s.curve)
         text += "curve,,," + QByteArray::number(point.x(), 'g', 16) + ',' +
-                QByteArray::number(point.y(), 'g', 16) + '\n';
+                QByteArray::number(point.y(), 'g', 16) + (conformers ? ",\n" : "\n");
     return text;
 }
 } // namespace mf

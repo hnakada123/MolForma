@@ -80,6 +80,9 @@ void McpPolicy::checkRun(const Document &document, const QString &base) const {
     const auto input = advanced["vectors_input"].toString();
     if (advanced["vectors_guess"] == "file" && !input.isEmpty())
         checkPath(input, reference.isEmpty() ? base : QDir(base).absoluteFilePath(reference));
+    // The job a restart copies its database from.
+    if (const auto job = nwchemRestart(nwchemSettings(document)).job; !job.isEmpty())
+        checkPath(job);
     // Relative locations stay inside the job folder, which is under job_root.
     for (const auto *key : {"scratch_dir", "permanent_dir", "vectors_output"})
         if (const auto value = advanced[key].toString(); QDir::isAbsolutePath(value))
@@ -87,6 +90,7 @@ void McpPolicy::checkRun(const Document &document, const QString &base) const {
 }
 QJsonObject McpPolicy::toJson() const {
     return {{"allowExecutionSettings", allowExecutionSettings},
+            {"keepRuns", keepRuns},
             {"allowedDirectories",
              restricted() ? QJsonValue(QJsonArray::fromStringList(directories)) : QJsonValue()}};
 }

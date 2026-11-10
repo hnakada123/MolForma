@@ -118,6 +118,25 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     bannerRow->addWidget(message, 1);
     banner->hide();
     outer->addWidget(banner);
+    // A calculation that goes on from another job, and the way back to an ordinary one.
+    restartBanner = new QFrame;
+    restartBanner->setObjectName("calculationRestartBanner");
+    restartBanner->setProperty("banner", true);
+    auto *restartRow = new QHBoxLayout(restartBanner);
+    restartRow->setContentsMargins(12, 6, 12, 6);
+    restartMessage = new QLabel;
+    restartMessage->setObjectName("calculationRestartMessage");
+    restartMessage->setWordWrap(true);
+    restartMessage->setTextFormat(Qt::PlainText);
+    restartRow->addWidget(restartMessage, 1);
+    auto *release = new QPushButton(tr("再開を解除"));
+    release->setObjectName("calculationRestartRelease");
+    release->setToolTip(tr("再開元のデータベースを使わず、表示中の構造から新しい計算として実行します。"));
+    restartRow->addWidget(release);
+    connect(release, &QPushButton::clicked, this, [this] { change("restart", QJsonObject()); });
+    restartBanner->hide();
+    outer->addWidget(restartBanner);
+    labels["restart"] = tr("再開元");
 
     auto *body = new QHBoxLayout;
     body->setSpacing(0);
@@ -614,6 +633,16 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     nav->setCurrentKey("basic");
 }
 QString CalculationPanel::valueText(const QString &key, const QJsonValue &value) const {
+    if (key == "restart") {
+        const auto restart = value.toObject();
+        const auto mode = restart["mode"].toString();
+        return restart.isEmpty() ? tr("なし")
+                                 : tr("%1（%2）")
+                                       .arg(QFileInfo(restart["job"].toString()).fileName(),
+                                            mode == "continue"  ? tr("続きから")
+                                            : mode == "hessian" ? tr("Hessianで遷移状態探索")
+                                                                : tr("Hessianを再利用"));
+    }
     for (const auto &c : nwchemChoices(key))
         if (c.value == value.toString())
             return c.label;
@@ -1317,6 +1346,24 @@ void CalculationPanel::refresh() {
                      : window->chemistryRunning() ? tr("分子の整形中です。終了後に条件を編集できます。")
                                                   : QString());
     banner->setVisible(!message->text().isEmpty());
+    const auto restart = nwchemRestart(s);
+    restartBanner->setVisible(!s["restart"].toObject().isEmpty());
+    restartMessage->setText(
+        restart.mode == "continue"
+            ? tr("再開: "
+                 "「%1」の続きを計算します。構造・拘束・分子軌道は再開元のデータベースの値を使うため、分子"
+                 "の編集は反映できません。")
+                  .arg(QFileInfo(restart.job).fileName())
+        : restart.mode == "hessian"
+            ? tr("再開: "
+                 "「%1」の振動数計算のHessianと構造から遷移状態を探索します。分子の編集は反映できません。")
+                  .arg(QFileInfo(restart.job).fileName())
+        : restart.mode == "reuse"
+            ? tr("再開: "
+                 "「%1」のHessianを再利用して振動数と熱化学を求め直します。変えられるのは温度（最適化・振"
+                 "動数の詳細設定）と同位体・質量です。")
+                  .arg(QFileInfo(restart.job).fileName())
+            : tr("再開の設定が不正です。"));
     const auto check = validateNwchem(d);
     const auto method = s["method"].toString();
     const QString referenceName = method == "dft" && check.reference != "rohf"

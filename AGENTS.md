@@ -31,8 +31,14 @@ by responsibility, with paired headers and implementations in the same directory
   `nwchem_geometry.*` generates geometry fragments and fixed-atom constraints.
   `nwchem_output.*` validates visualization settings and generates CUBE/MOLDEN output
   tasks. `nwchem_execution.*` validates launch settings, saves immutable run bundles
-  and controls cancellable NWChem processes. `history.*` scans saved bundles and
-  validates snapshots.
+  (with `job.sh` for runs on another computer) and controls cancellable NWChem processes:
+  as a child process, or through a supervisor (`runJobMain`, the executable's `--run-job <job>`
+  mode) that outlives the window and is followed and stopped through `run.json` and `stop.request`.
+  `nwchem_queue.*` runs saved bundles in sequence and keeps the waiting ones in a file between
+  sessions. `nwchem_restart.*` prepares documents that go on from a job's NWChem database
+  (settings `restart`: the input says `restart`, has no geometry and skips finished tasks) and
+  copies its files into the new job. `history.*` scans saved bundles and validates snapshots;
+  `history_import.cpp` registers runs made outside MolForma.
 - `src/results/`: `results.*` reads NWChem logs, XYZ, CUBE and MOLDEN and generates
   bounded isosurfaces; `molden_orbitals.*` evaluates normalized Gaussian MOs with
   Cartesian/spherical s–g bases. `result_loader.*` owns cancellable reader processes and source

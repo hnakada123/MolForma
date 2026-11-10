@@ -3,12 +3,16 @@
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
+#include "nwchem/nwchem_restart.h"
 #include "nwchem/run_diagnostics.h"
 #include "results/results.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
 #include <QtTest>
 #include <QtWidgets>
+#ifdef Q_OS_UNIX
+#include <csignal>
+#endif
 using namespace mf;
 // Executables carry .exe on Windows.
 #ifdef Q_OS_WIN
@@ -59,7 +63,8 @@ class ExecutionTest : public QObject {
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settings.path());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
-                           settings.path()); // MolForma uses NativeFormat.
+                           settings.path());                          // MolForma uses NativeFormat.
+        qputenv("XDG_DATA_HOME", settings.filePath("data").toUtf8()); // The stored queue of sessions.
         helper = files.filePath("native engine" EXE);
         QVERIFY(QFile::copy(QCoreApplication::applicationDirPath() + "/fake_nwchem" EXE, helper));
         QVERIFY(QFile::setPermissions(helper, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
@@ -943,6 +948,518 @@ class ExecutionTest : public QObject {
         QVERIFY(w.history()->isClean());
         line->setFocus();
         QTest::keyClicks(line, "pending");
+    }
+    // The built application is the supervisor of calculations that go on without their window.
+    static QString supervisor() {
+        return QCoreApplication::applicationDirPath() + "/molforma" EXE;
+    }
+    void supervisedRunEndsAndRecords() {
+        NwchemRun run;
+        run.setSupervisor(supervisor());
+        QVERIFY(run.supervised());
+        auto d = configured();
+        environment(d, {{"MOLFORMA_LITERAL", "kept ' as is"}});
+        run.start(d, files.path());
+        QVERIFY(run.active());
+        QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 15000);
+        QCOMPARE(run.state(), RunState::Finished);
+        const auto directory = run.plan().directory;
+        const auto record = readObject(directory + "/run.json");
+        QCOMPARE(record["status"].toString(), "finished");
+        QCOMPARE(record["exit_code"].toInt(), 0);
+        QVERIFY(record["supervisor"].toObject()["pid"].toInteger() > 0);
+        QVERIFY(record["summary"].isObject());
+        QCOMPARE(run.plan().manifest, record);
+        QVERIFY(readFile(directory + "/output.out").contains("fake NWChem finished"));
+        QCOMPARE(readObject(directory + "/captured.json")["literal"].toString(), "kept ' as is");
+        QVERIFY(!QFileInfo::exists(directory + "/stop.request"));
+        QCOMPARE(readHistoryEntry(directory).status, RunState::Finished);
+        // A failing program and the time limit are the supervisor's to record, too.
+        run.start(configured("fail"), files.path());
+        QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 15000);
+        QCOMPARE(run.state(), RunState::Failed);
+        QCOMPARE(run.plan().manifest["exit_code"].toInt(), 7);
+        QVERIFY(!run.plan().manifest["diagnostics"].toArray().isEmpty());
+        auto limited = configured("slow");
+        setExecutionSetting(limited, "timeout_seconds", 1);
+        run.start(limited, files.path());
+        QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 15000);
+        QCOMPARE(run.state(), RunState::TimedOut);
+        // A supervisor that cannot be started fails the run where it stands.
+        NwchemRun broken;
+        broken.setSupervisor(files.filePath("no such program"));
+        broken.start(configured(), files.path());
+        QCOMPARE(broken.state(), RunState::Failed);
+        QCOMPARE(readObject(broken.plan().directory + "/run.json")["status"].toString(), "failed");
+        // The supervisor runs only the job that was just prepared for it.
+        QProcess again;
+        again.start(supervisor(), {"--run-job", directory});
+        QVERIFY(again.waitForFinished(15000));
+        QCOMPARE(again.exitCode(), 2);
+        QCOMPARE(readObject(directory + "/run.json"), record);
+    }
+    void supervisedRunOutlivesItsWatcher() {
+        QString directory;
+        {
+            NwchemRun run;
+            run.setSupervisor(supervisor());
+            run.start(configured("slow"), files.path());
+            QTRY_COMPARE_WITH_TIMEOUT(run.state(), RunState::Running, 15000);
+            directory = run.plan().directory;
+            run.release(); // The window closes; the calculation goes on.
+            QVERIFY(!run.active());
+        }
+        QTest::qWait(400);
+        auto entry = readHistoryEntry(directory);
+        QCOMPARE(entry.status, RunState::Running);
+        QVERIFY(!entry.orphaned);
+        QVERIFY(runSupervised(entry.manifest));
+        // Another session finds it running, follows it and stops it.
+        NwchemRun again;
+        QVERIFY(again.attach(directory));
+        QCOMPARE(again.state(), RunState::Running);
+        QCOMPARE(again.plan().directory, directory);
+        QVERIFY(again.elapsedSeconds() >= 0);
+        again.stop();
+        QCOMPARE(again.state(), RunState::Stopping);
+        QTRY_VERIFY_WITH_TIMEOUT(!again.active(), 15000);
+        QCOMPARE(again.state(), RunState::Cancelled);
+        QCOMPARE(readObject(directory + "/run.json")["status"].toString(), "cancelled");
+        QVERIFY(!QFileInfo::exists(directory + "/stop.request"));
+        QVERIFY(!again.attach(directory)); // Nothing left to follow.
+        // Anyone may ask the supervisor of a running job to stop it.
+        NwchemRun third;
+        third.setSupervisor(supervisor());
+        third.start(configured("slow"), files.path());
+        QTRY_COMPARE_WITH_TIMEOUT(third.state(), RunState::Running, 15000);
+        QVERIFY(requestRunStop(third.plan().directory));
+        QTRY_VERIFY_WITH_TIMEOUT(!third.active(), 15000);
+        QCOMPARE(third.state(), RunState::Cancelled);
+        QVERIFY(!requestRunStop(third.plan().directory));
+#ifdef Q_OS_UNIX
+        // A supervisor that is killed leaves NWChem running without a keeper: the watcher still sees
+        // it, ends it itself, and the record becomes "interrupted".
+        NwchemRun orphan;
+        orphan.setSupervisor(supervisor());
+        orphan.start(configured("slow"), files.path());
+        QTRY_COMPARE_WITH_TIMEOUT(orphan.state(), RunState::Running, 15000);
+        const auto job = orphan.plan().directory;
+        const auto keeper = readObject(job + "/run.json")["supervisor"].toObject()["pid"].toInteger();
+        QVERIFY(keeper > 0);
+        QCOMPARE(::kill(pid_t(keeper), SIGKILL), 0);
+        QTest::qWait(600);
+        QVERIFY(orphan.active());
+        QVERIFY(!readHistoryEntry(job).orphaned); // NWChem itself is still there.
+        orphan.stop();
+        QTRY_VERIFY_WITH_TIMEOUT(!orphan.active(), 15000);
+        QCOMPARE(orphan.state(), RunState::Interrupted);
+        QCOMPARE(readObject(job + "/run.json")["status"].toString(), "interrupted");
+#endif
+    }
+    void jobScriptsForOtherComputers() {
+        auto d = configured();
+        setExecutionSetting(d, "mode", "mpi");
+        setExecutionSetting(d, "launcher", "mpirun");
+        setExecutionSetting(d, "executable", "nwchem");
+        setExecutionSetting(d, "mpi_ranks", 8);
+        setExecutionSetting(d, "omp_threads", 2);
+        setExecutionSetting(d, "timeout_seconds", 3 * 3600 + 25 * 60 + 7);
+        environment(d, {{"NWCHEM_BASIS_LIBRARY", "/opt/nwchem/libraries"}});
+        setNwchemSetting(d, "start", "ethanol");
+        // No script unless one is asked for.
+        QVERIFY(executionJobScript(d).isEmpty());
+        auto plain = saveExecutionBundle(d, files.path());
+        QVERIFY(!QFileInfo::exists(plain.directory + "/job.sh"));
+        saveExecutionJobPrelude("module load nwchem/7.3.1\nexport SCRATCH=/work/$USER");
+        setExecutionSetting(d, "job_script", "slurm");
+        setExecutionSetting(d, "job_queue", "short");
+        const auto slurm = executionJobScript(d);
+        QVERIFY2(slurm.startsWith("#!/bin/bash\n#SBATCH --job-name=ethanol\n#SBATCH --nodes=1\n"
+                                  "#SBATCH --ntasks=8\n#SBATCH --cpus-per-task=2\n#SBATCH --time=03:25:07\n"
+                                  "#SBATCH --partition=short\n"),
+                 qPrintable(slurm));
+        QVERIFY(slurm.contains("\nmodule load nwchem/7.3.1\nexport SCRATCH=/work/$USER\n"));
+        QVERIFY(slurm.contains("\nexport OMP_NUM_THREADS='2'\n"));
+        // A path of this computer is shown, not exported, on the other one.
+        QVERIFY(slurm.contains("\n# export NWCHEM_BASIS_LIBRARY='/opt/nwchem/libraries/'\n"));
+        QVERIFY(slurm.endsWith("\n'mpirun' -np 8 'nwchem' input.nw > output.out 2> stderr.err\n"));
+        setExecutionSetting(d, "job_script", "pbs");
+        const auto pbs = executionJobScript(d);
+        QVERIFY2(pbs.contains("#PBS -N ethanol\n#PBS -l select=1:ncpus=16:mpiprocs=8:ompthreads=2\n"
+                              "#PBS -l walltime=03:25:07\n#PBS -q short\n#PBS -j oe\n"),
+                 qPrintable(pbs));
+        QVERIFY(pbs.contains("PBS_O_WORKDIR"));
+        // A plain script for a direct start, without limits or a queue.
+        setExecutionSetting(d, "job_script", "shell");
+        setExecutionSetting(d, "mode", "direct");
+        setExecutionSetting(d, "timeout_seconds", 0);
+        setExecutionSetting(d, "executable", "/opt/nw chem/bin/nwchem");
+        const auto shell = executionJobScript(d);
+        QVERIFY(!shell.contains("#SBATCH") && !shell.contains("#PBS"));
+        QVERIFY(shell.endsWith("\n'/opt/nw chem/bin/nwchem' input.nw > output.out 2> stderr.err\n"));
+        // "ジョブとして保存" takes the script along; a run of this computer needs none.
+        const auto saved = saveExecutionBundle(d, files.path());
+        QCOMPARE(QString::fromUtf8(readFile(saved.directory + "/job.sh")), shell);
+        QVERIFY(QFileInfo(saved.directory + "/job.sh").isExecutable());
+        QCOMPARE(readObject(saved.directory + "/run.json")["job_script"].toString(), "job.sh");
+        historyDocument(saved.directory); // Still the bundle that was saved.
+        setExecutionSetting(d, "executable", helper);
+        environment(d, {});
+        const auto run = saveExecutionBundle(d, files.path(), true);
+        QVERIFY(!QFileInfo::exists(run.directory + "/job.sh"));
+        // What a script could not carry safely is refused.
+        setExecutionSetting(d, "job_queue", "short; rm -rf ~");
+        QVERIFY(validateExecution(d, files.path(), false)
+                    .errors.join('\n')
+                    .contains(tr("キュー・パーティション名")));
+        setExecutionSetting(d, "job_queue", "");
+        setExecutionSetting(d, "job_script", "lsf");
+        QVERIFY(!validateExecution(d, files.path(), false).errors.isEmpty());
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, saveExecutionJobPrelude(QString(4001, 'x')));
+        saveExecutionJobPrelude({});
+        // The form of "3 実行設定" edits both; the queue only where a scheduler takes one.
+        MainWindow w;
+        w.loadDocument(configured());
+        auto *kind = w.findChild<QComboBox *>("execution_job_script");
+        auto *queue = w.findChild<QLineEdit *>("execution_job_queue");
+        QVERIFY(kind && queue);
+        QCOMPARE(kind->currentData().toString(), "none");
+        QVERIFY(!queue->isEnabled());
+        kind->setCurrentIndex(kind->findData("slurm"));
+        QCOMPARE(executionSettings(w.document())["job_script"].toString(), "slurm");
+        QVERIFY(queue->isEnabled());
+        input(w, "job_queue", "long");
+        QCOMPARE(executionSettings(w.document())["job_queue"].toString(), "long");
+        w.history()->undo();
+        w.history()->undo();
+        QCOMPARE(kind->currentData().toString(), "none");
+    }
+    void queueSurvivesTheSession() {
+        const auto store = files.filePath("kept queue/queue.json");
+        QStringList jobs;
+        {
+            NwchemRun run;
+            run.setSupervisor(supervisor());
+            NwchemQueue queue(run);
+            queue.setStore(store);
+            queue.enqueue(configured("slow"), files.path());
+            queue.enqueue(configured(), files.path());
+            queue.enqueue(configured(), files.path());
+            queue.resume();
+            QTRY_COMPARE_WITH_TIMEOUT(run.state(), RunState::Running, 15000);
+            for (const auto &entry : queue.entries())
+                jobs << entry.plan.directory;
+            const auto kept = readObject(store)["entries"].toArray();
+            QCOMPARE(kept.size(), 3);
+            QVERIFY(kept[0].toObject()["running"].toBool());
+            // The session ends: the calculation goes on, the rest waits for the next session.
+            queue.shutdown();
+            run.release();
+        }
+        QCOMPARE(readObject(store)["entries"].toArray().size(), 3);
+        NwchemRun run;
+        run.setSupervisor(supervisor());
+        NwchemQueue queue(run);
+        queue.setStore(store);
+        QCOMPARE(queue.restore(), 3);
+        QVERIFY(queue.paused());
+        QVERIFY(run.active());
+        QCOMPARE(run.plan().directory, jobs[0]);
+        QCOMPARE(queue.pending(), 2);
+        QCOMPARE(queue.entries()[1].plan.directory, jobs[1]);
+        QCOMPARE(queue.restore(), 0); // Taken up once.
+        run.stop();
+        QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 15000);
+        QCOMPARE(queue.entries()[0].state, RunState::Cancelled);
+        QTest::qWait(100);
+        QVERIFY(!run.active()); // Paused: nothing starts by itself.
+        queue.setStopOnFailure(false);
+        queue.resume();
+        QTRY_VERIFY_WITH_TIMEOUT(queue.pending() == 0 && !run.active(), 20000);
+        QCOMPARE(queue.entries()[1].state, RunState::Finished);
+        QCOMPARE(queue.entries()[2].state, RunState::Finished);
+        QCOMPARE(readHistoryEntry(jobs[2]).status, RunState::Finished);
+        QVERIFY(!QFileInfo::exists(store)); // Nothing left to take up.
+        // A job that changed since it was registered is not started in another session.
+        {
+            NwchemRun other;
+            NwchemQueue changed(other);
+            changed.setStore(store);
+            const auto id = changed.enqueue(configured(), files.path());
+            QVERIFY(QFileInfo::exists(store));
+            const auto job = changed.entries().first().plan.directory;
+            auto record = readObject(job + "/run.json");
+            record["program"] = "/bin/echo";
+            writeFile(job + "/run.json", QJsonDocument(record).toJson());
+            changed.shutdown();
+        }
+        NwchemRun last;
+        NwchemQueue rejected(last);
+        rejected.setStore(store);
+        QCOMPARE(rejected.restore(), 0);
+        QVERIFY(!QFileInfo::exists(store));
+    }
+    void closingLeavesTheRunToItsSupervisor() {
+        QString job;
+        {
+            MainWindow w;
+            w.executionPanel()->superviseRuns(supervisor());
+            QVERIFY(w.executionPanel()->runsSupervised());
+            w.loadDocument(configured("slow"));
+            w.trustCurrentExecution();
+            w.show();
+            w.executionPanel()->startCalculation();
+            QTRY_COMPARE_WITH_TIMEOUT(w.executionPanel()->currentRun().state(), RunState::Running, 15000);
+            job = w.executionPanel()->currentRun().plan().directory;
+            QCOMPARE(w.preference("execution/running").toString(), job);
+            // Cancel keeps the window; "計算を続けて閉じる" leaves the calculation running.
+            const auto answer = [&](const char *button) {
+                QTimer::singleShot(50, &w, [button] {
+                    auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+                    if (!box || box->objectName() != "closeWhileRunning")
+                        return;
+                    if (*button)
+                        box->findChild<QAbstractButton *>(button)->click();
+                    else
+                        box->button(QMessageBox::Cancel)->click();
+                });
+            };
+            answer("");
+            QVERIFY(!w.close());
+            QVERIFY(w.executionPanel()->running());
+            answer("closeKeepRunning");
+            QVERIFY(w.close());
+        }
+        QTest::qWait(300);
+        QCOMPARE(readHistoryEntry(job).status, RunState::Running);
+        // The next session follows it again, and stops it with the window on request.
+        MainWindow w;
+        w.executionPanel()->superviseRuns(supervisor());
+        const auto note = w.executionPanel()->restoreRuns();
+        QVERIFY2(note.contains(QFileInfo(job).fileName()), qPrintable(note));
+        QVERIFY(w.executionPanel()->running());
+        QCOMPARE(w.executionPanel()->currentRun().plan().directory, job);
+        w.show();
+        QTimer::singleShot(50, &w, [] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()))
+                box->findChild<QAbstractButton *>("closeStopRunning")->click();
+        });
+        QVERIFY(w.close());
+        QCOMPARE(readHistoryEntry(job).status, RunState::Cancelled);
+        // A run that ended while no session followed it is told once.
+        w.setPreference("execution/running", job);
+        MainWindow third;
+        third.executionPanel()->superviseRuns(supervisor());
+        QVERIFY(third.executionPanel()->restoreRuns().contains(runStateName(RunState::Cancelled)));
+        QVERIFY(!third.executionPanel()->running());
+        QVERIFY(third.preference("execution/running").toString().isEmpty());
+    }
+    // A log as NWChem writes it: each task starts with the input module, and a structure is a table.
+    static QString logTask(const QString &body) {
+        return "                NWChem Input Module\n         Total SCF energy =    -74.960000000000\n" +
+               body;
+    }
+    static QString logGeometry(double oz) {
+        return QString("   Output coordinates in angstroms (scale by  1.889725989 to convert to a.u.)\n\n"
+                       "  No.       Tag          Charge          X              Y              Z\n"
+                       " ---- ---------------- ---------- -------------- -------------- --------------\n"
+                       "    1 O                    8.0000     0.00000000     0.00000000    %1\n"
+                       "    2 H                    1.0000     0.75800000     0.00000000     0.50400000\n"
+                       "    3 H                    1.0000    -0.75800000     0.00000000     0.50400000\n\n")
+            .arg(oz, 14, 'f', 8);
+    }
+    // A job that ran and left NWChem's files: the fake engine ends it, the test writes what it left.
+    QString leftJob(Document d, const QString &mode, const QString &log, const QStringList &suffixes) {
+        environment(d, mode.isEmpty() ? QMap<QString, QString>{}
+                                      : QMap<QString, QString>{{"MOLFORMA_FAKE_MODE", mode}});
+        NwchemRun run;
+        run.start(d, files.path());
+        if (!QTest::qWaitFor([&] { return !run.active(); }, 5000))
+            return {};
+        const auto job = run.plan().directory;
+        writeFile(job + "/output.out", log.toUtf8());
+        for (const auto &suffix : suffixes)
+            writeFile(job + "/molforma." + suffix, ("data " + suffix).toUtf8());
+        return job;
+    }
+    void restartContinuesAnInterruptedJob() {
+        auto d = configured();
+        setNwchemSetting(d, "task", "optimize_frequencies");
+        // The optimization was under way when NWChem ended; the structure had moved.
+        const auto job = leftJob(d, "fail", logTask(logGeometry(0) + logGeometry(0.125)),
+                                 {"db", "movecs", "drv.hess", "gridpts.0", "aoints.0", "molden"});
+        QVERIFY(!job.isEmpty());
+        QCOMPARE(readHistoryEntry(job).status, RunState::Failed);
+        const auto choices = restartChoices(job);
+        QCOMPARE(choices.size(), 3);
+        QVERIFY(choices[0].available());
+        QVERIFY(!choices[1].available());
+        QVERIFY(!choices[2].available());
+        QCOMPARE(restartDatabase(job), job + "/molforma.db");
+        const auto next = restartDocument(job, "continue");
+        QCOMPARE(next.atoms[0].position.z(), 0.125);
+        const auto restart = nwchemRestart(nwchemSettings(next));
+        QCOMPARE(restart.mode, "continue");
+        QCOMPARE(restart.job, job);
+        QVERIFY(restart.done.isEmpty());
+        const auto check = validateNwchem(next);
+        QVERIFY2(check.errors.isEmpty(), qPrintable(check.errors.join('\n')));
+        QVERIFY(check.warnings.join('\n').contains(QFileInfo(job).fileName()));
+        const auto generated = generateNwchemInput(next);
+        const auto input = generated.text;
+        QVERIFY(input.contains("\nrestart molforma\n"));
+        QVERIFY(!input.contains("\nstart "));
+        QVERIFY(!input.contains("geometry"));
+        QVERIFY(input.contains("\nbasis"));
+        QCOMPARE(nwchemTaskLines(input), QStringList({"task scf optimize", "task scf frequencies"}));
+        // The outline still names the lines of its blocks.
+        const auto lines = input.split('\n');
+        for (const auto &block : generated.outline.blocks)
+            QVERIFY2(lines.value(block.line).trimmed().startsWith(block.keyword),
+                     qPrintable(block.keyword + ": " + lines.value(block.line)));
+        // The database goes into the new job; integrals, grids and viewing files stay behind.
+        const auto plan = saveExecutionBundle(next, files.path(), true);
+        for (const auto *file : {"molforma.db", "molforma.movecs", "molforma.drv.hess"})
+            QCOMPARE(readFile(plan.directory + '/' + file), readFile(job + '/' + file));
+        for (const auto *file : {"molforma.gridpts.0", "molforma.aoints.0", "molforma.molden"})
+            QVERIFY(!QFileInfo::exists(plan.directory + '/' + file));
+        QVERIFY(QString::fromUtf8(readFile(plan.directory + "/input.nw")).contains("restart molforma"));
+        QCOMPARE(readObject(plan.directory + "/run.json")["calculation"]
+                     .toObject()["restart"]
+                     .toObject()["job"]
+                     .toString(),
+                 job);
+        // A restart waits in the queue like any job: the files it brought do not stop its start.
+        {
+            auto queued = next;
+            environment(queued, {});
+            NwchemRun run;
+            NwchemQueue queue(run);
+            queue.enqueue(queued, files.path());
+            queue.resume();
+            QTRY_VERIFY_WITH_TIMEOUT(queue.pending() == 0 && !run.active(), 10000);
+            QVERIFY2(queue.entries().first().state == RunState::Finished,
+                     qPrintable(queue.entries().first().error));
+            const auto ran = queue.entries().first().plan.directory;
+            QCOMPARE(readObject(ran + "/captured.json")["arguments"].toArray().last().toString(), "input.nw");
+            QVERIFY(QFileInfo::exists(ran + "/molforma.db"));
+        }
+        // What the database fixes cannot change; releasing the restart makes it an ordinary job.
+        auto moved = next;
+        moved.atoms[1].position.x() += .1;
+        QVERIFY(validateNwchem(moved).errors.join('\n').contains(tr("再開元と異なります")));
+        setNwchemSetting(moved, "restart", QJsonObject());
+        QVERIFY(validateNwchem(moved).errors.isEmpty());
+        QVERIFY(nwchemInput(moved).contains("\nstart molforma\n"));
+        QVERIFY(nwchemInput(moved).contains("geometry"));
+        auto renamed = next;
+        setNwchemSetting(renamed, "start", "other");
+        QVERIFY(validateExecution(renamed, files.path()).errors.join('\n').contains(tr("再開元")));
+        auto scan = next;
+        setNwchemSetting(scan, "task", "scan");
+        QVERIFY(validateNwchem(scan).errors.join('\n').contains(tr("再開できません")));
+        auto vectors = next;
+        setNwchemAdvanced(vectors, "vectors_guess", "file");
+        setNwchemAdvanced(vectors, "vectors_input", "a.movecs");
+        setNwchemAdvanced(vectors, "vectors_output", "b.movecs");
+        QVERIFY(validateNwchem(vectors).errors.join('\n').contains(tr("入力movecsは指定できません")));
+    }
+    void restartSkipsFinishedTasks() {
+        auto d = configured();
+        setNwchemSetting(d, "task", "optimize_frequencies");
+        setNwchemSetting(d, "prop_mulliken", true);
+        // The optimization ended; the frequencies were under way.
+        const auto job =
+            leftJob(d, "fail", logTask(logGeometry(0) + logGeometry(0.05)) + logTask(logGeometry(0.05)),
+                    {"db", "movecs", "fdrst"});
+        QVERIFY(!job.isEmpty());
+        const auto next = restartDocument(job, "continue");
+        QCOMPARE(nwchemRestart(nwchemSettings(next)).done, QStringList{"task scf optimize"});
+        const auto generated = generateNwchemInput(next);
+        QCOMPARE(nwchemTaskLines(generated.text), QStringList({"task scf frequencies", "task scf property"}));
+        QVERIFY(generated.text.contains("\ndriver\n"));
+        const auto lines = generated.text.split('\n');
+        for (const auto &block : generated.outline.blocks)
+            QVERIFY2(lines.value(block.line).trimmed().startsWith(block.keyword),
+                     qPrintable(block.keyword + ": " + lines.value(block.line)));
+        QVERIFY(!generated.text.contains("\n\n\n\n"));
+        // Tasks that no longer start the calculation cannot be skipped.
+        auto other = next;
+        setNwchemSetting(other, "task", "frequencies");
+        QVERIFY(validateNwchem(other).errors.join('\n').contains(tr("再開元で終わったタスク")));
+        auto more = next; // A task added after those that ended is run.
+        setNwchemSetting(more, "prop_esp", true);
+        QVERIFY(validateNwchem(more).errors.isEmpty());
+        QCOMPARE(nwchemTaskLines(nwchemInput(more)),
+                 QStringList({"task scf frequencies", "task scf property", "task esp"}));
+        // A job whose every task ended has nothing to go on with.
+        const auto whole = leftJob(d, "fail",
+                                   logTask(logGeometry(0)) + logTask({}) + logTask({}) +
+                                       " Total times  cpu:        0.1s     wall:        0.1s\n",
+                                   {"db"});
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, restartDocument(whole, "continue"));
+    }
+    void restartFromAHessian() {
+        auto d = configured();
+        setNwchemSetting(d, "task", "optimize_frequencies");
+        setNwchemSetting(d, "prop_mulliken", true);
+        d.atoms[1].isotope = 2;
+        const auto log = logTask(logGeometry(0) + logGeometry(0.03)) + logTask(logGeometry(0.03)) +
+                         " Total times  cpu:        0.1s     wall:        0.1s\n";
+        const auto job = leftJob(d, {}, log, {"db", "movecs", "hess", "drv.hess"});
+        QVERIFY(!job.isEmpty());
+        QCOMPARE(readHistoryEntry(job).status, RunState::Finished);
+        const auto choices = restartChoices(job);
+        QVERIFY(!choices[0].available());
+        QVERIFY(choices[1].available());
+        QVERIFY(choices[2].available());
+        // A transition-state search with the Hessian of the frequencies, not the optimizer's own.
+        const auto saddle = restartDocument(job, "hessian");
+        QVERIFY2(validateNwchem(saddle).errors.isEmpty(),
+                 qPrintable(validateNwchem(saddle).errors.join('\n')));
+        const auto search = nwchemInput(saddle);
+        QVERIFY(search.contains("\nrestart molforma\n"));
+        QVERIFY(search.contains("\ndriver\n  maxiter 100\n  default\n  clear\n  inhess 2\n"));
+        QCOMPARE(nwchemTaskLines(search), QStringList{"task scf saddle"});
+        QVERIFY(!search.contains("geometry"));
+        auto followed = saddle;
+        setNwchemSetting(followed, "task", "saddle_frequencies");
+        QCOMPARE(nwchemTaskLines(nwchemInput(followed)),
+                 QStringList({"task scf saddle", "task scf frequencies"}));
+        auto wrong = saddle;
+        setNwchemSetting(wrong, "task", "optimize");
+        QVERIFY(validateNwchem(wrong).errors.join('\n').contains(tr("遷移状態探索")));
+        // Frequencies and thermochemistry again: other temperatures and isotopes, no new Hessian.
+        auto reuse = restartDocument(job, "reuse");
+        setNwchemAdvanced(reuse, "freq_temperatures", QJsonArray{298.15, 350.});
+        reuse.atoms[2].isotope = 2;
+        reuse.atoms[1].isotope = 0;
+        reuse.atoms[1].mass = 3.5;
+        QVERIFY2(validateNwchem(reuse).errors.isEmpty(), qPrintable(validateNwchem(reuse).errors.join('\n')));
+        const auto again = nwchemInput(reuse);
+        QVERIFY2(again.contains("\nfreq\n  reuse\n  mass 2 3.5\n  mass 3 2.014101778\n"), qPrintable(again));
+        QVERIFY(again.contains("temp 2 298.15 350"));
+        QCOMPARE(nwchemTaskLines(again), QStringList{"task scf frequencies"});
+        reuse.atoms[0].position.z() += .2;
+        QVERIFY(validateNwchem(reuse).errors.join('\n').contains(tr("同位体・質量だけ")));
+        const auto plan = saveExecutionBundle(saddle, files.path(), true);
+        QCOMPARE(readFile(plan.directory + "/molforma.hess"), QByteArray("data hess"));
+    }
+    void orbitalsOfAJobStartAnother() {
+        const auto job = leftJob(configured(), {}, logTask(logGeometry(0.2)), {"db", "movecs"});
+        QVERIFY(!job.isEmpty());
+        const auto next = orbitalReuseDocument(job);
+        const auto a = nwchemAdvanced(next);
+        QCOMPARE(a["vectors_guess"].toString(), "file");
+        QCOMPARE(a["vectors_input"].toString(), job + "/molforma.movecs");
+        QCOMPARE(next.atoms[0].position.z(), 0.2);
+        QVERIFY(!nwchemRestart(nwchemSettings(next)).active());
+        QVERIFY2(validateNwchem(next).errors.isEmpty(), qPrintable(validateNwchem(next).errors.join('\n')));
+        const auto plan = saveExecutionBundle(next, files.path(), true);
+        QVERIFY(
+            plan.input.contains("vectors input \"" + job + "/molforma.movecs\" output \"molforma.movecs\""));
+        QFile::remove(job + "/molforma.movecs");
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, orbitalReuseDocument(job));
     }
     void realEngineArtifacts() {
         const auto root = qEnvironmentVariable("MOLFORMA_EXECUTION_ARTIFACTS");

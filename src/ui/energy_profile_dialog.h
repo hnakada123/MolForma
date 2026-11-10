@@ -24,8 +24,8 @@ class EnergyProfileDialog : public QDialog {
     Document pending;
     QJsonObject pendingSettings;
     QJsonArray records;
-    QComboBox *metric, *unit, *reference;
-    QDoubleSpinBox *temperature;
+    QComboBox *metric, *unit, *reference, *entropyModel, *standardCorrection;
+    QDoubleSpinBox *temperature, *frequencyScale, *entropyCutoff;
     QLineEdit *standard;
     QTableWidget *sources, *terms, *values;
     ChartView *chart;

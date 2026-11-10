@@ -46,7 +46,7 @@ class ExecutionForm : public QWidget {
     QString prefix;
     QMap<QString, QWidget *> fields;
     QMap<QString, QLabel *> found; // Where the executable and the launcher were found.
-    QComboBox *mode;
+    QComboBox *mode, *jobScript;
     ChoiceButtons *modes;
     SettingsCard *resources;
     QGridLayout *resourceGrid;
