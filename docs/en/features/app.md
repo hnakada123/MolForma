@@ -23,6 +23,10 @@
 
 **Figure 2** The window with the display language set to Japanese (shown: “1 Molecule”). Choose it in “Language (after restart)” of “Edit → Preferences…”.
 
+## Version and author
+
+“Help → About MolForma” shows MolForma 1.1.0, the author Hiroshi Nakada, the license, RDKit availability and the active 3D renderer. On macOS, this item may appear in the MolForma menu. See the [changes](../changes.md) for additions and their scope.
+
 ## Tests
 
 Use `ctest --test-dir build --output-on-failure`.

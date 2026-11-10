@@ -30,6 +30,21 @@ Reuse keeps the original reference directory and resolves a relative executable 
 
 The list is built by scanning the jobs directly under the folder one at a time in the event loop, and the scan can be stopped or switched to another folder. The limit is 2000 jobs or 20000 folders; when it is reached, a partial list and a limit message are shown. Subfolders are not scanned recursively, and jobs reached through symbolic links are excluded. `run.json` is parsed up to 256 KiB, the input and project up to 8 MiB each. Folders with broken records remain as error rows, and the rest of the history is still read. Folders that hold only an arbitrary NWChem output are not registered in the history; open them directly in the “Result viewer”.
 
+## Thermal corrections and reaction energy diagrams
+
+Select a job and choose “Thermal corrections and reaction energy profile…” from the More menu. Add further selected jobs, then specify stage names, electronic-energy jobs, thermal-correction jobs and coefficients. Components with the same stage name are summed. Add or reorder stages, choose the reference, and select Hartree, kcal/mol or kJ/mol.
+
+Choose E, E + ZPE, H or G. H adds the printed enthalpy correction, which already includes ZPE, once; G additionally subtracts T × S. Missing corrections at the requested temperature or mismatched composition/charge/multiplicity are refused. The view identifies corrections from another job, imaginary frequencies, inconsistent calculation settings and unbalanced stage compositions/charges. Standard state is a record label: changing 1 atm to 1 mol/L does not apply an energy correction. Solvent and calculation settings are recorded from the original job.
+
+Up to 200 results and 200 stages are supported. JSON saves imported values, provenance, conditions and stages for reopening. CSV exports stage values; PNG exports the diagram. A normal termination marker does not establish scientific validity: check the structures and correction sources.
+
+### Build a comparison
+
+1. Select the first job in History and open “Thermal corrections and reaction energy profile…” from More. Use “Add job…” to select other saved job folders.
+2. Choose stage names and electronic-energy jobs in the table. Change the thermal-correction job only when using frequencies from another calculation; check composition, charge, multiplicity and the suitability of the geometries.
+3. For a stage with multiple molecules, use “Add component” with the same stage name and the required coefficient. Use “Add stage” for the next intermediate or other state.
+4. Choose E, E + ZPE, H or G, temperature, units and reference. Do not add ZPE again to H or G. Check warnings and use “Save…” for the JSON comparison, “CSV…” for the values and “PNG…” for the chart.
+
 ## Verifying history
 
 The `history` Qt Test checks new and old fixed copies, moved folders, SHA-256 mismatches, broken records, read limits, links, energies from the log tail and from partial lines, the summary of the whole log (tasks, BSSE, frequencies) and the process information in the run record, detection of ended processes (vanished or reused PID, another PC) and record repair (including the bar that prompts it), atom count, charge and multiplicity of the saved project, which jobs ΔE can compare (composition, method, basis set, kind of energy), CSV, stopping a scan and changing the folder, day dividers, per-state counts and filtering, search, numeric sorting and keeping the selection, the details on the right and saving notes, ΔE comparison (reference, units, order, reasons for not showing), the progress of running jobs and stopping with confirmation, folders without jobs and returning to the folder of “3 Run settings”, the one-row toolbar in narrow windows, protection of unsaved work and Save as on reuse, candidate protection, moving to the result viewer, and the restrictions on what can go to the trash. The normal tests use a native fake executable and need no NWChem, MPI or network.
@@ -39,11 +54,3 @@ On 2026-10-23, CTest for all 9 series and the AddressSanitizer check of 13 histo
 After the page was rebuilt on 2026-10-25, CTest for all 13 series (normal and without VTK) and the AddressSanitizer checks of `history`, `execution`, `mcp` and `output` passed. With jobs made by real NWChem (finished, stopped, timed out, failed, saved only, and water jobs with the same settings for comparing ΔE), the list, comparison, running-job and no-job pages were checked in both light and dark color schemes.
 
 See also: [“Result viewer”](results.md), [recipe 14 From a result to the next calculation](../recipes/reuse_result.md), the list of pages in “[Features](../features.md)”.
-
-## Thermal corrections and reaction energy diagrams
-
-Select a job and choose “Thermal corrections and reaction energy profile…” from the More menu. Add further selected jobs, then specify stage names, electronic-energy jobs, thermal-correction jobs and coefficients. Components with the same stage name are summed. Add or reorder stages, choose the reference, and select Hartree, kcal/mol or kJ/mol.
-
-Choose E, E + ZPE, H or G. H adds the printed enthalpy correction, which already includes ZPE, once; G additionally subtracts T × S. Missing corrections at the requested temperature or mismatched composition/charge are refused. The view identifies corrections from another job, imaginary frequencies, inconsistent calculation settings and unbalanced stage compositions/charges. Standard state is a record label: changing 1 atm to 1 mol/L does not apply an energy correction. Solvent and calculation settings are recorded from the original job.
-
-Up to 200 results and 200 stages are supported. JSON saves imported values, provenance, conditions and stages for reopening. CSV exports stage values; PNG exports the diagram. A normal termination marker does not establish scientific validity: check the structures and correction sources.

@@ -23,6 +23,10 @@
 
 **図2** 表示言語をEnglishにした画面（図は「1 分子」）。「編集 → 環境設定…」の「表示言語 / Language」で選び、再起動後に反映します。
 
+## バージョンと作者
+
+「ヘルプ → MolFormaについて」で、MolForma 1.1.0、作者「Hiroshi Nakada」、ライセンス、RDKitの有効・無効、使用中の3D描画方式を確認できます。macOSでは「MolForma」メニューに移る場合があります。新機能と対応範囲は[変更履歴](../changes.md)を参照してください。
+
 ## テスト
 
 `ctest --test-dir build --output-on-failure` を使用します。

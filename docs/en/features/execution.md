@@ -43,6 +43,17 @@ Later edits do not affect registered calculations. Before launch, the saved inpu
 
 The queue holds up to 1,000 entries per session. Closing the app keeps waiting input bundles in History but does not automatically resume them on the next startup. Ordering, pause state and failure policy last for this session. Concurrent execution and continuing after the app closes are not supported.
 
+### Run several jobs in sequence
+
+1. Prepare the molecule and “2 Calculation” settings, pass the pre-run checks in “3 Run settings”, and press “Add to queue”.
+2. Change the molecule or settings and register another job. Later edits do not alter previously registered jobs.
+3. Open “Calculation queue”, select waiting rows and use “Move up” or “Move down” as needed. Check “Pause the queue on failure, stop or timeout”, then press “Start / resume queue”.
+4. If a failure pauses the queue, inspect the run-panel diagnosis and log. Correct settings and register a new job; resume the queue to continue the remaining entries.
+
+![Two waiting entries in the calculation queue: water Raman and methyl-radical ESR, with start/resume, reorder, cancel and failure-policy controls](images/execution/03_queue.png)
+
+**Figure 3** Jobs run one at a time using their saved molecules and settings. Waiting bundles are also accessible from History.
+
 ## Environment and paths
 
 - `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `GOTO_NUM_THREADS`, `MKL_NUM_THREADS`, `BLIS_NUM_THREADS` and `VECLIB_MAXIMUM_THREADS` are set from dedicated fields. `OMP_DYNAMIC` and `MKL_DYNAMIC` are set to FALSE. The environment variable table rejects duplicate entries for these and for `OMP_STACKSIZE`.
@@ -79,6 +90,10 @@ Currently each window runs one calculation at a time. SSH, Slurm/PBS, arbitrary 
 
 You can start a calculation from any tab with “Run calculation” in the header or “Calculation → Run calculation” (F5) (if it cannot start, “3 Run settings” opens and shows the reason in the check card). The “Calculation” menu also has stop, save as job, open result file and history. When a calculation ends (finished, failed, stopped or time limit), the result is shown in the run status at the right of the status bar (the summary of a log loaded into the result viewer also appears on the left); if MolForma is in the background, the taskbar alerts you, and a desktop notification is shown where supported. With “Load into result viewer when done” enabled (on by default, saved in the app settings), a job folder that ended normally is loaded into the result viewer. The tab does not switch. The log field of the run panel appends only what has been added to the file, so a text selection is not lost (it shows up to the last 128 Ki characters). New lines are shown while “Follow” is on (the default) or while the field is scrolled to the end. The log switch (stdout, stderr), file name, follow and copy are the same as in the file area of “History”. The state and elapsed time of the running or last calculation are always shown in the status bar at the bottom of the window; clicking it opens or closes the run panel. While running, the header also shows the elapsed time and “Stop”. “Stop” always asks for confirmation, wherever you press it.
 
+## Failure diagnosis
+
+The run panel shows recognized SCF convergence failures, optimization step limits, insufficient memory, unreadable basis files, timeouts and launch failures, along with the supporting log line. “Open settings related to this diagnosis” opens the relevant setting. Diagnoses are saved in `run.json`, shown in history and exposed by MCP. Classification uses common messages in the final 128 KiB of stdout/stderr and can miss other errors. It does not change calculation settings automatically. See [preparing a new calculation from a result](results.md#prepare-a-new-calculation-from-a-result-geometry).
+
 ## Run settings verification
 
 The Qt Test `execution` uses a test process written in C++ to check the arguments, environment and working directory, the frozen copy of the input, protection of paths and existing files, save compatibility, launch failure, nonzero exit, stop, time limit and termination of Unix child processes, the log size limit, Undo/Redo, candidates, Ctrl+S while editing, shutdown, each item of the pre-run check, progress read from the running log (task stages, DRIVER steps and convergence criteria), opening, closing and placement of the run panel (the tabs stay uncovered, the height is remembered, filling the place of the tabs, low windows), its closing when the result viewer opens, stderr after a failure, “Stop…” and the header display, and the text below the executable field (only for names found in PATH). Regular CTest needs no NWChem, MPI or network.
@@ -93,7 +108,3 @@ QT_QPA_PLATFORM=offscreen MOLFORMA_EXECUTION_ARTIFACTS=/tmp/molforma-execution \
 On 2026-10-22, NWChem 7.3.1 was launched with 2 MPI processes, 1 OpenMP/BLAS thread each and 256 MB of memory per process, and an HF/STO-3G calculation of water was confirmed to complete with exit code 0 and an SCF energy of −74.945628203255 Hartree. A DFT/cc-pVTZ optimization and frequency job was stopped after the DFT module started, and it was confirmed that on Linux no child processes with the job folder as working directory remained. All 6 CTest suites and the AddressSanitizer check of the run settings tests passed.
 
 See also: [“History”](history.md), [recipe 1 Building from atoms and bonds](../recipes/atoms_and_bonds.md), the list of pages in “[Features](../features.md)”.
-
-## Failure diagnosis
-
-The run panel shows recognized SCF convergence failures, optimization step limits, insufficient memory, unreadable basis files, timeouts and launch failures, along with the supporting log line. “Open settings related to this diagnosis” opens the relevant setting. Diagnoses are saved in `run.json`, shown in history and exposed by MCP. Classification uses common messages in the final 128 KiB of stdout/stderr and can miss other errors. It does not change calculation settings automatically. See [preparing a new calculation from a result](results.md#prepare-a-new-calculation-from-a-result-geometry).

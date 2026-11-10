@@ -28,6 +28,13 @@ title: MolForma — a molecular editor for NWChem
   </div>
 </section>
 
+<section class="wrap feature">
+  <p class="eyebrow">MolForma 1.1.0 · 2026-11-10</p>
+  <h2>Queue calculations and explore spectra and properties</h2>
+  <p>This update adds a local calculation queue, batch evaluation of conformer sets, thermal corrections and reaction energy profiles. The Result viewer adds NMR, normal Raman, solution ESR, ECD, ORD (β), ESP-colored surfaces, grid slices, and dipoles and polarizabilities in 3D.</p>
+  <a class="more" href="{{ '/en/changes.html' | relative_url }}">See the 1.1.0 changes and supported scope</a>
+</section>
+
 <section class="wrap flow">
   <h2>Follow the tabs from left to right</h2>
   <p class="sub">The numbered tabs in the header are the order of the work.</p>
@@ -101,6 +108,8 @@ title: MolForma — a molecular editor for NWChem
         <li>BSSE correction</li>
         <li>ZORA, DKH, X2C</li>
         <li>Mulliken, ESP, NMR, polarizability</li>
+        <li>Raman · ESR · ECD · ORD</li>
+        <li>ESP and field CUBE</li>
       </ul>
       <a class="more" href="{{ '/en/features/calculation.html' | relative_url }}">About “2 Calculation”<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
     </div>
@@ -111,11 +120,13 @@ title: MolForma — a molecular editor for NWChem
   <div class="feature-text">
     <p class="eyebrow">Result viewer</p>
     <h2>Check the results right where you work</h2>
-    <p>Run and stop NWChem locally and follow its progress and log. Open a finished calculation in the result viewer and bring the optimized structure into the next calculation.</p>
+    <p>Run and stop NWChem locally, or queue jobs to run one at a time. Inspect diagnoses and logs on failure, and prepare a new calculation from a result geometry and the original settings.</p>
     <ul class="checks">
       <li>The optimization and its convergence, energies and ΔE</li>
-      <li>Animated vibrations, IR spectra and thermochemistry</li>
-      <li>Isosurfaces of molecular orbitals and densities (CUBE, MOLDEN)</li>
+      <li>Animated vibrations, IR, normal Raman and thermochemistry</li>
+      <li>Unsplit NMR, solution ESR, ECD and ORD β</li>
+      <li>Orbital and density isosurfaces, ESP coloring and grid slices</li>
+      <li>Dipoles and polarizabilities in 3D</li>
       <li>Excited states and absorption spectra, scan and IRC paths</li>
     </ul>
     <a class="more" href="{{ '/en/features/results.html' | relative_url }}">About the result viewer<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
@@ -129,7 +140,7 @@ title: MolForma — a molecular editor for NWChem
 <section class="wrap cards">
   <div class="card">
     <h3><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"><path d="M12 7v5l3 2"/><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3 4v4h4"/></svg>History</h3>
-    <p>Saved calculations are listed by day, with energy differences (ΔE) between jobs of the same composition, method and basis. The molecule and settings of a calculation can be reused as they are.</p>
+    <p>Browse saved jobs by day and compare E, E + ZPE, H or G alongside ΔE. Combine electronic energies with corrections from another job, sum weighted reaction stages, and export tables and energy profiles.</p>
     <a class="more" href="{{ '/en/features/history.html' | relative_url }}">About history<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
   </div>
   <div class="card">

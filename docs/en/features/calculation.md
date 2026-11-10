@@ -22,7 +22,7 @@ Changes to the settings are recorded in the shared undo/redo history (“Undo”
 | Relativistic | ZORA (DFT only), Douglas–Kroll–Hess (DKH2), X2C. Used with all-electron basis sets in HF/DFT |
 | Convergence | SCF max. iterations and convergence (NWChem default, Normal, Tight, Very tight), optimization max. iterations and Normal/Tight/Loose, CC max. iterations, frozen core for correlated calculations |
 | Environment | COSMO for HF/DFT (dielectric constant or solvent name), SMD for DFT (solvent name). A UHF reference with HF is rejected because NWChem's COSMO does not support it; use ROHF or UKS. Optional output of the saved point charges |
-| Properties | Mulliken charges, ESP and RESP charges, NMR shielding constants (GIAO), static polarizability. Computed at the last level of theory |
+| Properties and spectroscopy | Mulliken and ESP/RESP charges, NMR shielding, polarizability, normal Raman, ESR g/A tensors, ORD β and ESP/field CUBE. ECD is requested with TDDFT. See the requirements below |
 | Composite calculations | Single point with another method or basis set after an optimization or transition state search, BSSE (counterpoise) correction with bonded molecules as monomers, internal-coordinate constraints, custom additional input |
 | Output | Calculation name, title, memory per MPI process, Å/Bohr. The finished `.nw` is copied and saved in “4 Input preview” |
 
@@ -69,6 +69,23 @@ Running calculations and MPI launch settings are in “3 Run settings”; output
 - “BSSE correction” treats bonded molecules as monomers and writes a `bsse` block (`mon`, the sum of each monomer's formal charges as `charge`, `mult 1`). NWChem's BSSE module turns the partner into ghosts in each monomer calculation, so `bqX library X …` basis sets for all elements (also in `cd basis` with RI-J) are added automatically (without them it stops with “no basis on ghost atom”). It can be used for single-point energies, gradients and geometry optimizations, and only for singlets made of closed-shell monomers. It is rejected when the total charge differs from the sum of the formal charges, and in combination with solvent, TDDFT, properties, follow-up calculations, CUBE/MOLDEN or external point charges.
 - The “BSSE error” and “Corrected energy” NWChem 7.3.1 prints add the errors of only the first half of the monomers (`task_bsse.F` sums the 2·nmon monomer energies with `do j = 1, nmon, 2`; with two monomers, only the first). When reading results, MolForma recomputes the correction over all the monomers from their energies after the supermolecule's (own basis, then the full one); when it differs from NWChem's, it warns and uses the recomputed correction and corrected energy (also for “Energy of the calculation” and ΔE in “History”). From the sum of the monomers in their own bases, the “Properties” tab also shows the interaction energy (corrected and uncorrected).
 - “Follow-up single point” computes a single-point energy after an optimization or transition state search with another method, functional, dispersion correction or basis set (common to all elements). NWChem keeps settings in the runtime database, so `unset scf:*` and `unset dft:*` (`unset mp2:*` and `unset ccsd:*` for correlated calculations) are written before the follow-up calculation so that the CAM parameters and dispersion correction of the first settings do not carry over. Solvent, relativistic Hamiltonian and RI-J are used as they are. If the main calculation uses an ECP and the follow-up does not, it is rejected because the ECP would remain. The follow-up settings are checked by the same rules, and their errors are shown prefixed with “Follow-up single point: ”.
+
+## Additional spectroscopy and property grids
+
+Version 1.1.0 adds the following controls under Properties and Excited states (TDDFT). Settings are saved in the project, and incompatible combinations are reported before input generation. Run NWChem to produce the required data, then open it in the [Result viewer](results.md).
+
+| What to display | Control | Main requirements and output |
+| --- | --- | --- |
+| ¹H/¹³C NMR | Properties → NMR shielding (GIAO) | Final theory level HF/DFT. The chart targets singlet diamagnetic molecules and requires a reference shielding calculated at the same level |
+| Normal Raman | Properties → Normal Raman (closed-shell DFT frequencies) | Closed-shell DFT frequencies or optimization → frequencies. Excitation wavelength defaults to 532 nm (range 100–5000 nm). Activities are read from the log or `.normal` |
+| ESR/EPR | Properties → ESR g and A tensors (doublet DFT / ZORA) | Multiplicity 2, unrestricted DFT and ZORA. The log contains g shifts and hyperfine A tensors. Choose nuclei and microwave frequency in the viewer |
+| ECD | Excited states (TDDFT) → ECD rotatory strengths (cdspectrum) | Enable TDDFT for a DFT single point. Writes length-gauge rotatory strengths for the excited states |
+| ORD (β) | Properties → ORD (GIAO, closed-shell HF/DFT) | Closed-shell HF/DFT. Start < end within 100–5000 nm, 2–50 points. Defaults to 400–700 nm at 7 points, with a response calculation at each uniformly spaced wavelength |
+| ESP and field magnitude | Properties → Electrostatic potential CUBE / Electric-field magnitude CUBE | Final theory level HF/DFT. Padding defaults to 4 Å (0.5–20 Å), points per axis to 50 (5–100). These grids are separate from ESP atomic charges |
+
+Normal Raman cannot be combined with a follow-up single point, TDDFT, BSSE or ghost centers. ESR excludes follow-up single points and ghosts. ORD excludes follow-up single points, BSSE, scans, IRC and ghosts. Property grids exclude BSSE and ghosts; property calculations in general exclude scans and IRC. The usual method, solvent and basis validation still applies.
+
+Reimporting generated input supports normal Raman, ESR with both g shifts and hyperfine coupling requested, ECD, uniformly spaced ORD wavelengths and ESP/field grids. It does not reconstruct arbitrary response calculations or nonuniform ORD wavelength series. See the [Result viewer](results.md) for display approximations and units.
 
 ## Additional input (custom keywords)
 
@@ -125,7 +142,3 @@ CCSD(T) is tested with water/6-31G. In this environment, CCSD(T) of H₂/STO-3G 
 4. Run it with “Run calculation”, and check the BSSE correction and the corrected energy in “Properties” or the summary of the “Result viewer”. If you choose geometry optimization, it optimizes with BSSE-corrected gradients.
 
 See also: [Advanced settings and CUBE/MOLDEN output](advanced.md), [recipe 5 Chains and conformers](../recipes/butane_conformers.md), [recipe 10 Ions and radicals](../recipes/phenoxyl_radical.md), [recipe 13 Transition states and reaction paths](../recipes/sn2_transition_state.md), the list of pages in “[Features](../features.md)”.
-
-## Additional spectroscopy and property grids
-
-Properties now includes normal Raman, doublet DFT/ZORA ESR g and A tensors, closed-shell HF/DFT ORD, and ESP/electric-field grids. Excited states includes ECD rotatory strengths. Unsupported method/reference/task combinations are refused before input generation. Wavelengths, grid padding and point counts are saved with the project. See [Results viewer](results.md) for calculation conditions and display limitations.

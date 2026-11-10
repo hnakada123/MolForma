@@ -1,5 +1,7 @@
 # “Result viewer”
 
+For charts, see [spectroscopy](#nmr-normal-raman-and-solution-esr-spectra) and [ECD/ORD](#ecd-and-ord). For colored surfaces and dipoles, see [properties in 3D and slices](#properties-in-3d-and-slices). To continue with another job, see [preparing a new calculation](#prepare-a-new-calculation-from-a-result-geometry).
+
 Load a single result file with “Open…” in the top bar, or list the matching files of a folder with “Open job folder…” in its ▾ menu. From the left, the bar shows the job folder name (the full path in the tooltip), the file list, the format (NWChem output, MOLDEN, CUBE, XYZ) and “Ended normally” if the NWChem log ended normally (without a record of normal termination, or on an error, only the warning above the detail tabs says so), and on the right “Open…”, “Reload”, “Cancel”, “Compare”, “Apply as candidate” and “Export” (only “Open…” while nothing is open). When the window is too narrow for one line, “Compare”, “Apply as candidate” and “Export” become icons only (with their names in tooltips). Loading, cancellation, errors and the result of “Compare” are shown in the message area below the detail tabs on the right; when there is nothing to show, the area is closed (opening and closing it does not move the top edge of the detail tabs). “View results” in the run panel opens the job folder shown there. `output.out` is selected first if present; otherwise the first supported file is opened, including in a folder containing only XYZ files. Only the top level of the folder is scanned. In addition, the CUBE and MOLDEN output paths recorded in MolForma's `run.json` (at most 2) are included in the list. Outputs in permanent subfolders or at absolute paths can be chosen too, but there is no recursive scan.
 
 ![The result viewer with the ethanol optimization → frequencies job: the optimized structure on the left, and on the right the “Summary” with the calculated energy, converged optimization, no imaginary frequencies, HOMO–LUMO gap, dipole moment and thermochemistry](images/results/01_summary.png)
@@ -12,7 +14,8 @@ Vibration animation files are also combined in the cancellable reader process. �
 
 | Format | Shown content |
 | --- | --- |
-| NWChem `.out` / `.log` | Output coordinate tables (Å / a.u.), SCF, DFT, MP2, CCSD and CCSD(T) total energies in output order, optimization convergence messages, termination and error messages (an NWChem errquit box appears in the status as “NWChem error: <message>”), projected frequencies, displacements and IR intensities, optimization “@” steps and convergence thresholds, thermochemistry (ZPE, internal energy and enthalpy corrections per temperature, entropy, Cv, symmetry number), dipole moment, orbital energies of the last orbital analysis, TDDFT excited states (energy, oscillator strength, <S²>), the points of coordinate scans (MolForma's `MolForma scan k/n` markers) and IRC (`&` lines, forward and backward), BSSE correction, COSMO solvation energy and SMD solvation free energy, Mulliken charges from PROPERTY, ESP and RESP charges, NMR shielding constants (isotropic, anisotropy), polarizability tensor |
+| NWChem `.out` / `.log` | Output coordinate tables (Å / a.u.), SCF, DFT, MP2, CCSD and CCSD(T) total energies in output order, optimization convergence messages, termination and error messages (an NWChem errquit box appears in the status as “NWChem error: <message>”), projected frequencies, displacements and IR intensities, optimization “@” steps and convergence thresholds, thermochemistry (ZPE, internal energy and enthalpy corrections per temperature, entropy, Cv, symmetry number), dipole moment, orbital energies of the last orbital analysis, TDDFT excited states (energy, oscillator strength, <S²>), the points of coordinate scans (MolForma's `MolForma scan k/n` markers) and IRC (`&` lines, forward and backward), BSSE correction, COSMO solvation energy and SMD solvation free energy, Mulliken charges from PROPERTY, ESP and RESP charges, NMR shielding constants (isotropic, anisotropy), polarizability tensor, Raman activities, ESR g shifts and hyperfine tensors, ECD rotatory strengths, GIAO optical-rotation β |
+| NWChem `.normal` | Normal Raman frequencies and activities. No geometry or displacement, so this file alone cannot animate vibrations |
 | `.xyz` | Single and multiple structures. Frame selection and playback of structure sequences. Also concatenated NWChem `freq animate` XYZ |
 | `.cube` / `.cub` | Atom coordinates and grid in Bohr, non-orthogonal grids, positive and negative isosurfaces. Orbital CUBE files with a negative atom count and data IDs, selection among multiple data sets with `NVAL` |
 | `.molden` / `.mld` / `.molde` | `[Atoms]` (Angs / AU), `[GEOMETRIES] XYZ`, `[GEOCONV] energy`, symmetry, energy, occupation and Alpha/Beta from `[MO]`, `[FREQ]`, `[FR-COORD]`, `[FR-NORM-COORD]`, `[INT]` |
@@ -106,7 +109,62 @@ task dplot
 
 Omitting `orbitals view` and specifying `spin total` produces a CUBE of the total electron density. The 24 in `limitxyz` is the number of divisions along each direction, giving 25 grid points. Choose the normalization convention to suit the program that will read the MOLDEN file. References: [NWChem DPLOT](https://nwchemgit.github.io/DPLOT.html), [NWChem Properties / MOLDENFILE](https://nwchemgit.github.io/Properties.html#moldenfile), [MOLDEN format](https://www.theochem.ru.nl/molden/molden_format.html), [VMD CUBE reader](https://www.ks.uiuc.edu/Research/vmd/plugins/molfile/cubeplugin.html).
 
+## NMR, normal Raman and solution ESR spectra
+
+A “Spectra” tab appears for supported output. It draws sticks and a Lorentzian display curve; width means FWHM. Blank range fields use automatic bounds. Export peaks and curves as CSV or the chart as PNG. “Save display settings” stores the nucleus, reference, width, range, weights and other parameters as JSON. Reload it with the same result file open. A changed path, target, size or modification time prevents applying it. The log and editor molecule remain unchanged.
+
+- **NMR**: Select ¹H or ¹³C and enter a reference shielding in ppm, such as TMS calculated at the same level. δ ≈ reference σ − sample σ; larger ppm is on the left. No reference is guessed. Peak weights default to 1 and can be edited in the table. Selecting a peak highlights its result atom. This model targets singlet diamagnetic molecules; it excludes J splitting, equivalent-nucleus, conformer or motional averaging, experimental integrals and paramagnetic NMR.
+- **Normal Raman**: Enable it under “2 Calculation → Properties” and specify an excitation wavelength. Supported tasks are closed-shell DFT frequencies and optimization + frequencies, without follow-up single points, TDDFT, BSSE or ghost centers. Read the log activity table or a `.normal` file to plot Raman activities in Å⁴/amu. Peaks select modes when the log includes matching vibrations. A `.normal` file alone contains no geometry or displacement. Its broadened scattering-cross-section columns are distinct from the activities used here. Experimental intensity, temperature conversion and resonance Raman are unsupported.
+- **ESR/EPR**: Enable “ESR g and A tensors” for doublet unrestricted DFT with ZORA. In the viewer, set microwave frequency (GHz), width (mT) and included nuclei, and choose absorption or first derivative. The nuclear table selects result atoms. This is a first-order high-field model for fast-tumbling S = 1/2 solutions. Selected isotopes have 100% abundance; natural-abundance mixtures, powders, slow motion and high spin are unsupported. Supported magnetic isotopes are ¹H, ¹³C, ¹⁴N, ¹⁷O, ¹⁹F, ²⁹Si, ³¹P, ³³S, ³⁵Cl and ⁷⁹Br. H, N, F and P are included by default; select other nuclei explicitly.
+
+ESR converts NWChem Δg in ppt to g = ge I + 0.001 Δg, then obtains isotropic A in MHz from the trace of A×g/ge. It refuses a spectrum if the largest combined hyperfine splitting exceeds 10% of the microwave energy. Spectra support at most 4096 peaks. MCP `get_results` sections `spectrum` and `spectrum_peaks` use the same numerical implementation.
+
+References: [NWChem Raman](https://nwchemgit.github.io/Properties.html#raman), [NWChem EPR tensor convention](https://nwchemgit.github.io/EPR-pNMR.html). Water normal Raman and methyl-radical EPR were checked with NWChem 7.3.1.
+
+### Display and save a chart
+
+1. Open the job's `output.out` or another supported result, then choose a type in the “Spectra” tab. Missing properties are not inferred from a log that does not contain them.
+2. Supply the nucleus and reference shielding for NMR, or microwave frequency and included nuclei for ESR. FWHM uses horizontal-axis units: ppm, cm⁻¹, mT or eV for NMR, Raman, ESR or ECD respectively. Enter range bounds low to high, including for NMR.
+3. Select peaks to identify their atoms, vibrations or excited states. NMR also allows editing weights. Changing width or weights does not change the log.
+4. Use “Save display settings…” for JSON, “CSV…” for peaks and curve, and “PNG…” for the chart. To reuse settings, open the same result file and choose “Load display settings…”.
+
+![First-derivative solution ESR of the methyl radical, using 9.5 GHz, 0.1 mT width and the hydrogen nuclei](images/results/05_epr.png)
+
+**Figure 5** S = 1/2 solution ESR from calculated g and A tensors. Choose the nuclei, microwave frequency and linewidth; this is not a natural-abundance mixture.
+
+## Prepare a new calculation from a result geometry
+
+Open a saved job result, display the desired geometry and press “Prepare a new calculation”. MolForma verifies the saved bundle, restores the original molecule and calculation/execution settings as an unsaved project, and proposes the displayed coordinates as a candidate. Atom correspondence and fixed atoms are checked. Confirm the candidate before running a new job. Logs initially show the last available geometry; this does not imply a completed or converged optimization. This workflow does not reuse a Hessian or database through NWChem `restart`.
+
+This action requires a saved job whose `input.nw`, `project.molforma.json` and `run.json` can be verified; it is disabled for an independent log. With only a log, open the matching molecule and use “Apply as candidate”, or export XYZ.
+
+## ECD and ORD
+
+Enable TDDFT and ECD rotatory strengths in “2 Calculation → Excited states” to generate `cdspectrum`. The reader uses length-gauge excitation energies and rotatory strengths (10⁻⁴⁰ esu² cm²), retaining their signs in a Lorentz curve on an eV axis. Peak selection identifies the corresponding excited-state row. Conversion to Δε, GIAO/velocity-gauge ECD and conformer averaging are unsupported.
+
+In Properties, ORD specifies start/end wavelengths and 2–50 points, generating one GIAO response task per wavelength for closed-shell HF/DFT. “Spectra → ORD (β)” connects isotropic optical-rotation β values in atomic units in wavelength order. It does not convert to specific rotation or broaden the data. Only undamped real values are supported; connecting lines are not quantitative interpolation near resonances. Split calculations with duplicate wavelengths into separate logs. Input import supports uniformly spaced wavelength series.
+
+![ECD of hydrogen peroxide, with signed rotatory-strength sticks and a Lorentzian curve on the eV axis](images/results/06_ecd.png)
+
+**Figure 6** ECD display. The vertical axis uses calculated rotatory strengths, not Δε.
+
+## Properties in 3D and slices
+
+![Water dipole arrow and polarizability axes and ellipsoid in the Properties in 3D / slices view](images/results/07_property_geometry.png)
+
+**Figure 7** The dedicated right-hand view displays dipole and polarizability. Display scales do not change calculated values or atom coordinates.
+
+Logs containing dipoles or polarizabilities offer a dedicated molecule view. Dipole arrows follow the physics convention from negative to positive; values are in D and the scale is Å/D. Charged-molecule values depend on the calculation origin: placing an arrow at the molecular center does not recalculate the dipole. Parsed coordinates and the source log are retained. Polarizability uses the symmetric tensor's principal axes and a wire ellipsoid with radii proportional to the square roots of positive principal values. Nonsymmetric and nonpositive tensors are refused; response frequency is shown. Camera rotation transforms both molecule and properties without editing coordinates.
+
+Electrostatic-potential and electric-field-magnitude CUBE options in “2 Calculation → Properties” generate `PROPERTY ESP/EFIELD` with `GRID`, padding and points per axis. Files are `start_esp_grid.cube` and `start_efield_grid.cube`, independently of ESP atomic charges.
+
+Open an electron-density CUBE, then choose a color CUBE in “Properties in 3D / slices”. Atom order, elements and positions (within 10⁻⁴ Å) must agree. Trilinear interpolation requires the color grid to cover the entire surface; no automatic alignment is applied. Slices use the color grid, or the original CUBE until one is chosen. Select the fixed grid axis and index. Slice axes are grid indices, not projections of physical distances, including for skew grids.
+
+Set identical color minima (red) and maxima (blue) to compare molecules. Surface and slice share the color scale. Check units against the generating calculation: selecting units changes only the label. Available labels include Eh/e for ESP and Eh/(e·a₀) for field magnitude. Magnitudes do not provide field vectors or field lines. PNG exports the view. Grids are limited to two million points, with cancellable loading.
+
 ## Result viewer verification
+
+On 2026-11-10, all 16 CTest suites passed after the local feature additions, along with VTK surface-coloring and projection tests on a virtual display. Actual NWChem 7.3.1 runs verified Raman, ESR, ECD, ORD and ESP/electric-field CUBE outputs.
 
 The Qt Test `results` checks log units, energies, termination detection and incomplete coordinate tables, projected frequencies and IR intensities, XYZ structure sequences, MOLDEN units, orbitals and vibrations, CUBE non-orthogonal grids, positive/negative isosurfaces and multiple data sets, the calculation energy per task (reference structure of frequencies, follow-up single point), invalid numbers and size limits, transfer between processes, load cancellation and rejection of stale results, preservation of the edited molecule and history, saving the reference structure during vibrations, the termination state display (normal termination in the bar, otherwise only a warning), the message area after loading (closed when empty, with a summary returned to MCP), hiding the 3D controls when nothing is open, icon-only bar buttons in narrow windows, moving to tabs from summary cards and the counts in tab names, convergence checks, the structure timeline, selecting modes from IR spectrum sticks and switching the control bar below the 3D view, and moving from a log orbital to the same orbital in the MOLDEN file of the same job. Eleven real logs of NWChem 7.3.1 (optimization and frequencies, TDDFT, properties, COSMO and SMD, CCSD(T), open shell, IRC, BSSE, scan and an error end; `tests/fixtures/nwchem`) check what the result viewer, the progress of a running job and the history summary read from them against recorded readings. Regular tests need no NWChem, MPI or network.
 
@@ -139,37 +197,3 @@ The reference data can be made with MolForma. Set the molecule and basis set, en
 On 2026-10-24, with reference data regenerated by NWChem 7.3.1 (the benzene/6-31G HOMO, and orbitals 5, 20 and 40 of water with each of the 3 basis sets), the isosurfaces computed from MOLDEN matched the CUBE files in grid, sign and triangle count, with every vertex within 0.001 Å. Recording and reproducing the isosurface baselines were also confirmed. The original job files were not modified.
 
 See also: [“History”](history.md), [3D rendering](rendering.md), [recipe 14 From a result to the next calculation](../recipes/reuse_result.md), the list of pages in “[Features](../features.md)”.
-
-## NMR, normal Raman and solution ESR spectra
-
-A “Spectra” tab appears for supported output. It draws sticks and a Lorentzian display curve; width means FWHM. Blank range fields use automatic bounds. Export peaks and curves as CSV or the chart as PNG. “Save display settings” stores the nucleus, reference, width, range, weights and other parameters as JSON. Reload it with the same result file open. A changed path, target, size or modification time prevents applying it. The log and editor molecule remain unchanged.
-
-- **NMR**: Select ¹H or ¹³C and enter a reference shielding in ppm, such as TMS calculated at the same level. δ ≈ reference σ − sample σ; larger ppm is on the left. No reference is guessed. Peak weights default to 1 and can be edited in the table. Selecting a peak highlights its result atom. This model targets singlet diamagnetic molecules; it excludes J splitting, equivalent-nucleus, conformer or motional averaging, experimental integrals and paramagnetic NMR.
-- **Normal Raman**: Enable it under “2 Calculation → Properties” and specify an excitation wavelength. Supported tasks are closed-shell DFT frequencies and optimization + frequencies, without follow-up single points, TDDFT, BSSE or ghost centers. Read the log activity table or a `.normal` file to plot Raman activities in Å⁴/amu. Peaks select modes when the log includes matching vibrations. A `.normal` file alone contains no geometry or displacement. Its broadened scattering-cross-section columns are distinct from the activities used here. Experimental intensity, temperature conversion and resonance Raman are unsupported.
-- **ESR/EPR**: Enable “ESR g and A tensors” for doublet unrestricted DFT with ZORA. In the viewer, set microwave frequency (GHz), width (mT) and included nuclei, and choose absorption or first derivative. The nuclear table selects result atoms. This is a first-order high-field model for fast-tumbling S = 1/2 solutions. Selected isotopes have 100% abundance; natural-abundance mixtures, powders, slow motion and high spin are unsupported. Supported magnetic isotopes are ¹H, ¹³C, ¹⁴N, ¹⁷O, ¹⁹F, ²⁹Si, ³¹P, ³³S, ³⁵Cl and ⁷⁹Br. H, N, F and P are included by default; select other nuclei explicitly.
-
-ESR converts NWChem Δg in ppt to g = ge I + 0.001 Δg, then obtains isotropic A in MHz from the trace of A×g/ge. It refuses a spectrum if the largest combined hyperfine splitting exceeds 10% of the microwave energy. Spectra support at most 4096 peaks. MCP `get_results` sections `spectrum` and `spectrum_peaks` use the same numerical implementation.
-
-References: [NWChem Raman](https://nwchemgit.github.io/Properties.html#raman), [NWChem EPR tensor convention](https://nwchemgit.github.io/EPR-pNMR.html). Water normal Raman and methyl-radical EPR were checked with NWChem 7.3.1.
-
-## Prepare a new calculation from a result geometry
-
-Open a saved job result, display the desired geometry and press “Prepare a new calculation”. MolForma verifies the saved bundle, restores the original molecule and calculation/execution settings as an unsaved project, and proposes the displayed coordinates as a candidate. Atom correspondence and fixed atoms are checked. Confirm the candidate before running a new job. Logs initially show the last available geometry; this does not imply a completed or converged optimization. This workflow does not reuse a Hessian or database through NWChem `restart`.
-
-## ECD and ORD
-
-Enable TDDFT and ECD rotatory strengths in “2 Calculation → Excited states” to generate `cdspectrum`. The reader uses length-gauge excitation energies and rotatory strengths (10⁻⁴⁰ esu² cm²), retaining their signs in a Lorentz curve on an eV axis. Peak selection identifies the corresponding excited-state row. Conversion to Δε, GIAO/velocity-gauge ECD and conformer averaging are unsupported.
-
-In Properties, ORD specifies start/end wavelengths and 2–50 points, generating one GIAO response task per wavelength for closed-shell HF/DFT. “Spectra → ORD (β)” connects isotropic optical-rotation β values in atomic units in wavelength order. It does not convert to specific rotation or broaden the data. Only undamped real values are supported; connecting lines are not quantitative interpolation near resonances. Split calculations with duplicate wavelengths into separate logs. Input import supports uniformly spaced wavelength series.
-
-## Properties in 3D and slices
-
-Logs containing dipoles or polarizabilities offer a dedicated molecule view. Dipole arrows follow the physics convention from negative to positive; values are in D and the scale is Å/D. Charged-molecule values depend on the calculation origin: placing an arrow at the molecular center does not recalculate the dipole. Parsed coordinates and the source log are retained. Polarizability uses the symmetric tensor's principal axes and a wire ellipsoid with radii proportional to the square roots of positive principal values. Nonsymmetric and nonpositive tensors are refused; response frequency is shown. Camera rotation transforms both molecule and properties without editing coordinates.
-
-Electrostatic-potential and electric-field-magnitude CUBE options in “2 Calculation → Properties” generate `PROPERTY ESP/EFIELD` with `GRID`, padding and points per axis. Files are `start_esp_grid.cube` and `start_efield_grid.cube`, independently of ESP atomic charges.
-
-Open an electron-density CUBE, then choose a color CUBE in “Properties in 3D / slices”. Atom order, elements and positions (within 10⁻⁴ Å) must agree. Trilinear interpolation requires the color grid to cover the entire surface; no automatic alignment is applied. Slices use the color grid, or the original CUBE until one is chosen. Select the fixed grid axis and index. Slice axes are grid indices, not projections of physical distances, including for skew grids.
-
-Set identical color minima (red) and maxima (blue) to compare molecules. Surface and slice share the color scale. Check units against the generating calculation: selecting units changes only the label. Available labels include Eh/e for ESP and Eh/(e·a₀) for field magnitude. Magnitudes do not provide field vectors or field lines. PNG exports the view. Grids are limited to two million points, with cancellable loading.
-
-On 2026-11-10, all 16 CTest suites passed after the local feature additions, along with VTK surface-coloring and projection tests on a virtual display. Actual NWChem 7.3.1 runs verified Raman, ESR, ECD, ORD and ESP/electric-field CUBE outputs.

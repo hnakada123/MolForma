@@ -87,6 +87,17 @@ All 13 points converged. ΔE relative to the minimum (180°, −158.458042135 Eh
 
 The graph in the “Path / scan” tab shows the two valleys at 180° and 60° and the two peaks at 120° and 0°.
 
+## 5. Batch-evaluate conformer-search results (1.1.0)
+
+Alongside setting dihedrals manually, you can retain “Tools → Conformer search…” results as a conformer set. The scan values above are the previously recorded calculation, separate from results obtained by the batch workflow below.
+
+1. Open the n-butane project and run “Tools → Conformer search…”. Force-field conformers appear in the set. To edit one of them, select its row, press “Propose candidate”, inspect it and confirm.
+2. Prepare B3LYP/6-31G* or your chosen level and calculation name in “2 Calculation”, then check the run environment and destination in “3 Run settings”. Use settings suitable for an optimization instead of leaving a scan-only configuration.
+3. Return to “Tools → Conformer set…” and check the rows to calculate. To compare free energies, enable “Calculate frequencies after optimization”, then press “Queue selected conformers for optimization”.
+4. Start the queue in “3 Run settings → Calculation queue”. When it finishes, press “Update results” in the conformer set. Choose E/G, temperature and the duplicate RMSD tolerance, and save the set as JSON with “Save…”.
+
+Fixed-angle scan points are not automatically unconstrained conformational minima. G evaluation needs optimized frequency results without significant imaginary modes. The search need not find every conformer, and populations describe only the selected set. See [Conformer sets](../features/molecule_pages.md#conformer-sets).
+
 ## Troubleshooting
 
 - **“Use selected atoms” cannot be pressed**: 2–4 atoms are not selected. Go back to “1 Molecule” and choose them again.

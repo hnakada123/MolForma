@@ -28,6 +28,13 @@ title: MolForma — NWChemのための分子エディタ
   </div>
 </section>
 
+<section class="wrap feature">
+  <p class="eyebrow">MolForma 1.1.0 · 2026-11-10</p>
+  <h2>計算を順に進め、分光・物性を図で確かめる</h2>
+  <p>ローカル計算キュー、配座セットの一括評価、熱補正・反応エネルギー図を追加しました。結果ビューアではNMR・通常ラマン・溶液ESR・ECD・ORD（β）、ESPによる表面色付け、格子断面、双極子・分極率の3D表示を利用できます。</p>
+  <a class="more" href="{{ '/changes.html' | relative_url }}">1.1.0の変更点と対応範囲を見る</a>
+</section>
+
 <section class="wrap flow">
   <h2>画面の流れのとおりに進める</h2>
   <p class="sub">ヘッダーに並ぶ番号付きのタブが、そのまま作業の順番です。</p>
@@ -101,6 +108,8 @@ title: MolForma — NWChemのための分子エディタ
         <li>BSSE補正</li>
         <li>ZORA・DKH・X2C</li>
         <li>Mulliken・ESP・NMR・分極率</li>
+        <li>ラマン・ESR・ECD・ORD</li>
+        <li>ESP・電場CUBE</li>
       </ul>
       <a class="more" href="{{ '/features/calculation.html' | relative_url }}">「2 計算条件」の説明<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
     </div>
@@ -111,11 +120,13 @@ title: MolForma — NWChemのための分子エディタ
   <div class="feature-text">
     <p class="eyebrow">結果ビューア</p>
     <h2>計算の結果を、その場で確かめる</h2>
-    <p>NWChemをローカルで実行・停止し、進み具合とログを表示します。終わった計算は結果ビューアで開き、最適化した構造を次の計算に取り込めます。</p>
+    <p>NWChemをローカルで実行・停止し、キューへ登録した計算を1件ずつ進めます。失敗時は診断とログを確認でき、結果の構造と元の条件から次の計算を準備できます。</p>
     <ul class="checks">
       <li>最適化の経過と収束、エネルギーの一覧とΔE</li>
-      <li>振動のアニメーションとIRスペクトル、熱化学</li>
-      <li>分子軌道・電子密度の等値面（CUBE・MOLDEN）</li>
+      <li>振動アニメーション、IR・通常ラマン、熱化学</li>
+      <li>分裂なしNMR、溶液ESR、ECD、ORDのβ</li>
+      <li>分子軌道・密度の等値面、ESP色付けと格子断面</li>
+      <li>双極子・分極率の3D表示</li>
       <li>励起状態と吸収スペクトル、スキャン・IRCの経路</li>
     </ul>
     <a class="more" href="{{ '/features/results.html' | relative_url }}">「結果ビューア」の説明<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
@@ -129,7 +140,7 @@ title: MolForma — NWChemのための分子エディタ
 <section class="wrap cards">
   <div class="card">
     <h3><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"><path d="M12 7v5l3 2"/><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3 4v4h4"/></svg>履歴</h3>
-    <p>保存した計算を日ごとに一覧し、組成・手法・基底が同じジョブどうしのエネルギー差（ΔE）を並べます。計算に使った分子と条件は、そのまま再利用できます。</p>
+    <p>保存した計算を日ごとに一覧し、ΔEに加えてE・E + ZPE・H・Gを比較できます。別ジョブの熱補正や反応段階の係数付き合計からエネルギー図を作り、表と図を書き出せます。</p>
     <a class="more" href="{{ '/features/history.html' | relative_url }}">「履歴」の説明<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></a>
   </div>
   <div class="card">

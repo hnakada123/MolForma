@@ -97,8 +97,18 @@ See also: [recipe 2 Coordination compounds](../recipes/cobalt_complex.md), [reci
 
 ## Conformer sets
 
-Local “Conformer search…” results are retained in a conformer set. Reopen it with “Tools → Conformer set…”, name and select conformers, and save or load their geometries, force-field names and energies. Up to 100 conformers are supported. “Use as candidate” proposes the current row; confirmation remains undoable. Moving fixed atoms is refused. If another molecule is being edited, restore the original molecule first.
+Local “Conformer search…” results are retained in a conformer set. Reopen it with “Tools → Conformer set…”, name and select conformers, and save or load their geometries, force-field names and energies. Up to 100 conformers are supported. “Propose candidate” proposes the current row; confirmation remains undoable. Moving fixed atoms is refused. If another molecule is being edited, restore the original molecule first.
 
-“Queue selected conformers for optimization” saves separate jobs using the current calculation and run settings. Enable frequencies after optimization to obtain corrections for G. Start the queue and use “Refresh results” after completion. Force-field and quantum-chemical electronic energies occupy separate columns.
+“Queue selected conformers for optimization” saves separate jobs using the current calculation and run settings. Enable frequencies after optimization to obtain corrections for G. Start the queue and use “Update results” after completion. Force-field and quantum-chemical electronic energies occupy separate columns.
 
 Once every selected result is available, all-atom RMSD after Kabsch alignment groups duplicates with the same atom order, taking the lowest-energy member as representative. Boltzmann populations use E or G and the chosen temperature. G requires corrections at that temperature and no significant imaginary frequencies. Composition, charge, multiplicity and calculation settings must agree. Duplicate entries receive zero weight; each group has degeneracy one. Atomic permutations and undiscovered conformers are excluded. These are populations within the selected set. JSON retains the original molecule, structures, jobs and imported results; selected conformers can be exported as multi-frame XYZ.
+
+### From conformer search to batch calculations
+
+1. Generate conformers with “Tools → Conformer search…”. Results appear in the conformer-set table with their force-field energies.
+2. Check the rows to calculate. “Propose candidate” takes the current row into the editor; it is separate from registering a batch calculation.
+3. Prepare “2 Calculation” and “3 Run settings”. For a G comparison, enable “Calculate frequencies after optimization” in the set, then press “Queue selected conformers for optimization”.
+4. Start the queue in “3 Run settings → Calculation queue”. After completion, return to the set and press “Update results”. Converged optimization results are loaded; choose E or G, temperature and the duplicate RMSD tolerance to compare them.
+5. Use “Save…” to save the set as JSON, including its original molecule, conformers, registered jobs and loaded results. This does not restore the waiting queue or its execution state after restarting the app.
+
+“—” in the imaginary-frequency column means vibration data is missing, not that there are zero imaginary modes. G populations require corrections at the specified temperature and results that establish the absence of significant imaginary modes below −10 cm⁻¹.

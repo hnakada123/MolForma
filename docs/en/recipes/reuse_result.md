@@ -46,6 +46,12 @@ Call up the p-nitroaniline optimized in [recipe 3](aromatic_substitution.md) fro
 | “History” → “Reuse molecule and settings” | The project used for the calculation | Opens the molecule and settings from **before** the run as a new unsaved project |
 | `.nw` (NWChem input) with “File → Open…” | The first `geometry` and the settings | Input coordinates are the starting structure |
 
+### Restore the original job settings too (1.1.0)
+
+For a saved job, “Result viewer → Prepare a new calculation” restores its original molecule, calculation and run settings as an unsaved project and proposes the displayed geometry as a candidate. It also works when you are editing another molecule. Inspect and confirm the candidate, then change to the TDDFT settings below.
+
+This restores the original settings. If you want to keep changes already made in the current project, use “Apply as candidate” as described above instead. The original saved bundle is required; the action is disabled for an independent log. It does not restart from a NWChem database.
+
 ## 2. Switch to TDDFT
 
 1. In “Basics” of “2 Calculation”, set the task to “Single-point energy”.

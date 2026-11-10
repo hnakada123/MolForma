@@ -6,6 +6,10 @@ The features are described on one page per screen or tab. Open the page of the s
 
 ![The “1 Molecule” window of MolForma: the tool column at the left edge, the parts palette beside it, the 3D view in the middle and the pages from “Edit” to “Charge” on the right](features/images/molecule/01_window.png)
 
+## New in 1.1.0
+
+The [changes](changes.md) list the additions and their limits. Register multiple jobs in the queue in “3 Run settings”, and save or batch-evaluate conformer-search results in “Tools → Conformer set…”. History adds thermal corrections and reaction profiles. The Result viewer adds NMR, normal Raman, solution ESR, ECD, ORD (β), properties in 3D and grid slices.
+
 ## Getting started: the basic workflow
 
 1. **Build a molecule (“1 Molecule”)**: Use “From SMILES” or “Open” (for a structure file) in the file-name menu at the left of the header (or in the “File” menu), or use the parts palette. Common elements have buttons in the palette (H, C, N, O, F, P, S, Cl, Br, I); choose any other element with “Periodic table…”. Clicking an atom or part in the palette switches to the “Place” tool, and you place it by clicking in the 3D view. When you choose a tool in the column at the left edge (or with keys such as S, A, B), its settings appear above the 3D view and what a click does appears below it. Changes such as deletion, cleanup and ligands are shown as candidates: “Confirm changes” (Ctrl+Enter) applies them, Esc discards them and Ctrl+Z undoes them ([“1 Molecule”: layout, tools and selection](features/molecule.md)).
@@ -20,14 +24,14 @@ Each page describes the features and their limitations. Keyboard operations are 
 | No. | Page | Screen | Contents |
 | --- | --- | --- | --- |
 | 1 | [“1 Molecule”: layout, tools and selection](features/molecule.md) | 1 Molecule | Window layout, tools and parts palette, selection, deletion, candidates, view and keys, atom palette and periodic table |
-| 2 | [Right-side pages of “1 Molecule”](features/molecule_pages.md) | 1 Molecule | The “Edit”, “Transform”, “Attributes”, “Coordination”, “Residue” and “Charge” pages and their NWChem support, structure tools (point group, Z-matrix, conformer search, structure check and comparison), worked examples |
+| 2 | [Right-side pages of “1 Molecule”](features/molecule_pages.md) | 1 Molecule | Edit, Transform, Attributes, Coordination, Residue and Charge; structure tools; saving and batch-evaluating conformer sets |
 | 3 | [Coordinate table](features/coordinates.md) | 1 Molecule | Editing the table of coordinates and attributes, loading and exporting structure files, output as an NWChem geometry block |
-| 4 | [“2 Calculation”](features/calculation.md) | 2 Calculation | Supported calculations (methods, basis sets, solvents, relativity), transition states, IRC, constraints and scans, properties and BSSE, importing input, diagnostics and changes |
+| 4 | [“2 Calculation”](features/calculation.md) | 2 Calculation | Methods, basis sets, solvents, relativity, TS/IRC/constraints/scans, spectroscopy, property grids, BSSE, input import and diagnostics |
 | 5 | [Advanced settings and CUBE/MOLDEN output](features/advanced.md) | 2 Calculation | “Advanced settings” of each section (56 items), scope and precedence, writing CUBE and MOLDEN files |
-| 6 | [“3 Run settings”](features/execution.md) | 3 Run settings | Launch settings for NWChem and MPI, pre-run checks, the run panel (run status and log), saving, running and stopping jobs |
+| 6 | [“3 Run settings”](features/execution.md) | 3 Run settings | NWChem/MPI settings, queue registration and sequential runs, the run panel and logs, failure explanations |
 | 7 | [“4 Input preview”](features/input_preview.md) | 4 Input preview | Showing the generated NWChem input, its structure and where each part is set, input for export and at run time, copying and exporting |
-| 8 | [“Result viewer”](features/results.md) | Result viewer | Result files it reads; overview, optimization, vibrations, excited states, paths and properties; molecular orbitals from MOLDEN |
-| 9 | [“History”](features/history.md) | History | The list of saved and run jobs, comparing ΔE, reusing molecules and settings, repairing records |
+| 8 | [“Result viewer”](features/results.md) | Result viewer | Structures, orbitals, vibrations, NMR/Raman/ESR/ECD/ORD, properties in 3D, grid slices and preparing recalculations |
+| 9 | [“History”](features/history.md) | History | Saved jobs and reuse, ΔE, thermal corrections and reaction energy profiles, record repair |
 | 10 | [3D rendering](features/rendering.md) | 1 Molecule, Result viewer | VTK and QPainter rendering, display styles, measurement and hydrogen-bond display, rendering performance |
 | 11 | [Whole application](features/app.md) | All | Shared parts of the window, status bar, interface language, autosave and recovery, the guide and manual, tests |
 | 12 | [MCP server overview](features/ai.md) | — | Operation from AI clients, the tools it exposes, safety restrictions (details in “[MCP server](mcp.md)”) |
@@ -49,11 +53,18 @@ Each page describes the features and their limitations. Keyboard operations are 
 | Calculation preparation | Total charge and multiplicity (“2 Calculation”), fixing atoms, ghost atoms, structure checks, atom-mapping CSV |
 | Edit history | Confirming and discarding candidates, Undo/Redo, rollback of failed edits, unsaved indicator, handling candidates before saving |
 | Cleanup | Open Babel MMFF94 / UFF, whole and local cleanup, 3D regeneration, keeping fixed atoms, cancelling |
+| Running calculations | Local queue, saved input/settings at registration, sequential runs, reordering, cancellation, pausing, failure explanations and links to settings |
+| Evaluating conformers | JSON conformer sets and multi-frame XYZ, batch optimization and frequencies, duplicate grouping and within-set E/G populations |
+| Comparing energies | E, E + ZPE, H and G, corrections from another job, weighted reaction stages, temperature/settings/imaginary-frequency checks, CSV/PNG |
+| Spectroscopy | Unsplit NMR, normal Raman, S = 1/2 solution ESR, ECD and ORD β alongside IR and UV–Vis; JSON display settings, curve/peak CSV and chart PNG |
+| Visualizing properties | Dipoles and polarizabilities in 3D, ESP-colored electron-density surfaces, CUBE slices, unit labels and shared color scales |
+| Recalculation | Prepare a new job from saved settings and the displayed result geometry; inspect and confirm coordinates as a candidate |
 
 ## Limitations and unsupported features
 
 The main limitations and unsupported features are:
 
+- Queue restoration, concurrent or remote execution, NWChem database restart, NMR J splitting, powder/high-spin ESR and specific-rotation conversion are unsupported. See the [1.1.0 changes](changes.md) and the individual feature pages.
 - PDB repair: “Residue → PDB diagnosis and repair…” diagnoses each residue, makes candidates that complete missing atoms and recognizes residues again; you check and confirm them in the main window. Completion covers residues with the backbone N/CA/C and a standard amino-acid template; unknown residues and missing backbones are not repaired automatically. The MODEL/ALTLOC choice, atom names and chain information are kept.
 - Fragment assignment (FMO, counterpoise, SAPT0) and its validation. As it cannot be converted to NWChem input, there is no UI to create or edit it ([“1 Molecule” right-hand pages and NWChem](features/molecule_pages.md)). Counterpoise correction can be calculated with the BSSE correction of “2 Calculation” (one monomer per bonded molecule). FMO and SAPT0 are not supported.
 - Migration of v1 projects.

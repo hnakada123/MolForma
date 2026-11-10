@@ -4,29 +4,29 @@
   ja: {screen: 1 分子, title: 「1 分子」の画面・ツール・選択, summary: 画面の構成、ツールと部品パレット、選択・削除・候補・視点、周期表}
   en: {screen: 1 Molecule, title: "“1 Molecule”: layout, tools and selection", summary: "Window layout, tools and parts palette, selection, deletion, candidates and view, periodic table"}
 - page: molecule_pages
-  ja: {screen: 1 分子, title: 「1 分子」の右側のページ, summary: 編集・変形・属性・配位・残基・電荷の各ページ、構造ツール}
-  en: {screen: 1 Molecule, title: Right-side pages of “1 Molecule”, summary: "The Edit, Transform, Attributes, Coordination, Residue and Charge pages, structure tools"}
+  ja: {screen: 1 分子, title: 「1 分子」の右側のページ, summary: "編集・変形・属性・配位・残基・電荷、配座セットの保存と一括評価"}
+  en: {screen: 1 Molecule, title: Right-side pages of “1 Molecule”, summary: "Editing, geometry and atom properties, coordination, residues, charges, conformer sets and batch evaluation"}
 - page: coordinates
   ja: {screen: 1 分子, title: 座標の表, summary: 座標と属性の表の編集、構造ファイルの読込・書き出し、NWChemの座標ブロック}
   en: {screen: 1 Molecule, title: Coordinate table, summary: "Editing coordinates and attributes, loading and exporting structure files, NWChem geometry blocks"}
 - page: calculation
-  ja: {screen: 2 計算条件, title: 「2 計算条件」, summary: 手法・基底・溶媒・相対論、遷移状態・IRC・スキャン、物性・BSSE、診断}
-  en: {screen: 2 Calculation, title: “2 Calculation”, summary: "Methods, basis sets, solvents and relativity, transition states, IRC and scans, properties and BSSE, diagnostics"}
+  ja: {screen: 2 計算条件, title: 「2 計算条件」, summary: "手法・基底・溶媒・相対論、分光・物性格子、遷移状態・IRC・スキャン・BSSE"}
+  en: {screen: 2 Calculation, title: “2 Calculation”, summary: "Methods, basis sets, solvents, relativity, spectroscopy, property grids, TS/IRC/scans and BSSE"}
 - page: advanced
   ja: {screen: 2 計算条件, title: 詳細設定とCUBE・MOLDEN出力, summary: 各セクションの詳細設定（56項目）、CUBE・MOLDENファイルの出力}
   en: {screen: 2 Calculation, title: Advanced settings and CUBE/MOLDEN output, summary: "Advanced settings of each section (56 items), writing CUBE and MOLDEN files"}
 - page: execution
-  ja: {screen: 3 実行設定, title: 「3 実行設定」, summary: NWChem・MPIの起動条件、実行前の確認、実行パネルとログ}
-  en: {screen: 3 Run settings, title: “3 Run settings”, summary: "Launching NWChem and MPI, pre-run checks, the run panel and log"}
+  ja: {screen: 3 実行設定, title: 「3 実行設定」, summary: "NWChem・MPIの起動条件、ローカルキュー、実行パネルとログ、失敗原因の案内"}
+  en: {screen: 3 Run settings, title: “3 Run settings”, summary: "NWChem/MPI settings, local queue, run panel and logs, failure explanations"}
 - page: input_preview
   ja: {screen: 4 入力プレビュー, title: 「4 入力プレビュー」, summary: 生成したNWChem入力、入力の構成と編集元、コピー・書き出し}
   en: {screen: 4 Input preview, title: “4 Input preview”, summary: "The generated NWChem input, its blocks and where they are set, copying and exporting"}
 - page: results
-  ja: {screen: 結果ビューア, title: 「結果ビューア」, summary: 概要・最適化・振動・励起状態・経路・物性、MOLDENの分子軌道}
-  en: {screen: Result viewer, title: “Result viewer”, summary: "Summary, optimization, vibrations, excited states, paths and properties, orbitals from MOLDEN"}
+  ja: {screen: 結果ビューア, title: 「結果ビューア」, summary: "構造・軌道・振動、NMR・ラマン・ESR・ECD・ORD、物性3D・格子断面、再計算"}
+  en: {screen: Result viewer, title: “Result viewer”, summary: "Structures, orbitals, vibrations, NMR/Raman/ESR/ECD/ORD, properties in 3D, grid slices and recalculation"}
 - page: history
-  ja: {screen: 履歴, title: 「履歴」, summary: ジョブの一覧、ΔEの比較、分子・条件の再利用、記録の修復}
-  en: {screen: History, title: “History”, summary: "The list of jobs, comparing ΔE, reusing molecules and settings, repairing records"}
+  ja: {screen: 履歴, title: 「履歴」, summary: "ジョブの一覧・再利用、ΔEと熱補正付き比較、反応エネルギー図、記録の修復"}
+  en: {screen: History, title: “History”, summary: "Jobs and reuse, ΔE and thermal corrections, reaction energy profiles, record repair"}
 - page: rendering
   ja: {screen: 3D画面, title: 3D描画, summary: VTKとQPainterの描画、表示スタイル、計測・水素結合の表示}
   en: {screen: 3D view, title: 3D rendering, summary: "VTK and QPainter rendering, display styles, measurement and hydrogen-bond display"}

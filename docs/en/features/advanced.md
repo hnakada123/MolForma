@@ -43,7 +43,7 @@ Only explicit settings are saved in `document.nwchem.advanced`. Merely opening t
 
 User presets include the advanced settings except “Orbitals and files” and “CUBE / MOLDEN output”. When a built-in or old-format preset has no advanced settings, applying it clears these overrides so that the preset's basic settings take effect. The orbital, storage location, echo and visualization file output settings and unknown fields are kept, and the whole preset application can be reverted with a single undo.
 
-The advanced settings do not offer custom keyword input, fine cache tuning of semi-direct SCF, RODFT/CDFT and fractional occupations, arbitrary orbital occupations, TCE, relativistic Hamiltonians, distance and angle constraints, scans, transition states, IRC, MD, periodic systems and the like. Neither NWChem nor Python is needed to edit or save advanced settings or to generate input.
+Fine cache tuning of semi-direct SCF, RODFT/CDFT and fractional occupations, arbitrary orbital occupations, TCE, MD and periodic systems have no dedicated controls. Relativity, internal-coordinate constraints, scans, transition states, IRC and additional input are handled in their sections of “2 Calculation”. Neither NWChem nor Python is needed to edit or save advanced settings or generate input.
 
 References: [HF](https://nwchemgit.github.io/Hartree-Fock-Theory-for-Molecules.html), [DFT](https://nwchemgit.github.io/Density-Functional-Theory-for-Molecules.html), [MP2](https://nwchemgit.github.io/MP2.html), [CCSD](https://nwchemgit.github.io/CCSD.html), [DRIVER](https://nwchemgit.github.io/Geometry-Optimization.html), [Hessians and frequencies](https://nwchemgit.github.io/Hessians-and-Vibrational-Frequencies.html), [COSMO](https://nwchemgit.github.io/COSMO-Solvation-Model.html), [Scratch directory](https://nwchemgit.github.io/Scratch_Dir.html).
 
@@ -65,13 +65,19 @@ MOLDEN writes `<calculation name>.molden`, and CUBE writes `<calculation name>_<
 
 For the MOLDEN basis normalization, choose “NWChem convention” (default) or “Unnormalized (NONE)”. **Choose NONE when exporting to programs that expect standard MOLDEN coefficients.** The NWChem convention embeds primitive normalization factors in the basis coefficients. Reading those coefficients as standard MOLDEN applies the factors twice and changes orbital shapes and amplitudes. NONE writes the input basis coefficients unchanged; it does not disable molecular orbital normalization. MolForma's result viewer supports both conventions.
 
-The orbitals and densities written are those of the HF/KS reference wavefunction; MP2/CCSD correlated densities and natural orbitals are not supported. After a frequency calculation, the HF/DFT energy is recomputed at the reference structure and its orbitals are written. HOMO/LUMO numbers are determined from the electron count, multiplicity, ECPs and spin; fractional occupations and excited states are not handled. Specifying an orbital number that does not exist (for example with a minimal basis set) causes an error when NWChem runs. CUBE output is one file with one content per calculation, and GUI output for structures containing ghost centers is not supported.
+The orbitals and densities written are those of the HF/KS reference wavefunction; MP2/CCSD correlated densities and natural orbitals are not supported. After a frequency calculation, the HF/DFT energy is recomputed at the reference structure and its orbitals are written. HOMO/LUMO numbers are determined from the electron count, multiplicity, ECPs and spin; fractional occupations and excited states are not handled. Specifying an orbital number that does not exist (for example with a minimal basis set) causes an error when NWChem runs. DPLOT CUBE output under “Orbitals and output files” is one file with one content per calculation, and GUI output for structures containing ghost centers is not supported.
 
 NWChem writes the files themselves. NWChem 7.3.1 writes an orbital CUBE as a single scalar field with a positive atom count, rather than Gaussian's multiple-orbital representation with a negative atom count and an orbital-number list. Check the file name and generated input for the orbital number and spin. Coordinates are in Bohr, densities in electrons/bohr³ and orbital amplitudes in bohr⁻³ᐟ².
 
 The settings are saved in the project and support the shared undo/redo, resets and reuse from History. When output is turned off, the grid, orbital and other settings are kept as pending and used again when it is turned back on. Applying a calculation preset keeps the output settings. Opening a MOLDEN file shows molecular orbitals from the basis set and MO coefficients. Molecular orbital CUBE files can be used as well.
 
 References: [NWChem DPLOT](https://nwchemgit.github.io/DPLOT.html), [Properties / MOLDENFILE](https://nwchemgit.github.io/Properties.html#moldenfile).
+
+### Writing ESP and field grids alongside a surface
+
+Version 1.1.0 adds separate Electrostatic potential CUBE and Electric-field magnitude CUBE controls under Properties. Independent of the DPLOT density/orbital CUBE, they produce `<start>_esp_grid.cube` and `<start>_efield_grid.cube`. You can therefore generate a density surface and its ESP color grid in the same job.
+
+Property-grid padding and point counts are independent of DPLOT bounds and divisions. Ensure the ESP grid covers the entire density surface. See [Calculation](calculation.md#additional-spectroscopy-and-property-grids) for generation requirements and [Properties in 3D and slices](results.md#properties-in-3d-and-slices) for loading, scales and units.
 
 ## Validating the advanced settings
 

@@ -43,7 +43,7 @@ NWChemの各ブロックへ直接指定する8グループ・56項目は、関�
 
 ユーザープリセットには「軌道・ファイル」と「可視化ファイル出力」以外の詳細設定を含めます。組込みプリセットや旧形式のプリセットに詳細指定がない場合は、これらの上書きを解除してプリセットの基本条件を有効にします。軌道・保存先・echo・可視化ファイル出力の設定と未知フィールドは保持し、プリセット適用全体をUndo一回で戻せます。
 
-任意のキーワード入力、SCF半直接計算の細かなキャッシュ調整、RODFT/CDFT・部分占有、任意の軌道占有、TCE、相対論、距離・角度拘束、スキャン、遷移状態、IRC、MD、周期系などは未対応です。NWChem本体やPythonは、詳細設定の編集・保存・入力生成には不要です。
+SCF半直接計算の細かなキャッシュ調整、RODFT/CDFT・部分占有、任意の軌道占有、TCE、MD、周期系などは専用設定の対象外です。相対論、内部座標の拘束、スキャン、遷移状態、IRCと任意の追加入力は「2 計算条件」の各セクションで扱います。NWChem本体やPythonは、詳細設定の編集・保存・入力生成には不要です。
 
 仕様の参照: [HF](https://nwchemgit.github.io/Hartree-Fock-Theory-for-Molecules.html)、[DFT](https://nwchemgit.github.io/Density-Functional-Theory-for-Molecules.html)、[MP2](https://nwchemgit.github.io/MP2.html)、[CCSD](https://nwchemgit.github.io/CCSD.html)、[DRIVER](https://nwchemgit.github.io/Geometry-Optimization.html)、[Hessian・振動数](https://nwchemgit.github.io/Hessians-and-Vibrational-Frequencies.html)、[COSMO](https://nwchemgit.github.io/COSMO-Solvation-Model.html)、[Scratch directory](https://nwchemgit.github.io/Scratch_Dir.html)。
 
@@ -65,13 +65,19 @@ MOLDENは`<計算名>.molden`、CUBEは`<計算名>_<内容・軌道番号>.cube
 
 MOLDENの基底正規化は`NWChem規約`（既定）または`未正規化（NONE）`を選びます。**標準MOLDENの係数を前提とする外部ソフトへ渡す場合はNONEを選んでください。** NWChem規約はプリミティブの正規化因子を基底係数に含めるため、標準規約として読むと因子が二重に掛かり、軌道の形状・大きさが変わります。NONEは入力基底の係数をそのまま書く指定であり、分子軌道の正規化を解除する意味ではありません。MolFormaの結果ビューアは両規約に対応します。
 
-出力する軌道・密度はHF/KSの参照波動関数で、MP2/CCSDの相関密度・自然軌道には対応しません。振動数計算の後には基準構造でHF/DFTエネルギーを再計算し、その軌道を出力します。HOMO/LUMO番号は電子数・多重度・ECP・スピンから決め、部分占有や励起状態は扱いません。最小基底などで存在しない軌道番号を指定した場合はNWChem実行時にエラーになります。CUBEは1計算につき1ファイル・1内容で、ゴースト中心を含む構造のGUI出力は未対応です。
+出力する軌道・密度はHF/KSの参照波動関数で、MP2/CCSDの相関密度・自然軌道には対応しません。振動数計算の後には基準構造でHF/DFTエネルギーを再計算し、その軌道を出力します。HOMO/LUMO番号は電子数・多重度・ECP・スピンから決め、部分占有や励起状態は扱いません。最小基底などで存在しない軌道番号を指定した場合はNWChem実行時にエラーになります。「軌道・出力ファイル」のDPLOTによるCUBEは1計算につき1ファイル・1内容で、ゴースト中心を含む構造のGUI出力は未対応です。
 
 ファイル本体はNWChemが書きます。NWChem 7.3.1の分子軌道CUBEは、正の原子数を持つ単一スカラー場として出力され、Gaussianの複数軌道形式（負の原子数と軌道番号リスト）は使いません。軌道番号とスピンはファイル名・生成入力で確認してください。座標はBohr、密度は電子数/bohr³、軌道関数はbohr⁻³ᐟ²です。
 
 設定はプロジェクトに保存し、共有Undo/Redo・リセット・履歴からの再利用に対応します。出力を無効にしても格子・軌道等の指定は保留として保持し、再び有効にすると使います。計算プリセットを適用しても出力設定は維持します。MOLDENを開くと基底とMO係数から分子軌道を表示します。分子軌道CUBEも使用できます。
 
 仕様の参照: [NWChem DPLOT](https://nwchemgit.github.io/DPLOT.html)、[Properties / MOLDENFILE](https://nwchemgit.github.io/Properties.html#moldenfile)。
+
+### ESP・電場の格子を一緒に出力する
+
+1.1.0では「物性」の「静電ポテンシャルのCUBE」「電場の大きさのCUBE」を別に指定できます。DPLOTの電子密度・軌道CUBEとは独立し、`<計算名>_esp_grid.cube` と `<計算名>_efield_grid.cube` を生成します。したがって、密度の等値面と色付け用のESP格子を同じジョブから用意できます。
+
+物性格子の余白・点数と、DPLOTの格子範囲・分割数は別の設定です。色付けにはESP格子が密度表面全体を覆うように設定してください。出力条件は[計算条件](calculation.md#追加の分光格子計算)、読込・色尺度・単位の扱いは[物性3D・断面](results.md#物性3d断面)を参照してください。
 
 ## 詳細設定の検証
 
