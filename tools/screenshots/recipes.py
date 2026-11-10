@@ -11,8 +11,14 @@ a shot, so that its status bar message (shown for about 5 s) is still there.
 
 Recipes: atoms_and_bonds, atoms_and_bonds_run (figure 9, the run panel during the calculation),
 atoms_and_bonds_variations (saves, calculates, then figures 13 and 14), caffeine_smiles, my_parts,
-phenoxyl_radical, stereochemistry, aromatic_substitution (default: all).
+phenoxyl_radical, stereochemistry, aromatic_substitution (default: all of these).
 Shots go to $MOLFORMA_SHOTS_DIR/shots/<language>/recipes/<recipe>/<name>.png.
+
+Figures of the result viewer and the history, which need the jobs of their recipes (named on the command
+line; not part of the default): reuse_result_jobs (p-nitroaniline at B3LYP/6-31G*, optimization and
+frequencies, then TDDFT at CAM-B3LYP/6-31+G*: more than an hour) before reuse_result (figures 1 and 6 and
+the figure at the top), and hydrated_sodium_job (a minute) before hydrated_sodium (figure 8). The jobs are
+run once, in either language, and found again through $MOLFORMA_SHOTS_DIR/recipe_jobs.json.
 """
 import json
 import os
@@ -21,7 +27,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import viewfit  # noqa: E402
-from molforma_gui import APP_HOME, HOME, SAMPLES, WORK, Gui  # noqa: E402
+from molforma_gui import APP_HOME, APP_JOBS, HOME, SAMPLES, WORK, Gui  # noqa: E402
 
 ETHANOL = {"O8": (562, 455), "C1": (671, 530), "C4": (789, 453), "H9": (487, 510), "H7": (874, 512),
            "H5": (794, 373), "H6": (789, 411), "H3": (670, 614), "H2": (663, 561)}
@@ -323,6 +329,80 @@ def aromatic_substitution(g):
     g.activate("toolAction_select")  # As in the earlier screenshot: no palette item marked.
     g.fit("aromatic_substitution")
     g.snap("aromatic_substitution")
+
+
+def calculate(g, key, hours=3):
+    """Runs the calculation of the document and notes its job folder under the key."""
+    g.tool("calculation", action="start")
+    time.sleep(2)
+    calculation = g.idle(hours * 3600)["calculation"]
+    print(key, json.dumps(calculation, ensure_ascii=False), flush=True)
+    if calculation["state"] != "finished":
+        raise RuntimeError(f"{key}: {calculation['state']}")
+    path = WORK / "recipe_jobs.json"
+    jobs = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    jobs[key] = os.path.basename(calculation["directory"])
+    path.write_text(json.dumps(jobs, indent=1), encoding="utf-8")
+
+
+def job(key):
+    """The folder of a job that calculate() ran, as MolForma sees it."""
+    return f"{APP_JOBS}/{json.loads((WORK / 'recipe_jobs.json').read_text(encoding='utf-8'))[key]}"
+
+
+def results(g, key, tab):
+    """A job in the result viewer, on a tab of its details, once the status bar shows the molecule again."""
+    g.tool("results_action", action="open_directory", path=job(key))
+    g.idle()
+    g.tab(4)
+    g.tab_text("resultsDetails", g.T(tab))
+    for _ in range(60):
+        if not g.tool("get_app_state")["status"]:
+            break
+        time.sleep(0.2)
+
+
+def reuse_result_jobs(g):
+    g.open(SAMPLES + "p_nitroaniline.molforma.json")
+    g.setup_execution(6)
+    calculate(g, "reuse_result/optimization")
+    g.open(SAMPLES + "p_nitroaniline_tddft.molforma.json")
+    g.setup_execution(6)
+    calculate(g, "reuse_result/tddft")
+
+
+def reuse_result(g):
+    # Figure 1: the project of recipe 3 as opened, and its job in the history.
+    g.open_dialog(SAMPLES + "p_nitroaniline.molforma.json")
+    g.tab(5)
+    g.idle()
+    g.tool("history_action", action="select", path=job("reuse_result/optimization"))
+    time.sleep(0.8)
+    g.snap("reuse_result/01_history")
+    # Figure 6: the same project with the settings of the TDDFT calculation, and its result.
+    g.edit("set_nwchem", settings={"functional": "cam-b3lyp", "basis": "6-31+g*", "task": "energy", "tddft": True,
+                                   "tddft_roots": 10})
+    results(g, "reuse_result/tddft", "励起状態")
+    g.snap("reuse_result/06_excited_states")
+    # The figure at the top of the page: the practice file of the recipe with the same result.
+    g.new()
+    g.open_dialog(SAMPLES + "p_nitroaniline_tddft.molforma.json")
+    results(g, "reuse_result/tddft", "励起状態")
+    g.snap("reuse_result")
+
+
+def hydrated_sodium_job(g):
+    g.open(SAMPLES + "na_h2o4_charges.molforma.json")
+    g.setup_execution(8)
+    g.edit("set_nwchem", settings={"task": "energy", "prop_mulliken": True})
+    calculate(g, "hydrated_sodium/charges")
+
+
+def hydrated_sodium(g):
+    g.open_dialog(SAMPLES + "na_h2o4_charges.molforma.json")
+    g.edit("set_nwchem", settings={"task": "energy", "prop_mulliken": True})
+    results(g, "hydrated_sodium/charges", "物性")
+    g.snap("hydrated_sodium/08_mulliken")
 
 
 RECIPES = [atoms_and_bonds, atoms_and_bonds_run, atoms_and_bonds_variations, caffeine_smiles, my_parts, phenoxyl_radical,

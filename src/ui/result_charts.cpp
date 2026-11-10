@@ -205,8 +205,9 @@ void ChartView::paintEvent(QPaintEvent *) {
     p.save();
     p.translate(metrics.height() * 0.6, plot.center().y());
     p.rotate(-90);
+    // A name longer than a low chart is high ends in "…" rather than at both edges.
     p.drawText(QRectF(-plot.height() / 2, -metrics.height() / 2., plot.height(), metrics.height()),
-               Qt::AlignCenter, yLabel);
+               Qt::AlignCenter, metrics.elidedText(yLabel, Qt::ElideRight, int(plot.height())));
     p.restore();
     p.setClipRect(plot.adjusted(-1, -1, 1, 1));
     for (int i = 0; i < levels.size(); ++i) {

@@ -8,11 +8,7 @@ The features are described on one page per screen or tab. Open the page of the s
 
 ## New in 1.1.0
 
-The [changes](changes.md) list the additions and their limits. Register multiple jobs in the queue in “3 Run settings”, and save or batch-evaluate conformer-search results in “Tools → Conformer set…”. History adds thermal corrections and reaction profiles. The Result viewer adds NMR, normal Raman, solution ESR, ECD, ORD (β), properties in 3D and grid slices.
-
-## Added in the next version
-
-The [changes](changes.md) list the additions and their limits. A calculation that stopped goes on from NWChem’s database with “Prepare to continue” in “History”, and calculations keep running when the window closes. Results of runs on another computer are registered in “History”. The Result viewer adds the orbital contributions of excited states and bond indices, and the thermal corrections of “History” add frequency scaling, quasi-RRHO entropies, a standard-state correction and rate constants.
+The [changes](changes.md) list the additions and their limits. Register multiple jobs in the queue in “3 Run settings”, and save or batch-evaluate conformer-search results in “Tools → Conformer set…”. History adds thermal corrections and reaction profiles (with frequency scaling, quasi-RRHO entropies, a standard-state correction and rate constants). The Result viewer adds NMR, normal Raman, solution ESR, ECD, ORD (β), properties in 3D and grid slices, the orbital contributions of excited states and bond indices. A calculation that stopped goes on from NWChem’s database with “Prepare to continue” in “History”, and calculations keep running when the window closes. Results of runs on another computer are registered in “History” too.
 
 ## Getting started: the basic workflow
 

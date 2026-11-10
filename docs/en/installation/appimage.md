@@ -151,6 +151,8 @@ On 2026-10-28, an AppImage was made with these steps and the following was check
 
 On 2026-11-05, the 1.0.0 release, which no longer holds OpenSSL, was checked. On Arch Linux (OpenSSL 3.6.5), it downloaded a PDB entry over HTTPS. In Ubuntu 24.04, Debian 13 and Fedora 40 containers, it was started unpacked and made an offscreen screenshot. The Debian 13 container also got `libcom-err2` and `libgpg-error0`, which a desktop normally has.
 
+On 2026-11-10, the build environment and the AppImage were made again from the 1.1.0 source. All of MolForma’s CTest suites (16) passed in the build environment. On Arch Linux the AppImage was started without extracting it (with FUSE): a calculation went on after its `--mcp --mcp-keep-runs` session ended, the next session followed and stopped it, and no process or mount was left afterwards. The process that supervised the calculation was the AppImage itself, started with `--run-job` ([Keep calculations running after the window closes](../features/execution.md#keep-calculations-running-after-the-window-closes)). A test program stood in for NWChem in this check.
+
 VTK rendering on a real GPU and the actual display on a Wayland desktop were not checked with the AppImage.
 
 See also: [Installation and required packages by OS](../installation.md), [Installing on Arch Linux](arch_linux.md), [Installing on Ubuntu](ubuntu.md)

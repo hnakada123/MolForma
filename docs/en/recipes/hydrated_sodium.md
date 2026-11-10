@@ -85,9 +85,9 @@ At the optimized [Na(H₂O)₄]⁺ structure, set the task to “Single-point en
 
 Turning on “Mulliken charges” under “Properties” lets you compare atomic charges in the “Properties” tab of the “Result viewer”.
 
-![The “Properties” tab of the result viewer for the run with point charges: the table of Mulliken charges per atom, with 0.5699 on Na](images/hydrated_sodium/08_mulliken.png)
+![The “Properties” tab of the result viewer for the run with point charges: the table of Mulliken charges per atom, with 0.5699 on Na, and below it the table of bond indices (about 0.77 for O–H)](images/hydrated_sodium/08_mulliken.png)
 
-**Figure 8** The “Properties” tab of the run with point charges, listing Mulliken charges per atom.
+**Figure 8** The “Properties” tab of the run with point charges, listing Mulliken charges and valencies per atom, with the bond indices of atom pairs below.
 
 The interaction energy with the outer water also needs the energy of the outer water alone. Open `na_h2o5.molforma.json`, click Na with “Select by” “Molecule” (Na and its four coordinated waters are chosen), delete them and confirm. You get H2O · 3 atoms, and the total charge goes back from +1 to 0. Calculate a single point of it under the same conditions too (no need to save it).
 

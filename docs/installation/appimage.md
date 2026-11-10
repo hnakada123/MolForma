@@ -151,6 +151,8 @@ docker run --rm -e OWNER="$(id -u):$(id -g)" -v "$PWD:/src:ro" -v "$PWD/build-ap
 
 2026-11-05に、OpenSSLを同梱しなくなった1.0.0の配布版を確かめました。Arch Linux（OpenSSL 3.6.5）では、PDBのエントリーをHTTPSでダウンロードできました。Ubuntu 24.04・Debian 13・Fedora 40のコンテナでは、展開して起動する形で、オフスクリーンの画面写真を作れました。Debian 13のコンテナには、デスクトップには通常入っている `libcom-err2` と `libgpg-error0` も入れています。
 
+2026-11-10に、1.1.0のソースでビルド環境とAppImageを作り直しました。ビルド環境ではMolFormaのCTest（16件）がすべて通りました。Arch LinuxではAppImageを展開せずに（FUSEで）起動し、`--mcp --mcp-keep-runs` のセッションを終えた後も計算が続くこと、次のセッションからその計算を追跡・停止できること、終了後にプロセスとマウントが残らないことを確かめました。このとき計算を見張るプロセスは、AppImage自身が `--run-job` で起動したものです（[ウィンドウを閉じても計算を続ける](../features/execution.md#ウィンドウを閉じても計算を続ける)）。この確認では試験用のプログラムをNWChemの代わりに使っています。
+
 実機のGPUでのVTKの描画と、Waylandのデスクトップでの実際の表示は、AppImageでは確認していません。
 
 関連: [OS別インストール・必要パッケージ](../installation.md)、[Arch Linuxでのインストール](arch_linux.md)、[Ubuntuでのインストール](ubuntu.md)

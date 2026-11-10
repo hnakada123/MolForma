@@ -939,7 +939,9 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     spectrumRow->addStretch();
     spectrum = new ChartView;
     spectrum->setObjectName("resultsSpectrum");
-    el->addWidget(spectrum, 2);
+    // High enough for the name of its vertical axis beside the list of orbital pairs above it.
+    spectrum->setMinimumHeight(200);
+    el->addWidget(spectrum, 3);
     auto *spectrumHint =
         new QLabel(tr("各状態の振動子強度（棒）に、エネルギー軸で指定した半値全幅のガウス関数を掛けて重ね"
                       "た表示用の曲線です。三重項など振動子強度0の状態は棒に現れません。"));

@@ -19,7 +19,7 @@ Call up the p-nitroaniline optimized in [recipe 3](aromatic_substitution.md) fro
 2. Open “History” in the header. Jobs in the job folder of “3 Run settings” are listed with their calculation name (or title, for the default calculation name), composition, method, task and energy.
 3. Choose the p-nitroaniline job and press “Open in result viewer” on the right (or double-click the row).
 
-   ![The p-nitroaniline job chosen in “History”: the details on the right show B3LYP/6-31G* · optimization → frequencies, the energy −492.108697994 Eh, the folder ~/MolForma/jobs/… and the button “Open in result viewer”](images/reuse_result/01_history.png)
+   ![The p-nitroaniline job chosen in “History”: the details on the right show B3LYP/6-31G* · optimization → frequencies, the energy −492.108698000 Eh, the folder ~/MolForma/jobs/… and the button “Open in result viewer”](images/reuse_result/01_history.png)
 
    **Figure 1** Choosing a job in “History” shows its details and “Open in result viewer” on the right.
 
@@ -72,11 +72,11 @@ TDDFT is available only with the task single-point energy (excited-state optimiz
 
 ## 3. Run and look at the results
 
-Run with “Run calculation” (F5) and open the “Excited states” tab of the “Result viewer”: a table of excitation energies (eV, nm) and oscillator strengths, and a display spectrum with the oscillator strengths broadened by Gaussians (full width at half maximum in eV, wavelength or energy axis).
+Run with “Run calculation” (F5) and open the “Excited states” tab of the “Result viewer”: a table of excitation energies (eV, nm) and oscillator strengths, and a display spectrum with the oscillator strengths broadened by Gaussians (full width at half maximum in eV, wavelength or energy axis). “Main transition” in the table is the orbital pair with the largest weight in each state (`HOMO → LUMO` for state 2); choosing a state lists the occupied-to-virtual orbital contributions to it below the table.
 
-![The “Excited states” tab of the TDDFT result: a table of excitation energies, wavelengths and oscillator strengths for 10 states (state 2 at 4.3189 eV, 287.1 nm, 0.38928) and the absorption spectrum against wavelength](images/reuse_result/06_excited_states.png)
+![The “Excited states” tab of the TDDFT result: a table of excitation energies, wavelengths, oscillator strengths and main transitions for 10 states (state 2 at 4.3189 eV, 287.1 nm, 0.38928), the list of orbital contributions to the chosen state 1, and the absorption spectrum against wavelength](images/reuse_result/06_excited_states.png)
 
-**Figure 6** The “Excited states” tab: the table of states and the absorption spectrum broadened from the oscillator strengths.
+**Figure 6** The “Excited states” tab: the table of states, the orbital contributions to the chosen state, and the absorption spectrum broadened from the oscillator strengths.
 
 ### Results
 
