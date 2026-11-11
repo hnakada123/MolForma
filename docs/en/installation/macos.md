@@ -22,8 +22,10 @@ The build needs the following (see [1. Install the Command Line Tools and Homebr
 | Optional | `rdkit` | Strict stereo perception (R/S, E/Z), residue recognition |
 | Optional | `vtk` | Drawing the 3D view with VTK (OpenGL). Homebrew's VTK is built with Qt 6 support |
 | Optional | `qttranslations` | Qt's standard dialogs (such as file selection) in Japanese too, when the interface is Japanese |
+| Optional | `qtsvg` | Saving charts, spectra and reaction profiles as SVG too (without it, PNG and PDF) |
+| Optional | `ffmpeg`, [xtb](https://github.com/grimme-lab/xtb) | MP4 video export, “Tools → Optimize with xTB…”. Only started at run time, not needed for building (and not put into the DMG) |
 
-The whole of Qt (`qt`) is not needed: MolForma uses only `qtbase`, and `qt` installs many modules such as Qt WebEngine. These libraries are used for building and for making the DMG, which copies them into `MolForma.app`.
+The whole of Qt (`qt`) is not needed: MolForma uses only `qtbase` and the optional `qtsvg`, and `qt` installs many modules such as Qt WebEngine. These libraries are used for building and for making the DMG, which copies them into `MolForma.app`.
 
 For calculations, install Homebrew's `nwchem` (see [3. Install NWChem](#3-install-nwchem)).
 
@@ -48,10 +50,10 @@ Install the required packages.
 brew install cmake ninja pkgconf qtbase eigen open-babel
 ```
 
-To use RDKit, VTK and Qt's Japanese translations, then install the following. VTK depends on many packages (Qt Quick's `qtdeclarative`, HDF5, NetCDF and others), and VTK alone takes about 300 MB.
+To use RDKit, VTK, Qt's Japanese translations and saving as SVG, then install the following. VTK depends on many packages (Qt Quick's `qtdeclarative`, HDF5, NetCDF and others), and VTK alone takes about 300 MB.
 
 ```sh
-brew install rdkit vtk qttranslations
+brew install rdkit vtk qttranslations qtsvg
 ```
 
 ## 3. Install NWChem

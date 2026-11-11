@@ -2246,6 +2246,47 @@ class McpTest : public QObject {
         QTRY_COMPARE_WITH_TIMEOUT(queue()["entries"].toArray()[1].toObject()["state"].toString(), "finished",
                                   5000);
         QCOMPARE(queue()["entries"].toArray()[0].toObject()["state"].toString(), "cancelled");
+        // A chain from an earlier entry; every step is checked before any is registered (H2 has no IRC).
+        QVERIFY(!failed(change(server, "calculation", {{"action", "queue_pause"}})));
+        const auto source =
+            data(change(server, "calculation", {{"action", "enqueue"}}))["queueId"].toString();
+        const auto before = queue()["entries"].toArray().size();
+        QVERIFY(failed(change(
+            server, "calculation",
+            {{"action", "enqueue"}, {"chainFrom", source}, {"chainSteps", QJsonArray{"saddle", "irc"}}})));
+        QCOMPARE(queue()["entries"].toArray().size(), before);
+        const auto chain =
+            change(server, "calculation",
+                   {{"action", "enqueue"}, {"chainFrom", source}, {"chainSteps", QJsonArray{"saddle"}}});
+        QVERIFY2(!failed(chain), qPrintable(text(chain)));
+        QCOMPARE(data(chain)["queueIds"].toArray().size(), 1);
+        const auto last = queue()["entries"].toArray().last().toObject();
+        QCOMPARE(last["chain"].toObject()["from"].toString(), source);
+        QCOMPARE(last["chain"].toObject()["structure"].toString(), "final");
+        QCOMPARE(last["name"].toString(), "molforma_ts");
+        QVERIFY(
+            failed(change(server, "calculation",
+                          {{"action", "enqueue"}, {"chainFrom", source}, {"chainStructure", "highest"}})));
+        QVERIFY(failed(change(server, "calculation", {{"action", "enqueue"}, {"chainFrom", "missing"}})));
+    }
+    void nebEndOverMcp() {
+        McpServer server;
+        QVERIFY(!failed(change(server, "import_document",
+                               {{"format", "xyz"},
+                                {"text", "3\nHCN\nC 0 0 0\nN 0 0 1.156\nH -0.9 0 -0.7\n"},
+                                {"preview", false}})));
+        // Turned and shifted: fitted onto the molecule by default.
+        const auto set = change(server, "set_neb_end",
+                                {{"xyz", "3\nHNC\nC 1 1 1\nN 1 1 2.17\nH 1.8 1 2.85\n"}, {"preview", false}});
+        QVERIFY2(!failed(set), qPrintable(text(set)));
+        const auto d = committed(server);
+        QCOMPARE(nwchemSettings(d)["task"].toString(), QString("neb"));
+        const auto end = nwchemNebEnd(d).document;
+        QVERIFY(end);
+        QVERIFY(validateNwchem(d).errors.isEmpty());
+        QVERIFY(nwchemInput(d).contains("geometry endgeom"));
+        QVERIFY(failed(change(server, "set_neb_end", {{"xyz", "1\nH\nH 0 0 0\n"}, {"preview", false}})));
+        QVERIFY(failed(change(server, "set_neb_end", {{"preview", false}})));
     }
     void headlessCalculationAndResults() {
         QTemporaryDir files;

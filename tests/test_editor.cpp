@@ -73,6 +73,37 @@ class EditorTest : public QObject {
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
                            settingsHome.path()); // MolForma uses NativeFormat.
     }
+    void xtbFromTheWindow() {
+        // The program comes from Preferences; the dialog's conditions reach it and its result is a candidate.
+#ifdef Q_OS_WIN
+        const auto program = QCoreApplication::applicationDirPath() + "/fake_xtb.exe";
+#else
+        const auto program = QCoreApplication::applicationDirPath() + "/fake_xtb";
+#endif
+        MainWindow w;
+        w.loadDocument(Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n"));
+        w.setPreference("xtb/executable", program);
+        bool shown = false;
+        QTimer::singleShot(0, this, [&] {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            QVERIFY(dialog && dialog->objectName() == "xtbDialog");
+            shown = true;
+            QVERIFY(dialog->findChild<QLabel *>("xtbExecutable")->text().contains("fake_xtb"));
+            QVERIFY(!dialog->findChild<QCheckBox *>("xtbSelectionOnly")->isEnabled()); // Nothing selected.
+            auto *method = dialog->findChild<QComboBox *>("xtbMethod");
+            method->setCurrentIndex(method->findData("gfnff"));
+            dialog->accept();
+        });
+        w.xtbDialog();
+        QVERIFY(shown);
+        QTRY_VERIFY(w.hasCandidate());
+        QVERIFY(w.statusBar()->currentMessage().contains("GFN-FF"));
+        w.cancelCandidate();
+        // Without the program, nothing starts.
+        w.setPreference("xtb/executable", settingsHome.filePath("missing-xtb"));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, w.runXtb({}));
+        QVERIFY(!w.chemistryRunning());
+    }
     void paletteEntries() {
         // Palette rows are keyed by kind; parts by their ID, with the kind from their category.
         for (const auto &[kind, value] : {std::pair{PaletteKind::Atom, "C"},

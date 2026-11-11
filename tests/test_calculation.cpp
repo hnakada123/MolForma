@@ -8,6 +8,7 @@
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_geometry.h"
 #include "nwchem/nwchem_import.h"
+#include "ui/calculation_panel.h"
 #include "ui/main_window.h"
 #include <QListWidget>
 #include <QtTest>
@@ -623,6 +624,115 @@ class CalculationTest : public QObject {
         scan.atoms[1].fixed = true;
         QVERIFY(errorContains(scan, "スキャン: 固定原子"));
     }
+    void nebPathInput() {
+        auto d = Document::fromXyz("3\nHCN\nC 0 0 0\nN 0 0 1.156\nH -0.9 0 -0.7\n");
+        const auto ids = d.ids();
+        set(d, "task", "neb");
+        QVERIFY(errorContains(d, "NEBの終点の構造を"));
+        // The end is kept by atom ID, fitted onto the start: a turned and shifted copy gives the same end.
+        const auto product = Document::fromXyz("3\nHNC\nC 0 0 0\nN 0 0 1.17\nH 0.8 0 1.85\n");
+        auto turned = product;
+        for (auto &a : turned.atoms)
+            a.position = Eigen::AngleAxisd(0.7, Vec::UnitY()).toRotationMatrix() * a.position + Vec(1, 2, 3);
+        const auto end = nwchemNebEndSetting(d, product, true);
+        const auto other = nwchemNebEndSetting(d, turned, true);
+        QCOMPARE(end.size(), 3);
+        for (const auto &id : ids)
+            QVERIFY((vectorFromJson(end[id]) - vectorFromJson(other[id])).norm() < 1e-9);
+        // Without fitting, the positions are taken as they are.
+        QVERIFY((vectorFromJson(nwchemNebEndSetting(d, product, false)[ids[2]]) - Vec(0.8, 0, 1.85)).norm() <
+                1e-12);
+        set(d, "neb_end", nwchemNebEndSetting(d, product, false));
+        QVERIFY(validateNwchem(d).errors.isEmpty());
+        QVERIFY(validateNwchem(d).warnings.join('\n').contains("NEBは始点"));
+        auto text = nwchemInput(d);
+        QVERIFY(text.contains("\ngeometry units angstrom nocenter noautosym noautoz"));
+        QVERIFY(text.contains(
+            "\ngeometry endgeom units angstrom nocenter noautosym noautoz"
+            " angstrom_to_au 1.8897261246257702\n  C 0 0 0\n  N 0 0 1.17\n  H 0.8 0 1.85\nend\n"));
+        QCOMPARE(text.count("constraints"), 1); // Only for the start, which NWChem keeps as "geometry".
+        QVERIFY(text.contains(
+            "\nneb\n  nbeads 10\n  kbeads 1\n  maxiter 50\n  stepsize 0.1\n  print_shift 1\nend\n"));
+        QVERIFY(text.contains("\ntask scf neb\n"));
+        QVERIFY(!text.contains("\ndriver\n"));
+        QCOMPARE(nwchemSectionUnused(d, "path"), QString());
+        // An NWChem NEB input reads back with its end.
+        const auto imported = importNwchemInput(text).document;
+        QCOMPARE(nwchemSettings(imported)["task"].toString(), QString("neb"));
+        QVERIFY(nwchemNebEnd(imported).document);
+        QVERIFY((nwchemNebEnd(imported).document->atoms[2].position - Vec(0.8, 0, 1.85)).norm() < 1e-12);
+        // NEB's first path is the straight line between the ends.
+        const auto path = nwchemNebInitialPath(d, *nwchemNebEnd(d).document, 3);
+        QCOMPARE(path.size(), 3);
+        QVERIFY((path[1].atoms[2].position - Vec(-0.05, 0, 0.575)).norm() < 1e-12);
+        // Atoms added later have no end; deleted ones leave it; renamed IDs follow.
+        auto added = d;
+        added.atoms << Atom{};
+        added.atoms.last().element = "H";
+        added.atoms.last().position = Vec(3, 0, 0);
+        QVERIFY(errorContains(added, "位置のない原子が 1 個"));
+        auto removed = d;
+        removed.remove({ids[2]});
+        QVERIFY(!nwchemSettings(removed)["neb_end"].toObject().contains(ids[2]));
+        auto renamed = d;
+        renamed.renameIds({{ids[0], "carbon"}});
+        QVERIFY(nwchemSettings(renamed)["neb_end"].toObject().contains("carbon"));
+        QVERIFY(nwchemNebEnd(renamed).document.has_value());
+        // The same structure at both ends, atoms meeting on the straight line, fixed atoms.
+        auto same = d;
+        set(same, "neb_end", nwchemNebEndSetting(d, d, false));
+        QVERIFY(errorContains(same, "終点が始点"));
+        auto through = Document::fromXyz("3\nHCN\nC 0 0 0\nN 0 0 1.156\nH 0 0 -1.07\n");
+        set(through, "task", "neb");
+        auto across = through;
+        across.atoms[2].position = Vec(0, 0, 2.2);
+        set(through, "neb_end", nwchemNebEndSetting(through, across, false));
+        QVERIFY(validateNwchem(through).warnings.join('\n').contains("近づきます"));
+        auto fixed = d;
+        fixed.atoms[0].fixed = true;
+        QVERIFY(errorContains(fixed, "NEBは固定原子"));
+        auto properties = d;
+        set(properties, "prop_mulliken", true);
+        QVERIFY(errorContains(properties, "物性計算はスキャン・IRC・NEB"));
+        QVERIFY_THROWS_EXCEPTION(std::exception, nwchemNebEndSetting(d, water(), true));
+        auto swapped = product;
+        std::swap(swapped.atoms[0], swapped.atoms[1]);
+        QVERIFY_THROWS_EXCEPTION(std::exception, nwchemNebEndSetting(d, swapped, true));
+    }
+    void panelNebEnd() {
+        MainWindow w;
+        w.loadDocument(Document::fromXyz("3\nHCN\nC 0 0 0\nN 0 0 1.156\nH -0.9 0 -0.7\n"));
+        auto *panel = w.findChild<CalculationPanel *>();
+        auto *state = w.findChild<QLabel *>("calculationNebEnd");
+        QVERIFY(panel && state);
+        QCOMPARE(state->text(), QString("未設定"));
+        // The product drawn first and kept as the end, then the molecule edited back into the start.
+        button(w, "calculationNebEndCurrent")->click();
+        QCOMPARE(nwchemSettings(w.document())["task"].toString(), QString("neb"));
+        QVERIFY(errorContains(w.document(), "終点が始点"));
+        w.edit("move", [](Document &d) { d.atoms[2].position = Vec(0.8, 0, 1.85); });
+        QVERIFY(validateNwchem(w.document()).errors.isEmpty());
+        QVERIFY(state->text().contains("設定済み"));
+        // Swapping shows the end in "1 分子"; swapping again and undo come back.
+        button(w, "calculationNebSwap")->click();
+        QVERIFY((w.document().atoms[2].position - Vec(-0.9, 0, -0.7)).norm() < 1e-12);
+        QVERIFY((nwchemNebEnd(w.document()).document->atoms[2].position - Vec(0.8, 0, 1.85)).norm() < 1e-12);
+        w.history()->undo();
+        QVERIFY((w.document().atoms[2].position - Vec(0.8, 0, 1.85)).norm() < 1e-12);
+        // From a file: the last frame of a multi-frame XYZ, fitted onto the molecule.
+        QTemporaryDir dir;
+        const auto file = dir.filePath("path.xyz");
+        writeFile(file,
+                  "3\none\nC 0 0 0\nN 0 0 1.156\nH 0 5 5\n3\ntwo\nC 1 0 0\nN 1 0 1.156\nH 0.1 0 -0.7\n");
+        panel->setNebEndFromFile(file);
+        const auto end = nwchemNebEnd(w.document()).document;
+        QVERIFY(end);
+        QVERIFY((end->atoms[1].position - end->atoms[0].position).norm() - 1.156 < 1e-9);
+        QVERIFY(end->atoms[2].position.norm() < 2); // Not the first frame.
+        auto other = dir.filePath("water.xyz");
+        writeFile(other, "3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n");
+        QVERIFY_THROWS_EXCEPTION(std::exception, panel->setNebEndFromFile(other));
+    }
     void bsseFollowupPropertiesAndExtraInput() {
         auto dimer = Document::fromXyz("6\nwater dimer\nO -1.551007 -0.114520 0\nH -1.934259 0.762503 0\n"
                                        "H -0.599677 0.040712 0\nO 1.350625 0.111469 0\n"
@@ -940,6 +1050,7 @@ class CalculationTest : public QObject {
                                         {{"task", "frequencies"}},
                                         {{"task", "irc"}},
                                         {{"task", "scan"}, {"scan_atoms", "<atoms>"}},
+                                        {{"task", "neb"}, {"neb_end", "<end>"}},
                                         {{"task", "optimize"}, {"followup", true}},
                                         {{"solvent", "cosmo"}},
                                         {{"basis", "x2c-svpall"}}};
@@ -991,9 +1102,17 @@ class CalculationTest : public QObject {
                     QStringList named;
                     bool skipped = false;
                     for (const auto &[setting, contextValue] : context) {
-                        set(d, setting,
-                            contextValue == "<atoms>" ? QJsonValue(QJsonArray{d.atoms[0].id, d.atoms[1].id})
-                                                      : contextValue);
+                        if (contextValue == "<end>") { // The end of an NEB: the hydrogens moved.
+                            auto end = d;
+                            for (auto &a : end.atoms)
+                                if (a.element == "H")
+                                    a.position.z() -= 1;
+                            set(d, setting, nwchemNebEndSetting(d, end, false));
+                        } else
+                            set(d, setting,
+                                contextValue == "<atoms>"
+                                    ? QJsonValue(QJsonArray{d.atoms[0].id, d.atoms[1].id})
+                                    : contextValue);
                         named << QString(setting) + "=" + nwchemAdvancedText(contextValue);
                         skipped |= notImported.contains(setting) || notImported.contains(named.last());
                     }

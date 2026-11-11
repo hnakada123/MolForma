@@ -19,6 +19,7 @@ The build needs these packages (see [1. Install the packages](#1-install-the-pac
 | Required | `libopenbabel-dev` | Reading and writing structure files, force-field cleanup, 3D structures from SMILES |
 | Optional | `librdkit-dev`, `libboost-iostreams-dev`, `libboost-serialization-dev` | Strict stereo perception (R/S, E/Z), residue recognition. RDKit's CMake configuration refers to the two Boost packages |
 | Optional | `libvtk9-dev`, `libvtk9-qt-dev` | Drawing the 3D view with VTK (OpenGL). `nlohmann-json3-dev` and the MPI development packages that VTK's CMake configuration refers to come in as dependencies |
+| Optional | `qt6-svg-dev` | Saving charts, spectra and reaction profiles as SVG too (without it, PNG and PDF) |
 
 apt installs the packages used at run time automatically when it installs the deb package you make: the Qt 6 libraries and `qt6-qpa-plugins`, `libopenbabel7` (with the format plugins and force-field data) and, when built with RDKit and VTK, `librdkit1t64`, `libvtk9.5` and `libvtk9.5-qt`. The recommended packages `qt6-translations-l10n` (with the Japanese interface, Japanese for Qt's standard dialogs such as file selection too) and `fonts-noto-cjk` (Japanese fonts) come in as well with apt's default settings.
 
@@ -26,6 +27,7 @@ For calculations, install NWChem from the official repositories (universe) as `n
 
 - **RDKit and VTK**: Both are optional. They are enabled only when CMake finds them at build time, and the deb package's dependencies follow. Drawing with VTK also needs a GPU driver that provides OpenGL 3.2 or later.
 - **NWChem**: Building and saving input (“Save as job”) works without NWChem.
+- **External programs (optional)**: MP4 video export uses `ffmpeg` (`sudo apt install ffmpeg`), and “Tools → Optimize with xTB…” uses [xtb](https://github.com/grimme-lab/xtb) (obtain it separately and put it in PATH, or set it in “Edit → Preferences”). Both are only started at run time and are not needed for building.
 
 ## 1. Install the packages
 
@@ -40,6 +42,12 @@ For RDKit and VTK, install these as well. VTK's development package has many dep
 
 ```sh
 sudo apt install librdkit-dev libboost-iostreams-dev libboost-serialization-dev libvtk9-dev libvtk9-qt-dev
+```
+
+To save charts as SVG too, install `qt6-svg-dev` as well.
+
+```sh
+sudo apt install qt6-svg-dev
 ```
 
 ## 2. Install NWChem

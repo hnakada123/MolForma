@@ -139,8 +139,8 @@ QVector<RestartChoice> restartChoices(const QString &job) {
     if (normal)
         next.reason = tr("正常に終わった計算です。条件を変えて計算する場合は「分子・条件を再利用」を使います"
                          "。");
-    else if (calc.task == NwchemTask::Scan || calc.task == NwchemTask::Irc || s["bsse"].toBool())
-        next.reason = tr("座標スキャン・IRC・BSSE補正の計算は再開できません。");
+    else if (calc.path() || s["bsse"].toBool())
+        next.reason = tr("座標スキャン・IRC・NEB・BSSE補正の計算は再開できません。");
     const auto hessian = QDir(permanentFolder(d, job)).filePath(s["start"].toString() + ".hess");
     QString without;
     if (!normal)
@@ -149,7 +149,7 @@ QVector<RestartChoice> restartChoices(const QString &job) {
         without =
             tr("振動数計算のHessian（%1.hess）がジョブフォルダーにありません。").arg(s["start"].toString());
     else if (s["bsse"].toBool())
-        without = tr("座標スキャン・IRC・BSSE補正の計算は再開できません。");
+        without = tr("座標スキャン・IRC・NEB・BSSE補正の計算は再開できません。");
     return {next, {"hessian", without}, {"reuse", without}};
 }
 Document restartDocument(const QString &job, const QString &mode) {

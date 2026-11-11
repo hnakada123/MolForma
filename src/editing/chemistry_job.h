@@ -2,6 +2,7 @@
 #pragma once
 #include "editing/chemistry.h"
 #include "editing/editor_session.h"
+#include "editing/xtb.h"
 #include <QProcess>
 #include <QTemporaryDir>
 
@@ -11,6 +12,9 @@ struct ChemistryRequest {
     Ids moving;
     int count = 10;
     bool remote = false;
+    // mode "xtb": the program (Preferences) and the conditions; its moving atoms are `xtb.moving`.
+    QString executable = {};
+    XtbOptions xtb = {};
 };
 struct ChemistryResult {
     ChemistryRequest request;
@@ -18,6 +22,7 @@ struct ChemistryResult {
     QVector<Conformer> conformers;
     quint64 generation = 0;
     quint64 revision = 0; // The session's revision the work started from.
+    QString note = {};    // What to tell about the result ("xtb": its energy and convergence).
 };
 // Owns worker lifetime, snapshots and candidate application independently of the window.
 // The receiver of ready() chooses a conformer and calls propose(), or leaves the result unused.

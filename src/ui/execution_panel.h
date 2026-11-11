@@ -52,7 +52,17 @@ class ExecutionPanel : public QWidget {
         return run.active();
     }
     void startCalculation();
-    QString enqueueCalculation();
+    // With a chain, the calculation takes its structure from an earlier entry of the queue when its turn
+    // comes (QueueChain).
+    QString enqueueCalculation(const QueueChain &chain = {});
+    // Calculations that go on from an entry of the queue (from: its ID; structure as QueueChain), with
+    // the current conditions and only their tasks changed: "current" (as they are), else the steps of a
+    // reaction path in this order: "saddle" (transition state → frequencies), "irc" (both directions),
+    // "ends" (an optimization of each end of the IRC, with frequencies when endFrequencies). Returns the
+    // IDs of the new entries.
+    QStringList enqueueChain(const QString &from, const QString &structure, const QStringList &steps,
+                             bool endFrequencies = true);
+    void showChainDialog();
     QStringList enqueueGeometries(const QVector<Document> &geometries, bool frequencies);
     void showQueue();
     NwchemQueue &calculationQueue() {

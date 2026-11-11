@@ -6,6 +6,7 @@
 #include <QRectF>
 #include <QVector>
 #include <QWidget>
+#include <functional>
 #include <optional>
 
 namespace mf {
@@ -36,6 +37,10 @@ class ChartView : public QWidget {
     void setXRange(double minimum, double maximum);
     // One stick drawn thicker in the accent color (series and point index; -1 for none).
     void setSelectedStick(int series, int index);
+    // A context menu entry that saves the chart as a figure through `save`, which asks for the place.
+    void setExport(std::function<void()> save) {
+        exporter = std::move(save);
+    }
     QSize sizeHint() const override {
         return {420, 220};
     }
@@ -50,8 +55,10 @@ class ChartView : public QWidget {
   protected:
     void paintEvent(QPaintEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
+    void contextMenuEvent(QContextMenuEvent *event) override;
 
   private:
+    std::function<void()> exporter;
     QString title, xLabel, yLabel;
     QVector<ChartSeries> series;
     QVector<QPair<QString, double>> levels;

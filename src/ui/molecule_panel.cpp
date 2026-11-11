@@ -371,8 +371,8 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
     refineButton->setObjectName("refineButton");
     refineButton->setToolTip(
         tr("力場（MMFF94、使えない場合UFF）で分子全体の構造を整え、候補として表示します。"
-           "金属錯体・ゴースト原子を含む分子には使えません。選択原子だけを整えるときは"
-           "「編集」の「局所整形」を使います。"));
+           "金属錯体・ゴースト原子を含む分子には使えません（金属錯体は「ツール → xTBで構造を最適化…」）。"
+           "選択原子だけを整えるときは「編集」の「局所整形」を使います。"));
     connect(refineButton, &QPushButton::clicked, this, [this] { safe([this] { runWorker("refine"); }); });
     cancelWorkerButton = new QPushButton(tr("整形を中止"));
     cancelWorkerButton->hide();

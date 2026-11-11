@@ -2,6 +2,7 @@
 #include "ui/workspace_controller.h"
 #include "editing/coordinates.h"
 #include "nwchem/history.h"
+#include "nwchem/nwchem.h"
 #include "nwchem/nwchem_restart.h"
 #include "ui/execution_panel.h"
 #include "ui/history_panel.h"
@@ -94,13 +95,20 @@ void WorkspaceController::resultLoaded() {
     if (window.currentPanel() == &results)
         execution.resultsShown();
 }
-void WorkspaceController::prepareRecalculation(const QString &directory, const Document &geometry) {
+void WorkspaceController::prepareRecalculation(const QString &directory, const Document &geometry,
+                                               const QString &task) {
     if (window.hasCandidate() || window.chemistryRunning() || execution.running())
         fail(tr("候補・分子処理・実行中の計算を終了してから再計算を準備してください。"));
     window.checkMcpPath(directory);
     for (const auto *file : {"run.json", "project.molforma.json", "input.nw"})
         window.checkMcpPath(QDir(directory).filePath(file));
-    const auto original = historyDocument(directory);
+    auto original = historyDocument(directory);
+    if (!task.isEmpty()) {
+        // Another calculation from a point of the path: the task, under a name of its own.
+        setNwchemSetting(original, "task", task);
+        if (const auto name = nwchemSettings(original)["start"].toString() + "_ts"; name.size() <= 64)
+            setNwchemSetting(original, "start", name);
+    }
     auto candidate = original;
     applyResultGeometry(candidate, geometry); // Check atom order and fixed atoms before replacing anything.
     if (!window.replaceUnsavedDocument(original))
@@ -108,7 +116,10 @@ void WorkspaceController::prepareRecalculation(const QString &directory, const D
     window.edit(tr("計算結果の構造を適用"), [&](Document &d) { applyResultGeometry(d, geometry); }, true);
     window.showPanel(0);
     window.statusBar()->showMessage(
-        tr("保存した条件で再計算を準備しました。構造と条件を確認して新しいジョブを実行してください。"),
+        task.isEmpty()
+            ? tr("保存した条件で再計算を準備しました。構造と条件を確認して新しいジョブを実行してください。")
+            : tr("選んだ点から遷移状態探索を準備しました。構造と条件を確認して新しいジョブを実行してください"
+                 "。"),
         15000);
 }
 } // namespace mf

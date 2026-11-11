@@ -1165,9 +1165,12 @@ void NwchemLog::read(const QString &line) {
             warn(r, tr("行 %1: NWChemエラー: %2").arg(i - recent.size() + j).arg(abort));
             break;
         }
-    const bool troubled = std::any_of(std::begin(errorWords), std::end(errorWords), [&](QStringView word) {
-        return line.contains(word, Qt::CaseInsensitive);
-    });
+    // An NEB that reached its step limit ends normally ("@neb NEB calculation not converged"): told apart
+    // below, as the optimization of the path rather than an error.
+    const bool troubled = !line.startsWith(u"@neb") &&
+                          std::any_of(std::begin(errorWords), std::end(errorWords), [&](QStringView word) {
+                              return line.contains(word, Qt::CaseInsensitive);
+                          });
     if (troubled && error.match(line).hasMatch()) {
         fatal = true;
         if (r.warnings.size() < 30)
@@ -1181,6 +1184,96 @@ void NwchemLog::read(const QString &line) {
                                           {"points", m.captured(2).toInt()},
                                           {"coordinate", m.captured(3)},
                                           {"value", value(m.captured(4))}};
+    }
+    // NWChem's NEB: the step, the energies of the path after each step, the path itself when the
+    // input asks to print it (print_shift), the "@neb" table and the verdict.
+    if (line.contains(u"neb") || line.contains(u"XYZ FILE for bead_list")) {
+        const auto tokens = words(line);
+        if (tokens.size() == 4 && tokens[0] == "neb:" && tokens[1] == "iteration" && tokens[2] == "#")
+            nebIteration = int(value(tokens[3]));
+        if (line.contains(u"neb: Initial Path Energy") || line.contains(u"neb: Path Energy #")) {
+            const int iteration = line.contains(u"Initial") ? 0 : int(value(tokens.value(4)));
+            sections << [this, iteration, energies = QVector<double>()](const QString *text) mutable {
+                const auto row = text ? words(*text) : QStringList();
+                if (row.size() == 3 && row[0] == "neb:" && row[1] == QString::number(energies.size() + 1)) {
+                    if (const auto e = resultNumber(row[2]); e && energies.size() < 1000) {
+                        energies << *e;
+                        return true;
+                    }
+                } else if (energies.isEmpty() && row.size() == 2 && row[1].startsWith(u"---"))
+                    return true;
+                if (!energies.isEmpty()) {
+                    nebEnergies = energies;
+                    nebEnergiesIteration = iteration;
+                }
+                return false;
+            };
+        }
+        if (line.contains(u"XYZ FILE for bead_list"))
+            sections << [this, iteration = nebIteration, path = QVector<Document>(),
+                         energies = QVector<double>(), bead = Document(), atoms = -1, energy = qQNaN(),
+                         heading = true](const QString *text) mutable {
+                const auto finish = [&] {
+                    if (!path.isEmpty() && path.size() == energies.size()) {
+                        nebPath = path;
+                        nebPathEnergies = energies;
+                        nebPathIteration = iteration;
+                    }
+                    return false;
+                };
+                if (!text)
+                    return finish();
+                const auto row = words(*text);
+                if (heading && row.size() == 1 && row[0].startsWith(u"---")) {
+                    heading = false;
+                    return true;
+                }
+                heading = false;
+                try {
+                    if (atoms < 0) { // The number of atoms of the next bead, or the end of the path.
+                        if (row.size() != 1 || path.size() >= 1000)
+                            return finish();
+                        atoms = integer(row[0], 1, maxAtoms);
+                        bead = Document();
+                        energy = qQNaN();
+                    } else if (!std::isfinite(energy)) {
+                        if (!text->trimmed().startsWith(u"energy="))
+                            return finish();
+                        energy = number(text->section('=', 1).trimmed());
+                    } else {
+                        if (row.size() != 4)
+                            return finish();
+                        bead.atoms << atom(row[0], point(row, 1));
+                        if (bead.atoms.size() == atoms) {
+                            if (!path.isEmpty() && path.first().atoms.size() != atoms)
+                                return finish();
+                            path << bead;
+                            energies << energy;
+                            atoms = -1;
+                        }
+                    }
+                } catch (const std::exception &) {
+                    return finish();
+                }
+                return true;
+            };
+        if (line.startsWith(u"@neb")) {
+            static const QRegularExpression step(R"(^@neb\s+(\d+)((?:\s+\S+){9})\s*$)");
+            static const QRegularExpression tolerance(R"(^@neb (Gmax|Grms|Xmax|Xrms) tolerance\s*=\s*(\S+))");
+            if (const auto m = step.match(line); m.hasMatch() && nebSteps.size() < 20000) {
+                const auto columns = words(m.captured(2));
+                nebSteps << QJsonObject{{"step", m.captured(1).toInt()}, {"energy", value(columns[0])},
+                                        {"midpoint", value(columns[1])}, {"minimum", value(columns[2])},
+                                        {"maximum", value(columns[3])},  {"gmax", value(columns[4])},
+                                        {"grms", value(columns[5])},     {"xrms", value(columns[6])},
+                                        {"xmax", value(columns[7])}};
+            } else if (const auto t = tolerance.match(line); t.hasMatch())
+                nebThresholds[t.captured(1).toLower()] = value(t.captured(2));
+            else if (line.contains(u"NEB calculation not converged"))
+                nebConverged = 0;
+            else if (line.contains(u"NEB calculation converged"))
+                nebConverged = 1;
+        }
     }
     if (line.contains(u"Forward IRC optimization") || line.contains(u"Backward IRC optimization")) {
         if (ircDirection.isEmpty()) {
@@ -1636,6 +1729,48 @@ void NwchemLog::finish() {
                 points << point;
         r.properties["scan"] = points;
     }
+    if (!nebPath.isEmpty() || !nebEnergies.isEmpty()) {
+        QJsonObject neb;
+        QJsonArray points;
+        if (!nebPath.isEmpty()) {
+            // The energies of the path's step at full precision where the log printed them.
+            const bool precise =
+                nebEnergiesIteration == nebPathIteration && nebEnergies.size() == nebPath.size();
+            double distance = 0;
+            for (int k = 0; k < nebPath.size(); ++k) {
+                if (k > 0) {
+                    double squares = 0;
+                    for (int i = 0; i < nebPath[k].atoms.size(); ++i)
+                        squares +=
+                            (nebPath[k].atoms[i].position - nebPath[k - 1].atoms[i].position).squaredNorm();
+                    distance += std::sqrt(squares);
+                }
+                addFrame(r, nebPath[k], tr("NEB 像 %1").arg(k + 1));
+                points << QJsonObject{{"bead", k + 1},
+                                      {"energy", precise ? nebEnergies[k] : nebPathEnergies[k]},
+                                      {"frame", r.frames.size() - 1},
+                                      {"distance", distance}};
+            }
+            neb["iteration"] = nebPathIteration;
+        } else {
+            for (int k = 0; k < nebEnergies.size(); ++k)
+                points << QJsonObject{{"bead", k + 1}, {"energy", nebEnergies[k]}};
+            neb["iteration"] = nebEnergiesIteration;
+            warn(r, tr("NEBの経路の構造はログにありません（入力のnebブロックにprint_shiftを指定すると出力"
+                       "されます）。"));
+        }
+        neb["points"] = points;
+        if (!nebSteps.isEmpty())
+            neb["steps"] = nebSteps;
+        if (!nebThresholds.isEmpty())
+            neb["thresholds"] = nebThresholds;
+        if (nebConverged >= 0)
+            neb["converged"] = nebConverged == 1;
+        if (nebConverged == 0)
+            warn(r, tr("NEBの経路は最大ステップ数までに収束していません。最高点の構造は遷移状態の目安として"
+                       "遷移状態探索に使ってください。"));
+        r.properties["neb"] = neb;
+    }
     if (!ircPoints.isEmpty()) {
         irc["points"] = ircPoints;
         // Complete when each direction traced (both, or the one chosen) printed its convergence.
@@ -1714,6 +1849,7 @@ QStringList NwchemLog::tasks(const QString &input) {
                                                     {"frequencies", QT_TR_NOOP("振動数")},
                                                     {"freq", QT_TR_NOOP("振動数")},
                                                     {"mepgs", "IRC"},
+                                                    {"neb", "NEB"},
                                                     {"property", QT_TR_NOOP("物性")},
                                                     {"dplot", QT_TR_NOOP("CUBE出力")}};
     // An operation without a name stays as written in the input.
@@ -2138,6 +2274,9 @@ QStringList resultFiles(const QString &directory) {
     auto files = QDir(directory).entryList(
         {"*.out", "*.log", "*.xyz", "*.cube", "*.cub", "*.molden", "*.mld", "*.molde", "*.normal"},
         QDir::Files | QDir::Readable, QDir::Name);
+    // NEB writes its path after every step (print_shift); the log holds the same paths.
+    static const QRegularExpression nebStep(R"(\.nebpath_\d+\.xyz$)");
+    files.removeIf([](const QString &file) { return nebStep.match(file).hasMatch(); });
     // Generated files can live in permanent_dir; do not recursively scan it or trust the saved cwd.
     QFile record(QDir(directory).filePath("run.json"));
     if (record.open(QIODevice::ReadOnly) && record.size() <= 256 * 1024) {

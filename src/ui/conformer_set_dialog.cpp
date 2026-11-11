@@ -5,6 +5,7 @@
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "results/energy_profile.h"
+#include "ui/figure_export.h"
 #include "ui/main_window.h"
 #include "ui/result_charts.h"
 #include <QtWidgets>
@@ -486,14 +487,13 @@ ConformerSpectrumDialog::ConformerSpectrumDialog(MainWindow *owner, QWidget *par
         if (!path.isEmpty())
             exportCsv(path);
     });
-    button("PNG…", "conformerSpectrumPng", [this] {
+    button(tr("図…"), "conformerSpectrumPng", [this] {
         if (spectrum.curve.isEmpty())
             fail(message->text());
-        const auto path = QFileDialog::getSaveFileName(this, tr("スペクトルを書き出す"), {}, "PNG (*.png)");
+        const auto path = askFigurePath(this, tr("スペクトルを書き出す"), "spectrum");
         if (!path.isEmpty()) {
             window->checkMcpPath(path);
-            if (!chart->grab().save(path))
-                fail(tr("画像を保存できません。"));
+            saveFigure(chart, path);
         }
     });
     // The widths the charts of the result viewer start with, in the unit of the axis.

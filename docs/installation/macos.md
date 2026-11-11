@@ -22,8 +22,10 @@ MolFormaのパッケージは、Homebrewにはありません（2026-11-04時点
 | 任意 | `rdkit` | 厳密な立体判定（R/S・E/Z）、残基認識 |
 | 任意 | `vtk` | 3D画面をVTK（OpenGL）で描画。HomebrewのVTKはQt 6に対応している |
 | 任意 | `qttranslations` | 日本語表示のとき、ファイル選択などQtの標準ダイアログも日本語にする |
+| 任意 | `qtsvg` | グラフ・スペクトル・反応エネルギー図をSVGでも保存（ないときはPNG・PDF） |
+| 任意 | `ffmpeg`、[xtb](https://github.com/grimme-lab/xtb) | 動画のMP4での書き出し、「ツール → xTBで構造を最適化…」。実行時に呼び出すだけで、ビルドには不要（DMGにも入りません） |
 
-Qt全体の `qt` は不要です（MolFormaが使うのは `qtbase` だけで、`qt` はQt WebEngineなど多くのモジュールを入れます）。これらのライブラリはビルドとDMGの作成に使い、DMGを作るときに `MolForma.app` の中へコピーされます。
+Qt全体の `qt` は不要です（MolFormaが使うのは `qtbase` と任意の `qtsvg` だけで、`qt` はQt WebEngineなど多くのモジュールを入れます）。これらのライブラリはビルドとDMGの作成に使い、DMGを作るときに `MolForma.app` の中へコピーされます。
 
 計算に使うNWChemは、Homebrewの `nwchem` を入れます（[3. NWChemを入れる](#3-nwchemを入れる)）。
 
@@ -48,10 +50,10 @@ Homebrewを入れていない場合は、[Homebrewのページ](https://brew.sh/
 brew install cmake ninja pkgconf qtbase eigen open-babel
 ```
 
-RDKitとVTK、Qtの日本語訳を使う場合は、続けて次を入れます。VTKは依存するもの（Qt Quickの `qtdeclarative`、HDF5、NetCDFなど）が多く、VTKだけで約300 MBになります。
+RDKitとVTK、Qtの日本語訳、SVGでの保存を使う場合は、続けて次を入れます。VTKは依存するもの（Qt Quickの `qtdeclarative`、HDF5、NetCDFなど）が多く、VTKだけで約300 MBになります。
 
 ```sh
-brew install rdkit vtk qttranslations
+brew install rdkit vtk qttranslations qtsvg
 ```
 
 ## 3. NWChemを入れる

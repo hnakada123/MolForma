@@ -25,6 +25,6 @@ class WorkspaceController : public QObject {
     void openResults(const QString &directory);
     void runFinished(const QString &directory, bool open);
     void resultLoaded();
-    void prepareRecalculation(const QString &directory, const Document &geometry);
+    void prepareRecalculation(const QString &directory, const Document &geometry, const QString &task);
 };
 } // namespace mf

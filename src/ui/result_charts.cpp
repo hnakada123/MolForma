@@ -4,8 +4,10 @@
 #include "results/molden_orbitals.h"
 #include "ui/editor_chrome.h"
 #include "ui/theme.h"
+#include <QContextMenuEvent>
 #include <QHelpEvent>
 #include <QKeyEvent>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -93,6 +95,13 @@ void ChartView::setSelectedStick(int s, int index) {
 double ChartView::screenX(double x) const {
     const double share = (x - x0) / (x1 - x0);
     return reversed ? plot.right() - share * plot.width() : plot.left() + share * plot.width();
+}
+void ChartView::contextMenuEvent(QContextMenuEvent *event) {
+    if (!exporter || series.isEmpty())
+        return QWidget::contextMenuEvent(event);
+    QMenu menu(this);
+    menu.addAction(tr("図を保存（PNG・PDF・SVG）…"), this, [this] { exporter(); });
+    menu.exec(event->globalPos());
 }
 void ChartView::mousePressEvent(QMouseEvent *event) {
     QWidget::mousePressEvent(event);

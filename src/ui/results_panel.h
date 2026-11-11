@@ -56,8 +56,9 @@ class ResultsPanel : public QWidget {
     void saveGeometry(const QString &path) const;
     // Proposes the displayed result geometry as a candidate for the editor's molecule.
     void applyStructure();
-    // Restores this job's saved conditions and proposes the displayed geometry for a new run.
-    void prepareRecalculation();
+    // Restores this job's saved conditions and proposes the displayed geometry for a new run; with a
+    // task ("saddle_frequencies"), a run of that task.
+    void prepareRecalculation(const QString &task = {});
     // One line with the outcome of the loaded log: optimization state, final energy, imaginary
     // frequencies and excited states (empty when the file has none of them).
     QString briefSummary() const;
@@ -77,7 +78,7 @@ class ResultsPanel : public QWidget {
   signals:
     void loaded();
     void loadFailed(QString message);
-    void recalculationRequested(const QString &directory, const Document &geometry);
+    void recalculationRequested(const QString &directory, const Document &geometry, const QString &task);
 
   private:
     MainWindow *window;
@@ -109,7 +110,7 @@ class ResultsPanel : public QWidget {
     QComboBox *files, *dataset, *orbitalNorm;
     QPushButton *cancel, *reload, *applyGeometry, *compareGeometry, *recalculate;
     QToolButton *openButton, *exportButton;
-    QAction *saveXyz, *savePng;
+    QAction *saveXyz, *savePng, *saveFrames;
     // The 3D view with its overlays: what is shown, the view controls and the measurement.
     MoleculeView *view;
     QFrame *contextChip, *measureCard;
@@ -137,6 +138,8 @@ class ResultsPanel : public QWidget {
     QScrollArea *overviewScroll;
     QPlainTextEdit *status, *log;
     QTableWidget *energy, *orbitals, *modes, *steps, *excitations, *path, *atomProperties;
+    QPushButton *pathHighest, *pathSaddle; // Under the path: its highest point, and a saddle search there.
+    QLabel *pathNote;
     // The orbital pairs of the chosen excited state, and the bond indices of a Mulliken analysis.
     QTableWidget *contributions, *bondIndices;
     QWidget *contributionsBlock, *bondBlock;
@@ -201,6 +204,10 @@ class ResultsPanel : public QWidget {
     // The overlay naming what the view shows and the page of the controls under it.
     void showContext();
     void exportMode(bool images);
+    // The 3D view as a picture (options: scale, background), and the structures (the points of a path in
+    // its order, else every structure) or a vibration as a GIF, MP4 or numbered PNG files.
+    void exportImage();
+    void exportFrames();
     void setViewDocument(const Document &document);
     void pickAtom(const QString &id);
     void updateActions();

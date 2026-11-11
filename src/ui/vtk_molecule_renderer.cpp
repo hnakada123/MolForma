@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <openbabel/elements.h>
 #include <unordered_map>
 #include <vtkActor.h>
@@ -16,6 +17,7 @@
 #include <vtkFloatArray.h>
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkGlyph3DMapper.h>
+#include <vtkImageData.h>
 #include <vtkNew.h>
 #include <vtkPointData.h>
 #include <vtkPoints.h>
@@ -25,6 +27,7 @@
 #include <vtkRenderer.h>
 #include <vtkSphereSource.h>
 #include <vtkUnsignedCharArray.h>
+#include <vtkWindowToImageFilter.h>
 
 namespace mf {
 namespace {
@@ -465,6 +468,58 @@ bool VtkMoleculeRenderer::draw() {
         return false;
     scene->window->Render();
     return true;
+}
+QImage VtkMoleculeRenderer::image(int scale, int background) {
+    auto &s = *scene;
+    const auto capture = [&](const double *color) {
+        const bool gradient = s.renderer->GetGradientBackground();
+        double before[3];
+        s.renderer->GetBackground(before);
+        if (color) {
+            s.renderer->GradientBackgroundOff();
+            s.renderer->SetBackground(color[0], color[1], color[2]);
+        }
+        vtkNew<vtkWindowToImageFilter> filter;
+        filter->SetInput(s.window);
+        filter->SetScale(std::max(1, scale));
+        filter->SetInputBufferTypeToRGB();
+        filter->ReadFrontBufferOff();
+        filter->ShouldRerenderOn();
+        filter->Update();
+        s.renderer->SetBackground(before);
+        s.renderer->SetGradientBackground(gradient);
+        auto *data = filter->GetOutput();
+        int size[3];
+        data->GetDimensions(size);
+        QImage image(size[0], size[1], QImage::Format_RGB888);
+        const auto *pixels = static_cast<const unsigned char *>(data->GetScalarPointer());
+        for (int y = 0; y < size[1]; ++y) // VTK's rows go up.
+            std::memcpy(image.scanLine(size[1] - 1 - y), pixels + size_t(y) * size[0] * 3,
+                        size_t(size[0]) * 3);
+        return image;
+    };
+    QImage result;
+    if (background == 2) {
+        const double black[] = {0, 0, 0}, white[] = {1, 1, 1};
+        const auto dark = capture(black), light = capture(white);
+        result = QImage(dark.size(), QImage::Format_ARGB32);
+        for (int y = 0; y < dark.height(); ++y) {
+            const auto *d = dark.constScanLine(y), *l = light.constScanLine(y);
+            auto *out = reinterpret_cast<QRgb *>(result.scanLine(y));
+            for (int x = 0; x < dark.width(); ++x, d += 3, l += 3) {
+                // Over black a pixel is a·c, over white a·c + (1 − a): the difference gives a.
+                const int alpha =
+                    std::clamp(255 - ((l[0] - d[0]) + (l[1] - d[1]) + (l[2] - d[2])) / 3, 0, 255);
+                const auto channel = [&](int i) { return alpha ? std::min(255, d[i] * 255 / alpha) : 0; };
+                out[x] = qRgba(channel(0), channel(1), channel(2), alpha);
+            }
+        }
+    } else {
+        const double white[] = {1, 1, 1};
+        result = capture(background == 1 ? white : nullptr).convertToFormat(QImage::Format_ARGB32);
+    }
+    s.window->Render(); // The view as it was.
+    return result;
 }
 quint64 VtkMoleculeRenderer::surfaceBuildCount() const {
     return scene->surfaceBuilds;

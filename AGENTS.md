@@ -18,7 +18,9 @@ by responsibility, with paired headers and implementations in the same directory
   and the revision that stale checks and the MCP `revision` compare (never serialize documents for that).
   `atom_properties.*` shares atom-property edits and validation across panels and MCP.
   `chemistry.*` uses the Open Babel C++ API; `chemistry_job.*` owns cancellable chemistry
-  processes, stale-result checks and candidate application.
+  processes, stale-result checks and candidate application, including runs of the external `xtb`
+  (`xtb.*`: its input, `$fix` of fixed atoms and reading `xtbopt.xyz`; the program comes from
+  Preferences `xtb/executable`, never from MCP).
   `stereochemistry.*` optionally uses native RDKit for CIP and residue recognition.
   `coordinates.*` implements coordinate edits, structure replacement and Z-matrices.
 - `src/io/`: `structure_io.*` routes project, XYZ, NWChem, Gaussian and native Open Babel
@@ -35,7 +37,9 @@ by responsibility, with paired headers and implementations in the same directory
   as a child process, or through a supervisor (`runJobMain`, the executable's `--run-job <job>`
   mode) that outlives the window and is followed and stopped through `run.json` and `stop.request`.
   `nwchem_queue.*` runs saved bundles in sequence and keeps the waiting ones in a file between
-  sessions. `nwchem_restart.*` prepares documents that go on from a job's NWChem database
+  sessions; a chained entry (`QueueChain`) takes the structure of an earlier entry's job
+  (`chainedDocument`) when that has finished and saves its bundle only then. NEB (`task` "neb") keeps
+  its end in the setting `neb_end` (positions by atom ID, kept through `Document::remove`/`renameIds`). `nwchem_restart.*` prepares documents that go on from a job's NWChem database
   (settings `restart`: the input says `restart`, has no geometry and skips finished tasks) and
   copies its files into the new job. `history.*` scans saved bundles and validates snapshots;
   `history_import.cpp` registers runs made outside MolForma.
@@ -66,7 +70,9 @@ by responsibility, with paired headers and implementations in the same directory
   provides the read-only "4 入力プレビュー" tab using the shared NWChem input
   generator and execution plan.
   `results_panel.*` provides the independent result viewer with cancellable native
-  readers. `history_panel.*` provides calculation history (its list a `HistoryModel`), log
+  readers. `figure_export.*` writes pictures of the 3D view (`MoleculeView::renderImage`: scale and
+  background, VTK in tiles), animations (its own GIF encoder, MP4 through `ffmpeg` from PATH, PNG
+  files) and figures of charts (PNG, PDF, and SVG with the optional Qt SVG). `history_panel.*` provides calculation history (its list a `HistoryModel`), log
   browsing, reuse and result navigation. `mcp_gui.*` exposes GUI, execution and result tools to MCP
   through public editor/panel operations and state snapshots; panels do not access
   MainWindow or one another through friendship. Playback kind is explicit, independent of timer intervals.
@@ -100,7 +106,9 @@ cmake --build build -j 4
 ctest --test-dir build --output-on-failure
 ```
 
-Dependencies: Qt6 Widgets/Network/Test, Eigen3, zlib, Open Babel 3, CMake >= 3.21.
+Dependencies: Qt6 Widgets/Network/Test, Eigen3, zlib, Open Babel 3, CMake >= 3.21. Optional: RDKit,
+Qt6-built VTK and Qt SVG (`MOLFORMA_HAS_QTSVG`); code must build and pass tests without them.
+`tests/fake_nwchem.cpp` and `tests/fake_xtb.cpp` stand in for NWChem and xtb.
 CTest uses `QT_QPA_PLATFORM=offscreen`. Tests require no credentials or network.
 Format with `rg --files src tests -g '*.h' -g '*.cpp' -0 | xargs -0 clang-format -i`.
 

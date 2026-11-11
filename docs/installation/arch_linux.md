@@ -13,6 +13,7 @@ MolFormaのパッケージは公式リポジトリにもAURにもありません
 | 区分 | パッケージ | 用途 |
 | --- | --- | --- |
 | 実行時 | `qt6-base` | 画面（Qt Widgets） |
+| 実行時 | `qt6-svg` | グラフ・スペクトル・反応エネルギー図のSVGでの保存 |
 | 実行時 | `openbabel` | 構造ファイルの読み書き、力場による整形、SMILESからの3D構造（フォーマットプラグインと力場データを含む） |
 | 実行時 | `rdkit` | 厳密な立体判定（R/S・E/Z）、残基認識 |
 | 実行時 | `vtk` | 3D画面をVTK（OpenGL）で描画 |
@@ -28,6 +29,8 @@ MolFormaのパッケージは公式リポジトリにもAURにもありません
 | 計算 | `nwchem` | AUR | 計算の実行。`openmpi` と、AURの `scalapack` も依存パッケージとして入る |
 | 任意 | `qt6-translations` | extra | 日本語表示のとき、ファイル選択などQtの標準ダイアログも日本語にする（なくても「保存」「キャンセル」などの標準ボタンは日本語） |
 | 任意 | `noto-fonts-cjk` | extra | 日本語のフォント（日本語のフォントが入っていない場合） |
+| 任意 | `ffmpeg` | extra | 構造列・振動の動画をMP4で書き出す |
+| 任意 | `xtb` | [GitHub](https://github.com/grimme-lab/xtb) | 「ツール → xTBで構造を最適化…」。別に入手してPATHに置くか、「編集 → 環境設定」で指定 |
 
 - **RDKitとVTK**: PKGBUILDはRDKitとVTKを使う構成でビルドし、CMakeがどちらかを使えないときはビルドを止めます。VTKで描画するには、OpenGL 3.2以上を使えるGPUドライバーも必要です。`rdkit` はPythonなどにも依存しますが、MolFormaはC++ライブラリだけを使います。
 - **NWChem**: 入力の作成・保存（「ジョブとして保存」）はNWChemがなくても使えます。

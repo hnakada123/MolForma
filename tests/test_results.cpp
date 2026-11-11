@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordinates.h"
 #include "nwchem/history.h"
+#include "nwchem/nwchem.h"
 #include "results/energy_profile.h"
 #include "results/field_analysis.h"
 #include "results/result_summary.h"
 #include "results/spectrum.h"
+#include "ui/calculation_panel.h"
 #include "ui/conformer_set_dialog.h"
 #include "ui/energy_profile_dialog.h"
 #include "ui/execution_panel.h"
@@ -266,6 +268,83 @@ class ResultsTest : public QObject {
                 QVERIFY2(sameReading(digest[key], expected[key]), qPrintable(log + ": " + key));
             QCOMPARE(digest.keys(), expected.keys());
         }
+    }
+    void nebPathOfLog() {
+        // NWChem 7.3.1's NEB of HCN → HNC (tests/fixtures/nwchem/hcn_neb.out): the path after the last
+        // step, with the energies at full precision and the path length; the step limit is no error.
+        const auto r = readResult(FIXTURE_DIR "/nwchem/hcn_neb.out");
+        const auto neb = r.properties["neb"].toObject();
+        const auto points = neb["points"].toArray();
+        QCOMPARE(points.size(), 5);
+        QCOMPARE(neb["iteration"].toInt(), 3);
+        QCOMPARE(neb["converged"].toBool(true), false);
+        QCOMPARE(neb["steps"].toArray().size(), 3);
+        QCOMPARE(neb["thresholds"].toObject()["gmax"].toDouble(), 0.00045);
+        QCOMPARE(points[2].toObject()["energy"].toDouble(), -90.12077085630793);
+        double length = -1;
+        for (int k = 0; k < points.size(); ++k) {
+            const auto p = points[k].toObject();
+            QVERIFY(p["distance"].toDouble() > length);
+            length = p["distance"].toDouble();
+            const auto &frame = r.frames[p["frame"].toInt()];
+            QCOMPARE(frame.label, QString("NEB 像 %1").arg(k + 1));
+            QCOMPARE(frame.molecule.atoms.size(), 3);
+        }
+        QVERIFY((r.frames[points[4].toObject()["frame"].toInt()].molecule.atoms[2].position -
+                 Vec(0.8, 0, 1.849999))
+                    .norm() < 1e-9);
+        QCOMPARE(resultOutcome(r), QString("normal"));
+        QVERIFY(r.warnings.join('\n').contains("収束していません"));
+        // The paths of every step that NWChem also writes to files are left out of the job's files.
+        QTemporaryDir job;
+        for (const auto *name : {"output.out", "hcn.nebpath_000001.xyz", "hcn.neb_final.xyz"})
+            writeFile(QDir(job.path()).filePath(name), "x");
+        QCOMPARE(resultFiles(job.path()), QStringList({"hcn.neb_final.xyz", "output.out"}));
+    }
+    void chainedStructuresOfLogs() {
+        // The structures a queued calculation can take from a job: the final one, the highest point of a
+        // path (an NEB's fixed ends aside) and the ends of an IRC.
+        const auto job = [](const QString &log) {
+            auto *dir = new QTemporaryDir;
+            QFile::copy(FIXTURE_DIR "/nwchem/" + log, dir->filePath("output.out"));
+            return std::unique_ptr<QTemporaryDir>(dir);
+        };
+        const auto neb = job("hcn_neb.out");
+        const auto nebResult = readResult(neb->filePath("output.out"));
+        auto start = nebResult.frames.first().molecule;
+        const auto highest = chainedDocument(start, neb->path(), "highest");
+        QCOMPARE(highest.ids(), start.ids());
+        QVERIFY((highest.atoms[2].position - Vec(-0.050003, 0, 0.575004)).norm() < 1e-9);
+        QVERIFY(
+            (chainedDocument(start, neb->path(), "final").atoms[2].position - Vec(0.8, 0, 1.849999)).norm() <
+            1e-9);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, chainedDocument(start, neb->path(), "irc_forward"));
+        const auto irc = job("nh3_irc.out");
+        const auto ircResult = readResult(irc->filePath("output.out"));
+        const auto points = ircResult.properties["irc"].toObject()["points"].toArray();
+        int forward = -1, backward = -1;
+        for (const auto &value : points) {
+            const auto p = value.toObject();
+            (p["direction"] == "forward" ? forward : backward) = p["frame"].toInt();
+        }
+        QVERIFY(forward >= 0 && backward >= 0);
+        start = ircResult.frames.first().molecule;
+        QVERIFY((chainedDocument(start, irc->path(), "irc_forward").atoms[0].position -
+                 ircResult.frames[forward].molecule.atoms[0].position)
+                    .norm() < 1e-12);
+        QVERIFY((chainedDocument(start, irc->path(), "irc_backward").atoms[1].position -
+                 ircResult.frames[backward].molecule.atoms[1].position)
+                    .norm() < 1e-12);
+        // The transition state is the highest point of an IRC.
+        const int ts = ircResult.properties["irc"].toObject()["ts_frame"].toInt();
+        QVERIFY((chainedDocument(start, irc->path(), "highest").atoms[1].position -
+                 ircResult.frames[ts].molecule.atoms[1].position)
+                    .norm() < 1e-12);
+        auto other = start;
+        other.atoms[0].element = "P";
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, chainedDocument(other, irc->path(), "final"));
+        QTemporaryDir empty;
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, chainedDocument(start, empty.path(), "final"));
     }
     void logGeometryEnergyAndFailure() {
         auto source = "NWChem\n" + geometry() +
@@ -2235,6 +2314,46 @@ class ResultsTest : public QObject {
         w.confirmCandidate();
         w.history()->undo();
         QVERIFY((w.document().atoms[1].position - original.atoms[1].position).norm() < 1e-12);
+    }
+    void nebPathViewAndSaddle() {
+        // An NEB job in the viewer: the path from the start, its highest point, and a transition-state
+        // search prepared from there; the end of another NEB taken from the structure shown.
+        auto original = Document::fromXyz("3\nHCN\nC 0 0 0\nN 0 0 1.156\nH -0.9 0 -0.7\n");
+        setExecutionSetting(original, "job_root", files.filePath("neb"));
+        const auto bundle = saveExecutionBundle(original, files.path());
+        QVERIFY(QFile::copy(FIXTURE_DIR "/nwchem/hcn_neb.out", bundle.directory + "/output.out"));
+        MainWindow w;
+        w.loadDocument(original);
+        auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        QSignalSpy done(panel, &ResultsPanel::loaded);
+        panel->openFile(bundle.directory + "/output.out");
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        auto *path = widget<QTableWidget>(w, "resultsPath");
+        QCOMPARE(path->rowCount(), 5);
+        QCOMPARE(path->item(0, 1)->text(), QString("始点"));
+        QCOMPARE(path->item(4, 1)->text(), QString("終点"));
+        QCOMPARE(path->item(0, 4)->text(), QString("0.000"));
+        QVERIFY(widget<QLabel>(w, "resultsPathNote")->text().contains("未収束"));
+        // The end of an NEB from the shown structure: the last image, fitted onto the molecule.
+        path->setCurrentCell(4, 0);
+        auto *calculation = w.findChild<CalculationPanel *>();
+        QVERIFY(calculation);
+        calculation->setNebEndFromResult();
+        QCOMPARE(nwchemSettings(w.document())["task"].toString(), QString("neb"));
+        QVERIFY(nwchemNebEnd(w.document()).document);
+        QVERIFY(!w.findChild<QLabel *>("calculationNebEnd")->text().contains("未設定"));
+        w.history()->undo();
+        widget<QPushButton>(w, "resultsPathHighest")->click();
+        QCOMPARE(path->currentRow(), 2);
+        const auto shown = panel->displayedGeometry();
+        QVERIFY((shown.atoms[2].position - Vec(-0.050003, 0, 0.575004)).norm() < 1e-9);
+        auto *saddle = widget<QPushButton>(w, "resultsPathSaddle");
+        QVERIFY(saddle->isEnabled());
+        saddle->click();
+        QVERIFY(w.hasCandidate());
+        QCOMPARE(nwchemSettings(w.document())["task"].toString(), QString("saddle_frequencies"));
+        QCOMPARE(nwchemSettings(w.document())["start"].toString(), QString("molforma_ts"));
+        QVERIFY((w.displayDocument().atoms[2].position - shown.atoms[2].position).norm() < 1e-12);
     }
     void viewerPathsPropertiesAndMeasurement() {
         MainWindow w;

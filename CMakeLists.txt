@@ -51,7 +51,8 @@ add_library(molforma_editing STATIC
     src/editing/pdb.cpp
     src/editing/peptide.cpp
     src/editing/site.cpp
-    src/editing/stereochemistry.cpp)
+    src/editing/stereochemistry.cpp
+    src/editing/xtb.cpp)
 target_link_libraries(molforma_editing PUBLIC molforma_model PRIVATE ${MOLFORMA_OPENBABEL})
 if(TARGET RDKit::CIPLabeler)
     target_link_libraries(molforma_editing PRIVATE RDKit::CIPLabeler RDKit::GraphMol RDKit::SubstructMatch)
@@ -104,6 +105,7 @@ endforeach()
 add_library(molforma_ui STATIC
     src/ui/conformer_set_dialog.cpp
     src/ui/energy_profile_dialog.cpp
+    src/ui/figure_export.cpp
     src/ui/calculation_panel.cpp
     src/ui/coordinates_panel.cpp
     src/ui/diagnostics_list.cpp
@@ -139,6 +141,12 @@ if(MSVC)
     target_compile_definitions(molforma_ui PRIVATE USING_DYNAMIC_LIBS)
 endif()
 target_compile_options(molforma_ui PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
+# Optional: figures of charts in SVG beside PNG and PDF (Qt SVG).
+find_package(Qt6 QUIET COMPONENTS Svg)
+if(TARGET Qt6::Svg)
+    target_link_libraries(molforma_ui PRIVATE Qt6::Svg)
+    target_compile_definitions(molforma_ui PUBLIC MOLFORMA_HAS_QTSVG=1)
+endif()
 option(MOLFORMA_ENABLE_VTK "Use native VTK for accelerated molecular rendering when available" ON)
 if(MOLFORMA_ENABLE_VTK)
     find_package(VTK 9.1 QUIET COMPONENTS CommonCore CommonDataModel FiltersSources
@@ -202,6 +210,10 @@ if(BUILD_TESTING)
     add_executable(test_services tests/test_services.cpp)
     target_link_libraries(test_services PRIVATE molforma_core Qt6::Test)
     add_test(NAME services COMMAND test_services)
+    # A stand-in for the xtb program (test_services).
+    add_executable(fake_xtb tests/fake_xtb.cpp)
+    target_link_libraries(fake_xtb PRIVATE Qt6::Core)
+    add_dependencies(test_services fake_xtb)
     add_executable(test_core tests/test_core.cpp)
     target_link_libraries(test_core PRIVATE molforma_core Qt6::Test ZLIB::ZLIB)
     target_compile_definitions(test_core PRIVATE FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
@@ -209,6 +221,7 @@ if(BUILD_TESTING)
     add_test(NAME core COMMAND test_core)
     add_executable(test_editor tests/test_editor.cpp)
     target_link_libraries(test_editor PRIVATE molforma_ui Qt6::Test)
+    add_dependencies(test_editor fake_xtb)
     add_test(NAME editor COMMAND test_editor)
     add_executable(test_rendering tests/test_rendering.cpp)
     target_link_libraries(test_rendering PRIVATE molforma_ui Qt6::Test)
@@ -362,7 +375,7 @@ if(MSVC)
     # loads (Qt's as well), Open Babel's plugins and a qt.conf beside it.
     set(runtime_targets molforma)
     if(BUILD_TESTING)
-        list(APPEND runtime_targets fake_nwchem test_mcp test_core test_services test_editor test_rendering test_coordinates
+        list(APPEND runtime_targets fake_nwchem fake_xtb test_mcp test_core test_services test_editor test_rendering test_coordinates
             test_calculation test_advanced test_execution test_input_preview test_results test_history test_output
             test_translations test_molden)
     endif()

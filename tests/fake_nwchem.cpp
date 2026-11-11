@@ -49,6 +49,17 @@ int main(int argc, char **argv) {
                     "@    1     -76.03010450 -3.5D-03  0.00040  0.00020  0.00500  0.00900      0.9\n");
         std::fflush(stdout);
     }
+    if (mode == "geometry") {
+        // The structure an optimization ends with, for calculations that go on from it.
+        std::printf(" NWChem Input Module\n\n"
+                    "          Output coordinates in angstroms (scale by  1.889725989 to convert to a.u.)\n\n"
+                    "  No.       Tag          Charge          X              Y              Z\n"
+                    " ---- ---------------- ---------- -------------- -------------- --------------\n"
+                    "    1 O                    8.0000     0.00000000     0.00000000     0.10000000\n"
+                    "    2 H                    1.0000     0.80000000     0.00000000     0.55000000\n"
+                    "    3 H                    1.0000    -0.80000000     0.00000000     0.55000000\n\n"
+                    " Total SCF energy =    -74.9659\n Total times  cpu: 1.0s\n");
+    }
     if (mode == "large") {
         const QByteArray output(200 * 1024, 'x');
         std::fwrite(output.constData(), 1, output.size(), stdout);

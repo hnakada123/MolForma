@@ -113,6 +113,7 @@ NwchemImport importNwchemInput(const QString &text) {
     // The SCF thresholds of the scf block (thresh) and of the dft block (convergence energy, density
     // and gradient), read once the method is known.
     QStringList scfThresholds, dftThresholds;
+    QVector<std::pair<QString, Vec>> nebEnd; // The end of an NEB path ("geometry endgeom"), in Å.
     for (int i = 0; i < lines.size(); ++i) {
         auto w = words(lines[i]);
         const auto keyword = w.value(0).toLower();
@@ -164,6 +165,21 @@ NwchemImport importNwchemInput(const QString &text) {
             }
             if (total > 0 || parts > 0) // Out of range values stay out of range, as validation reports.
                 settings["memory_mb"] = int(std::round(std::min(total > 0 ? total : parts, 1e9)));
+        } else if (keyword == "geometry" && w.value(1).toLower() == "endgeom") {
+            double scale = 1;
+            for (int k = 1; k + 1 < w.size(); ++k)
+                if (w[k].toLower() == "units")
+                    scale = w[k + 1].toLower().startsWith("a") && w[k + 1].toLower() != "au" &&
+                                    w[k + 1].toLower() != "atomic"
+                                ? 1
+                                : BohrToAngstrom;
+            for (const auto &line : body) {
+                const auto row = words(line);
+                double x, y, z;
+                bool ghost;
+                if (row.size() >= 4 && number(row[1], x) && number(row[2], y) && number(row[3], z))
+                    nebEnd.append({tagElement(row[0], ghost), Vec(x, y, z) * scale});
+            }
         } else if (keyword == "geometry") {
             if (haveGeometry) {
                 notes << tr("2番目以降のGEOMETRYは取り込みません。");
@@ -459,6 +475,22 @@ NwchemImport importNwchemInput(const QString &text) {
                 else if (row.value(0).toLower() == "forward" || row.value(0).toLower() == "backward")
                     settings["irc_direction"] = row.value(0).toLower();
             }
+        } else if (keyword == "neb") {
+            for (const auto &line : body) {
+                const auto row = words(line);
+                const auto key = row.value(0).toLower();
+                double value;
+                if (!number(row.value(1), value))
+                    continue;
+                if (key == "nbeads")
+                    settings["neb_beads"] = int(value);
+                else if (key == "kbeads")
+                    settings["neb_spring"] = value;
+                else if (key == "maxiter")
+                    settings["neb_maxiter"] = int(value);
+                else if (key == "stepsize")
+                    settings["neb_stepsize"] = value;
+            }
         } else if (keyword == "task") {
             tasks << w.mid(1).join(' ').toLower();
         } else if (keyword == "ecp") {
@@ -549,6 +581,8 @@ NwchemImport importNwchemInput(const QString &text) {
     }
     if (operations.contains("mepgs"))
         settings["task"] = "irc";
+    else if (operations.contains("neb"))
+        settings["task"] = "neb";
     else if (operations.contains("saddle"))
         settings["task"] = operations.contains("frequencies") ? "saddle_frequencies" : "saddle";
     else if (operations.contains("optimize"))
@@ -575,6 +609,21 @@ NwchemImport importNwchemInput(const QString &text) {
     for (int n : fixedAtoms)
         if (atomOfCenter.contains(n))
             d.atoms[atomOfCenter[n]].fixed = true;
+    // The end of an NEB path, atom by atom in the same order as the geometry.
+    if (!nebEnd.isEmpty()) {
+        bool same = nebEnd.size() == d.atoms.size();
+        QJsonObject end;
+        for (int i = 0; same && i < d.atoms.size(); ++i) {
+            same = nebEnd[i].first == d.atoms[i].element;
+            end[d.atoms[i].id] = vectorToJson(nebEnd[i].second);
+        }
+        if (same) {
+            auto stored = d.data["nwchem"].toObject();
+            stored["neb_end"] = end;
+            d.data["nwchem"] = stored;
+        } else
+            notes << tr("NEBの終点（geometry endgeom）の原子が始点と一致しないため、終点を取り込みません。");
+    }
     notes.removeDuplicates();
     return result;
 }

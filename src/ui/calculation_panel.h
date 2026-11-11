@@ -50,6 +50,14 @@ class CalculationPanel : public QWidget {
         busy = true;
     }
     void applyChromeStyle();
+    // The end of an NEB path ("neb_end"): from a structure file or NWChem log (its last structure), the
+    // structure the result viewer shows, or the current structure; each fitted onto the molecule where it
+    // comes from elsewhere. Swapping exchanges the molecule's positions with the end's, so that the end
+    // can be seen and edited in "1 分子". Undoable edits of the document.
+    void setNebEndFromFile(const QString &path);
+    void setNebEndFromResult();
+    void setNebEndFromCurrent();
+    void swapNebEnds();
 
   protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -123,7 +131,8 @@ class CalculationPanel : public QWidget {
     QStringList fieldOrder;        // Keys in the order of the form.
     QTableWidget *elementBases;    // Per-element library basis for the elements of the molecule.
     QTableWidget *constraints;     // Internal-coordinate constraints (ZCOORD) of optimizations.
-    QLabel *scanCoordinate, *monomers;
+    QLabel *scanCoordinate, *monomers, *nebEnd;
+    void setNebEnd(const Document &end, bool fit, const QString &name);
     QLabel *memoryState; // The memory is set in "実行設定": shown with a link there.
     QPlainTextEdit *extraInput, *extraTasks;
     QString appliedExtra[2]; // Stored additional input last shown, so typing is not overwritten.

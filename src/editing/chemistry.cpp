@@ -316,15 +316,21 @@ Document refine(const Document &d, bool regenerate, const Ids &moving) {
         fail(tr("分子が空です。"));
     for (const auto &a : d.atoms)
         if (a.ghost)
-            fail(tr("金属・ゴースト原子を含む分子は力場整形の対象外です。"));
+            fail(tr("金属・ゴースト原子を含む分子は力場整形の対象外です。金属錯体は「ツール → "
+                    "xTBで構造を最適化…」で"
+                    "整えられます。"));
     for (const auto &b : d.bonds)
         if (b.kind == "dative")
-            fail(tr("配位結合を含む分子（金属錯体など）は力場整形の対象外です。"));
+            fail(tr(
+                "配位結合を含む分子（金属錯体など）は力場整形の対象外です。「ツール → xTBで構造を最適化…」で"
+                "整えられます。"));
     auto mol = toOB(d);
     // Heavy main-group elements (Br, I, Se, Te, ...) are left to the force-field setup below.
     for (unsigned int i = 1; i <= mol.NumAtoms(); ++i)
         if (mol.GetAtom(i)->IsMetal())
-            fail(tr("金属・ゴースト原子を含む分子は力場整形の対象外です。"));
+            fail(tr("金属・ゴースト原子を含む分子は力場整形の対象外です。金属錯体は「ツール → "
+                    "xTBで構造を最適化…」で"
+                    "整えられます。"));
     OpenBabel::StereoFrom3D(&mol);
     if (regenerate) {
         for (const auto &a : d.atoms)

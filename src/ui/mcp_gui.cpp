@@ -302,16 +302,23 @@ QJsonArray McpGui::tools() const {
         "structure; fragment adds the SMILES molecule 3 Å beside the current one. moving limits refinement "
         "to "
         "specified stable atom IDs. conformers searches rotamers with the force field and proposes the "
-        "lowest-energy one. Inspect candidate after completion; confirm with history.",
-        {{"action", choice({"smiles", "fragment", "refine", "regenerate", "conformers", "cancel"})},
+        "lowest-energy one. xtb optimizes with GFN-xTB (metals and coordination compounds too) through the "
+        "xtb program the user set in Preferences (MCP cannot choose it), with the document's charge and "
+        "multiplicity; xtbMethod gfn2 (default)/gfn1/gfnff, xtbLevel crude/loose/normal (default)/tight, "
+        "xtbSolvent an ALPB solvent (default gas phase), moving the atoms that move (others fixed). Inspect "
+        "candidate after completion; confirm with history.",
+        {{"action", choice({"smiles", "fragment", "refine", "regenerate", "conformers", "xtb", "cancel"})},
          {"smiles", type("string")},
-         {"moving", array(type("string"))}},
+         {"moving", array(type("string"))},
+         {"xtbMethod", choice({"gfn2", "gfn1", "gfnff"})},
+         {"xtbLevel", choice({"crude", "loose", "normal", "tight"})},
+         {"xtbSolvent", type("string")}},
         {"action"}, true);
     result.append(
         calculationTool(
             "Start/stop NWChem or save an immutable input bundle using the GUI execution settings. No shell "
             "command is accepted; the executable, launcher and environment are those the user set in "
-            "MolForma. "
+            "MolForma. enqueue with chainFrom starts from the structure of an earlier queue entry. "
             "Poll get_app_state; exit zero alone does not establish convergence.",
             commandSchema(), policy.allowExecutionSettings)
             .definition());
@@ -1137,12 +1144,27 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
                 window.document().atom(id);
             if ((action == "smiles" || action == "fragment") && args["smiles"].toString().trimmed().isEmpty())
                 fail("Specify SMILES.");
-            window.runWorker(action, args["smiles"].toString(), moving);
+            if (action == "xtb") {
+                XtbOptions options;
+                options.method = args["xtbMethod"].toString("gfn2");
+                options.level = args["xtbLevel"].toString("normal");
+                options.solvent = args["xtbSolvent"].toString();
+                options.moving = moving;
+                window.runXtb(options);
+            } else
+                window.runWorker(action, args["smiles"].toString(), moving);
         }
     } else if (name == "calculation") {
         const auto action = args["action"].toString();
         if (calculationQueueAction(window.executionPanel()->calculationQueue(), args)) {
             // Queue changes are synchronous; its runs are followed through get_app_state.
+        } else if (action == "enqueue" && args.contains("chainFrom")) {
+            QStringList steps;
+            for (const auto &step : args["chainSteps"].toArray())
+                steps << step.toString();
+            window.executionPanel()->enqueueChain(
+                args["chainFrom"].toString(), args["chainStructure"].toString("final"),
+                steps.isEmpty() ? QStringList{"current"} : steps, args["endFrequencies"].toBool(true));
         } else if (action == "enqueue")
             window.executionPanel()->enqueueCalculation();
         else if (action == "start")

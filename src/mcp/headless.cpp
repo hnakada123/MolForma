@@ -97,6 +97,7 @@ QJsonArray McpHeadless::tools() const {
         state.definition(),
         calculationTool("Start/stop NWChem or save an immutable input bundle with the document's execution "
                         "settings. start returns at once; follow the returned task or poll get_app_state. "
+                        "enqueue with chainFrom starts from the structure of an earlier queue entry. "
                         "Exit code zero alone does not establish convergence.",
                         work, policy.allowExecutionSettings)
             .definition(),
@@ -143,9 +144,25 @@ QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
                  "clients cannot choose them; restart the server with --mcp-allow-execution-settings to "
                  "permit it.");
         if (action == "enqueue") {
-            const auto id = queue.enqueue(d, base, [policy = policy, d, base] { policy.checkRun(d, base); });
-            return {
-                {"tool", name}, {"action", action}, {"queueId", id}, {"calculation", state()["calculation"]}};
+            const auto access = [policy = policy, base](const Document &next) -> std::function<void()> {
+                return [policy, next, base] { policy.checkRun(next, base); };
+            };
+            QStringList ids;
+            if (args.contains("chainFrom")) {
+                QStringList steps;
+                for (const auto &step : args["chainSteps"].toArray())
+                    steps << step.toString();
+                ids = queue.enqueueChain(d, base, args["chainFrom"].toString(),
+                                         args["chainStructure"].toString("final"),
+                                         steps.isEmpty() ? QStringList{"current"} : steps,
+                                         args["endFrequencies"].toBool(true), access);
+            } else
+                ids << queue.enqueue(d, base, access(d));
+            return {{"tool", name},
+                    {"action", action},
+                    {"queueId", ids.last()},
+                    {"queueIds", QJsonArray::fromStringList(ids)},
+                    {"calculation", state()["calculation"]}};
         }
         runWork = "calculation-" + QString::number(++nextWork);
         run.start(d, base);

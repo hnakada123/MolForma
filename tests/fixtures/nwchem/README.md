@@ -21,3 +21,7 @@ the open-shell OH radical) were generated the same way, with their inputs as `.n
 of the amplitudes under each excited state (`Occ. … --- Virt. …` with `alpha`/`beta`, with and without X/Y) and
 of the bond indices and valencies of the Mulliken analysis; `water_tddft` and `peroxide_ecd` have the
 restricted amplitudes (X, and X with Y).
+
+`hcn_neb` is an NEB of the HCN → HNC isomerization at HF/STO-3G (MolForma's input, kept as `.nw`: five images,
+three steps, `print_shift 1`), stopped by its step limit. It gives the `@neb` table, the path energies after each
+step and the path printed into the log, which the result viewer shows as the NEB path.

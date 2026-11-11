@@ -4,6 +4,8 @@
 #include "editing/operations.h"
 #include "model/i18n.h"
 #include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <QJsonDocument>
 
 namespace mf {
@@ -43,18 +45,41 @@ void ChemistryJob::start(const ChemistryRequest &request) {
     if (!work->isValid())
         fail(tr("一時ディレクトリを作成できません。"));
     const auto input = work->filePath("input.json"), output = work->filePath("output.json");
-    writeFile(input, QJsonDocument(QJsonObject{{"mode", request.mode},
-                                               {"smiles", request.smiles},
-                                               {"moving", idsToJson(request.moving)},
-                                               {"count", request.count},
-                                               {"document", base.toJson()}})
-                         .toJson());
+    const bool xtb = request.mode == "xtb";
+    QStringList arguments{"--worker", input, output};
+    if (xtb) {
+        if (request.executable.isEmpty())
+            fail(tr("xTBの実行ファイルが見つかりません。xtbをインストールし、「編集 → 環境設定」の"
+                    "「xTB実行ファイル」で指定してください。"));
+        arguments = prepareXtb(base, request.xtb, work->path());
+    } else
+        writeFile(input, QJsonDocument(QJsonObject{{"mode", request.mode},
+                                                   {"smiles", request.smiles},
+                                                   {"moving", idsToJson(request.moving)},
+                                                   {"count", request.count},
+                                                   {"document", base.toJson()}})
+                             .toJson());
+    const auto folder = work->path();
     scratch = std::move(work);
     const auto serial = ++generation;
     const auto revision = session.revision();
     auto *p = process = new QProcess(this);
-    p->setProgram(program);
-    p->setArguments({"--worker", input, output});
+    if (xtb) {
+        // xtb itself, in the scratch folder, with its output in a file there. OpenMP needs a larger stack
+        // than the default for larger molecules (xtb's advice).
+        p->setProgram(request.executable);
+        p->setWorkingDirectory(folder);
+        p->setProcessChannelMode(QProcess::MergedChannels);
+        p->setStandardOutputFile(QDir(folder).filePath("xtb.out"));
+        auto environment = QProcessEnvironment::systemEnvironment();
+        if (!environment.contains("OMP_STACKSIZE"))
+            environment.insert("OMP_STACKSIZE", "1G");
+        if (!environment.contains("OMP_MAX_ACTIVE_LEVELS"))
+            environment.insert("OMP_MAX_ACTIVE_LEVELS", "1");
+        p->setProcessEnvironment(environment);
+    } else
+        p->setProgram(program);
+    p->setArguments(arguments);
     connect(p, &QProcess::errorOccurred, this, [this, p, request](QProcess::ProcessError error) {
         if (process != p || error != QProcess::FailedToStart)
             return;
@@ -68,6 +93,28 @@ void ChemistryJob::start(const ChemistryRequest &request) {
                     return;
                 QString error;
                 try {
+                    if (request.mode == "xtb") {
+                        if (status != QProcess::NormalExit)
+                            fail(tr("xTBが異常終了しました。"));
+                        // xtb leaves a structure even when it stops at its step limit (exit code 1).
+                        const auto xtb =
+                            readXtb(base, request.xtb, QFileInfo(output).absolutePath(), "xtb.out");
+                        if (session.revision() != revision)
+                            fail(tr("分子が変更されたため整形結果を破棄しました。"));
+                        ChemistryResult result{request, base, xtb.document, {}, serial, revision};
+                        result.note = tr("%1: E = %2 Eh、%3、RMSD %4 Å（最大 %5 Å）")
+                                          .arg(xtbMethodName(request.xtb.method))
+                                          .arg(xtb.energy, 0, 'f', 8)
+                                          .arg(xtb.converged ? tr("収束") : tr("未収束（反復の上限）"))
+                                          .arg(xtb.rmsd, 0, 'f', 3)
+                                          .arg(xtb.largest, 0, 'f', 3);
+                        if (code != 0 && !xtb.converged)
+                            result.note += tr("。xTBは終了コード %1 で終わりました。").arg(code);
+                        emit ready(result);
+                        if (process == p)
+                            release();
+                        return;
+                    }
                     const auto response = parseJson(readFile(output));
                     if (code != 0 || status != QProcess::NormalExit || response.contains("error"))
                         fail(response["error"].toString(tr("整形に失敗しました。")));
@@ -116,7 +163,14 @@ bool ChemistryJob::propose(const ChemistryResult &result, int conformer) {
         next.charge = next.formalCharge();
     } else if (mode == "fragment")
         insertFragment(next, result.document);
-    else {
+    else if (mode == "xtb") {
+        applyResultGeometry(next, result.document);
+        double moved = 0;
+        for (int i = 0; i < next.atoms.size(); ++i)
+            moved = std::max(moved, (next.atoms[i].position - result.base.atoms[i].position).norm());
+        if (moved < 1e-4)
+            return false;
+    } else {
         next = result.document;
         next.envelope = result.base.envelope;
     }
@@ -124,6 +178,7 @@ bool ChemistryJob::propose(const ChemistryResult &result, int conformer) {
                       : mode == "fragment"   ? tr("SMILESから断片を追加")
                       : mode == "regenerate" ? tr("3Dを再生成")
                       : mode == "conformers" ? tr("配座を適用")
+                      : mode == "xtb"        ? tr("xTBで構造を最適化")
                                              : tr("構造を整形");
     return session.propose(name, next, result.request.remote);
 }

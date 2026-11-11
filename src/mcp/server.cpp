@@ -15,6 +15,7 @@
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
+#include "results/results.h"
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
@@ -1233,6 +1234,44 @@ void McpServer::registerTools() {
              for (const auto &key : {"charge", "multiplicity"})
                  if (args.contains(key))
                      setNwchemSetting(next, key, args[key]);
+             failOnAddedErrors(before, validateNwchem(next));
+         });
+    edit({.name = "set_neb_end",
+          .title = "Set the end of an NEB path",
+          .description =
+              "Set the end structure of an NEB calculation (and the task to neb) from XYZ text (xyz) or a local "
+              "structure file or NWChem log (path; its last structure, multi-frame XYZ: the last frame). The "
+              "structure needs the document's atoms in the same order; superpose (default true) fits it onto "
+              "the current structure. The end is kept by atom ID in settings.neb_end.",
+          .properties = {{"xyz", type("string")}, {"path", type("string")}, {"superpose", type("boolean")}},
+          .required = {}},
+         [this](Document &next, const QJsonObject &args) {
+             const auto before = validateNwchem(next);
+             Document end;
+             if (args.contains("xyz") == args.contains("path"))
+                 fail("Give either xyz or path.");
+             if (args.contains("xyz"))
+                 end = Document::fromXyz(args["xyz"].toString());
+             else {
+                 const auto path = args["path"].toString();
+                 policy.checkPath(path);
+                 const QFileInfo info(path);
+                 if (!info.isFile() || info.size() > 128 * 1024 * 1024)
+                     fail("Expected a regular file no larger than 128 MiB.");
+                 const auto suffix = info.suffix().toLower();
+                 if (suffix == "out" || suffix == "log" || suffix == "nwo") {
+                     const auto result = readResult(path);
+                     if (result.frames.isEmpty())
+                         fail("The log holds no structure.");
+                     end = result.frames.last().molecule;
+                 } else if (suffix == "xyz") {
+                     const int frames = int(xyzFrames(QString::fromUtf8(readFile(path))).size());
+                     end = importStructure(path, {}, frames > 1 ? frames - 1 : -1);
+                 } else
+                     end = importStructure(path);
+             }
+             setNwchemSetting(next, "neb_end", nwchemNebEndSetting(next, end, args["superpose"].toBool(true)));
+             setNwchemSetting(next, "task", "neb");
              failOnAddedErrors(before, validateNwchem(next));
          });
     add({.name = "history",

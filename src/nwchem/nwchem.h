@@ -2,6 +2,7 @@
 #pragma once
 #include "model/diagnostic.h"
 #include "model/document.h"
+#include <optional>
 
 namespace mf {
 struct NwchemChoice {
@@ -22,6 +23,7 @@ enum class NwchemTask {
     SaddleFrequencies,
     Irc,
     Scan,
+    Neb,
     Unknown
 };
 // The kind of calculation that settings describe, read once from their "method" and "task"; values
@@ -56,6 +58,10 @@ struct NwchemCalculation {
     bool driver() const {
         return optimization() || (task == NwchemTask::Scan && relaxedScan);
     }
+    // Tasks that compute a series of structures along a path: scans, IRC and NEB.
+    bool path() const {
+        return task == NwchemTask::Scan || task == NwchemTask::Irc || task == NwchemTask::Neb;
+    }
 };
 // The calculations that a setting, a section of "2 計算条件" or an advanced option takes part in.
 enum class NwchemScope {
@@ -75,6 +81,7 @@ enum class NwchemScope {
     AnalyticHessian,  // Frequencies from an analytic Hessian (needs the document).
     Irc,
     Scan,
+    Neb,
     Followup,
     FollowupDft,
     Solvent,
@@ -159,8 +166,23 @@ NwchemRestart nwchemRestart(const QJsonObject &settings);
 QString nwchemRestartDigest(const Document &document, bool masses);
 // The task lines of an NWChem input in their order ("task dft optimize").
 QStringList nwchemTaskLines(const QString &input);
+// The end of the path of an NEB calculation ("neb_end": atom positions in Å by atom ID): the document
+// with every atom moved there, or nothing while the setting does not hold every atom (incomplete,
+// with a reason, when it holds some).
+struct NwchemNebEnd {
+    std::optional<Document> document;
+    QString problem; // Empty when complete; why not, otherwise.
+};
+NwchemNebEnd nwchemNebEnd(const Document &document);
+// The "neb_end" setting for a structure with the same atoms in the same order (elements and ghosts as
+// the document's): the positions by atom ID. With superpose, the structure is first fitted onto the
+// document (Kabsch), so that the path holds no rotation or translation of the whole molecule.
+QJsonObject nwchemNebEndSetting(const Document &document, const Document &end, bool superpose);
+// The beads of NEB's first path (NWChem interpolates the start and the end linearly in Cartesian
+// coordinates), with both ends.
+QVector<Document> nwchemNebInitialPath(const Document &start, const Document &end, int beads);
 // Why a section of "2 計算条件" takes no part in the current calculation ("最適化のみ"), or empty
-// when it does. Sections: "path" (IRC・座標スキャン), "constraints", "optimization" (最適化・振動数),
+// when it does. Sections: "path" (IRC・座標スキャン・NEB), "constraints", "optimization" (最適化・振動数),
 // "followup", "bsse" and "excited" (TDDFT); the others always take part.
 QString nwchemSectionUnused(const Document &document, const QString &section);
 QString nwchemInput(const Document &document);

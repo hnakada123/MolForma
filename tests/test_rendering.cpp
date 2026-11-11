@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/peptide.h"
+#include "ui/figure_export.h"
 #include "ui/main_window.h"
 #include "ui/molecule_view.h"
+#include "ui/result_charts.h"
 #include "ui/theme.h"
 #include <QApplication>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QImageReader>
 #include <QMimeData>
 #include <QWheelEvent>
 #include <QtTest>
@@ -307,6 +310,108 @@ class RenderingTest : public QObject {
                                      .arg(times[times.size() / 2], 0, 'f', 2)
                                      .arg(times[int(times.size() * .95)], 0, 'f', 2);
         }
+    }
+    void figureImages() {
+        // Pictures of the view at a larger size and on the chosen background, without the marks of
+        // editing (the selection ring). With a display this is the VTK path, rendered in tiles.
+        MoleculeView view;
+        view.resize(320, 240);
+        const auto d = molecule();
+        view.setDocument(d);
+        view.setSelection({d.atoms[0].id});
+        view.show();
+        view.fit();
+        QTest::qWait(40);
+        // The view's pixels on the screen, times the factor.
+        const QSize device = (QSizeF(view.size()) * view.devicePixelRatioF()).toSize();
+        const auto screen = view.renderImage(2, ImageBackground::Screen);
+        QCOMPARE(screen.size(), device * 2);
+        QCOMPARE(screen.pixelColor(3, 3).alpha(), 255);
+        QVERIFY(screen.pixelColor(3, 3) != QColor(Qt::white));
+        const auto white = view.renderImage(1, ImageBackground::White);
+        QCOMPARE(white.size(), device);
+        const auto corner = white.pixelColor(3, 3);
+        QVERIFY(corner.red() > 250 && corner.green() > 250 && corner.blue() > 250);
+        const auto clear = view.renderImage(3, ImageBackground::Transparent);
+        QCOMPARE(clear.size(), device * 3);
+        QCOMPARE(clear.pixelColor(3, 3).alpha(), 0);
+        const auto oxygen = view.atomScreenPosition(d.atoms[0].id) * 3 * view.devicePixelRatioF();
+        QVERIFY(clear.pixelColor(oxygen.toPoint()).alpha() > 200);
+        // The selected atom looks the same as an unselected one.
+        view.setSelection({});
+        const auto unselected = view.renderImage(1, ImageBackground::White);
+        int differing = 0;
+        for (int y = 0; y < white.height(); ++y)
+            for (int x = 0; x < white.width(); ++x)
+                differing += white.pixel(x, y) != unselected.pixel(x, y);
+        QVERIFY2(differing < white.width() * white.height() / 1000, qPrintable(QString::number(differing)));
+    }
+    void animationsAndFigures() {
+        QTemporaryDir dir;
+        // An animated GIF of three frames of more than 255 colors, the last with a transparent corner;
+        // Qt's reader gets the colors back within the quantization.
+        const auto picture = [](int k) {
+            QImage image(64, 48, QImage::Format_ARGB32);
+            for (int y = 0; y < 48; ++y)
+                for (int x = 0; x < 64; ++x)
+                    image.setPixel(x, y, qRgba(x * 4, y * 5, k * 80, k == 2 && x < 8 && y < 8 ? 0 : 255));
+            return image;
+        };
+        const auto gifPath = dir.filePath("frames.gif");
+        GifWriter gif;
+        QVERIFY(gif.open(gifPath, 10));
+        for (int k = 0; k < 3; ++k)
+            QVERIFY(gif.add(picture(k)));
+        QVERIFY(gif.close());
+        const auto bytes = readFile(gifPath);
+        QVERIFY(bytes.startsWith("GIF89a"));
+        QVERIFY(bytes.contains("NETSCAPE2.0"));
+        QVERIFY(bytes.endsWith(';'));
+        QImageReader reader(gifPath);
+        if (QImageReader::supportedImageFormats().contains("gif")) {
+            QCOMPARE(reader.imageCount(), 3);
+            for (int k = 0; k < 3; ++k) {
+                const auto frame = reader.read().convertToFormat(QImage::Format_ARGB32);
+                QCOMPARE(frame.size(), QSize(64, 48));
+                for (const auto &[x, y] : {std::pair{10, 10}, {40, 20}, {63, 47}, {20, 40}}) {
+                    const QColor got = frame.pixelColor(x, y), want = picture(k).pixelColor(x, y);
+                    QVERIFY2(std::abs(got.red() - want.red()) <= 16 &&
+                                 std::abs(got.green() - want.green()) <= 16 &&
+                                 std::abs(got.blue() - want.blue()) <= 16,
+                             qPrintable(QString("%1 %2 %3").arg(k).arg(x).arg(y)));
+                }
+                if (k == 2)
+                    QCOMPARE(frame.pixelColor(2, 2).alpha(), 0);
+            }
+        }
+        // Numbered PNG files, forward and back.
+        AnimationOptions options;
+        options.format = "png";
+        options.bounce = true;
+        QVERIFY(writeAnimation(nullptr, dir.filePath("frames"), "path", options, 4, picture));
+        QCOMPARE(QDir(dir.filePath("frames")).entryList({"*.png"}).size(), 6);
+        QCOMPARE(QImage(dir.filePath("frames/path_0005.png")).pixel(30, 30), picture(2).pixel(30, 30));
+        // MP4 through ffmpeg, where it is installed.
+        if (!ffmpegExecutable().isEmpty()) {
+            options.format = "mp4";
+            options.bounce = false;
+            QVERIFY(writeAnimation(nullptr, dir.filePath("frames.mp4"), "path", options, 3, picture));
+            QCOMPARE(readFile(dir.filePath("frames.mp4")).mid(4, 4), QByteArray("ftyp"));
+        }
+        // A chart as a figure: PNG at twice its size, PDF and SVG as vectors.
+        ChartView chart;
+        chart.resize(400, 240);
+        chart.setChart("test", "x", "y", {{"curve", {{0, 0}, {1, 2}, {2, 1}}, ChartTone::Accent}});
+        saveFigure(&chart, dir.filePath("chart.png"));
+        QCOMPARE(QImage(dir.filePath("chart.png")).size(), QSize(800, 480));
+        saveFigure(&chart, dir.filePath("chart.pdf"));
+        QVERIFY(readFile(dir.filePath("chart.pdf")).startsWith("%PDF"));
+#ifdef MOLFORMA_HAS_QTSVG
+        saveFigure(&chart, dir.filePath("chart.svg"));
+        QVERIFY(readFile(dir.filePath("chart.svg")).contains("<svg"));
+        QVERIFY(figureFilter().contains("*.svg"));
+#endif
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, saveFigure(&chart, dir.filePath("chart.bmp")));
     }
     void vtkSurfaceStyleAndCapture() {
 #ifdef MOLFORMA_HAS_VTK

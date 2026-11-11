@@ -2,6 +2,7 @@
 #include "ui/spectroscopy_view.h"
 #include "model/i18n.h"
 #include "results/result_loader.h"
+#include "ui/figure_export.h"
 #include "ui/main_window.h"
 #include "ui/result_charts.h"
 #include <QtWidgets>
@@ -106,14 +107,13 @@ SpectroscopyView::SpectroscopyView(MainWindow *owner) : QWidget(owner), window(o
         if (!path.isEmpty())
             exportCsv(path);
     });
-    button("PNG…", "spectrumExportPng", [this] {
+    button(tr("図…"), "spectrumExportPng", [this] {
         if (spectrum.curve.isEmpty())
             fail(message->text());
-        const auto path = QFileDialog::getSaveFileName(this, tr("スペクトルを書き出す"), {}, "PNG (*.png)");
+        const auto path = askFigurePath(this, tr("スペクトルを書き出す"), "spectrum");
         if (!path.isEmpty()) {
             window->checkMcpPath(path);
-            if (!chart->grab().save(path))
-                fail(tr("画像を保存できません。"));
+            saveFigure(chart, path);
         }
     });
     for (auto *line : {reference, minimum, maximum})

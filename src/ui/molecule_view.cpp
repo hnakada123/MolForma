@@ -25,6 +25,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QResizeEvent>
+#include <QScopedValueRollback>
 #include <QShowEvent>
 #include <QWheelEvent>
 #include <algorithm>
@@ -139,6 +140,41 @@ void MoleculeView::renderNow() {
             overlay->repaint(); // The labels and markers drawn over the scene.
     } else
         repaint();
+}
+QImage MoleculeView::renderImage(int factor, ImageBackground background) {
+    factor = std::max(1, factor);
+    // A figure: the editing marks left out while it is painted. Its pixels are those of the screen (the
+    // view's size times the device pixel ratio) times the factor.
+    const QScopedValueRollback keepFigure(figure, true);
+    const QScopedValueRollback keepBackground(figureBackground, background);
+    const QScopedValueRollback keepHandles(aminoHandles, false);
+    const auto keepMarkers = markers;
+    QImage image;
+#ifdef MOLFORMA_HAS_VTK
+    if (renderer) {
+        renderTimer.stop();
+        renderScene();
+        image = renderer->image(factor, background == ImageBackground::Screen  ? 0
+                                        : background == ImageBackground::White ? 1
+                                                                               : 2);
+        QPainter p(&image);
+        const double ratio = double(image.width()) / std::max(1, width());
+        p.scale(ratio, ratio);
+        paintContents(p, true);
+    }
+#endif
+    if (image.isNull()) {
+        const double ratio = devicePixelRatioF() * factor;
+        image = QImage(QSize(qRound(width() * devicePixelRatioF()) * factor,
+                             qRound(height() * devicePixelRatioF()) * factor),
+                       QImage::Format_ARGB32_Premultiplied);
+        image.fill(background == ImageBackground::Transparent ? Qt::transparent : Qt::white);
+        QPainter p(&image);
+        p.scale(ratio, ratio);
+        paintContents(p, false);
+    }
+    markers = keepMarkers;
+    return image;
 }
 void MoleculeView::setStyle(const QString &style) {
     displayStyle =
@@ -577,7 +613,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
     const bool dark = empty && darkPalette(palette());
     if (dark)
         p.fillRect(rect(), palette().color(QPalette::Base));
-    else if (!overlayOnly)
+    else if (!overlayOnly && (!figure || figureBackground == ImageBackground::Screen))
         p.fillRect(rect(), bg);
     markers.clear();
     if (empty) {
@@ -714,7 +750,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             }
             const double radius = atomRadius(item.index);
             QColor color = atomColors[item.index];
-            if (selectedIds.contains(a.id)) {
+            if (!figure && selectedIds.contains(a.id)) {
                 p.setPen(QPen(QColor("#de9c25"), 3));
                 p.setBrush(QColor(250, 199, 85, 80));
                 p.drawEllipse(pos, radius + 5, radius + 5);
@@ -869,7 +905,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
         p.drawText(*chosen, label.text);
     }
     // Candidate changes: removed atoms at their old place (red), added (green) and moved (orange).
-    for (const auto &[position, symbol] : removedAtoms) {
+    for (const auto &[position, symbol] : figure ? decltype(removedAtoms)() : removedAtoms) {
         const QPointF at = project(position);
         p.setPen(QPen(QColor("#d23c3c"), 2, Qt::DashLine));
         p.setBrush(QColor(210, 60, 60, 40));
@@ -879,7 +915,8 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
         p.drawLine(at + QPointF(-6, 6), at + QPointF(6, -6));
         p.drawText(at + QPointF(13, 13), symbol);
     }
-    for (int i = 0; (!addedAtoms.isEmpty() || !movedAtoms.isEmpty()) && i < doc.atoms.size(); ++i) {
+    for (int i = 0; !figure && (!addedAtoms.isEmpty() || !movedAtoms.isEmpty()) && i < doc.atoms.size();
+         ++i) {
         const auto &a = doc.atoms[i];
         const bool added = addedAtoms.contains(a.id), moved = movedAtoms.contains(a.id);
         if ((!added && !moved) || !shown(a))
@@ -891,7 +928,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
     }
     for (const auto &c : doc.centers) {
         const auto &id = c.atom;
-        if (!atomIndices.contains(id))
+        if (figure || !atomIndices.contains(id))
             continue;
         Vec origin = doc.atoms[atomIndices[id]].position;
         for (int i = 0; i < c.sites.size(); ++i) {

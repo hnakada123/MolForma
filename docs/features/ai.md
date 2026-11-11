@@ -24,7 +24,7 @@ MCPからはNWChemの実行ファイル・MPIランチャー・追加の環境�
 
 ## 1.1.0の計算・結果操作
 
-計算用の`calculation`にキューの登録・開始／再開・一時停止・並べ替え・取消と失敗時の方針指定を追加しました。登録時の分子と条件を保存し、同時に1件ずつ動かします。`get_app_state`の`calculation.queue`で待機数と各項目の状態を確認します。GUI操作の完了やキューへの登録完了は、NWChem計算の完了とは別です。
+計算用の`calculation`にキューの登録・開始／再開・一時停止・並べ替え・取消と失敗時の方針指定を追加しました。登録時の分子と条件を保存し、同時に1件ずつ動かします。`get_app_state`の`calculation.queue`で待機数と各項目の状態を確認します。GUI操作の完了やキューへの登録完了は、NWChem計算の完了とは別です。`enqueue` の `chainFrom`・`chainStructure`・`chainSteps` で、前の計算の最終構造・経路の最高点・IRCの端から続ける計算（遷移状態探索 → IRC → 両端の最適化の連鎖）を登録できます。NEBは `set_nwchem` の `task: "neb"` と、終点を設定する `set_neb_end` で準備し、`get_results` の `properties.neb` で経路を読みます。`--mcp-gui` の `chemistry` の `xtb` は、利用者が環境設定で指定したxtbで構造を最適化します。
 
 `get_results`の`spectrum`・`spectrum_peaks`はNMR・通常ラマン・溶液ESR・ECD・ORD・IR・UV–Visの曲線とピーク、`energy_profile`は熱補正付きの段階別エネルギー（振動数スケール・準RRHO・1 mol/Lの補正、Gでは速度定数）を返します。単位・範囲・近似はGUIと共通です。配座セットなどのGUI操作は`ui_*`からも利用できます。接続し直した後にツール定義を取得してください。[キュー操作](../mcp.md#計算キューの操作)と[分光・エネルギー比較](../mcp.md#スペクトルエネルギー比較)に引数と返り値を記載しています。
 

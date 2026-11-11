@@ -18,6 +18,7 @@
 #include "ui/editor_chrome.h"
 #include "ui/execution_form.h"
 #include "ui/execution_panel.h"
+#include "ui/figure_export.h"
 #include "ui/history_panel.h"
 #include "ui/input_preview_panel.h"
 #include "ui/molecule_panel.h"
@@ -607,6 +608,9 @@ void MainWindow::buildMenus() {
     action(toolsMenu, tr("構造を比較・重ね合わせ…"), {}, "compare", [this] {
         moleculePage->compareDialog();
     })->setObjectName("compareAction");
+    auto *xtb = action(toolsMenu, tr("xTBで構造を最適化…"), {}, "cube", [this] { xtbDialog(); });
+    xtb->setObjectName("xtbAction");
+    xtb->setToolTip(tr("外部のxtbプログラム（GFN-xTB）で構造を最適化します。金属錯体にも使えます。"));
     // NWChem runs from any tab, not only from the button in "3 実行設定".
     auto *calculationMenu = menuBar()->addMenu(tr("計算"));
     auto *runAction = action(calculationMenu, tr("計算を実行"), QKeySequence(Qt::Key_F5), "play",
@@ -648,6 +652,23 @@ void MainWindow::buildMenus() {
             a->setIcon(stepIcon(i + 1));
     }
     viewMenu->addSeparator();
+    action(viewMenu, tr("3D画面を画像で書き出す…"), {}, "image", [this] {
+        if (document().atoms.isEmpty())
+            fail(tr("表示する構造がありません。"));
+        ImageOptions options;
+        if (!imageOptionsDialog(this, view->size(), options))
+            return;
+        auto path =
+            QFileDialog::getSaveFileName(this, tr("3D画面を画像で保存"), "molecule.png", "PNG (*.png)");
+        if (path.isEmpty())
+            return;
+        if (!path.endsWith(".png", Qt::CaseInsensitive))
+            path += ".png";
+        checkMcpPath(path);
+        if (!view->renderImage(options.scale, options.background).save(path))
+            fail(tr("画像を書き出せません。"));
+        statusBar()->showMessage(tr("画像を保存しました: %1").arg(path), 8000);
+    })->setObjectName("exportViewImageAction");
     action(viewMenu, tr("画面をPNGで書き出す…"), {}, "image", [this] {
         QString p = QFileDialog::getSaveFileName(this, tr("画面を保存"), "molforma.png", "PNG (*.png)");
         if (!p.isEmpty() && !grab().save(p))
@@ -1044,6 +1065,88 @@ void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids
     chemistry.start({mode, smiles, moving, count, mcp.depth > 0});
     statusBar()->showMessage(tr("構造を生成・整形しています…"));
 }
+Document MainWindow::resultStructure() const {
+    if (results->result().source.isEmpty() || results->result().frames.isEmpty())
+        fail(tr("「結果ビューア」で終点にする構造を開いてください。"));
+    return results->displayedGeometry();
+}
+void MainWindow::runXtb(const XtbOptions &options) {
+    ChemistryRequest request{"xtb", {}, options.moving, 10, mcp.depth > 0};
+    request.executable = xtbExecutable(settings.value("xtb/executable").toString());
+    request.xtb = options;
+    chemistry.start(request);
+    statusBar()->showMessage(tr("xTB（%1）で構造を最適化しています…").arg(xtbMethodName(options.method)));
+}
+void MainWindow::xtbDialog() {
+    if (hasCandidate() || chemistryRunning())
+        fail(tr("候補を確定・取消し、整形の終了後に実行してください。"));
+    QDialog dialog(this);
+    dialog.setObjectName("xtbDialog");
+    dialog.setWindowTitle(tr("xTBで構造を最適化"));
+    auto *layout = new QVBoxLayout(&dialog);
+    const auto program = xtbExecutable(settings.value("xtb/executable").toString());
+    auto *intro = new QLabel(
+        tr("半経験的なGFN-xTB（xtbプログラム）で構造を最適化し、候補として表示します。金属錯体・配位結合を"
+           "含む構造も扱えます（Rnまで）。DFT計算の前の粗い整形に使います。電荷・多重度は「2 計算条件」の"
+           "値、固定原子は動かしません。外部点電荷は含めません。"));
+    intro->setWordWrap(true);
+    layout->addWidget(intro);
+    auto *found =
+        new QLabel(program.isEmpty() ? tr("xtbが見つかりません。「編集 → 環境設定」の「xTB実行ファイル」"
+                                          "で指定してください。")
+                                     : tr("実行ファイル: %1").arg(program));
+    found->setObjectName("xtbExecutable");
+    found->setWordWrap(true);
+    found->setTextFormat(Qt::PlainText);
+    found->setProperty("muted", true);
+    layout->addWidget(found);
+    auto *form = new QFormLayout;
+    layout->addLayout(form);
+    auto *method = new QComboBox;
+    method->setObjectName("xtbMethod");
+    for (const auto &key : xtbMethods())
+        method->addItem(xtbMethodName(key), key);
+    method->setToolTip(tr("GFN2-xTBが標準です。GFN-FFは力場で、大きな構造（数百原子以上）を速く整えます。"));
+    form->addRow(tr("手法"), method);
+    auto *level = new QComboBox;
+    level->setObjectName("xtbLevel");
+    for (const auto &key : xtbLevels())
+        level->addItem(xtbLevelName(key), key);
+    level->setCurrentIndex(level->findData("normal"));
+    form->addRow(tr("収束の基準"), level);
+    auto *solvent = new QComboBox;
+    solvent->setObjectName("xtbSolvent");
+    solvent->addItem(tr("なし（気相）"), QString());
+    for (const auto &name : xtbSolvents())
+        solvent->addItem(name, name);
+    solvent->setToolTip(tr("ALPB暗黙溶媒モデルの溶媒名（xtbの名前）です。"));
+    form->addRow(tr("溶媒（ALPB）"), solvent);
+    auto *selected = new QCheckBox(tr("選択した原子だけを動かす（ほかは固定）"));
+    selected->setObjectName("xtbSelectionOnly");
+    selected->setEnabled(!selection().isEmpty());
+    form->addRow(QString(), selected);
+    auto *state =
+        new QLabel(tr("電荷 %1・多重度 %2（「2 計算条件」）・%n 原子", nullptr, int(document().atoms.size()))
+                       .arg(document().charge)
+                       .arg(document().multiplicity));
+    state->setProperty("muted", true);
+    form->addRow(QString(), state);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    buttons->button(QDialogButtonBox::Ok)->setText(tr("最適化"));
+    buttons->button(QDialogButtonBox::Ok)->setEnabled(!program.isEmpty());
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    XtbOptions options;
+    options.method = method->currentData().toString();
+    options.level = level->currentData().toString();
+    options.solvent = solvent->currentData().toString();
+    if (selected->isChecked())
+        options.moving = selection();
+    runXtb(options);
+}
 ConformerSetDialog *MainWindow::conformerSetDialog() {
     if (!conformerSet)
         conformerSet =
@@ -1074,7 +1177,12 @@ void MainWindow::chemistryReady(const ChemistryResult &result) {
                                           : tr("配座探索: 別の配座は見つからず、現在の構造のままです"
                                                "（回転できる結合がない分子など）。"),
                                  10000);
-    } else
+    } else if (request.mode == "xtb")
+        statusBar()->showMessage(proposed
+                                     ? tr("%1。候補を確認して「変更を確定」してください。").arg(result.note)
+                                     : tr("%1。構造は変わりませんでした。").arg(result.note),
+                                 15000);
+    else
         statusBar()->showMessage(tr("「%1」の候補を作成しました。確認して「変更を確定」してください。")
                                      .arg(session.candidateName()),
                                  10000);
@@ -1091,6 +1199,7 @@ void MainWindow::chemistryFailed(const ChemistryRequest &request, const QString 
     QMessageBox box(QMessageBox::Warning,
                     smiles                         ? tr("SMILESから作成できません")
                     : request.mode == "conformers" ? tr("配座探索できません")
+                    : request.mode == "xtb"        ? tr("xTBで最適化できません")
                                                    : tr("構造を整形できません"),
                     error, QMessageBox::Close, this);
     box.setTextFormat(Qt::PlainText);
@@ -1527,6 +1636,25 @@ void MainWindow::preferences() {
         tr("job.sh でNWChemを起動する前に実行する行です（モジュールの読込みなど）。プロジェクトには保存"
            "せず、このPCで作るすべてのジョブスクリプトに加えます。"));
     script->addRow(tr("準備の行"), prelude);
+    auto *programs = card(tr("外部プログラム"));
+    auto *xtbProgram = new QLineEdit(settings.value("xtb/executable").toString());
+    xtbProgram->setObjectName("preferences_xtb");
+    xtbProgram->setPlaceholderText("xtb");
+    xtbProgram->setToolTip(
+        tr("「ツール → xTBで構造を最適化…」で起動するxtbです。名前（PATHから検索）またはパスで"
+           "指定します。空欄ではPATHのxtbを使います。"));
+    programs->addRow(tr("xTB実行ファイル"), xtbProgram);
+    auto *xtbFound = new QLabel;
+    xtbFound->setProperty("muted", true);
+    xtbFound->setWordWrap(true);
+    xtbFound->setTextFormat(Qt::PlainText);
+    const auto showXtb = [xtbProgram, xtbFound] {
+        const auto found = xtbExecutable(xtbProgram->text());
+        xtbFound->setText(found.isEmpty() ? tr("見つかりません") : found);
+    };
+    connect(xtbProgram, &QLineEdit::textChanged, &dialog, showXtb);
+    showXtb();
+    programs->addRow(QString(), xtbFound);
     auto *startup = card(tr("起動・表示"));
     auto *water = new QCheckBox(tr("起動時に水分子を読み込む"));
     water->setObjectName("preferences_startupWater");
@@ -1578,6 +1706,7 @@ void MainWindow::preferences() {
             if (!errors.isEmpty())
                 fail(errors.join('\n'));
             saveExecutionJobPrelude(prelude->toPlainText());
+            settings.setValue("xtb/executable", xtbProgram->text().trimmed());
             saveExecutionPreferences(chosen);
             settings.setValue("startupWater", water->isChecked());
             settings.setValue("view/renderer", renderer->currentData().toString());

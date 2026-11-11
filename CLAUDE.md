@@ -18,15 +18,17 @@ QT_QPA_PLATFORM=offscreen ./build/test_editor someTestFunction   # one Qt Test s
 
 - Dependencies: Qt6 (>= 6.4) Widgets/Network/Test, Eigen3, zlib (gzip-compressed structure files), Open Babel 3
   (pkg-config `openbabel-3`, C++ API only), CMake >= 3.21. Optional: RDKit C++ (defines `MOLFORMA_HAS_RDKIT`,
-  enables strict CIP/residue recognition) and Qt6-built VTK >= 9.1 (defines `MOLFORMA_HAS_VTK`). Code must
-  build and pass tests with neither.
+  enables strict CIP/residue recognition), Qt6-built VTK >= 9.1 (defines `MOLFORMA_HAS_VTK`) and Qt SVG
+  (defines `MOLFORMA_HAS_QTSVG`, SVG figures). Code must build and pass tests with none of them. At run time
+  MolForma may start the external `xtb` (Preferences `xtb/executable`) and `ffmpeg` (PATH); neither is shipped.
 - Alternate trees exist locally: `build-no-vtk` (`-DMOLFORMA_ENABLE_VTK=OFF`) and `build-asan`
   (`-DCMAKE_CXX_FLAGS='-fsanitize=address -fno-omit-frame-pointer'`). Check rendering changes against the
   QPainter path too.
 - Each `tests/test_*.cpp` is its own executable/CTest test (`core`, `editor`, `coordinates`, `calculation`,
   `advanced`, `execution`, `input_preview`, `results`, `history`, `output`, `molden`, `rendering`, `translations`, `mcp`).
   All run with `QT_QPA_PLATFORM=offscreen` and need no network, credentials or NWChem install:
-  `tests/fake_nwchem.cpp` builds a stand-in NWChem used by execution/history/output/mcp tests.
+  `tests/fake_nwchem.cpp` builds a stand-in NWChem used by execution/history/output/mcp tests, and
+  `tests/fake_xtb.cpp` a stand-in xtb used by services/editor tests.
   `test_mcp` launches the built `molforma` binary; `test_execution` uses it as the supervisor of runs. Fixtures live in `tests/fixtures/` (`FIXTURE_DIR` in `test_core`).
   Tests must not touch the user's files: MolForma's settings use `mf::SettingsFormat` (`model/settings.h`: NativeFormat,
   an INI file on Windows and macOS), so redirect `QSettings::setPath` for both NativeFormat and IniFormat and set
@@ -98,6 +100,15 @@ Key cross-cutting designs:
   that supervisor owns NWChem, writes every state to `run.json` and stops on `stop.request` in the job folder,
   so a run goes on when the window closes and another session can `attach` to it. `NwchemQueue` keeps waiting
   entries in `queue.json` of the data folder (restored paused; a job whose `run.json` changed is dropped).
+  A chained entry (`QueueChain`, `enqueueChain`) keeps its document until an earlier entry's job has finished,
+  then takes that job's structure (`chainedDocument`: final, path maximum, IRC ends) and only then saves its bundle.
+- **NEB**: `task` "neb" writes `geometry` + `geometry endgeom`, a `neb` block with `print_shift 1` and
+  `task … neb`; the end is the setting `neb_end` (positions by atom ID, kept by `Document::remove`/`renameIds`).
+  The results reader takes the last printed path into `properties["neb"]` and frames; an unconverged NEB is a
+  warning, not an error.
+- **External programs**: `editing/xtb.*` + `ChemistryJob` mode "xtb" run the user's `xtb` in a temp folder
+  (fixed atoms via `$fix`), proposing the result as a candidate; `ui/figure_export.*` writes figures of the 3D
+  view (`MoleculeView::renderImage`, VTK tiles), GIF (own encoder), MP4 (`ffmpeg` from PATH) and chart figures.
 - **Restarts**: `nwchem/nwchem_restart.*` prepares a document that goes on from a job's NWChem database
   (`document.nwchem.restart`: `continue`, `hessian`, `reuse`); the generator then writes `restart`, no geometry
   and only the unfinished tasks, and `saveExecutionBundle` copies the database files into the new job. MCP

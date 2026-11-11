@@ -6,6 +6,7 @@
 #include "model/units.h"
 #include "results/molden_orbitals.h"
 #include "ui/editor_chrome.h"
+#include "ui/figure_export.h"
 #include "ui/main_window.h"
 #include "ui/molecule_view.h"
 #include "ui/property_geometry_view.h"
@@ -86,6 +87,18 @@ QString fixed(double value, int decimals) {
 }
 // A value to read (the overview, the summary) with the minus sign of "履歴" and the run panel; the
 // cells of the tables keep "-", so that what is taken from them stays a number.
+// Where an animation goes: a file for GIF and MP4, a folder for numbered PNG files; empty when cancelled.
+QString animationTarget(QWidget *parent, const AnimationOptions &options, const QString &name,
+                        const QString &folder) {
+    if (options.format == "png")
+        return QFileDialog::getExistingDirectory(parent, tr("連番画像の保存先"), folder);
+    const auto suffix = options.format == "mp4" ? QString(".mp4") : QString(".gif");
+    auto path = QFileDialog::getSaveFileName(parent, tr("動画を保存"), QDir(folder).filePath(name + suffix),
+                                             options.format == "mp4" ? "MP4 (*.mp4)" : "GIF (*.gif)");
+    if (!path.isEmpty() && !path.endsWith(suffix, Qt::CaseInsensitive))
+        path += suffix;
+    return path;
+}
 QString shownReal(double value) {
     return real(value).replace('-', "−");
 }
@@ -135,6 +148,27 @@ QString resultPropertyLines(const ResultData &data) {
     if (data.properties.contains("scan"))
         text += tr("座標スキャン: %n点（「経路・スキャン」に表示）\n", nullptr,
                    int(data.properties.value("scan").toArray().size()));
+    if (data.properties.contains("neb")) {
+        const auto neb = data.properties.value("neb").toObject();
+        const auto points = neb["points"].toArray();
+        int highest = -1;
+        for (int i = 1; i + 1 < points.size(); ++i)
+            if (highest < 0 ||
+                points[i].toObject()["energy"].toDouble() > points[highest].toObject()["energy"].toDouble())
+                highest = i;
+        text += tr("NEB: 像 %n個、ステップ %1%2（「経路・スキャン」に表示）\n", nullptr, int(points.size()))
+                    .arg(neb["iteration"].toInt())
+                    .arg(!neb.contains("converged")  ? QString()
+                         : neb["converged"].toBool() ? tr("、収束")
+                                                     : tr("、未収束"));
+        if (highest > 0)
+            text += tr("NEBの最高点: 像 %1（始点から %2 kcal/mol）\n")
+                        .arg(highest + 1)
+                        .arg(fixed((points[highest].toObject()["energy"].toDouble() -
+                                    points[0].toObject()["energy"].toDouble()) *
+                                       HartreeToKcal,
+                                   2));
+    }
     if (data.properties.contains("irc")) {
         const auto irc = data.properties.value("irc").toObject();
         const auto directions = irc["directions"].toArray();
@@ -345,8 +379,13 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     auto *exportMenu = new QMenu(exportButton);
     saveXyz = exportMenu->addAction(lineIcon("export"), tr("表示中の構造をXYZで書き出す…"));
     saveXyz->setObjectName("resultsSaveXyz");
-    savePng = exportMenu->addAction(lineIcon("image"), tr("3D表示をPNG画像で書き出す…"));
+    savePng = exportMenu->addAction(lineIcon("image"), tr("3D表示を画像で書き出す…"));
     savePng->setObjectName("resultsSavePng");
+    saveFrames = exportMenu->addAction(lineIcon("image"), tr("構造列を動画・連番画像で書き出す…"));
+    saveFrames->setObjectName("resultsSaveFrames");
+    saveFrames->setToolTip(
+        tr("座標スキャン・IRC・NEBの点を経路の順に、ほかは構造列のすべてを、GIF・MP4・PNG連番で"
+           "書き出します。"));
     exportButton->setMenu(exportMenu);
     for (QWidget *w : {static_cast<QWidget *>(openButton), static_cast<QWidget *>(reload),
                        static_cast<QWidget *>(cancel), static_cast<QWidget *>(divider),
@@ -601,7 +640,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     modeExport->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     modeExport->setPopupMode(QToolButton::InstantPopup);
     auto *modeMenu = new QMenu(modeExport);
-    saveModeImages = modeMenu->addAction(lineIcon("image"), tr("振動の連番画像を書き出す…"));
+    saveModeImages = modeMenu->addAction(lineIcon("image"), tr("振動を動画・連番画像で書き出す…"));
     saveModeImages->setObjectName("resultsSaveModeImages");
     saveModeTrajectory = modeMenu->addAction(lineIcon("export"), tr("振動をXYZ（複数構造）で書き出す…"));
     saveModeTrajectory->setObjectName("resultsSaveModeXyz");
@@ -958,10 +997,52 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     pathChart = new ChartView;
     pathChart->setObjectName("resultsPathChart");
     pl->addWidget(pathChart, 1);
+    // Every chart of the viewer saves itself as a figure from its context menu.
+    for (auto *chart : {irSpectrum, energyChart, gradientChart, spectrum, pathChart})
+        chart->setExport([this, chart] {
+            window->safe([&] {
+                const auto path =
+                    askFigurePath(this, tr("グラフを保存"), chart->objectName().mid(7).toLower());
+                if (path.isEmpty())
+                    return;
+                window->checkMcpPath(path);
+                saveFigure(chart, path);
+            });
+        });
+    auto *pathActions = new QHBoxLayout;
+    pathNote = new QLabel;
+    pathNote->setObjectName("resultsPathNote");
+    pathNote->setWordWrap(true);
+    pathActions->addWidget(pathNote, 1);
+    pathHighest = new QPushButton(tr("最高点を選択"));
+    pathHighest->setObjectName("resultsPathHighest");
+    pathHighest->setToolTip(tr("経路の両端を除いて、エネルギーが最も高い点を選びます。"));
+    pathActions->addWidget(pathHighest);
+    pathSaddle = new QPushButton(lineIcon("refresh"), tr("この点から遷移状態探索を準備"));
+    pathSaddle->setObjectName("resultsPathSaddle");
+    pathSaddle->setToolTip(tr("このジョブの計算条件を読み込み、計算目的を「遷移状態探索 → 振動数」にして、"
+                              "表示中の点の構造を候補にします。確定後、新しいジョブとして実行できます。"));
+    pathActions->addWidget(pathSaddle);
+    pl->addLayout(pathActions);
+    connect(pathHighest, &QPushButton::clicked, this, [this] {
+        // The highest point between the ends, as listed in the table.
+        int best = -1;
+        double highest = -INFINITY;
+        for (int row = 1; row + 1 < path->rowCount(); ++row)
+            if (const double e = path->item(row, 3)->data(Qt::UserRole).toDouble(); e > highest) {
+                highest = e;
+                best = row;
+            }
+        if (best >= 0)
+            path->setCurrentCell(best, 0);
+    });
+    connect(pathSaddle, &QPushButton::clicked, this,
+            [this] { window->safe([this] { prepareRecalculation("saddle_frequencies"); }); });
     auto *pathHint =
         new QLabel(tr("座標スキャン: 各点の最後のエネルギー（緩和スキャンは最適化後）で、ΔEは最小値基準です。"
                       "IRC: 遷移状態を0とし、前進方向を正・後退方向を負の反応座標（amu½·Bohr）で表示し、"
-                      "ΔEは遷移状態基準です。行を選ぶとその構造を表示します。"));
+                      "ΔEは遷移状態基準です。NEB: 最後に出力された経路の像を、始点からの経路の長さ（Å）で"
+                      "表示し、ΔEは始点基準です。行を選ぶとその構造を表示します。"));
     pathHint->setWordWrap(true);
     pl->addWidget(pathHint);
     tabs->addTab(pathPage, tr("経路・スキャン"));
@@ -1230,17 +1311,8 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
                 saveGeometry(p.endsWith(".xyz", Qt::CaseInsensitive) ? p : p + ".xyz");
         });
     });
-    connect(savePng, &QAction::triggered, this, [this] {
-        window->safe([&] {
-            auto p = QFileDialog::getSaveFileName(this, tr("結果画像を保存"), "result.png", "PNG (*.png)");
-            if (p.isEmpty())
-                return;
-            if (!p.endsWith(".png", Qt::CaseInsensitive))
-                p += ".png";
-            if (!view->grab().save(p))
-                fail(tr("画像を保存できません。"));
-        });
-    });
+    connect(savePng, &QAction::triggered, this, [this] { window->safe([this] { exportImage(); }); });
+    connect(saveFrames, &QAction::triggered, this, [this] { window->safe([this] { exportFrames(); }); });
     display(true);
     updateActions();
 }
@@ -1635,7 +1707,9 @@ void ResultsPanel::updateActions() {
     recalculate->setEnabled(applyGeometry->isEnabled() &&
                             QFileInfo::exists(QFileInfo(data.source).absolutePath() + "/run.json"));
     compareGeometry->setEnabled(applyGeometry->isEnabled());
+    pathSaddle->setEnabled(recalculate->isEnabled());
     savePng->setEnabled(ready && !data.frames.isEmpty());
+    saveFrames->setEnabled(ready && data.frames.size() > 1);
     exportButton->setEnabled(saveXyz->isEnabled() || savePng->isEnabled());
     frame->setEnabled(ready && !data.frames.isEmpty());
     timeline->setEnabled(ready && data.frames.size() > 1);
@@ -1878,6 +1952,8 @@ void ResultsPanel::display(bool orbitalOnly) {
         const auto irc = data.properties.value("irc").toObject();
         for (const auto &value : irc["points"].toArray())
             setEnergy(value.toObject()["frame"].toInt(-1), value.toObject()["energy"].toDouble(NAN));
+        for (const auto &value : data.properties.value("neb").toObject()["points"].toArray())
+            setEnergy(value.toObject()["frame"].toInt(-1), value.toObject()["energy"].toDouble(NAN));
         if (irc.contains("ts_energy"))
             setEnergy(irc["ts_frame"].toInt(-1), irc["ts_energy"].toDouble(NAN));
         double lowest = INFINITY;
@@ -1918,7 +1994,7 @@ void ResultsPanel::updateTabs() {
                          loaded && !data.modes.isEmpty(),
                          loaded && !data.steps.isEmpty(),
                          loaded && !data.excitations.isEmpty(),
-                         loaded && (p.contains("scan") || p.contains("irc")),
+                         loaded && (p.contains("scan") || p.contains("irc") || p.contains("neb")),
                          loaded && properties,
                          loaded && (data.format == "CUBE" || data.format == "MOLDEN"),
                          loaded && !data.log.isEmpty()};
@@ -2117,7 +2193,10 @@ void ResultsPanel::showOverview() {
              "neutral", 5);
     }
     if (path->rowCount())
-        tile("resultsTilePath", data.properties.contains("scan") ? tr("座標スキャン") : QString("IRC"),
+        tile("resultsTilePath",
+             data.properties.contains("scan")  ? tr("座標スキャン")
+             : data.properties.contains("neb") ? QString("NEB")
+                                               : QString("IRC"),
              tr("%n点", nullptr, path->rowCount()), tr("行を選ぶとその点の構造を表示します。"), "neutral", 6);
     if (data.format == "CUBE" || data.selectedOrbital >= 0)
         tile("resultsTileSurface", tr("等値面"), "±" + real(data.isovalue),
@@ -2480,6 +2559,7 @@ void ResultsPanel::showPath() {
     path->setRowCount(0);
     const auto scan = data.properties.value("scan").toArray();
     const auto irc = data.properties.value("irc").toObject();
+    const auto neb = data.properties.value("neb").toObject();
     struct Point {
         QString label, coordinate;
         double x, energy;
@@ -2497,6 +2577,21 @@ void ResultsPanel::showPath() {
                             p["value"].toDouble(), p["energy"].toDouble(), p["frame"].toInt(-1)};
             reference = std::min(reference, p["energy"].toDouble());
         }
+    } else if (!neb.isEmpty()) {
+        const auto list = neb["points"].toArray();
+        const bool lengths = !list.isEmpty() && list[0].toObject().contains("distance");
+        xLabel = lengths ? tr("経路の長さ / Å") : tr("像");
+        for (int i = 0; i < list.size(); ++i) {
+            const auto p = list[i].toObject();
+            points << Point{QString::number(p["bead"].toInt()),
+                            i == 0                 ? tr("始点")
+                            : i + 1 == list.size() ? tr("終点")
+                                                   : QString(),
+                            lengths ? p["distance"].toDouble() : p["bead"].toDouble(), p["energy"].toDouble(),
+                            p["frame"].toInt(-1)};
+        }
+        if (!points.isEmpty())
+            reference = points.first().energy;
     } else if (!irc.isEmpty()) {
         xLabel = tr("反応座標 s / amu½·Bohr");
         QVector<Point> backward, forward;
@@ -2525,13 +2620,33 @@ void ResultsPanel::showPath() {
         const double relative = (p.energy - reference) * HartreeToKcal;
         row(path, i, {p.label, p.coordinate, fixed(p.x, 4), fixed(p.energy, 8), fixed(relative, 3)});
         path->item(i, 0)->setData(Qt::UserRole, p.frame);
+        path->item(i, 3)->setData(Qt::UserRole, p.energy);
         curve << QPointF(p.x, relative);
     }
     if (curve.isEmpty())
         pathChart->clear();
     else
-        pathChart->setChart(scan.isEmpty() ? tr("IRC（遷移状態基準）") : tr("座標スキャン（最小値基準）"),
+        pathChart->setChart(!scan.isEmpty()  ? tr("座標スキャン（最小値基準）")
+                            : !neb.isEmpty() ? tr("NEB（始点基準）")
+                                             : tr("IRC（遷移状態基準）"),
                             xLabel, "ΔE / kcal mol⁻¹", {{tr("エネルギー"), curve, ChartTone::Accent}});
+    QString note;
+    if (!neb.isEmpty()) {
+        const auto steps = neb["steps"].toArray();
+        const auto last = steps.isEmpty() ? QJsonObject() : steps.last().toObject();
+        const auto thresholds = neb["thresholds"].toObject();
+        note = tr("ステップ %1 の経路").arg(neb["iteration"].toInt());
+        if (neb.contains("converged"))
+            note += neb["converged"].toBool() ? tr("（収束）") : tr("（未収束）");
+        if (!last.isEmpty() && thresholds.contains("gmax"))
+            note += tr("。最後のステップのGmax %1（閾値 %2）、Grms %3（閾値 %4）")
+                        .arg(shownReal(last["gmax"].toDouble()), shownReal(thresholds["gmax"].toDouble()),
+                             shownReal(last["grms"].toDouble()), shownReal(thresholds["grms"].toDouble()));
+        note += tr("。最高点の構造から遷移状態探索へ進めます。");
+    }
+    pathNote->setText(note);
+    pathNote->setVisible(!note.isEmpty());
+    pathHighest->setEnabled(points.size() >= 3);
 }
 void ResultsPanel::showProperties() {
     const auto mulliken = data.properties.value("mulliken").toArray(),
@@ -2716,23 +2831,24 @@ void ResultsPanel::exportMode(bool images) {
     constexpr int steps = 24; // One period.
     const auto name = QString("mode%1_%2cm").arg(n + 1).arg(qRound(data.modes[n].frequency));
     if (images) {
-        const auto directory = QFileDialog::getExistingDirectory(this, tr("連番画像の保存先"), folder);
-        if (directory.isEmpty())
+        AnimationOptions options;
+        if (!animationOptionsDialog(this, view->size(), options, 24, false))
             return;
-        window->checkMcpPath(directory);
+        const auto target = animationTarget(this, options, name, folder);
+        if (target.isEmpty())
+            return;
+        window->checkMcpPath(target);
         modeDisplayed = true;
         view->setSurface({});
-        for (int k = 0; k < steps; ++k) {
+        const bool written = writeAnimation(this, target, name, options, steps, [&](int k) {
             setViewDocument(resultModeGeometry(data, n, 2 * M_PI * k / steps, amplitude->value()));
             view->renderNow();
-            const auto file =
-                QDir(directory).filePath(QString("%1_%2.png").arg(name).arg(k, 2, 10, QChar('0')));
-            if (!view->grab().save(file))
-                fail(tr("画像を保存できません: %1").arg(file));
-        }
+            return view->renderImage(options.scale, options.background);
+        });
         setViewDocument(data.vibrationGeometry);
-        window->statusBar()->showMessage(tr("%n枚の画像を保存しました: %1", nullptr, steps).arg(directory),
-                                         8000);
+        if (written)
+            window->statusBar()->showMessage(
+                tr("振動の%n枚の画像を書き出しました: %1", nullptr, steps).arg(target), 8000);
         return;
     }
     auto file = QFileDialog::getSaveFileName(this, tr("振動をXYZで保存"), name + ".xyz", "XYZ (*.xyz)");
@@ -2753,6 +2869,58 @@ void ResultsPanel::exportMode(bool images) {
             text += '\n';
     }
     writeFile(file, text.toUtf8());
+}
+void ResultsPanel::exportImage() {
+    if (loading() || data.frames.isEmpty())
+        fail(tr("表示する構造がありません。"));
+    ImageOptions options;
+    if (!imageOptionsDialog(this, view->size(), options))
+        return;
+    auto path = QFileDialog::getSaveFileName(this, tr("3D表示を画像で保存"),
+                                             QDir(folder).filePath("result.png"), "PNG (*.png)");
+    if (path.isEmpty())
+        return;
+    if (!path.endsWith(".png", Qt::CaseInsensitive))
+        path += ".png";
+    window->checkMcpPath(path);
+    if (!view->renderImage(options.scale, options.background).save(path))
+        fail(tr("画像を保存できません。"));
+    window->statusBar()->showMessage(tr("画像を保存しました: %1").arg(path), 8000);
+}
+void ResultsPanel::exportFrames() {
+    if (loading() || data.frames.size() < 2)
+        fail(tr("構造列がありません。"));
+    // The points of a path in its order (IRC: backward end, transition state, forward end).
+    QVector<int> list;
+    for (int row = 0; row < path->rowCount(); ++row)
+        if (const int index = path->item(row, 0)->data(Qt::UserRole).toInt();
+            index >= 0 && index < data.frames.size())
+            list << index;
+    if (list.size() < 2) {
+        list.clear();
+        for (int i = 0; i < data.frames.size(); ++i)
+            list << i;
+    }
+    AnimationOptions options;
+    if (!animationOptionsDialog(this, view->size(), options, 4, false))
+        return;
+    const auto target = animationTarget(this, options, "path", folder);
+    if (target.isEmpty())
+        return;
+    window->checkMcpPath(target);
+    stopAnimation();
+    const int shown = frame->value();
+    const bool written = writeAnimation(this, target, "path", options, int(list.size()), [&](int k) {
+        frame->setValue(list[k] + 1);
+        showFrame();
+        view->renderNow();
+        return view->renderImage(options.scale, options.background);
+    });
+    frame->setValue(shown);
+    showFrame();
+    if (written)
+        window->statusBar()->showMessage(
+            tr("%n構造を書き出しました: %1", nullptr, int(list.size())).arg(target), 8000);
 }
 void ResultsPanel::setViewDocument(const Document &d) {
     const auto ids = [&](const QVector<int> &numbers) {
@@ -2856,8 +3024,8 @@ void ResultsPanel::applyStructure() {
             .arg(moved.second, 0, 'f', 4),
         15000);
 }
-void ResultsPanel::prepareRecalculation() {
-    emit recalculationRequested(QFileInfo(data.source).absolutePath(), displayedGeometry());
+void ResultsPanel::prepareRecalculation(const QString &task) {
+    emit recalculationRequested(QFileInfo(data.source).absolutePath(), displayedGeometry(), task);
 }
 
 } // namespace mf

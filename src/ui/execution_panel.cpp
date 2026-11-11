@@ -173,6 +173,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner)
     connect(queueButton, &QPushButton::clicked, this, &ExecutionPanel::showQueue);
     connect(&queue, &NwchemQueue::changed, this,
             [this] { queueButton->setText(tr("計算キュー（待機 %n 件）", nullptr, queue.pending())); });
+    connect(&queue, &NwchemQueue::bundleSaved, this, &ExecutionPanel::bundleChanged);
     auto *split = new QSplitter;
     split->setChildrenCollapsible(false);
     outer->addWidget(split, 1);
@@ -628,7 +629,7 @@ bool ExecutionPanel::authorizeCalculation() {
     }
     return true;
 }
-QString ExecutionPanel::enqueueCalculation() {
+QString ExecutionPanel::enqueueCalculation(const QueueChain &chain) {
     if (window->hasCandidate() || window->chemistryRunning())
         fail(tr("候補を確定・取消し、整形の終了後に実行できます。"));
     commitPendingEdits();
@@ -639,9 +640,139 @@ QString ExecutionPanel::enqueueCalculation() {
     std::function<void()> check;
     if (const auto *policy = window->accessPolicy(); policy && window->remoteRequest())
         check = [policy = *policy, document, base] { policy.checkRun(document, base); };
-    const auto id = queue.enqueue(document, base, check);
-    emit bundleChanged(queue.entries().last().plan.directory);
+    const auto id = queue.enqueue(document, base, check, chain);
+    if (!chain.active())
+        emit bundleChanged(queue.entries().last().plan.directory);
     return id;
+}
+QStringList ExecutionPanel::enqueueChain(const QString &from, const QString &structure,
+                                         const QStringList &steps, bool endFrequencies) {
+    if (window->hasCandidate() || window->chemistryRunning())
+        fail(tr("候補を確定・取消し、整形の終了後に実行できます。"));
+    if (steps.isEmpty())
+        fail(tr("登録する計算を選んでください。"));
+    commitPendingEdits();
+    if (!authorizeCalculation())
+        return {};
+    const auto base = baseDirectory();
+    const auto *policy = window->accessPolicy();
+    const bool remote = policy && window->remoteRequest();
+    return queue.enqueueChain(window->document(), base, from, structure, steps, endFrequencies,
+                              [policy, remote, base](const Document &d) -> std::function<void()> {
+                                  if (!remote)
+                                      return {};
+                                  return [policy = *policy, d, base] { policy.checkRun(d, base); };
+                              });
+}
+void ExecutionPanel::showChainDialog() {
+    if (auto *existing = findChild<QDialog *>("calculationChainDialog")) {
+        existing->show();
+        existing->raise();
+        return;
+    }
+    auto *dialog = new QDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setObjectName("calculationChainDialog");
+    dialog->setWindowTitle(tr("前の計算から続けて登録"));
+    auto *layout = new QVBoxLayout(dialog);
+    auto *hint = new QLabel(
+        tr("キューの計算が正常に終わったら、その構造から次の計算を始めます。次の計算は「2 計算条件」"
+           "の今の条件（手法・基底など）を使い、連鎖では計算目的と計算名だけを変えます。"
+           "入力一式は前の計算が終わった時点で保存します。"));
+    hint->setWordWrap(true);
+    layout->addWidget(hint);
+    auto *form = new QFormLayout;
+    layout->addLayout(form);
+    auto *source = new QComboBox;
+    source->setObjectName("calculationChainSource");
+    for (const auto &entry : queue.entries())
+        if (entry.state == RunState::Prepared || runStateActive(entry.state) ||
+            entry.state == RunState::Finished) {
+            QString task;
+            for (const auto &c : nwchemChoices("task"))
+                if (c.value == nwchemSettings(entry.document)["task"].toString())
+                    task = c.label;
+            source->addItem(
+                tr("%1（%2・%3）")
+                    .arg(entry.name, task,
+                         entry.state == RunState::Prepared ? tr("待機中") : runStateName(entry.state)),
+                entry.id);
+        }
+    source->setCurrentIndex(source->count() - 1);
+    form->addRow(tr("引継ぎ元"), source);
+    auto *structure = new QComboBox;
+    structure->setObjectName("calculationChainStructure");
+    for (const auto &key : queueChainStructures())
+        structure->addItem(queueChainStructureName(key), key);
+    form->addRow(tr("引き継ぐ構造"), structure);
+    // The highest point for paths, the final structure otherwise.
+    const auto suggest = [this, source, structure] {
+        for (const auto &entry : queue.entries())
+            if (entry.id == source->currentData().toString()) {
+                const NwchemCalculation calc(nwchemSettings(entry.document));
+                structure->setCurrentIndex(structure->findData(calc.path() ? "highest" : "final"));
+            }
+    };
+    connect(source, &QComboBox::currentIndexChanged, dialog, suggest);
+    suggest();
+    auto *single = new QRadioButton;
+    single->setObjectName("calculationChainCurrent");
+    QString task;
+    for (const auto &c : nwchemChoices("task"))
+        if (c.value == nwchemSettings(window->document())["task"].toString())
+            task = c.label;
+    single->setText(tr("「2 計算条件」の今の条件で1件（%1）").arg(task));
+    auto *recipe = new QRadioButton(tr("反応経路の連鎖"));
+    recipe->setObjectName("calculationChainRecipe");
+    recipe->setChecked(true);
+    layout->addWidget(single);
+    layout->addWidget(recipe);
+    auto *steps = new QWidget;
+    auto *stepLayout = new QVBoxLayout(steps);
+    stepLayout->setContentsMargins(24, 0, 0, 0);
+    auto *saddle = new QCheckBox(tr("遷移状態探索 → 振動数"));
+    saddle->setObjectName("calculationChainSaddle");
+    auto *irc = new QCheckBox(tr("IRC（両方向）"));
+    irc->setObjectName("calculationChainIrc");
+    auto *ends = new QCheckBox(tr("IRCの両端の構造最適化"));
+    ends->setObjectName("calculationChainEnds");
+    auto *endFrequencies = new QCheckBox(tr("両端の振動数も計算（熱補正・反応エネルギー図用）"));
+    endFrequencies->setObjectName("calculationChainEndFrequencies");
+    for (auto *box : {saddle, irc, ends, endFrequencies}) {
+        box->setChecked(true);
+        stepLayout->addWidget(box);
+    }
+    layout->addWidget(steps);
+    connect(recipe, &QRadioButton::toggled, steps, &QWidget::setEnabled);
+    connect(ends, &QCheckBox::toggled, endFrequencies, &QWidget::setEnabled);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close);
+    auto *add = buttons->addButton(tr("キューに登録"), QDialogButtonBox::AcceptRole);
+    add->setObjectName("calculationChainAdd");
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::close);
+    connect(add, &QPushButton::clicked, dialog, [=, this] {
+        window->safe([&] {
+            if (source->currentIndex() < 0)
+                fail(tr("キューに引継ぎ元の計算を登録してください。"));
+            QStringList chosen;
+            if (single->isChecked())
+                chosen << "current";
+            else
+                for (const auto &[box, key] : {std::pair{saddle, "saddle"}, {irc, "irc"}, {ends, "ends"}})
+                    if (box->isChecked())
+                        chosen << key;
+            const auto ids =
+                enqueueChain(source->currentData().toString(), structure->currentData().toString(), chosen,
+                             endFrequencies->isChecked());
+            if (!ids.isEmpty()) {
+                dialog->close();
+                window->statusBar()->showMessage(
+                    tr("%n件の計算をキューに登録しました。", nullptr, int(ids.size())), 8000);
+                showQueue();
+            }
+        });
+    });
+    dialog->show();
 }
 void ExecutionPanel::showQueue() {
     if (auto *existing = findChild<QDialog *>("calculationQueueDialog")) {
@@ -659,9 +790,9 @@ void ExecutionPanel::showQueue() {
                                "アプリ終了後は自動再開せず、待機分の入力一式は履歴に残ります。"));
     hint->setWordWrap(true);
     layout->addWidget(hint);
-    auto *table = new QTableWidget(0, 4);
+    auto *table = new QTableWidget(0, 5);
     table->setObjectName("calculationQueueTable");
-    table->setHorizontalHeaderLabels({tr("計算名"), tr("状態"), tr("保存先"), tr("詳細")});
+    table->setHorizontalHeaderLabels({tr("計算名"), tr("状態"), tr("構造"), tr("保存先"), tr("詳細")});
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -678,8 +809,13 @@ void ExecutionPanel::showQueue() {
     auto *down = new QPushButton(tr("下へ"));
     auto *cancel = new QPushButton(tr("登録を取消"));
     auto *stop = new QPushButton(tr("実行中を停止"));
-    for (auto *button : {resume, pause, up, down, cancel, stop})
+    auto *chain = new QPushButton(tr("前の計算から続けて登録…"));
+    chain->setObjectName("calculationQueueChain");
+    chain->setToolTip(tr("キューの計算の最終構造・経路の最高点・IRCの端から、遷移状態探索・IRC・最適化などを"
+                         "続けて実行するように登録します。"));
+    for (auto *button : {resume, pause, up, down, cancel, stop, chain})
         controls->addWidget(button);
+    connect(chain, &QPushButton::clicked, dialog, [this] { showChainDialog(); });
     auto *stopOnFailure = new QCheckBox(tr("失敗・停止・時間切れでキューを一時停止"));
     stopOnFailure->setObjectName("calculationQueueStopOnFailure");
     layout->addWidget(stopOnFailure);
@@ -692,9 +828,20 @@ void ExecutionPanel::showQueue() {
         table->setRowCount(queue.entries().size());
         int row = 0;
         for (const auto &entry : queue.entries()) {
+            QString structure = tr("登録時の分子");
+            if (entry.chain.active()) {
+                QString from = tr("前の計算");
+                for (const auto &other : queue.entries())
+                    if (other.id == entry.chain.from)
+                        from = other.name;
+                structure = tr("%1の%2").arg(from, queueChainStructureName(entry.chain.structure));
+            }
             const QStringList values{
                 entry.name, entry.state == RunState::Prepared ? tr("待機中") : runStateName(entry.state),
-                entry.plan.directory, entry.error};
+                structure,
+                entry.plan.directory.isEmpty() && entry.chain.active() ? tr("（前の計算の終了後に保存）")
+                                                                       : entry.plan.directory,
+                entry.error};
             for (int column = 0; column < values.size(); ++column) {
                 auto *cell = new QTableWidgetItem(values[column]);
                 cell->setToolTip(values[column]);

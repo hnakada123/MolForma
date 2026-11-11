@@ -20,7 +20,7 @@
 
 **Figure 2** “View → Display style → Space-filling (CPK)” (caffeine, no labels).
 
-Regular CTest runs need no display server and test the QPainter path together with editing, candidates and undo. The VTK path can be tested separately for display positions and click coordinates, translucency, isosurface retention during rotation and PNG capture.
+Regular CTest runs need no display server and test the QPainter path together with editing, candidates and undo. The VTK path can be tested separately for display positions and click coordinates, translucency, isosurface retention during rotation and PNG capture. Figure export (scale, white and transparent backgrounds, no selection rings) is tested on both paths. VTK renders figures in tiles of the view's size (`vtkWindowToImageFilter`) and the 2D layer of labels and marks is drawn over them at the same scale; a transparent background comes from the difference of two renderings on black and on white ([Figures and videos](results.md#figures-and-videos)).
 
 ```sh
 xvfb-run -a env QT_QPA_PLATFORM=xcb MOLFORMA_REQUIRE_VTK=1 \

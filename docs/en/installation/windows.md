@@ -19,6 +19,7 @@ A ready-built folder is in the ZIP on [Releases](https://github.com/hnakada123/M
 | Required | Open Babel 3.2.1 (built from source) | Reading and writing structure files, force-field cleanup, 3D structures from SMILES |
 | Optional | RDKit Release_2026_09_1 (built from source) with Boost from vcpkg | Strict stereo perception (R/S, E/Z), residue recognition |
 | Optional | VTK 9.7.1 (built from source for Qt 6) | Drawing the 3D view with VTK (OpenGL); without it, QPainter (CPU) draws it |
+| Optional | The Qt SVG module (chosen in Qt's installer) | Saving charts, spectra and reaction profiles as SVG too; without it, PNG and PDF |
 | Calculations | Ubuntu on WSL 2 with its package `nwchem` | Running calculations. Building and saving input works without it |
 
 - **Open Babel**: it is not in vcpkg, so it is built from source with MSVC ([3. Build Open Babel](#3-build-open-babel)).

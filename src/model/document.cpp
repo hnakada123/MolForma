@@ -417,6 +417,13 @@ void Document::remove(const Ids &removed) {
         }
         if (refersToGone(nwchem.value("scan_atoms")))
             nwchem["scan_atoms"] = QJsonArray();
+        // The end of an NEB path, by atom ID.
+        if (nwchem.value("neb_end").isObject()) {
+            auto end = nwchem.value("neb_end").toObject();
+            for (const auto &id : removed)
+                end.remove(id);
+            nwchem["neb_end"] = end;
+        }
         data["nwchem"] = nwchem;
     }
     QSet<QString> residueIds;
@@ -493,6 +500,13 @@ void Document::renameIds(const QHash<QString, QString> &renamed) {
         }
         if (nwchem.value("scan_atoms").isArray())
             nwchem["scan_atoms"] = renamedIds(nwchem["scan_atoms"]);
+        if (nwchem.value("neb_end").isObject()) {
+            const auto end = nwchem.value("neb_end").toObject();
+            QJsonObject positions;
+            for (auto it = end.begin(); it != end.end(); ++it)
+                positions[renamed.value(it.key(), it.key())] = it.value();
+            nwchem["neb_end"] = positions;
+        }
         data["nwchem"] = nwchem;
     }
 }

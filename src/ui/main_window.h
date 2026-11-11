@@ -2,6 +2,7 @@
 #pragma once
 #include "editing/chemistry_job.h"
 #include "editing/editor_session.h"
+#include "editing/xtb.h"
 #include "io/document_storage.h"
 #include "mcp/policy.h"
 #include "ui/molecule_view.h"
@@ -175,6 +176,12 @@ class MainWindow : public QMainWindow {
     void cancelWorker();
     // mode: smiles, fragment, refine, regenerate or conformers (count: conformers to keep).
     void runWorker(const QString &mode, const QString &smiles = {}, const Ids &moving = {}, int count = 10);
+    // Optimizes the structure with xtb (the program named in Preferences, "xtb/executable"); the
+    // result becomes a candidate. MCP cannot choose the program.
+    void runXtb(const XtbOptions &options);
+    void xtbDialog();
+    // The structure the result viewer shows; fails while it shows none.
+    Document resultStructure() const;
   signals:
     void panelChanged();
 

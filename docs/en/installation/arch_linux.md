@@ -13,6 +13,7 @@ MolForma has no package in the official repositories or the AUR (as of 2026-10-2
 | Kind | Packages | Used for |
 | --- | --- | --- |
 | Run time | `qt6-base` | The interface (Qt Widgets) |
+| Run time | `qt6-svg` | Saving charts, spectra and reaction profiles as SVG |
 | Run time | `openbabel` | Reading and writing structure files, force-field cleanup, 3D structures from SMILES (includes the format plugins and force-field data) |
 | Run time | `rdkit` | Strict stereo perception (R/S, E/Z), residue recognition |
 | Run time | `vtk` | Drawing the 3D view with VTK (OpenGL) |
@@ -28,6 +29,8 @@ Install these yourself as needed.
 | Calculations | `nwchem` | AUR | Running calculations. Also brings in `openmpi` and `scalapack` (from the AUR) as dependencies |
 | Optional | `qt6-translations` | extra | With the Japanese interface, Japanese for Qt's standard dialogs such as file selection too (standard buttons such as “Save” and “Cancel” are Japanese even without it) |
 | Optional | `noto-fonts-cjk` | extra | Japanese fonts (if none are installed) |
+| Optional | `ffmpeg` | extra | Exporting videos of structure lists and vibrations as MP4 |
+| Optional | `xtb` | [GitHub](https://github.com/grimme-lab/xtb) | “Tools → Optimize with xTB…”; obtain it separately and put it in PATH, or set it in “Edit → Preferences” |
 
 - **RDKit and VTK**: The PKGBUILD builds with RDKit and VTK, and stops the build when CMake cannot use either of them. Drawing with VTK also needs a GPU driver that provides OpenGL 3.2 or later. `rdkit` also depends on Python and more, but MolForma uses only its C++ libraries.
 - **NWChem**: Building and saving input (“Save as job”) works without NWChem.

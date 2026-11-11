@@ -3,6 +3,7 @@
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
+#include "nwchem/nwchem_queue.h"
 #include "nwchem/nwchem_restart.h"
 #include "nwchem/run_diagnostics.h"
 #include "results/results.h"
@@ -143,6 +144,124 @@ class ExecutionTest : public QObject {
         QCOMPARE(queue.entries()[1].id, id1);
         QCOMPARE(queue.pending(), 0);
         QCOMPARE(readObject(path1 + "/run.json")["status"].toString(), "finished");
+    }
+    void queueChainsStructures() {
+        NwchemRun run;
+        NwchemQueue queue(run);
+        const auto first = queue.enqueue(configured("geometry"), files.path());
+        auto next = configured();
+        setNwchemSetting(next, "title", "chained");
+        const auto second = queue.enqueue(next, files.path(), {}, QueueChain{first, "final", {}});
+        // No bundle before the structure is there, and never ahead of its source.
+        QVERIFY(queue.entries()[1].plan.directory.isEmpty());
+        QCOMPARE(queue.json()["entries"].toArray()[1].toObject()["chain"].toObject()["from"].toString(),
+                 first);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, queue.move(second, 0));
+        QCOMPARE(queue.entries()[1].id, second);
+        // The highest point needs a path; other atoms do not match.
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 queue.enqueue(next, files.path(), {}, QueueChain{first, "highest", {}}));
+        auto other = configured();
+        other.atoms[1].element = "F";
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 queue.enqueue(other, files.path(), {}, QueueChain{first, "final", {}}));
+        QCOMPARE(queue.entries().size(), 2);
+        QStringList saved;
+        connect(&queue, &NwchemQueue::bundleSaved, this, [&](const QString &job) { saved << job; });
+        queue.resume();
+        QTRY_COMPARE_WITH_TIMEOUT(queue.entries()[1].state, RunState::Finished, 10000);
+        const auto job = queue.entries()[1].plan.directory;
+        QCOMPARE(saved, QStringList{job});
+        const auto taken = historyDocument(job);
+        QCOMPARE(taken.ids(), next.ids());
+        QVERIFY((taken.atoms[1].position - Vec(0.8, 0, 0.55)).norm() < 1e-9);
+        QVERIFY(readFile(job + "/input.nw").contains("chained"));
+        QVERIFY(readFile(job + "/input.nw").contains("  H 0.8 0 0.55\n"));
+        // A source that failed: what goes on from it does not start.
+        queue.setStopOnFailure(false);
+        const auto failing = queue.enqueue(configured("fail"), files.path());
+        queue.enqueue(next, files.path(), {}, QueueChain{failing, "final", {}});
+        QTRY_COMPARE_WITH_TIMEOUT(queue.entries()[3].state, RunState::Failed, 10000);
+        QVERIFY(queue.entries()[3].error.contains("正常に終わっていない"));
+        QVERIFY(queue.entries()[3].plan.directory.isEmpty());
+        // Cancelling a source cancels the chain after it.
+        queue.pause();
+        const auto source = queue.enqueue(configured(), files.path());
+        const auto chain =
+            queue.enqueueChain(configured(), files.path(), source, "final", {"saddle", "irc", "ends"});
+        QCOMPARE(chain.size(), 4);
+        const auto entry = [&](const QString &id) {
+            for (const auto &e : queue.entries())
+                if (e.id == id)
+                    return e;
+            return QueuedCalculation{};
+        };
+        QCOMPARE(nwchemSettings(entry(chain[0]).document)["task"].toString(), "saddle_frequencies");
+        QCOMPARE(entry(chain[0]).name, "molforma_ts");
+        QCOMPARE(entry(chain[1]).chain.from, chain[0]);
+        QCOMPARE(nwchemSettings(entry(chain[1]).document)["task"].toString(), "irc");
+        QCOMPARE(entry(chain[2]).chain.structure, "irc_forward");
+        QCOMPARE(entry(chain[3]).chain.structure, "irc_backward");
+        QCOMPARE(entry(chain[3]).chain.from, chain[1]);
+        QCOMPARE(nwchemSettings(entry(chain[3]).document)["task"].toString(), "optimize_frequencies");
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 queue.enqueueChain(configured(), files.path(), source, "final", {"ends"}));
+        queue.cancel(source);
+        for (const auto &id : chain)
+            QCOMPARE(entry(id).state, RunState::Cancelled);
+        QCOMPARE(queue.pending(), 0);
+    }
+    void chainDialog() {
+        MainWindow w;
+        w.loadDocument(configured());
+        w.trustCurrentExecution();
+        auto *panel = w.executionPanel();
+        panel->calculationQueue().pause();
+        panel->enqueueCalculation();
+        panel->showChainDialog();
+        auto *dialog = w.findChild<QDialog *>("calculationChainDialog");
+        QVERIFY(dialog);
+        QCOMPARE(dialog->findChild<QComboBox *>("calculationChainSource")->count(), 1);
+        // A single optimization is no path: its final structure is offered first.
+        QCOMPARE(dialog->findChild<QComboBox *>("calculationChainStructure")->currentData().toString(),
+                 "final");
+        dialog->findChild<QCheckBox *>("calculationChainEnds")->setChecked(false);
+        dialog->findChild<QPushButton *>("calculationChainAdd")->click();
+        const auto &entries = panel->calculationQueue().entries();
+        QCOMPARE(entries.size(), 3);
+        QCOMPARE(entries[1].chain.from, entries[0].id);
+        QCOMPARE(entries[2].chain.from, entries[1].id);
+        QCOMPARE(nwchemSettings(entries[2].document)["task"].toString(), "irc");
+        auto *table = w.findChild<QTableWidget *>("calculationQueueTable");
+        QVERIFY(table);
+        QVERIFY(table->item(2, 2)->text().contains("最終構造"));
+        QVERIFY(table->item(2, 3)->text().contains("終了後に保存"));
+    }
+    void queueChainSurvivesTheSession() {
+        const auto store = files.filePath("chain queue/queue.json");
+        QString first, second;
+        {
+            NwchemRun run;
+            NwchemQueue queue(run);
+            queue.setStore(store);
+            first = queue.enqueue(configured("geometry"), files.path());
+            second = queue.enqueue(configured(), files.path(), {}, QueueChain{first, "final", {}});
+            const auto kept = readObject(store)["entries"].toArray();
+            QCOMPARE(kept.size(), 2);
+            QCOMPARE(kept[1].toObject()["chain"].toObject()["from"].toString(), first);
+            queue.shutdown();
+        }
+        NwchemRun run;
+        NwchemQueue queue(run);
+        queue.setStore(store);
+        QCOMPARE(queue.restore(), 2);
+        QCOMPARE(queue.entries()[1].chain.from, first);
+        QCOMPARE(queue.entries()[1].document.atoms.size(), 3);
+        queue.resume();
+        QTRY_COMPARE_WITH_TIMEOUT(queue.entries()[1].state, RunState::Finished, 10000);
+        QVERIFY(
+            (historyDocument(queue.entries()[1].plan.directory).atoms[0].position - Vec(0, 0, 0.1)).norm() <
+            1e-9);
     }
     void queueFailurePauseAndCancellation() {
         NwchemRun run;

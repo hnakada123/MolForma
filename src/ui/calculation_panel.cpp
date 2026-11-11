@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/calculation_panel.h"
+#include "io/structure_io.h"
 #include "model/geometry.h"
 #include "model/i18n.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_output.h"
+#include "results/results.h"
 #include "ui/diagnostics_list.h"
 #include "ui/editor_chrome.h"
 #include "ui/input_highlighter.h"
@@ -181,7 +183,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     auto *basic = group("basic", tr("基本設定"));
     buttons(basic, tr("計算目的"), "task", true,
             {tr("一点エネルギー"), tr("勾配"), tr("構造最適化"), tr("振動数"), tr("最適化 → 振動数"),
-             tr("遷移状態探索"), tr("遷移状態 → 振動数"), "IRC", tr("座標スキャン")});
+             tr("遷移状態探索"), tr("遷移状態 → 振動数"), "IRC", tr("座標スキャン"), "NEB"});
     buttons(basic, tr("電子状態の手法"), "method", false, {"HF", "DFT", "MP2", "CCSD", "CCSD(T)"});
     choice(basic, tr("DFT汎関数"), "functional");
     auto *customXc = new QLineEdit;
@@ -239,7 +241,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
                  "固定原子・ゴースト・外部点電荷を含む振動数解析は未対応です。"));
 
     nav->addHeading(tr("計算目的に応じて"));
-    auto *path = group("path", tr("IRC・座標スキャン"));
+    auto *path = group("path", tr("IRC・スキャン・NEB"));
     integer(path, tr("IRCの点数（各方向）"), "irc_points");
     real(path, tr("IRCの刻み幅 / amu½·Bohr"), "irc_stride");
     choice(path, tr("IRCの方向"), "irc_direction");
@@ -260,11 +262,64 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     real(path, tr("終了値（Å・°）"), "scan_end");
     integer(path, tr("点の数"), "scan_steps");
     flag(path, tr("各点で他の座標を最適化（緩和スキャン）"), "scan_relaxed");
+    integer(path, tr("NEBの像の数（両端を含む）"), "neb_beads");
+    real(path, tr("NEBのばね定数（kbeads）/ a.u."), "neb_spring");
+    integer(path, tr("NEBの最大ステップ数"), "neb_maxiter");
+    real(path, tr("NEBの刻み幅（stepsize）"), "neb_stepsize");
+    nebEnd = new QLabel;
+    nebEnd->setObjectName("calculationNebEnd");
+    nebEnd->setWordWrap(true);
+    auto *nebEndRow = new QWidget;
+    auto *nebEndLayout = new QVBoxLayout(nebEndRow);
+    nebEndLayout->setContentsMargins(0, 0, 0, 0);
+    nebEndLayout->addWidget(nebEnd);
+    auto *nebButtons = new QHBoxLayout;
+    nebButtons->setContentsMargins(0, 0, 0, 0);
+    const auto nebButton = [&](const QString &text, const char *name, const QString &tip, auto slot) {
+        auto *b = new QPushButton(text);
+        b->setObjectName(name);
+        b->setToolTip(tip);
+        nebButtons->addWidget(b);
+        connect(b, &QPushButton::clicked, this, [this, slot] { window->safe([&] { (this->*slot)(); }); });
+        return b;
+    };
+    auto *nebFile = new QPushButton(tr("ファイルから…"));
+    nebFile->setObjectName("calculationNebEndFile");
+    nebFile->setToolTip(tr("構造ファイル（XYZ・MOL・SDF・PDB・MolFormaプロジェクトなど）またはNWChemの出力の"
+                           "最後の構造を終点にします。原子の数と順番が同じ構造に使えます。"));
+    nebButtons->addWidget(nebFile);
+    connect(nebFile, &QPushButton::clicked, this, [this] {
+        window->safe([&] {
+            const auto file =
+                QFileDialog::getOpenFileName(this, tr("NEBの終点の構造"), {},
+                                             tr("構造・NWChem出力 (*.xyz *.mol *.sdf *.mol2 *.cml *.pdb "
+                                                "*.cif *.molforma.json *.out *.log);;"
+                                                "すべてのファイル (*)"));
+            if (!file.isEmpty())
+                setNebEndFromFile(file);
+        });
+    });
+    nebButton(tr("結果ビューアの構造"), "calculationNebEndResult",
+              tr("「結果ビューア」で表示中の構造（最適化した生成物など）を終点にします。"),
+              &CalculationPanel::setNebEndFromResult);
+    nebButton(tr("今の構造を終点に"), "calculationNebEndCurrent",
+              tr("「1 分子」の今の構造を終点として記録します。そのあと始点の構造へ編集し直します。"),
+              &CalculationPanel::setNebEndFromCurrent);
+    nebButton(
+        tr("始点と終点を入れ替え"), "calculationNebSwap",
+        tr("「1 分子」の構造と終点を入れ替えます。終点を「1 分子」で確認・編集し、もう一度押すと戻ります。"),
+        &CalculationPanel::swapNebEnds);
+    nebButtons->addStretch();
+    nebEndLayout->addLayout(nebButtons);
+    addRow(path, "neb_end", tr("NEBの終点"), nebEndRow);
     help(path, tr("IRCは遷移状態の構造から反応経路を追跡します（既定は両方向）。NWChemは経路の長さが"
                   "1 amu½·Bohrを超えるまで極小に着いたと判定しないため、短い側は点の数の上限で"
                   "「mepgs: could not optimize」となって止まり、残りの方向は計算されません。そのときは"
                   "「IRCの方向」で残りの方向だけを計算します。結果は「結果ビューア」の「経路・スキャン」"
                   "に表示します。"));
+    help(path, tr("NEBは「1 分子」の構造を始点、ここで設定した構造を終点とし、その間を直線で結んだ像から"
+                  "経路を最適化します。始点と終点は同じ原子を同じ順番で持つ構造にします（終点は始点に"
+                  "重ね合わせて記録します）。経路の最高点から遷移状態探索へ進めます。"));
 
     auto *constrained = group("constraints", tr("内部座標の拘束"));
     constraints = new QTableWidget(0, 2);
@@ -901,6 +956,18 @@ void CalculationPanel::refreshConstraints(const QJsonObject &s) {
     }
     const auto scan = idsFromJson(s["scan_atoms"]);
     scanCoordinate->setText(scan.isEmpty() ? tr("未設定") : nwchemCoordinateLabel(d, scan));
+    if (const auto end = nwchemNebEnd(d); end.document) {
+        double squares = 0, largest = 0;
+        for (int i = 0; i < d.atoms.size(); ++i) {
+            const double moved = (end.document->atoms[i].position - d.atoms[i].position).norm();
+            squares += moved * moved;
+            largest = std::max(largest, moved);
+        }
+        nebEnd->setText(tr("設定済み: 始点とのRMSD %1 Å、最大の移動 %2 Å")
+                            .arg(std::sqrt(squares / std::max<qsizetype>(1, d.atoms.size())), 0, 'f', 3)
+                            .arg(largest, 0, 'f', 3));
+    } else
+        nebEnd->setText(s["neb_end"].toObject().isEmpty() ? tr("未設定") : end.problem);
     QStringList parts;
     for (const auto &atoms : nwchemBsseMonomers(d)) {
         QMap<QString, int> counts;
@@ -915,6 +982,53 @@ void CalculationPanel::refreshConstraints(const QJsonObject &s) {
                                        : tr("単量体 %1 個: %2（電荷は原子の形式電荷から決めます）")
                                              .arg(parts.size())
                                              .arg(parts.join(tr("、"))));
+}
+void CalculationPanel::setNebEnd(const Document &end, bool fit, const QString &name) {
+    if (busy || !editable())
+        fail(tr("候補を確定・取消し、整形の終了後に設定してください。"));
+    const auto setting = nwchemNebEndSetting(window->document(), end, fit);
+    window->edit(name, [&](Document &d) {
+        setNwchemSetting(d, "neb_end", setting);
+        setNwchemSetting(d, "task", "neb");
+    });
+}
+void CalculationPanel::setNebEndFromFile(const QString &path) {
+    window->checkMcpPath(path);
+    Document end;
+    const auto suffix = QFileInfo(path).suffix().toLower();
+    if (suffix == "out" || suffix == "log" || suffix == "nwo") {
+        const auto result = readResult(path);
+        if (result.frames.isEmpty())
+            fail(tr("このファイルに構造がありません。"));
+        end = result.frames.last().molecule;
+    } else if (suffix == "xyz") {
+        const int frames = int(xyzFrames(QString::fromUtf8(readFile(path))).size());
+        end = importStructure(path, {}, frames > 1 ? frames - 1 : -1);
+    } else
+        end = importStructure(path);
+    setNebEnd(end, true, tr("NEBの終点をファイルから設定"));
+}
+void CalculationPanel::setNebEndFromResult() {
+    setNebEnd(window->resultStructure(), true, tr("NEBの終点を結果の構造から設定"));
+}
+void CalculationPanel::setNebEndFromCurrent() {
+    setNebEnd(window->document(), false, tr("今の構造をNEBの終点に設定"));
+}
+void CalculationPanel::swapNebEnds() {
+    if (busy || !editable())
+        fail(tr("候補を確定・取消し、整形の終了後に設定してください。"));
+    const auto end = nwchemNebEnd(window->document());
+    if (!end.document)
+        fail(end.problem);
+    for (const auto &a : window->document().atoms)
+        if (a.fixed)
+            fail(tr("固定原子を含む構造では始点と終点を入れ替えられません。"));
+    window->edit(tr("NEBの始点と終点を入れ替え"), [&](Document &d) {
+        const auto start = nwchemNebEndSetting(d, d, false); // The molecule's positions, by atom ID.
+        for (int i = 0; i < d.atoms.size(); ++i)
+            d.atoms[i].position = end.document->atoms[i].position;
+        setNwchemSetting(d, "neb_end", start);
+    });
 }
 // The internal coordinate of the ordered selection in the editor, with its current value.
 static std::pair<Ids, double> selectedCoordinate(MainWindow *window, const Ids &selection) {

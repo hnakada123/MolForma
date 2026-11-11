@@ -4,6 +4,7 @@
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "results/energy_profile.h"
+#include "ui/figure_export.h"
 #include "ui/main_window.h"
 #include "ui/result_charts.h"
 #include <QtWidgets>
@@ -218,13 +219,12 @@ EnergyProfileDialog::EnergyProfileDialog(MainWindow *owner) : QDialog(owner), wi
         }
         writeFile(path, csv);
     });
-    button(files, "PNG…", "profilePng", [this] {
+    button(files, tr("図…"), "profilePng", [this] {
         evaluateEnergyProfile(specification());
-        const auto path = QFileDialog::getSaveFileName(this, tr("反応図を書き出す"), {}, "PNG (*.png)");
+        const auto path = askFigurePath(this, tr("反応図を書き出す"), "profile");
         if (!path.isEmpty()) {
             window->checkMcpPath(path);
-            if (!chart->grab().save(path))
-                fail(tr("画像を保存できません。"));
+            saveFigure(chart, path);
         }
     });
     connect(&loader, &ResultLoader::failed, this, [this](const QString &error) { message->setText(error); });

@@ -203,7 +203,8 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `cut_out_site` | 活性部位の切り出し（「残基」ページの「活性部位の切り出し」と同じ）。中心は `ids`（今の文書の原子ID）か `residues`（著者の鎖ID `chain`・残基番号 `number`・残基名 `code` で指定）、`radius`（既定5 Å）・`wholeResidues`・`water`・`fixCuts`・`hydrogens`（pH 7の水素、既定 `true`）・`pointCharges`（既定 `false`）・`chargeRadius`（既定15 Å）。`path` を指定するとファイル（`model`・`altloc`・`chains` は `open_file` と同じ）を読み込んで切り出し、結果だけを今の構造と置き換えて全電荷を部位の値にするので、1万原子を超える構造にも使える |
 | `export_document` | 確定文書のXYZ、MolFormaプロジェクトのJSON、検証済みNWChem入力文字列 |
 | `save_file` | 確定文書をMolFormaプロジェクト（`.molforma.json`）として保存。既存ファイルは `overwrite: true` か、利用者の上書き承認が必要 |
-| `get_nwchem` / `set_nwchem` | 計算条件・既定値・選択肢（`choices`）・検証結果の取得と条件変更。溶媒（SMD・溶媒名）、相対論、RI-J、物性、遷移状態探索・IRC・拘束（`constraints`、原子は安定ID）・スキャン（`scan_atoms` 等）、BSSE、後続の一点計算を含む。追加入力（`extra_input` / `extra_tasks`）は変更不可。変更で新たに生じたエラーだけで拒否し、変更前からあるエラー（原子がまだない、多重度が未設定など）はほかの条件の変更を妨げない |
+| `get_nwchem` / `set_nwchem` | 計算条件・既定値・選択肢（`choices`）・検証結果の取得と条件変更。溶媒（SMD・溶媒名）、相対論、RI-J、物性、遷移状態探索・IRC・拘束（`constraints`、原子は安定ID）・スキャン（`scan_atoms` 等）、NEB（`task: "neb"`、`neb_beads`・`neb_spring`・`neb_maxiter`・`neb_stepsize`、終点 `neb_end` は原子の安定IDごとの座標 `{ID: [x, y, z]}`（Å））、BSSE、後続の一点計算を含む。追加入力（`extra_input` / `extra_tasks`）は変更不可。変更で新たに生じたエラーだけで拒否し、変更前からあるエラー（原子がまだない、多重度が未設定など）はほかの条件の変更を妨げない |
+| `set_neb_end` | NEBの終点を、XYZ文字列（`xyz`）またはローカルの構造ファイル・NWChemの出力（`path`。最後の構造、複数フレームのXYZは最後のフレーム）から設定し、計算目的をNEBにする。今の文書と同じ原子が同じ順番であること。`superpose`（既定 `true`）で今の構造に重ね合わせる。`path` は `--mcp-allow-dir` の範囲 |
 | `get_advanced` / `set_advanced` | 詳細・可視化出力設定の型、選択肢、適用条件、値を取得・変更。`null` で個別リセット |
 | `get_execution` / `set_execution` | 実行ファイル、MPI、スレッド数、作業場所、環境変数、時間制限の取得・変更（計算条件のエラーは実行設定の変更を妨げない。`set_advanced` も同じく、変更で新たに生じたエラーだけで拒否） |
 | `history` | 候補の確定・取消、Undo/Redo |
@@ -215,8 +216,8 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | ツール | 用途 |
 | --- | --- |
 | `get_app_state` | 候補の有無、計算・結果読込の状態 |
-| `calculation` | NWChem実行・停止、入力一式の保存、計算キュー |
-| `get_results` | 読込済み結果の要約（計算のエネルギー `final_energy`（最後のtask・振動数の参照構造・BSSE補正後）・熱化学・双極子・最適化状態・スキャンとIRCの各点・BSSE・溶媒和・原子ごとのMulliken/ESP/RESP電荷・NMR遮蔽・分極率を含む `properties`。Mulliken解析のあるログでは原子ごとの原子価 `valency`・自由電子数 `free_electrons` と、結合指数（Mayerの結合次数。基底関数に依存）が絶対値0.05以上の原子対 `bond_indices`（`{a, b, value}`、原子番号は1始まり）も含む）、構造列・エネルギー・軌道（`number` はスピンごとの軌道番号で、ログに一部の軌道しかなくてもMOLDENと同じ番号）・振動数（並進・回転は `rigid`）・励起状態（`contributions` は占有→仮想軌道の対 `{from, to, spin, x, y, weight, transition}` を重みの大きい順に並べたもの。NWChemが出力する係数0.05超の対で、`y` は出力されたときだけ、`weight` は X² − Y² の出力された対の合計に対する百分率、`transition` は `HOMO−1 → LUMO` の形で、HOMOの番号は `properties.tddft` のα・β電子数による）・最適化ステップ・変位・ログ。`section: "bond_indices"` は結合指数を読み込んだ全部の原子対（`counts.bondIndices` 件）を `{a, b, value, elements, distance}`（距離は最後の構造のÅ）で返す。原子対が2万を超える分子では絶対値0.05未満の対を読み込まず、その数が `properties.bond_indices_omitted` |
+| `calculation` | NWChem実行・停止、入力一式の保存、計算キュー（前の計算から続ける連鎖を含む） |
+| `get_results` | 読込済み結果の要約（計算のエネルギー `final_energy`（最後のtask・振動数の参照構造・BSSE補正後）・熱化学・双極子・最適化状態・スキャンとIRCの各点・NEBの経路（`neb`: 像ごとの `bead`・`energy`・`frame`・`distance`（始点からの経路の長さ、Å）、`iteration`・`steps`・`thresholds`・`converged`）・BSSE・溶媒和・原子ごとのMulliken/ESP/RESP電荷・NMR遮蔽・分極率を含む `properties`。Mulliken解析のあるログでは原子ごとの原子価 `valency`・自由電子数 `free_electrons` と、結合指数（Mayerの結合次数。基底関数に依存）が絶対値0.05以上の原子対 `bond_indices`（`{a, b, value}`、原子番号は1始まり）も含む）、構造列・エネルギー・軌道（`number` はスピンごとの軌道番号で、ログに一部の軌道しかなくてもMOLDENと同じ番号）・振動数（並進・回転は `rigid`）・励起状態（`contributions` は占有→仮想軌道の対 `{from, to, spin, x, y, weight, transition}` を重みの大きい順に並べたもの。NWChemが出力する係数0.05超の対で、`y` は出力されたときだけ、`weight` は X² − Y² の出力された対の合計に対する百分率、`transition` は `HOMO−1 → LUMO` の形で、HOMOの番号は `properties.tddft` のα・β電子数による）・最適化ステップ・変位・ログ。`section: "bond_indices"` は結合指数を読み込んだ全部の原子対（`counts.bondIndices` 件）を `{a, b, value, elements, distance}`（距離は最後の構造のÅ）で返す。原子対が2万を超える分子では絶対値0.05未満の対を読み込まず、その数が `properties.bond_indices_omitted` |
 | `results_action` | 結果ファイル・計算フォルダーの読込、再読込、読込の取消 |
 
 画面なしモードの計算と読込はバックグラウンドで進み、`calculation` / `results_action` はすぐに戻ります。完了はタスクか `get_app_state` で確認します。計算はMolFormaの終了（標準入力を閉じる）とともに停止します。結果の表示・再生・画像取得はGUIモードだけです。
@@ -235,7 +236,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `ui_file_dialog` | ファイル選択・保存ダイアログのパスとフィルター指定、確定・取消 |
 | `capture_screenshot` | MolFormaのウィンドウまたは指定部品のPNG取得・保存 |
 | `set_selection` | 安定IDによる原子選択。空配列で解除 |
-| `chemistry` | SMILES生成（置換）、SMILESからの断片の追加（`fragment`）、全体・局所整形、3D再生成、配座探索（`conformers`、最安定の配座を候補にする。今の構造と同じなら候補を作らない）、中止。結果は候補として確認 |
+| `chemistry` | SMILES生成（置換）、SMILESからの断片の追加（`fragment`）、全体・局所整形、3D再生成、配座探索（`conformers`、最安定の配座を候補にする。今の構造と同じなら候補を作らない）、xTBでの最適化（`xtb`。環境設定の「xTB実行ファイル」で起動し、MCPからはプログラムを選べない。`xtbMethod`: `gfn2`（既定）・`gfn1`・`gfnff`、`xtbLevel`: `crude`・`loose`・`normal`（既定）・`tight`、`xtbSolvent`: ALPBの溶媒名、`moving`: 動かす原子（ほかは固定））、中止。結果は候補として確認 |
 | `calculation` | 入力一式の保存、NWChem実行・停止 |
 | `get_results` / `results_action` | 結果読込・取消、構造列・エネルギー・軌道・振動数・励起状態・最適化ステップ・変位・ログ取得、選択・再生・停止、XYZ保存、表示中の構造を文書の候補にする `apply_structure` |
 | `history_action` | 履歴の走査・取消、ジョブ選択・再利用・結果表示、記録の修復（`repair`: このPCで実行中と記録されたままプロセスが終了したジョブを「中断」に直す）、ごみ箱への移動、絞り込まれた一覧のCSV保存。選んだジョブから次の計算を準備する `continue`（終わらなかった計算の続き）・`restart_hessian`（振動数計算のHessianで遷移状態探索）・`reuse_hessian`（Hessianを再利用した振動数）・`reuse_orbitals`（分子軌道の引き継ぎ）、外部で実行した計算の `import`（`path`: NWChemの出力またはそのフォルダー）と `register`（選んだ「保存のみ」のジョブに戻した `output.out` の登録） |
@@ -248,7 +249,9 @@ GUIのファイル一覧で振動アニメーションを選んだ場合、`get_
 
 `calculation` の `enqueue` は、登録時の分子・条件を保存してキューへ追加します。既定でキューは一時停止中です。`queue_resume` / `queue_pause` で開始・一時停止し、`queue_cancel` は `id` の待機項目を取り消します。`queue_move` は `id` と一覧内の0始まりの `position` で待機項目を並べ替えます。`queue_policy` は必須の真偽値 `stopOnFailure` で、失敗・停止・時間切れの際に後続を一時停止するかを指定します（既定true）。実行中の停止は従来の `stop` です。
 
-状態は `get_app_state.calculation.queue` の `paused`、`stopOnFailure`、`pending`、`entries` で確認します。各項目は `id`、`name`、`directory`、`state`、`error` を持ちます。待機状態は `queued` です。画面なしの `enqueue` は `queueId` も返します。GUIでは通常どおりUIコマンドの完了後に状態を取得します。キュー操作の完了は個々の計算の完了を意味しません。GUI・画面なしとも同じ逐次実行を使い、登録時の信頼・アクセス検査と、開始時のパス・固定コピーの再検査を行います。終了後の自動再開はありません。
+`enqueue` に `chainFrom`（先に登録したキューの項目の `id`）を付けると、その計算が正常に終わったときに構造を引き継いで始める計算を登録します。`chainStructure` は引き継ぐ構造で、`final`（最終構造、既定）・`highest`（座標スキャン・IRC・NEBの経路のエネルギー最高点。NEBの両端は除く）・`irc_forward` / `irc_backward`（IRCの前進側／後退側の端）です。`chainSteps` に `saddle`（遷移状態探索 → 振動数）・`irc`（両方向）・`ends`（IRCの両端の最適化、`endFrequencies` で振動数も。既定true）を並べると、今の手法・基底で計算目的と計算名（`_ts`・`_irc`・`_fwd`・`_bwd`）だけを変えた連鎖をこの順に登録し、各段階は前の段階から続けます（`chainSteps` がなければ今の条件で1件）。連鎖は全段階を検査してから登録し、1件でもエラーなら何も登録しません。連鎖の項目は開始時に入力一式を保存するため、それまで `directory` は空です。画面なしの `enqueue` は登録した全項目の `queueIds` も返します。
+
+状態は `get_app_state.calculation.queue` の `paused`、`stopOnFailure`、`pending`、`entries` で確認します。各項目は `id`、`name`、`directory`、`state`、`error` を持ち、連鎖の項目は `chain`（`from`・`structure`）も持ちます。待機状態は `queued` です。画面なしの `enqueue` は `queueId` も返します。GUIでは通常どおりUIコマンドの完了後に状態を取得します。キュー操作の完了は個々の計算の完了を意味しません。GUI・画面なしとも同じ逐次実行を使い、登録時の信頼・アクセス検査と、開始時のパス・固定コピーの再検査を行います。終了後の自動再開はありません。
 
 ## リソース
 

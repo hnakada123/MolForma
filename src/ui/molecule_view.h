@@ -3,6 +3,7 @@
 #include "model/document.h"
 #include "results/results.h"
 #include "ui/editor_tool.h"
+#include "ui/figure_export.h"
 #include <QHash>
 #include <QPointF>
 #include <QTimer>
@@ -34,6 +35,10 @@ class MoleculeView : public QWidget {
     // Renders pending changes at once, so the widget can be grabbed as an image and the markers
     // match the molecule.
     void renderNow();
+    // A picture of the view `scale` times its size, as a figure: what it shows without the marks of
+    // editing (selection, candidate changes, empty coordination sites, terminus handles), on the chosen
+    // background. VTK renders it in tiles of the view's size.
+    QImage renderImage(int scale, ImageBackground background);
     // "ball_and_stick" (default), "stick", "spacefill", "wireframe" or "backbone": the polymer residues
     // as a line through their Cα atoms (P of nucleotides), the other atoms as balls and sticks.
     void setStyle(const QString &style);
@@ -213,6 +218,9 @@ class MoleculeView : public QWidget {
     QSet<QString> hidden;
     QVector<Ids> monitors;
     bool showHydrogenBonds = false;
+    // Painting a figure (renderImage): its background, and no marks of editing.
+    bool figure = false;
+    ImageBackground figureBackground = ImageBackground::Screen;
     QVector<std::pair<QString, QString>> hbonds; // (hydrogen, acceptor)
     void findHydrogenBonds();
     // The atoms of polymer residues that the backbone style leaves out, its line and the atoms it runs

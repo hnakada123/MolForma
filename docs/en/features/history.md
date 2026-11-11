@@ -72,7 +72,7 @@ Select a job and choose “Thermal corrections and reaction energy profile…”
 
 Choose E, E + ZPE, H or G. H adds the printed enthalpy correction, which already includes ZPE, once; G additionally subtracts T × S. Missing corrections at the requested temperature or mismatched composition/charge/multiplicity are refused. The view identifies corrections from another job, imaginary frequencies, inconsistent calculation settings and unbalanced stage compositions/charges. A frequency scale factor, the entropy of low-frequency modes and the standard state (1 atm or 1 mol/L) can be chosen as described in “[Thermochemistry corrections and rate constants](#thermochemistry-corrections-and-rate-constants)”. Solvent and calculation settings are recorded from the original job.
 
-Up to 200 results and 200 stages are supported. JSON saves imported values, provenance, conditions and stages for reopening. CSV exports stage values; PNG exports the diagram. A normal termination marker does not establish scientific validity: check the structures and correction sources.
+Up to 200 results and 200 stages are supported. JSON saves imported values, provenance, conditions and stages for reopening. CSV exports stage values; “Figure…” exports the diagram (PNG, PDF, SVG). A normal termination marker does not establish scientific validity: check the structures and correction sources.
 
 ### Thermochemistry corrections and rate constants
 
@@ -91,7 +91,7 @@ With G, the table shows exp(−ΔG/RT) relative to the reference stage and, for 
 1. Select the first job in History and open “Thermal corrections and reaction energy profile…” from More. Use “Add job…” to select other saved job folders.
 2. Choose stage names and electronic-energy jobs in the table. Change the thermal-correction job only when using frequencies from another calculation; check composition, charge, multiplicity and the suitability of the geometries.
 3. For a stage with multiple molecules, use “Add component” with the same stage name and the required coefficient. Use “Add stage” for the next intermediate or other state.
-4. Choose E, E + ZPE, H or G, temperature, units and reference. Do not add ZPE again to H or G. If needed, choose the frequency scale, the entropy treatment and the standard state. Check warnings and use “Save…” for the JSON comparison, “CSV…” for the values and “PNG…” for the chart.
+4. Choose E, E + ZPE, H or G, temperature, units and reference. Do not add ZPE again to H or G. If needed, choose the frequency scale, the entropy treatment and the standard state. Check warnings and use “Save…” for the JSON comparison, “CSV…” for the values and “Figure…” for the chart (PNG, PDF, SVG).
 
 ## Verifying history
 

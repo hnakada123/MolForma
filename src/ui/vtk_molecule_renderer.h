@@ -2,6 +2,7 @@
 #pragma once
 #include "model/document.h"
 #include "results/results.h"
+#include <QImage>
 #include <QVTKOpenGLNativeWidget.h>
 #include <memory>
 
@@ -21,6 +22,9 @@ class VtkMoleculeRenderer : public QVTKOpenGLNativeWidget {
     void setSurfaceStyle(bool positive, bool negative, int opacity);
     void setCamera(const Mat &rotation, const Vec &center, double scale, const QPointF &pan);
     bool draw();
+    // The scene `scale` times the size of the view (rendered in tiles), on its background or a uniform
+    // one: transparent pixels come from two renderings, on black and on white.
+    QImage image(int scale, int background); // 0: as shown, 1: white, 2: transparent.
     // Diagnostics also allow regression tests to detect accidental mesh reconstruction.
     quint64 surfaceBuildCount() const;
     bool depthPeelingUsed() const;

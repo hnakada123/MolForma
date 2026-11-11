@@ -34,7 +34,8 @@ NwchemCalculation::NwchemCalculation(const QJsonObject &settings) {
                                                   {"saddle", NwchemTask::Saddle},
                                                   {"saddle_frequencies", NwchemTask::SaddleFrequencies},
                                                   {"irc", NwchemTask::Irc},
-                                                  {"scan", NwchemTask::Scan}};
+                                                  {"scan", NwchemTask::Scan},
+                                                  {"neb", NwchemTask::Neb}};
     method = methods.value(settings["method"].toString(), NwchemMethod::Unknown);
     task = tasks.value(settings["task"].toString(), NwchemTask::Unknown);
     relaxedScan = settings["scan_relaxed"].toBool();
@@ -381,7 +382,9 @@ QString nwchemSectionUnused(const Document &d, const QString &section) {
     const auto s = nwchemSettings(d);
     const auto applies = [&](NwchemScope scope) { return nwchemScopeApplies(scope, s, &d); };
     if (section == "path")
-        return applies(NwchemScope::Irc) || applies(NwchemScope::Scan) ? QString() : tr("使わない");
+        return applies(NwchemScope::Irc) || applies(NwchemScope::Scan) || applies(NwchemScope::Neb)
+                   ? QString()
+                   : tr("使わない");
     if (section == "constraints")
         return applies(NwchemScope::Driver) ? QString() : tr("最適化のみ");
     if (section == "optimization")
@@ -436,6 +439,66 @@ QString nwchemRestartDigest(const Document &d, bool masses) {
         QJsonDocument(d.data["nwchem"].toObject()["constraints"].toArray()).toJson(QJsonDocument::Compact));
     return QString::fromLatin1(hash.result().toHex());
 }
+NwchemNebEnd nwchemNebEnd(const Document &d) {
+    NwchemNebEnd result;
+    const auto stored = d.data["nwchem"].toObject()["neb_end"].toObject();
+    if (stored.isEmpty()) {
+        result.problem = tr("NEBの終点の構造を「2 計算条件」の「IRC・スキャン・NEB」で設定してください。");
+        return result;
+    }
+    Document end = d;
+    int missing = 0;
+    for (auto &a : end.atoms) {
+        const auto value = stored.value(a.id).toArray();
+        const Vec position(value.at(0).toDouble(qQNaN()), value.at(1).toDouble(qQNaN()),
+                           value.at(2).toDouble(qQNaN()));
+        if (value.size() != 3 || !position.allFinite())
+            ++missing;
+        else
+            a.position = position;
+    }
+    if (missing)
+        result.problem = tr("NEBの終点に位置のない原子が %n 個あります（終点を設定した後に原子を加えた場合"
+                            "など）。終点を設定し直してください。",
+                            nullptr, missing);
+    else
+        result.document = end;
+    return result;
+}
+QJsonObject nwchemNebEndSetting(const Document &d, const Document &end, bool fit) {
+    if (end.atoms.size() != d.atoms.size())
+        fail(tr("終点の構造の原子数（%1）が分子（%2）と異なります。")
+                 .arg(end.atoms.size())
+                 .arg(d.atoms.size()));
+    for (int i = 0; i < d.atoms.size(); ++i) {
+        const auto &a = d.atoms[i], &b = end.atoms[i];
+        if (a.element != b.element || a.ghost != b.ghost)
+            fail(tr("原子%1の元素（%2 / 終点 %3）が一致しません。原子の順番が同じ構造を選んでください。")
+                     .arg(i + 1)
+                     .arg(a.element, b.element));
+        if (!b.position.allFinite())
+            fail(tr("終点の構造の座標が有限ではありません。"));
+    }
+    Superposition placement;
+    if (fit && d.atoms.size() >= 2)
+        placement = superpose(end, d);
+    QJsonObject positions;
+    for (int i = 0; i < d.atoms.size(); ++i)
+        positions[d.atoms[i].id] = vectorToJson(placement.rotation * end.atoms[i].position + placement.shift);
+    return positions;
+}
+QVector<Document> nwchemNebInitialPath(const Document &start, const Document &end, int beads) {
+    QVector<Document> path;
+    beads = std::max(2, beads);
+    for (int k = 0; k < beads; ++k) {
+        Document bead = start;
+        const double t = double(k) / (beads - 1);
+        for (int i = 0; i < bead.atoms.size() && i < end.atoms.size(); ++i)
+            bead.atoms[i].position = (1 - t) * start.atoms[i].position + t * end.atoms[i].position;
+        path << bead;
+    }
+    return path;
+}
 QStringList nwchemTaskLines(const QString &input) {
     QStringList lines;
     for (const auto &line : input.split('\n'))
@@ -458,7 +521,8 @@ QVector<ChoiceSource> choiceSources(const QString &key) {
                 {"saddle", QT_TR_NOOP("遷移状態探索")},
                 {"saddle_frequencies", QT_TR_NOOP("遷移状態探索 → 振動数")},
                 {"irc", QT_TR_NOOP("IRC（遷移状態からの反応経路）")},
-                {"scan", QT_TR_NOOP("座標スキャン")}};
+                {"scan", QT_TR_NOOP("座標スキャン")},
+                {"neb", QT_TR_NOOP("NEB（2つの構造を結ぶ反応経路）")}};
     if (key == "irc_direction")
         return {{"both", QT_TR_NOOP("両方向")},
                 {"forward", QT_TR_NOOP("前進のみ")},
@@ -585,6 +649,16 @@ const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
             {"irc_points", Kind::Integer, 30, 1, 500, 0, Scope::Irc},
             {"irc_stride", Kind::Real, 0.1, .01, 1, 3, Scope::Irc},
             {"irc_direction", Kind::Choice, "both", 0, 0, 0, Scope::Irc},
+            {"neb_beads", Kind::Integer, 10, 3, 100, 0, Scope::Neb},
+            {"neb_spring", Kind::Real, 1.0, .001, 100, 3, Scope::Neb},
+            {"neb_maxiter", Kind::Integer, 50, 1, 10000, 0, Scope::Neb},
+            {"neb_stepsize", Kind::Real, .1, .001, 10, 3, Scope::Neb},
+            // The end of the path: atom positions by atom ID, kept with the atoms of the project.
+            [](NwchemSettingSpec spec) {
+                spec.preset = false;
+                spec.validateUnused = false;
+                return spec;
+            }({"neb_end", Kind::Object, QJsonObject(), 0, 0, 0, Scope::Neb}),
             {"bsse", Kind::Flag, false},
             disableable({"followup", Kind::Flag, false, 0, 0, 0, Scope::Optimization}),
             {"followup_method", Kind::Choice, "dft", 0, 0, 0, Scope::Followup},
@@ -658,6 +732,8 @@ bool nwchemScopeApplies(NwchemScope scope, const QJsonObject &s, const Document 
         return c.task == NwchemTask::Irc;
     case Scope::Scan:
         return c.task == NwchemTask::Scan;
+    case Scope::Neb:
+        return c.task == NwchemTask::Neb;
     case Scope::Followup:
         return s["followup"].toBool();
     case Scope::FollowupDft:
@@ -1133,10 +1209,63 @@ static NwchemValidation validation(const Document &d) {
                       "ことを確認）。"
                       "初めに遷移状態のHessianを計算し、指定した方向だけ経路を追跡します。")));
     }
+    if (calc.task == NwchemTask::Neb) {
+        if (fixed || ghosts)
+            result.error("neb.fixed", "task", tr("NEBは固定原子・ゴーストを含む構造に対応しません。"));
+        if (realAtoms < 2)
+            result.error("neb.atoms", "task", tr("NEBには2個以上の実原子が必要です。"));
+        if (outsideRange("neb_spring"))
+            result.error("neb.spring", "neb_spring", tr("NEBのばね定数は0.001〜100で指定してください。"));
+        if (outsideRange("neb_stepsize"))
+            result.error("neb.stepsize", "neb_stepsize", tr("NEBの刻み幅は0.001〜10で指定してください。"));
+        if (advanced["cube_output"].toBool() || advanced["molden_output"].toBool())
+            result.error("neb.output", "task",
+                         tr("NEBの計算ではCUBE・MOLDENを出力できません。経路の最高点などの構造で別に計算して"
+                            "ください。"));
+        if (const auto end = nwchemNebEnd(d); !end.document)
+            result.error("neb.end", "neb_end", end.problem);
+        else {
+            double largest = 0;
+            for (int i = 0; i < d.atoms.size(); ++i)
+                largest = std::max(largest, (end.document->atoms[i].position - d.atoms[i].position).norm());
+            if (largest < .01)
+                result.error(
+                    "neb.same", "neb_end",
+                    tr("NEBの終点が始点（「1 分子」の構造）と同じです。終点を設定し直してください。"));
+            else if (d.atoms.size() <= 300) {
+                // NWChem starts from the straight line between the ends: atoms that meet on it.
+                const auto path = nwchemNebInitialPath(d, *end.document, s["neb_beads"].toInt());
+                double closest = INFINITY;
+                int bead = 0, first = 0, second = 0;
+                for (int k = 1; k + 1 < path.size(); ++k)
+                    for (int i = 0; i < d.atoms.size(); ++i)
+                        for (int j = i + 1; j < d.atoms.size(); ++j)
+                            if (const double r =
+                                    (path[k].atoms[i].position - path[k].atoms[j].position).norm();
+                                r < closest) {
+                                closest = r;
+                                bead = k;
+                                first = i;
+                                second = j;
+                            }
+                if (closest < .5)
+                    result.warning("neb.contact", "neb_end",
+                                   tr("最初の経路（始点と終点を直線で結んだ像）の像 %1 で、原子 %2 と %3 が "
+                                      "%4 Å まで近づきます。終点の原子の順番と向きを確かめてください。")
+                                       .arg(bead + 1)
+                                       .arg(first + 1)
+                                       .arg(second + 1)
+                                       .arg(closest, 0, 'f', 2));
+            }
+        }
+        result.warning("neb.notice", "task",
+                       tr("NEBは始点（「1 分子」の構造）と終点を固定し、その間の像を最適化します。経路の"
+                          "最高点の構造から遷移状態探索へ進めます。"));
+    }
     if (outsideRange("irc_stride"))
         result.error("irc.stride", "irc_stride", tr("IRCの刻み幅は0.01〜1で指定してください。"));
-    if (s["tddft"].toBool() && (scan || calc.task == NwchemTask::Irc))
-        result.error("tddft.path", "tddft", tr("TDDFTはスキャン・IRCと併用できません。"));
+    if (s["tddft"].toBool() && calc.path())
+        result.error("tddft.path", "tddft", tr("TDDFTはスキャン・IRC・NEBと併用できません。"));
     // Counterpoise correction of the bonded molecules as monomers.
     if (s["bsse"].toBool()) {
         const auto monomers = bsseMonomers(d);
@@ -1197,8 +1326,9 @@ static NwchemValidation validation(const Document &d) {
         if (level != "hf" && level != "dft")
             result.error("properties.method", "prop_mulliken",
                          tr("物性計算は最後の計算レベルがHFまたはDFTのときに使用してください。"));
-        if (scan || calc.task == NwchemTask::Irc)
-            result.error("properties.path", "prop_mulliken", tr("物性計算はスキャン・IRCと併用できません。"));
+        if (calc.path())
+            result.error("properties.path", "prop_mulliken",
+                         tr("物性計算はスキャン・IRC・NEBと併用できません。"));
         if (ghosts && s["prop_esp"].toBool())
             result.error("esp.ghosts", "prop_esp", tr("ESP電荷はゴースト中心を含む構造に対応しません。"));
         if ((s["prop_nmr"].toBool() || s["prop_polarizability"].toBool()) && result.reference == "rohf")
@@ -1215,11 +1345,11 @@ static NwchemValidation validation(const Document &d) {
                      tr("ESP・電場の格子出力はゴースト中心・BSSEと併用できません。"));
     if (s["prop_ord"].toBool() &&
         ((!calc.dft() && calc.method != NwchemMethod::Hf) || mult != 1 || result.reference != "rhf" ||
-         s["followup"].toBool() || s["bsse"].toBool() || scan || calc.task == NwchemTask::Irc || ghosts ||
+         s["followup"].toBool() || s["bsse"].toBool() || calc.path() || ghosts ||
          s["ord_start_nm"].toDouble() >= s["ord_end_nm"].toDouble()))
         result.error("ord.method", "prop_ord",
                      tr("ORDは閉殻HF・DFTで、開始波長を終了波長より小さくしてください。後続計算・BSSE・スキャ"
-                        "ン・IRC・ゴースト中心には対応しません。"));
+                        "ン・IRC・NEB・ゴースト中心には対応しません。"));
     if (s["prop_epr"].toBool() && (!calc.dft() || mult != 2 || result.reference != "uhf" ||
                                    s["relativistic"] != "zora" || s["followup"].toBool() || ghosts))
         result.error("epr.method", "prop_epr",
@@ -1378,10 +1508,10 @@ static NwchemValidation validation(const Document &d) {
                          release);
         else {
             const bool reuse = restart.mode == "reuse";
-            if (calc.task == NwchemTask::Scan || calc.task == NwchemTask::Irc || s["bsse"].toBool())
+            if (calc.path() || s["bsse"].toBool())
                 result.error(
                     "restart.task", "restart",
-                    tr("座標スキャン・IRC・BSSE補正の計算は再開できません。再開を解除してください。"),
+                    tr("座標スキャン・IRC・NEB・BSSE補正の計算は再開できません。再開を解除してください。"),
                     release);
             else if (restart.mode == "hessian" && !calc.saddle())
                 result.error(
@@ -1645,6 +1775,12 @@ static NwchemGeneratedInput generation(const Document &d) {
         options.autoz = nwchemAutoz(d);
         geometryBlocks(out, geometry, unit, options,
                        advanced["driver_cartesian"].toBool() && calc.optimization());
+        if (calc.task == NwchemTask::Neb) { // The end of the path, as NWChem's NEB names it.
+            NwchemGeometryOptions end;
+            end.name = "endgeom";
+            end.constraints = false;
+            geometryBlocks(out, *nwchemNebEnd(d).document, unit, end, false);
+        }
     }
     basisBlocks(out, d, s, s["bsse"].toBool());
     if (s["include_point_charges"].toBool() && !d.pointCharges.isEmpty()) {
@@ -1721,6 +1857,13 @@ static NwchemGeneratedInput generation(const Document &d) {
                                   "\nend\n",
                               {"hessian_thresh"}, "frequency");
     }
+    if (calc.task == NwchemTask::Neb)
+        // print_shift 1 prints the path into the log after each step, where the result viewer reads it.
+        out.block("neb",
+                  "\nneb\n  nbeads " + integer("neb_beads") + "\n  kbeads " +
+                      shortest(s["neb_spring"].toDouble()) + "\n  maxiter " + integer("neb_maxiter") +
+                      "\n  stepsize " + shortest(s["neb_stepsize"].toDouble()) + "\n  print_shift 1\nend\n",
+                  "neb_beads");
     if (calc.task == NwchemTask::Irc) {
         const auto direction = s["irc_direction"].toString();
         out.block("mepgs",
@@ -1771,6 +1914,8 @@ static NwchemGeneratedInput generation(const Document &d) {
         }
     } else if (calc.task == NwchemTask::Irc)
         taskLine("task " + theory + " mepgs\n");
+    else if (calc.task == NwchemTask::Neb)
+        taskLine("task " + theory + " neb\n");
     else {
         if (calc.optimization())
             taskLine("task " + theory + (calc.saddle() ? " saddle\n" : " optimize\n"));

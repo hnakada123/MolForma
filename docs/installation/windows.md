@@ -19,6 +19,7 @@ MolFormaのWindows用のインストーラーはありません。GitHubのソ�
 | 必須 | Open Babel 3.2.1（ソースからビルド） | 構造ファイルの読み書き、力場による整形、SMILESからの3D構造 |
 | 任意 | RDKit Release_2026_09_1（ソースからビルド）と、vcpkgのBoost | 厳密な立体判定（R/S・E/Z）、残基認識 |
 | 任意 | VTK 9.7.1（Qt 6に合わせてソースからビルド） | 3D画面をVTK（OpenGL）で描画。ないときはQPainter（CPU）で描画 |
+| 任意 | QtのモジュールQt SVG（Qtのインストーラーで選択） | グラフ・スペクトル・反応エネルギー図をSVGでも保存。ないときはPNG・PDF |
 | 計算 | WSL 2のUbuntuと、そのパッケージ `nwchem` | 計算の実行。入力の作成・保存だけならなくても使えます |
 
 - **Open Babel**: vcpkgにはないため、ソースからMSVCでビルドします（[3. Open Babelをビルドする](#3-open-babelをビルドする)）。

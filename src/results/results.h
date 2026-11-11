@@ -73,7 +73,9 @@ struct ResultData {
     QVector<ResultMode> modes;
     QVector<ResultExcitation> excitations;
     QVector<ResultStep> steps; // Steps of the last optimization in the log.
-    // Log summaries: "thermochemistry" (one object per temperature), "dipole" {x, y, z, debye} in
+    // Log summaries: "neb" {points [{bead, energy, frame, distance}] of the last path read (distance:
+    // the length of the path up to the bead, Å), iteration, steps of "@neb", thresholds, converged},
+    // "thermochemistry" (one object per temperature), "dipole" {x, y, z, debye} in
     // a.u./Debye, "thresholds" {gmax, grms, xmax, xrms} of the DRIVER, "optimization" state. Of the
     // Mulliken analysis: "mulliken" (charges), "valency" and "free_electrons" per atom, and
     // "bond_indices" [{a, b, value}] with atom numbers a < b from 1: every pair, or with
@@ -174,6 +176,14 @@ class NwchemLog {
     QJsonObject irc, solvation;
     QMap<int, QJsonObject> scan;
     int scanPoint = 0, shieldingAtom = 0, ircConverged = 0;
+    // NEB: the step being computed; the path energies of a step, and the path structures and their
+    // energies of a step (printed with print_shift); the "@neb" steps, the thresholds and whether
+    // NWChem said the path converged (-1: not said).
+    int nebIteration = 0, nebEnergiesIteration = -1, nebPathIteration = -1, nebConverged = -1;
+    QVector<double> nebEnergies, nebPathEnergies;
+    QVector<Document> nebPath;
+    QJsonArray nebSteps;
+    QJsonObject nebThresholds;
     // The sections being read: each takes the following lines until it returns false, and nullptr
     // once the log ends.
     QVector<std::function<bool(const QString *line)>> sections;

@@ -19,6 +19,7 @@ MolFormaのパッケージは、Ubuntuの公式リポジトリにもPPAにもあ
 | 必須 | `libopenbabel-dev` | 構造ファイルの読み書き、力場による整形、SMILESからの3D構造 |
 | 任意 | `librdkit-dev`、`libboost-iostreams-dev`、`libboost-serialization-dev` | 厳密な立体判定（R/S・E/Z）、残基認識。Boostの2つは、RDKitのCMakeの設定が参照する |
 | 任意 | `libvtk9-dev`、`libvtk9-qt-dev` | 3D画面をVTK（OpenGL）で描画。VTKのCMakeの設定が参照する `nlohmann-json3-dev` やMPIの開発用パッケージも、依存として入る |
+| 任意 | `qt6-svg-dev` | グラフ・スペクトル・反応エネルギー図をSVGでも保存（ないときはPNG・PDF） |
 
 実行時に使うパッケージは、作ったdebパッケージをインストールするときにaptが自動で入れます。Qt 6のライブラリと `qt6-qpa-plugins`、`libopenbabel7`（フォーマットプラグインと力場データを含む）、RDKit・VTKを使う構成では `librdkit1t64`・`libvtk9.5`・`libvtk9.5-qt` です。推奨パッケージの `qt6-translations-l10n`（日本語表示のとき、ファイル選択などQtの標準ダイアログも日本語にする）と `fonts-noto-cjk`（日本語のフォント）も、aptの既定の設定では一緒に入ります。
 
@@ -26,6 +27,7 @@ MolFormaのパッケージは、Ubuntuの公式リポジトリにもPPAにもあ
 
 - **RDKitとVTK**: どちらも任意です。ビルド時にCMakeが見つけたときだけ有効になり、debパッケージの依存関係もそれに合わせて決まります。VTKで描画するには、OpenGL 3.2以上を使えるGPUドライバーも必要です。
 - **NWChem**: 入力の作成・保存（「ジョブとして保存」）はNWChemがなくても使えます。
+- **外部プログラム（任意）**: 動画のMP4での書き出しには `ffmpeg`（`sudo apt install ffmpeg`）、「ツール → xTBで構造を最適化…」には [xtb](https://github.com/grimme-lab/xtb)（別に入手してPATHに置くか、「編集 → 環境設定」で指定）を使います。どちらも実行時に呼び出すだけで、ビルドには不要です。
 
 ## 1. パッケージを入れる
 
@@ -40,6 +42,12 @@ RDKitとVTKを使う場合は、続けて次を入れます。VTKの開発用パ
 
 ```sh
 sudo apt install librdkit-dev libboost-iostreams-dev libboost-serialization-dev libvtk9-dev libvtk9-qt-dev
+```
+
+グラフをSVGでも保存するには `qt6-svg-dev` も入れます。
+
+```sh
+sudo apt install qt6-svg-dev
 ```
 
 ## 2. NWChemを入れる
