@@ -5,10 +5,12 @@
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_restart.h"
+#include "nwchem/remote_execution.h"
 #include "nwchem/run_diagnostics.h"
 #include "ui/editor_chrome.h"
 #include "ui/execution_form.h"
 #include "ui/main_window.h"
+#include "ui/remote_hosts_dialog.h"
 #include "ui/run_progress.h"
 #include "ui/theme.h"
 #include <QtWidgets>
@@ -200,6 +202,13 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner)
     settingsForm = new ExecutionForm(ExecutionForm::Scope::Project, "execution");
     forms->addWidget(settingsForm);
     connect(settingsForm, &ExecutionForm::changed, this, &ExecutionPanel::change);
+    connect(settingsForm, &ExecutionForm::remoteHostsRequested, this, [this] {
+        const auto s = executionSettings(window->document());
+        RemoteHostsDialog hosts(s["executable"].toString(), s["launcher"].toString(), window);
+        hosts.select(s["remote"].toString());
+        hosts.exec();
+        refresh();
+    });
     auto *memoryCell = new QWidget;
     auto *memoryLayout = new QVBoxLayout(memoryCell);
     memoryLayout->setContentsMargins(0, 0, 0, 0);
@@ -412,6 +421,14 @@ void ExecutionPanel::buildRunPanel() {
     openFolder->setAccessibleName(tr("保存先を開く"));
     folder->addWidget(openFolder, 0, Qt::AlignTop);
     detail->addLayout(folder);
+    // A run on a remote destination: where, its job there and how it stands.
+    remoteLine = new QLabel;
+    remoteLine->setObjectName("executionRemote");
+    remoteLine->setWordWrap(true);
+    remoteLine->setTextFormat(Qt::PlainText);
+    remoteLine->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    remoteLine->hide();
+    detail->addWidget(remoteLine);
     state = new QLabel;
     state->setObjectName("executionState");
     state->setWordWrap(true);
@@ -619,7 +636,7 @@ bool ExecutionPanel::authorizeCalculation() {
     // from a file, the history, an autosave copy or MCP run only once the user confirmed them.
     if ((!policy || !policy->allowExecutionSettings) && !window->untrustedExecution().isEmpty()) {
         if (remote)
-            fail(tr("NWChem実行ファイル・MPIランチャー・追加の環境変数・NWChemの追加入力に、利用者が"
+            fail(tr("実行先・NWChem実行ファイル・MPIランチャー・追加の環境変数・NWChemの追加入力に、利用者が"
                     "MolFormaで入力・確認していない値があります（MCP経由の変更や、プロジェクト・履歴・"
                     "自動保存の読込による）。MCPからはこの設定で実行できません。"
                     "利用者が「2 計算条件」「3 実行設定」タブで設定を確認してください。"));
@@ -932,16 +949,20 @@ bool ExecutionPanel::confirmExecution() {
                          '\n' + text;
     QMessageBox box(
         QMessageBox::Warning, tr("実行設定の確認"),
-        tr("実行ファイル・ランチャー・環境変数・NWChemの追加入力に、MolFormaで入力・確認していない"
+        tr("実行先・実行ファイル・ランチャー・環境変数・NWChemの追加入力に、MolFormaで入力・確認していない"
            "値があります（プロジェクト・履歴・自動保存の読込やMCPによる変更）。これらの設定は任意の"
            "プログラムを起動できます。内容を確認し、信頼できる場合だけ実行してください。"
            "この設定で実行しますか？"),
         QMessageBox::Yes | QMessageBox::No, window);
-    box.setInformativeText(tr("実行ファイル: %1\nランチャー: %2\n環境変数: %3\nNWChemの追加入力: %4")
-                               .arg(program(settings["executable"].toString(), report.executable),
-                                    program(settings["launcher"].toString(), report.launcher),
-                                    environment.isEmpty() ? tr("なし") : environment.join(", "),
-                                    extra.isEmpty() ? tr("なし") : tr("あり（「4 入力プレビュー」で確認）")));
+    box.setInformativeText(
+        tr("実行先: %1\n実行ファイル: %2\nランチャー: %3\n環境変数: %4\nNWChemの追加入力: %5")
+            .arg(settings["remote"].toString().isEmpty()
+                     ? tr("このPC")
+                     : tr("%1（%2）").arg(settings["remote"].toString(), report.remote),
+                 program(settings["executable"].toString(), report.executable),
+                 program(settings["launcher"].toString(), report.launcher),
+                 environment.isEmpty() ? tr("なし") : environment.join(", "),
+                 extra.isEmpty() ? tr("なし") : tr("あり（「4 入力プレビュー」で確認）")));
     if (!extra.isEmpty())
         box.setDetailedText(extra.join("\n\n"));
     box.setTextFormat(Qt::PlainText); // Paths and values from a file are shown as written.
@@ -989,15 +1010,24 @@ void ExecutionPanel::refresh() {
     const int ranks = s["mode"] == "mpi" ? s["mpi_ranks"].toInt() : 1;
     const int threads = std::max(s["omp_threads"].toInt(), s["blas_threads"].toInt());
     const int cpus = QThread::idealThreadCount();
+    // A remote run uses the CPUs of its destination, not those of this PC.
+    const bool remote = !s["remote"].toString().isEmpty();
     static_cast<CpuMeter *>(cpuMeter)->used = ranks * threads;
     cpuMeter->update();
-    resources->setText(tr("CPU  %1 / %2 論理CPU（起動数 %3 × OpenMP %4 / BLAS %5）")
-                           .arg(ranks * threads)
-                           .arg(cpus)
-                           .arg(ranks)
-                           .arg(s["omp_threads"].toInt())
-                           .arg(s["blas_threads"].toInt()));
-    resources->setProperty("bad", ranks * threads > cpus);
+    cpuMeter->setVisible(!remote);
+    resources->setText(remote ? tr("CPU  %1（起動数 %2 × OpenMP %3 / BLAS %4）· 実行先「%5」で使います")
+                                    .arg(ranks * threads)
+                                    .arg(ranks)
+                                    .arg(s["omp_threads"].toInt())
+                                    .arg(s["blas_threads"].toInt())
+                                    .arg(s["remote"].toString())
+                              : tr("CPU  %1 / %2 論理CPU（起動数 %3 × OpenMP %4 / BLAS %5）")
+                                    .arg(ranks * threads)
+                                    .arg(cpus)
+                                    .arg(ranks)
+                                    .arg(s["omp_threads"].toInt())
+                                    .arg(s["blas_threads"].toInt()));
+    resources->setProperty("bad", !remote && ranks * threads > cpus);
     repolish(resources);
     memoryTotal->setText(tr("NWChemメモリ合計の目安  %1 MB（%2 × %3 MB）")
                              .arg(qint64(ranks) * memory->value())
@@ -1032,7 +1062,9 @@ void ExecutionPanel::refresh() {
             covered << c.error;
     }
     // Under a field only what it does not say itself: where a name was found in PATH, or why it
-    // was not found. A path stays in the checks at the right.
+    // was not found. A path stays in the checks at the right. A remote run looks for neither here.
+    for (const auto &key : {"executable", "launcher"})
+        settingsForm->setFound(key, {}, true);
     for (const auto &key : {"executable", "launcher"})
         for (const auto &c : report.checks)
             if (c.label == (QString(key) == "executable" ? tr("NWChem実行ファイル") : tr("MPIランチャー"))) {
@@ -1056,7 +1088,9 @@ void ExecutionPanel::refresh() {
     bool runnable = report.errors.isEmpty();
     try {
         const auto preview = executionPreviewPlan(d, baseDirectory());
-        command->setPlainText(executionCommand(preview));
+        command->setPlainText(remote ? remoteJobPreview(d) : executionCommand(preview));
+        // A remote run shows its whole job.sh.
+        command->setFixedHeight(command->fontMetrics().lineSpacing() * (remote ? 14 : 5) + 14);
         portable = true;
         if (runnable) {
             try {
@@ -1087,6 +1121,12 @@ void ExecutionPanel::refresh() {
                                                                        int(report.warnings.size())))
                         : !editable  ? tr("候補・整形の完了待ち")
                                      : tr("実行できません（%n 件）", nullptr, std::max(1, problems)));
+    startHint->setText(
+        remote ? tr("ヘッダーの「計算を実行」（F5）で、入力一式を新しいジョブフォルダーに保存し、"
+                    "実行先「%1」へ複写して投入します。終わると結果を同じジョブフォルダーへ回収します。")
+                     .arg(s["remote"].toString())
+               : tr("ヘッダーの「計算を実行」（F5）で、入力一式を新しいジョブフォルダーに保存して"
+                    "NWChemを起動します。"));
     startHint->setVisible(startable);
     context->setText(calculationBrief(d));
     updateRun();
@@ -1105,7 +1145,7 @@ void ExecutionPanel::updateRun() {
             lines << (!resultSummary.isEmpty()
                           ? tr("結果: %1（「結果ビューア」に読み込みました）").arg(resultSummary)
                           : tr("結果は「結果ビューアへ」で確認できます。"));
-        lines << run.message();
+        lines << translated(run.message());
         for (const auto &value : run.plan().manifest["diagnostics"].toArray()) {
             const auto item = value.toObject();
             lines << runDiagnosisText(item["code"].toString());
@@ -1137,6 +1177,14 @@ void ExecutionPanel::updateRun() {
                 continuable |= choice.mode == "continue" && choice.available();
     }
     continueRun->setVisible(unfinished && continuable);
+    const auto remoteText = remoteRunText(saved.manifest);
+    remoteLine->setText(remoteText);
+    remoteLine->setVisible(!remoteText.isEmpty());
+    const bool unreachable = !saved.manifest["remote"].toObject()["message"].toString().isEmpty();
+    if (remoteLine->property("bad").toBool() != unreachable) {
+        remoteLine->setProperty("bad", unreachable);
+        repolish(remoteLine);
+    }
     location->setText(displayPath(saved.directory));
     location->setToolTip(saved.directory);
     location->setVisible(!saved.directory.isEmpty());

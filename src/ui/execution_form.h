@@ -41,12 +41,15 @@ class ExecutionForm : public QWidget {
     }
   signals:
     void changed(const QString &key, const QJsonValue &value);
+    // "リモート実行先…": the destinations of Preferences are to be edited (RemoteHostsDialog).
+    void remoteHostsRequested();
 
   private:
     QString prefix;
     QMap<QString, QWidget *> fields;
     QMap<QString, QLabel *> found; // Where the executable and the launcher were found.
-    QComboBox *mode, *jobScript;
+    QComboBox *mode, *jobScript, *remote;
+    QLabel *remoteNote; // What a remote destination changes, under its choice.
     ChoiceButtons *modes;
     SettingsCard *resources;
     QGridLayout *resourceGrid;

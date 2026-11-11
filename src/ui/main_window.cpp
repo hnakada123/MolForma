@@ -11,6 +11,7 @@
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_import.h"
+#include "nwchem/remote_execution.h"
 #include "ui/calculation_panel.h"
 #include "ui/candidate_controls.h"
 #include "ui/conformer_set_dialog.h"
@@ -23,6 +24,7 @@
 #include "ui/input_preview_panel.h"
 #include "ui/molecule_panel.h"
 #include "ui/pdb_download.h"
+#include "ui/remote_hosts_dialog.h"
 #include "ui/results_panel.h"
 #include "ui/structure_import.h"
 #include "ui/theme.h"
@@ -1597,8 +1599,21 @@ void MainWindow::preferences() {
     // The cards and controls of "3 実行設定", for the settings new documents start with.
     dialog.setStyleSheet(
         chromeRules(settingsRules() + "QDialog { background: @window; }", QMainWindow::palette()));
-    auto *layout = new QVBoxLayout(&dialog);
-    layout->setContentsMargins(16, 14, 16, 14);
+    auto *outer = new QVBoxLayout(&dialog);
+    outer->setContentsMargins(0, 0, 0, 14);
+    outer->setSpacing(12);
+    // The cards scroll; the buttons stay below them.
+    auto *scroll = new QScrollArea;
+    scroll->setObjectName("preferencesScroll");
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setProperty("canvas", true);
+    auto *page = new QWidget;
+    page->setProperty("canvas", true);
+    scroll->setWidget(page);
+    outer->addWidget(scroll, 1);
+    auto *layout = new QVBoxLayout(page);
+    layout->setContentsMargins(16, 14, 16, 0);
     layout->setSpacing(12);
     auto *intro =
         new QLabel(tr("新規作成、およびプロジェクト以外の構造ファイル（XYZ・SDF・PDB等）を開いたときの"
@@ -1615,6 +1630,12 @@ void MainWindow::preferences() {
                 chosen[key] = value;
                 form->setSettings(chosen);
             });
+    connect(form, &ExecutionForm::remoteHostsRequested, &dialog, [&] {
+        RemoteHostsDialog hosts(chosen["executable"].toString(), chosen["launcher"].toString(), &dialog);
+        hosts.select(chosen["remote"].toString());
+        hosts.exec();
+        form->setSettings(chosen);
+    });
     layout->addWidget(form);
     const auto card = [&](const QString &title) {
         auto *c = new SettingsCard(title);
@@ -1636,6 +1657,35 @@ void MainWindow::preferences() {
         tr("job.sh でNWChemを起動する前に実行する行です（モジュールの読込みなど）。プロジェクトには保存"
            "せず、このPCで作るすべてのジョブスクリプトに加えます。"));
     script->addRow(tr("準備の行"), prelude);
+    // The headers of Slurm and PBS scripts, for saved jobs and remote destinations alike.
+    QMap<QString, QPlainTextEdit *> headers;
+    for (const auto &kind : {QString("slurm"), QString("pbs")}) {
+        auto *text = new QPlainTextEdit(jobHeaderTemplate(kind));
+        text->setObjectName("preferences_job_header_" + kind);
+        text->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+        text->setLineWrapMode(QPlainTextEdit::NoWrap);
+        text->setTabChangesFocus(true);
+        text->setFixedHeight(text->fontMetrics().lineSpacing() * 6 + 16);
+        headers[kind] = text;
+        script->addRow(kind == "slurm" ? tr("Slurmの見出し") : tr("PBSの見出し"), text);
+    }
+    auto *placeholders = new QLabel(tr("見出しの行は # で始めます。プレースホルダー: "
+                                       "%1。値のないプレースホルダー（制限時間なしの {time}、"
+                                       "キューなしの {queue}）を含む行は書きません。")
+                                        .arg("{" + jobHeaderPlaceholders().join("} {") + "}"));
+    placeholders->setProperty("caption", true);
+    placeholders->setWordWrap(true);
+    placeholders->setTextFormat(Qt::PlainText);
+    auto *resetHeaders = new QPushButton(tr("見出しを既定に戻す"));
+    resetHeaders->setObjectName("preferencesResetHeaders");
+    connect(resetHeaders, &QPushButton::clicked, &dialog, [headers] {
+        for (auto it = headers.begin(); it != headers.end(); ++it)
+            it.value()->setPlainText(defaultJobHeader(it.key()));
+    });
+    auto *headerHelp = new QVBoxLayout;
+    headerHelp->addWidget(placeholders);
+    headerHelp->addWidget(resetHeaders, 0, Qt::AlignLeft);
+    script->addRow(QString(), headerHelp);
     auto *programs = card(tr("外部プログラム"));
     auto *xtbProgram = new QLineEdit(settings.value("xtb/executable").toString());
     xtbProgram->setObjectName("preferences_xtb");
@@ -1677,7 +1727,8 @@ void MainWindow::preferences() {
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     buttons->button(QDialogButtonBox::Ok)->setProperty("primary", true);
     auto *current = buttons->addButton(tr("現在の実行設定を読み込む"), QDialogButtonBox::ResetRole);
-    layout->addWidget(buttons);
+    buttons->setContentsMargins(16, 0, 16, 0);
+    outer->addWidget(buttons);
     connect(current, &QPushButton::clicked, &dialog, [&] {
         const auto s = executionSettings(document());
         for (const auto &key : executionPreferenceKeys())
@@ -1703,9 +1754,15 @@ void MainWindow::preferences() {
             for (const auto &diagnostic : validateExecution(probe, QDir::homePath(), false).diagnostics)
                 if (diagnostic.severity == DiagnosticSeverity::Error && diagnostic.tab == 2)
                     errors << diagnostic.message;
+            for (auto it = headers.begin(); it != headers.end(); ++it)
+                for (const auto &error : jobHeaderErrors(it.value()->toPlainText()))
+                    errors
+                        << (it.key() == "slurm" ? tr("Slurmの見出し: %1") : tr("PBSの見出し: %1")).arg(error);
             if (!errors.isEmpty())
                 fail(errors.join('\n'));
             saveExecutionJobPrelude(prelude->toPlainText());
+            for (auto it = headers.begin(); it != headers.end(); ++it)
+                saveJobHeaderTemplate(it.key(), it.value()->toPlainText());
             settings.setValue("xtb/executable", xtbProgram->text().trimmed());
             saveExecutionPreferences(chosen);
             settings.setValue("startupWater", water->isChecked());

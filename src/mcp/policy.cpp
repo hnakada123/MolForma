@@ -41,14 +41,12 @@ QString resolvedPath(const QString &path, const QString &base) {
 QJsonObject protectedExecution(const Document &document) {
     const auto s = executionSettings(document);
     const auto n = nwchemSettings(document);
-    return {{"executable", s["executable"]},
-            {"launcher", s["launcher"]},
-            {"environment", s["environment"]},
-            {"extra_input", n["extra_input"]},
-            {"extra_tasks", n["extra_tasks"]}};
+    return {{"executable", s["executable"]},   {"launcher", s["launcher"]},
+            {"environment", s["environment"]}, {"remote", s["remote"]},
+            {"extra_input", n["extra_input"]}, {"extra_tasks", n["extra_tasks"]}};
 }
 bool isProtectedExecutionKey(const QString &key) {
-    return key == "executable" || key == "launcher" || key == "environment";
+    return key == "executable" || key == "launcher" || key == "environment" || key == "remote";
 }
 bool isProtectedNwchemKey(const QString &key) {
     return key == "extra_input" || key == "extra_tasks";

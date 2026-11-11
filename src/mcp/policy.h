@@ -4,8 +4,9 @@
 #include <QStringList>
 
 namespace mf {
-// Settings that choose the program a calculation runs and the environment it inherits, and the
-// unchecked additional NWChem input (which could start other programs through NWChem).
+// Settings that choose the program a calculation runs, the environment it inherits and the computer
+// it runs on (a remote destination), and the unchecked additional NWChem input (which could start other
+// programs through NWChem).
 QJsonObject protectedExecution(const Document &document);
 bool isProtectedExecutionKey(const QString &key);
 // NWChem settings with the same protection: the additional input lines.

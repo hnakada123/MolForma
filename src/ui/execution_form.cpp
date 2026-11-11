@@ -2,6 +2,7 @@
 #include "ui/execution_form.h"
 #include "mcp/policy.h"
 #include "nwchem/nwchem_execution.h"
+#include "nwchem/remote_execution.h"
 #include "ui/editor_chrome.h"
 #include <QtWidgets>
 
@@ -43,6 +44,35 @@ ExecutionForm::ExecutionForm(Scope scope, const QString &name, QWidget *parent)
     paths->setVerticalSpacing(6);
     paths->setColumnStretch(1, 1);
     files->body()->addLayout(paths);
+    {
+        // This PC or a destination of Preferences reached over SSH.
+        remote = new QComboBox;
+        remote->setObjectName(prefix + "_remote");
+        remote->setProperty("mcpExecutionSetting", true); // The computer that runs it is the user's choice.
+        remote->setToolTip(
+            tr("計算を実行する計算機です。リモート実行先は「リモート実行先…」で登録し、ssh・scpで"
+               "ジョブを複写・投入・回収します。"));
+        fields["remote"] = remote;
+        auto *manage = new QPushButton(tr("リモート実行先…"));
+        manage->setObjectName(prefix + "RemoteHosts");
+        manage->setProperty("mcpExecutionSetting", true);
+        auto *name = new QLabel(tr("実行先"));
+        name->setBuddy(remote);
+        const int row = paths->rowCount();
+        paths->addWidget(name, row, 0);
+        paths->addWidget(remote, row, 1);
+        paths->addWidget(manage, row, 2);
+        remoteNote = new QLabel;
+        remoteNote->setObjectName(prefix + "RemoteNote");
+        remoteNote->setProperty("muted", true);
+        remoteNote->setWordWrap(true);
+        remoteNote->setTextFormat(Qt::PlainText);
+        remoteNote->hide();
+        paths->addWidget(remoteNote, row + 1, 1, 1, 2);
+        connect(remote, &QComboBox::currentIndexChanged, this,
+                [this] { emit changed("remote", remote->currentData().toString()); });
+        connect(manage, &QPushButton::clicked, this, &ExecutionForm::remoteHostsRequested);
+    }
     pathField(paths, tr("NWChem実行ファイル"), "executable", false);
     mode = new QComboBox;
     mode->setObjectName(prefix + "_mode");
@@ -256,9 +286,27 @@ QWidget *ExecutionForm::integer(const QString &label, const QString &key, const 
     return cell;
 }
 void ExecutionForm::setSettings(const QJsonObject &s) {
+    {
+        // The destinations of Preferences, and one the settings name that is not among them.
+        const QSignalBlocker blocker(remote);
+        remote->clear();
+        remote->addItem(tr("このPC"), QString());
+        for (const auto &host : remoteHosts()) {
+            remote->addItem(host.name, host.name);
+            remote->setItemData(remote->count() - 1, remoteHostSummary(host), Qt::ToolTipRole);
+        }
+    }
+    const auto destination = findRemoteHost(s["remote"].toString());
     for (auto it = fields.begin(); it != fields.end(); ++it) {
         const QSignalBlocker blocker(it.value());
-        if (auto *line = qobject_cast<QLineEdit *>(it.value())) {
+        if (it.value() == remote) {
+            int index = remote->findData(s["remote"].toString());
+            if (index < 0) {
+                remote->addItem(tr("未登録: %1").arg(s["remote"].toString()), s["remote"]);
+                index = remote->count() - 1;
+            }
+            remote->setCurrentIndex(index);
+        } else if (auto *line = qobject_cast<QLineEdit *>(it.value())) {
             if (line->text() != s[it.key()].toString())
                 line->setText(s[it.key()].toString());
         } else if (auto *spin = qobject_cast<QSpinBox *>(it.value()))
@@ -277,7 +325,20 @@ void ExecutionForm::setSettings(const QJsonObject &s) {
         }
     }
     modes->sync();
-    fields["job_queue"]->setEnabled(s["job_script"] == "slurm" || s["job_script"] == "pbs");
+    // The queue goes to a scheduler: that of a job script, or of the remote destination.
+    fields["job_queue"]->setEnabled(s["job_script"] == "slurm" || s["job_script"] == "pbs" ||
+                                    (destination && destination->scheduler != "shell"));
+    remoteNote->setText(
+        destination ? tr("%1。NWChemとMPIランチャーは実行先で、%2の名前で起動します。")
+                          .arg(remoteHostSummary(*destination),
+                               destination->executable.isEmpty() && destination->launcher.isEmpty()
+                                   ? tr("下の欄")
+                                   : tr("実行先の設定（空欄は下の欄）"))
+        : s["remote"].toString().isEmpty() ? QString()
+                                           : tr("この実行先は環境設定に登録されていません。"));
+    remoteNote->setProperty("bad", !s["remote"].toString().isEmpty() && !destination);
+    repolish(remoteNote);
+    remoteNote->setVisible(!remoteNote->text().isEmpty());
     mpi = s["mode"] == "mpi";
     fields["launcher"]->setEnabled(mpi);
     fields["mpi_ranks"]->setEnabled(mpi);

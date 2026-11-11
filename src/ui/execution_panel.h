@@ -121,7 +121,7 @@ class ExecutionPanel : public QWidget {
     QList<ChoiceButtons *> choices;
     QSpinBox *memory;
     QLabel *resources, *memoryTotal, *state, *location, *statePill, *timing, *diagnostics, *context,
-        *startHint, *logName;
+        *startHint, *logName, *remoteLine;
     QVBoxLayout *checkList;
     RunProgress *progress;
     QPlainTextEdit *command, *log;

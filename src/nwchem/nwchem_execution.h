@@ -8,6 +8,7 @@
 #include <QTimer>
 
 namespace mf {
+struct RemoteHost;
 // Expands "~" and "~/" to the home directory and resolves relative paths against base.
 // Every execution path goes through this, and the MCP access policy checks the same result.
 QString absolutePath(QString path, const QString &base);
@@ -43,6 +44,7 @@ struct ExecutionCheck {
 };
 struct ExecutionValidation : ValidationReport {
     QString executable, launcher, referenceDirectory;
+    QString remote; // The destination of a remote run, in words (remoteHostSummary); empty for this PC.
     QMap<QString, QString> environment; // Only explicit overrides, never the inherited environment.
     QVector<ExecutionCheck> checks;     // With checkLocal: programs, folders and the NWChem input.
 };
@@ -63,9 +65,11 @@ ExecutionPlan executionPreviewPlan(const Document &document, const QString &proj
                                    bool checkLocal = false);
 QString executionCommand(const ExecutionPlan &plan);
 // The script "ジョブとして保存" puts beside the input (job.sh) for running the job on another computer:
-// a plain shell script, or one for sbatch (Slurm) or qsub (PBS), by the setting "job_script"; empty for
-// "none". It starts NWChem as "3 実行設定" names it, in the folder of the script.
-QString executionJobScript(const Document &document);
+// a plain shell script, or one for sbatch (Slurm) or qsub (PBS) with the header of its template
+// (jobHeaderTemplate), by the setting "job_script"; empty for "none". It starts NWChem as "3 実行設定"
+// names it, in the folder of the script, and leaves NWChem's exit code in the file exit_code. With a
+// remote destination, the script of a run there: its scheduler, header lines, preparation and programs.
+QString executionJobScript(const Document &document, const RemoteHost *remote = nullptr);
 // Lines the user wants in every job script before NWChem starts ("module load nwchem"): kept in
 // Preferences only, never in a project, since they are run as they are.
 QString executionJobPrelude();
@@ -102,14 +106,19 @@ class NwchemRun : public QObject {
     ~NwchemRun() override;
     // With a program (this executable), runs go to a supervisor of their own (runJobMain) and are
     // followed through run.json; without one, NWChem is a child process that ends with this object.
+    // Runs on a remote destination always need one.
     void setSupervisor(const QString &program) {
         supervisor = program;
     }
     bool supervised() const {
         return !supervisor.isEmpty();
     }
+    QString supervisorProgram() const {
+        return supervisor;
+    }
     void start(const Document &document, const QString &projectDirectory);
-    // Follows a supervised job that another session started, if it is still running: true then.
+    // Follows a supervised job that another session started, if it is still running: true then. A remote
+    // run whose supervisor has ended gets a new one (resumeRemoteRun) when this object has a program.
     bool attach(const QString &jobDirectory);
     void stop();
     // Stops the run and waits for its end.
@@ -145,6 +154,7 @@ class NwchemRun : public QObject {
     bool timedOut = false, watching = false; // watching: the run is its supervisor's.
     qint64 groupId = 0, duration = 0, supervisorPid = 0;
     int unreadable = 0; // Polls in a row that could not read run.json.
+    int resumed = 0;    // Supervisors started again for a remote run this object follows.
     void launch();
     void poll();
     void signalProcess(bool force);

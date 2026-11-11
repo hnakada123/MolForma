@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+#include "mcp/policy.h"
 #include "model/i18n.h"
+#include "model/settings.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_queue.h"
 #include "nwchem/nwchem_restart.h"
+#include "nwchem/remote_execution.h"
 #include "nwchem/run_diagnostics.h"
 #include "results/results.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
+#include "ui/remote_hosts_dialog.h"
 #include <QtTest>
 #include <QtWidgets>
 #ifdef Q_OS_UNIX
@@ -25,7 +29,7 @@ using namespace mf;
 class ExecutionTest : public QObject {
     Q_OBJECT
     QTemporaryDir files, settings;
-    QString helper;
+    QString helper, remoteHome;
     static Document water() {
         return Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n");
     }
@@ -66,6 +70,8 @@ class ExecutionTest : public QObject {
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
                            settings.path());                          // MolForma uses NativeFormat.
         qputenv("XDG_DATA_HOME", settings.filePath("data").toUtf8()); // The stored queue of sessions.
+        // The supervisors this test starts read the same Preferences (remote destinations).
+        qputenv("XDG_CONFIG_HOME", settings.path().toUtf8());
         helper = files.filePath("native engine" EXE);
         QVERIFY(QFile::copy(QCoreApplication::applicationDirPath() + "/fake_nwchem" EXE, helper));
         QVERIFY(QFile::setPermissions(helper, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
@@ -1201,7 +1207,9 @@ class ExecutionTest : public QObject {
         QVERIFY(slurm.contains("\nexport OMP_NUM_THREADS='2'\n"));
         // A path of this computer is shown, not exported, on the other one.
         QVERIFY(slurm.contains("\n# export NWCHEM_BASIS_LIBRARY='/opt/nwchem/libraries/'\n"));
-        QVERIFY(slurm.endsWith("\n'mpirun' -np 8 'nwchem' input.nw > output.out 2> stderr.err\n"));
+        QVERIFY(slurm.contains("\n'mpirun' -np 8 'nwchem' input.nw > output.out 2> stderr.err\n"));
+        // NWChem's exit code stays beside its output.
+        QVERIFY(slurm.endsWith("\nstatus=$?\necho \"$status\" > exit_code\nexit \"$status\"\n"));
         setExecutionSetting(d, "job_script", "pbs");
         const auto pbs = executionJobScript(d);
         QVERIFY2(pbs.contains("#PBS -N ethanol\n#PBS -l select=1:ncpus=16:mpiprocs=8:ompthreads=2\n"
@@ -1215,7 +1223,8 @@ class ExecutionTest : public QObject {
         setExecutionSetting(d, "executable", "/opt/nw chem/bin/nwchem");
         const auto shell = executionJobScript(d);
         QVERIFY(!shell.contains("#SBATCH") && !shell.contains("#PBS"));
-        QVERIFY(shell.endsWith("\n'/opt/nw chem/bin/nwchem' input.nw > output.out 2> stderr.err\n"));
+        QVERIFY(
+            shell.contains("\n'/opt/nw chem/bin/nwchem' input.nw > output.out 2> stderr.err\nstatus=$?\n"));
         // "ジョブとして保存" takes the script along; a run of this computer needs none.
         const auto saved = saveExecutionBundle(d, files.path());
         QCOMPARE(QString::fromUtf8(readFile(saved.directory + "/job.sh")), shell);
@@ -1252,6 +1261,312 @@ class ExecutionTest : public QObject {
         w.history()->undo();
         w.history()->undo();
         QCOMPARE(kind->currentData().toString(), "none");
+    }
+    // A remote destination of the tests: this computer through the stand-in ssh and scp, with a folder
+    // of its own as the home there and a stand-in Slurm (sbatch, squeue, scancel, sacct) on PATH.
+    static RemoteHost destination(const QString &name, const QString &scheduler) {
+        RemoteHost h;
+        h.name = name;
+        h.host = "chemist@cluster.example.org";
+        h.directory = "~/molforma-jobs";
+        h.scheduler = scheduler;
+        h.interval = 10;
+        return h;
+    }
+    bool fakeRemote() {
+#ifdef Q_OS_UNIX
+        if (!remoteHome.isEmpty())
+            return true;
+        const auto bin = files.filePath("fake bin");
+        remoteHome = files.filePath("remote-home"); // Paths there take no spaces.
+        if (!QDir().mkpath(bin) || !QDir().mkpath(remoteHome))
+            return false;
+        const auto fake = QCoreApplication::applicationDirPath() + "/fake_ssh";
+        if (!QFile::link(fake, bin + "/ssh") || !QFile::link(fake, bin + "/scp"))
+            return false;
+        const QMap<QString, QByteArray> scripts{
+            // The job runs at once, in a session of its own; its ID is its PID.
+            {"sbatch", "#!/bin/sh\n[ \"$1\" = \"--parsable\" ] && shift\n"
+                       "setsid bash \"$1\" > /dev/null 2>&1 < /dev/null &\necho \"$!;fake\"\n"},
+            {"squeue", "#!/bin/sh\nwhile [ $# -gt 0 ]; do [ \"$1\" = \"-j\" ] && id=$2; shift; done\n"
+                       "if kill -0 \"$id\" 2>/dev/null; then echo RUNNING; fi\n"},
+            {"scancel", "#!/bin/sh\ntouch \"$HOME/.cancelled-$1\"\nkill -TERM -- \"-$1\" 2>/dev/null\n"},
+            {"sacct",
+             "#!/bin/sh\nwhile [ $# -gt 0 ]; do [ \"$1\" = \"-j\" ] && id=$2; shift; done\n"
+             "if [ -f \"$HOME/.cancelled-$id\" ]; then echo 'CANCELLED by 1000'; else echo COMPLETED; fi\n"}};
+        for (auto it = scripts.begin(); it != scripts.end(); ++it) {
+            const auto path = bin + '/' + it.key();
+            writeFile(path, it.value());
+            QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        }
+        qputenv("PATH", (bin + ':' + qEnvironmentVariable("PATH")).toLocal8Bit());
+        qputenv("MOLFORMA_FAKE_REMOTE_HOME", remoteHome.toLocal8Bit());
+        return true;
+#else
+        return false;
+#endif
+    }
+    // A calculation for a destination. Its environment rows are not exported there: the mode of the
+    // stand-in NWChem goes through the preparation lines of the destination instead.
+    Document remoteDocument(const QString &name, const QString &mode = {}) const {
+        auto hosts = remoteHosts();
+        for (auto &h : hosts)
+            if (h.name == name)
+                h.prelude = mode.isEmpty() ? QString() : "export MOLFORMA_FAKE_MODE=" + mode;
+        saveRemoteHosts(hosts);
+        auto d = configured();
+        setExecutionSetting(d, "remote", name);
+        return d;
+    }
+    void remoteDestinationsAndTemplates() {
+        fakeRemote(); // ssh and scp to be found here (Unix).
+        // Destinations are checked before they are kept: nothing a shell or ssh would read as more.
+        auto good = destination("cluster", "slurm");
+        good.header = "#SBATCH --account=chem\n#SBATCH --mem={memory_mb}M";
+        good.prelude = "module load nwchem/7.3.1";
+        QVERIFY(remoteHostErrors(good).isEmpty());
+        for (const auto &host : {QString("-oProxyCommand=evil"), QString("user@host;rm"), QString()}) {
+            auto bad = good;
+            bad.host = host;
+            QVERIFY2(!remoteHostErrors(bad).isEmpty(), qPrintable(host));
+        }
+        for (const auto &folder : {QString("../outside"), QString("~/a b"), QString("~/$(id)"), QString()}) {
+            auto bad = good;
+            bad.directory = folder;
+            QVERIFY2(!remoteHostErrors(bad).isEmpty(), qPrintable(folder));
+        }
+        auto bad = good;
+        bad.header = "sbatch --account=chem";
+        QVERIFY(!remoteHostErrors(bad).isEmpty());
+        bad = good;
+        bad.interval = 5;
+        QVERIFY(!remoteHostErrors(bad).isEmpty());
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, saveRemoteHosts({good, good}));
+        saveRemoteHosts({good, destination("workstation", "shell")});
+        QCOMPARE(remoteHosts().size(), 2);
+        QCOMPARE(remoteHosts()[0], good);
+        QVERIFY(findRemoteHost("workstation").has_value());
+        QVERIFY(!findRemoteHost("nowhere").has_value());
+
+        // The templates of Slurm and PBS headers: the defaults write what job scripts always had.
+        QCOMPARE(jobHeaderTemplate("slurm"), defaultJobHeader("slurm"));
+        QVERIFY(!jobHeaderErrors("#PBS -l mem={nothing}").isEmpty());
+        QVERIFY(!jobHeaderErrors("module load x").isEmpty());
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, saveJobHeaderTemplate("slurm", "#SBATCH {what}"));
+        saveJobHeaderTemplate("slurm", "#SBATCH -J {name}\n#SBATCH -n {ranks}\n#SBATCH -t {time}\n"
+                                       "#SBATCH --mem-per-cpu={memory_mb}M\n");
+        auto d = configured();
+        setExecutionSetting(d, "job_script", "slurm");
+        setExecutionSetting(d, "mode", "mpi");
+        setExecutionSetting(d, "mpi_ranks", 4);
+        setNwchemSetting(d, "memory_mb", 1500);
+        auto script = executionJobScript(d);
+        QVERIFY2(script.startsWith(
+                     "#!/bin/bash\n#SBATCH -J molforma\n#SBATCH -n 4\n#SBATCH --mem-per-cpu=1500M\n"),
+                 qPrintable(script)); // No time limit: its line is left out.
+        saveJobHeaderTemplate("slurm", defaultJobHeader("slurm"));
+        QCOMPARE(QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
+                     .contains("execution/job_header_slurm"),
+                 false);
+
+        // A run there: its scheduler, the destination's header lines, preparation and programs.
+        setExecutionSetting(d, "remote", "cluster");
+        auto remote = *findRemoteHost("cluster");
+        remote.executable = "/opt/nwchem/bin/nwchem";
+        script = executionJobScript(d, &remote);
+        QVERIFY2(script.contains("#SBATCH --partition") == false &&
+                     script.contains("\n#SBATCH --account=chem\n") &&
+                     script.contains("\n#SBATCH --mem=1500M\n") &&
+                     script.contains("\nmodule load nwchem/7.3.1\n") &&
+                     script.contains("'mpirun' -np 4 '/opt/nwchem/bin/nwchem' input.nw"),
+                 qPrintable(script));
+        // No NWChem is looked for on this computer; the destination and ssh are.
+        auto report = validateExecution(d, files.path());
+        QStringList labels;
+        for (const auto &check : report.checks)
+            labels << check.label;
+        QVERIFY2(labels.contains(tr("リモート実行先")) && !labels.contains(tr("NWChem実行ファイル")),
+                 qPrintable(labels.join(", ")));
+        QVERIFY(report.remote.contains("chemist@cluster.example.org"));
+        setExecutionSetting(d, "remote", "nowhere");
+        QVERIFY(validateExecution(d, files.path(), false).errors.join('\n').contains("nowhere"));
+        setExecutionSetting(d, "remote", "cluster");
+        setNwchemAdvanced(d, "vectors_guess", "file");
+        setNwchemAdvanced(d, "vectors_input", "start.movecs");
+        QVERIFY(
+            validateExecution(d, files.path(), false).errors.join('\n').contains(tr("入力movecs").left(2)));
+        // The computer that runs it is chosen like the program: MCP cannot change it.
+        QVERIFY(isProtectedExecutionKey("remote"));
+        QCOMPARE(protectedExecution(d)["remote"].toString(), "cluster");
+        // A remote run needs a supervisor of its own.
+        if (!remoteProgram("ssh").isEmpty() && !remoteProgram("scp").isEmpty()) {
+            NwchemRun unsupervised;
+            unsupervised.start(remoteDocument("cluster"), files.path());
+            QCOMPARE(unsupervised.state(), RunState::Failed);
+        }
+        // "3 実行設定" chooses it among the destinations of Preferences.
+        MainWindow w;
+        w.loadDocument(configured());
+        auto *choice = w.findChild<QComboBox *>("execution_remote");
+        QVERIFY(choice);
+        QCOMPARE(choice->count(), 3);
+        QVERIFY(choice->property("mcpExecutionSetting").toBool());
+        choice->setCurrentIndex(choice->findData("workstation"));
+        QCOMPARE(executionSettings(w.document())["remote"].toString(), "workstation");
+        QVERIFY(w.findChild<QLabel *>("executionRemoteNote")->isVisibleTo(w.executionPanel()));
+        QVERIFY(w.findChild<QPlainTextEdit *>("executionCommand")->toPlainText().contains("nohup ./job.sh"));
+        // The destinations are edited in a dialog of their own, which MCP cannot operate.
+        {
+            RemoteHostsDialog dialog("nwchem", "mpirun");
+            QVERIFY(dialog.property("mcpProtected").toBool());
+            auto *list = dialog.findChild<QListWidget *>("remoteHostsList");
+            QCOMPARE(list->count(), 2);
+            dialog.findChild<QPushButton *>("remoteHostsAdd")->click();
+            QCOMPARE(list->count(), 3);
+            auto *host = dialog.findChild<QLineEdit *>("remoteHostHost");
+            auto *problems = dialog.findChild<QLabel *>("remoteHostProblems");
+            QTest::keyClicks(host, "a b");
+            QVERIFY(!problems->text().isEmpty());
+            host->clear();
+            QTest::keyClicks(host, "me@hpc.example.org");
+            QVERIFY(problems->text().isEmpty());
+            auto *scheduler = dialog.findChild<QComboBox *>("remoteHostScheduler");
+            scheduler->setCurrentIndex(scheduler->findData("pbs"));
+            dialog.accept();
+            QCOMPARE(remoteHosts().size(), 3);
+            QCOMPARE(remoteHosts()[2].host, "me@hpc.example.org");
+            QCOMPARE(remoteHosts()[2].scheduler, "pbs");
+        }
+        saveRemoteHosts({});
+    }
+    void remoteRunsOverSsh() {
+        if (!fakeRemote())
+            QSKIP("The stand-in ssh runs its commands with /bin/sh.");
+        auto shell = destination("workstation", "shell");
+        shell.executable = helper; // The stand-in NWChem, where the "remote" job runs.
+        auto slurm = destination("cluster", "slurm");
+        slurm.executable = helper;
+        saveRemoteHosts({shell, slurm});
+        // In the background on the computer it logs in to.
+        NwchemRun run;
+        run.setSupervisor(supervisor());
+        auto d = remoteDocument("workstation");
+        environment(d, {{"MOLFORMA_LITERAL", "not exported there"}});
+        run.start(d, files.path());
+        QVERIFY(run.active());
+        QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 60000);
+        QVERIFY2(run.state() == RunState::Finished, QJsonDocument(run.plan().manifest).toJson().constData());
+        auto job = run.plan().directory;
+        auto record = readObject(job + "/run.json");
+        QCOMPARE(record["status"].toString(), "finished");
+        QCOMPARE(record["exit_code"].toInt(), 0);
+        const auto remote = record["remote"].toObject();
+        QCOMPARE(remote["phase"].toString(), "done");
+        QCOMPARE(remote["host"].toObject()["name"].toString(), "workstation");
+        QVERIFY(remote["job"].toString().toInt() > 0);
+        const auto there = remote["directory"].toString();
+        QCOMPARE(there, QDir(remoteHome).canonicalPath() + "/molforma-jobs/" + QFileInfo(job).fileName());
+        // Only the job went there; the record and the project stayed.
+        QVERIFY(QFileInfo::exists(there + "/input.nw") && QFileInfo::exists(there + "/job.sh"));
+        QVERIFY(!QFileInfo::exists(there + "/run.json") &&
+                !QFileInfo::exists(there + "/project.molforma.json"));
+        // The folder came back: the log, what NWChem wrote and its exit code.
+        QVERIFY(readFile(job + "/output.out").contains("fake NWChem finished"));
+        QCOMPARE(readObject(job + "/captured.json")["cwd"].toString(), there);
+        QCOMPARE(readObject(job + "/captured.json")["literal"].toString(), QString());
+        QCOMPARE(readFile(job + "/exit_code").trimmed(), QByteArray("0"));
+        QVERIFY(!QFileInfo::exists(job + "/.retrieved") && !QFileInfo::exists(job + "/supervisor.lock"));
+        QCOMPARE(readHistoryEntry(job).status, RunState::Finished);
+        QVERIFY(remoteRunText(record).contains("workstation"));
+        historyDocument(job); // The bundle is still the one that was saved.
+
+        // A Slurm job, submitted with sbatch and followed with squeue.
+        run.start(remoteDocument("cluster"), files.path());
+        QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 60000);
+        QCOMPARE(run.state(), RunState::Finished);
+        record = readObject(run.plan().directory + "/run.json");
+        QVERIFY(
+            QRegularExpression("^[0-9]+$").match(record["remote"].toObject()["job"].toString()).hasMatch());
+        QVERIFY(readFile(run.plan().directory + "/job.sh").contains("#SBATCH --job-name=molforma"));
+        // A failing NWChem fails the run, with its exit code.
+        run.start(remoteDocument("cluster", "fail"), files.path());
+        QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 60000);
+        QCOMPARE(run.state(), RunState::Failed);
+        QCOMPARE(run.plan().manifest["exit_code"].toInt(), 7);
+
+        // Stopped while it runs: scancel, and the folder still comes back.
+        run.start(remoteDocument("cluster", "slow"), files.path());
+        QTRY_VERIFY_WITH_TIMEOUT(run.plan().manifest["remote"].toObject()["phase"].toString() == "submitted", 30000);
+        QTRY_VERIFY_WITH_TIMEOUT(
+            readFile(run.plan().directory + "/output.out").contains("fake NWChem started"), 30000);
+        run.stop();
+        QCOMPARE(run.state(), RunState::Stopping);
+        QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 60000);
+        QCOMPARE(run.state(), RunState::Cancelled);
+        QVERIFY(QFileInfo::exists(run.plan().directory + "/captured.json"));
+        QVERIFY(!QFileInfo::exists(run.plan().directory + "/stop.request"));
+
+        // A folder that cannot be made there fails the run before anything is submitted.
+        auto hosts = remoteHosts();
+        hosts[0].directory = "/proc/molforma-jobs";
+        saveRemoteHosts(hosts);
+        run.start(remoteDocument("workstation"), files.path());
+        QTRY_VERIFY_WITH_TIMEOUT(!run.active(), 30000);
+        QCOMPARE(run.state(), RunState::Failed);
+        QVERIFY(!run.plan().manifest["remote"].toObject().contains("job"));
+        QCOMPARE(run.plan().manifest["diagnostics"].toArray()[0].toObject()["code"].toString(), "launch");
+        QVERIFY(remoteRunText(run.plan().manifest).contains("mkdir"));
+        saveRemoteHosts({});
+    }
+    void remoteRunsOutliveTheirSupervisor() {
+#ifndef Q_OS_UNIX
+        QSKIP("The stand-in ssh runs its commands with /bin/sh.");
+#else
+        if (!fakeRemote())
+            QSKIP("No stand-in ssh.");
+        auto shell = destination("workstation", "shell");
+        shell.executable = helper;
+        saveRemoteHosts({shell});
+        QString job;
+        {
+            NwchemRun run;
+            run.setSupervisor(supervisor());
+            run.start(remoteDocument("workstation", "slow"), files.path());
+            QTRY_VERIFY_WITH_TIMEOUT(run.plan().manifest["remote"].toObject()["phase"].toString() == "submitted", 30000);
+            job = run.plan().directory;
+            run.release();
+        }
+        // The supervisor ends (the computer restarts): the job goes on there, and the record waits.
+        const auto keeper = readObject(job + "/run.json")["supervisor"].toObject()["pid"].toInteger();
+        QVERIFY(keeper > 0);
+        QCOMPARE(::kill(pid_t(keeper), SIGKILL), 0);
+        QTRY_VERIFY_WITH_TIMEOUT(readHistoryEntry(job).orphaned, 10000);
+        QCOMPARE(readHistoryEntry(job).status, RunState::Running);
+        // Connections fail for a while: the look is retried, and the record says why it waits.
+        QTemporaryDir state;
+        const auto down = state.filePath("down");
+        writeFile(down, {});
+        qputenv("MOLFORMA_FAKE_SSH_DOWN", down.toLocal8Bit());
+        // Another session follows it again with a new supervisor.
+        NwchemRun again;
+        again.setSupervisor(supervisor());
+        QVERIFY(again.attach(job));
+        QVERIFY(again.active());
+        QTRY_VERIFY_WITH_TIMEOUT(
+            !readObject(job + "/run.json")["remote"].toObject()["message"].toString().isEmpty(), 30000);
+        QVERIFY(remoteRunText(readObject(job + "/run.json")).contains("Connection refused"));
+        QFile::remove(down);
+        QTRY_VERIFY_WITH_TIMEOUT(
+            readObject(job + "/run.json")["remote"].toObject()["message"].toString().isEmpty(), 30000);
+        QVERIFY(again.active());
+        again.stop();
+        QTRY_VERIFY_WITH_TIMEOUT(!again.active(), 60000);
+        QCOMPARE(again.state(), RunState::Cancelled);
+        QCOMPARE(readHistoryEntry(job).status, RunState::Cancelled);
+        QVERIFY(!resumeRemoteRun(job, supervisor())); // Nothing left to follow.
+        qunsetenv("MOLFORMA_FAKE_SSH_DOWN");
+        saveRemoteHosts({});
+#endif
     }
     void queueSurvivesTheSession() {
         const auto store = files.filePath("kept queue/queue.json");

@@ -19,7 +19,7 @@ MolForma already covered building molecules, running NWChem and inspecting resul
 
 Following the preference for local features, the initial scopes of A1/A2, B1/B2, B3, A3/A4, B4 and C1/C2 have been implemented. B5 supports multiple-wavelength GIAO calculations and charts of isotropic β in atomic units; conversion to specific rotation is not implemented. Instructions and limits are in [Run settings](features/execution.md), [Results](features/results.md), [History](features/history.md) and [Conformer sets](features/molecule_pages.md).
 
-D1 remote execution is deferred at the user's request. Of the extensions considered later, restarts from NWChem's database, calculations that outlive the window with the queue restored, thermochemistry corrections, conformer-averaged spectra, reaction paths (NEB and chains of calculations that go on from earlier ones), preparing metal complexes with xTB, and exporting figures and videos are part of 1.1.0 too ([changes](changes.md)). Concurrent jobs, NMR J splitting, resonance Raman and powder/high-spin ESR remain later extensions. Recalculation from the final geometry is available as a new job without overwriting the original log.
+D1 remote execution (SSH, Slurm, PBS) is part of 1.1.0. Of the extensions considered later, restarts from NWChem's database, calculations that outlive the window with the queue restored, thermochemistry corrections, conformer-averaged spectra, reaction paths (NEB and chains of calculations that go on from earlier ones), preparing metal complexes with xTB, and exporting figures and videos are part of 1.1.0 too ([changes](changes.md)). Concurrent jobs, NMR J splitting, resonance Raman and powder/high-spin ESR remain later extensions. Recalculation from the final geometry is available as a new job without overwriting the original log.
 
 Actual NWChem 7.3.1 checks used water for Raman, methyl radical for ESR and hydrogen peroxide for ECD/ORD. Inputs and expected reader values are retained as regression fixtures. These small-basis checks do not establish quantitative agreement with experiment.
 
@@ -175,6 +175,8 @@ State arrow convention, units and scales. Apply the same transform to molecule a
 Prioritize this when calculation servers are used frequently. Register host, work directory and resource settings; transfer input, submit, monitor, cancel and retrieve logs/results.
 
 Start with one submission backend and associate remote job IDs with local history. Handle disconnection and reconnection independently of the local queue. Do not embed credentials in shared projects or run records. See the [current execution scope](features/execution.md).
+
+Implemented in 1.1.0. Destinations are registered in Preferences only (projects keep their names), and the supervisor copies, submits, checks, stops and fetches back with the system’s `ssh` and `scp`, recording the job ID in `run.json`. A job whose supervisor ended can be reconnected from History. Shell, Slurm and PBS submissions are supported, with headers made from templates ([Run on a remote computer](features/execution.md#run-on-a-remote-computer-ssh-slurm-pbs)).
 
 ## Suggested order
 

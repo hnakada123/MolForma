@@ -4,6 +4,7 @@
 #include "model/units.h"
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_restart.h"
+#include "nwchem/remote_execution.h"
 #include "nwchem/run_diagnostics.h"
 #include "ui/editor_chrome.h"
 #include "ui/energy_profile_dialog.h"
@@ -42,8 +43,10 @@ constexpr EnergyUnit energyUnits[]{{"kcal", "kcal/mol", HartreeToKcal, 2},
 // The state of a job in a word, and the kind of label it takes.
 std::pair<QString, QString> stateLabel(const HistoryEntry &e, bool owned) {
     if (runStateActive(e.status) && !owned)
-        return e.orphaned ? std::pair<QString, QString>{tr("プロセスなし"), "orphan"}
-                          : std::pair<QString, QString>{tr("稼働未確認"), "unknown"};
+        return e.orphaned
+                   ? std::pair<QString, QString>{remoteRun(e.manifest) ? tr("未接続") : tr("プロセスなし"),
+                                                 "orphan"}
+                   : std::pair<QString, QString>{tr("稼働未確認"), "unknown"};
     return {runStateName(e.status), runStateKind(e.status)};
 }
 // The names of the state filters, as their keys "", active, finished, stopped and prepared.
@@ -969,11 +972,10 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
     auto *repairLayout = new QVBoxLayout(repairBox);
     repairLayout->setContentsMargins(12, 10, 12, 10);
     repairLayout->setSpacing(8);
-    auto *repairText =
-        new QLabel(tr("このPCで「実行中」と記録されたまま、計算のプロセスが終了しています。記録を"
-                      "「中断」に直し、ログからエネルギーを求めます。"));
-    repairText->setWordWrap(true);
-    repairLayout->addWidget(repairText);
+    repairNote = new QLabel;
+    repairNote->setObjectName("historyRepairNote");
+    repairNote->setWordWrap(true);
+    repairLayout->addWidget(repairNote);
     repair = new QPushButton(tr("記録を修復"));
     repair->setObjectName("historyRepair");
     repairLayout->addWidget(repair, 0, Qt::AlignLeft);
@@ -1527,21 +1529,33 @@ void HistoryPanel::updateToolbar() {
     executionRootAction->setEnabled(!same || !followsExecution);
     // Jobs recorded as running by MolForma on this PC whose process has ended.
     QStringList orphans;
+    int remotes = 0;
     for (const auto &e : std::as_const(entries))
-        if (e.orphaned && e.directory != activeDirectory())
+        if (e.orphaned && e.directory != activeDirectory()) {
+            remotes += remoteRun(e.manifest);
             orphans << (e.created.isValid()
                             ? dateLocale().toString(e.created.toLocalTime(), tr("M月d日")) + " "
                             : QString()) +
                            e.name;
+        }
+    repairAll->setText(remotes == orphans.size() ? tr("再接続") : tr("記録を修復"));
     orphanBanner->setVisible(!orphans.isEmpty());
     if (!orphans.isEmpty()) {
         const auto names = orphans.size() == 1   ? orphans[0]
                            : orphans.size() == 2 ? tr("%1、%2").arg(orphans[0], orphans[1])
                                                  : tr("%1、%2 ほか").arg(orphans[0], orphans[1]);
-        orphanText->setText(tr("このPCで「実行中」と記録されたまま、計算のプロセスが終了しているジョブが %n "
-                               "件あります（%1）。記録を「中断」に直し、ログからエネルギーを求めます。",
-                               nullptr, int(orphans.size()))
-                                .arg(names));
+        orphanText->setText(
+            remotes == orphans.size()
+                ? tr("リモートの計算を見張るプロセスが終了しているジョブが %n "
+                     "件あります（%1）。再接続すると、実行先で"
+                     "ジョブの状態を確かめ、終わっていれば結果を回収します。",
+                     nullptr, int(orphans.size()))
+                      .arg(names)
+                : tr("このPCで「実行中」と記録されたまま、計算のプロセスが終了しているジョブが %n "
+                     "件あります（%1）。記録を「中断」に直し、ログからエネルギーを求めます。",
+                     nullptr, int(orphans.size()))
+                          .arg(names) +
+                      (remotes ? tr("リモートの計算 %n 件は再接続します。", nullptr, remotes) : QString()));
     }
 }
 void HistoryPanel::showEmptyPage() {
@@ -1828,6 +1842,8 @@ void HistoryPanel::showFacts(const HistoryEntry &e, bool owned) {
              : summary["normal_termination"].toBool() ? tr("%1 · 正常終了の記録あり").arg(code)
                                                       : tr("%1 · 正常終了の記録なし").arg(code));
     }
+    if (remoteRun(e.manifest))
+        text("remote", tr("実行先"), remoteRunText(e.manifest));
     text("integrity", tr("入力照合"), historyIntegrity(e));
     QStringList diagnoses;
     for (const auto &value : e.manifest["diagnostics"].toArray()) {
@@ -1972,6 +1988,14 @@ void HistoryPanel::updateActions() {
     const bool unfinished = e && runStateActive(e->status);
     repair->setEnabled(exists && e->valid && e->orphaned && !owned);
     repairBox->setVisible(e && e->orphaned && !owned && !comparing);
+    // A remote run may go on there: it is reconnected, not marked as interrupted.
+    const bool remote = e && remoteRun(e->manifest);
+    repair->setText(remote ? tr("再接続") : tr("記録を修復"));
+    repairNote->setText(
+        remote ? tr("リモートの計算を見張るプロセスが終了しています（PCの再起動など）。再接続すると、"
+                    "実行先でジョブの状態を確かめ、終わっていれば結果を回収します。")
+               : tr("このPCで「実行中」と記録されたまま、計算のプロセスが終了しています。記録を"
+                    "「中断」に直し、ログからエネルギーを求めます。"));
     const bool movable = exists && e->valid && !owned && (!unfinished || e->orphaned);
     trash->setEnabled(movable);
     trash->setVisible(movable);
@@ -2080,8 +2104,23 @@ void HistoryPanel::repairSelected() {
     window->checkMcpPath(directory);
     if (directory == activeDirectory())
         fail(tr("このウィンドウで実行中の計算です。"));
-    repairHistoryEntry(directory);
+    repairOrReconnect(directory);
     refresh();
+}
+void HistoryPanel::repairOrReconnect(const QString &directory) {
+    const auto entry = readHistoryEntry(directory);
+    if (!remoteRun(entry.manifest)) {
+        repairHistoryEntry(directory);
+        return;
+    }
+    // The job may go on there: a new supervisor looks at it and fetches its results when it ends.
+    if (run.supervisorProgram().isEmpty())
+        fail(tr("このセッションでは、リモートの計算を見張るプロセスを起動できません。"));
+    if (!resumeRemoteRun(directory, run.supervisorProgram()))
+        fail(
+            tr("リモートの計算に再接続できません（別のPCで見張られているか、実行中の記録ではありません）。"));
+    window->statusBar()->showMessage(tr("リモートの計算に再接続しました: %1").arg(entry.name), 8000);
+    QTimer::singleShot(3000, this, [this] { refresh(); });
 }
 void HistoryPanel::importRun(const QString &path) {
     const auto source = path.isEmpty() ? selectedDirectory() : path;
@@ -2099,7 +2138,7 @@ void HistoryPanel::repairOrphans() {
     for (const auto &e : std::as_const(entries))
         if (e.orphaned && e.directory != activeDirectory()) {
             window->checkMcpPath(e.directory);
-            repairHistoryEntry(e.directory);
+            repairOrReconnect(e.directory);
         }
     refresh();
 }

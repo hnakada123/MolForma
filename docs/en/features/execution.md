@@ -1,12 +1,12 @@
 # “3 Run settings”
 
-Sets how NWChem and MPI are launched and saves the run as a job. At the top are the target calculation (one line with method, basis set and task), “Load into result viewer when done” and “Save as job”; on the left the settings (“Executable and job folder”, “Resources”, “Additional environment variables”); on the right the pre-run check and “Launch command”. You start a calculation with “Run calculation” (F5) in the header and stop it with “Stop” in the header (this tab has no duplicate buttons). The state and log of the running or last calculation appear in the run panel (below), which opens from any tab. Specify each executable by name (searched in PATH) or by path; for a name, the location found in PATH is shown below the field (for a path, only in the check card on the right; if it is not found, the reason also appears below the field). Opening a project never starts a run.
+Sets how NWChem and MPI are launched and saves the run as a job. At the top are the target calculation (one line with method, basis set and task), “Load into result viewer when done” and “Save as job”; on the left the settings (“Executable and job folder” with the destination, “Resources”, “Additional environment variables”); on the right the pre-run check and “Launch command”. You start a calculation with “Run calculation” (F5) in the header and stop it with “Stop” in the header (this tab has no duplicate buttons). The state and log of the running or last calculation appear in the run panel (below), which opens from any tab. Specify each executable by name (searched in PATH) or by path; for a name, the location found in PATH is shown below the field (for a path, only in the check card on the right; if it is not found, the reason also appears below the field). Opening a project never starts a run.
 
-![The “3 Run settings” tab: the executable and job folder (nwchem, launch with MPI, mpirun, ~/MolForma/jobs) and resources (4 MPI processes) on the left, and the pre-run checks and launch command on the right](images/execution/01_settings.png)
+![The “3 Run settings” tab: the executable and job folder (destination this PC, nwchem, launch with MPI, mpirun, ~/MolForma/jobs) and resources (4 MPI processes) on the left, and the pre-run checks and launch command on the right](images/execution/01_settings.png)
 
 **Figure 1** “3 Run settings”. Below the executable and MPI launcher fields appears where PATH found them, and the resources show how many of this PC's logical CPUs are used.
 
-- **Pre-run check**: Lists the NWChem executable, the MPI launcher (when launching with MPI), the reference directory, the job folder, NWCHEM_BASIS_LIBRARY (when set) and the NWChem input, one per line with the location or result found, followed by any other errors and checks. The card title reads “Ready to run”, “Cannot run (n problems)” and so on, in the same form as the checks on the other settings tabs. “Recheck” checks again.
+- **Pre-run check**: Lists the NWChem executable, the MPI launcher (when launching with MPI), the reference directory, the job folder, NWCHEM_BASIS_LIBRARY (when set) and the NWChem input, one per line with the location or result found, followed by any other errors and checks. With a remote destination it checks the destination and `ssh` and `scp` of this PC instead of the NWChem executable, the MPI launcher and NWCHEM_BASIS_LIBRARY ([Run on a remote computer](#run-on-a-remote-computer-ssh-slurm-pbs)). The card title reads “Ready to run”, “Cannot run (n problems)” and so on, in the same form as the checks on the other settings tabs. “Recheck” checks again.
 - **Resources**: Shows the logical CPUs used (from processes and threads) as squares, one per logical CPU of this computer (red when exceeded), and the estimated total NWChem memory (processes × memory per process).
 - **Run panel (run status and log)**: Opens at the bottom of the window, below the tabs, and the tabs become lower by its height while it is open (it never covers them, so nothing is hidden, and their width does not change). It opens when a calculation starts. You can open it from any tab with “Running” in the header, the run status in the status bar, “Calculation → Run status and log” (Ctrl+Shift+L), “Show run status and log” in “History” or “Show run status and log” in this tab; the header, status bar and menu also close it. Closing it does not stop the calculation.
   - **Height**: Drag the border with the tabs to change it; the app settings remember it. The button at the top right of the panel extends it over the place of the tabs, and opening a tab returns it to its height. In a window too low for both (less than about 710 px high) it takes the place of the tabs from the start, and opening a tab closes it. When a table of the result viewer gets so low that its selected row would be hidden, it scrolls to keep the row in sight (unless you had already scrolled the row out of view).
@@ -21,6 +21,7 @@ Sets how NWChem and MPI are launched and saves the run as a job. At the top are 
 
 | Item | Behavior |
 | --- | --- |
+| Destination | “This PC” by default. A computer registered with “Remote destinations…” gets the job copied, submitted and fetched back over SSH (below). Not changeable over MCP |
 | NWChem executable | Default `nwchem`. Before a local run, the file and its execute permission are checked |
 | Launch mode | MPI or direct. MPI runs `mpirun/mpiexec -np <processes> <NWChem> input.nw` |
 | MPI launcher, MPI processes | Default `mpirun` with 2 processes. Give the process count including MPI-PR helper processes; it is not adjusted automatically |
@@ -78,23 +79,81 @@ The supervisor runs only a job that MolForma has just saved (its state is “Sta
 
 ## Run on another computer (job script)
 
-MolForma does not transfer files over SSH or submit to schedulers. Instead it can add a start script, `job.sh`, to the folder of “Save as job”, and register the output that comes back in “History”.
+To transfer and submit over SSH from MolForma, use [Run on a remote computer](#run-on-a-remote-computer-ssh-slurm-pbs). For a computer MolForma cannot reach over SSH, it can add a start script, `job.sh`, to the folder of “Save as job”, which you copy by hand, and register the output that comes back in “History”.
 
 1. Choose “Shell script”, “Slurm (sbatch)” or “PBS (qsub)” for “Job script” in “3 Run settings”. For Slurm and PBS you can also name the queue or partition (optional).
 2. Create the job folder with “Save as job”. `job.sh` holds the number of MPI processes and threads, the time limit (if set), and the names of the executable and MPI launcher exactly as “3 Run settings” has them.
-3. Copy the whole folder to where it runs, and start it with `sbatch job.sh` (Slurm), `qsub job.sh` (PBS) or `./job.sh`. The output goes to `output.out` and `stderr.err` in the same folder.
+3. Copy the whole folder to where it runs, and start it with `sbatch job.sh` (Slurm), `qsub job.sh` (PBS) or `./job.sh`. The output goes to `output.out` and `stderr.err` in the same folder, and the exit code of NWChem (or the MPI launcher) to `exit_code`.
 4. Bring `output.out` (and, if needed, files such as the orbitals) back into the original job folder, select the job in “History” and press “Register the result of a run elsewhere” ([“History”](history.md#import-calculations-run-elsewhere)).
 
-| Kind | Head of the script | Working directory |
+| Kind | Head of the script (default template) | Working directory |
 | --- | --- | --- |
 | Shell script | none | The folder of the script |
-| Slurm | `#SBATCH --job-name`, `--nodes=1`, `--ntasks` (MPI processes), `--cpus-per-task` (threads), `--time`, `--partition` | `SLURM_SUBMIT_DIR` |
-| PBS | `#PBS -N`, `-l select=1:ncpus=…:mpiprocs=…:ompthreads=…`, `-l walltime`, `-q` | `PBS_O_WORKDIR` |
+| Slurm | `#SBATCH --job-name`, `--nodes=1`, `--ntasks` (MPI processes), `--cpus-per-task` (threads), `--time`, `--partition`, `--output=scheduler-%j.log` | `SLURM_SUBMIT_DIR` |
+| PBS | `#PBS -N`, `-l select=1:ncpus=…:mpiprocs=…:ompthreads=…`, `-l walltime`, `-q`, `-j oe` | `PBS_O_WORKDIR` |
 
 - Lines to run before NWChem, such as loading modules, go into “Job script (running on another computer)” in “Edit → Preferences”. They are not saved in projects and are added to every `job.sh` made on this PC (so the contents of a project you received never enter a script as they are).
 - The thread-count variables (`OMP_NUM_THREADS` and the like) are exported. Rows of “Additional environment variables” usually name places of this PC, so they are written as comments (`# export …`); enable what the other computer needs.
-- The script is a template for a run on one node. Add several nodes, an account name, GPUs and the like by editing the saved `job.sh`. Absolute paths such as an input movecs are written into the input as paths of this PC.
+- The default header assumes a run on one node. Add an account name, memory, several nodes, GPUs and the like to the templates below (lines that only one computer needs can go into “Extra header lines” of its remote destination). Absolute paths such as an input movecs are written into the input as paths of this PC.
 - Jobs that run locally (“Run calculation” and the queue) get no `job.sh`.
+
+### Script headers (templates)
+
+The head of Slurm and PBS scripts (the `#SBATCH` and `#PBS` lines) is made from the templates in “Slurm header” and “PBS header” of “Edit → Preferences”. They are saved in the app settings and used both for the `job.sh` of “Save as job” and for remote runs. “Reset headers” brings back the contents of the table above.
+
+| Placeholder | Value |
+| --- | --- |
+| `{name}` | The calculation name (`start` of “2 Calculation”) |
+| `{ranks}` | MPI processes (1 for a direct start) |
+| `{threads}` | Threads per process (the larger of OpenMP and BLAS) |
+| `{omp_threads}`, `{blas_threads}` | OpenMP and BLAS threads |
+| `{cpus}` | Processes × threads |
+| `{time}` | The time limit (`HH:MM:SS`); no value without a limit |
+| `{queue}` | The queue or partition; no value when it is blank |
+| `{memory_mb}` | NWChem’s `memory` (MB per process) |
+
+- Lines start with `#`. A line with a placeholder that has no value is left out (without a time limit, for example, the line `#SBATCH --time={time}`).
+- A template with an unknown placeholder, a line not starting with `#` or control characters cannot be saved.
+
+## Run on a remote computer (SSH, Slurm, PBS)
+
+Choosing a computer reachable over SSH (a remote destination) as the “Destination” of “3 Run settings” runs “Run calculation” and the queue there. The input files are saved in a job folder on this PC, copied to the destination with `ssh` and `scp` and submitted; while it runs, its state and log are checked, and when it ends, the job folder on the destination is copied back into the job folder on this PC. The result viewer, history, restarts and chains work as for jobs run locally.
+
+1. Have the OpenSSH client (`ssh` and `scp`) on this PC, and make it connect without a password (add your key to `ssh-agent` or name it in `~/.ssh/config`). For a computer you have not used before, run `ssh host` once in a terminal to check and accept its host key.
+2. In “Remote destinations…” of “3 Run settings” (or of “Edit → Preferences”), press “Add” and fill in the host, working folder, submission and so on. “Test connection” connects once and checks the working folder, the scheduler’s commands, and NWChem and the MPI launcher.
+3. Choose the registered name as the “Destination”. The pre-run check lists the destination and `ssh` and `scp`, and “Launch command” shows where the job goes, how it is submitted, and the `job.sh` used there.
+4. Run with “Run calculation” (F5). “Run status” of the run panel shows the destination, the job ID and its state at the scheduler (queued, running and so on), and the log field appends the `output.out` of the destination at each check.
+
+| Item | Meaning |
+| --- | --- |
+| Name | The name shown as the “Destination”. Projects keep only this name |
+| Host (ssh) | `user@hostname` or a `Host` name of `~/.ssh/config`; letters, digits and `. _ @ % + -` |
+| Port | 0 as ssh is configured (22 by default) |
+| Working folder | Where the job folders are made on the destination; `~/molforma-jobs` by default. `~/` starts from the home folder. Letters, digits and `. _ / + -` only |
+| Submission | Shell (`job.sh` in the background on the computer it logs in to), Slurm (`sbatch`), PBS (`qsub`) |
+| NWChem executable, MPI launcher | The names or paths started on the destination; blank uses the names of “3 Run settings” |
+| Check interval | 10–3600 seconds, 30 by default. Each check connects over SSH once |
+| Extra header lines | `#` lines added after the Slurm or PBS header (template), such as `#SBATCH --account=…`. Placeholders work too |
+| Preparation lines | Lines the `job.sh` of this destination runs after the preparation lines of Preferences and before NWChem (`module load nwchem`, for example) |
+
+- **What is copied**: `input.nw` and `job.sh` of the job folder, and for a restart the database and the like. `run.json`, `project.molforma.json` and the note are not copied. On the destination a job folder of the same name is made (`working folder/name-date-ID`).
+- **Submission**: Shell starts `setsid nohup ./job.sh &` (`nohup` alone without `setsid`), Slurm `sbatch --parsable job.sh` and PBS `qsub job.sh`; the process or job ID goes into `run.json`. The commands run in a login shell (`bash -l`), with the `PATH` and `module` of a terminal login.
+- **Checks**: At each interval the state is looked up from the process (Shell), `squeue` (Slurm; `sacct` once it has ended) or `qstat` (PBS), and the end is told by the `exit_code` that `job.sh` writes. A job that ended without `exit_code` is taken for ended at the second check, allowing for file sharing that lags.
+- **Fetching back**: When it ends, the whole job folder of the destination is copied back, putting `output.out`, `stderr.err`, `exit_code`, orbitals, visualization files, the database and so on into the local job folder (`input.nw`, `job.sh`, `run.json` and the project are not replaced). The folder on the destination is not deleted.
+- **How it ends**: `exit_code` 0 is “Finished”, any other value “Failed”. A stop gives “Cancelled”, a Slurm time limit (`TIMEOUT` of `sacct`) “Time limit”, and a job that ended without an exit code “Interrupted”. The time limit goes to the scheduler as `{time}` of the header for Slurm and PBS; for Shell the supervisor stops the job when the time has passed.
+- **Stopping**: “Stop” runs `scancel` (Slurm), `qdel` (PBS) or sends `SIGTERM` to the process group of the job (Shell), and the results are still fetched back. Stopped while copying, the job is not submitted.
+- **When the destination cannot be reached**: a failed check or fetch does not stop the calculation; the supervisor connects again at each interval, and the run panel and “History” show why and since when it fails. Failures before submission (retried up to three times), a working folder that cannot be made, or a failing submit command give “Failed” with the output of `ssh`, `sbatch` and the like.
+- **When the window closes or the PC restarts**: the job on the destination goes on regardless of the supervisor. If the supervisor ends with a logout or restart, the job shows as “Not connected” in “History”, and “Reconnect” starts a new supervisor that looks at it again (and fetches the results if it has ended). At the next startup, and while a window follows the job, it reconnects by itself. A signal to the supervisor never stops the job.
+
+Notes and limitations:
+
+- Typed passwords, one-time passwords and accepting unknown host keys are not supported (ssh runs with `BatchMode=yes`). MolForma saves neither keys nor passwords.
+- “Additional environment variables” are not exported on the destination (`job.sh` holds them as comments); put what it needs into its “Preparation lines”. Initial orbitals read from a file (input movecs) cannot be used; to go on from an earlier job use “Prepare to continue” (which copies the database). Absolute paths such as `scratch_dir` and `permanent_dir` are written as paths of the destination and not checked on this PC.
+- The whole job folder is fetched back, including temporary files of NWChem where its settings leave them in the working folder.
+- The working folder and job folder paths on the destination may hold only letters, digits and `. _ / + -` (a home path with a space fails).
+- Destinations are saved in the same app settings as “Edit → Preferences”; projects keep only the name. A project whose destination is not registered on this PC cannot run, and a registered destination you did not choose in MolForma is confirmed before the run. A job whose destination was removed or now leads to another host cannot be reconnected.
+- MCP cannot change the destination (`remote` of `set_execution` is protected). The headless MCP server (`--mcp`) needs `--mcp-keep-runs` for remote runs.
+- The behavior was checked with test programs standing in for `ssh`, `scp` and Slurm (below). It has not been checked with a real SSH server, Slurm or PBS, nor on Windows and macOS.
 
 ## Environment and paths
 
@@ -128,9 +187,9 @@ For stopping and the time limit, the supervisor first requests termination and k
 
 Launch failure, nonzero exit, stop and time limit are shown and recorded separately. “Exit code 0” means that the process ended normally. When a job that ended normally is loaded into the result viewer, the optimization convergence, calculation energy, number of imaginary frequencies and number of excited states read from the log are shown in one line in “Run status” of the run panel and in the status bar. See the log for the details of each task.
 
-The settings are saved in `document.nwchem_execution` and support the shared Undo/Redo, Ctrl+S and reloading. In “Edit → Preferences” (with the same cards and environment variable table as this tab) you can save to the app settings the defaults for the executable, launch mode, MPI launcher, MPI processes, threads, OpenMP stack, job folder, time limit and additional environment variables, the “xTB executable” of “External programs” (the xtb that “Tools → Optimize with xTB…” starts, by name or path; blank uses xtb from PATH), as well as whether to load a water molecule at startup (off by default, so the app starts with a new, empty state), the 3D rendering method and the display language (both take effect after a restart). The defaults are used for new projects and when opening structure files other than projects (XYZ, SDF, PDB, etc.); settings saved in a project are not changed. “Load current run settings” imports the values of the project being shown. Ctrl+S also commits an entry being typed in the environment variable table. Unknown fields are preserved. Applying a calculation preset does not change the run settings.
+The settings are saved in `document.nwchem_execution` and support the shared Undo/Redo, Ctrl+S and reloading. In “Edit → Preferences” (with the same cards and environment variable table as this tab) you can save to the app settings the defaults for the destination, executable, launch mode, MPI launcher, MPI processes, threads, OpenMP stack, job folder, time limit and additional environment variables, the preparation lines and Slurm/PBS headers of job scripts, the remote destinations, the “xTB executable” of “External programs” (the xtb that “Tools → Optimize with xTB…” starts, by name or path; blank uses xtb from PATH), as well as whether to load a water molecule at startup (off by default, so the app starts with a new, empty state), the 3D rendering method and the display language (both take effect after a restart). The defaults are used for new projects and when opening structure files other than projects (XYZ, SDF, PDB, etc.); settings saved in a project are not changed. “Load current run settings” imports the values of the project being shown. Ctrl+S also commits an entry being typed in the environment variable table. Unknown fields are preserved. Applying a calculation preset does not change the run settings.
 
-Currently each window runs one calculation at a time. Transfer, submission and monitoring over SSH, job scripts for several nodes and arbitrary extra MPI arguments are not supported. A calculation that did not end can go on from NWChem’s database with “Prepare to continue” in “History” or the run panel ([Restarting and carrying over calculations](history.md#restarting-and-carrying-over-calculations)). An optimized structure can be brought in with “Apply as candidate” in the “Result viewer”. The MPI-PR build configuration and the contents of the basis library are not detected automatically.
+Currently each window runs one calculation at a time. Arbitrary extra MPI arguments are not supported. A calculation that did not end can go on from NWChem’s database with “Prepare to continue” in “History” or the run panel ([Restarting and carrying over calculations](history.md#restarting-and-carrying-over-calculations)). An optimized structure can be brought in with “Apply as candidate” in the “Result viewer”. The MPI-PR build configuration and the contents of the basis library are not detected automatically.
 
 You can start a calculation from any tab with “Run calculation” in the header or “Calculation → Run calculation” (F5) (if it cannot start, “3 Run settings” opens and shows the reason in the check card). The “Calculation” menu also has stop, save as job, open result file and history. When a calculation ends (finished, failed, stopped or time limit), the result is shown in the run status at the right of the status bar (the summary of a log loaded into the result viewer also appears on the left); if MolForma is in the background, the taskbar alerts you, and a desktop notification is shown where supported. With “Load into result viewer when done” enabled (on by default, saved in the app settings), a job folder that ended normally is loaded into the result viewer. The tab does not switch. The log field of the run panel appends only what has been added to the file, so a text selection is not lost (it shows up to the last 128 Ki characters). New lines are shown while “Follow” is on (the default) or while the field is scrolled to the end. The log switch (stdout, stderr), file name, follow and copy are the same as in the file area of “History”. The state and elapsed time of the running or last calculation are always shown in the status bar at the bottom of the window; clicking it opens or closes the run panel. While running, the header also shows the elapsed time and “Stop”. “Stop” always asks for confirmation, wherever you press it.
 
@@ -140,7 +199,7 @@ The run panel shows recognized SCF convergence failures, optimization step limit
 
 ## Run settings verification
 
-The Qt Test `execution` uses a test process written in C++ to check the arguments, environment and working directory, the frozen copy of the input, protection of paths and existing files, save compatibility, launch failure, nonzero exit, stop, time limit and termination of Unix child processes, the log size limit, Undo/Redo, candidates, Ctrl+S while editing, shutdown, each item of the pre-run check, progress read from the running log (task stages, DRIVER steps and convergence criteria), opening, closing and placement of the run panel (the tabs stay uncovered, the height is remembered, filling the place of the tabs, low windows), its closing when the result viewer opens, stderr after a failure, “Stop…” and the header display, and the text below the executable field (only for names found in PATH). Regular CTest needs no NWChem, MPI or network. It also checks running, stopping and the time limit through the supervisor, going on and following again after the window closes, calculations that lost their supervisor, saving and restoring the queue, the contents of the job scripts, and the input and copied files of restarts.
+The Qt Test `execution` uses a test process written in C++ to check the arguments, environment and working directory, the frozen copy of the input, protection of paths and existing files, save compatibility, launch failure, nonzero exit, stop, time limit and termination of Unix child processes, the log size limit, Undo/Redo, candidates, Ctrl+S while editing, shutdown, each item of the pre-run check, progress read from the running log (task stages, DRIVER steps and convergence criteria), opening, closing and placement of the run panel (the tabs stay uncovered, the height is remembered, filling the place of the tabs, low windows), its closing when the result viewer opens, stderr after a failure, “Stop…” and the header display, and the text below the executable field (only for names found in PATH). Regular CTest needs no NWChem, MPI or network. It also checks running, stopping and the time limit through the supervisor, going on and following again after the window closes, calculations that lost their supervisor, saving and restoring the queue, the contents and templates of the job scripts, and the input and copied files of restarts. Remote runs are checked with a test program (`tests/fake_ssh.cpp`) that stands in for `ssh` and `scp` and treats another folder of this PC as the home of the destination, and with shell scripts standing in for `sbatch`, `squeue`, `scancel` and `sacct`: copying, submitting, checking and fetching back with Shell and Slurm, a failing exit code, stopping, a working folder that cannot be made, retries while the destination cannot be reached, and reconnecting after the supervisor was lost (Unix only).
 
 On 2026-11-10, on Linux with NWChem 7.3.1 (2 MPI processes), an HF/STO-3G “Optimize → Frequencies” of HCN was stopped by a step limit of 2 and restarted with “Prepare to continue”: the calculation began at the energy of the structure it had stopped at (−91.57693978 Eh), converged, and completed the frequencies. Going on after the window closes was checked with the test process. With the AppImage (1.1.0, Arch Linux) it was also confirmed that a calculation goes on after its MCP session ends and that the next session follows and stops it. It has not been checked on Windows or macOS.
 

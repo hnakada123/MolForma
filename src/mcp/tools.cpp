@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "mcp/tools.h"
 #include "model/units.h"
+#include "nwchem/remote_execution.h"
 #include "nwchem/run_diagnostics.h"
 #include "results/energy_profile.h"
 #include "results/result_summary.h"
@@ -208,6 +209,16 @@ QJsonObject calculationJson(const NwchemRun &run, const QString &savedBundle, co
         diagnostics.append(item);
     }
     result["diagnostics"] = diagnostics;
+    // A run on a remote destination: where, its job there and how it stands.
+    if (const auto manifest = run.plan().manifest; remoteRun(manifest)) {
+        const auto remote = manifest["remote"].toObject();
+        result["remote"] = QJsonObject{{"destination", remote["host"].toObject()["name"]},
+                                       {"scheduler", remote["host"].toObject()["scheduler"]},
+                                       {"job", remote["job"]},
+                                       {"phase", remote["phase"]},
+                                       {"state", remote["state"]},
+                                       {"text", remoteRunText(manifest)}};
+    }
     return result;
 }
 QJsonObject resultsJson(const ResultData &r, const QJsonObject &args, QJsonObject out) {

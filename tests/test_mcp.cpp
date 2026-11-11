@@ -1774,6 +1774,11 @@ class McpTest : public QObject {
                                                                              {"name", "LD_PRELOAD"},
                                                                              {"value", "/tmp/x.so"}}}}}},
              {"preview", false}})));
+        // So is the computer that runs it: a remote destination is the user's choice.
+        const auto remote = change(server, "set_execution",
+                                   {{"settings", QJsonObject{{"remote", "cluster"}}}, {"preview", false}});
+        QVERIFY(failed(remote));
+        QVERIFY(text(remote).contains("cannot be changed over MCP"));
         // Other launch settings, and protected values left unchanged, remain editable.
         QVERIFY(!failed(change(
             server, "set_execution",

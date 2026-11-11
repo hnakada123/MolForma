@@ -86,6 +86,7 @@ add_library(molforma_nwchem STATIC
     src/nwchem/nwchem_output.cpp
     src/nwchem/nwchem_queue.cpp
     src/nwchem/nwchem_restart.cpp
+    src/nwchem/remote_execution.cpp
     src/nwchem/run_diagnostics.cpp
     src/nwchem/run_state.cpp)
 target_link_libraries(molforma_nwchem PUBLIC molforma_model PRIVATE molforma_editing molforma_results ${MOLFORMA_OPENBABEL})
@@ -126,6 +127,7 @@ add_library(molforma_ui STATIC
     src/ui/periodic_table.cpp
     src/ui/result_charts.cpp
     src/ui/property_geometry_view.cpp
+    src/ui/remote_hosts_dialog.cpp
     src/ui/spectroscopy_view.cpp
     src/ui/results_panel.cpp
     src/ui/structure_import.cpp
@@ -242,9 +244,12 @@ if(BUILD_TESTING)
     add_executable(fake_nwchem tests/fake_nwchem.cpp)
     target_link_libraries(fake_nwchem PRIVATE Qt6::Core)
     add_dependencies(test_mcp fake_nwchem)
+    # A stand-in for ssh and scp (test_execution: runs on a remote destination).
+    add_executable(fake_ssh tests/fake_ssh.cpp)
+    target_link_libraries(fake_ssh PRIVATE Qt6::Core)
     add_executable(test_execution tests/test_execution.cpp)
     target_link_libraries(test_execution PRIVATE molforma_ui Qt6::Test)
-    add_dependencies(test_execution fake_nwchem molforma)
+    add_dependencies(test_execution fake_nwchem fake_ssh molforma)
     add_test(NAME execution COMMAND test_execution)
     add_executable(test_input_preview tests/test_input_preview.cpp)
     target_link_libraries(test_input_preview PRIVATE molforma_ui Qt6::Test)
@@ -280,6 +285,8 @@ if(BUILD_TESTING)
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT6_INSTALL_PREFIX}/bin")
     endif()
     set_tests_properties(core services editor coordinates calculation advanced execution input_preview results history output molden translations PROPERTIES TIMEOUT 120)
+    # Remote runs wait for the looks of their supervisors (every 10 seconds at the least).
+    set_tests_properties(execution PROPERTIES TIMEOUT 240)
 endif()
 if(APPLE)
     # macOS: MolForma.app, which holds the libraries it uses (Qt, Open Babel with its format plugins and
@@ -375,7 +382,7 @@ if(MSVC)
     # loads (Qt's as well), Open Babel's plugins and a qt.conf beside it.
     set(runtime_targets molforma)
     if(BUILD_TESTING)
-        list(APPEND runtime_targets fake_nwchem fake_xtb test_mcp test_core test_services test_editor test_rendering test_coordinates
+        list(APPEND runtime_targets fake_nwchem fake_ssh fake_xtb test_mcp test_core test_services test_editor test_rendering test_coordinates
             test_calculation test_advanced test_execution test_input_preview test_results test_history test_output
             test_translations test_molden)
     endif()

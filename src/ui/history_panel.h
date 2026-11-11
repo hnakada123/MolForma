@@ -124,7 +124,7 @@ class HistoryPanel : public QWidget {
     QPushButton *compare, *cancel, *refreshButton, *repairAll;
     QAction *csv;
     QFrame *orphanBanner;
-    QLabel *orphanText;
+    QLabel *orphanText, *repairNote;
     // The list and the files.
     QStackedWidget *pages, *fileStack;
     QSplitter *listSplit;
@@ -173,5 +173,7 @@ class HistoryPanel : public QWidget {
     void saveMemo();
 
     void repairOrphans();
+    // Marks an orphaned record "interrupted", or starts a supervisor again for a remote run.
+    void repairOrReconnect(const QString &directory);
 };
 } // namespace mf
