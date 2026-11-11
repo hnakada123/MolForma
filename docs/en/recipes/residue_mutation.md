@@ -16,11 +16,11 @@ Replace His of the ACE–Ala–His–Glu–NME of [recipe 7](capped_peptide.md) 
 ## 1. Replace His with Phe
 
 1. Open the project of [recipe 7](capped_peptide.md) (`ace_ahe_nme.molforma.json`).
-2. Click “HIS 2” in the sequence of the 3D view to select the atoms of His.
+2. Click “HIS” (number 2) in the sequence above the 3D view to select the atoms of His.
 3. Click “Phenylalanine” in the category “Amino acid” of the parts palette and press “Mutate selected residue” on the “Residue” page.
 4. Check that the candidate is C20H27N4O6 · 57 atoms · charge −1 and press “Confirm changes”.
 
-   ![The candidate of mutating HIS 2 to “Phenylalanine”: the sequence above the 3D view reads ACE 0 · ALA 1 · PHE 2 · GLU 3 · NME 4, and the amber bar shows the candidate](images/residue_mutation/01_mutation_candidate.png)
+   ![The candidate of mutating HIS 2 to “Phenylalanine”: the sequence above the 3D view reads ACE ALA PHE GLU NME (numbers 0–4), and the amber bar shows the candidate](images/residue_mutation/01_mutation_candidate.png)
 
    **Figure 1** The candidate of mutating His to Phe (C20H27N4O6 · 57 atoms). The sequence shows PHE too.
 
@@ -30,11 +30,11 @@ The backbone N, Cα, C and O stay where they are; the side chain and its hydroge
 
 1. Choose “PHE 2” and press “Delete residue (split chain)” on the “Residue” page. The candidate is C11H20N3O6 · 40 atoms; confirm it.
 
-   ![The candidate of “Delete residue (split chain)” on PHE 2: the atoms of Phe are crossed out in red, and green “+ C” and “+ N” mark the new ends](images/residue_mutation/02_delete_candidate.png)
+   ![The candidate of “Delete residue (split chain)” on PHE 2: the atoms of Phe are crossed out in red, and green “+ C” and “+ N” mark the new ends; the sequence above the 3D view is split into ACE ALA and GLU NME by the chain tags “1” and “2”](images/residue_mutation/02_delete_candidate.png)
 
    **Figure 2** The candidate of “Delete residue (split chain)”, with the atoms to remove crossed out.
 
-2. The chain splits into ACE–Ala and Glu–NME, and the cut ends become uncharged termini (COOH at the C-terminus of Ala, NH2 at the N-terminus of Glu). The “Residue list” of the “Residue” page shows them as “ALA 1 · N-terminus ACE · C-terminus COOH” and “GLU 3 · N-terminus Neutral · C-terminus NME”.
+2. The chain splits into ACE–Ala and Glu–NME (in the sequence above the 3D view, tags “1” and “2” mark the starts of the chains), and the cut ends become uncharged termini (COOH at the C-terminus of Ala, NH2 at the N-terminus of Glu). The “Residue list” of the “Residue” page shows them as “ALA 1 · N-terminus ACE · C-terminus COOH” and “GLU 3 · N-terminus Neutral · C-terminus NME”.
 
    ![The residue list after confirming: ACE 0, ALA 1 · N-terminus ACE · C-terminus COOH, GLU 3 · N-terminus neutral · C-terminus NME, NME 4](images/residue_mutation/03_split.png)
 
@@ -63,9 +63,9 @@ Reconnecting works only when the C of the C-terminus and the N of the N-terminus
 
 4. Tidy the new bond with “Clean up all”.
 
-   ![ACE–Ala–Glu–NME reconnected and cleaned up; the sequence reads ACE 0 · ALA 1 · GLU 3 · NME 4](images/residue_mutation/06_relinked.png)
+   ![ACE–Ala–Glu–NME reconnected and cleaned up; the sequence is one chain ACE ALA GLU NME (numbers 0, 1, 3 and 4), with “⋯” for the jump in the numbers between ALA and GLU](images/residue_mutation/06_relinked.png)
 
-   **Figure 6** ACE–Ala–Glu–NME reconnected and cleaned up.
+   **Figure 6** ACE–Ala–Glu–NME reconnected and cleaned up. There is no residue 2, so “⋯” appears between ALA and GLU in the sequence.
 
 When the ends are too far apart, reconnecting is refused with the present distance and how to close it (“The C–N distance is … Å. Bring it to 1.1–1.7 Å before linking (…).”). Cyclic peptides joining the two ends of one chain cannot be made (only ends of different chains).
 
@@ -81,9 +81,9 @@ An XYZ file has elements and coordinates only: opening it loses residues, formal
 
 2. Press “Recognize residues from bonds” on the “Residue” page. Standard amino acids are found from elements and connections and their atoms named, and the ACE and NME caps at the chain ends are recognized too, in a candidate (RDKit required).
 3. Formal charges come from the hydrogens: a carboxylate oxygen without hydrogen (COO−) gets −1, a nitrogen with four bonds (NH3+, Lys and Arg side chains) +1, and a His with hydrogens on both nitrogens is HIP (+1). The side-chain states (HID or HIE of His, charged or neutral Asp and Glu, …) follow the same way.
-4. Once confirmed, the sequence in the 3D view (ACE 0 · ALA 1 · PHE 2 · GLU 3 · NME 4) and the residue list are back, and the total charge follows the sum of formal charges (−1) (when it matched that sum before the recognition).
+4. Once confirmed, the sequence above the 3D view (ACE ALA PHE GLU NME, numbers 0–4) and the residue list are back, and the total charge follows the sum of formal charges (−1) (when it matched that sum before the recognition).
 
-   ![The candidate of “Recognize residues from bonds”: the sequence ACE 0 · ALA 1 · PHE 2 · GLU 3 · NME 4 is back, with charge −1](images/residue_mutation/08_recognize_candidate.png)
+   ![The candidate of “Recognize residues from bonds”: the sequence ACE ALA PHE GLU NME is back, with charge −1](images/residue_mutation/08_recognize_candidate.png)
 
    **Figure 8** The candidate of “Recognize residues from bonds”: the sequence, the caps and the charge of Glu come back.
 

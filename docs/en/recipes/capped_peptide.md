@@ -11,7 +11,7 @@ Build a three-residue peptide from its one-letter sequence and cap the N-terminu
 | Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux |
 | Practice data | [`ace_ahe_nme.molforma.json`](../../recipes/samples/ace_ahe_nme.molforma.json) |
 
-![ACE–Ala–His–Glu–NME built from its sequence, with the sequence in the 3D view](images/capped_peptide.png)
+![ACE–Ala–His–Glu–NME built from its sequence, with the sequence ACE ALA HIS GLU NME above the 3D view](images/capped_peptide.png)
 
 ## 1. Build from the sequence
 
@@ -25,7 +25,7 @@ Build a three-residue peptide from its one-letter sequence and cap the N-terminu
 
 4. Press “Build from sequence”. Check that the candidate is C17H25N6O6 · 54 atoms · charge −1 and press “Confirm changes”. The total charge before building (0) matched the sum of formal charges (0), so it follows the −1 of Glu.
 
-   ![The candidate of “Build from sequence”: the amber bar shows the candidate with 54 atoms added, and the sequence ACE 0 · ALA 1 · HIS 2 · GLU 3 · NME 4 appears above the 3D view](images/capped_peptide/02_build_candidate.png)
+   ![The candidate of “Build from sequence”: the amber bar shows the candidate with 54 atoms added, and the sequence above the 3D view shows ACE ALA HIS GLU NME with the numbers 0–4](images/capped_peptide/02_build_candidate.png)
 
    **Figure 2** The built peptide is shown as a candidate, with the sequence above the 3D view.
 
@@ -33,13 +33,13 @@ Build a three-residue peptide from its one-letter sequence and cap the N-terminu
 
    **Figure 3** The confirmed peptide (C17H25N6O6 · 54 atoms · charge −1).
 
-The top left of the 3D view shows “Sequence N → C   ACE 0 · ALA 1 · HIS 2 · GLU 3 · NME 4”. Clicking a residue name selects its atoms. The α-carbon labels show the configuration “(S)” of the L-amino acids.
+The sequence above the 3D view reads “ACE ALA HIS GLU NME”, each with its residue number (0–4) above it. Clicking a residue name selects its atoms. The α-carbon labels show the configuration “(S)” of the L-amino acids.
 
 ## 2. Change side-chain states and watch the total charge
 
-1. Click “HIS 2” in the sequence of the 3D view, or set “Select by” above the 3D view to “Residue” and click an atom of His.
+1. Click “HIS” (number 2) in the sequence above the 3D view, or set “Select by” above the 3D view to “Residue” and click an atom of His.
 
-   ![His selected with “Select by” “Residue”: the atoms of HIS 2 are ringed in orange](images/capped_peptide/04_his_selected.png)
+   ![His selected with “Select by” “Residue”: the atoms of HIS 2 are ringed in orange, and HIS is blue in the sequence](images/capped_peptide/04_his_selected.png)
 
    **Figure 4** With “Select by” “Residue”, clicking an atom of His selects the whole residue.
 
@@ -63,7 +63,7 @@ The state that goes in is that of the amino acid chosen in the palette (“Histi
 
 1. Choose a residue (ALA 1, for example) and, under “Backbone and side-chain dihedrals” on the “Residue” page, set “Dihedral” to phi and “Angle / °” to −57, then press “Apply dihedral”.
 
-   ![ALA 1 chosen, and dihedral phi with angle −57 applied under “Backbone and side-chain dihedrals”](images/capped_peptide/07_torsion_phi.png)
+   ![ALA 1 chosen in the sequence, and dihedral phi with angle −57 applied under “Backbone and side-chain dihedrals”](images/capped_peptide/07_torsion_phi.png)
 
    **Figure 7** “Backbone and side-chain dihedrals” on the “Residue” page: choose the dihedral and the angle, and apply.
 

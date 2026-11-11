@@ -33,6 +33,7 @@ class MainWindow;
 class SettingsCard;
 class ViewControls;
 class CoordinatesPanel;
+class SequenceTrack;
 
 // Owns the molecular workspace: palette, tools, selection, view, coordinate layout and properties.
 // Document transactions stay in the application session; this panel only observes it.
@@ -101,9 +102,9 @@ class MoleculePanel : public QWidget {
     // button() adds to (its row in the form).
     QHash<QFormLayout *, QVBoxLayout *> pageCards;
     QHash<QFormLayout *, std::pair<int, QWidget *>> buttonRows;
-    QLabel *measurement = nullptr, *sequenceLabel = nullptr, *mouseHint = nullptr, *measureTitle = nullptr,
-           *dimensionLabel = nullptr, *selectionTitle = nullptr, *selectionList = nullptr,
-           *candidateChanges = nullptr, *toolPart = nullptr;
+    QLabel *measurement = nullptr, *mouseHint = nullptr, *measureTitle = nullptr, *dimensionLabel = nullptr,
+           *selectionTitle = nullptr, *selectionList = nullptr, *candidateChanges = nullptr,
+           *toolPart = nullptr;
     QWidget *chargeEditor = nullptr;
     // The charge page: the calculation's charge and point-charge settings ("2 計算条件"), shown.
     QLabel *chargeSummary = nullptr, *chargeState = nullptr, *pointChargeState = nullptr,
@@ -121,7 +122,8 @@ class MoleculePanel : public QWidget {
     QToolButton *paletteToggle = nullptr;       // "パレット" at the bottom of the tool rail.
     QWidget *myPartsBar = nullptr;              // Saving, reading and removing the user's parts.
     QHash<QString, QWidget *> toolOptionGroups; // Option bar groups by object name.
-    QWidget *sequenceChip = nullptr, *measureCard = nullptr, *candidateCard = nullptr;
+    SequenceTrack *sequence = nullptr;          // The residues between the options and the 3D view.
+    QWidget *measureCard = nullptr, *candidateCard = nullptr;
     QAction *showHydrogens = nullptr, *showIndices = nullptr;
     QActionGroup *labelModes = nullptr;
     QCheckBox *autoH = nullptr, *keepSelection = nullptr, *keepTool = nullptr, *growth = nullptr;

@@ -736,7 +736,6 @@
     "ωB97X-D3（D3を含む長距離補正）": "ωB97X-D3 (range-separated, includes D3)",
     "…ログの末尾を表示しています。全文は保存先にあります。\n": "…Showing the end of the log. The full log is in the job folder.\n",
     "…末尾128 KiBを表示しています。\n": "…Showing the last 128 KiB.\n",
-    "…（全 %1 残基）": "… (%1 residues in all)",
     "→ %1（閉殻）": "→ %1 (closed shell)",
     "→ %1（開殻）": "→ %1 (open shell)",
     "▲ ほか %n 個": [
@@ -1894,7 +1893,6 @@
     "残基の原子を選択してください。": "Select atoms of a residue.",
     "残基の原子参照が不正です。": "Invalid atom reference in a residue.",
     "残基の編集（パレットのアミノ酸を使用）": "Edit residues (from palette)",
-    "残基をクリックすると、その残基の原子を選択します。": "Click a residue to select its atoms.",
     "残基を再認識": "Recognize residues again",
     "残基を削除": "Delete residue",
     "残基を削除（鎖を分割）": "Delete residue (split chain)",
@@ -2507,7 +2505,6 @@
     "配位結合を含む分子（金属錯体など）は力場整形の対象外です。「ツール → xTBで構造を最適化…」で整えられます。": "Molecules with dative bonds (such as metal complexes) are excluded from force-field cleanup. They can be shaped with “Tools → Optimize with xTB…”.",
     "配位距離は正の値にしてください。": "The coordination distance must be positive.",
     "配位（供与→中心）": "Dative (donor → center)",
-    "配列 N → C　%1": "Sequence N → C  %1",
     "配列から構築": "Build from sequence",
     "配列を入力してください（AGS または Ala-Gly-Ser）。": "Enter a sequence (AGS or Ala-Gly-Ser).",
     "配列長は1〜1000残基にしてください。": "The sequence must have 1–1000 residues.",
@@ -3563,5 +3560,25 @@
     "分裂（J / Hz）": "Splitting (J / Hz)",
     "δ ≈ σ基準 − σ対象。結合の並びが同じ（トポロジー的に等価な）核を1本にまとめ、遮蔽定数とJ結合を平均した一次の多重線です。強く結合した系（Δν ≈ J）の2次効果・配座の平均化は含みません。": "δ ≈ σref − σnucleus. Nuclei bonded alike (topologically equivalent) form one first-order multiplet with their mean shielding and J couplings. Second-order effects of strongly coupled systems (Δν ≈ J) and conformer averaging are not included.",
     "NMR（J結合による一次の多重線）": "NMR (first-order J multiplets)",
-    "貼り付けた基底": "Pasted basis"
+    "貼り付けた基底": "Pasted basis",
+    "鎖 %1": "Chain %1",
+    "配列": "Sequence",
+    "%n 残基（番号 %1）は構造にありません。": [
+        "Residue %1 is missing from the structure.",
+        "%n residues (%1) are missing from the structure."
+    ],
+    "クリック: 選択 · Shift＋クリック: 範囲 · Ctrl＋クリック: 追加・解除": "Click: select · Shift+click: range · Ctrl+click: add or remove",
+    "鎖を選ぶと、その鎖の始まりを表示します。": "Choose a chain to show its start.",
+    "3文字表記": "Three-letter codes",
+    "残基を3文字表記と1文字表記で切り替えます。はじめは、配列全体が収まるときだけ3文字表記です。": "Switches the residues between three-letter and one-letter codes. At first, three-letter codes are used only while the whole sequence fits.",
+    "配列を広げる": "Expand the sequence",
+    "配列を折りたたむ": "Collapse the sequence",
+    "%n 残基": [
+        "%n residue",
+        "%n residues"
+    ],
+    "%n 鎖": [
+        "%n chain",
+        "%n chains"
+    ]
 }

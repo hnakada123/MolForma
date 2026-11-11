@@ -16,11 +16,11 @@
 ## 1. HisをPheに置き換える
 
 1. [題材7](capped_peptide.md)のプロジェクト（`ace_ahe_nme.molforma.json`）を開きます。
-2. 3D画面の配列の「HIS 2」をクリックしてHisの原子を選びます。
+2. 3D画面の上の配列の「HIS」（番号 2）をクリックしてHisの原子を選びます。
 3. 部品パレットの分類「アミノ酸」で「フェニルアラニン」をクリックし、右側の「残基」ページの「選択残基を置換」を押します。
 4. 候補が C20H27N4O6 · 57原子 · 電荷 −1 であることを確かめて「変更を確定」します。
 
-   ![HIS 2を「フェニルアラニン」で置換した候補。3D画面の上の配列が ACE 0 · ALA 1 · PHE 2 · GLU 3 · NME 4 になり、琥珀色の帯に「変更候補: 残基を置換」が出ている](images/residue_mutation/01_mutation_candidate.png)
+   ![HIS 2を「フェニルアラニン」で置換した候補。3D画面の上の配列が ACE ALA PHE GLU NME（番号 0〜4）になり、琥珀色の帯に「変更候補: 残基を置換」が出ている](images/residue_mutation/01_mutation_candidate.png)
 
    **図1** HisをPheに置換した候補（C20H27N4O6 · 57原子）。配列の表示もPHEに変わります。
 
@@ -30,11 +30,11 @@
 
 1. 「PHE 2」を選び、「残基」ページの「残基を削除（鎖を分割）」を押します。候補は C11H20N3O6 · 40原子です。確定します。
 
-   ![PHE 2を「残基を削除（鎖を分割）」した候補。Pheの原子に赤い×印が付き、切れ目に緑の「＋ C」「＋ N」が出ている](images/residue_mutation/02_delete_candidate.png)
+   ![PHE 2を「残基を削除（鎖を分割）」した候補。Pheの原子に赤い×印が付き、切れ目に緑の「＋ C」「＋ N」が出ている。3D画面の上の配列は、鎖の始まりのタグ「1」「2」で ACE ALA と GLU NME に分かれている](images/residue_mutation/02_delete_candidate.png)
 
    **図2** 「残基を削除（鎖を分割）」の候補。消える原子に×印が付きます。
 
-2. 鎖はACE–Ala と Glu–NME の2本に分かれ、切れ目はそれぞれ非荷電の末端（AlaのC末端はCOOH、GluのN末端はNH2）になります。「残基」ページの「残基の一覧」には「ALA 1 · N末端 ACE · C末端 COOH」「GLU 3 · N末端 非荷電 · C末端 NME」のように表示されます。
+2. 鎖はACE–Ala と Glu–NME の2本に分かれ（3D画面の上の配列では、鎖の始まりに「1」「2」のタグが付きます）、切れ目はそれぞれ非荷電の末端（AlaのC末端はCOOH、GluのN末端はNH2）になります。「残基」ページの「残基の一覧」には「ALA 1 · N末端 ACE · C末端 COOH」「GLU 3 · N末端 非荷電 · C末端 NME」のように表示されます。
 
    ![確定後の「残基の一覧」。ACE 0、ALA 1 · N末端 ACE · C末端 COOH、GLU 3 · N末端 非荷電 · C末端 NME、NME 4 が並んでいる](images/residue_mutation/03_split.png)
 
@@ -63,9 +63,9 @@
 
 4. 「全体整形」で結合の周りを整えます。
 
-   ![再連結して整形したACE–Ala–Glu–NME。配列が ACE 0 · ALA 1 · GLU 3 · NME 4 になっている](images/residue_mutation/06_relinked.png)
+   ![再連結して整形したACE–Ala–Glu–NME。配列は1本の鎖の ACE ALA GLU NME（番号 0, 1, 3, 4）で、ALAとGLUのあいだに番号の飛びを示す「⋯」がある](images/residue_mutation/06_relinked.png)
 
-   **図6** 再連結して整形したACE–Ala–Glu–NME。
+   **図6** 再連結して整形したACE–Ala–Glu–NME。番号 2 の残基がないので、配列のALAとGLUのあいだに「⋯」が出ます。
 
 離れていると「C–N距離が … Å です。1.1〜1.7 Åに整えてから連結してください（…）」と、今の距離と近づけ方を表示して拒否します。同じ鎖の両端をつなぐ環状ペプチドは作れません（異なる鎖の末端どうしだけです）。
 
@@ -81,9 +81,9 @@ XYZファイルには元素と座標しかないので、開くと残基・形�
 
 2. 「残基」ページの「結合グラフから残基を認識」を押します。元素とつながりから標準アミノ酸の残基を見つけて原子名を付け、鎖の両端のACE・NMEのキャップも認識した候補を作ります（RDKitが必要）。
 3. 形式電荷は水素の数から決めます。水素のないカルボキシ基の酸素（COO−）は−1、4本の結合を持つ窒素（NH3+、Lys・Argの側鎖）は+1、両方の窒素に水素があるHisはHIP（+1）です。HisのHID・HIE、Asp・Gluの荷電・中性などの側鎖の状態も同じく決まります。
-4. 確定すると、3D画面の配列（ACE 0 · ALA 1 · PHE 2 · GLU 3 · NME 4）と残基の一覧が戻り、全電荷は形式電荷の合計（−1）に追従します（認識の前の全電荷が形式電荷の合計と一致していた場合）。
+4. 確定すると、3D画面の上の配列（ACE ALA PHE GLU NME、番号 0〜4）と残基の一覧が戻り、全電荷は形式電荷の合計（−1）に追従します（認識の前の全電荷が形式電荷の合計と一致していた場合）。
 
-   ![「結合グラフから残基を認識」の候補。配列 ACE 0 · ALA 1 · PHE 2 · GLU 3 · NME 4 が戻り、電荷は −1](images/residue_mutation/08_recognize_candidate.png)
+   ![「結合グラフから残基を認識」の候補。配列 ACE ALA PHE GLU NME が戻り、電荷は −1](images/residue_mutation/08_recognize_candidate.png)
 
    **図8** 「結合グラフから残基を認識」の候補。配列とキャップ、Gluの電荷が戻ります。
 

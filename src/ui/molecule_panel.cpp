@@ -17,6 +17,7 @@
 #include "ui/editor_chrome.h"
 #include "ui/main_window.h"
 #include "ui/periodic_table.h"
+#include "ui/sequence_track.h"
 #include "ui/structure_import.h"
 #include "ui/template_delegate.h"
 #include "ui/theme.h"
@@ -386,24 +387,16 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
     connect(banner, &CandidateControls::cancelRequested, this, &MoleculePanel::cancelCandidate);
     topRow->addWidget(banner);
     ml->addWidget(topRow);
-    // The 3D view, with the sequence, the view controls and the measurement in its corners.
+    // The sequence of the residues in a row of its own under the options, so that it never covers
+    // the molecule; clicking residues selects their atoms.
+    sequence = new SequenceTrack(settings);
+    connect(sequence, &SequenceTrack::selectionRequested, this,
+            [this](const Ids &ids) { safe([this, ids] { setSelection(ids); }); });
+    ml->addWidget(sequence);
+    // The 3D view, with the view controls and the measurement in its corners.
     view = new MoleculeView;
     auto *viewArea = new OverlayHost(view);
     viewArea->setObjectName("viewArea");
-    sequenceChip = new QFrame;
-    sequenceChip->setObjectName("sequenceChip");
-    auto *sequenceRow = new QHBoxLayout(sequenceChip);
-    sequenceRow->setContentsMargins(10, 4, 10, 4);
-    sequenceLabel = new QLabel;
-    sequenceLabel->setObjectName("sequenceLabel");
-    sequenceLabel->setWordWrap(true);
-    sequenceLabel->setTextFormat(Qt::RichText);
-    sequenceLabel->setTextInteractionFlags(Qt::LinksAccessibleByMouse);
-    connect(sequenceLabel, &QLabel::linkActivated, this, [this](const QString &rid) {
-        safe([this, rid] { setSelection(residue(displayDocument(), rid).atoms.values()); });
-    });
-    sequenceRow->addWidget(sequenceLabel);
-    viewArea->addOverlay(sequenceChip, Qt::AlignTop | Qt::AlignLeft);
     viewControls = new ViewControls(view, {{"viewAxisX", "viewAxisY", "viewAxisZ"},
                                            "viewFit",
                                            "rotationButton",
@@ -1031,10 +1024,7 @@ void MoleculePanel::refresh() {
         candidateChanges->setText(lines.join("<br>"));
     }
     topRow->setCurrentIndex(session.candidate() ? 1 : 0);
-    QStringList seq, plain;
     residueList->clear();
-    // Residue links colored in the markup, in the accent rather than the theme's link color.
-    const auto link = ChromeColors(QWidget::palette()).accentText.name();
     // N → C by chain and number: caps added after the chain was built (ACE 0, NME n+1) take their place.
     auto residues = d.residues;
     QStringList chainOrder;
@@ -1047,9 +1037,6 @@ void MoleculePanel::refresh() {
     });
     for (const auto &r : std::as_const(residues)) {
         QString label = r.code + " " + QString::number(r.number);
-        seq << QString("<a href=\"%1\"><span style=\"color:%3\">%2</span></a>")
-                   .arg(r.id.toHtmlEscaped(), label.toHtmlEscaped(), link);
-        plain << label;
         // The free ends of the chain, in the words of the "N末端" and "C末端" choices of this page.
         QStringList ends;
         const auto n = r.nTerminal, c = r.cTerminal;
@@ -1064,20 +1051,7 @@ void MoleculePanel::refresh() {
             new QListWidgetItem(ends.isEmpty() ? label : label + " · " + ends.join(" · "), residueList);
         item->setData(Qt::UserRole, r.id);
     }
-    // Long chains show their first residues; the "残基" tab lists them all.
-    if (const int count = seq.size(); count > 24) {
-        seq = seq.mid(0, 24) << tr("…（全 %1 残基）").arg(count);
-        plain = plain.mid(0, 24) << seq.last();
-    }
-    sequenceLabel->setText(seq.isEmpty() ? QString() : tr("配列 N → C　%1").arg(seq.join(" · ")));
-    // One line when the view is wide enough, wrapping below the view controls otherwise.
-    const auto margins = sequenceChip->layout()->contentsMargins();
-    sequenceChip->setMaximumWidth(
-        sequenceLabel->fontMetrics().horizontalAdvance(tr("配列 N → C　%1").arg(plain.join(" · "))) +
-        margins.left() + margins.right() + 8);
-    sequenceLabel->setToolTip(seq.isEmpty() ? QString()
-                                            : tr("残基をクリックすると、その残基の原子を選択します。"));
-    sequenceChip->setVisible(!seq.isEmpty());
+    sequence->setDocument(d);
     QString current = pointList->currentItem() ? pointList->currentItem()->data(Qt::UserRole).toString() : "";
     pointList->clear();
     int index = 0;
@@ -1687,6 +1661,7 @@ void MoleculePanel::refreshSelection() {
     if (selected.size() == 2)
         if (auto b = d.bond(selected[0], selected[1]))
             bondKind->setCurrentIndex(bondKind->findData(b->kind));
+    sequence->setSelection(selected);
     if (coordinates)
         coordinates->refreshSelection();
 }
@@ -2329,14 +2304,23 @@ void MoleculePanel::applyChromeStyle() {
         #selectionUnit QToolButton:checked { background: @base; color: @text; font-weight: bold; }
     )");
     banner->applyChromeStyle();
-    const QString overlay = R"(
-        #sequenceChip, #measureCard { background: @base; border: 1px solid @line; border-radius: 8px; }
+    style(sequence, R"(
+        #sequenceTrack { background: @base; border-bottom: 1px solid @line; }
+        QLabel { color: @muted; }
+        QLabel#sequenceSummary { color: @text; }
+        QToolButton { border: none; border-radius: 5px; padding: 3px 6px; color: @text; }
+        QToolButton:hover { background: @hover; }
+        QToolButton:checked { background: @tint; color: @accentText; font-weight: bold; }
+        QToolButton#sequenceChain { border: 1px solid @line; padding: 2px 18px 2px 7px; }
+        QToolButton#sequenceChain::menu-indicator { subcontrol-origin: padding; subcontrol-position: center right;
+                                                    right: 5px; }
+    )");
+    style(measureCard, R"(
+        #measureCard { background: @base; border: 1px solid @line; border-radius: 8px; }
         QToolButton { border: none; border-radius: 5px; padding: 3px 7px; color: @text; }
         QToolButton:hover { background: @hover; }
         QLabel#measurementLabel { color: @text; }
-    )";
-    for (const auto *name : {"sequenceChip", "measureCard"})
-        style(findChild<QWidget *>(name), overlay);
+    )");
     viewControls->applyStyle(QWidget::palette());
     style(findChild<QWidget *>("hintBar"), R"(
         #hintBar { background: @base; border-top: 1px solid @line; }

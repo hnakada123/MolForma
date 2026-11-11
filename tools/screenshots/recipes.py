@@ -14,7 +14,9 @@ atoms_and_bonds_variations (saves, calculates, then figures 13 and 14), caffeine
 phenoxyl_radical, stereochemistry, aromatic_substitution (default: all of these).
 Shots go to $MOLFORMA_SHOTS_DIR/shots/<language>/recipes/<recipe>/<name>.png.
 
-calculation_figures: the figures of "2 計算条件" of several recipes (2026-11-11). butane_conformers_figures and
+calculation_figures: the figures of "2 計算条件" of several recipes (2026-11-11). capped_peptide_figures and
+residue_mutation_figures: the figures of the peptide recipes that show the sequence above the 3D view (2026-11-11),
+as built or opened, in the front view. butane_conformers_figures and
 sn2_transition_state_figures (the scan and the IRC, also in the result viewer) after butane_conformers_job and
 sn2_transition_state_jobs (about an hour of NWChem together).
 
@@ -31,7 +33,9 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import viewfit  # noqa: E402
-from molforma_gui import APP_HOME, APP_JOBS, HOME, SAMPLES, WORK, Gui  # noqa: E402
+from molforma_gui import APP_HOME, APP_JOBS, HOME, REPO, SAMPLES, WORK, Gui  # noqa: E402
+
+REPO_SAMPLES = REPO / "docs" / "recipes" / "samples"
 
 ETHANOL = {"O8": (562, 455), "C1": (671, 530), "C4": (789, 453), "H9": (487, 510), "H7": (874, 512),
            "H5": (794, 373), "H6": (789, 411), "H3": (670, 614), "H2": (663, 561)}
@@ -543,6 +547,186 @@ def sn2_transition_state_figures(g):
     g.edit("set_nwchem", settings={"irc_direction": "backward"})
     results(g, "sn2_transition_state/irc_backward", "経路・スキャン")
     g.snap("sn2_transition_state/10_irc_backward")
+
+
+# The figures of the peptide recipes, taken again on 2026-11-11 when the sequence moved from over the 3D view into
+# a row of its own above it. The peptides are shown as built or opened, in the front view of the earlier figures.
+def residue_atoms(g, code, candidate=False):
+    """The atoms of the first residue with this code, by their names."""
+    d = g.tool("get_document", include=["project", "candidate"])
+    doc = (d["candidate"] if candidate and d.get("candidate") else d["project"])["document"]
+    return next(r for r in doc["residues"] if r["code"] == code)["atoms"]
+
+
+def label_of(g, atom):
+    """The label of an atom in the 3D view (C17), from its place in the document."""
+    atoms, _ = g.atoms()
+    index = next(i for i, a in enumerate(atoms) if a["id"] == atom)
+    return f"{atoms[index]['element']}{index + 1}"
+
+
+def click_residue(g, code):
+    """Clicks a residue in the sequence above the 3D view, as the recipes say: along the strip until the
+    selection is that residue."""
+    wanted = sorted(residue_atoms(g, code).values())
+    _, _, width, height = g.item("sequenceStrip")["geometry"]
+    for x in range(3, width - 3, 4):
+        g.tool("ui_input", target="sequenceStrip", action="click", x=x, y=height / 2)
+        if sorted(g.tool("get_app_state")["selection"]) == wanted:
+            # Again in the middle of the residue, where a person would click.
+            end = x
+            while end + 4 < width:
+                g.tool("ui_input", target="sequenceStrip", action="click", x=end + 4, y=height / 2)
+                if sorted(g.tool("get_app_state")["selection"]) != wanted:
+                    break
+                end += 4
+            g.tool("ui_input", target="sequenceStrip", action="click", x=(x + end) / 2, y=height / 2)
+            time.sleep(0.3)
+            return
+    raise KeyError(code)
+
+
+def residue_page(g, widget=None, margin=8):
+    """The "残基" page of the right column, scrolled to its top or so that the card holding a widget is at the
+    top (as far as the page goes)."""
+    g.select("propertyTabs", index=4, seconds=0.4)
+    chain = [g.item(widget or "sequenceInput")]
+    while chain[-1]["objectName"] != "qt_scrollarea_viewport":
+        chain.append(g.item(chain[-1]["parent"]))
+    viewport, content = chain[-1], chain[-2]
+    top = 0
+    if widget:
+        top = min(0, max(viewport["geometry"][3] - content["geometry"][3], margin - chain[-3]["geometry"][1]))
+    if top != content["geometry"][1]:  # A wheel step of 120 scrolls 60 pixels.
+        g.tool("ui_input", target=viewport["target"], action="wheel", delta=2 * (top - content["geometry"][1]))
+    time.sleep(0.3)
+
+
+def quiet(g):
+    """Waits until the status bar shows the composition again."""
+    for _ in range(60):
+        if not g.tool("get_app_state")["status"]:
+            break
+        time.sleep(0.2)
+
+
+def button(g, text):
+    g.activate(g.find(g.T(text), "QPushButton"), seconds=0.8)
+    g.idle()
+
+
+def capped_peptide_figures(g):
+    """Figures 2-7 and the figure at the top of "ペプチド" (figures 1, 8 and 9 show no sequence)."""
+    # The figure at the top: the practice file as opened.
+    g.open_dialog(SAMPLES + "ace_ahe_nme.molforma.json")
+    residue_page(g)
+    quiet(g)
+    g.snap("capped_peptide")
+    g.new()
+    residue_page(g)
+    g.set("sequenceInput", "AHE")
+    g.select("peptideChirality", index=0)
+    g.select("peptideSideChain", index=0)
+    g.select("peptideNTerminus", index=2)  # ACE
+    g.select("peptideCTerminus", index=2)  # NME
+    residue_page(g, "sequenceInput")
+    button(g, "配列から構築")
+    g.snap("capped_peptide/02_build_candidate")
+    g.confirm()
+    g.snap("capped_peptide/03_peptide")
+    # His by an atom of its ring with "選択単位" "残基".
+    g.activate("selectionUnit_residue")
+    g.click_atom(label_of(g, residue_atoms(g, "HIS")["CE1"]))
+    g.snap("capped_peptide/04_his_selected")
+    g.activate("paletteCategory_amino")
+    g.highlight("amino:HIS:HIP")
+    button(g, "選択残基を置換")
+    g.snap("capped_peptide/05_hip_candidate")
+    g.confirm()
+    g.snap("capped_peptide/06_hip_charge")
+    # phi of ALA 1 in the practice file, chosen in the sequence.
+    g.open_dialog(SAMPLES + "ace_ahe_nme.molforma.json")
+    g.activate("selectionUnit_atom")
+    residue_page(g, "residueTorsion")
+    click_residue(g, "ALA")
+    g.select("residueTorsion", index=0)
+    g.set("residueTorsionAngle", -57)
+    button(g, "二面角を適用")
+    g.snap("capped_peptide/07_torsion_phi")
+
+
+def write_xyz(sample, path):
+    """The structure of a practice file as XYZ, as "XYZ（Å）を書き出す…" writes it."""
+    data = json.loads((REPO_SAMPLES / sample).read_text(encoding="utf-8"))
+
+    def find(o):
+        if isinstance(o, dict):
+            if "atoms" in o and isinstance(o["atoms"], list):
+                return o["atoms"]
+            for v in o.values():
+                r = find(v)
+                if r is not None:
+                    return r
+        return None
+
+    atoms = find(data)
+    lines = [str(len(atoms)), sample]
+    for a in atoms:
+        x, y, z = a["position"]
+        lines.append(f"{a['element']:<2} {x:14.8f} {y:14.8f} {z:14.8f}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def residue_mutation_figures(g):
+    """Figures 1-6 and 8 and the figure at the top of "残基の置換と鎖の編集" (figures 7 and 9 show no sequence)."""
+    # The figure at the top: the mutant (practice file) with Phe chosen in the sequence.
+    g.open_dialog(SAMPLES + "ace_afe_nme.molforma.json")
+    residue_page(g)
+    click_residue(g, "PHE")
+    quiet(g)
+    g.snap("residue_mutation")
+    # Figure 1: His of recipe 7 replaced by Phe; the page at the card of these edits from here on.
+    g.open_dialog(SAMPLES + "ace_ahe_nme.molforma.json")
+    edits = g.find(g.T("選択残基を置換"), "QPushButton")
+    residue_page(g, edits)
+    click_residue(g, "HIS")
+    g.activate("paletteCategory_amino")
+    g.highlight("amino:PHE:default")
+    button(g, "選択残基を置換")
+    g.snap("residue_mutation/01_mutation_candidate")
+    g.confirm()
+    # Figure 2: Phe deleted, splitting the chain.
+    click_residue(g, "PHE")
+    button(g, "残基を削除（鎖を分割）")
+    g.snap("residue_mutation/02_delete_candidate")
+    g.confirm()
+    # Figure 3: the ends of the two chains in the list of residues.
+    residue_page(g, "residueList")
+    g.snap("residue_mutation/03_split")
+    # Figure 4: the C of Ala and the N of Glu at 1.33 Å, the chain of Glu moved.
+    residue_page(g, edits)
+    carbon, nitrogen = residue_atoms(g, "ALA")["C"], residue_atoms(g, "GLU")["N"]
+    g.select_atoms([carbon, nitrogen])
+    g.set("dimensionValue", 1.33)
+    g.activate("applyDimension", seconds=0.6)
+    g.snap("residue_mutation/04_distance")
+    # Figure 5: the two ends joined again.
+    button(g, "選択した2末端を再連結")
+    g.snap("residue_mutation/05_relink_candidate")
+    g.confirm()
+    # Figure 6: cleaned up.
+    g.select_atoms([])
+    g.refine()
+    g.confirm()
+    g.snap("residue_mutation/06_relinked")
+    # Figure 8: the mutant written as XYZ, its residues recognized again.
+    xyz = WORK / "ace_afe_nme.xyz"
+    write_xyz("ace_afe_nme.molforma.json", xyz)
+    g.new()
+    g.open(str(xyz))
+    residue_page(g, edits)
+    button(g, "結合グラフから残基を認識")
+    g.snap("residue_mutation/08_recognize_candidate")
 
 
 RECIPES = [atoms_and_bonds, atoms_and_bonds_run, atoms_and_bonds_variations, caffeine_smiles, my_parts, phenoxyl_radical,

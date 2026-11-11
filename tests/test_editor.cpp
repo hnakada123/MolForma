@@ -10,6 +10,7 @@
 #include "ui/editor_tool.h"
 #include "ui/main_window.h"
 #include "ui/periodic_table.h"
+#include "ui/sequence_track.h"
 #include "ui/template_delegate.h"
 #include "ui/translations.h"
 #include <QAbstractTextDocumentLayout>
@@ -48,6 +49,7 @@
 #include <QTextList>
 #include <QTimer>
 #include <QToolButton>
+#include <QToolTip>
 #include <QWheelEvent>
 #include <QtTest>
 using namespace mf;
@@ -1879,6 +1881,184 @@ class EditorTest : public QObject {
                 headings[5].startsWith("配位中心"));
         QVERIFY(palette->currentItem()->flags() & Qt::ItemIsSelectable);
     }
+    void sequenceTokensFollowChains() {
+        // N → C by chain and number whatever the order of the residues; a gap where the numbers of a
+        // polymer chain jump, ions and caps by name, the waters of a chain together at its end.
+        Document d;
+        const auto add = [&](const QString &code, const QString &chain, int number,
+                             const QStringList &names) {
+            Residue r;
+            r.code = code;
+            r.chain = chain;
+            r.number = number;
+            r.metadata["pdb_chain"] = chain == "first" ? "A" : "B";
+            for (const auto &name : names)
+                r.atoms[name] = newId();
+            d.residues << r;
+        };
+        const QStringList backbone{"N", "CA", "C", "O"};
+        add("HOH", "first", 201, {"O"});
+        add("LYS", "second", 1, backbone);
+        add("SER", "first", 5, backbone);
+        add("ALA", "first", 1, backbone);
+        add("ZN", "first", 100, {"ZN"});
+        add("GLY", "first", 2, backbone);
+        add("HOH", "first", 200, {"O"});
+        add("ACE", "second", 0, {"C", "O", "CH3"});
+        const auto tokens = sequenceTokens(d);
+        QStringList seen;
+        for (const auto &t : tokens)
+            seen << QString("%1:%2").arg(int(t.kind)).arg(t.letter.isNull() ? t.label : QString(t.letter));
+        QCOMPARE(seen, (QStringList{"3:A", "0:A", "0:G", "2:3–4", "0:S", "0:ZN 100", "1:HOH ×2", "3:B",
+                                    "0:ACE 0", "0:K"}));
+        QCOMPARE(tokens[6].atoms.size(), 2);
+        QVERIFY(tokens[1].polymer && !tokens[5].polymer && !tokens[8].polymer);
+        QCOMPARE(tokens[9].chain, QString("B"));
+        // Protonation states keep their letter; nucleotides need their sugar, as "A" may be an ion.
+        Residue his;
+        his.code = "HIE";
+        QCOMPARE(residueLetter(his), QChar(u'H'));
+        Residue adenine;
+        adenine.code = "A";
+        QVERIFY(residueLetter(adenine).isNull());
+        adenine.atoms["C1'"] = newId();
+        QCOMPARE(residueLetter(adenine), QChar(u'A'));
+        // The chains' menu: their numbers and residues; choosing one shows its start.
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        SequenceTrack track(settings);
+        track.resize(240, 60);
+        track.setDocument(d);
+        track.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&track));
+        auto *chain = track.findChild<QToolButton *>("sequenceChain");
+        QVERIFY(chain->isVisible());
+        QCOMPARE(chain->text(), QString("鎖 A"));
+        const auto actions = chain->menu()->actions();
+        QCOMPARE(actions.size(), 2);
+        QCOMPARE(actions[0]->text(), QString("鎖 A\t1–100 · 6 残基"));
+        QCOMPARE(actions[1]->text(), QString("鎖 B\t0–1 · 2 残基"));
+        QVERIFY(track.strip()->overview());
+        actions[1]->trigger();
+        QVERIFY(track.strip()->offset() > 0);
+        QCOMPARE(chain->text(), QString("鎖 B"));
+        // Without residues there is no sequence.
+        track.setDocument(Document{});
+        QVERIFY(!track.isVisible());
+    }
+    void sequenceTrackSelectsAndScrolls() {
+        // A long chain with residues missing, a zinc ion and waters: one-letter codes in a strip that
+        // scrolls, the selection both ways, and folding into one line.
+        MainWindow w;
+        w.resize(1100, 800);
+        w.show();
+        Document d;
+        QStringList codes;
+        for (int i = 0; i < 60; ++i)
+            codes << QStringList{"ALA", "GLY", "SER", "LYS"}[i % 4];
+        buildPeptide(d, codes, "charged", "charged");
+        for (auto &r : d.residues)
+            if (r.number > 30)
+                r.number += 5;
+        const auto chain = d.residues.first().chain;
+        Atom zinc;
+        zinc.element = "Zn";
+        zinc.position = Vec(40, 0, 0);
+        d.atoms << zinc;
+        Residue ion;
+        ion.code = "ZN";
+        ion.chain = chain;
+        ion.number = 901;
+        ion.atoms["ZN"] = zinc.id;
+        d.residues << ion;
+        for (int i = 0; i < 3; ++i) {
+            Atom o;
+            o.element = "O";
+            o.position = Vec(45 + 3 * i, 0, 0);
+            d.atoms << o;
+            Residue water;
+            water.code = "HOH";
+            water.chain = chain;
+            water.number = 1001 + i;
+            water.atoms["O"] = o.id;
+            d.residues << water;
+        }
+        w.loadDocument(d);
+        QTest::qWait(150);
+        auto *track = w.findChild<SequenceTrack *>("sequenceTrack");
+        auto *strip = track->strip();
+        QVERIFY(track->isVisible());
+        const auto tokens = strip->tokens();
+        QCOMPARE(tokens.size(), 63);
+        QVERIFY(!strip->threeLetters());
+        QVERIFY(strip->overview());
+        QVERIFY(!w.findChild<QToolButton *>("sequenceChain")->isVisible()); // One chain.
+        const int gap = 30, last = int(tokens.size()) - 1;
+        QCOMPARE(tokens[gap].kind, SequenceToken::Gap);
+        QCOMPARE(tokens[gap].label, QString("31–35"));
+        QCOMPARE(tokens[last - 1].code, QString("ZN"));
+        QCOMPARE(tokens[last].label, QString("HOH ×3"));
+        // A click selects a residue, Shift+click the range from it, Ctrl+click adds or removes one.
+        const auto sorted = [](Ids ids) {
+            std::sort(ids.begin(), ids.end());
+            return ids;
+        };
+        QTest::mouseClick(strip, Qt::LeftButton, {}, strip->tokenRect(0).center());
+        QCOMPARE(sorted(w.selection()), sorted(tokens[0].atoms));
+        QTest::mouseClick(strip, Qt::LeftButton, Qt::ShiftModifier, strip->tokenRect(2).center());
+        QCOMPARE(strip->selectedTokens(), (QList<int>{0, 1, 2}));
+        QTest::mouseClick(strip, Qt::LeftButton, Qt::ControlModifier, strip->tokenRect(1).center());
+        QCOMPARE(strip->selectedTokens(), (QList<int>{0, 2}));
+        QCOMPARE(sorted(w.selection()), sorted(tokens[0].atoms + tokens[2].atoms));
+        // A selection made elsewhere is scrolled to.
+        QCOMPARE(strip->offset(), 0);
+        w.setSelection(tokens[last].atoms);
+        QVERIFY(strip->offset() > 0);
+        QVERIFY(strip->rect().contains(strip->tokenRect(last)));
+        QCOMPARE(strip->selectedTokens(), QList<int>{last});
+        // The wheel and the overview scroll it; the tooltip of the gap names the missing numbers.
+        strip->scrollToToken(0);
+        QCOMPARE(strip->offset(), 0);
+        QWheelEvent wheel(QPointF(10, 10), strip->mapToGlobal(QPointF(10, 10)), QPoint(), QPoint(0, -120),
+                          Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(strip, &wheel);
+        QVERIFY(strip->offset() > 0);
+        QTest::mouseClick(strip, Qt::LeftButton, {}, QPoint(strip->width() - 2, strip->height() - 4));
+        QVERIFY(strip->rect().contains(strip->tokenRect(last)));
+        QCOMPARE(strip->selectedTokens(), QList<int>{last}); // The overview does not select.
+        strip->scrollToToken(gap);
+        const auto point = strip->tokenRect(gap).center();
+        QHelpEvent help(QEvent::ToolTip, point, strip->mapToGlobal(point));
+        QApplication::sendEvent(strip, &help);
+        QCOMPARE(QToolTip::text(), QString("5 残基（番号 31–35）は構造にありません。"));
+        QToolTip::hideText();
+        // Three-letter codes on demand.
+        auto *letters = w.findChild<QToolButton *>("sequenceLetters");
+        QVERIFY(!letters->isChecked());
+        letters->click();
+        QVERIFY(strip->threeLetters());
+        QVERIFY(letters->isChecked());
+        letters->click();
+        QVERIFY(!strip->threeLetters());
+        // Folded, the counts and the selection in one line, and the view takes the room.
+        auto *view = w.canvas();
+        const int top = view->mapTo(&w, QPoint()).y();
+        w.findChild<QToolButton *>("sequenceCollapse")->click();
+        QVERIFY(!strip->isVisible());
+        auto *summary = w.findChild<QLabel *>("sequenceSummary");
+        QVERIFY(summary->isVisible());
+        QCOMPARE(summary->text(), QString("64 残基 · 選択: HOH ×3"));
+        QTRY_VERIFY(view->mapTo(&w, QPoint()).y() < top);
+        QSettings settings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma");
+        QVERIFY(settings.value("molecule/sequenceCollapsed").toBool());
+        w.findChild<QToolButton *>("sequenceCollapse")->click();
+        QVERIFY(strip->isVisible());
+        QVERIFY(!settings.value("molecule/sequenceCollapsed").toBool());
+        QTRY_COMPARE(view->mapTo(&w, QPoint()).y(), top);
+        // A molecule without residues has no sequence.
+        w.loadDocument(Document{});
+        QVERIFY(!track->isVisible());
+    }
     void undoNamesTheChangedTab() {
         MainWindow w;
         Document d;
@@ -1941,8 +2121,9 @@ class EditorTest : public QObject {
         }
     }
     void editorChromeFollowsTheWork() {
-        // The header steps switch the tabs, the option bar follows the tool, the corners of the 3D
-        // view show the sequence and the measurement, and a candidate takes the option bar's place.
+        // The header steps switch the tabs, the option bar follows the tool, the sequence has a row
+        // above the 3D view, a corner of the view shows the measurement, and a candidate takes the
+        // option bar's place.
         MainWindow w;
         w.resize(1380, 900);
         w.show();
@@ -1972,11 +2153,15 @@ class EditorTest : public QObject {
         QVERIFY(header);
         QVERIFY(header->singleRow());
         QVERIFY(w.findChild<QToolButton *>("documentButton")->text().startsWith("新規分子"));
-        // The sequence over the view selects a residue; 2–4 atoms show their measurement.
-        auto *chip = w.findChild<QWidget *>("sequenceChip");
+        // The sequence above the view (three-letter codes while they fit); 2–4 atoms show their
+        // measurement over the view.
+        auto *track = w.findChild<SequenceTrack *>("sequenceTrack");
         auto *card = w.findChild<QWidget *>("measureCard");
-        QVERIFY(chip->isVisible());
-        QVERIFY(w.findChild<QLabel *>("sequenceLabel")->text().contains("GLY 2"));
+        QVERIFY(track->isVisible());
+        QCOMPARE(track->strip()->tokens().size(), 3);
+        QCOMPARE(track->strip()->tokens()[1].label, QString("GLY 2"));
+        QVERIFY(track->strip()->threeLetters());
+        QVERIFY(!track->strip()->overview());
         QVERIFY(!card->isVisible());
         const auto ids = w.document().ids();
         w.setSelection({ids[0], ids[1], ids[2]});
@@ -1987,13 +2172,13 @@ class EditorTest : public QObject {
         QVERIFY(w.findChild<QLabel *>("selectionList")->text().contains("ALA 1 · "));
         auto *view = w.canvas();
         const auto viewArea = QRect(view->mapTo(&w, QPoint()), view->size());
-        for (auto *overlay : {chip, card, w.findChild<QWidget *>("viewControls")}) {
+        for (auto *overlay : {card, w.findChild<QWidget *>("viewControls")}) {
             const QRect area(overlay->mapTo(&w, QPoint()), overlay->size());
             QVERIFY(viewArea.contains(area));
         }
-        QVERIFY(!QRect(chip->mapTo(&w, QPoint()), chip->size())
-                     .intersects(QRect(w.findChild<QWidget *>("viewControls")->mapTo(&w, QPoint()),
-                                       w.findChild<QWidget *>("viewControls")->size())));
+        // The sequence never covers the molecule.
+        const QRect trackArea(track->mapTo(&w, QPoint()), track->size());
+        QVERIFY(trackArea.bottom() < viewArea.top());
         // Tools change the options above the view, not the view itself.
         auto *top = w.findChild<QWidget *>("editorTopRow");
         const int height = top->height();
@@ -2044,7 +2229,11 @@ class EditorTest : public QObject {
         QTest::qWait(20);
         QVERIFY(header->styleSheet().contains("#1d5fd1"));
         QVERIFY(!header->styleSheet().contains("#b299ec"));
-        QVERIFY(w.findChild<QLabel *>("sequenceLabel")->text().contains("color:#1d5fd1"));
+        auto *strip = track->strip();
+        QTest::mouseClick(strip, Qt::LeftButton, {}, strip->tokenRect(0).center());
+        QCOMPARE(strip->selectedTokens(), QList<int>{0});
+        const auto cell = strip->tokenRect(0);
+        QCOMPARE(strip->grab().toImage().pixelColor(cell.left() + 2, cell.center().y()), QColor("#1d5fd1"));
         // A dark palette restyles the header, rail, option bar and overlays from its colors.
         QPalette dark(QColor("#2b2d31"), QColor("#202225"));
         dark.setColor(QPalette::Base, QColor("#1e1f22"));

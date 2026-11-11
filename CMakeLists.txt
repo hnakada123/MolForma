@@ -133,6 +133,7 @@ add_library(molforma_ui STATIC
     src/ui/remote_hosts_dialog.cpp
     src/ui/spectroscopy_view.cpp
     src/ui/results_panel.cpp
+    src/ui/sequence_track.cpp
     src/ui/structure_import.cpp
     src/ui/workspace_controller.cpp
     src/ui/run_progress.cpp

@@ -172,6 +172,10 @@ QPainterPath iconPath(const QString &name, bool &filled) {
         line({{15, 5}, {8, 12}, {15, 19}});
     else if (name == "next")
         line({{9, 5}, {16, 12}, {9, 19}});
+    else if (name == "up")
+        line({{5, 15}, {12, 8}, {19, 15}});
+    else if (name == "down")
+        line({{5, 9}, {12, 16}, {19, 9}});
     else if (name == "back10") {
         line({{12, 5}, {5, 12}, {12, 19}});
         line({{19, 5}, {12, 12}, {19, 19}});
