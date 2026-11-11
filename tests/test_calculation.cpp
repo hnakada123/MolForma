@@ -477,7 +477,29 @@ class CalculationTest : public QObject {
         QVERIFY(errorContains(d, "メタGGA"));
         set(d, "functional", "cam-b3lyp");
         QVERIFY(validateNwchem(d).errors.isEmpty());
+        // An excited state's optimization: its CI vectors and the gradient of the chosen root.
+        set(d, "tddft_triplets", false);
+        set(d, "tddft_tda", false);
         set(d, "task", "optimize");
+        set(d, "tddft_root", 2);
+        QVERIFY2(validateNwchem(d).errors.isEmpty(), qPrintable(validateNwchem(d).errors.join('\n')));
+        auto input = nwchemInput(d);
+        QVERIFY(input.contains("  civecs\n  target 2\n  grad\n    root 2\n  end\nend\n"));
+        QVERIFY(input.contains("\ndriver\n"));
+        QVERIFY(input.contains("task tddft optimize\n") && !input.contains("task dft optimize"));
+        QCOMPARE(nwchemTaskLines(input).size(), 1);
+        QVERIFY(validateNwchem(d).warnings.join('\n').contains("励起状態 2 の構造を最適化"));
+        auto read = nwchemSettings(importNwchemInput(input).document);
+        QCOMPARE(read["task"].toString(), QString("optimize"));
+        QVERIFY(read["tddft"].toBool());
+        QCOMPARE(read["tddft_root"].toInt(), 2);
+        set(d, "tddft_root", 6);
+        QVERIFY(errorContains(d, "励起状態の数（5）以下"));
+        set(d, "tddft_root", 1);
+        set(d, "tddft_triplets", true);
+        QVERIFY(errorContains(d, "一重項の励起状態"));
+        set(d, "tddft_triplets", false);
+        set(d, "task", "saddle");
         QVERIFY(errorContains(d, "一点エネルギー"));
         set(d, "task", "energy");
         set(d, "method", "hf");
@@ -539,6 +561,259 @@ class CalculationTest : public QObject {
         set(fit, "grid", "huge");
         QVERIFY(nwchemInput(fit).contains("  grid huge\n"));
     }
+    void pastedBasesAndEcps() {
+        // As the Basis Set Exchange writes them for NWChem: a header, comments, Fortran exponents.
+        const QString hydrogen =
+            "#BASIS SET: (3s) -> [1s]\nBASIS \"ao basis\" SPHERICAL PRINT\n"
+            "#BASIS SET: (3s) -> [1s]\nh    S\n      0.3425250914D+01       0.1543289673D+00\n"
+            "      0.6239137298D+00       0.5353281423D+00\n"
+            "      0.1688554040D+00       0.4446345422D+00\nEND\n";
+        auto read = nwchemPastedBasis(hydrogen, false);
+        QVERIFY2(read.error.isEmpty(), qPrintable(read.error));
+        QCOMPARE(read.elements, QStringList{"H"});
+        QCOMPARE(read.lines["H"].first(), QString("  H S"));
+        QCOMPARE(read.lines["H"].size(), 4);
+        for (const auto &[text, ecp, problem] :
+             {std::tuple{QString("0.1 0.2\nH S\n0.1 0.2\n"), false, QString("1行目")},
+              std::tuple{QString("Xx S\n0.1 0.2\n"), false, QString("元素記号ではありません")},
+              std::tuple{QString("H S\nH P\n0.1 0.2\n"), false, QString("数値の行がありません")},
+              std::tuple{QString("H S\n0.1\n"), false, QString("2個以上")},
+              std::tuple{QString("task shell ls\n"), false, QString("元素記号ではありません")},
+              std::tuple{QString("O ul\n2 1.0 0.0\n"), true, QString("nelec")},
+              std::tuple{QString("O nelec 8\nO ul\n2 1.0 0.0\n"), true, QString("原子番号より小さい")},
+              std::tuple{QString("O nelec 2\nO ul\n2 1.0\n"), true, QString("3個の数値")}}) {
+            const auto bad = nwchemPastedBasis(text, ecp);
+            QVERIFY2(bad.error.contains(problem), qPrintable(text + " → " + bad.error));
+            QVERIFY(bad.lines.isEmpty());
+        }
+        // The pasted basis replaces the library's for its element, also for its ghost.
+        auto d = water();
+        d.atoms << d.atoms[1];
+        d.atoms.last().id = newId();
+        d.atoms.last().ghost = true;
+        d.atoms.last().position += Vec(0, 3, 0);
+        set(d, "basis", "6-31g*");
+        set(d, "basis_custom", hydrogen);
+        QVERIFY2(validateNwchem(d).errors.isEmpty(), qPrintable(validateNwchem(d).errors.join('\n')));
+        auto input = nwchemInput(d);
+        QVERIFY(input.contains("\n  H S\n    0.3425250914D+01 0.1543289673D+00\n"));
+        QVERIFY(input.contains("\n  O library \"6-31g*\"\n"));
+        QVERIFY(input.contains("\n  bqH S\n    0.3425250914D+01"));
+        QVERIFY(!input.contains("* library"));
+        QVERIFY(nwchemBasisLabel(nwchemSettings(d)).contains("貼り付け: H"));
+        // A pasted ECP: its core electrons, and numerical frequencies as for the library's ECPs.
+        d = water();
+        set(d, "ecp_custom", "O nelec 2\nO ul\n2 1.0 0.0\nO S\n2 1.0 0.0\n");
+        QCOMPARE(validateNwchem(d).electrons, 8);
+        QCOMPARE(validateNwchem(d).ecpElectrons, 2);
+        QVERIFY(nwchemInput(d).contains(
+            "\necp\n  O nelec 2\n  O ul\n    2 1.0 0.0\n  O S\n    2 1.0 0.0\nend\n"));
+        set(d, "task", "frequencies");
+        QVERIFY(nwchemNumericalFrequencies(d));
+        // An element with a pasted basis takes no library ECP; pasted entries of absent elements are left
+        // out.
+        auto iodide = Document::fromXyz("2\nHI\nH 0 0 0\nI 0 0 1.6\n");
+        set(iodide, "basis", "def2-svp");
+        QCOMPARE(validateNwchem(iodide).ecpElectrons, 28);
+        set(iodide, "basis_custom", "I S\n1.0 1.0\nPt S\n1.0 1.0\n");
+        QCOMPARE(validateNwchem(iodide).ecpElectrons, 0);
+        QCOMPARE(validateNwchem(iodide).electrons, 54);
+        QVERIFY(!nwchemInput(iodide).contains("\necp\n"));
+        QVERIFY(!nwchemInput(iodide).contains("Pt S"));
+        QVERIFY(validateNwchem(iodide).warnings.join('\n').contains("分子にない元素（Pt）"));
+        set(iodide, "basis_custom", "I S\n1.0\n");
+        QVERIFY(errorContains(iodide, "貼り付けた基底の2行目"));
+        // Read back from an input; the follow-up calculation is all library bases.
+        d = water();
+        set(d, "basis_custom", hydrogen);
+        set(d, "ecp_custom", "O nelec 2\nO ul\n2 1.0 0.0\n");
+        const auto imported = nwchemSettings(importNwchemInput(nwchemInput(d)).document);
+        QCOMPARE(nwchemPastedBasis(imported["basis_custom"].toString(), false).lines,
+                 nwchemPastedBasis(hydrogen, false).lines);
+        QCOMPARE(nwchemPastedBasis(imported["ecp_custom"].toString(), true).cores["O"], 2);
+        set(d, "ecp_custom", "");
+        set(d, "task", "optimize");
+        set(d, "followup", true);
+        set(d, "followup_method", "hf");
+        set(d, "followup_basis", "sto-3g");
+        const auto followup = nwchemInput(d).section("# Follow-up", 1);
+        QVERIFY(followup.contains("* library \"sto-3g\"") && !followup.contains("H S"));
+    }
+    void freeInternalCoordinates() {
+        auto d = Document::fromXyz("4\nH2O2\nO 0 0.7 0\nO 0 -0.7 0\nH 0.9 0.9 0.3\nH -0.9 -0.9 0.3\n");
+        const auto ids = d.ids();
+        set(d, "task", "optimize");
+        set(d, "constraints",
+            QJsonArray{QJsonObject{{"atoms", idsToJson({ids[2], ids[0], ids[1], ids[3]})}, {"free", true}}});
+        QVERIFY2(validateNwchem(d).errors.isEmpty(), qPrintable(validateNwchem(d).errors.join('\n')));
+        auto input = nwchemInput(d);
+        QVERIFY(input.contains("  zcoord\n    torsion 3 1 2 4\n  end\n"));
+        QVERIFY(!input.contains("constant") && !input.contains("noautoz"));
+        QVERIFY(validateNwchem(d).warnings.join('\n').contains("加えて最適化"));
+        set(d, "task", "optimize_frequencies");
+        QVERIFY(!validateNwchem(d).warnings.join('\n').contains("停留点ではない"));
+        // With a constrained one: both, numbered as the table lists them.
+        set(d, "constraints",
+            QJsonArray{QJsonObject{{"atoms", idsToJson({ids[2], ids[0], ids[1], ids[3]})}, {"free", true}},
+                       QJsonObject{{"atoms", idsToJson({ids[0], ids[1]})}, {"value", 1.45}}});
+        input = nwchemInput(d);
+        QVERIFY(input.contains("    torsion 3 1 2 4\n    bond 1 2 1.45 mfc2 constant\n"));
+        QVERIFY(validateNwchem(d).warnings.join('\n').contains("停留点ではない"));
+        set(d, "constraints",
+            QJsonArray{QJsonObject{{"atoms", idsToJson({ids[2], ids[2], ids[1], ids[3]})}, {"free", true}}});
+        QVERIFY(errorContains(d, "内部座標1: 同じ原子"));
+    }
+    void twoDimensionalScans() {
+        auto d = Document::fromXyz("8\nethane\nC 0.7554 0 0\nC -0.7554 0 0\nH 1.1367 0 1.0279\n"
+                                   "H 1.1367 0.8902 -0.5140\nH 1.1367 -0.8902 -0.5140\nH -1.1367 0 -1.0279\n"
+                                   "H -1.1367 -0.8902 0.5140\nH -1.1367 0.8902 0.5140\n");
+        const auto ids = d.ids();
+        set(d, "task", "scan");
+        set(d, "scan_atoms", idsToJson({ids[0], ids[1]}));
+        set(d, "scan_start", 1.45);
+        set(d, "scan_end", 1.65);
+        set(d, "scan_steps", 3);
+        set(d, "scan2_atoms", idsToJson({ids[2], ids[0], ids[1], ids[5]}));
+        set(d, "scan2_start", 60.0);
+        set(d, "scan2_end", 180.0);
+        set(d, "scan2_steps", 3);
+        QVERIFY2(validateNwchem(d).errors.isEmpty(), qPrintable(validateNwchem(d).errors.join('\n')));
+        QVERIFY(validateNwchem(d).warnings.join('\n').contains("3 × 3 = 9 点"));
+        const auto input = nwchemInput(d);
+        QCOMPARE(nwchemTaskLines(input).size(), 9);
+        QVERIFY(input.contains("title \"MolForma scan 4/9 bond 1 2 = 1.55 and torsion 3 1 2 6 = 60\""));
+        QVERIFY(
+            input.contains("    bond 1 2 1.55 mfscan constant\n    torsion 3 1 2 6 60 mfscan2 constant\n"));
+        // Each point's starting structure holds both values.
+        const auto points = input.split("\ngeometry scan");
+        QCOMPARE(points.size(), 10);
+        // Rigid points hold them exactly.
+        set(d, "scan_relaxed", false);
+        QVERIFY(validateNwchem(d).errors.isEmpty());
+        // At most 400 points; two different coordinates that do not move each other.
+        set(d, "scan_steps", 21);
+        set(d, "scan2_steps", 20);
+        QVERIFY(errorContains(d, "400点まで"));
+        set(d, "scan_steps", 3);
+        set(d, "scan2_steps", 3);
+        set(d, "scan2_atoms", idsToJson({ids[1], ids[0]}));
+        set(d, "scan2_start", 1.4);
+        set(d, "scan2_end", 1.6);
+        QVERIFY(errorContains(d, "別の座標"));
+        // Both angles turn the same hydrogen: no structure holds both values.
+        set(d, "scan_atoms", idsToJson({ids[1], ids[0], ids[2]}));
+        set(d, "scan_start", 100.0);
+        set(d, "scan_end", 120.0);
+        set(d, "scan2_atoms", idsToJson({ids[3], ids[0], ids[2]}));
+        set(d, "scan2_start", 100.0);
+        set(d, "scan2_end", 120.0);
+        QVERIFY(errorContains(d, "同じ原子を動かす"));
+        // Deleting an atom of the second coordinate drops it; the scan becomes one-dimensional.
+        auto smaller = d;
+        smaller.remove({ids[3]});
+        QVERIFY(nwchemSettings(smaller)["scan2_atoms"].toArray().isEmpty());
+    }
+    void fragmentInitialOrbitals() {
+        const auto dimer = Document::fromXyz("6\ndimer\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n"
+                                             "O 0 0 3\nH 0.758 0 3.504\nH -0.758 0 3.504\n");
+        const auto ids = dimer.ids();
+        const auto fragments = [&](const QVector<std::tuple<Ids, int, int>> &list) {
+            QJsonArray array;
+            for (const auto &[atoms, charge, multiplicity] : list)
+                array << QJsonObject{
+                    {"atoms", idsToJson(atoms)}, {"charge", charge}, {"multiplicity", multiplicity}};
+            return array;
+        };
+        auto d = dimer;
+        set(d, "method", "dft");
+        set(d, "fragment_guess", fragments({{ids.mid(0, 3), 0, 1}, {ids.mid(3), 0, 1}}));
+        QVERIFY2(validateNwchem(d).errors.isEmpty(), qPrintable(validateNwchem(d).errors.join('\n')));
+        auto input = nwchemInput(d);
+        QVERIFY(input.contains("\ngeometry frag1 units angstrom") &&
+                input.contains("\ngeometry frag2 units"));
+        QVERIFY(input.contains("set geometry frag1\ncharge 0\n"));
+        QVERIFY(input.contains("dft\n  mult 1\n  vectors input atomic output molforma_frag2.movecs\nend\n"));
+        QVERIFY(input.contains("\nset geometry geometry\ncharge 0\ndft\n  mult 1\n  vectors input fragment "
+                               "molforma_frag1.movecs "
+                               "molforma_frag2.movecs\nend\n"));
+        QCOMPARE(nwchemTaskLines(input),
+                 (QStringList{"task dft energy", "task dft energy", "task dft energy"}));
+        QVERIFY(validateNwchem(d).warnings.join('\n').contains("フラグメント 2 個"));
+        // HF: the reference of the molecule for each fragment.
+        set(d, "method", "hf");
+        QVERIFY(nwchemInput(d).contains(
+            "scf\n  rhf\n  nopen 0\n  vectors input atomic output molforma_frag1.movecs\nend\n"));
+        // High spin from two open-shell fragments: their unpaired electrons add up.
+        set(d, "method", "dft");
+        d.charge = 2;
+        d.multiplicity = 3;
+        set(d, "fragment_guess", fragments({{ids.mid(0, 3), 1, 2}, {ids.mid(3), 1, 2}}));
+        QVERIFY2(validateNwchem(d).errors.isEmpty(), qPrintable(validateNwchem(d).errors.join('\n')));
+        QVERIFY(nwchemInput(d).contains("dft\n  mult 2\n  odft\n  vectors input atomic"));
+        // Broken symmetry (two doublets in a singlet) is what NWChem refuses.
+        d.multiplicity = 1;
+        QVERIFY(errorContains(d, "broken-symmetry"));
+        d = dimer;
+        set(d, "fragment_guess", fragments({{ids.mid(0, 3), 0, 1}, {ids.mid(3, 2), 0, 1}}));
+        QVERIFY(errorContains(d, "含まれない原子が 1 個"));
+        set(d, "fragment_guess", fragments({{ids.mid(0, 4), 0, 1}, {ids.mid(3), 0, 1}}));
+        QVERIFY(errorContains(d, "2つのフラグメント"));
+        set(d, "fragment_guess", fragments({{ids.mid(0, 3), 1, 2}, {ids.mid(3), 0, 1}}));
+        QVERIFY(errorContains(d, "電荷の合計 1"));
+        set(d, "fragment_guess", fragments({{ids.mid(0, 3), 0, 2}, {ids.mid(3), 0, 1}}));
+        QVERIFY(errorContains(d, "フラグメント1の電子数 10 と多重度 2"));
+        set(d, "fragment_guess", fragments({{ids, 0, 1}}));
+        QVERIFY(errorContains(d, "2〜20個"));
+        set(d, "fragment_guess", fragments({{ids.mid(0, 3), 0, 1}, {ids.mid(3), 0, 1}}));
+        set(d, "task", "scan");
+        QVERIFY(errorContains(d, "座標スキャン・IRC・NEB・BSSE補正と併用できません"));
+        set(d, "task", "energy");
+        setNwchemAdvanced(d, "vectors_guess", "hcore");
+        QVERIFY(errorContains(d, "同時に指定できません"));
+        // Deleting atoms takes them out of their fragment; a fragment without atoms goes.
+        d = dimer;
+        set(d, "fragment_guess", fragments({{ids.mid(0, 3), 0, 1}, {ids.mid(3), 0, 1}}));
+        d.remove(ids.mid(3));
+        QCOMPARE(nwchemSettings(d)["fragment_guess"].toArray().size(), 1);
+        d.remove({ids[2]});
+        QCOMPARE(idsFromJson(nwchemSettings(d)["fragment_guess"].toArray()[0].toObject()["atoms"]).size(), 2);
+    }
+    void spinSpinCouplings() {
+        auto d =
+            Document::fromXyz("5\nCH3F\nC 0 0 0\nF 0 0 1.383\nH 1.0267 0 -0.363\nH -0.5134 -0.8892 -0.363\n"
+                              "H -0.5134 0.8892 -0.363\n");
+        set(d, "method", "dft");
+        set(d, "prop_spinspin", true);
+        QVERIFY2(validateNwchem(d).errors.isEmpty(), qPrintable(validateNwchem(d).errors.join('\n')));
+        QCOMPARE(nwchemSpinSpinPairs(d).size(), 6); // F and three H.
+        auto input = nwchemInput(d);
+        QVERIFY(input.contains(
+            "\nunset prop:*\ndft\n  odft\nend\nproperty\n  spinspin 6 2 3 2 4 2 5 3 4 3 5 4 5\nend\n"
+            "task dft property\n"));
+        QVERIFY(input.endsWith("task dft property\n"));
+        QVERIFY(validateNwchem(d).warnings.join('\n').contains("6 組"));
+        set(d, "spinspin_pairs", "all");
+        QCOMPARE(nwchemSpinSpinPairs(d).size(), 10);
+        QVERIFY(nwchemInput(d).contains("property\n  spinspin\nend\n"));
+        // An open shell is UKS already; HF is refused.
+        auto cation = d;
+        cation.charge = 1;
+        cation.multiplicity = 2;
+        QVERIFY(!nwchemInput(cation).section("unset prop:*", 1).contains("odft"));
+        set(d, "method", "hf");
+        QVERIFY(errorContains(d, "DFTのとき"));
+        set(d, "method", "dft");
+        set(d, "spinspin_pairs", "hfp");
+        auto methane = Document::fromXyz("1\nC\nC 0 0 0\n");
+        set(methane, "method", "dft");
+        set(methane, "prop_spinspin", true);
+        QVERIFY(errorContains(methane, "H・F・Pの原子が2個以上"));
+        // Read back from the input.
+        const auto read = nwchemSettings(importNwchemInput(nwchemInput(d)).document);
+        QVERIFY(read["prop_spinspin"].toBool());
+        QCOMPARE(read["spinspin_pairs"].toString(), QString("hfp"));
+        QVERIFY(!importNwchemInput(nwchemInput(d)).notes.join('\n').contains("後続の計算"));
+    }
     void pathsConstraintsAndScans() {
         auto d = water();
         const auto ids = d.ids();
@@ -585,7 +860,7 @@ class CalculationTest : public QObject {
         set(d, "task", "optimize");
         set(d, "constraints",
             QJsonArray{QJsonObject{{"atoms", idsToJson({ids[1], ids[0], ids[2]})}, {"value", 190.0}}});
-        QVERIFY(errorContains(d, "拘束1: 角度は"));
+        QVERIFY(errorContains(d, "内部座標1: 角度は"));
         // Deleting an atom drops the constraints and the scan coordinate that refer to it.
         set(d, "constraints",
             QJsonArray{QJsonObject{{"atoms", idsToJson({ids[0], ids[1]})}, {"value", 1.0}},
@@ -865,6 +1140,59 @@ class CalculationTest : public QObject {
         w.history()->undo();
         QVERIFY(extra->toPlainText().isEmpty()); // Undo shows the stored text again.
     }
+    void panelC3Settings() {
+        MainWindow w;
+        w.loadDocument(Document::fromXyz("6\ndimer\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n"
+                                         "O 0 0 3\nH 0.758 0 3.504\nH -0.758 0 3.504\n"));
+        const auto ids = w.document().ids();
+        // An added internal coordinate: "固定" off.
+        choose(w, "task", "optimize");
+        w.setSelection({ids[1], ids[0], ids[2]});
+        button(w, "calculationAddConstraint")->click();
+        auto *table = w.findChild<QTableWidget *>("nwchem_constraints");
+        QCOMPARE(table->item(0, 2)->checkState(), Qt::Checked);
+        table->item(0, 2)->setCheckState(Qt::Unchecked);
+        QVERIFY(nwchemSettings(w.document())["constraints"][0].toObject()["free"].toBool());
+        QCOMPARE(table->item(0, 1)->text(), QString("（固定しない）"));
+        QVERIFY(nwchemInput(w.document()).contains("    angle 2 1 3\n"));
+        w.history()->undo();
+        w.history()->undo();
+        // Fragments: the selection, then the rest, each with the charge of its atoms.
+        w.setSelection(ids.mid(0, 3));
+        button(w, "calculationAddFragment")->click();
+        button(w, "calculationAddFragmentRest")->click();
+        auto fragments = nwchemSettings(w.document())["fragment_guess"].toArray();
+        QCOMPARE(fragments.size(), 2);
+        QCOMPARE(idsFromJson(fragments[1].toObject()["atoms"]), ids.mid(3));
+        auto *fragmentTable = w.findChild<QTableWidget *>("nwchem_fragment_guess");
+        QCOMPARE(fragmentTable->item(0, 0)->text(), QString("H2O（3 原子）"));
+        fragmentTable->item(1, 2)->setText("3");
+        QCOMPARE(nwchemSettings(w.document())["fragment_guess"][1].toObject()["multiplicity"].toInt(), 3);
+        QVERIFY(!validateNwchem(w.document()).errors.isEmpty()); // 10 electrons cannot be a triplet's.
+        fragmentTable->setCurrentCell(1, 0);
+        button(w, "calculationRemoveFragment")->click();
+        QCOMPARE(nwchemSettings(w.document())["fragment_guess"].toArray().size(), 1);
+        // The second scan coordinate.
+        w.setSelection({ids[0], ids[1]});
+        button(w, "calculationScanAtoms")->click();
+        w.setSelection({ids[2], ids[0], ids[1]});
+        button(w, "calculationScanAtoms2")->click();
+        QCOMPARE(idsFromJson(nwchemSettings(w.document())["scan2_atoms"]), (Ids{ids[2], ids[0], ids[1]}));
+        QCOMPARE(w.findChild<QLabel *>("calculationScanCoordinate2")->text(), QString("角度 3–1–2"));
+        button(w, "calculationScanClear2")->click();
+        QVERIFY(nwchemSettings(w.document())["scan2_atoms"].toArray().isEmpty());
+        // Pasting a basis through its dialog.
+        QTimer::singleShot(0, &w, [&] {
+            if (auto *dialog = w.findChild<QDialog *>("pasteBasisDialog")) {
+                dialog->findChild<QPlainTextEdit *>("pasteBasisText")->setPlainText("H S\n1.0 1.0\n");
+                QVERIFY(dialog->findChild<QLabel *>("pasteBasisState")->text().contains("基底: H"));
+                dialog->accept();
+            }
+        });
+        button(w, "calculationPasteBasis")->click();
+        QCOMPARE(nwchemSettings(w.document())["basis_custom"].toString(), QString("H S\n1.0 1.0\n"));
+        QCOMPARE(w.findChild<QLabel *>("calculationPastedBasis")->text(), QString("基底: H"));
+    }
     void diagnosticsChangesAndSearch() {
         MainWindow w;
         w.loadDocument(water());
@@ -913,7 +1241,7 @@ class CalculationTest : public QObject {
         set(d, "method", "dft");
         QVERIFY(nwchemSectionUnused(d, "excited").isEmpty());
         set(d, "task", "optimize_frequencies");
-        QCOMPARE(nwchemSectionUnused(d, "excited"), QString("一点計算のみ"));
+        QCOMPARE(nwchemSectionUnused(d, "excited"), QString("一点・最適化"));
         QVERIFY(nwchemSectionUnused(d, "constraints").isEmpty() &&
                 nwchemSectionUnused(d, "optimization").isEmpty());
         set(d, "task", "scan");
@@ -1031,29 +1359,35 @@ class CalculationTest : public QObject {
                                       "scan_end",
                                       "scan_steps",
                                       "scan_relaxed",
+                                      "scan2_start",
+                                      "scan2_end",
+                                      "scan2_steps",
                                       "include_point_charges",
                                       "extra_input",
                                       "extra_tasks"};
         using Context = QVector<std::pair<const char *, QJsonValue>>;
-        const QVector<Context> contexts{{},
-                                        {{"method", "dft"}},
-                                        {{"method", "dft"},
-                                         {"functional", "custom"},
-                                         {"xc_custom", "xpbe96 0.75 cpbe96 1.0 hfexch 0.25"}},
-                                        {{"method", "dft"}, {"tddft", true}},
-                                        {{"method", "dft"}, {"task", "frequencies"}, {"prop_raman", true}},
-                                        {{"method", "dft"}, {"prop_ord", true}},
-                                        {{"prop_esp_grid", true}},
-                                        {{"method", "mp2"}},
-                                        {{"method", "ccsd"}},
-                                        {{"task", "optimize"}},
-                                        {{"task", "frequencies"}},
-                                        {{"task", "irc"}},
-                                        {{"task", "scan"}, {"scan_atoms", "<atoms>"}},
-                                        {{"task", "neb"}, {"neb_end", "<end>"}},
-                                        {{"task", "optimize"}, {"followup", true}},
-                                        {{"solvent", "cosmo"}},
-                                        {{"basis", "x2c-svpall"}}};
+        const QVector<Context> contexts{
+            {},
+            {{"method", "dft"}},
+            {{"method", "dft"},
+             {"functional", "custom"},
+             {"xc_custom", "xpbe96 0.75 cpbe96 1.0 hfexch 0.25"}},
+            {{"method", "dft"}, {"tddft", true}},
+            {{"method", "dft"}, {"task", "optimize"}, {"tddft", true}, {"tddft_roots", 3}},
+            {{"method", "dft"}, {"prop_spinspin", true}},
+            {{"method", "dft"}, {"task", "frequencies"}, {"prop_raman", true}},
+            {{"method", "dft"}, {"prop_ord", true}},
+            {{"prop_esp_grid", true}},
+            {{"method", "mp2"}},
+            {{"method", "ccsd"}},
+            {{"task", "optimize"}},
+            {{"task", "frequencies"}},
+            {{"task", "irc"}},
+            {{"task", "scan"}, {"scan_atoms", "<atoms>"}},
+            {{"task", "neb"}, {"neb_end", "<end>"}},
+            {{"task", "optimize"}, {"followup", true}},
+            {{"solvent", "cosmo"}},
+            {{"basis", "x2c-svpall"}}};
         QStringList failures;
         for (const auto &spec : nwchemSettingSpecs()) {
             if (spec.structural || notImported.contains(spec.key))
@@ -1075,9 +1409,13 @@ class CalculationTest : public QObject {
                 values << spec.minimum + (spec.maximum - spec.minimum) / 4;
                 break;
             case NwchemSettingKind::String:
-                values << QJsonValue(spec.key == "start"   ? "roundtrip"
-                                     : spec.key == "title" ? "Round trip"
-                                                           : "xpbe96 0.75 cpbe96 1.0 hfexch 0.25");
+                values << QJsonValue(spec.key == "start"          ? "roundtrip"
+                                     : spec.key == "title"        ? "Round trip"
+                                     : spec.key == "basis_custom" ? "  H S\n    3.42525091 0.15432897\n"
+                                                                    "    0.62391373 0.53532814\n"
+                                     : spec.key == "ecp_custom"
+                                         ? "  O nelec 2\n  O ul\n    2 1.0 0.0\n  O S\n    2 1.0 0.0\n"
+                                         : "xpbe96 0.75 cpbe96 1.0 hfexch 0.25");
                 break;
             case NwchemSettingKind::Object:
             case NwchemSettingKind::Array:

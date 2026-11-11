@@ -72,6 +72,43 @@ class ChartView : public QWidget {
     QColor color(ChartTone tone) const;
 };
 
+// A two-dimensional scan as a map: each grid point a cell colored by its value (low dark, high light),
+// with the coordinates on the axes and a color bar; a click chooses a point.
+class ScanMap : public QWidget {
+    Q_OBJECT
+  public:
+    struct Point {
+        double x = 0, y = 0, value = 0;
+        int row = -1; // What a click on it chooses (a row of the path table).
+    };
+    explicit ScanMap(QWidget *parent = nullptr);
+    void setMap(const QString &title, const QString &xLabel, const QString &yLabel, const QString &unit,
+                const QVector<Point> &points);
+    void clear();
+    void setSelected(int row);
+    QSize sizeHint() const override {
+        return {420, 300};
+    }
+    QSize minimumSizeHint() const override {
+        return {240, 180};
+    }
+
+  signals:
+    void pointClicked(int row);
+
+  protected:
+    void paintEvent(QPaintEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+
+  private:
+    QString title, xLabel, yLabel, unit;
+    QVector<Point> points;
+    QVector<double> xs, ys; // The distinct coordinates of the grid, in order.
+    int selected = -1;
+    QRectF plot; // Of the last paint, for clicks.
+    QRectF cell(int column, int line) const;
+};
+
 // The frames of a structure list as a track to click or drag along, with the energy of each frame
 // drawn above it where the result knows it (scan and IRC points).
 class FrameTimeline : public QWidget {

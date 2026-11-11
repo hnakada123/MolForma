@@ -402,7 +402,7 @@ void Document::remove(const Ids &removed) {
     for (auto &r : residues)
         r.atoms.removeIf([&](const auto &it) { return isGone(it.value()); });
     residues.removeIf([](const Residue &r) { return r.atoms.isEmpty(); });
-    // NWChem internal-coordinate constraints and the scan coordinate refer to atoms by ID.
+    // NWChem internal-coordinate constraints, the scan coordinates and fragments refer to atoms by ID.
     if (auto nwchem = data.value("nwchem").toObject(); !nwchem.isEmpty()) {
         auto refersToGone = [&](const QJsonValue &atoms) {
             const auto list = idsFromJson(atoms);
@@ -415,8 +415,23 @@ void Document::remove(const Ids &removed) {
                     kept.append(c);
             nwchem["constraints"] = kept;
         }
-        if (refersToGone(nwchem.value("scan_atoms")))
-            nwchem["scan_atoms"] = QJsonArray();
+        for (const auto *key : {"scan_atoms", "scan2_atoms"})
+            if (refersToGone(nwchem.value(key)))
+                nwchem[key] = QJsonArray();
+        // The fragments of an initial guess lose their removed atoms; empty ones go.
+        if (nwchem.value("fragment_guess").isArray()) {
+            QJsonArray kept;
+            for (const auto &value : nwchem.value("fragment_guess").toArray()) {
+                auto fragment = value.toObject();
+                auto atoms = idsFromJson(fragment["atoms"]);
+                atoms.removeIf(isGone);
+                if (atoms.isEmpty())
+                    continue;
+                fragment["atoms"] = idsToJson(atoms);
+                kept.append(fragment);
+            }
+            nwchem["fragment_guess"] = kept;
+        }
         // The end of an NEB path, by atom ID.
         if (nwchem.value("neb_end").isObject()) {
             auto end = nwchem.value("neb_end").toObject();
@@ -498,8 +513,18 @@ void Document::renameIds(const QHash<QString, QString> &renamed) {
             }
             nwchem["constraints"] = constraints;
         }
-        if (nwchem.value("scan_atoms").isArray())
-            nwchem["scan_atoms"] = renamedIds(nwchem["scan_atoms"]);
+        for (const auto *key : {"scan_atoms", "scan2_atoms"})
+            if (nwchem.value(key).isArray())
+                nwchem[key] = renamedIds(nwchem[key]);
+        if (nwchem.value("fragment_guess").isArray()) {
+            QJsonArray fragments;
+            for (const auto &v : nwchem.value("fragment_guess").toArray()) {
+                auto fragment = v.toObject();
+                fragment["atoms"] = renamedIds(fragment["atoms"]);
+                fragments.append(fragment);
+            }
+            nwchem["fragment_guess"] = fragments;
+        }
         if (nwchem.value("neb_end").isObject()) {
             const auto end = nwchem.value("neb_end").toObject();
             QJsonObject positions;

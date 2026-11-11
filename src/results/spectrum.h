@@ -8,13 +8,16 @@ struct SpectrumData {
     QJsonObject parameters;
     QJsonArray peaks;
     QVector<QPointF> sticks, curve;
+    QVector<int> stickPeaks; // The peak of each stick when they are not one each (NMR multiplets).
     QString xUnit, yUnit;
     bool reversed = false;
 };
 // Display models only: finite, bounded input; peak records retain source atom/mode indices.
 // kind nmr/raman/ecd/ord/epr, and ir (IR intensities of the real vibrations) and uv (oscillator
 // strengths over eV) as the result viewer's own charts draw them. NMR requires an explicit
-// reference_ppm; width is the FWHM in x-axis units of a Lorentzian (a Gaussian for uv).
+// reference_ppm; width is the FWHM in x-axis units of a Lorentzian (a Gaussian for uv). With
+// "coupling", NMR draws first-order multiplets from the log's spin–spin couplings at spectrometer_mhz
+// (¹H): topologically equivalent nuclei form one peak ("atoms", "multiplet" such as "dt", "j_hz").
 SpectrumData calculateSpectrum(const ResultData &result, const QJsonObject &parameters);
 // What a conformer adds to the averaged spectra of its set: the peaks of the kinds ir, raman, uv and
 // ecd its result holds, and "shielding" [{atom, element, isotropic}] of a singlet. Kinds without data

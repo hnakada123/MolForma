@@ -93,9 +93,13 @@ McpToolSpec resultsTool() {
         .description =
             "Read the loaded result summary (properties from NWChem logs: thermochemistry, dipole, "
             "optimization "
-            "state, scan and irc paths with frame indices, bsse, solvation, mulliken/esp/resp charges per "
+            "state, scan and irc paths with frame indices (a two-dimensional scan adds coordinate2 and "
+            "value2 "
+            "to each point), bsse, solvation, mulliken/esp/resp charges per "
             "atom, "
-            "NMR shielding, polarizability in a.u.) or paginated frames/energies/orbitals/modes/excitations "
+            "NMR shielding, NMR spin-spin couplings spinspin {a, b, isotope_a, isotope_b, hz}, "
+            "polarizability "
+            "in a.u.) or paginated frames/energies/orbitals/modes/excitations "
             "(TDDFT)/steps (optimization)/log. mode_displacements returns one mode with its reference "
             "geometry. "
             "Excitations list their orbital contributions (occupied -> virtual orbital numbers, X/Y "
@@ -118,7 +122,10 @@ McpToolSpec resultsTool() {
                   {"description",
                    "Spectrum parameters: kind nmr/raman/epr/ecd/ord/ir/uv and width (FWHM), optional "
                    "minimum/maximum. ir is over cm-1 and uv (oscillator strengths, Gaussian) over eV. NMR "
-                   "needs nucleus 1H/13C and reference_ppm, optional weights keyed by 1-based atom number. "
+                   "needs nucleus 1H/13C and reference_ppm, optional weights keyed by 1-based atom number; "
+                   "coupling true with spectrometer_mhz (1H) draws first-order multiplets from the log's "
+                   "spin-spin couplings, topologically equivalent nuclei as one peak (atoms, multiplet, "
+                   "j_hz). "
                    "EPR needs microwave_ghz, nuclei [{atom,isotope}], optional derivative."}}},
              {"profile",
               QJsonObject{{"type", "object"},

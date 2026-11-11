@@ -1376,6 +1376,94 @@ class ResultsTest : public QObject {
         view.setResult(parsed);
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, view.loadSettings(settingsFile));
     }
+    void spinSpinCouplingsAndMultiplets() {
+        // CH3F as NWChem prints its shieldings and indirect spin–spin couplings.
+        QString log = "NWChem\n Output coordinates in angstroms (scale by 1.8897 to convert to a.u.)\n\n"
+                      " No. Tag Charge X Y Z\n ---- ---- ------ ----- ----- -----\n"
+                      " 1 C 6.0 0.0 0.0 0.0\n 2 F 9.0 0.0 0.0 1.383\n 3 H 1.0 1.0267 0.0 -0.363\n"
+                      " 4 H 1.0 -0.5134 -0.8892 -0.363\n 5 H 1.0 -0.5134 0.8892 -0.363\n\n"
+                      "Chemical Shielding Tensors (GIAO, in ppm)\n";
+        for (const auto &[atom, element, sigma] :
+             {std::tuple{1, "C", 120.0}, {2, "F", 459.0}, {3, "H", 27.80}, {4, "H", 27.81}, {5, "H", 27.82}})
+            log += QString("Atom: %1 %2\nisotropic = %3\nanisotropy = 1\n").arg(atom).arg(element).arg(sigma);
+        log += "      Indirect Spin-Spin Tensors (in Hz)\n";
+        const QVector<std::tuple<int, QString, int, QString, double>> pairs{
+            {1, "13-C", 2, "19-F", -184.14}, {1, "13-C", 3, "1-H", 152.35}, {1, "13-C", 4, "1-H", 152.35},
+            {1, "13-C", 5, "1-H", 152.35},   {2, "19-F", 3, "1-H", 48.81},  {2, "19-F", 4, "1-H", 48.81},
+            {2, "19-F", 5, "1-H", 48.81},    {3, "1-H", 4, "1-H", -11.06},  {3, "1-H", 5, "1-H", -11.06},
+            {4, "1-H", 5, "1-H", -11.06}};
+        for (const auto &[a, ia, b, ib, hz] : pairs)
+            log += QString("      Atom    %1:  %2  and Atom    %3:  %4 \n        Isotropic =    -231.3481\n"
+                           "      Isotropic Spin-Spin Coupling =    %5 Hz\n")
+                       .arg(a)
+                       .arg(ia)
+                       .arg(b)
+                       .arg(ib)
+                       .arg(hz);
+        const auto r = readResult(save("ch3f-spinspin.out", log));
+        const auto couplings = r.properties["spinspin"].toArray();
+        QCOMPARE(couplings.size(), 10);
+        QCOMPARE(couplings[0].toObject()["isotope_b"].toString(), QString("19-F"));
+        QCOMPARE(couplings[4].toObject()["hz"].toDouble(), 48.81);
+        QCOMPARE(couplings[7].toObject()["a"].toInt(), 3);
+        // ¹H: the three equivalent protons as one doublet (²J(H,F)); their own coupling does not show.
+        QJsonObject p{{"kind", "nmr"}, {"nucleus", "1H"},  {"reference_ppm", 31.8},
+                      {"width", .002}, {"coupling", true}, {"spectrometer_mhz", 400.}};
+        auto s = calculateSpectrum(r, p);
+        QCOMPARE(s.peaks.size(), 1);
+        const auto peak = s.peaks[0].toObject();
+        QCOMPARE(peak["multiplet"].toString(), QString("d"));
+        QCOMPARE(peak["j_hz"].toString(), QString("48.8"));
+        QCOMPARE(peak["atoms"].toArray().size(), 3);
+        QVERIFY(std::abs(peak["x"].toDouble() - (31.8 - 27.81)) < 1e-9);
+        QCOMPARE(s.sticks.size(), 2);
+        QCOMPARE(s.stickPeaks, (QVector<int>{0, 0}));
+        QVERIFY(std::abs(std::abs(s.sticks[1].x() - s.sticks[0].x()) - 48.81 / 400) < 1e-6);
+        QCOMPARE(s.sticks[0].y() + s.sticks[1].y(), 3.0);
+        // ¹³C: proton-decoupled, split by ¹⁹F only.
+        p["nucleus"] = "13C";
+        p["reference_ppm"] = 190.;
+        s = calculateSpectrum(r, p);
+        QCOMPARE(s.peaks[0].toObject()["multiplet"].toString(), QString("d"));
+        QVERIFY(std::abs(std::abs(s.sticks[1].x() - s.sticks[0].x()) - 184.14 / (400 * .25145020)) < 1e-6);
+        // Without couplings in the log the option is refused; off, the spectrum is as before.
+        auto plain = r;
+        plain.properties.remove("spinspin");
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, calculateSpectrum(plain, p));
+        p["coupling"] = false;
+        QCOMPARE(calculateSpectrum(r, p).peaks.size(), 1);
+        p["nucleus"] = "1H";
+        p["reference_ppm"] = 31.8;
+        QCOMPARE(calculateSpectrum(r, p).peaks.size(), 3);
+        // The view lists the multiplet.
+        MainWindow w;
+        SpectroscopyView view(&w);
+        view.setResult(r);
+        p["coupling"] = true;
+        view.setParameters(p);
+        const auto *table = view.findChild<QTableWidget *>("spectrumPeaks");
+        QCOMPARE(table->item(0, 0)->text(), QString("3, 4, 5"));
+        QCOMPARE(table->item(0, 4)->text(), QString("d (48.8)"));
+        // A two-dimensional scan names both coordinates of each point.
+        QString scan = "NWChem\n";
+        for (int k = 1; k <= 4; ++k)
+            scan += QString("MolForma scan %1/4 bond 1 2 = %2 and angle 2 1 3 = %3\n")
+                        .arg(k)
+                        .arg(k <= 2 ? 1.0 : 1.1)
+                        .arg(k % 2 ? 100 : 110) +
+                    geometry() + QString("         Total SCF energy =    -76.0%1\n").arg(k);
+        const auto plane = readResult(save("scan2.out", scan)).properties["scan"].toArray();
+        QCOMPARE(plane.size(), 4);
+        QCOMPARE(plane[3].toObject()["value"].toDouble(), 1.1);
+        QCOMPARE(plane[3].toObject()["value2"].toDouble(), 110.);
+        QCOMPARE(plane[3].toObject()["coordinate2"].toString(), QString("angle 2 1 3"));
+        QVERIFY(!readResult(save("scan1.out", "NWChem\nMolForma scan 1/1 bond 1 2 = 1\n" + geometry() +
+                                                  "         Total SCF energy =    -76.0\n"))
+                     .properties["scan"][0]
+                     .toObject()
+                     .contains("value2"));
+        QCOMPARE(NwchemLog::tasks("task tddft optimize\n"), QStringList{"励起状態の構造最適化（TDDFT）"});
+    }
     void normalRaman() {
         const auto root = QString(FIXTURE_DIR) + "/nwchem/";
         const auto r = readResult(root + "water_raman.out");

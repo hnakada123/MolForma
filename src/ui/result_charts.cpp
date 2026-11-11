@@ -294,6 +294,167 @@ QColor ChartView::color(ChartTone tone) const {
     return c.text;
 }
 
+ScanMap::ScanMap(QWidget *parent) : QWidget(parent) {
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+}
+void ScanMap::setMap(const QString &t, const QString &x, const QString &y, const QString &u,
+                     const QVector<Point> &list) {
+    title = t;
+    xLabel = x;
+    yLabel = y;
+    unit = u;
+    points = list;
+    xs.clear();
+    ys.clear();
+    // Values within a thousandth of the range are one coordinate of the grid.
+    const auto distinct = [](QVector<double> values) {
+        std::sort(values.begin(), values.end());
+        QVector<double> result;
+        const double span = values.isEmpty() ? 0 : values.last() - values.first();
+        for (double v : values)
+            if (result.isEmpty() || v - result.last() > span * 1e-3 + 1e-9)
+                result << v;
+        return result;
+    };
+    QVector<double> allX, allY;
+    for (const auto &point : points) {
+        allX << point.x;
+        allY << point.y;
+    }
+    xs = distinct(allX);
+    ys = distinct(allY);
+    selected = -1;
+    update();
+}
+void ScanMap::clear() {
+    setMap({}, {}, {}, {}, {});
+}
+void ScanMap::setSelected(int row) {
+    selected = row;
+    update();
+}
+QRectF ScanMap::cell(int column, int line) const {
+    const double w = plot.width() / std::max<qsizetype>(1, xs.size()),
+                 h = plot.height() / std::max<qsizetype>(1, ys.size());
+    return {plot.left() + column * w, plot.bottom() - (line + 1) * h, w, h};
+}
+void ScanMap::paintEvent(QPaintEvent *) {
+    QPainter p(this);
+    p.fillRect(rect(), palette().base());
+    const QColor text = palette().color(QPalette::Text);
+    p.setPen(text);
+    plot = QRectF();
+    if (points.isEmpty() || xs.isEmpty() || ys.isEmpty()) {
+        p.drawText(rect(), Qt::AlignCenter, tr("表示するデータがありません"));
+        return;
+    }
+    double low = INFINITY, high = -INFINITY;
+    for (const auto &point : points) {
+        low = std::min(low, point.value);
+        high = std::max(high, point.value);
+    }
+    if (high - low < 1e-12)
+        high = low + 1;
+    const QFontMetrics metrics(font());
+    const int line = metrics.height();
+    plot = QRectF(
+        QPointF(metrics.horizontalAdvance("-000.00") + line + 8, line * 2 + 4),
+        QPointF(width() - metrics.horizontalAdvance(unit.section(' ', 0, 1)) - 44, height() - line * 3 - 4));
+    if (plot.width() < 20 || plot.height() < 20)
+        return;
+    // A sequential ramp from dark blue through teal to light yellow, readable on light and dark themes.
+    static const QColor stops[] = {QColor("#2b2d6e"), QColor("#28698a"), QColor("#2e9a8c"), QColor("#7cc46a"),
+                                   QColor("#f4e566")};
+    const auto shade = [&](double v) {
+        const double t = std::clamp((v - low) / (high - low), 0.0, 1.0) * 4;
+        const int k = std::min(3, int(t));
+        const double f = t - k;
+        const auto &a = stops[k], &b = stops[k + 1];
+        return QColor::fromRgbF(a.redF() + (b.redF() - a.redF()) * f,
+                                a.greenF() + (b.greenF() - a.greenF()) * f,
+                                a.blueF() + (b.blueF() - a.blueF()) * f);
+    };
+    const auto columnOf = [&](double x) {
+        return int(std::min_element(xs.begin(), xs.end(),
+                                    [&](double a, double b) { return std::abs(a - x) < std::abs(b - x); }) -
+                   xs.begin());
+    };
+    const auto lineOf = [&](double y) {
+        return int(std::min_element(ys.begin(), ys.end(),
+                                    [&](double a, double b) { return std::abs(a - y) < std::abs(b - y); }) -
+                   ys.begin());
+    };
+    for (const auto &point : points)
+        p.fillRect(cell(columnOf(point.x), lineOf(point.y)), shade(point.value));
+    p.setPen(palette().color(QPalette::Mid));
+    p.setBrush(Qt::NoBrush);
+    p.drawRect(plot);
+    for (const auto &point : points)
+        if (point.row == selected && selected >= 0) {
+            p.setPen(QPen(text, 2));
+            p.drawRect(cell(columnOf(point.x), lineOf(point.y)).adjusted(1, 1, -1, -1));
+        }
+    // Ticks at the grid's coordinates, as many as fit.
+    p.setPen(text);
+    const auto number = [](double v) { return QString::number(v, 'g', 5); };
+    const int everyX = std::max(1, int(xs.size() * metrics.horizontalAdvance("000.000") / plot.width()) + 1);
+    for (int i = 0; i < xs.size(); i += everyX) {
+        const auto r = cell(i, 0);
+        p.drawText(QRectF(r.left() - 30, plot.bottom() + 2, r.width() + 60, line), Qt::AlignHCenter,
+                   number(xs[i]));
+    }
+    const int everyY = std::max(1, int(ys.size() * line / plot.height()) + 1);
+    for (int j = 0; j < ys.size(); j += everyY) {
+        const auto r = cell(0, j);
+        p.drawText(QRectF(0, r.center().y() - line / 2.0, plot.left() - 4, line),
+                   Qt::AlignRight | Qt::AlignVCenter, number(ys[j]));
+    }
+    p.drawText(QRectF(plot.left(), plot.bottom() + line + 4, plot.width(), line), Qt::AlignHCenter, xLabel);
+    p.save();
+    p.translate(line / 2.0 + 2, plot.center().y());
+    p.rotate(-90);
+    p.drawText(QRectF(-plot.height() / 2, -line / 2.0, plot.height(), line), Qt::AlignCenter, yLabel);
+    p.restore();
+    auto bold = font();
+    bold.setBold(true);
+    p.setFont(bold);
+    p.drawText(QRectF(0, 2, width(), line), Qt::AlignHCenter, title);
+    p.setFont(font());
+    // The color bar with its ends.
+    const QRectF bar(plot.right() + 14, plot.top(), 12, plot.height());
+    for (int k = 0; k < int(bar.height()); ++k)
+        p.fillRect(QRectF(bar.left(), bar.bottom() - k - 1, bar.width(), 1),
+                   shade(low + (high - low) * k / bar.height()));
+    p.setPen(palette().color(QPalette::Mid));
+    p.drawRect(bar);
+    p.setPen(text);
+    p.drawText(QRectF(bar.left() - 4, bar.top() - line - 2, 70, line), Qt::AlignLeft, number(high));
+    p.drawText(QRectF(bar.left() - 4, bar.bottom() + 2, 70, line), Qt::AlignLeft, number(low));
+    p.drawText(QRectF(bar.right() + 4, bar.center().y() - line, width() - bar.right() - 4, line * 2),
+               Qt::AlignLeft | Qt::AlignVCenter | Qt::TextWordWrap, unit);
+}
+void ScanMap::mousePressEvent(QMouseEvent *event) {
+    QWidget::mousePressEvent(event);
+    if (event->button() != Qt::LeftButton || plot.isEmpty() || !plot.contains(event->position()))
+        return;
+    for (const auto &point : std::as_const(points)) {
+        const int column = int(std::min_element(xs.begin(), xs.end(),
+                                                [&](double a, double b) {
+                                                    return std::abs(a - point.x) < std::abs(b - point.x);
+                                                }) -
+                               xs.begin());
+        const int line = int(std::min_element(ys.begin(), ys.end(),
+                                              [&](double a, double b) {
+                                                  return std::abs(a - point.y) < std::abs(b - point.y);
+                                              }) -
+                             ys.begin());
+        if (cell(column, line).contains(event->position()) && point.row >= 0) {
+            emit pointClicked(point.row);
+            return;
+        }
+    }
+}
+
 FrameTimeline::FrameTimeline(QWidget *parent) : QWidget(parent) {
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setFocusPolicy(Qt::StrongFocus);

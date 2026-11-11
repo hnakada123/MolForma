@@ -1150,7 +1150,11 @@ void NwchemLog::read(const QString &line) {
     static const QRegularExpression vector(
         R"(^\s*Vector\s+(\d+)\s+Occ=\s*(\S+)\s+E=\s*(\S+)(?:\s+Symmetry=\s*(\S+))?)");
     // Markers written by MolForma's scan input ("title" of each point) and IRC point lines.
-    static const QRegularExpression scanMark(R"(MolForma scan (\d+)/(\d+) ([a-z]+(?: \d+)+) = (\S+))");
+    // A point of a two-dimensional scan names both coordinates: "… = 1.5 and torsion 1 2 3 4 = 60".
+    static const QRegularExpression scanMark(
+        R"(MolForma scan (\d+)/(\d+) ([a-z]+(?: \d+)+) = ([-+.0-9eE]+)(?: and ([a-z]+(?: \d+)+) = ([-+.0-9eE]+))?)");
+    static const QRegularExpression spinPair(
+        R"(^\s*Atom\s+(\d+):\s+(\d+-[A-Za-z]+)\s+and\s+Atom\s+(\d+):\s+(\d+-[A-Za-z]+))");
     static const QRegularExpression ircPoint(R"(^&\s+(\d+)((?:\s+\S+){6})\s*$)");
     static const QRegularExpression atomRow(R"(^\s*(\d+)\s+([A-Za-z]{1,3}\w*)\s+(\S+)\s+(\S+)\s*$)");
     static const QRegularExpression index("^\\d+$");
@@ -1264,6 +1268,10 @@ void NwchemLog::read(const QString &line) {
                                           {"points", m.captured(2).toInt()},
                                           {"coordinate", m.captured(3)},
                                           {"value", value(m.captured(4))}};
+        if (scan.contains(scanPoint) && m.hasCaptured(5)) {
+            scan[scanPoint]["coordinate2"] = m.captured(5);
+            scan[scanPoint]["value2"] = value(m.captured(6));
+        }
     }
     // NWChem's NEB: the step, the energies of the path after each step, the path itself when the
     // input asks to print it (print_shift), the "@neb" table and the verdict.
@@ -1489,6 +1497,24 @@ void NwchemLog::read(const QString &line) {
         last["anisotropy"] = value(words(line.section('=', 1)).value(0));
         shielding[shielding.size() - 1] = last;
         shieldingAtom = 0;
+    }
+    // Indirect spin–spin couplings: "Atom 1: 13-C and Atom 2: 19-F", then the total isotropic coupling.
+    if (line.contains(u"Indirect Spin-Spin Tensors")) {
+        spinspin = {};
+        spinPairAtoms = {};
+    }
+    if (line.contains(u" and Atom ")) {
+        if (const auto m = spinPair.match(line); m.hasMatch())
+            spinPairAtoms = {m.captured(1), m.captured(2), m.captured(3), m.captured(4)};
+    }
+    if (spinPairAtoms.size() == 4 && line.contains(u"Isotropic Spin-Spin Coupling =")) {
+        if (spinspin.size() < 20000)
+            spinspin << QJsonObject{{"a", spinPairAtoms[0].toInt()},
+                                    {"b", spinPairAtoms[2].toInt()},
+                                    {"isotope_a", spinPairAtoms[1]},
+                                    {"isotope_b", spinPairAtoms[3]},
+                                    {"hz", value(words(line.section('=', 1)).value(0))}};
+        spinPairAtoms = {};
     }
     if (line.contains(u"NWChem Input Module")) {
         responseGauge.clear();
@@ -1865,6 +1891,8 @@ void NwchemLog::finish() {
     }
     if (!shielding.isEmpty())
         r.properties["shielding"] = shielding;
+    if (!spinspin.isEmpty())
+        r.properties["spinspin"] = spinspin;
     if (r.properties.contains("raman")) {
         auto rows = r.properties["raman"].toArray();
         QSet<int> matched;
@@ -1944,7 +1972,9 @@ QStringList NwchemLog::tasks(const QString &input) {
         const auto words = line.split(' ', Qt::SkipEmptyParts);
         // "task dft optimize", "task esp", "task dplot", "task tddft energy".
         const auto theory = words.value(1).toLower(), operation = words.value(2).toLower();
-        if (theory == "tddft")
+        if (theory == "tddft" && operation == "optimize")
+            result << tr("励起状態の構造最適化（TDDFT）");
+        else if (theory == "tddft")
             result << tr("励起状態（TDDFT）");
         else if (theory == "esp")
             result << tr("ESP電荷");

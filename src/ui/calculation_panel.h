@@ -131,7 +131,10 @@ class CalculationPanel : public QWidget {
     QStringList fieldOrder;        // Keys in the order of the form.
     QTableWidget *elementBases;    // Per-element library basis for the elements of the molecule.
     QTableWidget *constraints;     // Internal-coordinate constraints (ZCOORD) of optimizations.
-    QLabel *scanCoordinate, *monomers, *nebEnd;
+    QTableWidget *fragments;       // The fragments of an initial guess from their orbitals.
+    QLabel *scanCoordinate, *scanCoordinate2, *monomers, *nebEnd, *pastedBasis;
+    void pasteBasis();
+    void addFragment(bool rest);
     void setNebEnd(const Document &end, bool fit, const QString &name);
     QLabel *memoryState; // The memory is set in "実行設定": shown with a link there.
     QPlainTextEdit *extraInput, *extraTasks;
@@ -159,7 +162,7 @@ class CalculationPanel : public QWidget {
     void refreshChanges(const QJsonObject &settings);
     void filterRows();
     void addConstraint();
-    void setScanCoordinate();
+    void setScanCoordinate(bool second = false);
     // Settings that differ from the defaults, in the order of the form.
     QStringList changedKeys(const QJsonObject &settings) const;
     // name: of the edit in the undo history (else from the keys); groups: of detailed options, all

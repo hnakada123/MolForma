@@ -15,7 +15,7 @@ SpectroscopyView::SpectroscopyView(MainWindow *owner) : QWidget(owner), window(o
     layout->addLayout(form);
     kind = new QComboBox;
     kind->setObjectName("spectrumKind");
-    kind->addItem(tr("NMR（分裂なし）"), "nmr");
+    kind->addItem("NMR", "nmr");
     kind->addItem(tr("通常ラマン"), "raman");
     kind->addItem("ECD", "ecd");
     kind->addItem("ORD (β)", "ord");
@@ -30,6 +30,18 @@ SpectroscopyView::SpectroscopyView(MainWindow *owner) : QWidget(owner), window(o
     reference->setObjectName("spectrumReference");
     reference->setPlaceholderText(tr("同じ条件のTMS等の遮蔽定数"));
     form->addRow(tr("基準遮蔽定数 / ppm"), reference);
+    coupling = new QCheckBox(tr("J結合で分裂させる（一次の多重線）"));
+    coupling->setObjectName("spectrumCoupling");
+    coupling->setToolTip(tr("計算したJ結合で、等価な核をまとめた多重線にします（¹H・¹⁹F・³¹Pとの結合。¹³Cは"
+                            "¹H デカップリング）。"));
+    form->addRow(coupling);
+    spectrometer = new QDoubleSpinBox;
+    spectrometer->setObjectName("spectrumSpectrometer");
+    spectrometer->setRange(10, 2000);
+    spectrometer->setDecimals(1);
+    spectrometer->setValue(400);
+    spectrometer->setSuffix(" MHz");
+    form->addRow(tr("測定周波数（¹H）"), spectrometer);
     width = new QDoubleSpinBox;
     width->setObjectName("spectrumWidth");
     width->setDecimals(4);
@@ -65,10 +77,10 @@ SpectroscopyView::SpectroscopyView(MainWindow *owner) : QWidget(owner), window(o
     chart = new ChartView;
     chart->setObjectName("spectrumChart");
     layout->addWidget(chart, 2);
-    peaks = new QTableWidget(0, 4);
+    peaks = new QTableWidget(0, 5);
     peaks->setObjectName("spectrumPeaks");
     peaks->setHorizontalHeaderLabels(
-        {tr("原子 / モード"), tr("ピーク位置"), tr("遮蔽定数 / ppm"), tr("重み")});
+        {tr("原子 / モード"), tr("ピーク位置"), tr("遮蔽定数 / ppm"), tr("重み"), tr("分裂（J / Hz）")});
     peaks->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     peaks->setSelectionBehavior(QAbstractItemView::SelectRows);
     peaks->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -121,6 +133,13 @@ SpectroscopyView::SpectroscopyView(MainWindow *owner) : QWidget(owner), window(o
     connect(width, &QDoubleSpinBox::valueChanged, this, &SpectroscopyView::refresh);
     connect(microwave, &QDoubleSpinBox::valueChanged, this, &SpectroscopyView::refresh);
     connect(derivative, &QCheckBox::toggled, this, &SpectroscopyView::refresh);
+    connect(spectrometer, &QDoubleSpinBox::valueChanged, this, &SpectroscopyView::refresh);
+    connect(coupling, &QCheckBox::toggled, this, [this](bool on) {
+        // Multiplets need lines narrower than their couplings: about 1 Hz.
+        const QSignalBlocker block(width);
+        width->setValue(on ? std::max(.0005, 1.2 / spectrometer->value()) : .05);
+        refresh();
+    });
     connect(kind, &QComboBox::currentIndexChanged, this, [this] {
         minimum->clear();
         maximum->clear();
@@ -137,12 +156,12 @@ SpectroscopyView::SpectroscopyView(MainWindow *owner) : QWidget(owner), window(o
     });
     connect(chart, &ChartView::stickClicked, this, [this](int series, int index) {
         if (series == 1)
-            peaks->selectRow(index);
+            peaks->selectRow(peakOfStick(index));
     });
     connect(peaks, &QTableWidget::currentCellChanged, this, [this](int row) {
         if (row < 0 || row >= spectrum.peaks.size())
             return;
-        chart->setSelectedStick(1, row);
+        chart->setSelectedStick(1, firstStick(row));
         const auto peak = spectrum.peaks[row].toObject();
         if (peak.contains("atom"))
             emit atomSelected(peak["atom"].toInt() - 1);
@@ -169,11 +188,21 @@ SpectroscopyView::SpectroscopyView(MainWindow *owner) : QWidget(owner), window(o
     });
     refresh();
 }
+int SpectroscopyView::peakOfStick(int stick) const {
+    return spectrum.stickPeaks.isEmpty() ? stick : spectrum.stickPeaks.value(stick, -1);
+}
+int SpectroscopyView::firstStick(int peak) const {
+    return spectrum.stickPeaks.isEmpty() ? peak : int(spectrum.stickPeaks.indexOf(peak));
+}
 QJsonObject SpectroscopyView::parameters() const {
     QJsonObject p{{"kind", kind->currentData().toString()},
                   {"nucleus", nucleus->currentData().toString()},
                   {"width", width->value()},
                   {"weights", weights}};
+    if (p["kind"] == "nmr" && coupling->isChecked()) {
+        p["coupling"] = true;
+        p["spectrometer_mhz"] = spectrometer->value();
+    }
     for (const auto &pair :
          {qMakePair(QString("reference_ppm"), reference), qMakePair(QString("minimum"), minimum),
           qMakePair(QString("maximum"), maximum)}) {
@@ -198,10 +227,14 @@ QJsonObject SpectroscopyView::parameters() const {
 void SpectroscopyView::setParameters(const QJsonObject &p) {
     calculateSpectrum(result, p); // Validate everything before changing the visible settings.
     const QSignalBlocker blockKind(kind), blockNucleus(nucleus), blockWidth(width), blockNuclei(nuclei),
-        blockMicrowave(microwave), blockDerivative(derivative);
+        blockMicrowave(microwave), blockDerivative(derivative), blockCoupling(coupling),
+        blockSpectrometer(spectrometer);
     kind->setCurrentIndex(kind->findData(p["kind"].toString()));
     nucleus->setCurrentIndex(nucleus->findData(p["nucleus"].toString("1H")));
     width->setValue(p["width"].toDouble());
+    coupling->setChecked(p["coupling"].toBool());
+    if (p.contains("spectrometer_mhz"))
+        spectrometer->setValue(p["spectrometer_mhz"].toDouble());
     weights = p["weights"].toObject();
     if (p["kind"] == "epr") {
         microwave->setValue(p["microwave_ghz"].toDouble());
@@ -279,6 +312,15 @@ void SpectroscopyView::refresh() {
     form->setRowVisible(width, kind->currentData() != "ord");
     form->setRowVisible(nucleus, nmr);
     form->setRowVisible(reference, nmr);
+    const bool couplings = nmr && result.properties.contains("spinspin");
+    form->setRowVisible(coupling, couplings);
+    form->setRowVisible(spectrometer, couplings);
+    spectrometer->setEnabled(coupling->isChecked());
+    if (!couplings && coupling->isChecked()) {
+        const QSignalBlocker block(coupling);
+        coupling->setChecked(false);
+    }
+    peaks->setColumnHidden(4, !couplings || !coupling->isChecked());
     form->setRowVisible(microwave, epr);
     form->setRowVisible(derivative, epr);
     nucleus->setEnabled(nmr);
@@ -289,13 +331,20 @@ void SpectroscopyView::refresh() {
         chart->setReversedX(spectrum.reversed);
         chart->setXRange(spectrum.parameters["minimum"].toDouble(),
                          spectrum.parameters["maximum"].toDouble());
-        chart->setChart(kind->currentText(), spectrum.xUnit, spectrum.yUnit,
+        chart->setChart(nmr && coupling->isChecked() ? tr("NMR（J結合による一次の多重線）")
+                                                     : kind->currentText(),
+                        spectrum.xUnit, spectrum.yUnit,
                         {{tr("広がり"), spectrum.curve, ChartTone::Muted},
                          {tr("ピーク"), epr && derivative->isChecked() ? QVector<QPointF>{} : spectrum.sticks,
                           ChartTone::Text, true}});
-        message->setText(tr("δ ≈ σ基準 − "
-                            "σ対象。反磁性分子の表示用モデルです。J分裂・等価核や配座の平均化は含みません。重"
-                            "みは原子数を基準とし、実験の積分値ではありません。"));
+        message->setText(
+            coupling->isChecked() && nmr
+                ? tr("δ ≈ σ基準 − σ対象。結合の並びが同じ（トポロジー的に等価な）核を1本にまとめ、遮蔽定数と"
+                     "J結合を平均した一次の多重線です。強く結合した系（Δν ≈ J）の2次効果・配座の平均化は含み"
+                     "ません。")
+                : tr("δ ≈ σ基準 − "
+                     "σ対象。反磁性分子の表示用モデルです。J分裂・等価核や配座の平均化は含みません。重"
+                     "みは原子数を基準とし、実験の積分値ではありません。"));
         if (!nmr)
             message->setText(tr("通常ラマンの活性を表示用に広げた曲線です。散乱断面積や実験強度への換算は行い"
                                 "ません。対応する振動を含むログではピークからモードを選べます。"));
@@ -313,17 +362,27 @@ void SpectroscopyView::refresh() {
         peaks->setRowCount(spectrum.peaks.size());
         for (int i = 0; i < spectrum.peaks.size(); ++i) {
             const auto p = spectrum.peaks[i].toObject();
+            QStringList atoms;
+            for (const auto &atom : p["atoms"].toArray())
+                atoms << QString::number(atom.toInt());
             const QStringList values{
-                QString::number(p.contains("atom")   ? p["atom"].toInt()
-                                : p.contains("mode") ? p["mode"].toInt() + 1
-                                : p.contains("root") ? p["root"].toInt()
-                                                     : p["raman_index"].toInt()),
+                !atoms.isEmpty()     ? atoms.join(", ")
+                : p.contains("atom") ? QString::number(p["atom"].toInt())
+                : p.contains("mode") ? QString::number(p["mode"].toInt() + 1)
+                : p.contains("root") ? QString::number(p["root"].toInt())
+                                     : QString::number(p["raman_index"].toInt()),
                 QString::number(p["x"].toDouble(), 'g', 10),
                 p.contains("shielding_ppm") ? QString::number(p["shielding_ppm"].toDouble(), 'g', 10) : "—",
-                QString::number(p["weight"].toDouble(), 'g', 10)};
+                QString::number(p["weight"].toDouble(), 'g', 10),
+                p.contains("multiplet")
+                    ? (p["j_hz"].toString().isEmpty()
+                           ? p["multiplet"].toString()
+                           : QString("%1 (%2)").arg(p["multiplet"].toString(), p["j_hz"].toString()))
+                    : QString()};
             for (int j = 0; j < values.size(); ++j) {
                 auto *item = new QTableWidgetItem(values[j]);
-                if (j != 3 || !p.contains("atom"))
+                // Weights are per atom: a peak of several equivalent atoms takes them from the atom list.
+                if (j != 3 || !p.contains("atom") || p.contains("atoms"))
                     item->setFlags(item->flags() & ~Qt::ItemIsEditable);
                 peaks->setItem(i, j, item);
             }
@@ -337,10 +396,11 @@ void SpectroscopyView::refresh() {
 }
 void SpectroscopyView::selectAtom(int index) {
     for (int i = 0; i < spectrum.peaks.size(); ++i)
-        if (spectrum.peaks[i].toObject()["atom"].toInt(-1) == index + 1) {
+        if (spectrum.peaks[i].toObject()["atom"].toInt(-1) == index + 1 ||
+            spectrum.peaks[i].toObject()["atoms"].toArray().contains(index + 1)) {
             const QSignalBlocker block(peaks);
             peaks->selectRow(i);
-            chart->setSelectedStick(1, i);
+            chart->setSelectedStick(1, firstStick(i));
             return;
         }
 }

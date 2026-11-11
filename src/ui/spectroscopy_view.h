@@ -38,8 +38,10 @@ class SpectroscopyView : public QWidget {
     QComboBox *kind, *nucleus;
     QLineEdit *reference, *minimum, *maximum;
     QDoubleSpinBox *width;
-    QDoubleSpinBox *microwave;
-    QCheckBox *derivative;
+    QDoubleSpinBox *microwave, *spectrometer;
+    QCheckBox *derivative, *coupling;
+    int peakOfStick(int stick) const;
+    int firstStick(int peak) const;
     QLabel *message;
     ChartView *chart;
     QTableWidget *peaks, *nuclei;

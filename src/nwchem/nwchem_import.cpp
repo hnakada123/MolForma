@@ -114,6 +114,7 @@ NwchemImport importNwchemInput(const QString &text) {
     // and gradient), read once the method is known.
     QStringList scfThresholds, dftThresholds;
     QVector<std::pair<QString, Vec>> nebEnd; // The end of an NEB path ("geometry endgeom"), in Å.
+    int tddftRoot = 0;                       // The excited state of a TDDFT gradient ("grad; root n").
     for (int i = 0; i < lines.size(); ++i) {
         auto w = words(lines[i]);
         const auto keyword = w.value(0).toLower();
@@ -123,13 +124,19 @@ NwchemImport importNwchemInput(const QString &text) {
             int depth = 1;
             for (++i; i < lines.size(); ++i) {
                 const auto first = words(lines[i]).value(0).toLower();
-                if (keyword == "geometry" && (first == "zmatrix" || first == "zcoord" || first == "system"))
+                if ((keyword == "geometry" &&
+                     (first == "zmatrix" || first == "zcoord" || first == "system")) ||
+                    (keyword == "tddft" && first == "grad"))
                     ++depth;
                 if (first == "end" && --depth == 0)
                     break;
                 body << lines[i];
             }
         }
+        // The DFT block that turns UKS on for MolForma's spin–spin coupling task.
+        if (!tasks.isEmpty() && keyword == "dft" && body.size() == 1 &&
+            words(body[0]).value(0).toLower() == "odft")
+            continue;
         // Method blocks after the first task belong to later steps (e.g. a follow-up single point).
         if (!tasks.isEmpty() &&
             QStringList{"basis", "ecp", "scf", "dft", "mp2", "ccsd", "cosmo", "relativistic", "tddft"}
@@ -260,6 +267,27 @@ NwchemImport importNwchemInput(const QString &text) {
                         return true;
                 return false;
             };
+            // Shells written out (not from the library) are pasted bases; those of ghosts follow the
+            // element's.
+            QStringList pasted;
+            bool ghostShells = false;
+            for (const auto &line : body) {
+                const auto row = words(line);
+                if (row.value(1).toLower() == "library")
+                    continue;
+                double n;
+                if (!row.isEmpty() && !number(row[0], n))
+                    ghostShells = row[0].startsWith("bq", Qt::CaseInsensitive);
+                if (!ghostShells && !row.isEmpty()) // As MolForma writes them: numbers below their shell.
+                    pasted << (number(row[0], n) ? "    " : "  ") + row.join(' ');
+            }
+            if (!pasted.isEmpty()) {
+                const auto text = pasted.join('\n') + '\n';
+                if (const auto read = nwchemPastedBasis(text, false); read.error.isEmpty())
+                    settings["basis_custom"] = text;
+                else
+                    notes << tr("基底の指定を取り込みません: %1").arg(read.error);
+            }
             for (const auto &line : body) {
                 const auto row = words(line);
                 if (row.size() < 3 || row[1].toLower() != "library")
@@ -366,6 +394,8 @@ NwchemImport importNwchemInput(const QString &text) {
                     settings["tddft_tda"] = true;
                 else if (option == "notriplet" || option == "singlet")
                     settings["tddft_triplets"] = false;
+                else if (option == "root" && row.value(1).toInt() > 0)
+                    tddftRoot = row.value(1).toInt();
             }
             if (!body.join('\n').contains("notriplet", Qt::CaseInsensitive))
                 settings["tddft_triplets"] = true;
@@ -419,6 +449,11 @@ NwchemImport importNwchemInput(const QString &text) {
                     grid = tokens;
                 if (option == "response" || option == "aoresponse")
                     number(tokens.value(2), blockFrequency);
+                if (option == "spinspin") {
+                    settings["prop_spinspin"] = true;
+                    // A list of pairs is MolForma's H, F and P pairs; without one, every pair.
+                    settings["spinspin_pairs"] = tokens.size() > 1 ? "hfp" : "all";
+                }
                 if (option == "mulliken")
                     settings["prop_mulliken"] = true;
                 else if (option == "shielding")
@@ -494,7 +529,20 @@ NwchemImport importNwchemInput(const QString &text) {
         } else if (keyword == "task") {
             tasks << w.mid(1).join(' ').toLower();
         } else if (keyword == "ecp") {
-            // MolForma chooses the ECP that belongs to the library basis.
+            // MolForma chooses the ECP that belongs to the library basis; ECPs written out are pasted ones.
+            QStringList pasted;
+            for (const auto &line : body)
+                if (const auto row = words(line); !row.isEmpty() && row.value(1).toLower() != "library") {
+                    double n;
+                    pasted << (number(row[0], n) ? "    " : "  ") + row.join(' ');
+                }
+            if (!pasted.isEmpty()) {
+                const auto text = pasted.join('\n') + '\n';
+                if (const auto read = nwchemPastedBasis(text, true); read.error.isEmpty())
+                    settings["ecp_custom"] = text;
+                else
+                    notes << tr("ECPの指定を取り込みません: %1").arg(read.error);
+            }
         } else if (blockNames.contains(keyword))
             notes << tr("%1ブロックは取り込みません。").arg(keyword);
         else if (!QStringList{"echo", "print", "noprint", "scratch_dir", "permanent_dir"}.contains(keyword))
@@ -531,6 +579,12 @@ NwchemImport importNwchemInput(const QString &text) {
         if (first == "tddft") {
             settings["tddft"] = true;
             theory = "dft";
+            // An excited state's optimization: the state of the gradient.
+            if (operation == "optimize") {
+                operations << "optimize";
+                if (tddftRoot > 0)
+                    settings["tddft_root"] = tddftRoot;
+            }
             continue;
         }
         if (first == "dft" && operation == "raman" && normalRaman) {

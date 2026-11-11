@@ -398,7 +398,7 @@ GUI変更は `documentId` と `expectedRevision` を必要とし、`queued` の 
 
 `get_results(section: "spectrum")`は曲線の`items`（`[x,y]`）、`spectrum_peaks`はピーク表を返します。`parameters.kind`は`nmr`、`raman`、`epr`、`ecd`、`ord`、`ir`、`uv`、`width`は横軸単位の半値全幅（ORDでは未使用ですが必須）です。`ir`は並進・回転と虚振動を除いたIR強度（km/mol）をcm⁻¹軸のLorentz関数で、`uv`は振動子強度をeV軸のGauss関数で広げます（結果ビューアの「振動」「励起状態」タブのチャートと同じ線形）。任意の`minimum`／`maximum`で範囲を固定します。返り値の`xUnit`、`yUnit`、`reversed`、補完した`parameters`を使い、`offset`／`limit`／`nextOffset`でページングします。
 
-NMRは`nucleus: "1H"|"13C"`、`reference_ppm`を必須とし、`weights`に1始まり原子番号をキーとする重みを指定できます。ESRは`microwave_ghz`、`nuclei: [{"atom":2,"isotope":"1H"}]`を必須とし、`derivative: true`で一次微分にします。元テンソル・ラマン活性・ECD旋光強度・ORD βは`properties`に保持します。適用範囲は[結果ビューア](features/results.md)と共通です。
+NMRは`nucleus: "1H"|"13C"`、`reference_ppm`を必須とし、`weights`に1始まり原子番号をキーとする重みを指定できます。J結合を計算したログ（`properties.spinspin` に `{a, b, isotope_a, isotope_b, hz}`）では、`coupling: true` と `spectrometer_mhz`（¹Hの測定周波数）で、等価な核をまとめた一次の多重線にします（ピークは `atoms`・`multiplet`・`j_hz` を持ちます）。2次元スキャンの `properties.scan` の各点は `coordinate2`・`value2` も持ちます。ESRは`microwave_ghz`、`nuclei: [{"atom":2,"isotope":"1H"}]`を必須とし、`derivative: true`で一次微分にします。元テンソル・ラマン活性・ECD旋光強度・ORD βは`properties`に保持します。適用範囲は[結果ビューア](features/results.md)と共通です。
 
 `get_results(section: "energy_profile", profile: {...})`は`molforma-energy-profile` version 1の比較仕様を評価します。`records`はID付き計算結果、`stages`は`{name, terms:[{record, thermal?, coefficient}]}`、`metric`は`E|ZPE|H|G`、`unit`は`hartree|kcal|kj`、`temperature`、`standard_state`（ラベル）、0始まりの`reference`を指定します。GUIの比較JSONと同じ形式で、元のエネルギー・補正の出典を維持します。返り値は段階ごとの値、`comparable`、`warnings`です。
 

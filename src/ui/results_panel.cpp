@@ -997,6 +997,11 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     pathChart = new ChartView;
     pathChart->setObjectName("resultsPathChart");
     pl->addWidget(pathChart, 1);
+    pathMap = new ScanMap;
+    pathMap->setObjectName("resultsPathMap");
+    pathMap->hide();
+    pl->addWidget(pathMap, 1);
+    connect(pathMap, &ScanMap::pointClicked, this, [this](int row) { path->setCurrentCell(row, 0); });
     // Every chart of the viewer saves itself as a figure from its context menu.
     for (auto *chart : {irSpectrum, energyChart, gradientChart, spectrum, pathChart})
         chart->setExport([this, chart] {
@@ -1047,6 +1052,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     pl->addWidget(pathHint);
     tabs->addTab(pathPage, tr("経路・スキャン"));
     connect(path, &QTableWidget::currentCellChanged, this, [this](int row) {
+        pathMap->setSelected(row);
         if (row < 0 || !path->item(row, 0))
             return;
         const int index = path->item(row, 0)->data(Qt::UserRole).toInt();
@@ -1098,6 +1104,36 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         if (!item || data.frames.isEmpty())
             return;
         // The last structure, which the analysis is of, with the two atoms picked as for a measurement.
+        const auto pair = item->data(Qt::UserRole).toPoint();
+        if (pair.x() < 0 || pair.y() >= data.frames.last().molecule.atoms.size())
+            return;
+        stopAnimation();
+        picked = {pair.x(), pair.y()};
+        frame->setValue(data.frames.size());
+        showFrame();
+    });
+    // NMR spin–spin couplings: only for a log with them.
+    couplingBlock = new QWidget;
+    auto *jl = new QVBoxLayout(couplingBlock);
+    jl->setContentsMargins(0, 0, 0, 0);
+    couplingTitle = new QLabel;
+    couplingTitle->setObjectName("resultsCouplingsTitle");
+    jl->addWidget(couplingTitle);
+    couplings = table({tr("原子の組"), tr("核種"), "J / Hz", tr("距離 / Å")}, "resultsCouplings");
+    couplings->verticalHeader()->hide();
+    couplings->setSortingEnabled(false);
+    jl->addWidget(couplings, 1);
+    auto *couplingHint =
+        new QLabel(tr("NWChemが計算した間接スピン–スピン結合定数（FC・SD・PSO・DSO項の和の等方値）"
+                      "です。核種はNWChemが使った同位体です。行を選ぶとその2原子を3Dビューで"
+                      "選択します。"));
+    couplingHint->setWordWrap(true);
+    jl->addWidget(couplingHint);
+    ppl->addWidget(couplingBlock, 1);
+    connect(couplings, &QTableWidget::currentCellChanged, this, [this](int row) {
+        const auto *item = row >= 0 ? couplings->item(row, 0) : nullptr;
+        if (!item || data.frames.isEmpty())
+            return;
         const auto pair = item->data(Qt::UserRole).toPoint();
         if (pair.x() < 0 || pair.y() >= data.frames.last().molecule.atoms.size())
             return;
@@ -2110,7 +2146,8 @@ void ResultsPanel::updateTabs() {
     const bool loaded = !data.source.isEmpty();
     const bool properties = p.contains("mulliken") || p.contains("esp") || p.contains("resp") ||
                             p.contains("shielding") || p.contains("polarizability") || p.contains("bsse") ||
-                            p.contains("solvation") || p.contains("bond_indices") || p.contains("valency");
+                            p.contains("solvation") || p.contains("bond_indices") || p.contains("valency") ||
+                            p.contains("spinspin");
     const bool visible[]{true,
                          loaded && !data.energies.isEmpty(),
                          loaded && (!data.orbitals.isEmpty() || data.format == "MOLDEN"),
@@ -2687,17 +2724,33 @@ void ResultsPanel::showPath() {
         QString label, coordinate;
         double x, energy;
         int frame;
+        double y = qQNaN(); // The second coordinate of a two-dimensional scan.
     };
     QVector<Point> points;
-    QString xLabel;
+    QString xLabel, yLabel;
     double reference = INFINITY;
+    const bool plane = !scan.isEmpty() && scan[0].toObject().contains("value2");
     if (!scan.isEmpty()) {
-        const auto coordinate = scan[0].toObject()["coordinate"].toString();
-        xLabel = coordinate.startsWith("bond") ? tr("距離 / Å") : tr("角度 / °");
+        const auto first = scan[0].toObject();
+        const auto axis = [](const QString &coordinate) {
+            return coordinateText(coordinate) + (coordinate.startsWith("bond") ? " / Å" : " / °");
+        };
+        xLabel = plane                                               ? axis(first["coordinate"].toString())
+                 : first["coordinate"].toString().startsWith("bond") ? tr("距離 / Å")
+                                                                     : tr("角度 / °");
+        yLabel = plane ? axis(first["coordinate2"].toString()) : QString();
         for (const auto &value : scan) {
             const auto p = value.toObject();
-            points << Point{QString::number(p["point"].toInt()), coordinateText(p["coordinate"].toString()),
-                            p["value"].toDouble(), p["energy"].toDouble(), p["frame"].toInt(-1)};
+            Point point{QString::number(p["point"].toInt()), coordinateText(p["coordinate"].toString()),
+                        p["value"].toDouble(), p["energy"].toDouble(), p["frame"].toInt(-1)};
+            if (plane) {
+                point.coordinate =
+                    tr("%1 = %2、%3 = %4")
+                        .arg(coordinateText(p["coordinate"].toString()), fixed(p["value"].toDouble(), 4),
+                             coordinateText(p["coordinate2"].toString()), fixed(p["value2"].toDouble(), 4));
+                point.y = p["value2"].toDouble();
+            }
+            points << point;
             reference = std::min(reference, p["energy"].toDouble());
         }
     } else if (!neb.isEmpty()) {
@@ -2738,14 +2791,24 @@ void ResultsPanel::showPath() {
     }
     path->setRowCount(points.size());
     QVector<QPointF> curve;
+    QVector<ScanMap::Point> map;
     for (int i = 0; i < points.size(); ++i) {
         const auto &p = points[i];
         const double relative = (p.energy - reference) * HartreeToKcal;
-        row(path, i, {p.label, p.coordinate, fixed(p.x, 4), fixed(p.energy, 8), fixed(relative, 3)});
+        row(path, i,
+            {p.label, p.coordinate, plane ? fixed(p.x, 4) + ", " + fixed(p.y, 4) : fixed(p.x, 4),
+             fixed(p.energy, 8), fixed(relative, 3)});
         path->item(i, 0)->setData(Qt::UserRole, p.frame);
         path->item(i, 3)->setData(Qt::UserRole, p.energy);
         curve << QPointF(p.x, relative);
+        map << ScanMap::Point{p.x, p.y, relative, i};
     }
+    pathChart->setVisible(!plane);
+    pathMap->setVisible(plane);
+    if (plane)
+        pathMap->setMap(tr("2次元スキャン（最小値基準）"), xLabel, yLabel, "ΔE / kcal mol⁻¹", map);
+    else
+        pathMap->clear();
     if (curve.isEmpty())
         pathChart->clear();
     else
@@ -2800,6 +2863,28 @@ void ResultsPanel::showProperties() {
     }
     atomProperties->setColumnHidden(3, valency.isEmpty()); // Only of a Mulliken analysis.
     showBondIndices();
+    {
+        const auto list = data.properties.value("spinspin").toArray();
+        const QSignalBlocker guard(couplings);
+        couplings->setRowCount(list.size());
+        for (int i = 0; i < list.size(); ++i) {
+            const auto c = list[i].toObject();
+            const int a = c["a"].toInt() - 1, b = c["b"].toInt() - 1;
+            const bool known =
+                molecule && a >= 0 && b >= 0 && a < molecule->atoms.size() && b < molecule->atoms.size();
+            const auto label = [&](int atom) {
+                return (known ? molecule->atoms[atom].element : QString()) + QString::number(atom + 1);
+            };
+            row(couplings, i,
+                {label(a) + "–" + label(b), c["isotope_a"].toString() + " / " + c["isotope_b"].toString(),
+                 fixed(c["hz"].toDouble(), 2),
+                 known ? fixed((molecule->atoms[a].position - molecule->atoms[b].position).norm(), 4)
+                       : QString("—")});
+            couplings->item(i, 0)->setData(Qt::UserRole, known ? QPoint(a, b) : QPoint(-1, -1));
+        }
+        couplingBlock->setVisible(!list.isEmpty());
+        couplingTitle->setText(tr("J結合（スピン–スピン結合定数、%n 組）", nullptr, int(list.size())));
+    }
     auto text = resultPropertyLines(data);
     if (data.properties.contains("dipole")) {
         const auto d = data.properties.value("dipole").toObject();

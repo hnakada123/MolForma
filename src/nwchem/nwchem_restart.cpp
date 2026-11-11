@@ -162,20 +162,24 @@ Document restartDocument(const QString &job, const QString &mode) {
     auto d = latestDocument(job, log);
     auto s = d.data["nwchem"].toObject();
     QJsonArray done;
+    // A restart goes on from the database's orbitals: the calculations of an initial guess from fragments,
+    // the first tasks of the job, are not done again.
+    const int fragments = int(s["fragment_guess"].toArray().size());
+    s.remove("fragment_guess");
     if (mode == "continue") {
         const auto tasks = nwchemTaskLines(historyText(job, "input.nw"));
         // The task under way when NWChem stopped is the first to run again.
         const int finished = log.ended ? int(tasks.size()) : std::max(0, log.started - 1);
         if (finished >= tasks.size())
             fail(tr("この計算に残っているタスクはありません。"));
-        for (const auto &line : tasks.mid(0, finished))
+        for (const auto &line : tasks.mid(fragments, std::max(0, finished - fragments)))
             done << line;
     } else {
         // Another calculation at the structure of the Hessian: only what the Hessian is for.
         s["task"] = mode == "hessian" ? "saddle" : "frequencies";
-        for (const auto *key :
-             {"followup", "tddft", "prop_mulliken", "prop_esp", "prop_nmr", "prop_polarizability",
-              "prop_raman", "prop_epr", "prop_ord", "prop_esp_grid", "prop_efield_grid"})
+        for (const auto *key : {"followup", "tddft", "prop_mulliken", "prop_esp", "prop_nmr", "prop_spinspin",
+                                "prop_polarizability", "prop_raman", "prop_epr", "prop_ord", "prop_esp_grid",
+                                "prop_efield_grid"})
             s.remove(key);
         if (mode == "reuse")
             s.remove("numerical_frequencies");

@@ -81,7 +81,9 @@ struct ResultData {
     // "bond_indices" [{a, b, value}] with atom numbers a < b from 1: every pair, or with
     // "bond_indices_omitted" (their number) without the pairs below NotableBondIndex of a molecule
     // with more than maxBondIndices pairs. "tddft" {alpha_electrons, beta_electrons} of the excited
-    // states' reference.
+    // states' reference. "spinspin" [{a, b, isotope_a, isotope_b, hz}]: the isotropic NMR spin–spin
+    // couplings (atom numbers from 1, isotopes as "13-C"). "scan" points name a second coordinate
+    // ("coordinate2", "value2") in a two-dimensional scan.
     QJsonObject properties;
     Document vibrationGeometry;
     QVector<SurfaceTriangle> surface;
@@ -172,7 +174,8 @@ class NwchemLog {
     int bondAtoms = 0;  // The atoms of the bond-index matrix just read, for the valencies after it.
     QStringList recent; // The lines before this one, for the message that precedes an error.
     QVector<ResultOrbital> orbitals;
-    QJsonArray thermochemistry, ircPoints, shielding;
+    QJsonArray thermochemistry, ircPoints, shielding, spinspin;
+    QStringList spinPairAtoms; // The atoms and isotopes of the spin–spin coupling being read.
     QJsonObject irc, solvation;
     QMap<int, QJsonObject> scan;
     int scanPoint = 0, shieldingAtom = 0, ircConverged = 0;

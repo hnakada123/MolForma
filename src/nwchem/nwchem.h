@@ -89,7 +89,10 @@ enum class NwchemScope {
     Cosmo, // A solvent for HF or DFT.
     ExcitedToggle,
     Excited,
-    Relativistic
+    ExcitedOptimization, // TDDFT optimizations of an excited state.
+    Relativistic,
+    SpinSpin, // NMR spin–spin couplings.
+    Scan2     // The second coordinate of a two-dimensional scan.
 };
 bool nwchemScopeApplies(NwchemScope scope, const QJsonObject &settings, const Document *document = nullptr);
 // The calculations of the scopes of advanced options in words ("DFTの計算"); empty for the others.
@@ -142,6 +145,28 @@ QString nwchemFunctionalXc(const QString &value);
 bool nwchemAutoz(const Document &document);
 // "距離 1–2" / "角度 1–2–3" / "二面角 1–2–3–4" with the current 1-based atom numbers.
 QString nwchemCoordinateLabel(const Document &document, const Ids &ids);
+// Basis functions or ECPs pasted in NWChem's format (as the Basis Set Exchange writes it for NWChem):
+// the elements they define, in their order, the core electrons of ECPs ("nelec") and the first problem
+// found. Comments, "basis …"/"ecp" header lines and "end" are left out; shells must be "<element>
+// <S|P|D|F|G|H|I|SP|L>" followed by lines of numbers (ECPs: "<element> nelec <n>", "<element> ul" or
+// "<element> <S…I>" followed by lines of three numbers).
+struct NwchemPastedBasis {
+    QStringList elements;
+    QMap<QString, int> cores;
+    QMap<QString, QStringList> lines; // By element, the lines as they go into the input.
+    QString error;
+};
+NwchemPastedBasis nwchemPastedBasis(const QString &text, bool ecp);
+// The fragments of an initial guess from fragment orbitals ("fragment_guess"): atom indices in atom
+// order, with the charge and multiplicity of each.
+struct NwchemFragment {
+    QVector<int> atoms;
+    int charge = 0, multiplicity = 1;
+};
+QVector<NwchemFragment> nwchemFragments(const Document &document);
+// The atom pairs (indices, first < second) whose NMR spin–spin couplings are asked for: of the real H, F
+// and P atoms ("spinspin_pairs" hfp), or of all real atoms.
+QVector<QPair<int, int>> nwchemSpinSpinPairs(const Document &document);
 // The bonded molecules that act as counterpoise (BSSE) monomers, as atom indices in atom order.
 QVector<QVector<int>> nwchemBsseMonomers(const Document &document);
 // The SCF/DFT convergence threshold written for scf_convergence ("1e-7"); empty for "default",

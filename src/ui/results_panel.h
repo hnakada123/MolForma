@@ -23,6 +23,7 @@ class QTabWidget;
 class QToolButton;
 namespace mf {
 class ChartView;
+class ScanMap;
 class SpectroscopyView;
 class PropertyGeometryView;
 class ElidedLabel;
@@ -144,11 +145,12 @@ class ResultsPanel : public QWidget {
     QPushButton *pathHighest, *pathSaddle; // Under the path: its highest point, and a saddle search there.
     QLabel *pathNote;
     // The orbital pairs of the chosen excited state, and the bond indices of a Mulliken analysis.
-    QTableWidget *contributions, *bondIndices;
-    QWidget *contributionsBlock, *bondBlock;
-    QLabel *contributionsTitle, *bondTitle;
+    QTableWidget *contributions, *bondIndices, *couplings;
+    QWidget *contributionsBlock, *bondBlock, *couplingBlock;
+    QLabel *contributionsTitle, *bondTitle, *couplingTitle;
     QCheckBox *allBondIndices; // Also the pairs below NotableBondIndex.
     ChartView *energyChart, *gradientChart, *spectrum, *pathChart, *irSpectrum;
+    ScanMap *pathMap; // A two-dimensional scan, instead of the path chart.
     SpectroscopyView *spectroscopy;
     PropertyGeometryView *propertyGeometry;
     OrbitalLevels *levels;

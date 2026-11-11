@@ -46,6 +46,53 @@ QJsonArray eprNuclei(const ResultData &result) {
     return rows;
 }
 namespace {
+// Atoms alike by their bonds (topologically equivalent): classes refined from element and isotope by the
+// classes of their neighbors until they split no further (Morgan / Weisfeiler–Lehman).
+QVector<int> topologicalClasses(const Document &d) {
+    const int n = int(d.atoms.size());
+    QHash<QString, int> index;
+    for (int i = 0; i < n; ++i)
+        index[d.atoms[i].id] = i;
+    QVector<QVector<int>> neighbors(n);
+    for (const auto &b : d.bonds)
+        if (index.contains(b.a) && index.contains(b.b)) {
+            neighbors[index[b.a]] << index[b.b];
+            neighbors[index[b.b]] << index[b.a];
+        }
+    QVector<int> classes(n);
+    QMap<QString, int> first;
+    for (int i = 0; i < n; ++i)
+        classes[i] = first
+                         .insert(d.atoms[i].element + '/' + QString::number(d.atoms[i].isotope),
+                                 first.value(d.atoms[i].element + '/' + QString::number(d.atoms[i].isotope),
+                                             int(first.size())))
+                         .value();
+    for (int round = 0; round < n; ++round) {
+        QMap<QVector<int>, int> kinds;
+        QVector<int> next(n);
+        for (int i = 0; i < n; ++i) {
+            QVector<int> signature;
+            for (int j : neighbors[i])
+                signature << classes[j];
+            std::sort(signature.begin(), signature.end());
+            signature.prepend(classes[i]);
+            next[i] = kinds.insert(signature, kinds.value(signature, int(kinds.size()))).value();
+        }
+        const bool split = kinds.size() > QSet<int>(classes.begin(), classes.end()).size();
+        classes = next;
+        if (!split)
+            break;
+    }
+    return classes;
+}
+// Resonance frequencies relative to ¹H, for the frequency of the observed nucleus.
+double frequencyRatio(const QString &element) {
+    return element == "C" ? .25145020 : element == "F" ? .94094011 : element == "P" ? .40480742 : 1.;
+}
+QString multiplet(int lines) {
+    static const char *names[] = {"s", "d", "t", "q", "quint", "sext", "sept", "oct", "non"};
+    return lines >= 1 && lines <= 9 ? QString(names[lines - 1]) : QString("m");
+}
 double spectrumWidth(const QJsonObject &p) {
     const double width = required(p, "width");
     if (width <= 0 || width > 1e5)
@@ -57,7 +104,7 @@ void collectPeaks(const ResultData &result, SpectrumData &out) {
     const auto p = out.parameters;
     if (p["kind"] == "nmr") {
         if (result.properties.contains("spin_multiplicity") && result.properties["spin_multiplicity"] != 1)
-            fail(tr("分裂なしNMRは一重項の反磁性分子を対象にしています。"));
+            fail(tr("NMRのスペクトルは一重項の反磁性分子を対象にしています。"));
         const auto nucleus = p["nucleus"].toString();
         if (nucleus != "1H" && nucleus != "13C")
             fail(tr("NMRの核種は1Hまたは13Cを指定してください。"));
@@ -68,6 +115,7 @@ void collectPeaks(const ResultData &result, SpectrumData &out) {
         out.yUnit = tr("核の重み（任意単位）");
         out.reversed = true;
         QSet<int> atoms;
+        QMap<int, double> sigmas, atomWeights; // By atom number.
         for (const auto &value : result.properties["shielding"].toArray()) {
             const auto shielding = value.toObject();
             if (shielding["element"] != element)
@@ -81,12 +129,119 @@ void collectPeaks(const ResultData &result, SpectrumData &out) {
             const double weight = weights.contains(key) ? required(weights, key) : 1;
             if (weight < 0 || weight > 1e6)
                 fail(tr("ピークの重みは0以上1000000以下にしてください。"));
-            out.peaks.append(QJsonObject{{"atom", atom},
-                                         {"nucleus", nucleus},
-                                         {"shielding_ppm", sigma},
-                                         {"x", reference - sigma},
-                                         {"weight", weight}});
-            out.sticks.append({reference - sigma, weight});
+            sigmas[atom] = sigma;
+            atomWeights[atom] = weight;
+            if (!p["coupling"].toBool()) {
+                out.peaks.append(QJsonObject{{"atom", atom},
+                                             {"nucleus", nucleus},
+                                             {"shielding_ppm", sigma},
+                                             {"x", reference - sigma},
+                                             {"weight", weight}});
+                out.sticks.append({reference - sigma, weight});
+            }
+        }
+        if (p["coupling"].toBool()) {
+            // First-order multiplets: the topologically equivalent nuclei as one line at their mean
+            // shielding, split by each other set of coupled nuclei (¹H, ¹⁹F and ³¹P; ¹³C spectra
+            // proton-decoupled) with their mean coupling.
+            const auto couplings = result.properties["spinspin"].toArray();
+            if (couplings.isEmpty())
+                fail(tr("このログにはJ結合（スピン–スピン結合定数）がありません。"));
+            if (result.frames.isEmpty())
+                fail(tr("J結合の分裂には構造が必要です。"));
+            const double mhz = required(p, "spectrometer_mhz");
+            if (mhz < 10 || mhz > 2000)
+                fail(tr("測定周波数は10〜2000 MHzにしてください。"));
+            const auto &molecule = result.frames.last().molecule;
+            const auto classes = topologicalClasses(molecule);
+            QHash<QPair<int, int>, double> j; // By atom indices from 0, both ways.
+            for (const auto &value : couplings) {
+                const auto c = value.toObject();
+                const int a = c["a"].toInt() - 1, b = c["b"].toInt() - 1;
+                j[{a, b}] = j[{b, a}] = required(c, "hz");
+            }
+            QMap<int, QVector<int>> observed, partners; // By class: atom indices.
+            for (auto it = sigmas.begin(); it != sigmas.end(); ++it)
+                if (it.key() - 1 < classes.size())
+                    observed[classes[it.key() - 1]] << it.key() - 1;
+            const QStringList splitting = element == "H" ? QStringList{"H", "F", "P"} : QStringList{"F", "P"};
+            for (int i = 0; i < molecule.atoms.size(); ++i)
+                if (splitting.contains(molecule.atoms[i].element) && !molecule.atoms[i].ghost)
+                    partners[classes[i]] << i;
+            const double hzPerPpm = mhz * frequencyRatio(element);
+            for (auto group = observed.begin(); group != observed.end(); ++group) {
+                const auto &members = group.value();
+                double sigma = 0, weight = 0;
+                QJsonArray numbers;
+                for (int i : members) {
+                    sigma += sigmas[i + 1] / members.size();
+                    weight += atomWeights[i + 1];
+                    numbers << i + 1;
+                }
+                // Offsets / Hz and their intensities, by the offset in steps of 0.01 Hz (0.1 Hz once there
+                // are many lines): lines closer than that are one.
+                QMap<qint64, QPair<double, double>> lines{{0, {0., 1.}}};
+                QVector<QPair<int, double>> splits; // Nuclei and coupling of each set.
+                for (auto other = partners.begin(); other != partners.end(); ++other) {
+                    if (other.key() == group.key())
+                        continue; // Equivalent nuclei do not split one another.
+                    double sum = 0;
+                    int known = 0;
+                    for (int a : members)
+                        for (int b : other.value())
+                            if (const auto it = j.constFind({a, b}); it != j.cend()) {
+                                sum += *it;
+                                ++known;
+                            }
+                    if (!known || std::abs(sum / known) < .1)
+                        continue;
+                    const double coupling = sum / known;
+                    const int n = int(other.value().size());
+                    splits << qMakePair(n, coupling);
+                    QMap<qint64, QPair<double, double>> next;
+                    const double step = lines.size() > 256 ? .1 : .01;
+                    double binomial = 1;
+                    for (int k = 0; k <= n; ++k) {
+                        for (const auto &[offset, intensity] : std::as_const(lines)) {
+                            const double moved = offset + (k - n / 2.) * coupling;
+                            auto &line = next[std::llround(moved / step)];
+                            if (line.second == 0)
+                                line.first = moved;
+                            line.second += intensity * binomial;
+                        }
+                        binomial = binomial * (n - k) / (k + 1);
+                    }
+                    lines = next;
+                }
+                double total = 0;
+                for (const auto &line : std::as_const(lines))
+                    total += line.second;
+                std::sort(splits.begin(), splits.end(), [](const auto &a, const auto &b) {
+                    return std::abs(a.second) > std::abs(b.second);
+                });
+                QString pattern;
+                QStringList values;
+                QJsonArray couplingRows;
+                for (const auto &[n, coupling] : splits) {
+                    pattern += multiplet(n + 1);
+                    values << QString::number(std::abs(coupling), 'f', 1);
+                    couplingRows << QJsonObject{{"nuclei", n}, {"hz", coupling}};
+                }
+                const double x = reference - sigma;
+                out.peaks.append(QJsonObject{{"atom", members.first() + 1},
+                                             {"atoms", numbers},
+                                             {"nucleus", nucleus},
+                                             {"shielding_ppm", sigma},
+                                             {"x", x},
+                                             {"weight", weight},
+                                             {"multiplet", pattern.isEmpty() ? QString("s") : pattern},
+                                             {"j_hz", values.join(", ")},
+                                             {"couplings", couplingRows}});
+                for (const auto &[offset, intensity] : std::as_const(lines)) {
+                    out.sticks.append({x + offset / hzPerPpm, weight * intensity / total});
+                    out.stickPeaks << int(out.peaks.size()) - 1;
+                }
+            }
         }
     } else if (p["kind"] == "raman") {
         out.xUnit = "cm⁻¹";

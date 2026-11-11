@@ -206,6 +206,26 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     elementBases->setToolTip(
         tr("元素ごとに別の基底を指定します（例: 金属だけdef2-TZVP）。「共通」は上の基底関数です。"));
     addRow(basic, "basis_overrides", tr("元素別の基底"), elementBases);
+    pastedBasis = new QLabel;
+    pastedBasis->setObjectName("calculationPastedBasis");
+    pastedBasis->setWordWrap(true);
+    auto *paste = new QPushButton(tr("貼り付け…"));
+    paste->setObjectName("calculationPasteBasis");
+    paste->setToolTip(
+        tr("ライブラリにない基底・ECPを、NWChemの形式（Basis Set ExchangeでNWChemを選んだもの）で"
+           "貼り付けます。貼り付けた元素はその基底を使います。"));
+    connect(paste, &QPushButton::clicked, this, [this] { window->safe([this] { pasteBasis(); }); });
+    auto *pastedRow = new QWidget;
+    auto *pastedLayout = new QHBoxLayout(pastedRow);
+    pastedLayout->setContentsMargins(0, 0, 0, 0);
+    pastedLayout->addWidget(pastedBasis, 1);
+    pastedLayout->addWidget(paste);
+    addRow(basic, "basis_custom", tr("貼り付けた基底・ECP"), pastedRow);
+    // The ECP shares the row (and the dialog) of the basis.
+    labels["ecp_custom"] = tr("貼り付けたECP");
+    rows["ecp_custom"] = pastedRow;
+    sectionOf["ecp_custom"] = "basic";
+    sections.last().keys << "ecp_custom";
     help(basic, tr("基底の対応元素を検査します。def2系のRb以降にはdef2-ECP、LANL2DZのNa以降には"
                    "LANL2DZ ECPを自動指定します。"));
 
@@ -224,6 +244,62 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     rowKeys[formalCharge] = "charge";
     connect(formalCharge, &QPushButton::clicked, this,
             [this] { change("charge", window->document().expectedCharge()); });
+    fragments = new QTableWidget(0, 3);
+    fragments->setObjectName("nwchem_fragment_guess");
+    fragments->setHorizontalHeaderLabels({tr("フラグメントの原子"), tr("電荷"), tr("多重度")});
+    fragments->verticalHeader()->hide();
+    fragments->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    fragments->setSelectionBehavior(QAbstractItemView::SelectRows);
+    fragments->setMaximumHeight(130);
+    fragments->setToolTip(
+        tr("フラグメントごとに分子軌道を先に計算し、全体の初期軌道にします（多核錯体など）。"
+           "電荷・多重度はセルで編集します。"));
+    addRow(electronic, "fragment_guess", tr("フラグメント初期軌道"), fragments);
+    auto *fragmentButtons = new QWidget;
+    auto *fragmentRow = new QHBoxLayout(fragmentButtons);
+    fragmentRow->setContentsMargins(0, 0, 0, 0);
+    for (const auto &[text, name, rest] :
+         {std::tuple{tr("選択中の原子を追加"), "calculationAddFragment", false},
+          std::tuple{tr("残りの原子を追加"), "calculationAddFragmentRest", true}}) {
+        auto *b = new QPushButton(text);
+        b->setObjectName(name);
+        fragmentRow->addWidget(b);
+        connect(b, &QPushButton::clicked, this, [this, rest] { addFragment(rest); });
+    }
+    auto *removeFragment = new QPushButton(tr("削除"));
+    removeFragment->setObjectName("calculationRemoveFragment");
+    fragmentRow->addWidget(removeFragment);
+    fragmentRow->addStretch();
+    electronic->addRow(QString(), fragmentButtons);
+    rowKeys[fragmentButtons] = "fragment_guess";
+    help(electronic,
+         tr("フラグメント初期軌道: 全原子をフラグメントに分け、それぞれの電荷・多重度で分子軌道を計算して"
+            "から全体を計算します。不対電子の合計が全体と同じ組（閉殻どうし、高スピン）に使えます。"));
+    connect(removeFragment, &QPushButton::clicked, this, [this] {
+        const int row = fragments->currentRow();
+        auto list = nwchemSettings(window->document())["fragment_guess"].toArray();
+        if (row < 0 || row >= list.size())
+            return;
+        list.removeAt(row);
+        change("fragment_guess", list);
+    });
+    connect(fragments, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
+        if (busy || item->column() == 0)
+            return;
+        auto list = nwchemSettings(window->document())["fragment_guess"].toArray();
+        if (item->row() >= list.size())
+            return;
+        bool ok;
+        const int value = QLocale().toInt(item->text().trimmed(), &ok);
+        if (!ok || (item->column() == 2 && value < 1)) {
+            refresh();
+            return;
+        }
+        auto fragment = list[item->row()].toObject();
+        fragment[item->column() == 1 ? "charge" : "multiplicity"] = value;
+        list[item->row()] = fragment;
+        change("fragment_guess", list);
+    });
 
     auto *convergence = group("convergence", tr("SCF・電子相関"));
     integer(convergence, tr("SCF最大反復"), "scf_maxiter");
@@ -261,6 +337,26 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     real(path, tr("開始値（Å・°）"), "scan_start");
     real(path, tr("終了値（Å・°）"), "scan_end");
     integer(path, tr("点の数"), "scan_steps");
+    scanCoordinate2 = new QLabel;
+    scanCoordinate2->setObjectName("calculationScanCoordinate2");
+    auto *scanAtoms2 = new QPushButton(tr("選択中の原子を設定"));
+    scanAtoms2->setObjectName("calculationScanAtoms2");
+    scanAtoms2->setToolTip(
+        tr("2つ目の座標を設定すると、2つの座標の組合せの格子（2次元スキャン）を計算します。"));
+    auto *clearScan2 = new QPushButton(tr("解除"));
+    clearScan2->setObjectName("calculationScanClear2");
+    auto *scanRow2 = new QWidget;
+    auto *scanLayout2 = new QHBoxLayout(scanRow2);
+    scanLayout2->setContentsMargins(0, 0, 0, 0);
+    scanLayout2->addWidget(scanCoordinate2, 1);
+    scanLayout2->addWidget(scanAtoms2);
+    scanLayout2->addWidget(clearScan2);
+    addRow(path, "scan2_atoms", tr("スキャン座標2（2次元）"), scanRow2);
+    connect(scanAtoms2, &QPushButton::clicked, this, [this] { setScanCoordinate(true); });
+    connect(clearScan2, &QPushButton::clicked, this, [this] { change("scan2_atoms", QJsonArray()); });
+    real(path, tr("座標2の開始値（Å・°）"), "scan2_start");
+    real(path, tr("座標2の終了値（Å・°）"), "scan2_end");
+    integer(path, tr("座標2の点の数"), "scan2_steps");
     flag(path, tr("各点で他の座標を最適化（緩和スキャン）"), "scan_relaxed");
     integer(path, tr("NEBの像の数（両端を含む）"), "neb_beads");
     real(path, tr("NEBのばね定数（kbeads）/ a.u."), "neb_spring");
@@ -321,18 +417,19 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
                   "経路を最適化します。始点と終点は同じ原子を同じ順番で持つ構造にします（終点は始点に"
                   "重ね合わせて記録します）。経路の最高点から遷移状態探索へ進めます。"));
 
-    auto *constrained = group("constraints", tr("内部座標の拘束"));
-    constraints = new QTableWidget(0, 2);
+    auto *constrained = group("constraints", tr("内部座標の拘束・追加"));
+    constraints = new QTableWidget(0, 3);
     constraints->setObjectName("nwchem_constraints");
-    constraints->setHorizontalHeaderLabels({tr("座標"), tr("値（Å・°）")});
+    constraints->setHorizontalHeaderLabels({tr("座標"), tr("値（Å・°）"), tr("固定")});
     constraints->verticalHeader()->hide();
-    constraints->horizontalHeader()->setStretchLastSection(true);
+    constraints->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    constraints->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     constraints->setSelectionBehavior(QAbstractItemView::SelectRows);
     constraints->setMaximumHeight(130);
     constrained->addRow(constraints);
     rowKeys[constraints] = "constraints";
     rows["constraints"] = constraints;
-    labels["constraints"] = tr("内部座標の拘束");
+    labels["constraints"] = tr("内部座標の拘束・追加");
     sectionOf["constraints"] = "constraints";
     sections.last().keys << "constraints";
     auto *constraintButtons = new QWidget;
@@ -347,8 +444,10 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     constraintRow->addStretch();
     constrained->addRow(constraintButtons);
     rowKeys[constraintButtons] = "constraints";
-    help(constrained, tr("距離・角度・二面角を指定値に固定して最適化します（NWChemのzcoord）。"
-                         "固定原子・ゴーストとは併用できません。"));
+    help(constrained,
+         tr("距離・角度・二面角を指定値に固定して最適化します（NWChemのzcoord）。「固定」を外すと"
+            "値を固定せず、NWChemが自動で作る内部座標に加えます（自由なねじれを明示するなど）。"
+            "固定原子・ゴーストとは併用できません。"));
     connect(addConstraintButton, &QPushButton::clicked, this, &CalculationPanel::addConstraint);
     connect(removeConstraint, &QPushButton::clicked, this, [this] {
         const int row = constraints->currentRow();
@@ -359,11 +458,21 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
         change("constraints", list);
     });
     connect(constraints, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
-        if (busy || item->column() != 1)
+        if (busy || item->column() == 0)
             return;
         auto list = nwchemSettings(window->document())["constraints"].toArray();
         if (item->row() >= list.size())
             return;
+        if (item->column() == 2) {
+            auto c = list[item->row()].toObject();
+            if (item->checkState() == Qt::Checked)
+                c.remove("free");
+            else
+                c["free"] = true;
+            list[item->row()] = c;
+            change("constraints", list);
+            return;
+        }
         bool ok;
         const double value = QLocale().toDouble(item->text(), &ok);
         auto c = list[item->row()].toObject();
@@ -397,6 +506,8 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     flag(properties, tr("Mulliken電荷"), "prop_mulliken");
     flag(properties, tr("ESP・RESP電荷"), "prop_esp");
     flag(properties, tr("NMR遮蔽定数（GIAO）"), "prop_nmr");
+    flag(properties, tr("NMRのJ結合（スピン–スピン結合定数、DFT）"), "prop_spinspin");
+    choice(properties, tr("J結合を求める原子の組"), "spinspin_pairs");
     flag(properties, tr("静的分極率"), "prop_polarizability");
     flag(properties, tr("通常ラマン（閉殻DFTの振動数計算）"), "prop_raman");
     flag(properties, tr("ESRのg・Aテンソル（二重項DFT・ZORA）"), "prop_epr");
@@ -418,7 +529,10 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     flag(excited, tr("三重項も計算（閉殻）"), "tddft_triplets");
     flag(excited, tr("Tamm–Dancoff近似（TDA / cis）"), "tddft_tda");
     flag(excited, tr("ECDの旋光強度（cdspectrum）"), "tddft_cdspectrum");
-    help(excited, tr("DFTの一点エネルギーで使えます。結果は「結果ビューア」の「励起状態」に表示します。"));
+    integer(excited, tr("最適化する励起状態（構造最適化）"), "tddft_root");
+    help(excited,
+         tr("DFTの一点エネルギーと構造最適化で使えます。構造最適化では、指定した番号の励起状態の構造を"
+            "最適化します（励起状態の最適化）。結果は「結果ビューア」の「励起状態」に表示します。"));
 
     nav->addHeading(tr("環境・出力"));
     auto *environment = group("environment", tr("周囲の環境"));
@@ -897,6 +1011,7 @@ void CalculationPanel::refreshElementBases(const QJsonObject &s) {
     std::sort(symbols.begin(), symbols.end(),
               [](const auto &a, const auto &b) { return element(a).number < element(b).number; });
     const auto overrides = s["basis_overrides"].toObject();
+    const auto pastedElements = nwchemPastedBasis(s["basis_custom"].toString(), false).elements;
     const QSignalBlocker blocker(elementBases);
     elementBases->setRowCount(symbols.size());
     for (int row = 0; row < symbols.size(); ++row) {
@@ -923,9 +1038,14 @@ void CalculationPanel::refreshElementBases(const QJsonObject &s) {
             });
         }
         const QSignalBlocker comboBlocker(combo);
-        combo->setItemText(0, tr("共通（%1）").arg(nwchemBasisLabel(QJsonObject{{"basis", s["basis"]}})));
-        const int index = combo->findData(overrides[symbol].toString());
+        // An element with a pasted basis takes that one: its library choice waits.
+        const bool pasted = pastedElements.contains(symbol);
+        combo->setItemText(
+            0, pasted ? tr("貼り付けた基底")
+                      : tr("共通（%1）").arg(nwchemBasisLabel(QJsonObject{{"basis", s["basis"]}})));
+        const int index = pasted ? 0 : combo->findData(overrides[symbol].toString());
         combo->setCurrentIndex(std::max(0, index));
+        combo->setEnabled(!pasted);
     }
     // As tall as its rows, up to the maximum.
     int height = elementBases->horizontalHeader()->height() + 2 * elementBases->frameWidth();
@@ -939,23 +1059,70 @@ void CalculationPanel::refreshConstraints(const QJsonObject &s) {
     const QSignalBlocker blocker(constraints);
     constraints->setRowCount(list.size());
     // Update items in place: this also runs from the table's own itemChanged signal.
-    const auto cell = [this](int row, int column) {
-        auto *item = constraints->item(row, column);
+    const auto cell = [](QTableWidget *table, int row, int column, Qt::ItemFlags flags = {}) {
+        auto *item = table->item(row, column);
         if (!item) {
             item = new QTableWidgetItem;
-            if (column == 0)
-                item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-            constraints->setItem(row, column, item);
+            if (flags)
+                item->setFlags(flags);
+            table->setItem(row, column, item);
         }
         return item;
     };
+    const auto shown = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     for (int row = 0; row < list.size(); ++row) {
         const auto c = list[row].toObject();
-        cell(row, 0)->setText(nwchemCoordinateLabel(d, idsFromJson(c["atoms"])));
-        cell(row, 1)->setText(QLocale().toString(c["value"].toDouble(), 'f', 4));
+        const bool free = c["free"].toBool();
+        cell(constraints, row, 0, shown)->setText(nwchemCoordinateLabel(d, idsFromJson(c["atoms"])));
+        auto *value = cell(constraints, row, 1);
+        // An added coordinate has no value: the optimization moves it.
+        value->setFlags(free ? shown : shown | Qt::ItemIsEditable);
+        value->setText(free ? tr("（固定しない）") : QLocale().toString(c["value"].toDouble(), 'f', 4));
+        cell(constraints, row, 2, shown | Qt::ItemIsUserCheckable)
+            ->setCheckState(free ? Qt::Unchecked : Qt::Checked);
     }
-    const auto scan = idsFromJson(s["scan_atoms"]);
+    const auto scan = idsFromJson(s["scan_atoms"]), scan2 = idsFromJson(s["scan2_atoms"]);
     scanCoordinate->setText(scan.isEmpty() ? tr("未設定") : nwchemCoordinateLabel(d, scan));
+    scanCoordinate2->setText(scan2.isEmpty() ? tr("なし（1次元）") : nwchemCoordinateLabel(d, scan2));
+    // The fragments of an initial guess: their atoms as a formula, charge and multiplicity.
+    {
+        const QSignalBlocker fragmentBlocker(fragments);
+        const auto list = s["fragment_guess"].toArray();
+        fragments->setRowCount(list.size());
+        QHash<QString, int> index;
+        for (int i = 0; i < d.atoms.size(); ++i)
+            index[d.atoms[i].id] = i;
+        for (int row = 0; row < list.size(); ++row) {
+            const auto o = list[row].toObject();
+            QMap<QString, int> counts;
+            QStringList numbers;
+            for (const auto &id : idsFromJson(o["atoms"]))
+                if (const int i = index.value(id, -1); i >= 0) {
+                    ++counts[d.atoms[i].element];
+                    numbers << QString::number(i + 1);
+                }
+            QString formula;
+            for (auto it = counts.begin(); it != counts.end(); ++it)
+                formula += it.key() + (it.value() > 1 ? QString::number(it.value()) : QString());
+            auto *atoms = cell(fragments, row, 0, shown);
+            atoms->setText(tr("%1（%n 原子）", nullptr, int(numbers.size())).arg(formula));
+            atoms->setToolTip(numbers.join(", "));
+            cell(fragments, row, 1)->setText(QString::number(o["charge"].toInt()));
+            cell(fragments, row, 2)->setText(QString::number(o["multiplicity"].toInt(1)));
+        }
+    }
+    {
+        const auto basis = nwchemPastedBasis(s["basis_custom"].toString(), false),
+                   ecp = nwchemPastedBasis(s["ecp_custom"].toString(), true);
+        QStringList parts;
+        if (!basis.elements.isEmpty())
+            parts << tr("基底: %1").arg(basis.elements.join(", "));
+        if (!ecp.elements.isEmpty())
+            parts << tr("ECP: %1").arg(ecp.elements.join(", "));
+        pastedBasis->setText(!basis.error.isEmpty() || !ecp.error.isEmpty() ? tr("読めない行があります")
+                             : parts.isEmpty()                              ? tr("なし")
+                                                                            : parts.join(tr("、")));
+    }
     if (const auto end = nwchemNebEnd(d); end.document) {
         double squares = 0, largest = 0;
         for (int i = 0; i < d.atoms.size(); ++i) {
@@ -1044,7 +1211,7 @@ void CalculationPanel::addConstraint() {
         change("constraints", list);
     });
 }
-void CalculationPanel::setScanCoordinate() {
+void CalculationPanel::setScanCoordinate(bool second) {
     window->safe([&] {
         const auto [ids, value] = selectedCoordinate(window, window->selection());
         // A first guess for the range: +0.5 Å, +60° or half a turn, kept inside the valid range.
@@ -1054,14 +1221,122 @@ void CalculationPanel::setScanCoordinate() {
                                              : (start <= 0 ? start + 180 : start - 180);
         if (busy || !editable())
             return;
-        window->edit(tr("スキャン座標を設定"), [&](Document &d) {
+        const QString prefix = second ? "scan2_" : "scan_";
+        window->edit(second ? tr("スキャン座標2を設定") : tr("スキャン座標を設定"), [&](Document &d) {
             auto s = d.data["nwchem"].toObject();
-            s["scan_atoms"] = idsToJson(ids);
-            s["scan_start"] = start;
-            s["scan_end"] = end;
+            s[prefix + "atoms"] = idsToJson(ids);
+            s[prefix + "start"] = start;
+            s[prefix + "end"] = end;
             s["task"] = "scan";
             d.data["nwchem"] = s;
         });
+    });
+}
+void CalculationPanel::addFragment(bool rest) {
+    window->safe([&] {
+        if (busy || !editable())
+            return;
+        const auto &d = window->document();
+        auto list = nwchemSettings(d)["fragment_guess"].toArray();
+        QSet<QString> taken;
+        for (const auto &value : std::as_const(list))
+            for (const auto &id : idsFromJson(value.toObject()["atoms"]))
+                taken.insert(id);
+        Ids atoms;
+        if (rest) {
+            for (const auto &a : d.atoms)
+                if (!taken.contains(a.id))
+                    atoms << a.id;
+            if (atoms.isEmpty())
+                fail(tr("すべての原子がどれかのフラグメントに含まれています。"));
+        } else {
+            atoms = window->selection();
+            if (atoms.isEmpty())
+                fail(tr("フラグメントにする原子を「1 分子」で選択してください。"));
+            for (const auto &id : std::as_const(atoms))
+                if (taken.contains(id))
+                    fail(tr("選択した原子は、すでに別のフラグメントに含まれています。"));
+        }
+        // The formal charges of its atoms (oxidation numbers of coordination centers), and the lowest
+        // multiplicity of its electrons.
+        int charge = 0, electrons = 0;
+        for (const auto &id : std::as_const(atoms)) {
+            const auto &a = d.atom(id);
+            const auto *center = d.findCenter(id);
+            charge += center ? center->oxidation : a.charge;
+            electrons += element(a.element).number;
+        }
+        list.append(QJsonObject{{"atoms", idsToJson(atoms)},
+                                {"charge", charge},
+                                {"multiplicity", (electrons - charge) % 2 ? 2 : 1}});
+        change("fragment_guess", list);
+    });
+}
+void CalculationPanel::pasteBasis() {
+    if (busy || !editable())
+        fail(tr("候補を確定・取消し、整形の終了後に設定してください。"));
+    const auto s = nwchemSettings(window->document());
+    QDialog dialog(this);
+    dialog.setObjectName("pasteBasisDialog");
+    dialog.setWindowTitle(tr("基底・ECPを貼り付け"));
+    dialog.resize(640, 560);
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *intro = new QLabel(
+        tr("ライブラリにない基底関数・ECPを、NWChemの形式で貼り付けます（Basis Set Exchange"
+           "（basissetexchange.org）で形式「NWChem」を選んだもの）。貼り付けた元素は、共通・元素別の基底の"
+           "代わりにこの基底を使います。基底を貼り付けた元素には、ECPを貼り付けない限りECPを使いません。"
+           "空にすると解除します。"));
+    intro->setWordWrap(true);
+    layout->addWidget(intro);
+    QPlainTextEdit *edits[2];
+    for (int i = 0; i < 2; ++i) {
+        layout->addWidget(new QLabel(i ? tr("ECP（例: Pt nelec 60 / Pt ul …）") : tr("基底（例: Pt S …）")));
+        auto *edit = edits[i] = new QPlainTextEdit;
+        edit->setObjectName(i ? "pasteEcpText" : "pasteBasisText");
+        edit->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+        edit->setLineWrapMode(QPlainTextEdit::NoWrap);
+        edit->setPlainText(s[i ? "ecp_custom" : "basis_custom"].toString());
+        layout->addWidget(edit, 1);
+    }
+    auto *state = new QLabel;
+    state->setObjectName("pasteBasisState");
+    state->setWordWrap(true);
+    state->setTextFormat(Qt::PlainText);
+    layout->addWidget(state);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    layout->addWidget(buttons);
+    const auto check = [&] {
+        const auto basis = nwchemPastedBasis(edits[0]->toPlainText(), false),
+                   ecp = nwchemPastedBasis(edits[1]->toPlainText(), true);
+        QStringList lines;
+        for (const auto &read : {basis, ecp})
+            if (!read.error.isEmpty())
+                lines << read.error;
+        if (lines.isEmpty()) {
+            if (!basis.elements.isEmpty())
+                lines << tr("基底: %1").arg(basis.elements.join(", "));
+            if (!ecp.elements.isEmpty()) {
+                QStringList cores;
+                for (const auto &symbol : ecp.elements)
+                    cores << tr("%1（内殻電子 %2）").arg(symbol).arg(ecp.cores[symbol]);
+                lines << tr("ECP: %1").arg(cores.join(", "));
+            }
+        }
+        state->setText(lines.join('\n'));
+        buttons->button(QDialogButtonBox::Ok)->setEnabled(basis.error.isEmpty() && ecp.error.isEmpty());
+    };
+    for (auto *edit : edits)
+        connect(edit, &QPlainTextEdit::textChanged, &dialog, check);
+    check();
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    const auto basis = edits[0]->toPlainText().trimmed().isEmpty() ? QString() : edits[0]->toPlainText(),
+               ecp = edits[1]->toPlainText().trimmed().isEmpty() ? QString() : edits[1]->toPlainText();
+    window->edit(tr("基底・ECPを貼り付け"), [&](Document &d) {
+        setNwchemSetting(d, "basis_custom", basis);
+        setNwchemSetting(d, "ecp_custom", ecp);
     });
 }
 bool CalculationPanel::editable() const {
