@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "io/structure_io.h"
 #include "editing/chemistry.h"
+#include "editing/mmcif.h"
 #include "model/i18n.h"
 #include "model/structure_file.h"
 #include "nwchem/nwchem_import.h"
@@ -87,7 +88,8 @@ Document gaussianStructure(const QString &text) {
     d.multiplicity = multiplicity;
     return d;
 }
-Document importStructure(const QString &path, const MacromoleculeSelection &selection, int xyzFrame) {
+Document importStructure(const QString &path, const MacromoleculeSelection &selection, int xyzFrame,
+                         const CrystalSelection &crystal) {
     const auto ext = structureSuffix(path);
     if (ext == "json") {
         if (compressedFile(path))
@@ -106,6 +108,16 @@ Document importStructure(const QString &path, const MacromoleculeSelection &sele
         return importNwchemInput(QString::fromUtf8(readStructureFile(path))).document;
     if (ext == "gjf" || ext == "com" || ext == "gau")
         return gaussianStructure(QString::fromUtf8(readStructureFile(path)));
+    if (ext == "cif" || ext == "mmcif") {
+        // A crystal structure of a small molecule, rather than an entry of the PDB.
+        if (const auto bytes = readStructureFile(path); crystalCif(bytes)) {
+            auto d = crystalStructure(readCrystal(bytes), crystal);
+            auto meta = d.data["metadata"].toObject();
+            meta["source_file"] = path;
+            d.data["metadata"] = meta;
+            return d;
+        }
+    }
     return importBabelStructure(path, selection);
 }
 void exportStructure(const Document &document, const QString &path) {

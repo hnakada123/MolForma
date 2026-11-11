@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/structure_import.h"
+#include "editing/crystal.h"
 #include "editing/mmcif.h"
 #include "io/structure_io.h"
 #include "model/i18n.h"
@@ -10,8 +11,10 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QInputDialog>
+#include <QLabel>
 #include <QListWidget>
 #include <QPushButton>
+#include <QRadioButton>
 
 namespace mf {
 // What to read of a PDB or mmCIF entry, chosen in one dialog: the model, the alternate location, the chains
@@ -116,12 +119,65 @@ chooseMacromolecule(QWidget *parent, const MacromoleculeContents &contents, bool
     selection.water = !kindBoxes[2] || kindBoxes[2]->isChecked();
     return selection;
 }
+// What to read of a small-molecule crystal structure: the molecules that complete the asymmetric unit (one
+// copy each, with counterions and solvent) or all of the unit cell, and the minor disorder groups. The dialog
+// appears only where the file offers a choice.
+static std::optional<CrystalSelection> chooseCrystal(QWidget *parent, const Crystal &crystal, bool ask) {
+    CrystalSelection selection;
+    const auto contents = crystalContents(crystal);
+    if (!ask || (contents.cellMolecules <= contents.molecules && !contents.disorder))
+        return selection;
+    QDialog dialog(parent);
+    dialog.setObjectName("crystalImportDialog");
+    dialog.setWindowTitle(tr("読み込む範囲（結晶構造）"));
+    auto *form = new QFormLayout(&dialog);
+    auto *about = new QLabel(tr("%1 · 空間群 %2 · 非対称単位 %n 原子", nullptr, contents.asymmetricAtoms)
+                                 .arg(crystal.formula.isEmpty() ? crystal.name : crystal.formula,
+                                      crystal.spaceGroup.isEmpty() ? QString("?") : crystal.spaceGroup));
+    about->setWordWrap(true);
+    form->addRow(about);
+    auto *molecules = new QRadioButton(
+        tr("化学式単位（%n個の分子。非対称単位の分子を完成させる）", nullptr, contents.molecules));
+    molecules->setObjectName("crystalMolecules");
+    molecules->setChecked(true);
+    auto *cell = new QRadioButton(
+        tr("単位格子の内容（%n個の分子、%1原子）", nullptr, contents.cellMolecules).arg(contents.cellAtoms));
+    cell->setObjectName("crystalCell");
+    form->addRow(tr("範囲"), molecules);
+    form->addRow(QString(), cell);
+    QCheckBox *minor = nullptr;
+    if (contents.disorder) {
+        minor = new QCheckBox(tr("乱れの副成分（disorder group 2以降）も読み込む"));
+        minor->setObjectName("crystalMinor");
+        form->addRow(tr("乱れ"), minor);
+    }
+    if (contents.polymeric) {
+        auto *note = new QLabel(
+            tr("結合が格子の外へ続く構造（高分子・ネットワーク）です。単位格子の中で切って読み込みます。"));
+        note->setWordWrap(true);
+        form->addRow(note);
+    }
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    form->addRow(buttons);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted)
+        return std::nullopt;
+    selection.cell = cell->isChecked();
+    selection.minor = minor && minor->isChecked();
+    return selection;
+}
 std::optional<StructureImportOptions> chooseStructureImport(QWidget *parent, const QString &path, bool ask) {
     StructureImportOptions options;
     const auto suffix = structureSuffix(path);
     bool ok = true;
     const bool pdb = suffix == "pdb" || suffix == "ent";
-    if (pdb || suffix == "cif" || suffix == "mmcif") {
+    if ((suffix == "cif" || suffix == "mmcif") && crystalCif(readStructureFile(path))) {
+        const auto crystal = chooseCrystal(parent, readCrystal(readStructureFile(path)), ask);
+        if (!crystal)
+            return std::nullopt;
+        options.crystal = *crystal;
+    } else if (pdb || suffix == "cif" || suffix == "mmcif") {
         const auto bytes = readStructureFile(path);
         const auto selection = chooseMacromolecule(
             parent, pdb ? pdbContents(QString::fromUtf8(bytes)) : mmcifContents(readMmcif(bytes)), ask);

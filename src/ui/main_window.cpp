@@ -24,6 +24,7 @@
 #include "ui/input_preview_panel.h"
 #include "ui/molecule_panel.h"
 #include "ui/pdb_download.h"
+#include "ui/pubchem.h"
 #include "ui/remote_hosts_dialog.h"
 #include "ui/results_panel.h"
 #include "ui/structure_import.h"
@@ -506,10 +507,11 @@ void MainWindow::buildMenus() {
         action(file, tr("新規"), QKeySequence::New, "new", [this] { newDocument(); }),
         action(file, tr("開く…"), QKeySequence::Open, "folder", [this] { open(); }),
         action(file, tr("PDBからダウンロード…"), {}, "import", [this] { downloadPdb(); }),
+        action(file, tr("PubChemから取得…"), {}, "import", [this] { downloadPubchem(); }),
         action(file, tr("SMILESから作成…"), {}, "ring", [this] { moleculePage->importSmiles(); })};
     for (int i = 0; i < documentActions.size(); ++i)
-        documentActions[i]->setObjectName(
-            QStringList{"newAction", "openAction", "downloadPdbAction", "smilesAction"}[i]);
+        documentActions[i]->setObjectName(QStringList{"newAction", "openAction", "downloadPdbAction",
+                                                      "downloadPubchemAction", "smilesAction"}[i]);
     recentMenu = file->addMenu(tr("最近使ったファイル"));
     recentMenu->setObjectName("recentMenu");
     recentMenu->setIcon(lineIcon("recent"));
@@ -610,6 +612,10 @@ void MainWindow::buildMenus() {
     action(toolsMenu, tr("構造を比較・重ね合わせ…"), {}, "compare", [this] {
         moleculePage->compareDialog();
     })->setObjectName("compareAction");
+    auto *solvation =
+        action(toolsMenu, tr("溶媒和殻を配置…"), {}, "sphere", [this] { moleculePage->solvationDialog(); });
+    solvation->setObjectName("solvationAction");
+    solvation->setToolTip(tr("水などの溶媒分子を、選択した原子または分子全体のまわりに置きます。"));
     auto *xtb = action(toolsMenu, tr("xTBで構造を最適化…"), {}, "cube", [this] { xtbDialog(); });
     xtb->setObjectName("xtbAction");
     xtb->setToolTip(tr("外部のxtbプログラム（GFN-xTB）で構造を最適化します。金属錯体にも使えます。"));
@@ -695,9 +701,9 @@ void MainWindow::buildMenus() {
     });
     // The header's document menu and run button, and the "表示" button over the 3D view.
     auto *documentMenu = new QMenu(documentButton);
-    documentMenu->addActions(documentActions.mid(0, 3)); // New, Open, Download from PDB.
+    documentMenu->addActions(documentActions.mid(0, 4)); // New, Open, Download from PDB, from PubChem.
     documentMenu->addMenu(recentMenu);
-    documentMenu->addAction(documentActions[3]); // From SMILES.
+    documentMenu->addAction(documentActions[4]); // From SMILES.
     documentMenu->addSeparator();
     documentMenu->addAction(saveAction);
     documentMenu->addAction(saveAsAction);
@@ -955,6 +961,54 @@ void MainWindow::downloadPdb() {
     statusBar()->showMessage(
         tr("%1 をダウンロードして開きました（%2）。").arg(id, QDir::toNativeSeparators(path)), 8000);
 }
+void MainWindow::downloadPubchem() {
+    bool ok = false;
+    const auto text =
+        QInputDialog::getText(this, tr("PubChemから取得"),
+                              tr("化合物の名前またはCID（例: "
+                                 "aspirin、2244）。PubChemから3D構造（ないときは2D構造から3D座標を生成）を"
+                                 "取得して開きます。"),
+                              QLineEdit::Normal, {}, &ok);
+    if (!ok)
+        return;
+    const auto query = pubchemQuery(text);
+    if (!query)
+        fail(tr("化合物の名前またはCIDを入力してください。"));
+    // Downloads stay in the cache, not among the user's files; over MCP, within its folders.
+    const auto folder =
+        QDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation)).filePath("pubchem");
+    checkMcpPath(folder);
+    if (!confirmDiscard())
+        return;
+    const auto record = mf::downloadPubchem(this, *query, folder);
+    if (record.path.isEmpty())
+        return;
+    const auto shown = query->kind == "cid" ? "CID " + query->value : query->value;
+    if (record.threeD) {
+        loadPath(record.path);
+        statusBar()->showMessage(tr("%1 の3D構造をPubChemから取得して開きました。").arg(shown), 8000);
+        return;
+    }
+    // No conformer: a new molecule from the SMILES of the 2D structure, as a candidate to confirm. Metals
+    // (PubChem draws most complexes as separate ions) are left to the coordination builder or a crystal
+    // structure.
+    if (hasMetal(importStructure(record.path)))
+        fail(tr("PubChemに %1 "
+                "の3D構造がなく、金属を含むためSMILESから3D座標を作れません（PubChemの錯体の多くは"
+                "イオンに分けて登録されています）。配位ビルダーで組み立てるか、結晶構造（CIF）を開いてくださ"
+                "い。")
+                 .arg(shown));
+    const auto smiles = structureSmiles(record.path);
+    Document next;
+    applyExecutionPreferences(next);
+    clearProjectPath();
+    loadDocument(next);
+    removeAutosave();
+    runWorker("smiles", smiles);
+    statusBar()->showMessage(
+        tr("PubChemに %1 の3D構造がないため、2D構造（%2）から3D座標を生成しています。").arg(shown, smiles),
+        15000);
+}
 void MainWindow::open() {
     QString p = QFileDialog::getOpenFileName(this, tr("分子を開く"), settings.value("directory").toString(),
                                              tr("分子 (*.molforma.json *.json *.xyz *.mol *.sdf *.mol2 *.cml "
@@ -999,7 +1053,8 @@ void MainWindow::loadPath(const QString &p, bool ask) {
             box.exec();
         }
     } else
-        next = reading([&] { return importStructure(p, options->selection, options->frame); });
+        next =
+            reading([&] { return importStructure(p, options->selection, options->frame, options->crystal); });
     if (base != revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
     if (!p.endsWith(".json", Qt::CaseInsensitive))

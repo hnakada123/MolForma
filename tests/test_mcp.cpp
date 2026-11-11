@@ -829,6 +829,26 @@ class McpTest : public QObject {
         QVERIFY(!failed(change(server, "history", {{"action", "cancel"}})));
         QCOMPARE(committed(server).atoms.size(), 3);
     }
+    void solvationShell() {
+        McpServer server;
+        QVERIFY(!failed(change(
+            server, "place_template",
+            {{"templateId", "skeleton:benzene"}, {"position", QJsonArray{0, 0, 0}}, {"preview", false}})));
+        const auto carbon = committed(server).atoms.first().id;
+        // A candidate by default, around the chosen atom; only the listed solvents.
+        const auto shell = change(
+            server, "solvate", {{"solvent", "skeleton:methanol"}, {"count", 3}, {"ids", QJsonArray{carbon}}});
+        QVERIFY2(!failed(shell), qPrintable(QString::fromUtf8(QJsonDocument(shell).toJson())));
+        QCOMPARE(data(shell)["candidate"].toObject()["formula"].toString(), QString("C9H18O3"));
+        QVERIFY(!failed(change(server, "history", {{"action", "confirm"}})));
+        QCOMPARE(committed(server).parts.size(), 4);
+        QVERIFY(!failed(change(server, "solvate", {{"solvent", "skeleton:water"}, {"preview", false}})));
+        QCOMPARE(committed(server).atoms.size(), 12 + 3 * 6 + 6 * 3); // Benzene, 3 methanols, 6 waters.
+        QVERIFY(failed(change(server, "solvate", {{"solvent", "skeleton:benzene"}})));
+        QVERIFY(failed(change(server, "solvate", {{"solvent", "skeleton:water"}, {"count", 0}})));
+        QVERIFY(failed(
+            change(server, "solvate", {{"solvent", "skeleton:water"}, {"ids", QJsonArray{"missing"}}})));
+    }
     void dimensionsAndAtomProperties() {
         McpServer server;
         QVERIFY(!failed(change(
@@ -1111,6 +1131,18 @@ class McpTest : public QObject {
         QVERIFY(failed(
             change(server, "open_file", {{"path", pdb}, {"chains", QJsonArray{"X"}}, {"preview", false}})));
         QCOMPARE(committed(server).formula(), QString("CZn"));
+        // A small-molecule CIF: water in P2(1)/c, one molecule or the four of the unit cell.
+        const auto cif = dir.filePath("water.cif");
+        writeFile(cif,
+                  "data_water\n_cell_length_a 7\n_cell_length_b 8\n_cell_length_c 9\n_cell_angle_alpha 90\n"
+                  "_cell_angle_beta 100.5\n_cell_angle_gamma 90\nloop_\n_space_group_symop_operation_xyz\n"
+                  "'x,y,z'\n'-x,y+1/2,-z+1/2'\n'-x,-y,-z'\n'x,-y+1/2,z+1/2'\nloop_\n_atom_site_label\n"
+                  "_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n"
+                  "O1 O 0.99 0.30 0.20\nH1 H 0.12 0.30 0.20\nH2 H 0.94 0.412 0.20\n");
+        QVERIFY(!failed(change(server, "open_file", {{"path", cif}, {"preview", false}})));
+        QCOMPARE(committed(server).formula(), QString("H2O"));
+        QVERIFY(!failed(change(server, "open_file", {{"path", cif}, {"cell", true}, {"preview", false}})));
+        QCOMPARE(committed(server).formula(), QString("H8O4"));
     }
     // A site cut out of a structure file in one edit, so that its size is what counts, or of the document.
     // A document of more than 10,000 atoms opened in the GUI: MCP edits that add no atoms go through, those

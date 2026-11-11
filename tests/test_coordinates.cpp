@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/atom_properties.h"
+#include "editing/chemistry.h"
+#include "editing/crystal.h"
+#include "editing/mmcif.h"
 #include "editing/peptide.h"
 #include "gzip.h"
 #include "io/structure_io.h"
@@ -8,6 +11,7 @@
 #include "ui/coordinates_panel.h"
 #include "ui/main_window.h"
 #include "ui/pdb_download.h"
+#include "ui/pubchem.h"
 #include "ui/structure_import.h"
 #include <QtTest>
 #include <QtWidgets>
@@ -179,6 +183,134 @@ class CoordinatesTest : public QObject {
         QVERIFY(chooseStructureImport(&parent, single));
     }
     // PDB entries download by their ID into a folder; read here from files, without the network.
+    // Small-molecule crystal structures: the asymmetric unit, the symmetry operations and the cell make whole
+    // molecules, across the cell's edges.
+    static QByteArray crystal(const QString &cell, const QStringList &operations, const QString &atoms,
+                              bool groups = false) {
+        QString text = "data_test\n_chemical_formula_sum 'test'\n_space_group_name_H-M_alt 'P 1'\n" + cell +
+                       "loop_\n_space_group_symop_operation_xyz\n";
+        for (const auto &op : operations)
+            text += "'" + op + "'\n";
+        text +=
+            QString(
+                "loop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n"
+                "_atom_site_fract_z\n_atom_site_occupancy\n") +
+            (groups ? "_atom_site_disorder_group\n" : "") + atoms;
+        return text.toUtf8();
+    }
+    static double nearest(const Document &d, int i) {
+        double best = 1e9;
+        for (int j = 0; j < d.atoms.size(); ++j)
+            if (j != i)
+                best = std::min(best, (d.atoms[j].position - d.atoms[i].position).norm());
+        return best;
+    }
+    void crystalStructures() {
+        // Operations as files write them.
+        auto op = crystalOperation("-x+1/2, 1/2+y, -z");
+        QCOMPARE(op.first, Mat(Vec(-1, 1, -1).asDiagonal()));
+        QCOMPARE(op.second, Vec(.5, .5, 0));
+        op = crystalOperation("x-y,x,z+0.25");
+        QCOMPARE(op.first.row(0), Eigen::RowVector3d(1, -1, 0));
+        QCOMPARE(op.second.z(), .25);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, crystalOperation("x,y"));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, crystalOperation("x,y,w"));
+        const QString cubic = "_cell_length_a 10.000(2)\n_cell_length_b 10\n_cell_length_c 10\n"
+                              "_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\n";
+        // Ethane on an inversion center at the origin: half of it is the asymmetric unit, and the other
+        // half lies across the cell's edge.
+        const auto ethane =
+            crystal(cubic, {"x,y,z", "-x,-y,-z"},
+                    "C1 C 0.0765 0 0 1\nH1 H 0.1150 0.1028 0 1\nH2 H 0.1150 -0.0514 0.0890 1\n"
+                    "H3 H 0.1150 -0.0514 -0.0890 1\n");
+        QVERIFY(crystalCif(ethane));
+        auto c = readCrystal(ethane);
+        QCOMPARE(c.atoms.size(), 4);
+        QCOMPARE(c.a, 10.0);
+        auto contents = crystalContents(c);
+        QCOMPARE(contents.molecules, 1);
+        QCOMPARE(contents.cellMolecules, 1);
+        auto d = crystalStructure(c);
+        QCOMPARE(d.formula(), QString("C2H6"));
+        QCOMPARE(d.bonds.size(), 7);
+        QVERIFY(std::abs((d.atoms[0].position - d.atoms[4].position).norm() - 1.53) < .01);
+        // With a cation in a general position, the ethane on its inversion center takes two of them: a
+        // formula unit, not the asymmetric unit alone.
+        c = readCrystal(crystal(cubic, {"x,y,z", "-x,-y,-z"},
+                                "C1 C 0.0765 0 0 1\nH1 H 0.1150 0.1028 0 1\nH2 H 0.1150 -0.0514 0.0890 1\n"
+                                "H3 H 0.1150 -0.0514 -0.0890 1\nNa1 Na 0.30 0.30 0.30 1\n"));
+        QCOMPARE(crystalContents(c).molecules, 3);
+        QCOMPARE(crystalStructure(c).formula(), QString("C2H6Na2"));
+        // So does a molecule with an atom on the inversion center itself (that atom appears once).
+        c = readCrystal(crystal(cubic, {"x,y,z", "-x,-y,-z"},
+                                "O1 O 0 0 0 1\nH1 H 0.0957 0 0 1\nNa1 Na 0.30 0.30 0.30 1\n"));
+        QCOMPARE(crystalStructure(c).formula(), QString("H2Na2O"));
+        // Water in P2(1)/c, near an edge of a monoclinic cell: one molecule, or the four of the cell.
+        const QString monoclinic =
+            "_cell_length_a 7\n_cell_length_b 8\n_cell_length_c 9\n_cell_angle_alpha 90\n"
+            "_cell_angle_beta 100.5(1)\n_cell_angle_gamma 90\n";
+        const QStringList p21c{"x,y,z", "-x,y+1/2,-z+1/2", "-x,-y,-z", "x,-y+1/2,z+1/2"};
+        const auto water = crystal(
+            monoclinic, p21c, "O1 O 0.99 0.30 0.20 1\nH1 H 0.1200 0.30 0.20 1\nH2 H 0.9400 0.4120 0.20 1\n");
+        c = readCrystal(water);
+        contents = crystalContents(c);
+        QCOMPARE(contents.molecules, 1);
+        QCOMPARE(contents.cellMolecules, 4);
+        QCOMPARE(contents.cellAtoms, 12);
+        d = crystalStructure(c);
+        QCOMPARE(d.formula(), QString("H2O"));
+        QCOMPARE(d.bonds.size(), 2);
+        for (int i = 0; i < 3; ++i)
+            QVERIFY(nearest(d, i) < 1.1); // Whole across the edge (the first H lies in the next cell).
+        d = crystalStructure(c, {.cell = true});
+        QCOMPARE(d.atoms.size(), 12);
+        QCOMPARE(d.bonds.size(), 8);
+        QCOMPARE(d.data["metadata"].toObject()["crystal"].toObject()["contents"].toString(), QString("cell"));
+        // Disorder: group 1 by default, both on request; a counterion comes along, next to the cation.
+        const auto salt = crystal(cubic, {"x,y,z"},
+                                  "N1 N 0.5 0.5 0.5 1 .\nH1 H 0.6 0.5 0.5 1 .\nH2 H 0.4667 0.5943 0.5 1 .\n"
+                                  "H3 H 0.4667 0.4529 0.5816 1 .\nH4 H 0.4667 0.4529 0.4184 1 .\n"
+                                  "Cl1 Cl 0.82 0.5 0.5 0.6 1\nCl2 Cl 0.82 0.55 0.5 0.4 2\n",
+                                  true);
+        c = readCrystal(salt);
+        contents = crystalContents(c);
+        QVERIFY(contents.disorder);
+        QCOMPARE(contents.molecules, 2);
+        d = crystalStructure(c);
+        QCOMPARE(d.formula(), QString("ClH4N"));
+        QVERIFY((d.atoms.last().position - d.atoms.first().position).norm() < 4);
+        QCOMPARE(crystalStructure(c, {.minor = true}).atoms.size(), 7);
+        // The files that are not read.
+        QVERIFY_THROWS_EXCEPTION(
+            std::runtime_error,
+            readCrystal(crystal("_cell_length_a 10\n_cell_length_b 10\n", {"x,y,z"}, "C1 C 0 0 0 1\n")));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 readCrystal(crystal(cubic, {"x,y,z"}, "Q1 Q 0 0 0 1\n")));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 crystalStructure(readCrystal(crystal(cubic, {"-x,y,z"}, "C1 C 0 0 0 1\n"))));
+        // Opened as a file, with the choice of the dialog; a PDBx/mmCIF entry is still one.
+        QTemporaryDir dir;
+        const auto path = dir.filePath("water.cif");
+        writeFile(path, water);
+        QCOMPARE(importStructure(path).formula(), QString("H2O"));
+        const auto options = chooseStructureImport(nullptr, path, false);
+        QVERIFY(options && !options->crystal.cell);
+        QCOMPARE(importStructure(path, {}, -1, {.cell = true}).atoms.size(), 12);
+        QCOMPARE(importStructure(path).data["metadata"].toObject()["source_format"].toString(),
+                 QString("cif"));
+        writeFile(dir.filePath("water.cif.gz"), gzip(water));
+        QCOMPARE(importStructure(dir.filePath("water.cif.gz")).formula(), QString("H2O"));
+        MainWindow w;
+        QTimer::singleShot(0, &w, [] {
+            auto *dialog = QApplication::activeModalWidget();
+            if (dialog && dialog->objectName() == "crystalImportDialog") {
+                dialog->findChild<QRadioButton *>("crystalCell")->setChecked(true);
+                QMetaObject::invokeMethod(dialog, "accept", Qt::QueuedConnection);
+            }
+        });
+        w.loadPath(path);
+        QCOMPARE(w.document().atoms.size(), 12);
+    }
     void pdbDownloads() {
         QCOMPARE(pdbId(" 7dmu "), QString("7DMU"));
         QCOMPARE(pdbId("PDB_00007DMU"), QString("pdb_00007dmu"));
@@ -221,8 +353,55 @@ class CoordinatesTest : public QObject {
         MainWindow w;
         QVERIFY(w.findChild<QPushButton *>("downloadPdb"));
         const auto header = w.findChild<QToolButton *>("documentButton")->menu()->actions();
-        for (const auto *name : {"newAction", "openAction", "downloadPdbAction", "smilesAction"})
+        for (const auto *name :
+             {"newAction", "openAction", "downloadPdbAction", "downloadPubchemAction", "smilesAction"})
             QVERIFY2(header.contains(w.findChild<QAction *>(name)), name);
+    }
+    void pubchemDownloads() {
+        QCOMPARE(pubchemQuery("2244")->kind, QString("cid"));
+        QCOMPARE(pubchemQuery(" CID 2244 ")->value, QString("2244"));
+        QCOMPARE(pubchemQuery("cid:0002244")->value, QString("2244"));
+        QCOMPARE(pubchemQuery("acetylsalicylic acid")->kind, QString("name"));
+        QVERIFY(!pubchemQuery("  ").has_value());
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, pubchemQuery("a\nb"));
+        QTemporaryDir source, cache;
+        // The source as PubChem names its records: the kind, the CID or name, 3d or 2d.
+        writeFile(source.filePath("cid_2244_3d.sdf"),
+                  "water\n  test\n\n  3  2  0  0  0  0  0  0  0  0999 V2000\n"
+                  "    0.0000    0.0000    0.1170 O   0  0  0  0  0  0  0  0  0  0  0  0\n"
+                  "    0.0000    0.7570   -0.4680 H   0  0  0  0  0  0  0  0  0  0  0  0\n"
+                  "    0.0000   -0.7570   -0.4680 H   0  0  0  0  0  0  0  0  0  0  0  0\n"
+                  "  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END\n$$$$\n");
+        QString benzene = "benzene\n  test\n\n  6  6  0  0  0  0  0  0  0  0999 V2000\n";
+        for (int i = 0; i < 6; ++i)
+            benzene += QString("%1%2    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n")
+                           .arg(1.39 * std::cos(i * M_PI / 3), 10, 'f', 4)
+                           .arg(1.39 * std::sin(i * M_PI / 3), 10, 'f', 4);
+        for (int i = 0; i < 6; ++i)
+            benzene +=
+                QString("%1%2%3  0  0  0  0\n").arg(i + 1, 3).arg((i + 1) % 6 + 1, 3).arg(i % 2 ? 1 : 2, 3);
+        writeFile(source.filePath("name_benzene_2d.sdf"), (benzene + "M  END\n$$$$\n").toUtf8());
+        const auto url =
+            QUrl::fromLocalFile(source.filePath("X.sdf")).toString().replace("X.sdf", "%1_%2_%3.sdf");
+        const auto folder = cache.filePath("pubchem");
+        QWidget parent;
+        auto record = downloadPubchem(&parent, *pubchemQuery("2244"), folder, url);
+        QVERIFY(record.threeD);
+        QCOMPARE(QFileInfo(record.path).fileName(), QString("CID_2244_3d.sdf"));
+        QCOMPARE(importStructure(record.path).formula(), QString("H2O"));
+        // No conformer: the 2D structure, whose SMILES makes the 3D one.
+        record = downloadPubchem(&parent, *pubchemQuery("benzene"), folder, url);
+        QVERIFY(!record.threeD);
+        QVERIFY(QFileInfo(record.path).fileName().startsWith("benzene_") && record.path.endsWith("_2d.sdf"));
+        QCOMPARE(fromSmiles(structureSmiles(record.path)).formula(), QString("C6H6"));
+        try {
+            downloadPubchem(&parent, *pubchemQuery("unobtainium"), folder, url);
+            QFAIL("found a missing compound");
+        } catch (const std::exception &e) {
+            QVERIFY(QString::fromUtf8(e.what()).contains("unobtainium"));
+        }
+        MainWindow w;
+        QVERIFY(w.findChild<QAction *>("downloadPubchemAction"));
     }
     void multiFrameImport() {
         QFETCH(bool, replace);

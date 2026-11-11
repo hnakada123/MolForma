@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordination.h"
 #include "model/i18n.h"
+#include <Eigen/SVD>
+#include <algorithm>
 #include <cmath>
+#include <limits>
+#include <numeric>
 namespace mf {
 QStringList geometryNames() {
     return {"linear",
@@ -120,12 +124,176 @@ void setOxidation(Document &d, const QString &id, int oxidation) {
     c.oxidation = oxidation;
     followingCharge(d, [&] { updateCenter(d, c); });
 }
+int ligandSites(const QJsonObject &t) {
+    return int(t["connections"].toArray().size() + t["hapto"].toArray().size());
+}
+int ligandSites(const Part &p) {
+    return int(p.connections.size() + p.metadata["hapto"].toArray().size());
+}
+// A ligand that knows where its metal sits (its "center"), or binds through eta groups or three donors or
+// more: the directions from the metal to its donors and to the centroids of its eta groups are turned onto
+// the sites, the donors matched to the sites in whatever order fits best (keep: in the order given). The
+// metal–donor distances are the ligand's own.
+static PlacedPart bindFitted(Document &d, const QString &id, const QList<int> &indices, const QJsonObject &t,
+                             double twist, bool keep) {
+    auto c = center(d, id);
+    const auto connections = t["connections"].toArray(), groups = t["hapto"].toArray();
+    const auto templateAtoms = t["atoms"].toArray();
+    QVector<Vec> points;
+    for (const auto &v : templateAtoms)
+        points << vectorFromJson(v.toObject()["position"]);
+    // The anchors: each donor, then the centroid of each eta group.
+    QVector<Vec> anchors;
+    for (const auto &v : connections)
+        anchors << points[v.toInt()];
+    for (const auto &g : groups) {
+        Vec sum = Vec::Zero();
+        const auto members = g.toArray();
+        if (members.size() < 2)
+            fail(tr("η配位の原子群には2原子以上が必要です。"));
+        for (const auto &m : members) {
+            if (m.toInt() < 0 || m.toInt() >= points.size())
+                fail(tr("部品の原子参照が不正です。"));
+            sum += points[m.toInt()];
+        }
+        anchors << sum / members.size();
+    }
+    const Vec origin = d.atom(id).position;
+    QVector<Vec> sites;
+    for (int i : indices)
+        sites << unit(c.sites[i].direction);
+    Mat r = Mat::Identity();
+    Vec shift = Vec::Zero();
+    QVector<int> order(indices.size()); // order[k]: the site of anchor k, as an index into `indices`.
+    std::iota(order.begin(), order.end(), 0);
+    if (t.contains("center")) {
+        const Vec metal = vectorFromJson(t["center"]);
+        QVector<Vec> directions;
+        for (const auto &a : anchors) {
+            if ((a - metal).norm() < 1e-6)
+                fail(tr("部品の供与原子が配位中心の位置にあります。"));
+            directions << unit(a - metal);
+        }
+        if (anchors.size() == 1) {
+            // One donor or one eta group: along its site, turned about it by the twist.
+            r = rotation(sites[0], twist) * alignVectors(directions[0], sites[0]);
+        } else {
+            double best = std::numeric_limits<double>::infinity();
+            QVector<int> trial = order;
+            do {
+                Eigen::Matrix3d h = Eigen::Matrix3d::Zero();
+                for (int k = 0; k < directions.size(); ++k)
+                    h += directions[k] * sites[trial[k]].transpose();
+                Eigen::JacobiSVD<Eigen::Matrix3d> svd(h, Eigen::ComputeFullU | Eigen::ComputeFullV);
+                Mat turn = svd.matrixV() * svd.matrixU().transpose();
+                if (turn.determinant() < 0) {
+                    Mat v = svd.matrixV();
+                    v.col(2) *= -1;
+                    turn = v * svd.matrixU().transpose();
+                }
+                double error = 0;
+                for (int k = 0; k < directions.size(); ++k)
+                    error += (turn * directions[k] - sites[trial[k]]).squaredNorm();
+                if (error < best - 1e-12) {
+                    best = error;
+                    r = turn;
+                    order = trial;
+                }
+            } while (!keep && std::next_permutation(trial.begin(), trial.end()));
+        }
+        // The donors may sit off their sites (bite angles) by a little, not by a site.
+        double worst = 0;
+        for (int k = 0; k < directions.size(); ++k)
+            worst =
+                std::max(worst, std::acos(std::clamp((r * directions[k]).dot(sites[order[k]]), -1.0, 1.0)));
+        if (worst * 180 / M_PI > 25)
+            fail(tr("選んだサイトの配置がこの配位子に合いません（供与原子の向きが最大 %1° ずれます）。"
+                    "隣り合うサイト（fac・merなど配位子の形に合う組）を選んでください。")
+                     .arg(qRound(worst * 180 / M_PI)));
+        shift = origin - r * metal;
+    } else {
+        // A part without its metal's place: the anchors onto the points of the sites.
+        if (anchors.size() < 3 || !groups.isEmpty())
+            fail(tr("この部品には配位中心の位置がないため、η配位・2座以下の当てはめに使えません。"));
+        QVector<Vec> targets;
+        for (int k = 0; k < anchors.size(); ++k)
+            targets << origin + c.sites[indices[k]].direction * c.sites[indices[k]].distance;
+        const auto fit = fitPoints(anchors, targets);
+        r = fit.first;
+        shift = fit.second;
+        double worst = 0;
+        for (int k = 0; k < anchors.size(); ++k)
+            worst = std::max(worst, (r * anchors[k] + shift - targets[k]).norm());
+        if (worst > .45)
+            fail(tr("供与原子の配置とサイトの配置が合いません。サイト・配位距離を変更してください。"));
+    }
+    for (auto &p : points)
+        p = r * p + shift;
+    // Nothing but the donors and the eta groups comes close to the metal.
+    QSet<int> bound;
+    for (const auto &v : connections)
+        bound.insert(v.toInt());
+    for (const auto &g : groups)
+        for (const auto &m : g.toArray())
+            bound.insert(m.toInt());
+    for (int i = 0; i < points.size(); ++i)
+        if (!bound.contains(i) &&
+            (points[i] - origin).norm() <
+                .8 * (element(d.atom(id).element).radius +
+                      element(templateAtoms[i].toObject()["element"].toString()).radius))
+            fail(tr("供与原子以外の原子が配位中心に近すぎます。サイト・距離・回転角を変更してください。"));
+    auto p = instantiate(d, t, points);
+    auto &meta = d.parts.last().metadata;
+    QJsonArray selected;
+    for (int k = 0; k < anchors.size(); ++k)
+        selected.append(indices[order[k]]);
+    meta["coordination_center"] = id;
+    meta["sites"] = selected;
+    meta["twist"] = twist;
+    meta["fitted"] = true;
+    QJsonArray haptoIds;
+    for (const auto &g : groups) {
+        QJsonArray ids;
+        for (const auto &m : g.toArray())
+            ids.append(p.mapping[m.toInt()]);
+        haptoIds.append(ids);
+    }
+    if (!haptoIds.isEmpty())
+        meta["hapto"] = haptoIds;
+    for (int k = 0; k < anchors.size(); ++k) {
+        auto &site = c.sites[indices[order[k]]];
+        site.part = p.id;
+        if (k < connections.size()) {
+            site.donor = p.mapping[connections[k].toInt()];
+            d.setBond(site.donor, id, "dative");
+        } else {
+            const auto members = haptoIds[k - connections.size()].toArray();
+            site.donor = members.first().toString();
+            for (const auto &m : members)
+                d.setBond(m.toString(), id, "dative");
+        }
+    }
+    updateCenter(d, c);
+    return p;
+}
 static PlacedPart bindLigand(Document &d, const QString &id, const QList<int> &indices, const QJsonObject &t,
-                             double twist) {
+                             double twist, bool keep = false) {
     auto c = center(d, id);
     auto connections = t["connections"].toArray();
-    if (indices.size() != connections.size() || indices.isEmpty() || indices.size() > 2)
-        fail(tr("配位子の供与原子数に合う1〜2サイトを選択してください。"));
+    const int needed = ligandSites(t);
+    if (needed < 1 || indices.size() != needed)
+        fail(tr("配位子の供与原子数（η配位は1つ）に合う %n サイトを選択してください。", nullptr,
+                std::max(needed, 1)));
+    {
+        QSet<int> distinct;
+        for (int i : indices) {
+            if (i < 0 || i >= c.sites.size() || distinct.contains(i) || !c.sites[i].donor.isEmpty())
+                fail(tr("サイトが占有済み、重複、または範囲外です。"));
+            distinct.insert(i);
+        }
+    }
+    if (t.contains("center") || !t["hapto"].toArray().isEmpty() || needed > 2)
+        return bindFitted(d, id, indices, t, twist, keep);
     QSet<int> distinct;
     QVector<Vec> targets, points, anchors;
     Vec origin = d.atom(id).position;
@@ -274,11 +442,23 @@ static void refitCenter(Document &d, const QString &id) {
         for (const auto &donor : p.connections)
             connections.append(oldIds.indexOf(donor));
         t["connections"] = connections;
+        // A fitted ligand keeps its shape about the metal where it is now, and its eta groups.
+        QJsonArray groups;
+        for (const auto &g : p.metadata["hapto"].toArray()) {
+            QJsonArray members;
+            for (const auto &m : g.toArray())
+                members.append(oldIds.indexOf(m.toString()));
+            groups.append(members);
+        }
+        if (!groups.isEmpty())
+            t["hapto"] = groups;
+        if (p.metadata["fitted"].toBool())
+            t["center"] = vectorToJson(d.atom(id).position);
         Document temp = d;
         for (auto &a : temp.atoms)
             a.fixed = false;
         temp.remove(oldIds);
-        auto placed = bindLigand(temp, id, idx, t, 0);
+        auto placed = bindLigand(temp, id, idx, t, 0, true);
         for (int i = 0; i < oldIds.size(); ++i) {
             Vec target = temp.atom(placed.atoms[i]).position;
             if (d.atom(oldIds[i]).fixed && (target - d.atom(oldIds[i]).position).norm() > 1e-7)
@@ -287,7 +467,11 @@ static void refitCenter(Document &d, const QString &id) {
         }
         c = center(d, id);
         for (int k = 0; k < idx.size(); ++k) {
-            c.sites[idx[k]].donor = p.connections.value(k);
+            // A site of an eta group names its first atom.
+            c.sites[idx[k]].donor =
+                k < p.connections.size()
+                    ? p.connections[k]
+                    : p.metadata["hapto"].toArray()[k - p.connections.size()].toArray().first().toString();
             c.sites[idx[k]].part = p.id;
         }
         updateCenter(d, c);
@@ -318,8 +502,8 @@ void moveLigand(Document &d, const QString &partId, const QList<int> &sites, con
         QJsonObject t = replacement;
         if (t.isEmpty()) {
             auto c = center(d, id);
-            if (sites.size() != p.connections.size())
-                fail(tr("供与原子数と同じサイト数を指定してください。"));
+            if (sites.size() != ligandSites(p))
+                fail(tr("供与原子数（η配位は1つ）と同じサイト数を指定してください。"));
             QSet<int> unique;
             for (int i : sites) {
                 if (i < 0 || i >= c.sites.size() || unique.contains(i))

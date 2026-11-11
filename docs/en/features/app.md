@@ -31,9 +31,10 @@
 
 Use `ctest --test-dir build --output-on-failure`.
 
-- Generating and reloading all 101 templates, round trips of the 4 projects in `tests/fixtures/`.
+- Generating and reloading all 118 templates, round trips of the 4 projects in `tests/fixtures/`.
 - Invalid XYZ, isotopes, adding hydrogens, attaching, numeric dimensions, refusing fixed atoms and ring bonds.
-- Peptide composition, termini, replacement and caps; coordination distances and bidentate site conditions.
+- Peptide composition, termini, replacement and caps; coordination distances and bidentate site conditions; fitting polydentate and η ligands; distances and orientation of solvation shells.
+- Symmetry operations, formula units, unit cells and disorder of small-molecule CIF files; getting compounds from PubChem (with local files standing in).
 - Converting water to TIP3P point charges.
 - Adding hydrogens to all templates including aromatic rings, bond order estimation for XYZ, rotational symmetry numbers.
 - SMILES, cleanup with fixed atoms, SDF/PDB round trips.

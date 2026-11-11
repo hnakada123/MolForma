@@ -296,6 +296,28 @@ void exportBabelStructure(const Document &d, const QString &path) {
         fail(tr("構造を書き出せません。"));
     writeFile(path, QByteArray::fromStdString(result));
 }
+QString structureSmiles(const QString &path) {
+    OBConversion conversion;
+    if (!conversion.SetInAndOutFormats("sdf", "smi"))
+        fail(tr("対応していない形式です: %1").arg("sdf"));
+    OBMol mol;
+    if (!conversion.ReadString(&mol, readStructureFile(path).toStdString()) || !mol.NumAtoms())
+        fail(tr("構造ファイルを読み込めません。"));
+    const auto smiles = QString::fromStdString(conversion.WriteString(&mol)).section('\t', 0, 0).trimmed();
+    if (smiles.isEmpty())
+        fail(tr("構造ファイルを読み込めません。"));
+    return smiles;
+}
+bool hasMetal(const Document &d) {
+    for (const auto &a : d.atoms)
+        if (OBElements::GetAtomicNum(a.element.toLatin1().constData()) > 0) {
+            OBAtom atom;
+            atom.SetAtomicNum(OBElements::GetAtomicNum(a.element.toLatin1().constData()));
+            if (atom.IsMetal())
+                return true;
+        }
+    return false;
+}
 Document fromSmiles(const QString &smiles) {
     if (smiles.trimmed().isEmpty() || smiles.contains('\n'))
         fail(tr("SMILESを1行で入力してください。"));

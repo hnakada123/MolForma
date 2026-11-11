@@ -248,6 +248,8 @@ class MainWindow : public QMainWindow {
     void open();
     // Downloads a PDB entry by its ID from RCSB PDB into the cache folder and opens it.
     void downloadPdb();
+    // "PubChemから取得…": a compound by its name or CID, as a new molecule.
+    void downloadPubchem();
     bool save(bool as = false);
     void exportFile();
     void chemistryReady(const ChemistryResult &result);

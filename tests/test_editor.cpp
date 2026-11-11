@@ -400,6 +400,53 @@ class EditorTest : public QObject {
         const auto &edited = w.document();
         QVERIFY(std::abs(measure(edited, {edited.atoms[0].id, edited.atoms[1].id}) - 1.2) < 1e-9);
     }
+    void solvationDialog() {
+        MainWindow w;
+        w.loadDocument(Document::fromXyz("2\nNaCl\nNa 0 0 0\nCl 6 0 0\n"));
+        const auto ids = w.document().ids();
+        w.setSelection({ids[0]});
+        bool around = false;
+        QTimer::singleShot(0, &w, [&] {
+            if (auto *dialog = w.findChild<QDialog *>("solvationDialog")) {
+                auto *solvent = dialog->findChild<QComboBox *>("solvationSolvent");
+                solvent->setCurrentIndex(solvent->findData("skeleton:water"));
+                dialog->findChild<QSpinBox *>("solvationCount")->setValue(4);
+                around = dialog->findChild<QCheckBox *>("solvationAroundSelection")->isChecked();
+                dialog->accept();
+            }
+        });
+        w.findChild<QAction *>("solvationAction")->trigger();
+        QVERIFY(around); // With a selection, around it.
+        QVERIFY(w.hasCandidate());
+        w.confirmCandidate();
+        const auto &d = w.document();
+        QCOMPARE(d.atoms.size(), 2 + 4 * 3);
+        for (const auto &a : d.atoms)
+            if (a.element == "O")
+                QVERIFY(a.position.norm() < 3); // At the sodium, not the chloride.
+        // Around the whole molecule; with a candidate pending, the dialog does not open.
+        w.setSelection({});
+        QTimer::singleShot(0, &w, [&] {
+            if (auto *dialog = w.findChild<QDialog *>("solvationDialog")) {
+                QVERIFY(!dialog->findChild<QCheckBox *>("solvationAroundSelection")->isEnabled());
+                dialog->findChild<QSpinBox *>("solvationCount")->setValue(2);
+                dialog->accept();
+            }
+        });
+        w.findChild<QAction *>("solvationAction")->trigger();
+        QVERIFY(w.hasCandidate());
+        QString refused;
+        QTimer::singleShot(0, &w, [&] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                refused = box->text();
+                box->accept();
+            }
+        });
+        w.findChild<QAction *>("solvationAction")->trigger();
+        QVERIFY(refused.contains("候補を確定"));
+        w.confirmCandidate();
+        QCOMPARE(w.document().atoms.size(), 2 + 6 * 3);
+    }
     void viewStylesMonitorsAndHydrogenBonds() {
         MainWindow w;
         w.loadDocument(Document::fromXyz("6\nwater dimer\nO -1.551007 -0.114520 0\nH -1.934259 0.762503 0\n"
@@ -734,7 +781,7 @@ class EditorTest : public QObject {
         auto *palette = w.findChild<QListWidget *>("templatePalette");
         w.findChild<QToolButton *>("paletteCategory_skeleton")->click();
         QTest::qWait(150); // The list lays the tiles out again after a resize.
-        QCOMPARE(palette->count(), 19);
+        QCOMPARE(palette->count(), 21);
         // Equal tiles, several in a row, none cut off at the right.
         const auto first = palette->visualItemRect(palette->item(0));
         QVERIFY(first.height() >= 80);
@@ -958,7 +1005,7 @@ class EditorTest : public QObject {
         QCOMPARE(w.document().atoms.size(), 1);
         w.findChild<QToolButton *>("paletteCategory_skeleton")->click();
         QVERIFY(!open->isVisible());
-        QCOMPARE(palette->count(), 19);
+        QCOMPARE(palette->count(), 21);
     }
     void customPartThumbnailRefresh() {
         QStandardItemModel model(1, 1);

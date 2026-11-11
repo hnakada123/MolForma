@@ -45,12 +45,14 @@ add_library(molforma_editing STATIC
     src/editing/editor_session.cpp
     src/editing/coordinates.cpp
     src/editing/coordination.cpp
+    src/editing/crystal.cpp
     src/editing/library.cpp
     src/editing/mmcif.cpp
     src/editing/operations.cpp
     src/editing/pdb.cpp
     src/editing/peptide.cpp
     src/editing/site.cpp
+    src/editing/solvation.cpp
     src/editing/stereochemistry.cpp
     src/editing/xtb.cpp)
 target_link_libraries(molforma_editing PUBLIC molforma_model PRIVATE ${MOLFORMA_OPENBABEL})
@@ -127,6 +129,7 @@ add_library(molforma_ui STATIC
     src/ui/periodic_table.cpp
     src/ui/result_charts.cpp
     src/ui/property_geometry_view.cpp
+    src/ui/pubchem.cpp
     src/ui/remote_hosts_dialog.cpp
     src/ui/spectroscopy_view.cpp
     src/ui/results_panel.cpp

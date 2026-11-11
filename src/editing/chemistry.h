@@ -10,6 +10,11 @@ void exportBabelStructure(const Document &document, const QString &path);
 // Reads XYZ text and assigns bond orders from the geometry; XYZ itself carries none.
 Document xyzStructure(const QString &text);
 Document fromSmiles(const QString &smiles);
+// The SMILES (with stereochemistry) of the first molecule of a MOL/SDF file, such as a 2D structure that
+// fromSmiles makes 3D.
+QString structureSmiles(const QString &path);
+// Whether the molecule has a metal atom, which fromSmiles and refine() do not build (Open Babel's metals).
+bool hasMetal(const Document &document);
 Document refine(const Document &d, bool regenerate = false, const Ids &moving = {});
 struct Conformer {
     Document document;

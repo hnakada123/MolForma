@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/library.h"
 #include "model/i18n.h"
+#include <algorithm>
+#include <cmath>
 namespace mf {
 const QJsonArray &templates() {
     elements();
@@ -34,6 +36,19 @@ void validateTemplate(const QJsonObject &t) {
     }
     for (auto v : t["connections"].toArray())
         check(v);
+    for (auto g : t["hapto"].toArray()) {
+        if (!g.isArray() || g.toArray().size() < 2)
+            fail(tr("部品のη配位の原子群が不正です。"));
+        for (auto v : g.toArray())
+            check(v);
+    }
+    if (t.contains("center")) {
+        const auto c = t["center"].toArray();
+        if (c.size() != 3 || std::any_of(c.begin(), c.end(), [](const QJsonValue &v) {
+                return !v.isDouble() || !std::isfinite(v.toDouble());
+            }))
+            fail(tr("部品の配位中心の位置が不正です。"));
+    }
     if (!t["leaving"].isNull() && !t["leaving"].isUndefined())
         check(t["leaving"]);
 }
@@ -101,17 +116,25 @@ QJsonObject makePart(const Document &d, const Ids &ids, const QString &name, con
         fail(tr("原子を接続点から順に選び、部品名を入力してください。"));
     QSet<QString> selected(ids.begin(), ids.end());
     int boundary = 0;
+    QSet<QString> outside, donors;
     for (const auto &b : d.bonds)
         if (selected.contains(b.a) != selected.contains(b.b)) {
             ++boundary;
             if (skeleton)
                 fail(
                     tr("骨格は他の原子と結合していない分子全体を選択してください（選択単位「連結分子」）。"));
-            if ((selected.contains(b.a) ? b.a : b.b) != ids.first())
-                fail(tr("最初に接続点の原子を選択してください。"));
+            outside.insert(selected.contains(b.a) ? b.b : b.a);
+            donors.insert(selected.contains(b.a) ? b.a : b.b);
         }
-    if (!skeleton && (boundary > 1 || (!ligand && boundary != 1)))
-        fail(tr("置換基の外部結合は1本、配位子は0または1本にしてください。"));
+    // A ligand bound to its metal by several bonds (a chelate, an eta group): the donors are the atoms bound
+    // to it, in any order; otherwise the connection is the first atom chosen.
+    const bool chelate = ligand && boundary > 1;
+    if (chelate && outside.size() != 1)
+        fail(tr("配位子の外部結合は、1つの配位中心への結合にしてください。"));
+    if (!chelate && boundary && !donors.contains(ids.first()))
+        fail(tr("最初に接続点の原子を選択してください。"));
+    if (!skeleton && !chelate && (boundary > 1 || (!ligand && boundary != 1)))
+        fail(tr("置換基の外部結合は1本、配位子は0本または1つの配位中心への結合にしてください。"));
     Document sub;
     for (const auto &id : ids)
         sub.atoms << d.atom(id);
@@ -129,10 +152,44 @@ QJsonObject makePart(const Document &d, const Ids &ids, const QString &name, con
         a.remove("id");
         atoms.append(a);
     }
-    return {{"id", "my:" + name},     {"name_ja", name},
-            {"name_en", name},        {"aliases", QJsonArray{name}},
-            {"category", category},   {"atoms", atoms},
-            {"bonds", bonds},         {"connections", skeleton ? QJsonArray() : QJsonArray{0}},
-            {"leaving", QJsonValue()}};
+    QJsonObject part{{"id", "my:" + name},     {"name_ja", name},
+                     {"name_en", name},        {"aliases", QJsonArray{name}},
+                     {"category", category},   {"atoms", atoms},
+                     {"bonds", bonds},         {"connections", skeleton ? QJsonArray() : QJsonArray{0}},
+                     {"leaving", QJsonValue()}};
+    if (chelate) {
+        // Donors bound to one another make an eta group; the others bind each on its own site.
+        QJsonArray connections, groups;
+        QSet<QString> seen;
+        for (const auto &id : ids) {
+            if (!donors.contains(id) || seen.contains(id))
+                continue;
+            QStringList group{id}, next{id};
+            seen.insert(id);
+            while (!next.isEmpty()) {
+                const auto atom = next.takeFirst();
+                for (const auto &b : d.bonds)
+                    for (const auto &[from, to] : {std::pair{b.a, b.b}, std::pair{b.b, b.a}})
+                        if (from == atom && donors.contains(to) && !seen.contains(to)) {
+                            seen.insert(to);
+                            group << to;
+                            next << to;
+                        }
+            }
+            if (group.size() == 1)
+                connections.append(int(ids.indexOf(id)));
+            else {
+                QJsonArray members;
+                for (const auto &member : group)
+                    members.append(int(ids.indexOf(member)));
+                groups.append(members);
+            }
+        }
+        part["connections"] = connections;
+        if (!groups.isEmpty())
+            part["hapto"] = groups;
+        part["center"] = vectorToJson(d.atom(*outside.begin()).position);
+    }
+    return part;
 }
 } // namespace mf

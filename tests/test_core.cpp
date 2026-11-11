@@ -7,6 +7,7 @@
 #include "editing/operations.h"
 #include "editing/peptide.h"
 #include "editing/site.h"
+#include "editing/solvation.h"
 #include "editing/stereochemistry.h"
 #include "gzip.h"
 #include "io/structure_io.h"
@@ -946,7 +947,7 @@ class CoreTest : public QObject {
         QVERIFY(protonated.pointCharges.isEmpty());
     }
     void templateLibrary() {
-        QCOMPARE(templates().size(), 101);
+        QCOMPARE(templates().size(), 118);
         for (auto v : templates()) {
             Document d;
             instantiate(d, v.toObject());
@@ -1255,6 +1256,9 @@ class CoreTest : public QObject {
         int checked = 0;
         for (auto v : templates()) {
             const auto t = v.toObject();
+            // An eta ligand has the bond lengths of a bound one (butadiene's are nearly equal).
+            if (t.contains("hapto"))
+                continue;
             Document d;
             instantiate(d, t);
             const bool plain = std::all_of(d.atoms.begin(), d.atoms.end(), [](const Atom &a) {
@@ -1821,6 +1825,234 @@ class CoreTest : public QObject {
         auto en = placeLigand(d, co, {0, 1}, findTemplate("ligand:en"));
         QCOMPARE(en.connections.size(), 2);
         QVERIFY(d.validate().isEmpty());
+    }
+    // Ligands of three donors and more, and eta ligands: turned onto the sites from the place of their metal.
+    void solvationShells() {
+        // Every solvent template is a rigid copy; nothing comes closer than contact, nothing of the solute
+        // moves.
+        const auto smallest = [](const Document &d, const QSet<QString> &a, const QSet<QString> &b,
+                                 bool heavy) {
+            double best = 1e9;
+            for (const auto &x : d.atoms)
+                for (const auto &y : d.atoms)
+                    if (a.contains(x.id) && b.contains(y.id) && x.id != y.id &&
+                        (!heavy || (x.element != "H" && y.element != "H")))
+                        best = std::min(best, (x.position - y.position).norm());
+            return best;
+        };
+        const auto added = [](const Document &before, const Document &after) {
+            QSet<QString> ids;
+            for (const auto &a : after.atoms)
+                if (before.index(a.id) < 0)
+                    ids << a.id;
+            return ids;
+        };
+        // A sodium ion: six waters with their oxygen at Na–O contact, hydrogens away; an octahedron.
+        auto na = Document::fromXyz("1\nNa+\nNa 0 0 0\n");
+        na.atoms[0].charge = 1;
+        auto wet = na;
+        QCOMPARE(solvate(wet, findTemplate("skeleton:water"), {}), 6);
+        QCOMPARE(wet.atoms.size(), 19);
+        QCOMPARE(wet.parts.size(), 6);
+        QCOMPARE(wet.atoms[0].position, na.atoms[0].position);
+        const double contact = element("Na").radius + element("O").radius + .15;
+        QVector<Vec> oxygens;
+        for (const auto &a : wet.atoms) {
+            const double r = a.position.norm();
+            if (a.element == "O") {
+                QVERIFY(std::abs(r - contact) < 1e-9);
+                oxygens << a.position;
+            } else if (a.element == "H")
+                QVERIFY(r > contact + .3);
+        }
+        for (int i = 0; i < oxygens.size(); ++i)
+            for (int j = i + 1; j < oxygens.size(); ++j)
+                QVERIFY((oxygens[i] - oxygens[j]).norm() > 3.2); // Spread out: cis O–O of an octahedron.
+        // A chloride ion: the hydrogens face it.
+        auto cl = Document::fromXyz("1\nCl-\nCl 0 0 0\n");
+        cl.atoms[0].charge = -1;
+        auto shell = cl;
+        QCOMPARE(solvate(shell, findTemplate("skeleton:water"), {.count = 4}), 4);
+        for (const auto &part : shell.parts) {
+            double o = 0, h = 1e9;
+            for (const auto &id : part.atoms) {
+                const auto &a = shell.atom(id);
+                if (a.element == "O")
+                    o = a.position.norm();
+                else
+                    h = std::min(h, a.position.norm());
+            }
+            QVERIFY(std::abs(o - 3.1) < 1e-9);
+            QVERIFY(std::abs(h - (3.1 - .96)) < .05); // O–H···Cl in a line.
+        }
+        // Benzene in every solvent, as many as asked; then more than the six layers hold.
+        Document benzene;
+        placeTemplate(benzene, findTemplate("skeleton:benzene"), Vec::Zero());
+        const auto benzeneIds = benzene.ids();
+        const QSet<QString> solute(benzeneIds.begin(), benzeneIds.end());
+        for (const auto &id : solventTemplates()) {
+            auto d = benzene;
+            QCOMPARE(solvate(d, findTemplate(id), {.count = 20}), 20);
+            const auto solvent = added(benzene, d);
+            QVERIFY2(smallest(d, solute, solvent, true) >= 2.6 - 1e-9, qPrintable(id));
+            QVERIFY2(smallest(d, solute, solvent, false) >= 1.75 - 1e-9, qPrintable(id));
+            for (int i = 0; i < benzene.atoms.size(); ++i)
+                QCOMPARE(d.atoms[i].position, benzene.atoms[i].position);
+            // Between solvent molecules: only within one molecule are atoms closer than 1.6 Å.
+            for (const auto &p : d.parts.mid(1))
+                for (const auto &q : d.parts.mid(1))
+                    if (p.id < q.id) {
+                        const QSet<QString> a(p.atoms.begin(), p.atoms.end()),
+                            b(q.atoms.begin(), q.atoms.end());
+                        QVERIFY2(smallest(d, a, b, false) >= 1.6 - 1e-9, qPrintable(id));
+                        QVERIFY2(smallest(d, a, b, true) >= 2.55 - 1e-9, qPrintable(id));
+                    }
+            QVERIFY2(d.validate().isEmpty(), qPrintable(d.validate().join(", ")));
+        }
+        auto crowded = na;
+        const int many = solvate(crowded, findTemplate("skeleton:water"), {.count = 1000});
+        QVERIFY(many > 30 && many < 1000);
+        // Around chosen atoms: the first water touches the oxygen of ethanol, not its carbons.
+        auto ethanol = Document::fromXyz("3\nethanol heavy atoms\nC 0 0 0\nC 1.52 0 0\nO 2.03 1.35 0\n");
+        auto near = ethanol;
+        QCOMPARE(solvate(near, findTemplate("skeleton:water"), {.count = 1, .around = {ethanol.atoms[2].id}}),
+                 1);
+        for (const auto &a : near.atoms)
+            if (a.element == "O" && a.id != ethanol.atoms[2].id)
+                QVERIFY(std::abs((a.position - ethanol.atoms[2].position).norm() - 2.85) < 1e-9);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 solvate(near, findTemplate("skeleton:water"), {.count = 0}));
+        Document empty;
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, solvate(empty, findTemplate("skeleton:water"), {}));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 solvate(near, findTemplate("skeleton:water"), {.around = {"missing"}}));
+    }
+    void polydentateAndHapto() {
+        const auto distances = [](const Document &d, const QString &metal, const Ids &atoms) {
+            QVector<double> out;
+            for (const auto &a : atoms)
+                out << (d.atom(a).position - d.atom(metal).position).norm();
+            return out;
+        };
+        const auto nearestOther = [](const Document &d, const QString &metal, const QSet<QString> &bound) {
+            double best = 1e9;
+            for (const auto &a : d.atoms)
+                if (a.id != metal && !bound.contains(a.id))
+                    best = std::min(best, (a.position - d.atom(metal).position).norm());
+            return best;
+        };
+        // fac and mer tridentates: in any order of the sites, but only on sites of their shape.
+        Document d;
+        auto fe = addCenter(d, "Fe", "octahedral", Vec::Zero(), 2.0, 2);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 placeLigand(d, fe, {0, 1, 2}, findTemplate("ligand:tacn")));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, placeLigand(d, fe, {0, 1}, findTemplate("ligand:tacn")));
+        auto tacn = placeLigand(d, fe, {4, 0, 1}, findTemplate("ligand:tacn"));
+        QCOMPARE(ligandSites(findTemplate("ligand:tacn")), 3);
+        for (double r : distances(d, fe, tacn.connections))
+            QVERIFY(std::abs(r - 2.05) < 1e-6);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 placeLigand(d, fe, {2, 3, 5}, findTemplate("ligand:terpy")));
+        auto dien = placeLigand(d, fe, {2, 3, 5}, findTemplate("ligand:dien"));
+        QCOMPARE(d.formula(), QString("C10H28FeN6"));
+        QCOMPARE(d.charge, 2);
+        QVERIFY2(d.validate().isEmpty(), qPrintable(d.validate().join('\n')));
+        QSet<QString> bound(tacn.connections.begin(), tacn.connections.end());
+        bound.unite(QSet<QString>(dien.connections.begin(), dien.connections.end()));
+        QVERIFY(nearestOther(d, fe, bound) > 2.4);
+        // mer terpy, its outer donors 10° off their sites (its bite).
+        Document t;
+        auto ru = addCenter(t, "Ru", "octahedral", Vec::Zero(), 2.0, 2);
+        placeLigand(t, ru, {0, 1, 2}, findTemplate("ligand:terpy"));
+        placeLigand(t, ru, {3, 4, 5}, findTemplate("ligand:terpy"));
+        QCOMPARE(t.formula(), QString("C30H22N6Ru"));
+        QVERIFY(t.validate().isEmpty());
+        // Planar tetradentates and hexadentate EDTA.
+        for (const auto *id : {"ligand:porphine", "ligand:salen", "ligand:cyclam"}) {
+            Document p;
+            auto m = addCenter(p, "Ni", "square_planar", Vec::Zero(), 2.0, 2);
+            placeLigand(p, m, {3, 1, 0, 2}, findTemplate(id));
+            QVERIFY2(p.validate().isEmpty(), id);
+            QCOMPARE(p.centers.first().sites.size(), 4);
+            for (const auto &site : p.centers.first().sites)
+                QVERIFY(!site.donor.isEmpty());
+        }
+        Document edta;
+        auto co = addCenter(edta, "Co", "octahedral", Vec::Zero(), 2.0, 3);
+        placeLigand(edta, co, {0, 1, 2, 3, 4, 5}, findTemplate("ligand:edta"));
+        QCOMPARE(edta.charge, -1); // [Co(EDTA)]−
+        Document tren;
+        auto cu = addCenter(tren, "Cu", "trigonal_bipyramidal", Vec::Zero(), 2.0, 2);
+        placeLigand(tren, cu, {3, 0, 1, 2}, findTemplate("ligand:tren"));
+        QVERIFY(tren.validate().isEmpty());
+        // Ferrocene: two Cp− on the two sites of a linear Fe(II), each ring 1.66 Å from it.
+        Document fc;
+        auto iron = addCenter(fc, "Fe", "linear", Vec::Zero(), 2.0, 2);
+        QCOMPARE(ligandSites(findTemplate("ligand:cp")), 1);
+        auto cp1 = placeLigand(fc, iron, {0}, findTemplate("ligand:cp"));
+        placeLigand(fc, iron, {1}, findTemplate("ligand:cp"), 36);
+        QCOMPARE(fc.formula(), QString("C10H10Fe"));
+        QCOMPARE(fc.charge, 0);
+        int dative = 0;
+        for (const auto &b : fc.bonds)
+            dative += b.kind == "dative";
+        QCOMPARE(dative, 10);
+        Vec ring = Vec::Zero();
+        int carbons = 0;
+        for (const auto &id : cp1.atoms)
+            if (fc.atom(id).element == "C") {
+                ring += fc.atom(id).position;
+                ++carbons;
+                QVERIFY(std::abs((fc.atom(id).position - fc.atom(iron).position).norm() - 2.05) < .02);
+            }
+        QVERIFY(std::abs((ring / carbons).norm() - 1.66) < 1e-6);
+        QVERIFY(fc.validate().isEmpty());
+        QCOMPARE(fc.parts.first().metadata["hapto"].toArray().first().toArray().size(), 5);
+        // A refit keeps them whole: another distance moves nothing of their own shape.
+        const auto before = fc.atom(cp1.atoms[0]).position - fc.atom(cp1.atoms[1]).position;
+        adjustCenter(fc, iron, "linear", 2.2, 2);
+        QVERIFY((fc.atom(cp1.atoms[0]).position - fc.atom(cp1.atoms[1]).position - before).norm() < 1e-6);
+        // eta2, eta3, eta4 and eta6 ligands on one site each.
+        for (const auto *id :
+             {"ligand:ethylene", "ligand:allyl", "ligand:butadiene", "ligand:benzene", "ligand:cpstar"}) {
+            Document e;
+            auto m = addCenter(e, "Pt", "square_planar", Vec::Zero(), 2.0, 2);
+            const auto placed = placeLigand(e, m, {0}, findTemplate(id));
+            QVERIFY2(e.validate().isEmpty(), id);
+            QSet<QString> eta;
+            for (const auto &g : e.parts.first().metadata["hapto"].toArray())
+                for (const auto &a : g.toArray())
+                    eta.insert(a.toString());
+            QVERIFY2(nearestOther(e, m, eta) > 2.4, id);
+        }
+        // A part of the user's: one ring of ferrocene, its five carbons bound to the iron, kept as an eta5
+        // ligand with the place of its metal; it binds to another center like Cp−.
+        Ids ringIds;
+        for (const auto &id : cp1.atoms)
+            if (fc.atom(id).element == "C")
+                ringIds << id;
+        for (const auto &id : cp1.atoms)
+            if (fc.atom(id).element == "H")
+                ringIds << id;
+        const auto part = makePart(fc, ringIds, "my Cp", "ligand");
+        QCOMPARE(part["connections"].toArray().size(), 0);
+        QCOMPARE(part["hapto"].toArray().first().toArray().size(), 5);
+        QVERIFY(part.contains("center"));
+        Document again;
+        auto mn = addCenter(again, "Mn", "octahedral", Vec::Zero(), 2.0, 1);
+        placeLigand(again, mn, {4}, part);
+        QCOMPARE(again.formula(), QString("C5H5Mn"));
+        // A chelate the user built: tacn of the first complex, its donors in any order.
+        const auto chelate = makePart(d, tacn.atoms, "my tacn", "ligand");
+        QCOMPARE(chelate["connections"].toArray().size(), 3);
+        Document other;
+        auto ni = addCenter(other, "Ni", "octahedral", Vec::Zero(), 2.0, 2);
+        placeLigand(other, ni, {1, 4, 0}, chelate);
+        QVERIFY(other.validate().isEmpty());
+        // Bonds to different atoms outside do not make a ligand part: tacn with its iron is bound to dien.
+        auto withIron = tacn.atoms;
+        withIron << fe;
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, makePart(d, withIron, "tacn and iron", "ligand"));
     }
     void charges() {
         Document d;

@@ -248,7 +248,7 @@ MmcifEntry readMmcif(const QByteArray &text) {
     if (!itemTags.isEmpty())
         atoms << atom(Columns(itemTags), itemValues, itemLine);
     if (atoms.isEmpty())
-        fail(tr("mmCIFに原子の表（_atom_site）がありません。小分子のCIF（分率座標）は読み込めません。"));
+        fail(tr("mmCIFに原子の表（_atom_site）がありません。"));
     if (!entityItems.isEmpty())
         entities << Entity(entityItems);
     MmcifEntry entry;
@@ -268,6 +268,74 @@ MmcifEntry readMmcif(const QByteArray &text) {
     }
     entry.atoms = std::move(atoms);
     return entry;
+}
+QStringList CifBlock::column(const QByteArray &tag) const {
+    if (const auto *t = table(tag)) {
+        const int at = int(t->tags.indexOf(tag));
+        QStringList values;
+        for (const auto &row : t->rows)
+            values << row[at];
+        return values;
+    }
+    if (items.contains(tag))
+        return {items[tag]};
+    return {};
+}
+const CifBlock::Table *CifBlock::table(const QByteArray &tag) const {
+    for (const auto &t : tables)
+        if (t.tags.contains(tag))
+            return &t;
+    return nullptr;
+}
+CifBlock readCifBlock(const QByteArray &text) {
+    Tokens tokens(text);
+    Token token;
+    CifBlock block;
+    bool started = false, more = tokens.next(token);
+    while (more) {
+        if (isTag(token)) {
+            const auto tag = lower(token.text);
+            const int line = token.line;
+            if (!(more = tokens.next(token)) || isTag(token) || reserved(token))
+                fail(tr("CIFの%1行目の %2 に値がありません。").arg(line).arg(QString::fromUtf8(tag)));
+            block.items[tag] = QString::fromUtf8(value(token));
+            more = tokens.next(token);
+        } else if (!reserved(token)) {
+            fail(tr("CIFの%1行目の値に項目名がありません。").arg(token.line));
+        } else if (lower(token.text).startsWith("loop_")) {
+            const int line = token.line;
+            CifBlock::Table table;
+            while ((more = tokens.next(token)) && isTag(token))
+                table.tags << lower(token.text);
+            if (table.tags.isEmpty())
+                fail(tr("CIFの%1行目の loop_ に項目名がありません。").arg(line));
+            QStringList row;
+            for (; more && !isTag(token) && !reserved(token); more = tokens.next(token)) {
+                row << QString::fromUtf8(value(token));
+                if (row.size() == table.tags.size()) {
+                    table.rows << row;
+                    row.clear();
+                }
+            }
+            if (!row.isEmpty())
+                fail(tr("CIFの%1行目の loop_ の値の数が項目の数と合いません。").arg(line));
+            block.tables << table;
+        } else {
+            if (lower(token.text).startsWith("data_")) {
+                if (started)
+                    break; // The first data block only.
+                started = true;
+                block.name = QString::fromUtf8(token.text.mid(5));
+            }
+            more = tokens.next(token);
+        }
+    }
+    return block;
+}
+bool crystalCif(const QByteArray &text) {
+    // The tags of small-molecule CIF use underscores where PDBx/mmCIF has a category and a dot.
+    return QLatin1StringView(text.constData(), text.size())
+        .contains(QLatin1StringView("_atom_site_fract_x"), Qt::CaseInsensitive);
 }
 MacromoleculeContents mmcifContents(const MmcifEntry &entry) {
     MacromoleculeContents contents;

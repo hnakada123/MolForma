@@ -119,7 +119,7 @@ env_vars = ["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XAUTHORITY", "DBUS
 
 `env_vars` は変数の値を固定せず、Codexの起動環境から引き継ぐ設定です。Codex自体も同じ利用者のデスクトップ環境から起動してください。画面のない環境では `args = ["--mcp"]` を使い、`env_vars` は不要です。通常は互換モードのMCP 2025-11-25で接続します。
 
-設定を反映するためCodexのMCP設定を再読み込みするかCodexを再起動し、`/mcp` で `molforma: connected (38 tools)`（GUIモード）を確認します。実行ファイルを更新した場合も再接続が必要です。アカウントへの再ログインやMolForma用の認証は不要です。[Codex公式のMCP設定](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) も参照してください。
+設定を反映するためCodexのMCP設定を再読み込みするかCodexを再起動し、`/mcp` で `molforma: connected (43 tools)`（GUIモード）を確認します。実行ファイルを更新した場合も再接続が必要です。アカウントへの再ログインやMolForma用の認証は不要です。[Codex公式のMCP設定](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) も参照してください。
 
 `failed (0 tools)` と初期化時の `connection closed` が表示される場合は、上記の環境変数を最初に確認してください。Linuxで表示先が未指定のときは、MolFormaも標準エラーに `requires a desktop display` と設定方法を出します。無効な表示先や画面のアクセス権の問題も、GUIの起動前に解決する必要があります。
 
@@ -193,6 +193,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | --- | --- |
 | `list_documents` / `get_document` | 文書ID、版、プロジェクト、候補の取得。`include` で取得範囲を指定（`[]` で原子数などだけ）。`include: ["residues"]` は大きな文書向けの残基の要約で、鎖ごとのポリマー（アミノ酸・ヌクレオチド）の残基数・番号の範囲と水の数、そのほかの残基（配位子・イオン・糖鎖）の鎖・番号・名前を返す（`cut_out_site` の `residues` と同じ指定） |
 | `list_templates` / `place_template` | 組み込み部品の検索と配置 |
+| `solvate` | 溶媒和殻の配置。`solvent`（`skeleton:water`・`skeleton:methanol`・`ligand:acetonitrile`・`skeleton:dmso`・`skeleton:ammonia`）の分子を `count` 個（1〜1000、既定6）、`ids` の原子（省くと分子全体）のまわりに置く。置ける場所が足りなければ置けた数だけ（[構造ツール](features/molecule_pages.md#構造ツールツールメニュー)） |
 | `add_atom` | 元素・Å座標による追加。任意の結合先と水素補完を指定 |
 | `set_positions` / `translate` | 安定IDによる座標変更・平行移動 |
 | `set_bond` / `delete_atoms` | 結合の変更・除去、原子削除と参照更新（全電荷が形式電荷・酸化数の合計と一致していれば削除後の合計に追従） |
@@ -200,7 +201,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `set_dimension` | 2/3/4原子の距離（Å）・角度・二面角（度）の設定。GUIと同じく後の原子の側（結合していない別々の分子では後の原子の分子全体）を動かす |
 | `set_atom_properties` | 安定IDの原子の元素（`hydrogens` で水素の調整）、形式電荷、不対電子、同位体（質量数、0で解除）または質量（amu）、固定、ゴースト、原子名の変更 |
 | `import_document` | XYZ文字列またはMolFormaプロジェクト（`.molforma.json`、version 1）のJSON文字列の取込。XYZは `append: true` で今の分子の横に追加 |
-| `open_file` | ローカルXYZ/MOL/SDF/Mol2/CML/PDB/mmCIF/MolFormaプロジェクト、NWChem・Gaussian入力の取込。複数フレームのXYZは `frame`、PDB・mmCIFは `model`・`altloc`・`chains`・`polymer`・`ligands`・`water` で選択 |
+| `open_file` | ローカルXYZ/MOL/SDF/Mol2/CML/PDB/mmCIF/MolFormaプロジェクト、NWChem・Gaussian入力の取込。複数フレームのXYZは `frame`、PDB・mmCIFは `model`・`altloc`・`chains`・`polymer`・`ligands`・`water` で選択。小分子のCIF（分率座標）は化学式単位、`cell: true` で単位格子の内容、`minorDisorder: true` で乱れの副成分も |
 | `cut_out_site` | 活性部位の切り出し（「残基」ページの「活性部位の切り出し」と同じ）。中心は `ids`（今の文書の原子ID）か `residues`（著者の鎖ID `chain`・残基番号 `number`・残基名 `code` で指定）、`radius`（既定5 Å）・`wholeResidues`・`water`・`fixCuts`・`hydrogens`（pH 7の水素、既定 `true`）・`pointCharges`（既定 `false`）・`chargeRadius`（既定15 Å）。`path` を指定するとファイル（`model`・`altloc`・`chains` は `open_file` と同じ）を読み込んで切り出し、結果だけを今の構造と置き換えて全電荷を部位の値にするので、1万原子を超える構造にも使える |
 | `export_document` | 確定文書のXYZ、MolFormaプロジェクトのJSON、検証済みNWChem入力文字列 |
 | `save_file` | 確定文書をMolFormaプロジェクト（`.molforma.json`）として保存。既存ファイルは `overwrite: true` か、利用者の上書き承認が必要 |

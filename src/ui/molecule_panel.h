@@ -71,6 +71,7 @@ class MoleculePanel : public QWidget {
     void compareDialog();
     void zMatrixDialog();
     void symmetryDialog();
+    void solvationDialog();
   signals:
     void openRequested();
     void downloadRequested();

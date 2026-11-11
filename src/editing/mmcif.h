@@ -24,4 +24,24 @@ MmcifEntry readMmcif(const QByteArray &text);
 MacromoleculeContents mmcifContents(const MmcifEntry &entry);
 // The selected atoms, as preparePdb() selects them from a PDB file.
 QVector<MmcifAtom> selectMmcif(const QVector<MmcifAtom> &atoms, const MacromoleculeSelection &selection);
+
+// The first data block of any CIF file: its items and tables by their tags in lower case. Values keep their
+// text; the unquoted . and ? are empty.
+struct CifBlock {
+    struct Table {
+        QList<QByteArray> tags;
+        QVector<QStringList> rows;
+    };
+    QString name; // After data_.
+    QHash<QByteArray, QString> items;
+    QVector<Table> tables;
+    // The values of a tag: its column, or its single item; empty when the block has neither.
+    QStringList column(const QByteArray &tag) const;
+    // The table with that tag, or nullptr.
+    const Table *table(const QByteArray &tag) const;
+};
+CifBlock readCifBlock(const QByteArray &text);
+// Whether a CIF file is a small-molecule crystal structure (_atom_site_fract_x) rather than a PDBx/mmCIF
+// entry (_atom_site.Cartn_x).
+bool crystalCif(const QByteArray &text);
 } // namespace mf

@@ -24591,6 +24591,7499 @@
       "code": "VAL",
       "one_letter": "V",
       "chirality": "L"
+    },
+    {
+      "id": "ligand:terpy",
+      "name_ja": "2,2′:6′,2″-テルピリジン terpy（mer三座）",
+      "name_en": "2,2′:6′,2″-Terpyridine terpy (mer tridentate)",
+      "aliases": [
+        "ligand:terpy",
+        "2,2′:6′,2″-Terpyridine terpy (mer tridentate)",
+        "n1ccccc1-c1cccc(n1)-c1ccccn1"
+      ],
+      "category": "ligand",
+      "smiles": "n1ccccc1-c1cccc(n1)-c1ccccn1",
+      "atoms": [
+        {
+          "element": "N",
+          "position": [
+            1.989312,
+            -1.264155,
+            2e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            2.94662,
+            -2.230088,
+            9e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            4.298674,
+            -1.876209,
+            4e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            4.653465,
+            -0.524865,
+            -7e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            3.660008,
+            0.457204,
+            -1.3e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            2.314726,
+            0.059356,
+            -6e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.183406,
+            0.967116,
+            -1.1e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.218145,
+            2.370186,
+            -3.8e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.0,
+            3.06943,
+            -4.6e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.218144,
+            2.370186,
+            -3.1e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.183406,
+            0.967116,
+            -1e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -0.0,
+            0.335076,
+            2e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -2.314726,
+            0.059356,
+            5e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -3.660008,
+            0.457204,
+            2.8e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -4.653465,
+            -0.524866,
+            4.7e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -4.298674,
+            -1.876209,
+            4.1e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -2.94662,
+            -2.230088,
+            1.9e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -1.989312,
+            -1.264155,
+            2e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.658499,
+            -3.272768,
+            2e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            5.063652,
+            -2.641832,
+            1.2e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            5.69748,
+            -0.239325,
+            -7e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            3.943935,
+            1.500312,
+            -2.3e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.150624,
+            2.916949,
+            -5.4e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2e-06,
+            4.151729,
+            -7.2e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.150622,
+            2.916951,
+            -3.5e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -3.943936,
+            1.500312,
+            3.2e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -5.69748,
+            -0.239326,
+            6.9e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -5.063652,
+            -2.641831,
+            5.2e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.658499,
+            -3.272767,
+            9e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "double"
+        },
+        {
+          "a": 1,
+          "b": 2,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 3,
+          "kind": "double"
+        },
+        {
+          "a": 3,
+          "b": 4,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 5,
+          "kind": "double"
+        },
+        {
+          "a": 5,
+          "b": 6,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 7,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 8,
+          "kind": "double"
+        },
+        {
+          "a": 8,
+          "b": 9,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 10,
+          "kind": "double"
+        },
+        {
+          "a": 10,
+          "b": 11,
+          "kind": "single"
+        },
+        {
+          "a": 10,
+          "b": 12,
+          "kind": "single"
+        },
+        {
+          "a": 12,
+          "b": 13,
+          "kind": "double"
+        },
+        {
+          "a": 13,
+          "b": 14,
+          "kind": "single"
+        },
+        {
+          "a": 14,
+          "b": 15,
+          "kind": "double"
+        },
+        {
+          "a": 15,
+          "b": 16,
+          "kind": "single"
+        },
+        {
+          "a": 16,
+          "b": 17,
+          "kind": "double"
+        },
+        {
+          "a": 5,
+          "b": 0,
+          "kind": "single"
+        },
+        {
+          "a": 11,
+          "b": 6,
+          "kind": "double"
+        },
+        {
+          "a": 17,
+          "b": 12,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 18,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 19,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 20,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 21,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 22,
+          "kind": "single"
+        },
+        {
+          "a": 8,
+          "b": 23,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 24,
+          "kind": "single"
+        },
+        {
+          "a": 13,
+          "b": 25,
+          "kind": "single"
+        },
+        {
+          "a": 14,
+          "b": 26,
+          "kind": "single"
+        },
+        {
+          "a": 15,
+          "b": 27,
+          "kind": "single"
+        },
+        {
+          "a": 16,
+          "b": 28,
+          "kind": "single"
+        }
+      ],
+      "connections": [
+        0,
+        11,
+        17
+      ],
+      "leaving": null,
+      "state": null,
+      "formula": "C15H11N3",
+      "formal_charge": 0,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3 with the donor (or eta) atoms fixed for a metal at the origin",
+        "force_field": "UFF, those atoms fixed, the others at least 2.5 A (H) / 2.75 A from the metal",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      },
+      "center": [
+        -0.0,
+        -1.614924,
+        2e-06
+      ]
+    },
+    {
+      "id": "ligand:dien",
+      "name_ja": "ジエチレントリアミン dien（fac三座）",
+      "name_en": "Diethylenetriamine dien (fac tridentate)",
+      "aliases": [
+        "ligand:dien",
+        "Diethylenetriamine dien (fac tridentate)",
+        "NCCNCCN"
+      ],
+      "category": "ligand",
+      "smiles": "NCCNCCN",
+      "atoms": [
+        {
+          "element": "N",
+          "position": [
+            1.250621,
+            -1.401538,
+            -0.858889
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.625849,
+            0.006802,
+            -0.74021
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.557932,
+            0.931183,
+            -1.360359
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -0.799379,
+            0.648462,
+            -0.858889
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.963327,
+            1.017351,
+            0.572509
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.537459,
+            -0.143567,
+            1.420748
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -0.799379,
+            -1.401538,
+            1.191111
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.881295,
+            -1.953127,
+            -0.233023
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.475275,
+            -1.708856,
+            -1.83487
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.781557,
+            0.259014,
+            0.329639
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.597859,
+            0.182054,
+            -1.253481
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.568509,
+            0.780712,
+            -2.46211
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.827215,
+            1.994392,
+            -1.170613
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.475308,
+            1.21056,
+            -1.427708
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.659755,
+            1.881631,
+            0.658052
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -0.01472,
+            1.357581,
+            1.039893
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.601633,
+            -0.29333,
+            1.13507
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.505824,
+            0.127691,
+            2.49948
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.117605,
+            -1.325944,
+            1.688211
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.326934,
+            -2.169531,
+            1.665438
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 2,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 3,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 4,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 5,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 6,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 7,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 8,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 9,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 10,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 11,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 12,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 13,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 14,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 15,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 16,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 17,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 18,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 19,
+          "kind": "single"
+        }
+      ],
+      "connections": [
+        0,
+        3,
+        6
+      ],
+      "leaving": null,
+      "state": null,
+      "formula": "C4H13N3",
+      "formal_charge": 0,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3 with the donor (or eta) atoms fixed for a metal at the origin",
+        "force_field": "UFF, those atoms fixed, the others at least 2.5 A (H) / 2.75 A from the metal",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      },
+      "center": [
+        -0.799379,
+        -1.401538,
+        -0.858889
+      ]
+    },
+    {
+      "id": "ligand:tacn",
+      "name_ja": "1,4,7-トリアザシクロノナン tacn（fac三座）",
+      "name_en": "1,4,7-Triazacyclononane tacn (fac tridentate)",
+      "aliases": [
+        "ligand:tacn",
+        "1,4,7-Triazacyclononane tacn (fac tridentate)",
+        "C1CNCCNCCN1"
+      ],
+      "category": "ligand",
+      "smiles": "C1CNCCNCCN1",
+      "atoms": [
+        {
+          "element": "C",
+          "position": [
+            0.232135,
+            -1.700771,
+            1.233902
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.365992,
+            -1.143889,
+            0.337471
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            0.965023,
+            -1.084978,
+            -1.084978
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.233902,
+            0.232134,
+            -1.700773
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.337473,
+            1.365991,
+            -1.143887
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -1.084977,
+            0.965022,
+            -1.084978
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.700775,
+            1.233899,
+            0.232133
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.143887,
+            0.337472,
+            1.36599
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -1.084977,
+            -1.084978,
+            0.965022
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.505719,
+            -1.574958,
+            2.305454
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.153106,
+            -2.793369,
+            1.042921
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.698239,
+            -0.159648,
+            0.728843
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.250394,
+            -1.81092,
+            0.449178
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.507489,
+            -1.805932,
+            -1.616409
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.042917,
+            0.153103,
+            -2.79337
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.305454,
+            0.505717,
+            -1.574961
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.449181,
+            2.250389,
+            -1.810922
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.728844,
+            1.698241,
+            -0.159647
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.61641,
+            1.507491,
+            -1.80593
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.574968,
+            2.305451,
+            0.505716
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.793372,
+            1.042911,
+            0.153102
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -0.159648,
+            0.728847,
+            1.698243
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.810922,
+            0.44918,
+            2.250389
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.805933,
+            -1.616406,
+            1.50749
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 2,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 3,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 4,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 5,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 6,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 7,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 8,
+          "kind": "single"
+        },
+        {
+          "a": 8,
+          "b": 0,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 9,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 10,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 11,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 12,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 13,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 14,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 15,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 16,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 17,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 18,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 19,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 20,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 21,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 22,
+          "kind": "single"
+        },
+        {
+          "a": 8,
+          "b": 23,
+          "kind": "single"
+        }
+      ],
+      "connections": [
+        2,
+        5,
+        8
+      ],
+      "leaving": null,
+      "state": null,
+      "formula": "C6H15N3",
+      "formal_charge": 0,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3 with the donor (or eta) atoms fixed for a metal at the origin",
+        "force_field": "UFF, those atoms fixed, the others at least 2.5 A (H) / 2.75 A from the metal",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      },
+      "center": [
+        -1.084977,
+        -1.084978,
+        -1.084978
+      ]
+    },
+    {
+      "id": "ligand:tp",
+      "name_ja": "ヒドロトリス(ピラゾリル)ボラト Tp−（fac三座）",
+      "name_en": "Hydrotris(pyrazolyl)borate Tp− (fac tridentate)",
+      "aliases": [
+        "ligand:tp",
+        "Hydrotris(pyrazolyl)borate Tp− (fac tridentate)",
+        "[BH-](n1cccn1)(n1cccn1)n1cccn1"
+      ],
+      "category": "ligand",
+      "smiles": "[BH-](n1cccn1)(n1cccn1)n1cccn1",
+      "atoms": [
+        {
+          "element": "B",
+          "position": [
+            0.457918,
+            0.457928,
+            0.457921
+          ],
+          "formal_charge": -1,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            1.302781,
+            -0.441459,
+            -0.441452
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            2.643446,
+            -0.509236,
+            -0.509168
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            2.976555,
+            -1.454916,
+            -1.454835
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.764425,
+            -1.925679,
+            -1.925649
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            0.757031,
+            -1.292959,
+            -1.29297
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -0.441457,
+            1.302792,
+            -0.441465
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.509185,
+            2.643457,
+            -0.509232
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.454851,
+            2.976565,
+            -1.454913
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.925654,
+            1.764435,
+            -1.925686
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -1.292969,
+            0.757041,
+            -1.29297
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -0.441467,
+            -0.441446,
+            1.302783
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.509225,
+            -0.509188,
+            2.643449
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.454899,
+            -1.454862,
+            2.976553
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.925677,
+            -1.925655,
+            1.764421
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -1.292969,
+            -1.292959,
+            0.75703
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.147612,
+            1.147623,
+            1.147616
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            3.329979,
+            0.082666,
+            0.082768
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            3.96761,
+            -1.761276,
+            -1.761154
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.62633,
+            -2.684185,
+            -2.684165
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.082743,
+            3.329991,
+            0.082677
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.761175,
+            3.967619,
+            -1.761269
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.684161,
+            1.626339,
+            -2.6842
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.08269,
+            0.082733,
+            3.329985
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.761244,
+            -1.761199,
+            3.967606
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.684185,
+            -2.684168,
+            1.626322
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 2,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 3,
+          "kind": "double"
+        },
+        {
+          "a": 3,
+          "b": 4,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 5,
+          "kind": "double"
+        },
+        {
+          "a": 0,
+          "b": 6,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 7,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 8,
+          "kind": "double"
+        },
+        {
+          "a": 8,
+          "b": 9,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 10,
+          "kind": "double"
+        },
+        {
+          "a": 0,
+          "b": 11,
+          "kind": "single"
+        },
+        {
+          "a": 11,
+          "b": 12,
+          "kind": "single"
+        },
+        {
+          "a": 12,
+          "b": 13,
+          "kind": "double"
+        },
+        {
+          "a": 13,
+          "b": 14,
+          "kind": "single"
+        },
+        {
+          "a": 14,
+          "b": 15,
+          "kind": "double"
+        },
+        {
+          "a": 5,
+          "b": 1,
+          "kind": "single"
+        },
+        {
+          "a": 10,
+          "b": 6,
+          "kind": "single"
+        },
+        {
+          "a": 15,
+          "b": 11,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 16,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 17,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 18,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 19,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 20,
+          "kind": "single"
+        },
+        {
+          "a": 8,
+          "b": 21,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 22,
+          "kind": "single"
+        },
+        {
+          "a": 12,
+          "b": 23,
+          "kind": "single"
+        },
+        {
+          "a": 13,
+          "b": 24,
+          "kind": "single"
+        },
+        {
+          "a": 14,
+          "b": 25,
+          "kind": "single"
+        }
+      ],
+      "connections": [
+        5,
+        10,
+        15
+      ],
+      "leaving": null,
+      "state": null,
+      "formula": "C9H10BN6-",
+      "formal_charge": -1,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3 with the donor (or eta) atoms fixed for a metal at the origin",
+        "force_field": "UFF, those atoms fixed, the others at least 2.5 A (H) / 2.75 A from the metal",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      },
+      "center": [
+        -1.292969,
+        -1.292959,
+        -1.29297
+      ]
+    },
+    {
+      "id": "ligand:tren",
+      "name_ja": "トリス(2-アミノエチル)アミン tren（四座、三方両錐）",
+      "name_en": "Tris(2-aminoethyl)amine tren (tetradentate, trigonal bipyramid)",
+      "aliases": [
+        "ligand:tren",
+        "Tris(2-aminoethyl)amine tren (tetradentate, trigonal bipyramid)",
+        "NCCN(CCN)CCN"
+      ],
+      "category": "ligand",
+      "smiles": "NCCN(CCN)CCN",
+      "atoms": [
+        {
+          "element": "N",
+          "position": [
+            2.05,
+            1e-06,
+            -1.348796
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            2.330356,
+            0.526022,
+            -0.006155
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.42803,
+            -0.126517,
+            1.063201
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            0.0,
+            1e-06,
+            0.701204
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.604449,
+            1.299969,
+            1.063202
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.620728,
+            1.755136,
+            -0.006156
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -1.025,
+            1.775353,
+            -1.348796
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.823582,
+            -1.173452,
+            1.063201
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.709629,
+            -2.281158,
+            -0.006156
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -1.025,
+            -1.775351,
+            -1.348796
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.334739,
+            -1.006192,
+            -1.369199
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.672183,
+            0.501155,
+            -2.023275
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            3.396144,
+            0.341069,
+            0.25461
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.170477,
+            1.625268,
+            -0.006615
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.622389,
+            0.339642,
+            2.054753
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.72621,
+            -1.194482,
+            1.147744
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.171346,
+            2.092183,
+            1.147746
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.105335,
+            1.235207,
+            2.054754
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.993449,
+            2.770612,
+            0.254609
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.492761,
+            1.067052,
+            -0.006618
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.770102,
+            2.0636,
+            -2.023278
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -0.295983,
+            2.525043,
+            -1.369198
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -0.517056,
+            -1.574851,
+            2.054753
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.897557,
+            -0.897701,
+            1.147745
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.322285,
+            -2.692322,
+            -0.006615
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.402697,
+            -3.111681,
+            0.254609
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.03876,
+            -1.518855,
+            -1.369201
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -0.902072,
+            -2.564751,
+            -2.023277
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 2,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 3,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 4,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 5,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 6,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 7,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 8,
+          "kind": "single"
+        },
+        {
+          "a": 8,
+          "b": 9,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 10,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 11,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 12,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 13,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 14,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 15,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 16,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 17,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 18,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 19,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 20,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 21,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 22,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 23,
+          "kind": "single"
+        },
+        {
+          "a": 8,
+          "b": 24,
+          "kind": "single"
+        },
+        {
+          "a": 8,
+          "b": 25,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 26,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 27,
+          "kind": "single"
+        }
+      ],
+      "connections": [
+        3,
+        0,
+        6,
+        9
+      ],
+      "leaving": null,
+      "state": null,
+      "formula": "C6H18N4",
+      "formal_charge": 0,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3 with the donor (or eta) atoms fixed for a metal at the origin",
+        "force_field": "UFF, those atoms fixed, the others at least 2.5 A (H) / 2.75 A from the metal",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      },
+      "center": [
+        0.0,
+        1e-06,
+        -1.348796
+      ]
+    },
+    {
+      "id": "ligand:cyclam",
+      "name_ja": "シクラム cyclam（四座、平面）",
+      "name_en": "Cyclam (tetradentate, planar)",
+      "aliases": [
+        "ligand:cyclam",
+        "Cyclam (tetradentate, planar)",
+        "C1CNCCNCCCNCCNC1"
+      ],
+      "category": "ligand",
+      "smiles": "C1CNCCNCCCNCCNC1",
+      "atoms": [
+        {
+          "element": "C",
+          "position": [
+            2.391521,
+            -2.391521,
+            -0.539599
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            2.752304,
+            -0.937134,
+            -0.884493
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            2.05,
+            1e-06,
+            -1e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            2.338132,
+            1.391981,
+            -0.372598
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.39198,
+            2.338132,
+            0.372597
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            0.0,
+            2.050001,
+            -1e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.937133,
+            2.752307,
+            0.88449
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -2.39152,
+            2.391522,
+            0.539599
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -2.752306,
+            0.937134,
+            0.884489
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -2.05,
+            1e-06,
+            -1e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -2.338132,
+            -1.391979,
+            0.372599
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.39198,
+            -2.338133,
+            -0.372596
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            0.0,
+            -2.049999,
+            -1e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.937134,
+            -2.752311,
+            -0.884487
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            3.06037,
+            -3.060369,
+            -1.123579
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.588638,
+            -2.588633,
+            0.536773
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            3.852601,
+            -0.807128,
+            -0.773883
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.485392,
+            -0.741647,
+            -1.947023
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.398305,
+            -0.149788,
+            0.976689
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.196771,
+            1.54316,
+            -1.466388
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            3.390947,
+            1.647492,
+            -0.116378
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.543158,
+            2.196773,
+            1.466388
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.647491,
+            3.390946,
+            0.116376
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -0.149785,
+            2.398308,
+            -0.976692
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -0.741644,
+            2.485397,
+            1.947019
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -0.807128,
+            3.852604,
+            0.773877
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -3.060367,
+            3.060369,
+            1.123581
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.588636,
+            2.588639,
+            -0.536772
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -3.852603,
+            0.807131,
+            0.773875
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.485399,
+            0.741645,
+            1.947019
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.398308,
+            0.149787,
+            -0.976692
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -3.390947,
+            -1.64749,
+            0.11638
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.196769,
+            -1.543155,
+            1.466388
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.64749,
+            -3.390947,
+            -0.116372
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.54316,
+            -2.196775,
+            -1.466387
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.149788,
+            -2.398299,
+            0.976691
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.807131,
+            -3.852608,
+            -0.773865
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.741644,
+            -2.485412,
+            -1.947019
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 2,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 3,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 4,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 5,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 6,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 7,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 8,
+          "kind": "single"
+        },
+        {
+          "a": 8,
+          "b": 9,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 10,
+          "kind": "single"
+        },
+        {
+          "a": 10,
+          "b": 11,
+          "kind": "single"
+        },
+        {
+          "a": 11,
+          "b": 12,
+          "kind": "single"
+        },
+        {
+          "a": 12,
+          "b": 13,
+          "kind": "single"
+        },
+        {
+          "a": 13,
+          "b": 0,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 14,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 15,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 16,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 17,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 18,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 19,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 20,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 21,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 22,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 23,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 24,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 25,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 26,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 27,
+          "kind": "single"
+        },
+        {
+          "a": 8,
+          "b": 28,
+          "kind": "single"
+        },
+        {
+          "a": 8,
+          "b": 29,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 30,
+          "kind": "single"
+        },
+        {
+          "a": 10,
+          "b": 31,
+          "kind": "single"
+        },
+        {
+          "a": 10,
+          "b": 32,
+          "kind": "single"
+        },
+        {
+          "a": 11,
+          "b": 33,
+          "kind": "single"
+        },
+        {
+          "a": 11,
+          "b": 34,
+          "kind": "single"
+        },
+        {
+          "a": 12,
+          "b": 35,
+          "kind": "single"
+        },
+        {
+          "a": 13,
+          "b": 36,
+          "kind": "single"
+        },
+        {
+          "a": 13,
+          "b": 37,
+          "kind": "single"
+        }
+      ],
+      "connections": [
+        2,
+        5,
+        9,
+        12
+      ],
+      "leaving": null,
+      "state": null,
+      "formula": "C10H24N4",
+      "formal_charge": 0,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3 with the donor (or eta) atoms fixed for a metal at the origin",
+        "force_field": "UFF, those atoms fixed, the others at least 2.5 A (H) / 2.75 A from the metal",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      },
+      "center": [
+        0.0,
+        1e-06,
+        -1e-06
+      ]
+    },
+    {
+      "id": "ligand:porphine",
+      "name_ja": "ポルフィナト P2−（四座、平面）",
+      "name_en": "Porphinate P2− (tetradentate, planar)",
+      "aliases": [
+        "ligand:porphine",
+        "Porphinate P2− (tetradentate, planar)",
+        "C1=CC2=CC3=CC=C([N-]3)C=C4C=CC(=N4)C=C5C=CC(=CC1=N2)[N-]5"
+      ],
+      "category": "ligand",
+      "smiles": "C1=CC2=CC3=CC=C([N-]3)C=C4C=CC(=N4)C=C5C=CC(=CC1=N2)[N-]5",
+      "atoms": [
+        {
+          "element": "C",
+          "position": [
+            -0.662725,
+            -4.25144,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.662726,
+            -4.251439,
+            -1e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.083078,
+            -2.851971,
+            6e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            2.420074,
+            -2.419118,
+            5e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            2.854564,
+            -1.081452,
+            7e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            4.181029,
+            -0.690424,
+            3e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            4.181029,
+            0.690424,
+            3e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            2.854564,
+            1.081452,
+            6e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            2.05,
+            0.0,
+            8e-06
+          ],
+          "formal_charge": -1,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            2.420074,
+            2.419118,
+            2e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.083078,
+            2.851972,
+            0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.662724,
+            4.25144,
+            -6e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.662726,
+            4.251439,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.083079,
+            2.851971,
+            6e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -0.0,
+            2.05,
+            8e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -2.420074,
+            2.419117,
+            5e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -2.854564,
+            1.081452,
+            3e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -4.181028,
+            0.690423,
+            -5e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -4.181028,
+            -0.690424,
+            -8e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -2.854563,
+            -1.081452,
+            2e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -2.420073,
+            -2.419118,
+            2e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.083078,
+            -2.851972,
+            6e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -0.0,
+            -2.05,
+            8e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -2.05,
+            0.0,
+            8e-06
+          ],
+          "formal_charge": -1,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.297367,
+            -5.127946,
+            -1.1e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.297368,
+            -5.127945,
+            -1e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            3.183553,
+            -3.188529,
+            2e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            5.051319,
+            -1.334023,
+            -2e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            5.051319,
+            1.334024,
+            -2e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            3.183553,
+            3.188529,
+            -2e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.297367,
+            5.127947,
+            -1.2e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.297369,
+            5.127946,
+            -3e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -3.183554,
+            3.188529,
+            3e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -5.05132,
+            1.334022,
+            -1.5e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -5.051319,
+            -1.334024,
+            -1.4e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -3.183552,
+            -3.188529,
+            -5e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "double"
+        },
+        {
+          "a": 1,
+          "b": 2,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 3,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 4,
+          "kind": "double"
+        },
+        {
+          "a": 4,
+          "b": 5,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 6,
+          "kind": "double"
+        },
+        {
+          "a": 6,
+          "b": 7,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 8,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 9,
+          "kind": "double"
+        },
+        {
+          "a": 9,
+          "b": 10,
+          "kind": "single"
+        },
+        {
+          "a": 10,
+          "b": 11,
+          "kind": "single"
+        },
+        {
+          "a": 11,
+          "b": 12,
+          "kind": "double"
+        },
+        {
+          "a": 12,
+          "b": 13,
+          "kind": "single"
+        },
+        {
+          "a": 13,
+          "b": 14,
+          "kind": "single"
+        },
+        {
+          "a": 13,
+          "b": 15,
+          "kind": "double"
+        },
+        {
+          "a": 15,
+          "b": 16,
+          "kind": "single"
+        },
+        {
+          "a": 16,
+          "b": 17,
+          "kind": "double"
+        },
+        {
+          "a": 17,
+          "b": 18,
+          "kind": "single"
+        },
+        {
+          "a": 18,
+          "b": 19,
+          "kind": "double"
+        },
+        {
+          "a": 19,
+          "b": 20,
+          "kind": "single"
+        },
+        {
+          "a": 20,
+          "b": 21,
+          "kind": "double"
+        },
+        {
+          "a": 21,
+          "b": 22,
+          "kind": "single"
+        },
+        {
+          "a": 19,
+          "b": 23,
+          "kind": "single"
+        },
+        {
+          "a": 21,
+          "b": 0,
+          "kind": "single"
+        },
+        {
+          "a": 22,
+          "b": 2,
+          "kind": "double"
+        },
+        {
+          "a": 8,
+          "b": 4,
+          "kind": "single"
+        },
+        {
+          "a": 14,
+          "b": 10,
+          "kind": "double"
+        },
+        {
+          "a": 23,
+          "b": 16,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 24,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 25,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 26,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 27,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 28,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 29,
+          "kind": "single"
+        },
+        {
+          "a": 11,
+          "b": 30,
+          "kind": "single"
+        },
+        {
+          "a": 12,
+          "b": 31,
+          "kind": "single"
+        },
+        {
+          "a": 15,
+          "b": 32,
+          "kind": "single"
+        },
+        {
+          "a": 17,
+          "b": 33,
+          "kind": "single"
+        },
+        {
+          "a": 18,
+          "b": 34,
+          "kind": "single"
+        },
+        {
+          "a": 20,
+          "b": 35,
+          "kind": "single"
+        }
+      ],
+      "connections": [
+        8,
+        14,
+        23,
+        22
+      ],
+      "leaving": null,
+      "state": null,
+      "formula": "C20H12N4-2",
+      "formal_charge": -2,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3 with the donor (or eta) atoms fixed for a metal at the origin",
+        "force_field": "UFF, those atoms fixed, the others at least 2.5 A (H) / 2.75 A from the metal",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      },
+      "center": [
+        -0.0,
+        0.0,
+        8e-06
+      ]
+    },
+    {
+      "id": "ligand:salen",
+      "name_ja": "サレン salen2−（N2O2四座、平面）",
+      "name_en": "Salen salen2− (N2O2 tetradentate, planar)",
+      "aliases": [
+        "ligand:salen",
+        "Salen salen2− (N2O2 tetradentate, planar)",
+        "[O-]c1ccccc1C=NCCN=Cc1ccccc1[O-]"
+      ],
+      "category": "ligand",
+      "smiles": "[O-]c1ccccc1C=NCCN=Cc1ccccc1[O-]",
+      "atoms": [
+        {
+          "element": "O",
+          "position": [
+            2.027831,
+            0.022169,
+            3e-06
+          ],
+          "formal_charge": -1,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            2.845134,
+            1.137527,
+            0.163175
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            4.177957,
+            0.933875,
+            0.540907
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            5.053401,
+            2.014806,
+            0.658449
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            4.60426,
+            3.308478,
+            0.392735
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            3.275028,
+            3.526476,
+            0.021943
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            2.373009,
+            2.453068,
+            -0.076755
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.976665,
+            2.75731,
+            -0.463137
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -0.022169,
+            2.072169,
+            3e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.408928,
+            2.364841,
+            -0.359227
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -2.364841,
+            1.408927,
+            0.359235
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -2.072169,
+            0.022169,
+            3e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -2.75731,
+            -0.976666,
+            0.463142
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -2.453068,
+            -2.373009,
+            0.076757
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -3.526476,
+            -3.275029,
+            -0.021942
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -3.308479,
+            -4.604259,
+            -0.392738
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -2.014807,
+            -5.053398,
+            -0.65846
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.933876,
+            -4.177954,
+            -0.540916
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.137527,
+            -2.845134,
+            -0.163176
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "O",
+          "position": [
+            -0.022169,
+            -2.027831,
+            3e-06
+          ],
+          "formal_charge": -1,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            4.539496,
+            -0.069111,
+            0.729671
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            6.083454,
+            1.848163,
+            0.94614
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            5.286396,
+            4.144757,
+            0.475926
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.944938,
+            4.539831,
+            -0.173544
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.787413,
+            3.623544,
+            -1.088304
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.656336,
+            3.409455,
+            -0.069288
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.5401,
+            2.260085,
+            -1.458669
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -3.409456,
+            1.656336,
+            0.069299
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.260083,
+            1.540098,
+            1.458677
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -3.623544,
+            -0.787415,
+            1.08831
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -4.539832,
+            -2.944941,
+            0.173548
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -4.144757,
+            -5.286396,
+            -0.475931
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.848164,
+            -6.08345,
+            -0.946155
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.069109,
+            -4.539491,
+            -0.729684
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 2,
+          "kind": "double"
+        },
+        {
+          "a": 2,
+          "b": 3,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 4,
+          "kind": "double"
+        },
+        {
+          "a": 4,
+          "b": 5,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 6,
+          "kind": "double"
+        },
+        {
+          "a": 6,
+          "b": 7,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 8,
+          "kind": "double"
+        },
+        {
+          "a": 8,
+          "b": 9,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 10,
+          "kind": "single"
+        },
+        {
+          "a": 10,
+          "b": 11,
+          "kind": "single"
+        },
+        {
+          "a": 11,
+          "b": 12,
+          "kind": "double"
+        },
+        {
+          "a": 12,
+          "b": 13,
+          "kind": "single"
+        },
+        {
+          "a": 13,
+          "b": 14,
+          "kind": "double"
+        },
+        {
+          "a": 14,
+          "b": 15,
+          "kind": "single"
+        },
+        {
+          "a": 15,
+          "b": 16,
+          "kind": "double"
+        },
+        {
+          "a": 16,
+          "b": 17,
+          "kind": "single"
+        },
+        {
+          "a": 17,
+          "b": 18,
+          "kind": "double"
+        },
+        {
+          "a": 18,
+          "b": 19,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 1,
+          "kind": "single"
+        },
+        {
+          "a": 18,
+          "b": 13,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 20,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 21,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 22,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 23,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 24,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 25,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 26,
+          "kind": "single"
+        },
+        {
+          "a": 10,
+          "b": 27,
+          "kind": "single"
+        },
+        {
+          "a": 10,
+          "b": 28,
+          "kind": "single"
+        },
+        {
+          "a": 12,
+          "b": 29,
+          "kind": "single"
+        },
+        {
+          "a": 14,
+          "b": 30,
+          "kind": "single"
+        },
+        {
+          "a": 15,
+          "b": 31,
+          "kind": "single"
+        },
+        {
+          "a": 16,
+          "b": 32,
+          "kind": "single"
+        },
+        {
+          "a": 17,
+          "b": 33,
+          "kind": "single"
+        }
+      ],
+      "connections": [
+        0,
+        8,
+        11,
+        19
+      ],
+      "leaving": null,
+      "state": null,
+      "formula": "C16H14N2O2-2",
+      "formal_charge": -2,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3 with the donor (or eta) atoms fixed for a metal at the origin",
+        "force_field": "UFF, those atoms fixed, the others at least 2.5 A (H) / 2.75 A from the metal",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      },
+      "center": [
+        -0.022169,
+        0.022169,
+        3e-06
+      ]
+    },
+    {
+      "id": "ligand:edta",
+      "name_ja": "エチレンジアミン四酢酸 EDTA4−（六座）",
+      "name_en": "Ethylenediaminetetraacetate EDTA4− (hexadentate)",
+      "aliases": [
+        "ligand:edta",
+        "Ethylenediaminetetraacetate EDTA4− (hexadentate)",
+        "[O-]C(=O)CN(CC([O-])=O)CCN(CC([O-])=O)CC([O-])=O"
+      ],
+      "category": "ligand",
+      "smiles": "[O-]C(=O)CN(CC([O-])=O)CCN(CC([O-])=O)CC([O-])=O",
+      "atoms": [
+        {
+          "element": "O",
+          "position": [
+            -0.713689,
+            -0.71369,
+            2.05
+          ],
+          "formal_charge": -1,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.570916,
+            -1.183207,
+            2.358248
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "O",
+          "position": [
+            0.763566,
+            -1.735349,
+            3.472986
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.745978,
+            -1.00942,
+            1.410532
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            1.336311,
+            -0.71369,
+            0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.580389,
+            -1.875674,
+            -0.89434
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.5716,
+            -3.014739,
+            -0.583725
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "O",
+          "position": [
+            -0.713689,
+            -2.76369,
+            0.0
+          ],
+          "formal_charge": -1,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "O",
+          "position": [
+            0.87723,
+            -4.195938,
+            -0.892268
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.644005,
+            0.674636,
+            -0.384752
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.674638,
+            1.644003,
+            0.384751
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "N",
+          "position": [
+            -0.713689,
+            1.33631,
+            0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.00942,
+            1.745976,
+            -1.410531
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.183212,
+            0.570914,
+            -2.358245
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "O",
+          "position": [
+            -0.713689,
+            -0.71369,
+            -2.05
+          ],
+          "formal_charge": -1,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "O",
+          "position": [
+            -1.735366,
+            0.763563,
+            -3.472976
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.875672,
+            1.580387,
+            0.894342
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -3.014738,
+            0.571601,
+            0.58372
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "O",
+          "position": [
+            -2.763689,
+            -0.71369,
+            0.0
+          ],
+          "formal_charge": -1,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "O",
+          "position": [
+            -4.195941,
+            0.877238,
+            0.892249
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.364655,
+            -1.932935,
+            1.469323
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.399829,
+            -0.21192,
+            1.827674
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.621012,
+            -2.247785,
+            -0.767609
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.497959,
+            -1.581207,
+            -1.959545
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.533649,
+            0.800944,
+            -1.481253
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.700704,
+            0.923253,
+            -0.143436
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.923257,
+            2.700703,
+            0.143431
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.800947,
+            1.533655,
+            1.481253
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.932935,
+            2.364653,
+            -1.46932
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -0.211924,
+            2.39983,
+            -1.827674
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.247781,
+            2.621011,
+            0.767617
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.581208,
+            1.497949,
+            1.959547
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 2,
+          "kind": "double"
+        },
+        {
+          "a": 1,
+          "b": 3,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 4,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 5,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 6,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 7,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 8,
+          "kind": "double"
+        },
+        {
+          "a": 4,
+          "b": 9,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 10,
+          "kind": "single"
+        },
+        {
+          "a": 10,
+          "b": 11,
+          "kind": "single"
+        },
+        {
+          "a": 11,
+          "b": 12,
+          "kind": "single"
+        },
+        {
+          "a": 12,
+          "b": 13,
+          "kind": "single"
+        },
+        {
+          "a": 13,
+          "b": 14,
+          "kind": "single"
+        },
+        {
+          "a": 13,
+          "b": 15,
+          "kind": "double"
+        },
+        {
+          "a": 11,
+          "b": 16,
+          "kind": "single"
+        },
+        {
+          "a": 16,
+          "b": 17,
+          "kind": "single"
+        },
+        {
+          "a": 17,
+          "b": 18,
+          "kind": "single"
+        },
+        {
+          "a": 17,
+          "b": 19,
+          "kind": "double"
+        },
+        {
+          "a": 3,
+          "b": 20,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 21,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 22,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 23,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 24,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 25,
+          "kind": "single"
+        },
+        {
+          "a": 10,
+          "b": 26,
+          "kind": "single"
+        },
+        {
+          "a": 10,
+          "b": 27,
+          "kind": "single"
+        },
+        {
+          "a": 12,
+          "b": 28,
+          "kind": "single"
+        },
+        {
+          "a": 12,
+          "b": 29,
+          "kind": "single"
+        },
+        {
+          "a": 16,
+          "b": 30,
+          "kind": "single"
+        },
+        {
+          "a": 16,
+          "b": 31,
+          "kind": "single"
+        }
+      ],
+      "connections": [
+        4,
+        11,
+        0,
+        7,
+        14,
+        18
+      ],
+      "leaving": null,
+      "state": null,
+      "formula": "C10H12N2O8-4",
+      "formal_charge": -4,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3 with the donor (or eta) atoms fixed for a metal at the origin",
+        "force_field": "UFF, those atoms fixed, the others at least 2.5 A (H) / 2.75 A from the metal",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      },
+      "center": [
+        -0.713689,
+        -0.71369,
+        0.0
+      ]
+    },
+    {
+      "id": "ligand:cp",
+      "name_ja": "シクロペンタジエニド Cp−（η5）",
+      "name_en": "Cyclopentadienide Cp− (η5)",
+      "aliases": [
+        "ligand:cp",
+        "Cyclopentadienide Cp− (η5)",
+        "[cH-]1cccc1"
+      ],
+      "category": "ligand",
+      "smiles": "[cH-]1cccc1",
+      "atoms": [
+        {
+          "element": "C",
+          "position": [
+            1.208,
+            0.0,
+            0.0
+          ],
+          "formal_charge": -1,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.373293,
+            1.148876,
+            0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.977293,
+            0.710045,
+            0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.977293,
+            -0.710045,
+            0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.373293,
+            -1.148876,
+            0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.289637,
+            0.0,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.707537,
+            2.177574,
+            -1e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.852355,
+            1.345815,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.852355,
+            -1.345815,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.707537,
+            -2.177574,
+            0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 2,
+          "kind": "double"
+        },
+        {
+          "a": 2,
+          "b": 3,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 4,
+          "kind": "double"
+        },
+        {
+          "a": 4,
+          "b": 0,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 5,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 6,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 7,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 8,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 9,
+          "kind": "single"
+        }
+      ],
+      "connections": [],
+      "leaving": null,
+      "state": null,
+      "formula": "C5H5-",
+      "formal_charge": -1,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3 with the donor (or eta) atoms fixed for a metal at the origin",
+        "force_field": "UFF, those atoms fixed, the others at least 2.5 A (H) / 2.75 A from the metal",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      },
+      "hapto": [
+        [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      ],
+      "center": [
+        0.0,
+        0.0,
+        -1.66
+      ]
+    },
+    {
+      "id": "ligand:cpstar",
+      "name_ja": "ペンタメチルシクロペンタジエニド Cp*−（η5）",
+      "name_en": "Pentamethylcyclopentadienide Cp*− (η5)",
+      "aliases": [
+        "ligand:cpstar",
+        "Pentamethylcyclopentadienide Cp*− (η5)",
+        "C[c-]1c(C)c(C)c(C)c1C"
+      ],
+      "category": "ligand",
+      "smiles": "C[c-]1c(C)c(C)c(C)c1C",
+      "atoms": [
+        {
+          "element": "C",
+          "position": [
+            2.706986,
+            0.008132,
+            4e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.208,
+            -0.0,
+            3e-06
+          ],
+          "formal_charge": -1,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.373293,
+            1.148876,
+            3e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.828772,
+            2.577009,
+            1e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.977292,
+            0.710044,
+            3e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -2.194777,
+            1.584548,
+            -5e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.977292,
+            -0.710045,
+            3e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -2.185219,
+            -1.597705,
+            -1e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.373293,
+            -1.148877,
+            3e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.844238,
+            -2.571985,
+            2e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            3.115805,
+            -1.02281,
+            -6.3e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            3.0752,
+            0.5342,
+            -0.905213
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            3.075198,
+            0.534089,
+            0.905285
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.935588,
+            2.647238,
+            2.7e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.44227,
+            3.089756,
+            0.905236
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            0.442313,
+            3.08974,
+            -0.905262
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.801843,
+            1.375428,
+            -0.905261
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.801857,
+            1.375427,
+            0.90524
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.919544,
+            2.658894,
+            -6e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.173926,
+            -2.239686,
+            -0.905252
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.173932,
+            -2.239688,
+            0.905248
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -3.121931,
+            -1.003951,
+            -3e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.45832,
+            -2.759622,
+            0.905232
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.458255,
+            -2.759642,
+            -0.905267
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -0.009916,
+            -3.27937,
+            4.2e-05
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 2,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 3,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 4,
+          "kind": "double"
+        },
+        {
+          "a": 4,
+          "b": 5,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 6,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 7,
+          "kind": "single"
+        },
+        {
+          "a": 6,
+          "b": 8,
+          "kind": "double"
+        },
+        {
+          "a": 8,
+          "b": 9,
+          "kind": "single"
+        },
+        {
+          "a": 8,
+          "b": 1,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 10,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 11,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 12,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 13,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 14,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 15,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 16,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 17,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 18,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 19,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 20,
+          "kind": "single"
+        },
+        {
+          "a": 7,
+          "b": 21,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 22,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 23,
+          "kind": "single"
+        },
+        {
+          "a": 9,
+          "b": 24,
+          "kind": "single"
+        }
+      ],
+      "connections": [],
+      "leaving": null,
+      "state": null,
+      "formula": "C10H15-",
+      "formal_charge": -1,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3 with the donor (or eta) atoms fixed for a metal at the origin",
+        "force_field": "UFF, those atoms fixed, the others at least 2.5 A (H) / 2.75 A from the metal",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      },
+      "hapto": [
+        [
+          1,
+          2,
+          4,
+          6,
+          8
+        ]
+      ],
+      "center": [
+        0.0,
+        -0.0,
+        -1.659997
+      ]
+    },
+    {
+      "id": "ligand:benzene",
+      "name_ja": "ベンゼン（η6）",
+      "name_en": "Benzene (η6)",
+      "aliases": [
+        "ligand:benzene",
+        "Benzene (η6)",
+        "c1ccccc1"
+      ],
+      "category": "ligand",
+      "smiles": "c1ccccc1",
+      "atoms": [
+        {
+          "element": "C",
+          "position": [
+            1.4,
+            -0.0,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.7,
+            1.212436,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.7,
+            1.212436,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -1.4,
+            -0.0,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.7,
+            -1.212436,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.7,
+            -1.212436,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.482331,
+            -0.0,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.241165,
+            2.149762,
+            0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.241165,
+            2.149762,
+            0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.482331,
+            0.0,
+            0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.241165,
+            -2.149762,
+            0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.241165,
+            -2.149762,
+            0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 2,
+          "kind": "double"
+        },
+        {
+          "a": 2,
+          "b": 3,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 4,
+          "kind": "double"
+        },
+        {
+          "a": 4,
+          "b": 5,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 0,
+          "kind": "double"
+        },
+        {
+          "a": 0,
+          "b": 6,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 7,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 8,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 9,
+          "kind": "single"
+        },
+        {
+          "a": 4,
+          "b": 10,
+          "kind": "single"
+        },
+        {
+          "a": 5,
+          "b": 11,
+          "kind": "single"
+        }
+      ],
+      "connections": [],
+      "leaving": null,
+      "state": null,
+      "formula": "C6H6",
+      "formal_charge": 0,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3 with the donor (or eta) atoms fixed for a metal at the origin",
+        "force_field": "UFF, those atoms fixed, the others at least 2.5 A (H) / 2.75 A from the metal",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      },
+      "hapto": [
+        [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      ],
+      "center": [
+        -0.0,
+        -0.0,
+        -1.62
+      ]
+    },
+    {
+      "id": "ligand:ethylene",
+      "name_ja": "エチレン（η2）",
+      "name_en": "Ethylene (η2)",
+      "aliases": [
+        "ligand:ethylene",
+        "Ethylene (η2)",
+        "C=C"
+      ],
+      "category": "ligand",
+      "smiles": "C=C",
+      "atoms": [
+        {
+          "element": "C",
+          "position": [
+            -0.7,
+            -0.0,
+            -0.013147
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.7,
+            -0.0,
+            -0.013147
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.246684,
+            0.938216,
+            0.006574
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.246684,
+            -0.938216,
+            0.006574
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.246684,
+            -0.938216,
+            0.006574
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.246684,
+            0.938216,
+            0.006574
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "double"
+        },
+        {
+          "a": 0,
+          "b": 2,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 3,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 4,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 5,
+          "kind": "single"
+        }
+      ],
+      "connections": [],
+      "leaving": null,
+      "state": null,
+      "formula": "C2H4",
+      "formal_charge": 0,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3 with the donor (or eta) atoms fixed for a metal at the origin",
+        "force_field": "UFF, those atoms fixed, the others at least 2.5 A (H) / 2.75 A from the metal",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      },
+      "hapto": [
+        [
+          0,
+          1
+        ]
+      ],
+      "center": [
+        -0.0,
+        -0.0,
+        -1.943147
+      ]
+    },
+    {
+      "id": "ligand:allyl",
+      "name_ja": "アリル C3H5−（η3）",
+      "name_en": "Allyl C3H5− (η3)",
+      "aliases": [
+        "ligand:allyl",
+        "Allyl C3H5− (η3)",
+        "C=C[CH2-]"
+      ],
+      "category": "ligand",
+      "smiles": "C=C[CH2-]",
+      "atoms": [
+        {
+          "element": "C",
+          "position": [
+            -1.208816,
+            -0.174786,
+            -0.048101
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.001184,
+            0.525214,
+            -0.048101
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.211184,
+            -0.174786,
+            -0.048101
+          ],
+          "formal_charge": -1,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.137687,
+            0.371645,
+            0.047601
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.2537,
+            -1.262554,
+            -0.05766
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -0.000597,
+            1.602667,
+            0.175361
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.245718,
+            -1.259432,
+            -0.034078
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.142712,
+            0.372032,
+            0.013079
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "double"
+        },
+        {
+          "a": 1,
+          "b": 2,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 3,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 4,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 5,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 6,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 7,
+          "kind": "single"
+        }
+      ],
+      "connections": [],
+      "leaving": null,
+      "state": null,
+      "formula": "C3H5-",
+      "formal_charge": -1,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3 with the donor (or eta) atoms fixed for a metal at the origin",
+        "force_field": "UFF, those atoms fixed, the others at least 2.5 A (H) / 2.75 A from the metal",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      },
+      "hapto": [
+        [
+          0,
+          1,
+          2
+        ]
+      ],
+      "center": [
+        0.001184,
+        0.058214,
+        -1.748101
+      ]
+    },
+    {
+      "id": "ligand:butadiene",
+      "name_ja": "1,3-ブタジエン（η4）",
+      "name_en": "1,3-Butadiene (η4)",
+      "aliases": [
+        "ligand:butadiene",
+        "1,3-Butadiene (η4)",
+        "C=CC=C"
+      ],
+      "category": "ligand",
+      "smiles": "C=CC=C",
+      "atoms": [
+        {
+          "element": "C",
+          "position": [
+            -1.42,
+            -0.489787,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            -0.71,
+            0.740213,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            0.71,
+            0.740213,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.42,
+            -0.489787,
+            -0.0
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.500934,
+            -0.445649,
+            1e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.011652,
+            -1.482761,
+            -1e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.250453,
+            1.677984,
+            1e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.250453,
+            1.677984,
+            -1e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.500934,
+            -0.445649,
+            -1e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.011652,
+            -1.482761,
+            1e-06
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "double"
+        },
+        {
+          "a": 1,
+          "b": 2,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 3,
+          "kind": "double"
+        },
+        {
+          "a": 0,
+          "b": 4,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 5,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 6,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 7,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 8,
+          "kind": "single"
+        },
+        {
+          "a": 3,
+          "b": 9,
+          "kind": "single"
+        }
+      ],
+      "connections": [],
+      "leaving": null,
+      "state": null,
+      "formula": "C4H6",
+      "formal_charge": 0,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3 with the donor (or eta) atoms fixed for a metal at the origin",
+        "force_field": "UFF, those atoms fixed, the others at least 2.5 A (H) / 2.75 A from the metal",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      },
+      "hapto": [
+        [
+          0,
+          1,
+          2,
+          3
+        ]
+      ],
+      "center": [
+        0.0,
+        0.125213,
+        -1.69
+      ]
+    },
+    {
+      "id": "skeleton:methanol",
+      "name_ja": "メタノール",
+      "name_en": "Methanol",
+      "aliases": [
+        "skeleton:methanol",
+        "Methanol",
+        "CO"
+      ],
+      "category": "skeleton",
+      "smiles": "CO",
+      "atoms": [
+        {
+          "element": "C",
+          "position": [
+            -0.370617,
+            0.004005,
+            -0.020764
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "O",
+          "position": [
+            0.928604,
+            0.566431,
+            -0.018664
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -0.554193,
+            -0.494939,
+            0.933948
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.103322,
+            0.802579,
+            -0.158771
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -0.457092,
+            -0.712619,
+            -0.841186
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.55662,
+            -0.165456,
+            0.105438
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 2,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 3,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 4,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 5,
+          "kind": "single"
+        }
+      ],
+      "connections": [],
+      "leaving": null,
+      "state": null,
+      "formula": "CH4O",
+      "formal_charge": 0,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3",
+        "force_field": "MMFF94",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      }
+    },
+    {
+      "id": "skeleton:dmso",
+      "name_ja": "ジメチルスルホキシド DMSO",
+      "name_en": "Dimethyl sulfoxide DMSO",
+      "aliases": [
+        "skeleton:dmso",
+        "Dimethyl sulfoxide DMSO",
+        "CS(C)=O"
+      ],
+      "category": "skeleton",
+      "smiles": "CS(C)=O",
+      "atoms": [
+        {
+          "element": "C",
+          "position": [
+            -1.346949,
+            -0.067549,
+            -0.166545
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "S",
+          "position": [
+            -0.008721,
+            0.789794,
+            0.697764
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "C",
+          "position": [
+            1.29665,
+            -0.35712,
+            0.19426
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "O",
+          "position": [
+            0.230801,
+            2.087232,
+            -0.015924
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.122823,
+            -0.128598,
+            -1.234182
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -1.466176,
+            -1.070497,
+            0.249834
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            -2.27176,
+            0.495942,
+            -0.022115
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.35563,
+            -0.400086,
+            -0.895917
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            1.085326,
+            -1.349979,
+            0.598072
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        },
+        {
+          "element": "H",
+          "position": [
+            2.248023,
+            0.000861,
+            0.594753
+          ],
+          "formal_charge": 0,
+          "radical": 0,
+          "name": "",
+          "stereo": "",
+          "chiral_tag": 0,
+          "map_number": 0
+        }
+      ],
+      "bonds": [
+        {
+          "a": 0,
+          "b": 1,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 2,
+          "kind": "single"
+        },
+        {
+          "a": 1,
+          "b": 3,
+          "kind": "double"
+        },
+        {
+          "a": 0,
+          "b": 4,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 5,
+          "kind": "single"
+        },
+        {
+          "a": 0,
+          "b": 6,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 7,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 8,
+          "kind": "single"
+        },
+        {
+          "a": 2,
+          "b": 9,
+          "kind": "single"
+        }
+      ],
+      "connections": [],
+      "leaving": null,
+      "state": null,
+      "formula": "C2H6OS",
+      "formal_charge": 0,
+      "provenance": {
+        "generator": "tools/templates/coordination.py",
+        "tool": "RDKit",
+        "version": "2026.09.1",
+        "seed": 20261111,
+        "embedding": "ETKDGv3",
+        "force_field": "MMFF94",
+        "source_license": "MolForma authored SMILES/geometry: GPL-2.0-or-later; RDKit: BSD-3-Clause"
+      },
+      "validation": {
+        "sanitized": true,
+        "finite_coordinates": true,
+        "cip": {}
+      }
     }
   ]
 }

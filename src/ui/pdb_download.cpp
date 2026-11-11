@@ -25,14 +25,19 @@ QString pdbId(const QString &text) {
         return id.toLower();
     return {};
 }
-PdbDownload::PdbDownload(const QString &id, const QString &folder, const QString &source, QObject *parent)
-    : QObject(parent), id(id), target(QDir(folder).filePath(id + ".cif.gz")), url(QString(source).arg(id)),
+FileDownload::FileDownload(const QUrl &url, const QString &target, const QString &name,
+                           const QString &missing, QObject *parent)
+    : QObject(parent), name(name), missing(missing), target(target), url(url),
       network(new QNetworkAccessManager(this)) {}
-PdbDownload::~PdbDownload() {
+FileDownload::~FileDownload() {
     if (reply)
         reply->abort();
 }
-void PdbDownload::start() {
+PdbDownload::PdbDownload(const QString &id, const QString &folder, const QString &source, QObject *parent)
+    : FileDownload(QUrl(QString(source).arg(id)), QDir(folder).filePath(id + ".cif.gz"), id,
+                   tr("RCSB PDBに %1 のmmCIFファイルがありません。PDB IDを確かめてください。").arg(id),
+                   parent) {}
+void FileDownload::start() {
     QDir().mkpath(QFileInfo(target).absolutePath());
     file = new QSaveFile(target, this);
     if (!file->open(QIODevice::WriteOnly)) {
@@ -52,28 +57,29 @@ void PdbDownload::start() {
         const auto bytes = reply->readAll();
         received += bytes.size();
         if (received > MaxBytes) {
-            failure = tr("%1 のファイルが %2 MiB を超えるため中止しました。").arg(id).arg(MaxBytes >> 20);
+            failure = tr("%1 のファイルが %2 MiB を超えるため中止しました。").arg(name).arg(MaxBytes >> 20);
             reply->abort();
         } else if (file->write(bytes) != bytes.size()) {
             failure = file->errorString();
             reply->abort();
         }
     });
-    connect(reply, &QNetworkReply::downloadProgress, this, &PdbDownload::progress);
-    connect(reply, &QNetworkReply::finished, this, &PdbDownload::finish);
+    connect(reply, &QNetworkReply::downloadProgress, this, &FileDownload::progress);
+    connect(reply, &QNetworkReply::finished, this, &FileDownload::finish);
 }
-void PdbDownload::cancel() {
+void FileDownload::cancel() {
     stopped = true;
     if (reply)
         reply->abort();
 }
-void PdbDownload::finish() {
+void FileDownload::finish() {
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     if (failure.isEmpty() && !stopped) {
-        if (status == 404 || reply->error() == QNetworkReply::ContentNotFoundError)
-            failure = tr("RCSB PDBに %1 のmmCIFファイルがありません。PDB IDを確かめてください。").arg(id);
-        else if (reply->error() != QNetworkReply::NoError)
-            failure = tr("%1 をダウンロードできません: %2").arg(id, reply->errorString());
+        if (status == 404 || reply->error() == QNetworkReply::ContentNotFoundError) {
+            failure = missing;
+            absent = true;
+        } else if (reply->error() != QNetworkReply::NoError)
+            failure = tr("%1 をダウンロードできません: %2").arg(name, reply->errorString());
         else if (!file->commit())
             failure = file->errorString();
     }
@@ -88,9 +94,13 @@ void PdbDownload::finish() {
 }
 QString downloadPdb(QWidget *parent, const QString &id, const QString &folder, const QString &source) {
     PdbDownload download(id, folder, source);
-    QProgressDialog dialog(tr("%1 をRCSB PDBからダウンロードしています…").arg(id), tr("中止"), 0, 0, parent);
+    return runDownload(parent, download, tr("PDBからダウンロード"),
+                       tr("%1 をRCSB PDBからダウンロードしています…").arg(id));
+}
+QString runDownload(QWidget *parent, FileDownload &download, const QString &title, const QString &label) {
+    QProgressDialog dialog(label, tr("中止"), 0, 0, parent);
     dialog.setObjectName("pdbDownloadProgress");
-    dialog.setWindowTitle(tr("PDBからダウンロード"));
+    dialog.setWindowTitle(title);
     dialog.setWindowModality(Qt::WindowModal);
     dialog.setMinimumDuration(0);
     dialog.setAutoClose(false);
@@ -98,18 +108,18 @@ QString downloadPdb(QWidget *parent, const QString &id, const QString &folder, c
     QEventLoop loop;
     bool done = false;
     QString error;
-    QObject::connect(&download, &PdbDownload::progress, &dialog, [&](qint64 received, qint64 total) {
+    QObject::connect(&download, &FileDownload::progress, &dialog, [&](qint64 received, qint64 total) {
         if (total > 0) { // In KiB, which a progress bar's int holds.
             dialog.setMaximum(int(total >> 10));
             dialog.setValue(int(std::min(received, total) >> 10));
         }
     });
-    QObject::connect(&download, &PdbDownload::finished, &loop, [&](const QString &message) {
+    QObject::connect(&download, &FileDownload::finished, &loop, [&](const QString &message) {
         error = message;
         done = true;
         loop.quit();
     });
-    QObject::connect(&dialog, &QProgressDialog::canceled, &download, &PdbDownload::cancel);
+    QObject::connect(&dialog, &QProgressDialog::canceled, &download, &FileDownload::cancel);
     download.start();
     if (!done)
         loop.exec();

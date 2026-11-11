@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
+#include "editing/crystal.h"
 #include "editing/pdb.h"
 #include <optional>
 class QWidget;
@@ -9,6 +10,7 @@ namespace mf {
 struct StructureImportOptions {
     MacromoleculeSelection selection; // PDB, mmCIF
     int frame = -1;                   // Multi-frame XYZ
+    CrystalSelection crystal;         // Small-molecule CIF
 };
 // Without ask, the choices the dialogs propose: the first model, the alternate location of the highest
 // occupancy, everything, the last frame.

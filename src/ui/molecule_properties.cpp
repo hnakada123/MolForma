@@ -615,7 +615,7 @@ void MoleculePanel::buildCoordinationPanel() {
     siteInput->setObjectName("ligandSites");
     siteInput->setPlaceholderText(tr("例: 1 または 1,2"));
     siteInput->setToolTip(tr("3D画面の紫の番号です。サイトをクリックしても入力されます。"
-                             "二座配位子は2サイトをカンマで区切ります。"));
+                             "多座配位子は供与原子の数（η配位は1つ）だけサイトをカンマで区切ります。"));
     f->addRow(tr("サイト番号"), siteInput);
     button(f, tr("配位子パレットを開く"), [this] {
         setPaletteCategory("ligand");

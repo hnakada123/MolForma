@@ -1038,7 +1038,7 @@ void CoordinatesPanel::importPath(const QString &path) {
         return;
     if (base != window->revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
-    previewStructure(importStructure(path, options->selection, options->frame));
+    previewStructure(importStructure(path, options->selection, options->frame, options->crystal));
     window->setPreference("directory", QFileInfo(path).absolutePath());
 }
 void CoordinatesPanel::dragEnterEvent(QDragEnterEvent *event) {

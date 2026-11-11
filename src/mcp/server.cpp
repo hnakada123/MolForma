@@ -7,6 +7,7 @@
 #include "editing/pdb.h"
 #include "editing/peptide.h"
 #include "editing/site.h"
+#include "editing/solvation.h"
 #include "io/structure_io.h"
 #include "mcp/tools.h"
 #include "model/geometry.h"
@@ -705,6 +706,26 @@ void McpServer::registerTools() {
              placeTemplate(next, findTemplate(args["templateId"].toString()),
                            vectorFromJson(args["position"]));
          });
+    edit({.name = "solvate",
+          .title = "Place a solvation shell",
+          .description =
+              "Place count rigid solvent molecules (default 6) around the atoms ids (default: the whole "
+              "molecule): first in contact with them (the solvent's O or N toward cations and polar atoms, "
+              "its hydrogens toward anions), then outward, never overlapping. Places fewer when there is no "
+              "room. Refine the result (xTB, force field) before a calculation.",
+          .properties = {{"solvent", choice(solventTemplates())},
+                         {"count", QJsonObject{{"type", "integer"}, {"minimum", 1}, {"maximum", 1000}}},
+                         {"ids", idsSchema()}},
+          .required = {"solvent"}},
+         [requireAtoms](Document &next, const QJsonObject &args) {
+             SolvationOptions options;
+             options.count = args["count"].toInt(6);
+             if (args.contains("ids")) {
+                 options.around = idsFromJson(args["ids"]);
+                 requireAtoms(next, options.around);
+             }
+             solvate(next, findTemplate(args["solvent"].toString()), options);
+         });
     edit({.name = "add_atom",
           .title = "Add atom",
           .description = "Add an atom; hydrogen completion defaults to false. Optionally bond to anchorId.",
@@ -891,7 +912,10 @@ void McpServer::registerTools() {
               "share with MolForma. Multi-frame XYZ files need frame (0-based). PDB and mmCIF files read "
               "model (default 1), altloc (default: in each residue the location of the highest occupancy), "
               "chains (author chain IDs; default all) and the residue kinds polymer (proteins, nucleic "
-              "acids), ligands (other hetero groups: ligands, ions, sugars) and water (default all). Files "
+              "acids), ligands (other hetero groups: ligands, ions, sugars) and water (default all). "
+              "Small-molecule CIF files (fractional coordinates) read the formula unit (the molecules of the "
+              "asymmetric unit, completed across the cell) or with cell the unit cell's contents; "
+              "minorDisorder adds the minor disorder groups. Files "
               "may be gzip-compressed (.gz). Maximum file size: 8 MiB, also after decompressing.",
           .properties = {{"path", type("string")},
                          {"frame", QJsonObject{{"type", "integer"}, {"minimum", 0}}},
@@ -900,7 +924,9 @@ void McpServer::registerTools() {
                          {"chains", strings()},
                          {"polymer", type("boolean")},
                          {"ligands", type("boolean")},
-                         {"water", type("boolean")}},
+                         {"water", type("boolean")},
+                         {"cell", type("boolean")},
+                         {"minorDisorder", type("boolean")}},
           .required = {"path"}},
          [this](Document &next, const QJsonObject &args) {
              auto path = args["path"].toString();
@@ -928,7 +954,10 @@ void McpServer::registerTools() {
              selection.polymer = args["polymer"].toBool(true);
              selection.ligands = args["ligands"].toBool(true);
              selection.water = args["water"].toBool(true);
-             const auto imported = importStructure(path, selection, frame);
+             CrystalSelection crystal;
+             crystal.cell = args["cell"].toBool();
+             crystal.minor = args["minorDisorder"].toBool();
+             const auto imported = importStructure(path, selection, frame, crystal);
              replaceCoordinateStructure(next, imported);
              if (QStringList{"nw", "nwinp", "gjf", "com", "gau"}.contains(suffix)) {
                  next.charge = imported.charge;
@@ -1239,7 +1268,8 @@ void McpServer::registerTools() {
     edit({.name = "set_neb_end",
           .title = "Set the end of an NEB path",
           .description =
-              "Set the end structure of an NEB calculation (and the task to neb) from XYZ text (xyz) or a local "
+              "Set the end structure of an NEB calculation (and the task to neb) from XYZ text (xyz) or a "
+              "local "
               "structure file or NWChem log (path; its last structure, multi-frame XYZ: the last frame). The "
               "structure needs the document's atoms in the same order; superpose (default true) fits it onto "
               "the current structure. The end is kept by atom ID in settings.neb_end.",
@@ -1270,7 +1300,8 @@ void McpServer::registerTools() {
                  } else
                      end = importStructure(path);
              }
-             setNwchemSetting(next, "neb_end", nwchemNebEndSetting(next, end, args["superpose"].toBool(true)));
+             setNwchemSetting(next, "neb_end",
+                              nwchemNebEndSetting(next, end, args["superpose"].toBool(true)));
              setNwchemSetting(next, "task", "neb");
              failOnAddedErrors(before, validateNwchem(next));
          });

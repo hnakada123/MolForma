@@ -6,6 +6,7 @@
 #include "editing/coordination.h"
 #include "editing/operations.h"
 #include "editing/peptide.h"
+#include "editing/solvation.h"
 #include "editing/stereochemistry.h"
 #include "io/structure_io.h"
 #include "model/i18n.h"
@@ -667,8 +668,9 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
             if (tool() == EditorTool::Place && paletteChoice().kind == PaletteKind::Ligand) {
                 auto t = currentTemplate();
                 auto indices = sites();
-                if (t["connections"].toArray().size() == 2 && !indices.contains(site) &&
-                    indices.size() == 1) {
+                // A ligand of several donors (or eta groups) takes as many sites, clicked one after another.
+                const int needed = ligandSites(t);
+                if (needed > 1 && !indices.contains(site) && !indices.isEmpty() && indices.size() < needed) {
                     indices << site;
                 } else
                     indices = {site};
@@ -676,7 +678,7 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
                 for (int i : indices)
                     text << QString::number(i + 1);
                 siteInput->setText(text.join(','));
-                if (indices.size() == t["connections"].toArray().size()) {
+                if (indices.size() == needed) {
                     // The next site continues the placement: the ligand placed before is confirmed. A
                     // person's click never confirms an MCP candidate, but MCP may continue its own.
                     const bool chained = session.candidate() &&
@@ -1722,7 +1724,7 @@ void MoleculePanel::addFragmentFromFile() {
         return;
     if (base != session.revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
-    const auto fragment = importStructure(p, options->selection, options->frame);
+    const auto fragment = importStructure(p, options->selection, options->frame, options->crystal);
     edit(tr("ファイルから断片を追加"), [&](Document &d) { insertFragment(d, fragment); }, true);
     view->keepInView();
 }
@@ -2002,7 +2004,7 @@ void MoleculePanel::compareDialog() {
         return;
     if (base != session.revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
-    const auto reference = importStructure(p, options->selection, options->frame);
+    const auto reference = importStructure(p, options->selection, options->frame, options->crystal);
     const auto fit = superpose(document(), reference);
     QMessageBox box(QMessageBox::Information, tr("構造の比較"),
                     tr("%1\n\nRMSD（座標そのまま）: %2 Å\n重ね合わせ後のRMSD: %3 Å（水素以外 %4 Å）\n"
@@ -2181,6 +2183,67 @@ void MoleculePanel::symmetryDialog() {
                                  .arg(group.name)
                                  .arg(moved, 0, 'f', 4),
                              15000);
+}
+void MoleculePanel::solvationDialog() {
+    if (session.candidate() || chemistryRunning())
+        fail(tr("候補を確定・取消し、整形の終了後に実行してください。"));
+    if (document().atoms.isEmpty())
+        fail(tr("分子が空です。"));
+    QDialog dialog(this);
+    dialog.setObjectName("solvationDialog");
+    dialog.setWindowTitle(tr("溶媒和殻を配置"));
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *intro = new QLabel(
+        tr("溶媒分子を、溶質に接する位置から外側へ重ならないように置きます。陽イオン・極性原子には溶媒の"
+           "酸素などを、陰イオンには水素を向けます。溶媒分子は形を変えずに置くため、計算の前に"
+           "「xTBで構造を最適化」や力場で整えてください。結果は候補として表示します。"));
+    intro->setWordWrap(true);
+    layout->addWidget(intro);
+    auto *form = new FormLayout;
+    layout->addLayout(form);
+    auto *solvent = new QComboBox;
+    solvent->setObjectName("solvationSolvent");
+    for (const auto &id : solventTemplates())
+        solvent->addItem(templateName(findTemplate(id)), id);
+    solvent->setCurrentIndex(std::max(0, solvent->findData(settings.value("solvation/solvent").toString())));
+    form->addRow(tr("溶媒"), solvent);
+    auto *count = new QSpinBox;
+    count->setObjectName("solvationCount");
+    count->setRange(1, 1000);
+    count->setValue(settings.value("solvation/count", 6).toInt());
+    count->setToolTip(tr("置ける場所が足りないときは、置けた数だけ置きます。"));
+    form->addRow(tr("溶媒分子の数"), count);
+    auto *around =
+        new QCheckBox(tr("選択した原子のまわりに置く（%n原子）", nullptr, int(selection().size())));
+    around->setObjectName("solvationAroundSelection");
+    around->setEnabled(!selection().isEmpty());
+    around->setChecked(!selection().isEmpty());
+    around->setToolTip(tr("外すと分子全体のまわりに置きます。"));
+    form->addRow(QString(), around);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    buttons->button(QDialogButtonBox::Ok)->setText(tr("配置（候補にする）"));
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    settings.setValue("solvation/solvent", solvent->currentData());
+    settings.setValue("solvation/count", count->value());
+    const auto t = findTemplate(solvent->currentData().toString());
+    SolvationOptions options;
+    options.count = count->value();
+    if (around->isChecked())
+        options.around = selection();
+    int placed = 0;
+    edit(tr("溶媒和殻を配置"), [&](Document &d) { placed = solvate(d, t, options); }, true);
+    statusBar()->showMessage(
+        placed < options.count
+            ? tr("%1を%2個置いた候補です（指定の%3個のうち、残りは置ける場所がありません）。")
+                  .arg(templateName(t))
+                  .arg(placed)
+                  .arg(options.count)
+            : tr("%1を%2個置いた候補です。「変更を確定」で適用します。").arg(templateName(t)).arg(placed),
+        15000);
 }
 
 void MoleculePanel::savePart() {

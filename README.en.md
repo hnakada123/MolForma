@@ -19,7 +19,7 @@ ctest --test-dir build --output-on-failure
 ./build/molforma
 ```
 
-You can start MolForma with a structure file (XYZ, MOL, SDF, Mol2, CML, PDB, mmCIF; gzip-compressed files too), an NWChem or Gaussian input, or a project. Files also open by dropping them on the window or from “File → Recent files”. “File → Download from PDB…” fetches an entry by its PDB ID.
+You can start MolForma with a structure file (XYZ, MOL, SDF, Mol2, CML, PDB, mmCIF, small-molecule CIF; gzip-compressed files too), an NWChem or Gaussian input, or a project. Files also open by dropping them on the window or from “File → Recent files”. “File → Download from PDB…” fetches an entry by its PDB ID, and “File → Get from PubChem…” a compound by its name or CID.
 
 ```sh
 ./build/molforma tests/fixtures/ala_gly_ser.molforma.json
@@ -98,7 +98,7 @@ Sources are in `src/`, Qt Tests in `tests/`, documentation in `docs/`, and built
 | Directory | Contents |
 | --- | --- |
 | `src/model/` | Molecule document, file format, geometry calculations, unit definitions, translation of displayed text |
-| `src/editing/` | Molecule and coordinate editing, shared validation of atom attributes, parts library, peptide and coordination structures, PDB and mmCIF parsing, active-site cut-out, chemistry job management |
+| `src/editing/` | Molecule and coordinate editing, shared validation of atom attributes, parts library, peptide and coordination structures, PDB, mmCIF and small-molecule CIF (crystal structure) parsing, solvation shells, active-site cut-out, chemistry job management |
 | `src/io/` | Reading and writing by file format, project saving, recent files, autosave and recovery |
 | `src/nwchem/` | NWChem input generation and import, advanced settings, visualization output settings, run control, calculation history |
 | `src/results/` | Reading calculation results, isosurface generation, evaluation of MOLDEN molecular orbitals |
@@ -106,6 +106,7 @@ Sources are in `src/`, Qt Tests in `tests/`, documentation in `docs/`, and built
 | `src/mcp/` | MCP server (stdio, JSON-RPC), shared tool definitions, calculations and result reading without a window, access limits |
 | `packaging/` | Desktop integration (`.desktop`, icon, MIME types), the Arch Linux `PKGBUILD` (`arch/`), the AppImage build environment and the making of the release files (`appimage/`), batch files that start NWChem in WSL on Windows and the making of the release files (`windows/`), and the macOS application bundle settings, icon and the making of the release files (`macos/`). `docs/manual.qrc` builds the manual and icon into the executable |
 | `tools/screenshots/` | Scripts that take the screenshots of the manual and recipes by operating `molforma --mcp-gui` (development tools; MolForma itself does not depend on Python) |
+| `tools/templates/` | Script that adds the polydentate, η and solvent parts to `assets/library.json` (development tool, uses RDKit) |
 
 The entry point is `src/main.cpp`. Headers are included by their path from `src/`, as in `#include "model/document.h"`. `molforma_core` is an interface target that bundles `molforma_model`, `molforma_editing`, `molforma_results`, `molforma_nwchem` and `molforma_io`. Dependencies run io → nwchem → editing / results → model; project headers included in the opposite direction are detected when CMake configures and in CTest. `molforma_mcp` (mcp) depends on the core, and `molforma_ui` (ui) on the core, MCP and Qt Widgets. Chemistry jobs and autosave can be tested without creating a window, and the panels and the GUI MCP tools edit and read state through public APIs.
 
