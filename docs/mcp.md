@@ -219,7 +219,7 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `get_app_state` | 候補の有無、計算・結果読込の状態 |
 | `calculation` | NWChem実行・停止、入力一式の保存、計算キュー（前の計算から続ける連鎖を含む） |
 | `get_results` | 読込済み結果の要約（計算のエネルギー `final_energy`（最後のtask・振動数の参照構造・BSSE補正後）・熱化学・双極子・最適化状態・スキャンとIRCの各点・NEBの経路（`neb`: 像ごとの `bead`・`energy`・`frame`・`distance`（始点からの経路の長さ、Å）、`iteration`・`steps`・`thresholds`・`converged`）・BSSE・溶媒和・原子ごとのMulliken/ESP/RESP電荷・NMR遮蔽・分極率を含む `properties`。Mulliken解析のあるログでは原子ごとの原子価 `valency`・自由電子数 `free_electrons` と、結合指数（Mayerの結合次数。基底関数に依存）が絶対値0.05以上の原子対 `bond_indices`（`{a, b, value}`、原子番号は1始まり）も含む）、構造列・エネルギー・軌道（`number` はスピンごとの軌道番号で、ログに一部の軌道しかなくてもMOLDENと同じ番号）・振動数（並進・回転は `rigid`）・励起状態（`contributions` は占有→仮想軌道の対 `{from, to, spin, x, y, weight, transition}` を重みの大きい順に並べたもの。NWChemが出力する係数0.05超の対で、`y` は出力されたときだけ、`weight` は X² − Y² の出力された対の合計に対する百分率、`transition` は `HOMO−1 → LUMO` の形で、HOMOの番号は `properties.tddft` のα・β電子数による）・最適化ステップ・変位・ログ。`section: "bond_indices"` は結合指数を読み込んだ全部の原子対（`counts.bondIndices` 件）を `{a, b, value, elements, distance}`（距離は最後の構造のÅ）で返す。原子対が2万を超える分子では絶対値0.05未満の対を読み込まず、その数が `properties.bond_indices_omitted` |
-| `results_action` | 結果ファイル・計算フォルダーの読込、再読込、読込の取消 |
+| `results_action` | 結果ファイル・計算フォルダーの読込、再読込、読込の取消、CUBEの差・和（`combine_cubes`） |
 
 画面なしモードの計算と読込はバックグラウンドで進み、`calculation` / `results_action` はすぐに戻ります。完了はタスクか `get_app_state` で確認します。計算はMolFormaの終了（標準入力を閉じる）とともに停止します。結果の表示・再生・画像取得はGUIモードだけです。
 
@@ -239,8 +239,10 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `set_selection` | 安定IDによる原子選択。空配列で解除 |
 | `chemistry` | SMILES生成（置換）、SMILESからの断片の追加（`fragment`）、全体・局所整形、3D再生成、配座探索（`conformers`、最安定の配座を候補にする。今の構造と同じなら候補を作らない）、xTBでの最適化（`xtb`。環境設定の「xTB実行ファイル」で起動し、MCPからはプログラムを選べない。`xtbMethod`: `gfn2`（既定）・`gfn1`・`gfnff`、`xtbLevel`: `crude`・`loose`・`normal`（既定）・`tight`、`xtbSolvent`: ALPBの溶媒名、`moving`: 動かす原子（ほかは固定））、中止。結果は候補として確認 |
 | `calculation` | 入力一式の保存、NWChem実行・停止 |
-| `get_results` / `results_action` | 結果読込・取消、構造列・エネルギー・軌道・振動数・励起状態・最適化ステップ・変位・ログ取得、選択・再生・停止、XYZ保存、表示中の構造を文書の候補にする `apply_structure` |
+| `get_results` / `results_action` | 結果読込・取消、構造列・エネルギー・軌道・振動数・励起状態・最適化ステップ・変位・ログ取得、選択・再生・停止、XYZ保存、表示中の構造を文書の候補にする `apply_structure`、CUBEの差・和 `combine_cubes` |
 | `history_action` | 履歴の走査・取消、ジョブ選択・再利用・結果表示、記録の修復（`repair`: このPCで実行中と記録されたままプロセスが終了したジョブを「中断」に直す）、ごみ箱への移動、絞り込まれた一覧のCSV保存。選んだジョブから次の計算を準備する `continue`（終わらなかった計算の続き）・`restart_hessian`（振動数計算のHessianで遷移状態探索）・`reuse_hessian`（Hessianを再利用した振動数）・`reuse_orbitals`（分子軌道の引き継ぎ）、外部で実行した計算の `import`（`path`: NWChemの出力またはそのフォルダー）と `register`（選んだ「保存のみ」のジョブに戻した `output.out` の登録） |
+
+`results_action(action: "combine_cubes")` は、同じ格子のCUBEに係数を掛けて足し合わせたCUBEを `path` に書き、それを読み込みます（GUI・画面なしとも。[CUBEの差・和](features/results.md#cubeの差和差電子密度)）。`terms` に2〜16個の `{path, factor}` を渡します。差電子密度 ρ(AB) − ρ(A) − ρ(B) は `[{"path": "ab.cube", "factor": 1}, {"path": "a.cube", "factor": -1}, {"path": "b.cube", "factor": -1}]` です。`path` が既にある場合は `overwrite: true` のときだけ置き換えます。`--mcp-allow-dir` は各CUBEと書き出すファイルに適用します。完了は読込と同じくタスクか `get_app_state` で確認します。
 
 GUIのファイル一覧で振動アニメーションを選んだ場合、`get_results.source` は元のステップXYZのパスです。`results_action(action: "reload")` は同じモードの元XYZ群を読み直し、ステップの追加・削除も反映します。
 
@@ -330,7 +332,7 @@ GUI変更は `documentId` と `expectedRevision` を必要とし、`queued` の 
 - 次の操作では、操作が開始した処理が終わるまで `working` のままです。終了時の `result.structuredContent.app` に、該当する `get_app_state` の項目を入れます。
   - `chemistry`（`cancel` 以外）: 整形ワーカーの終了まで
   - `calculation`（`start`）: NWChemの終了・停止まで
-  - `results_action`（`open_file` / `open_directory` / `reload`）: 結果の読込完了まで
+  - `results_action`（`open_file` / `open_directory` / `reload` / `combine_cubes`）: 結果の読込完了まで
   - `history_action`（`scan`）: 履歴の走査完了まで
 - GUIで失敗した操作は、`isError: true` のツール結果を持つ `completed` になります。`failed` はJSON-RPCエラーにだけ使う状態のため、使いません。
 - 実行中に確認ダイアログ（`QMessageBox`）が開き、クライアントがElicitation（form）を宣言している場合は、`input_required` と `inputRequests` を返します。各リクエストは、ダイアログの文言とボタン名の選択肢（`choice`）を持つElicitationです。`tasks/update` で `{"action": "accept", "content": {"choice": "<ボタン名>"}}` を送ると、そのボタンを押します。拒否・取消の場合は、ダイアログの取消ボタン（Esc相当）を押します。

@@ -28,9 +28,29 @@ QString cubeName(const Document &d, const NwchemValidation &v) {
     QString suffix = a["cube_type"].toString("density");
     if (suffix == "orbital")
         suffix = a["cube_spin"].toString("alpha") + "_mo" + QString::number(orbital(d, v));
+    else if (nwchemCubeExcited(suffix))
+        suffix = suffix.section('_', 0, 0) + "_root" + QString::number(nwchemCubeRoot(d));
     return nwchemSettings(d)["start"].toString() + '_' + suffix + ".cube";
 }
+// A file NWChem writes into permanent_dir, as DPLOT reads it (see the vectors in nwchemOutputLines).
+QString dplotFile(const Document &d, const QString &name) {
+    auto path = nwchemPermanentFile(d, name);
+    if (!QDir::isAbsolutePath(path))
+        path.prepend("./");
+    return path;
+}
 } // namespace
+bool nwchemCubeExcited(const QString &type) {
+    return type == "transition_density" || type == "excited_density" || type == "difference_density";
+}
+bool nwchemCubeGradient(const Document &d) {
+    const auto a = nwchemAdvanced(d);
+    return a["cube_output"].toBool() && nwchemSettings(d)["tddft"].toBool() &&
+           (a["cube_type"] == "excited_density" || a["cube_type"] == "difference_density");
+}
+int nwchemCubeRoot(const Document &d) {
+    return nwchemAdvanced(d)["cube_root"].toInt(1);
+}
 qint64 NwchemCubeGrid::points() const {
     return (qint64(divisions[0]) + 1) * (qint64(divisions[1]) + 1) * (qint64(divisions[2]) + 1);
 }
@@ -96,6 +116,30 @@ void validateNwchemOutput(const Document &d, NwchemValidation &v) {
         v.warning("output.frequencies", "advanced:cube_output",
                   tr("可視化ファイル出力前に、振動数計算後の基準構造でHF/DFTエネルギーを再計算します。"));
     if (cube) {
+        if (nwchemCubeExcited(a["cube_type"].toString())) {
+            const int roots = s["tddft_roots"].toInt();
+            if (!s["tddft"].toBool())
+                v.error(
+                    "cube.tddft", "advanced:cube_type",
+                    tr("遷移密度・励起状態の密度・差密度のCUBEには、「2 計算条件」の励起状態（TDDFT）が必要"
+                       "です。"));
+            else if (nwchemCubeRoot(d) > roots)
+                v.error("cube.root", "advanced:cube_root",
+                        tr("励起状態の番号は、求める励起状態の数（%1）以下にしてください。").arg(roots));
+            if (nwchemCubeGradient(d)) {
+                if (v.reference == "rhf" && s["tddft_triplets"].toBool())
+                    v.error(
+                        "cube.triplets", "tddft_triplets",
+                        tr("三重項も求めるTDDFTでは、励起状態の密度・差密度のCUBEを出力できません。三重項を"
+                           "外すか、遷移密度を選んでください。"));
+                v.warning(
+                    "cube.gradient", "advanced:cube_type",
+                    tr("励起状態の密度・差密度は、TDDFTの勾配計算（task tddft gradient）で求めます。一点"
+                       "エネルギーの計算より時間がかかります。"));
+            } else if (v.reference == "rhf" && s["tddft_triplets"].toBool())
+                v.warning("cube.singlet", "advanced:cube_root",
+                          tr("遷移密度は一重項の励起状態のものです。番号は一重項の中で数えます。"));
+        }
         if (a["cube_type"] == "orbital") {
             if (a["cube_spin"] == "beta" && v.reference != "uhf")
                 v.error(
@@ -169,7 +213,11 @@ NwchemGeneratedInput nwchemOutputLines(const Document &d, const NwchemValidation
     }
     if (a["cube_output"].toBool()) {
         NwchemInputBuilder body;
-        body.sourced("\ndplot\n  vectors \"" + vectors + "\"\n", {"cube_output", "vectors_output"}, true);
+        // A density matrix takes the place of the orbitals.
+        if (nwchemCubeGradient(d))
+            body.sourced("\ndplot\n", {"cube_output"}, true);
+        else
+            body.sourced("\ndplot\n  vectors \"" + vectors + "\"\n", {"cube_output", "vectors_output"}, true);
         body.sourced("  limitxyz units angstrom\n", {"cube_output"}, true);
         const auto grid = nwchemCubeGrid(d);
         for (int axis = 0; axis < 3; ++axis) {
@@ -184,10 +232,23 @@ NwchemGeneratedInput nwchemOutputLines(const Document &d, const NwchemValidation
                          keys, true);
         }
         const auto type = a["cube_type"].toString("density");
-        const QMap<QString, QString> spins{{"density", "total"},
-                                           {"alpha_density", "alpha"},
-                                           {"beta_density", "beta"},
-                                           {"spin_density", "spindens"}};
+        const auto start = s["start"].toString();
+        // An excited state: the transition density from TDDFT's CI vectors (of the singlets of a closed
+        // shell), or the density matrices a TDDFT gradient wrote (start.dmat, start.diffdmat).
+        if (type == "transition_density")
+            body.sourced("  civecs \"" +
+                             dplotFile(d, start + (v.reference == "rhf" ? ".civecs_singlet" : ".civecs")) +
+                             "\"\n  root " + QString::number(nwchemCubeRoot(d)) + '\n',
+                         {"cube_output", "cube_type", "cube_root"}, true);
+        else if (type == "excited_density" || type == "difference_density")
+            body.sourced("  densmat \"" +
+                             dplotFile(d, start + (type == "excited_density" ? ".dmat" : ".diffdmat")) +
+                             "\"\n",
+                         {"cube_output", "cube_type", "cube_root"}, true);
+        const QMap<QString, QString> spins{
+            {"density", "total"},           {"alpha_density", "alpha"},      {"beta_density", "beta"},
+            {"spin_density", "spindens"},   {"transition_density", "total"}, {"excited_density", "total"},
+            {"difference_density", "total"}};
         body.sourced("  spin " + (type == "orbital" ? a["cube_spin"].toString("alpha") : spins.value(type)) +
                          '\n',
                      {"cube_output", "cube_type", "cube_spin"}, true);

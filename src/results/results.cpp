@@ -16,10 +16,12 @@
 #include <QHash>
 #include <QJsonDocument>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QTextStream>
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <cstdio>
 #include <numeric>
 #include <optional>
 
@@ -858,6 +860,84 @@ void cubeSurface(ResultData &r, const GridValues &g) {
         "CUBEの値はファイルの単位を使用します。赤が正、青が負です。密度と軌道の区別はタイトル・生成"
         "条件を確認してください。");
 }
+} // namespace
+void combineCubes(const QVector<CubeTerm> &terms, const QString &output) {
+    if (terms.isEmpty() || terms.size() > 16)
+        fail(tr("組み合わせるCUBEは1〜16個で指定してください。"));
+    const QFileInfo target(output);
+    const auto cube = [](const QFileInfo &file) {
+        return file.suffix().compare("cube", Qt::CaseInsensitive) == 0 ||
+               file.suffix().compare("cub", Qt::CaseInsensitive) == 0;
+    };
+    if (!cube(target))
+        fail(tr("書き出すCUBEの拡張子は.cubeまたは.cubにしてください。"));
+    ResultData first;
+    GridValues grid;
+    QVector<double> sum;
+    QStringList parts;
+    for (const auto &term : terms) {
+        const QFileInfo source(term.path);
+        if (!cube(source))
+            fail(tr("CUBEファイル（.cube・.cub）を指定してください: %1").arg(source.fileName()));
+        if (!std::isfinite(term.factor) || std::abs(term.factor) > 1e6)
+            fail(tr("係数は絶対値が10⁶以下の数で指定してください。"));
+        if (source.absoluteFilePath() == target.absoluteFilePath() ||
+            (target.exists() && source.canonicalFilePath() == target.canonicalFilePath()))
+            fail(tr("書き出すファイルには、組み合わせるCUBEとは別のファイルを指定してください。"));
+        ResultData r;
+        r.dataset = term.dataset;
+        const auto values = cubeValues(r, QString::fromUtf8(boundedRead(term.path)));
+        if (sum.isEmpty()) {
+            first = r;
+            grid = values;
+            sum.fill(0, values.values.size());
+        } else if (r.grid != first.grid || (values.origin - grid.origin).cwiseAbs().maxCoeff() > 1e-4 ||
+                   (values.axes - grid.axes).cwiseAbs().maxCoeff() > 1e-5)
+            fail(tr("CUBEの格子が %1 と一致しません: "
+                    "%2。格子点数・原点・間隔が同じCUBEだけを組み合わせられます"
+                    "（「詳細設定」の「軌道ファイル」でX・Y・Zの範囲と分割数を同じ値にして出力し直してくださ"
+                    "い）。")
+                     .arg(QFileInfo(terms.first().path).fileName(), source.fileName()));
+        for (qsizetype i = 0; i < sum.size(); ++i)
+            sum[i] += term.factor * values.values[i];
+        parts << QString("%1%2 %3")
+                     .arg(term.factor < 0 ? "" : "+")
+                     .arg(QString::number(term.factor, 'g', 10), source.fileName());
+    }
+    // Gaussian CUBE: lengths in Bohr, the values of each (x, y) column six to a line.
+    const auto &atoms = first.frames.first().molecule.atoms;
+    QByteArray text = "MolForma combination of CUBE files\n" + parts.join(' ').left(4000).toUtf8() + '\n';
+    text.reserve(text.size() + 400 + 80 * atoms.size() + sum.size() * 14 + sum.size() / 6 + 1000);
+    const auto bohr = [](const Vec &v) { return v / BohrToAngstrom; };
+    const Vec origin = bohr(grid.origin);
+    text +=
+        QString::asprintf("%5d %12.6f %12.6f %12.6f\n", int(atoms.size()), origin.x(), origin.y(), origin.z())
+            .toLatin1();
+    for (int axis = 0; axis < 3; ++axis) {
+        const Vec step = bohr(grid.axes.col(axis));
+        text +=
+            QString::asprintf("%5d %12.6f %12.6f %12.6f\n", first.grid[axis], step.x(), step.y(), step.z())
+                .toLatin1();
+    }
+    for (const auto &atom : atoms) {
+        const int z = element(atom.element).number;
+        const Vec at = bohr(atom.position);
+        text += QString::asprintf("%5d %12.6f %12.6f %12.6f %12.6f\n", z, double(z), at.x(), at.y(), at.z())
+                    .toLatin1();
+    }
+    const int column = first.grid[2];
+    char number[32];
+    for (qsizetype i = 0; i < sum.size(); ++i) {
+        std::snprintf(number, sizeof number, " %13.6E", sum[i]);
+        text += number;
+        if ((i % column) % 6 == 5 || i % column == column - 1)
+            text += '\n';
+    }
+    QSaveFile file(output);
+    if (!file.open(QIODevice::WriteOnly) || file.write(text) != text.size() || !file.commit())
+        fail(tr("CUBEを書き出せません: %1").arg(file.errorString()));
+}
+namespace {
 // The largest amplitudes of an excited state, in the order they had.
 void keepLargest(QVector<ResultContribution> &list) {
     if (list.size() <= ResultExcitation::maxContributions)
@@ -2201,6 +2281,15 @@ int resultWorker(const QString &request, const QString &response) {
     try {
         const auto q = parseJson(boundedRead(request));
         auto path = q["path"].toString();
+        // A combination of CUBE files is written first, then read like any CUBE.
+        if (const auto terms = q["combine"].toArray(); !terms.isEmpty()) {
+            QVector<CubeTerm> combine;
+            for (const auto &value : terms) {
+                const auto term = value.toObject();
+                combine.append({term["path"].toString(), term["factor"].toDouble(), term["dataset"].toInt()});
+            }
+            combineCubes(combine, path);
+        }
         const auto animation = q["animation_files"].toArray();
         if (!animation.isEmpty()) {
             // The loader owns this scratch directory, so cancellation removes the joined file too.

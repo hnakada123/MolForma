@@ -78,6 +78,9 @@ bool cubeOutput(const QJsonObject &a) {
 bool cubeOrbital(const QJsonObject &a) {
     return cubeOutput(a) && a["cube_type"] == "orbital";
 }
+bool cubeExcited(const QJsonObject &a) {
+    return cubeOutput(a) && nwchemCubeExcited(a["cube_type"].toString());
+}
 bool blankAxis(const QJsonObject &a) {
     return cubeOutput(a) && (!a.contains("cube_x") || !a.contains("cube_y") || !a.contains("cube_z"));
 }
@@ -253,13 +256,25 @@ QVector<AdvancedOption> advancedOptionSources() {
                  "計算終了後のHF/KS電子密度または分子軌道を出力します。MP2/CCSDの相関密度は出力しません。")),
         when(cubeOutput, QT_TR_NOOP("CUBE出力がオンのとき"),
              choice("cube_type", "visualization", QT_TR_NOOP("CUBEの内容"), "spin / orbitals view",
-                    QT_TR_NOOP("密度は占有数を反映し、分子軌道は符号付きの軌道関数を出力します。"),
+                    QT_TR_NOOP(
+                        "密度は占有数を反映し、分子軌道は符号付きの軌道関数を出力します。遷移密度と差密度も"
+                        "符号付きです。励起状態の3種類にはTDDFTが必要で、励起状態の密度と差密度はTDDFTの勾配"
+                        "計算（task tddft gradient）で求めます。"),
                     {{"density", QT_TR_NOOP("全電子密度（Alpha + Beta）")},
                      {"alpha_density", QT_TR_NOOP("Alpha電子密度")},
                      {"beta_density", QT_TR_NOOP("Beta電子密度")},
                      {"spin_density", QT_TR_NOOP("スピン密度（Alpha − Beta）")},
-                     {"orbital", QT_TR_NOOP("分子軌道")}},
+                     {"orbital", QT_TR_NOOP("分子軌道")},
+                     {"transition_density", QT_TR_NOOP("遷移密度（TDDFTの励起状態）")},
+                     {"excited_density", QT_TR_NOOP("励起状態の電子密度（TDDFT勾配）")},
+                     {"difference_density", QT_TR_NOOP("差密度（励起状態 − 基底状態、TDDFT勾配）")}},
                     QT_TR_NOOP("全電子密度"))),
+        when(cubeExcited, QT_TR_NOOP("CUBEの内容が励起状態のとき"),
+             numeric(
+                 "cube_root", "visualization", QT_TR_NOOP("励起状態の番号"), "root",
+                 QT_TR_NOOP("TDDFTで求める励起状態の何番目か（1から、エネルギーの低い順）。一重項と三重項を"
+                            "求めるときは一重項の番号です。"),
+                 "1", 1, 1000, true)),
         when(cubeOrbital, QT_TR_NOOP("CUBEの内容が分子軌道のとき"),
              choice("cube_spin", "visualization", QT_TR_NOOP("分子軌道のスピン"), "spin",
                     QT_TR_NOOP("Betaの軌道関数はUHF/UKSで指定できます。制限計算ではAlphaを使ってください。"),

@@ -14,6 +14,13 @@ namespace mf {
 namespace {
 const QRegularExpression animationStep(R"(^(.*)\.m-(\d+)\.s-(\d+)\.xyz$)");
 QStringList sourceFiles(const ResultLoadRequest &request) {
+    // A combination is made of its CUBE files; what it writes is read once it exists.
+    if (!request.combine.isEmpty()) {
+        QStringList paths;
+        for (const auto &term : request.combine)
+            paths << QFileInfo(term.path).absoluteFilePath();
+        return paths;
+    }
     const QFileInfo source(request.path);
     if (!request.animation)
         return {source.absoluteFilePath()};
@@ -136,9 +143,15 @@ void ResultLoader::start(const ResultLoadRequest &q) {
     if (!work->isValid())
         fail(tr("一時フォルダーを作成できません。"));
     const auto paths = sourceFiles(q);
-    const auto path = paths.first();
+    const bool combined = !q.combine.isEmpty();
+    const auto path = combined ? QFileInfo(q.path).absoluteFilePath() : paths.first();
     // Keep the single-file stamp compatible with the orbital cache.
-    const auto stamp = q.animation ? sourceStamp(paths) : resultSourceStamp(path);
+    const auto stamp = q.animation || combined ? sourceStamp(paths) : resultSourceStamp(path);
+    QJsonArray terms;
+    for (const auto &term : q.combine)
+        terms.append(QJsonObject{{"path", QFileInfo(term.path).absoluteFilePath()},
+                                 {"factor", term.factor},
+                                 {"dataset", term.dataset}});
     const auto request = work->filePath("request.json"), response = work->filePath("result.bin");
     if (!cache || q.reread)
         cache = std::make_unique<QTemporaryDir>();
@@ -152,6 +165,7 @@ void ResultLoader::start(const ResultLoadRequest &q) {
                         {"normalization", q.normalization},
                         {"orbital_divisions", q.divisions},
                         {"animation_files", q.animation ? QJsonArray::fromStringList(paths) : QJsonArray{}},
+                        {"combine", terms},
                         {"cache", cache->isValid() && !q.animation ? cache->path() : QString()}})
             .toJson());
     scratch = std::move(work);
@@ -165,7 +179,7 @@ void ResultLoader::start(const ResultLoadRequest &q) {
         emit failed(message);
     });
     connect(p, &QProcess::finished, this,
-            [this, p, q, paths, path, stamp, response](int code, QProcess::ExitStatus status) {
+            [this, p, q, paths, path, stamp, response, combined](int code, QProcess::ExitStatus status) {
                 if (process != p)
                     return;
                 ResultData data;
@@ -176,8 +190,8 @@ void ResultLoader::start(const ResultLoadRequest &q) {
                                  ? QString::fromUtf8(readFile(response + ".error"))
                                  : tr("結果の読込プロセスが失敗しました。"));
                     if (stamp.isEmpty() ||
-                        (q.animation ? sourceFiles(q) != paths || sourceStamp(paths) != stamp
-                                     : resultSourceStamp(path) != stamp))
+                        (q.animation || combined ? sourceFiles(q) != paths || sourceStamp(paths) != stamp
+                                                 : resultSourceStamp(path) != stamp))
                         fail(tr("読込中にファイルが更新されました。再読込してください。"));
                     data = loadResultData(response);
                 } catch (const std::exception &e) {
@@ -186,7 +200,7 @@ void ResultLoader::start(const ResultLoadRequest &q) {
                 // Release before notifying: a receiver may immediately request another orbital/file.
                 release();
                 if (error.isEmpty())
-                    emit loaded(std::move(data), stamp);
+                    emit loaded(std::move(data), combined ? resultSourceStamp(path) : stamp);
                 else
                     emit failed(error);
             });

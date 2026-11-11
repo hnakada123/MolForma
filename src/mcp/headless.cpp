@@ -82,13 +82,16 @@ QJsonArray McpHeadless::tools() const {
         .name = "results_action",
         .title = "Load results",
         .description =
-            "Open a result file or calculation directory, reload it, or cancel loading. Loading runs "
-            "in a cancellable process and never changes the document; follow the task or poll "
-            "get_app_state.",
-        .properties = {{"action",
-                        QJsonObject{{"type", "string"},
-                                    {"enum", QJsonArray{"open_file", "open_directory", "reload", "cancel"}}}},
-                       {"path", text}},
+            "Open a result file or calculation directory, reload it, or cancel loading. combine_cubes "
+            "writes the sum of CUBE files times their factors (terms; a difference density) to path and "
+            "loads it (overwrite replaces an existing file). Loading runs in a cancellable process and "
+            "never changes the document; follow the task or poll get_app_state.",
+        .properties = {{"action", QJsonObject{{"type", "string"},
+                                              {"enum", QJsonArray{"open_file", "open_directory", "reload",
+                                                                  "cancel", "combine_cubes"}}}},
+                       {"path", text},
+                       {"terms", cubeTermsSchema()},
+                       {"overwrite", QJsonObject{{"type", "boolean"}}}},
         .required = {"action"},
         .mutation = true,
         .output = work,
@@ -170,6 +173,25 @@ QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
                 {"action", action},
                 {"workId", runWork},
                 {"calculation", calculationJson(run, saved.directory)}};
+    }
+    if (action == "combine_cubes") {
+        const auto output = args["path"].toString();
+        if (output.isEmpty())
+            fail("Specify path: the CUBE file to write.");
+        const auto terms = cubeTerms(args["terms"]);
+        for (const auto &term : terms)
+            policy.checkPath(term.path);
+        policy.checkPath(output);
+        if (QFileInfo::exists(output) && !args["overwrite"].toBool())
+            fail("The file exists: " + output + ". Pass overwrite to replace it.");
+        cancelLoad("Superseded by a newer load.");
+        loadWork = "results-" + QString::number(++nextWork);
+        loadAction = action;
+        ResultLoadRequest request{output};
+        request.combine = terms;
+        loader.start(request);
+        loadMessage = "Combining CUBE files into " + output;
+        return {{"tool", name}, {"action", action}, {"workId", loadWork}, {"results", state()["results"]}};
     }
     if (action == "cancel") {
         cancelLoad("Loading was cancelled; the previous result is kept.");

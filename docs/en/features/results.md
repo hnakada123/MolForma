@@ -82,6 +82,20 @@ Limits are 4000 basis functions, 10,000 primitives, 100 primitives per shell and
 
 References for the conventions: [MOLDEN format](https://www.theochem.ru.nl/molden/molden_format.html), [MOLDEN normalization in NWChem](https://nwchemgit.github.io/Properties.html#moldenfile).
 
+## Combining CUBE files (difference densities)
+
+“Combine CUBE files…” on the “CUBE / isosurface” tab adds CUBE files of the grid of the one shown, each multiplied by a factor, saves the sum as a new CUBE and shows it. For the difference density ρ(AB) − ρ(A) − ρ(B), which shows how bonding moves electrons, give the CUBE of the complex +1 and those of the parts −1.
+
+1. For the complex and each part, turn on “Write CUBE file” (total density) in “2 Calculation → Orbitals and output files” with the same X, Y and Z ranges and divisions, and run them. Calculate each part at the coordinates it has in the complex (keeping only its atoms).
+2. Open the CUBE of the complex and press “Combine CUBE files…” on “CUBE / isosurface”. The first row holds the CUBE shown, with factor +1.
+3. Choose the CUBE files of the parts with “Add CUBE…” (they come with factor −1; change it if needed).
+4. Check where it is saved and press “Create and show”.
+
+- Only CUBE files with the same points, origin and spacing can be combined (origins within 10⁻⁴ Å and spacings within 10⁻⁵ Å count as the same). The default grid follows the coordinates of the molecule, so different structures do not match. Nothing is interpolated.
+- The atoms written are those of the first CUBE, and each file contributes its chosen dataset (the first one, except for the first row). 2 to 16 CUBE files, factors of absolute value up to 10⁶. The second line records the combination (`+1 ab.cube -1 a.cube -1 b.cube`).
+- It runs in the same separate process as result loading and can be cancelled. A file being combined cannot be the one written; an existing file is replaced only after confirmation.
+- The difference between a TDDFT excited state and the ground state can also be written by NWChem directly ([Writing densities of excited states](advanced.md#writing-densities-of-excited-states)).
+
 ## Example: generating CUBE and MOLDEN files with NWChem
 
 In the GUI, enabling CUBE and MOLDEN output under “Orbitals and output files” in “2 Calculation” generates the directives automatically. If you edit the input by hand outside MolForma, add directives like the following after the SCF/DFT orbitals are computed. The example is for HF with the calculation name `water`, the orbital file `water.movecs` and Alpha orbital 5. Adjust the calculation, orbital number, file names and spatial range to your case. For DFT, change `task scf property` to `task dft property`.

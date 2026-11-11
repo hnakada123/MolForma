@@ -27,7 +27,7 @@ MolFormaはNWChem向けの分子作成・座標編集・計算入力作成・実
 | 2 | [「1 分子」の右側のページ](features/molecule_pages.md) | 1 分子 | 編集・変形・属性・配位・残基・電荷、構造ツール（xTBでの最適化を含む）、配座セットの保存と一括評価 |
 | 3 | [座標の表](features/coordinates.md) | 1 分子 | 座標と属性の表の編集、構造ファイルの読込・書き出し、NWChemの座標ブロックへの出力 |
 | 4 | [「2 計算条件」](features/calculation.md) | 2 計算条件 | 手法・基底・溶媒・相対論、遷移状態・IRC・NEB・拘束・スキャン、分光・物性格子・BSSE、入力取込と診断 |
-| 5 | [詳細設定とCUBE・MOLDEN出力](features/advanced.md) | 2 計算条件 | 各セクションの「詳細設定」（56項目）、適用範囲と優先順位、CUBE・MOLDENファイルの出力 |
+| 5 | [詳細設定とCUBE・MOLDEN出力](features/advanced.md) | 2 計算条件 | 各セクションの「詳細設定」（57項目）、適用範囲と優先順位、CUBE・MOLDENファイルの出力 |
 | 6 | [「3 実行設定」](features/execution.md) | 3 実行設定 | NWChem・MPIの起動条件、キューの登録・逐次実行・前の計算からの連鎖、実行パネルとログ、失敗原因の案内 |
 | 7 | [「4 入力プレビュー」](features/input_preview.md) | 4 入力プレビュー | 生成したNWChem入力の表示、入力の構成と編集元、書出し用と実行時の入力、コピー・書き出し |
 | 8 | [「結果ビューア」](features/results.md) | 結果ビューア | 構造・軌道・振動、NEBの経路、NMR・ラマン・ESR・ECD・ORD、物性3D・格子断面、図と動画の書き出し、再計算の準備 |

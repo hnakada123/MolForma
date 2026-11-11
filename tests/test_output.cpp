@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+#include "model/i18n.h"
 #include "model/units.h"
 #include "nwchem/nwchem_output.h"
 #include "results/molden_orbitals.h"
+#include "results/result_loader.h"
 #include "ui/calculation_panel.h"
 #include "ui/execution_panel.h"
 #include "ui/input_preview_panel.h"
@@ -254,6 +256,119 @@ class OutputTest : public QObject {
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(h));
         setNwchemAdvanced(h, "cube_orbital", "lumo");
         QVERIFY(nwchemInput(h).contains("orbitals view; 1; 1"));
+    }
+    // CUBEs of an excited state of TDDFT: its transition density from the CI vectors, its density and
+    // the difference from the ground state from the density matrices of a TDDFT gradient.
+    void excitedStateDensities() {
+        auto d = water();
+        base(d, "method", "dft");
+        setNwchemAdvanced(d, "cube_output", true);
+        setNwchemAdvanced(d, "cube_type", "transition_density");
+        QVERIFY(validateNwchem(d).errors.join('\n').contains(tr("励起状態（TDDFT）が必要")));
+        base(d, "tddft", true);
+        base(d, "tddft_roots", 3);
+        auto input = nwchemInput(d);
+        QVERIFY2(input.contains("tddft\n  nroots 3\n  notriplet\n  civecs\nend\n"), qPrintable(input));
+        QVERIFY(input.contains("task tddft energy"));
+        QVERIFY(input.contains("dplot\n  vectors \"./molforma.movecs\"\n"));
+        QVERIFY(input.contains("  civecs \"./molforma.civecs_singlet\"\n  root 1\n"));
+        QVERIFY(input.contains(
+            "spin total\n  gaussian\n  output molforma_transition_root1.cube\nend\ntask dplot"));
+        QVERIFY(input.indexOf("task tddft energy") < input.indexOf("task dplot"));
+        setNwchemAdvanced(d, "cube_root", 4);
+        QVERIFY(validateNwchem(d).errors.join('\n').contains("（3）"));
+        setNwchemAdvanced(d, "cube_root", 2);
+        QVERIFY(nwchemOutputFiles(d, validateNwchem(d)).contains("molforma_transition_root2.cube"));
+        // The density of the state and its difference from the ground state need its gradient.
+        setNwchemAdvanced(d, "cube_type", "excited_density");
+        input = nwchemInput(d);
+        QVERIFY2(input.contains("  civecs\n  target 2\n  grad\n    root 2\n  end\nend\n"), qPrintable(input));
+        QVERIFY(input.contains("task tddft gradient") && !input.contains("task tddft energy"));
+        QVERIFY(input.contains("dplot\n  limitxyz") && input.contains("  densmat \"./molforma.dmat\"\n"));
+        QVERIFY(input.contains("output molforma_excited_root2.cube"));
+        QVERIFY(validateNwchem(d).warnings.join('\n').contains("task tddft gradient"));
+        setNwchemAdvanced(d, "cube_type", "difference_density");
+        input = nwchemInput(d);
+        QVERIFY(input.contains("  densmat \"./molforma.diffdmat\"\n") &&
+                input.contains("output molforma_difference_root2.cube"));
+        // A permanent folder holds what NWChem writes there.
+        setNwchemAdvanced(d, "permanent_dir", "perm");
+        QVERIFY(nwchemInput(d).contains("  densmat \"./perm/molforma.diffdmat\"\n"));
+        setNwchemAdvanced(d, "permanent_dir", QJsonValue(QJsonValue::Undefined));
+        // Triplets beside the singlets: a gradient would not know which state; the transition density is
+        // that of a singlet.
+        base(d, "tddft_triplets", true);
+        QVERIFY(validateNwchem(d).errors.join('\n').contains(tr("三重項")));
+        setNwchemAdvanced(d, "cube_type", "transition_density");
+        QVERIFY(validateNwchem(d).errors.isEmpty());
+        QVERIFY(validateNwchem(d).warnings.join('\n').contains(tr("一重項")));
+        // An open shell writes one file of CI vectors.
+        base(d, "tddft_triplets", false);
+        d.charge = 1;
+        d.multiplicity = 2;
+        QVERIFY2(nwchemInput(d).contains("  civecs \"./molforma.civecs\"\n  root 2\n"),
+                 qPrintable(nwchemInput(d)));
+        // Without the CUBE, TDDFT is written as before.
+        setNwchemAdvanced(d, "cube_output", false);
+        input = nwchemInput(d);
+        QVERIFY(!input.contains("civecs") && input.contains("task tddft energy"));
+    }
+    // A difference density: CUBE files of one grid added with factors, read by the viewer's reader.
+    void combinedCubes() {
+        QTemporaryDir dir;
+        const auto header = [](const QString &origin) {
+            return "title\ncomment\n    1 " + origin + "\n    2 1 0 0\n    2 0 1 0\n    3 0 0 1\n" +
+                   "    1 1.0 0 0 0\n";
+        };
+        writeFile(dir.filePath("ab.cube"), (header("0 0 0") + "1 2 3\n4 5 6\n7 8 9\n10 11 12\n").toUtf8());
+        writeFile(dir.filePath("a.cube"), (header("0 0 0") + "1 1 1\n1 1 1\n1 1 1\n1 1 1\n").toUtf8());
+        writeFile(dir.filePath("b.cube"), (header("0 0 0") + "0 1 0\n0 1 0\n0 1 0\n0 1 0\n").toUtf8());
+        writeFile(dir.filePath("shifted.cube"),
+                  (header("0 0 0.5") + "0 0 0\n0 0 0\n0 0 0\n0 0 0\n").toUtf8());
+        const auto out = dir.filePath("difference.cube");
+        combineCubes(
+            {{dir.filePath("ab.cube"), 1}, {dir.filePath("a.cube"), -1}, {dir.filePath("b.cube"), -1}}, out);
+        const auto data = readResult(out, .5);
+        QCOMPARE(data.format, QString("CUBE"));
+        QCOMPARE(data.values, (QVector<double>{0, 0, 2, 3, 3, 5, 6, 6, 8, 9, 9, 11}));
+        QCOMPARE(data.grid, (std::array<int, 3>{2, 2, 3}));
+        QVERIFY(readFile(out).split('\n')[1].contains("+1 ab.cube -1 a.cube -1 b.cube"));
+        // Another grid, the output among the inputs, other files are refused.
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, combineCubes({{dir.filePath("ab.cube"), 1},
+                                                                   {dir.filePath("shifted.cube"), -1}},
+                                                                  dir.filePath("x.cube")));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 combineCubes({{out, 1}, {dir.filePath("a.cube"), -1}}, out));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 combineCubes({{dir.filePath("ab.cube"), 1}}, dir.filePath("x.xyz")));
+        // The cancellable reader makes it before reading it.
+        ResultLoader loader;
+        QSignalSpy loaded(&loader, &ResultLoader::loaded), failed(&loader, &ResultLoader::failed);
+        ResultLoadRequest request{dir.filePath("sum.cube"), .5};
+        request.combine = {{dir.filePath("a.cube"), 2}, {dir.filePath("b.cube"), .5}};
+        loader.start(request);
+        QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty() || !failed.isEmpty(), 30000);
+        QVERIFY2(failed.isEmpty(), failed.isEmpty() ? "" : qPrintable(failed[0][0].toString()));
+        const auto sum = loaded[0][0].value<ResultData>();
+        QCOMPARE(sum.values[1], 2.5);
+        QCOMPARE(QFileInfo(sum.source).fileName(), QString("sum.cube"));
+        request.combine = {{dir.filePath("ab.cube"), 1}, {dir.filePath("shifted.cube"), -1}};
+        request.path = dir.filePath("bad.cube");
+        loader.start(request);
+        QTRY_VERIFY_WITH_TIMEOUT(failed.size() == 1, 30000);
+        QVERIFY(failed[0][0].toString().contains("shifted.cube"));
+        QVERIFY(!QFileInfo::exists(dir.filePath("bad.cube")));
+        // The result viewer shows it.
+        MainWindow w;
+        auto *panel = w.resultsPanel();
+        panel->openFile(dir.filePath("ab.cube"));
+        QTRY_VERIFY_WITH_TIMEOUT(!panel->loading(), 30000);
+        QVERIFY(w.findChild<QPushButton *>("resultsCombineCubes")->isEnabled());
+        panel->combineCubes({{dir.filePath("ab.cube"), 1}, {dir.filePath("a.cube"), -1}},
+                            dir.filePath("ui.cube"));
+        QTRY_VERIFY_WITH_TIMEOUT(!panel->loading(), 30000);
+        QCOMPARE(QFileInfo(panel->result().source).fileName(), QString("ui.cube"));
+        QCOMPARE(panel->result().values[11], 11.0);
     }
     void validationAndPreservation() {
         auto d = water();

@@ -35,6 +35,10 @@ QJsonObject calculationJson(const NwchemRun &run, const QString &savedBundle,
 bool calculationQueueAction(NwchemQueue &queue, const QJsonObject &args);
 // get_results: summary plus one paginated section of the loaded result.
 QJsonObject resultsJson(const ResultData &result, const QJsonObject &args, QJsonObject summary);
+// results_action combine_cubes: the schema of its "terms" ([{path, factor}]) and the terms they give
+// (2–16 CUBE files with finite factors).
+QJsonObject cubeTermsSchema();
+QVector<CubeTerm> cubeTerms(const QJsonValue &terms);
 
 // Calculation output and result resources, offered by both MCP modes.
 QJsonArray runtimeResources();

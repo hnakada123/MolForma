@@ -196,6 +196,16 @@ class NwchemLog {
 ResultData readResult(const QString &path, double isovalue = .03, int dataset = 0, int orbital = -1,
                       const QString &normalization = "auto", int orbitalDivisions = 40,
                       const QString &cacheFolder = {});
+// A term of a combination of CUBE files: factor × a dataset of a CUBE file.
+struct CubeTerm {
+    QString path;
+    double factor = 1;
+    int dataset = 0;
+};
+// Writes the sum of the terms to output, a Gaussian CUBE with one dataset: a difference density
+// ρ(AB) − ρ(A) − ρ(B) is +1 × AB, −1 × A, −1 × B. The files must share their grid (points, origin and
+// spacing); the atoms written are those of the first. Fails otherwise, or when output is one of them.
+void combineCubes(const QVector<CubeTerm> &terms, const QString &output);
 void saveResultData(const QString &path, const ResultData &data);
 ResultData loadResultData(const QString &path);
 int resultWorker(const QString &request, const QString &response);

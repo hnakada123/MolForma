@@ -2370,6 +2370,27 @@ class McpTest : public QObject {
         QVERIFY(
             data(processCall(process, "get_app_state"))["results"].toObject()["message"].toString().contains(
                 "虚振動 1個（−10 cm⁻¹未満 1個）"));
+        // A difference of CUBE files of one grid is written and loaded like a file.
+        const QString cubeHead =
+            "t\nc\n    1 0 0 0\n    2 1 0 0\n    2 0 1 0\n    2 0 0 1\n    1 1.0 0 0 0\n";
+        writeFile(files.filePath("ab.cube"), (cubeHead + "1 2 3 4 5 6 7 8\n").toUtf8());
+        writeFile(files.filePath("a.cube"), (cubeHead + "1 1 1 1 1 1 1 1\n").toUtf8());
+        const QJsonArray terms{QJsonObject{{"path", files.filePath("ab.cube")}, {"factor", 1}},
+                               QJsonObject{{"path", files.filePath("a.cube")}, {"factor", -1}}};
+        const auto difference = files.filePath("difference.cube");
+        loaded =
+            task("results_action", {{"action", "combine_cubes"}, {"path", difference}, {"terms", terms}});
+        QCOMPARE(loaded["final"].toObject()["status"].toString(), QString("completed"));
+        QCOMPARE(data(processCall(process, "get_app_state"))["results"].toObject()["source"].toString(),
+                 QFileInfo(difference).absoluteFilePath());
+        QVERIFY(readFile(difference).contains(" 0.000000E+00  1.000000E+00\n  2.000000E+00"));
+        // An existing file is replaced only when asked.
+        QVERIFY(failed(processCall(process, "results_action",
+                                   {{"action", "combine_cubes"}, {"path", difference}, {"terms", terms}})));
+        QVERIFY(failed(processCall(process, "results_action",
+                                   {{"action", "combine_cubes"},
+                                    {"path", files.filePath("one.cube")},
+                                    {"terms", QJsonArray{terms[0]}}})));
         process.closeWriteChannel();
         QVERIFY(process.waitForFinished(10000));
         // By default a headless server runs only nwchem/mpirun from PATH without overrides.

@@ -4,7 +4,7 @@ This page describes the “Advanced settings” of each section of “2 Calculat
 
 ## Advanced settings (“Advanced settings” in each section)
 
-The 8 groups and 56 settings passed directly to NWChem blocks are set by opening “Advanced settings” (followed by the number of settings and of changes) below the card of the related section. “SCF and correlation” has “HF / reference SCF”, “DFT” and “MP2 / CCSD”; “Optimization and frequencies” has “DRIVER optimization” and “Frequencies, thermochemistry”; “Environment” has “COSMO”; and “Orbitals and output files” has “Orbitals and files” and “CUBE / MOLDEN output”. “Orbitals and output files” contains only advanced settings, so they are open from the start. Settings not used in the current calculation are hidden; “Also show settings not used in this calculation (n)” shows them. “Changed n” in the left list, “Reset section to default”, “Reset all”, and the “Changed” filter and the search at the top also cover the advanced settings.
+The 8 groups and 57 settings passed directly to NWChem blocks are set by opening “Advanced settings” (followed by the number of settings and of changes) below the card of the related section. “SCF and correlation” has “HF / reference SCF”, “DFT” and “MP2 / CCSD”; “Optimization and frequencies” has “DRIVER optimization” and “Frequencies, thermochemistry”; “Environment” has “COSMO”; and “Orbitals and output files” has “Orbitals and files” and “CUBE / MOLDEN output”. “Orbitals and output files” contains only advanced settings, so they are open from the start. Settings not used in the current calculation are hidden; “Also show settings not used in this calculation (n)” shows them. “Changed n” in the left list, “Reset section to default”, “Reset all”, and the “Changed” filter and the search at the top also cover the advanced settings.
 
 ![“Advanced settings” of “SCF and correlation” opened: the rows of the DFT group, with 1e-08 entered as the energy convergence threshold and the state “Applied”. The empty fields of the other rows show the values used and where they come from](images/advanced/01_advanced.png)
 
@@ -23,7 +23,7 @@ Clicking a row or working in its field shows the name, keyword, state and descri
 | Frequencies, thermochemistry (4 settings, Optimization and frequencies) | 1–20 temperatures, `fd_delta` of the numerical Hessian, `hessian thresh` of the analytic Hessian, XYZ output of the vibrational modes |
 | COSMO (4 settings, Environment) | Surface tessellation `minbem`, initial polyhedron `ificos`, dielectric screening `screen`, surface charge width `zeta` |
 | Orbitals and files (6 settings, Orbitals and output files) | Initial orbitals from atomic densities / one-electron Hamiltonian / existing movecs, input and output movecs, `scratch_dir` and `permanent_dir`, `echo` |
-| CUBE / MOLDEN output (13 settings, Orbitals and output files) | Enabling CUBE and MOLDEN, density, orbital, spin and orbital number, CUBE name, grid range and divisions, MOLDEN normalization |
+| CUBE / MOLDEN output (14 settings, Orbitals and output files) | Enabling CUBE and MOLDEN, density, orbital, spin and orbital number, transition density, density and difference density of an excited state and its number, CUBE name, grid range and divisions, MOLDEN normalization |
 
 Numbers accept exponent notation such as `1e-8` / `1D-8`. A blank value or “Default” removes the explicit setting and uses the calculation settings above or NWChem's default. When a value is committed, its type, finiteness, range and consistency with the method are checked, and only valid settings are used to generate the input. Invalid values in progress can be saved to the project, but no input can be written while a setting in use has an error. Per-setting reset buttons, section and global resets, and the shared undo/redo are supported. Ctrl+S also commits the value being edited before saving.
 
@@ -51,7 +51,7 @@ References: [HF](https://nwchemgit.github.io/Hartree-Fock-Theory-for-Molecules.h
 
 1. In the left list of “2 Calculation”, select “Orbitals and output files”. The “CUBE / MOLDEN output” settings are shown from the start.
 2. Turn on “Write CUBE file”, “Write MOLDEN file” or both. Both can be written at the same time.
-3. For CUBE, choose from “Total density (Alpha + Beta)”, “Alpha density”, “Beta density”, “Spin density (Alpha − Beta)” and “Molecular orbitals”. For a molecular orbital, choose Alpha/Beta and HOMO/LUMO/a number. Numbers start at 1. Beta orbitals are used with UHF/UKS.
+3. For CUBE, choose from “Total density (Alpha + Beta)”, “Alpha density”, “Beta density”, “Spin density (Alpha − Beta)”, “Molecular orbitals”, “Transition density (TDDFT excited state)”, “Excited-state electron density (TDDFT gradient)” and “Difference density (excited − ground state, TDDFT gradient)”. For a molecular orbital, choose Alpha/Beta and HOMO/LUMO/a number. Numbers start at 1. Beta orbitals are used with UHF/UKS. The three excited-state kinds take the “Excited state” number ([Writing densities of excited states](#writing-densities-of-excited-states)).
 4. Check the post-calculation `property` and `dplot` directives in “4 Input preview”, then run the calculation with “Run calculation” (F5) in the header.
 5. When it finishes, open the job with “View results” in the run panel (“Calculation → Run status and log”) and choose the CUBE or MOLDEN file in the file list; it is loaded and displayed automatically.
 
@@ -65,13 +65,31 @@ MOLDEN writes `<calculation name>.molden`, and CUBE writes `<calculation name>_<
 
 For the MOLDEN basis normalization, choose “NWChem convention” (default) or “Unnormalized (NONE)”. **Choose NONE when exporting to programs that expect standard MOLDEN coefficients.** The NWChem convention embeds primitive normalization factors in the basis coefficients. Reading those coefficients as standard MOLDEN applies the factors twice and changes orbital shapes and amplitudes. NONE writes the input basis coefficients unchanged; it does not disable molecular orbital normalization. MolForma's result viewer supports both conventions.
 
-The orbitals and densities written are those of the HF/KS reference wavefunction; MP2/CCSD correlated densities and natural orbitals are not supported. After a frequency calculation, the HF/DFT energy is recomputed at the reference structure and its orbitals are written. HOMO/LUMO numbers are determined from the electron count, multiplicity, ECPs and spin; fractional occupations and excited states are not handled. Specifying an orbital number that does not exist (for example with a minimal basis set) causes an error when NWChem runs. DPLOT CUBE output under “Orbitals and output files” is one file with one content per calculation, and GUI output for structures containing ghost centers is not supported.
+The orbitals and densities written are those of the HF/KS reference wavefunction; MP2/CCSD correlated densities and natural orbitals are not supported. After a frequency calculation, the HF/DFT energy is recomputed at the reference structure and its orbitals are written. HOMO/LUMO numbers are determined from the electron count, multiplicity, ECPs and spin; fractional occupations are not handled (excited states through the transition density, density and difference density above). Specifying an orbital number that does not exist (for example with a minimal basis set) causes an error when NWChem runs. DPLOT CUBE output under “Orbitals and output files” is one file with one content per calculation, and GUI output for structures containing ghost centers is not supported.
 
 NWChem writes the files themselves. NWChem 7.3.1 writes an orbital CUBE as a single scalar field with a positive atom count, rather than Gaussian's multiple-orbital representation with a negative atom count and an orbital-number list. Check the file name and generated input for the orbital number and spin. Coordinates are in Bohr, densities in electrons/bohr³ and orbital amplitudes in bohr⁻³ᐟ².
 
 The settings are saved in the project and support the shared undo/redo, resets and reuse from History. When output is turned off, the grid, orbital and other settings are kept as pending and used again when it is turned back on. Applying a calculation preset keeps the output settings. Opening a MOLDEN file shows molecular orbitals from the basis set and MO coefficients. Molecular orbital CUBE files can be used as well.
 
 References: [NWChem DPLOT](https://nwchemgit.github.io/DPLOT.html), [Properties / MOLDENFILE](https://nwchemgit.github.io/Properties.html#moldenfile).
+
+### Writing densities of excited states
+
+For an energy calculation with “Excited states (TDDFT)” of “2 Calculation” turned on, the CUBE contents offer three kinds of an excited state. “Excited state” is the number of the state among those the TDDFT computes, in order of energy (from 1 up to their number).
+
+| CUBE contents | NWChem directives | File written |
+| --- | --- | --- |
+| Transition density | `civecs` in `tddft` writes the CI vectors; `dplot` computes it with `civecs <name>.civecs_singlet` (`<name>.civecs` for an open shell) and `root` | `<name>_transition_root<n>.cube` |
+| Excited-state electron density | `civecs`, `target` and `grad` (`root`) in `tddft` with `task tddft gradient`; `dplot` reads the density matrix `<name>.dmat` the gradient writes with `densmat` | `<name>_excited_root<n>.cube` |
+| Difference density (excited − ground state) | `densmat` reads the `<name>.diffdmat` of the same gradient | `<name>_difference_root<n>.cube` |
+
+- Transition and difference densities are signed; the result viewer shows positive values red and negative ones blue. The transition density integrates to about 0, the difference density to 0 (apart from what lies outside the grid), and the excited-state density to the number of electrons.
+- The excited-state and difference densities need the TDDFT gradient (a relaxed density with the Z-vector), which takes longer than an energy. The task stays an energy; `task tddft energy` of the input becomes `task tddft gradient`.
+- For a closed shell with triplets as well, the transition density counts the singlets. The excited-state and difference densities cannot be written, since the state would be ambiguous.
+- The CI vector file (`civecs`) grows with the number of states.
+- Other differences, such as between the ground state and another excited state, can be made from CUBE files of one grid with “Combine CUBE files…” of the result viewer ([Combining CUBE files](results.md#combining-cube-files-difference-densities)).
+
+On 2026-11-11, with NWChem 7.3.1 (2 MPI processes), the three kinds and the total density of the first excited state of a B3LYP/6-31G* TDDFT of water (3 states) were written: the transition density integrated to −0.0003, the excited-state density to 9.77 (total density 9.78), and NWChem’s difference density differed from “excited-state density − total density” by at most 4×10⁻⁴ (largest difference density 0.33). The transition and difference densities of an open shell (the OH radical, UKS) were written as well.
 
 ### Writing ESP and field grids alongside a surface
 

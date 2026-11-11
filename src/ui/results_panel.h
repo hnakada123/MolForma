@@ -46,6 +46,9 @@ class ResultsPanel : public QWidget {
     ~ResultsPanel() override;
     void openFile(const QString &path);
     void openDirectory(const QString &path);
+    // Writes the sum of CUBE files times their factors (a difference density) to output and shows it:
+    // the files share one grid (combineCubes). Runs in the cancellable reader, like a load.
+    void combineCubes(const QVector<CubeTerm> &terms, const QString &output);
     void cancelLoad();
     bool loading() const {
         return loader.active();
@@ -156,7 +159,7 @@ class ResultsPanel : public QWidget {
     QWidget *orbitalOptions; // Isovalue, grid and normalization: only for a MOLDEN file.
     QLineEdit *isovalue, *orbitalIso;
     QPushButton *openMolden; // A log's orbitals: their shapes from the MOLDEN file of the same job.
-    QPushButton *energyReference, *applyIso;
+    QPushButton *energyReference, *applyIso, *combineCube;
     int referenceEnergy = -1;          // Row of data.energies that ΔE refers to (-1: the last energy).
     int orbitalLoad = -1;              // Orbital of the shown file being read (-1: another load).
     QVector<ResultModeKind> modeKinds; // Of data.modes: vibrations, translations and rotations.
@@ -178,7 +181,8 @@ class ResultsPanel : public QWidget {
     QVector<QVector<int>> pinned;
     void startLoad(const QString &path, double iso, int channel, int orbital = -1,
                    const QString &normalization = "auto", int divisions = 40, bool reuseOrbital = false,
-                   bool animation = false, bool reread = false);
+                   bool animation = false, bool reread = false, const QVector<CubeTerm> &combine = {});
+    void showCombineDialog();
     void renderOrbital(int orbital);
     void cacheOrbital();
     void display(bool orbitalOnly = false);

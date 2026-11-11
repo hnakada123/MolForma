@@ -325,13 +325,16 @@ QJsonArray McpGui::tools() const {
     result.append(resultsTool().definition());
     add("results_action", "Control result viewer",
         "Open/cancel/reload results; select frame/mode/orbital; play/stop vibration or trajectory; export "
-        "current geometry. indices are zero-based. These change only the viewer, except apply_structure: it "
+        "current geometry; combine_cubes writes the sum of CUBE files times their factors (terms; a "
+        "difference density) to path and shows it (overwrite replaces an existing file). indices are "
+        "zero-based. These change only the viewer, except apply_structure: it "
         "proposes the displayed geometry (same atoms in the same order, fixed atoms unmoved) as a candidate "
         "for the document; confirm it with history. See get_results for load errors and status.",
-        {{"action",
-          choice({"open_file", "open_directory", "reload", "cancel", "select_frame", "select_mode",
-                  "select_orbital", "play_mode", "play_frames", "stop", "save_xyz", "apply_structure"})},
+        {{"action", choice({"open_file", "open_directory", "reload", "cancel", "select_frame", "select_mode",
+                            "select_orbital", "play_mode", "play_frames", "stop", "save_xyz",
+                            "apply_structure", "combine_cubes"})},
          {"path", type("string")},
+         {"terms", cubeTermsSchema()},
          {"index", integer(0, 1000000)},
          {"amplitude", QJsonObject{{"type", "number"}, {"minimum", .01}, {"maximum", 2}}},
          {"overwrite", boolean}},
@@ -614,8 +617,8 @@ std::optional<QJsonObject> McpGui::task(const QString &commandId) const {
     } else if (tool == "calculation" && action == "start") {
         section = "calculation";
         busy = app["calculation"].toObject()["active"].toBool();
-    } else if (tool == "results_action" &&
-               (action == "open_file" || action == "open_directory" || action == "reload")) {
+    } else if (tool == "results_action" && (action == "open_file" || action == "open_directory" ||
+                                            action == "reload" || action == "combine_cubes")) {
         section = "results";
         busy = app["results"].toObject()["loading"].toBool();
     } else if (tool == "history_action" && action == "scan") {
@@ -653,7 +656,8 @@ bool McpGui::cancel(const QString &commandId) {
         return true;
     }
     if (tool == "results_action" &&
-        (action == "open_file" || action == "open_directory" || action == "reload") &&
+        (action == "open_file" || action == "open_directory" || action == "reload" ||
+         action == "combine_cubes") &&
         window.resultsPanel()->loading()) {
         window.resultsPanel()->cancelLoad();
         return true;
@@ -1184,6 +1188,15 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
                 p->openFile(args["path"].toString());
             else
                 p->openDirectory(args["path"].toString());
+        } else if (action == "combine_cubes") {
+            const auto output = args["path"].toString();
+            if (output.isEmpty())
+                fail("Specify path: the CUBE file to write.");
+            const auto terms = cubeTerms(args["terms"]);
+            if (QFileInfo::exists(output) && !args["overwrite"].toBool())
+                fail("The file exists: " + output + ". Pass overwrite to replace it.");
+            window.showPanel(p);
+            p->combineCubes(terms, output); // Checks each file against --mcp-allow-dir.
         } else if (action == "cancel")
             p->cancelLoad();
         else if (action == "stop")

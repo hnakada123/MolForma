@@ -17,6 +17,8 @@ struct ResultLoadRequest {
     bool animation = false;
     // Read the file again even if this session has read it (an explicit reload).
     bool reread = false;
+    // A CUBE the worker makes first (combineCubes) and writes to path, which is then read.
+    QVector<CubeTerm> combine = {};
 };
 struct ResultFileGroup {
     QStringList files; // Names relative to the directory, in step order for an animation.

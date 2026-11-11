@@ -221,6 +221,34 @@ QJsonObject calculationJson(const NwchemRun &run, const QString &savedBundle, co
     }
     return result;
 }
+QJsonObject cubeTermsSchema() {
+    return {{"type", "array"},
+            {"minItems", 2},
+            {"maxItems", 16},
+            {"description",
+             "For combine_cubes: CUBE files on one grid (the same points, origin and spacing) with their "
+             "factors, summed into the CUBE named by path. A difference density rho(AB) - rho(A) - rho(B) "
+             "is [{path: AB, factor: 1}, {path: A, factor: -1}, {path: B, factor: -1}]; the atoms written "
+             "are those of the first file."},
+            {"items", QJsonObject{{"type", "object"},
+                                  {"properties", QJsonObject{{"path", QJsonObject{{"type", "string"}}},
+                                                             {"factor", QJsonObject{{"type", "number"}}}}},
+                                  {"required", QJsonArray{"path", "factor"}},
+                                  {"additionalProperties", false}}}};
+}
+QVector<CubeTerm> cubeTerms(const QJsonValue &value) {
+    const auto list = value.toArray();
+    if (list.size() < 2 || list.size() > 16)
+        fail("Specify terms: 2 to 16 CUBE files with their factors.");
+    QVector<CubeTerm> terms;
+    for (const auto &item : list) {
+        const auto term = item.toObject();
+        if (term["path"].toString().isEmpty() || !term["factor"].isDouble())
+            fail("Each term needs a path and a numeric factor.");
+        terms.append({term["path"].toString(), term["factor"].toDouble(), 0});
+    }
+    return terms;
+}
 QJsonObject resultsJson(const ResultData &r, const QJsonObject &args, QJsonObject out) {
     if (args["section"] == "energy_profile")
         return evaluateEnergyProfile(args["profile"].toObject());

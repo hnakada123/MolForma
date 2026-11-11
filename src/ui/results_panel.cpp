@@ -1118,6 +1118,13 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     applyIso = new QPushButton(tr("等値面を再生成"));
     applyIso->setObjectName("resultsApplyIso");
     sf->addRow(applyIso);
+    // A difference density and the like: this CUBE and others of the same grid, added with factors.
+    combineCube = new QPushButton(tr("CUBEの差・和を作る…"));
+    combineCube->setObjectName("resultsCombineCubes");
+    combineCube->setToolTip(tr("表示中のCUBEと同じ格子のCUBEを係数付きで足し合わせ（ρ(AB) − ρ(A) − ρ(B) "
+                               "などの差電子密度）、新しいCUBEとして保存して表示します。"));
+    sf->addRow(combineCube);
+    connect(combineCube, &QPushButton::clicked, this, &ResultsPanel::showCombineDialog);
     auto *positive = new QCheckBox(tr("正の面（赤）"));
     auto *negative = new QCheckBox(tr("負の面（青）"));
     positive->setChecked(true);
@@ -1466,6 +1473,121 @@ void ResultsPanel::openFile(const QString &path) {
     }
     startLoad(path, iso, 0);
 }
+void ResultsPanel::combineCubes(const QVector<CubeTerm> &terms, const QString &output) {
+    if (terms.isEmpty())
+        fail(tr("組み合わせるCUBEを指定してください。"));
+    for (const auto &term : terms)
+        window->checkMcpPath(term.path);
+    window->checkMcpPath(output);
+    bool ok = true;
+    const double iso = isovalue->text().toDouble(&ok);
+    startLoad(output, ok && std::isfinite(iso) && iso > 0 && iso <= 1e6 ? iso : .03, 0, -1, "auto", 40, false,
+              false, false, terms);
+}
+void ResultsPanel::showCombineDialog() {
+    if (data.format != "CUBE" || data.source.isEmpty())
+        return;
+    QDialog dialog(this);
+    dialog.setObjectName("resultsCombineDialog");
+    dialog.setWindowTitle(tr("CUBEの差・和"));
+    dialog.resize(640, 420);
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *intro = new QLabel(
+        tr("CUBEに係数を掛けて足し合わせ、新しいCUBEとして保存して表示します。差電子密度 "
+           "ρ(AB) − ρ(A) − ρ(B) は、複合体のCUBEに +1、各部分のCUBEに −1 を指定します。"
+           "格子点数・原点・間隔が同じCUBEだけを組み合わせられます（「詳細設定」の「軌道ファイル」"
+           "でX・Y・Zの範囲と分割数を同じ値にして出力します）。原子は1行目のCUBEのものを書きます。"));
+    intro->setWordWrap(true);
+    layout->addWidget(intro);
+    auto *table = new QTableWidget(0, 2);
+    table->setObjectName("resultsCombineTerms");
+    table->setHorizontalHeaderLabels({tr("係数"), tr("CUBEファイル")});
+    table->verticalHeader()->hide();
+    table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    layout->addWidget(table, 1);
+    const auto addRow = [table](const QString &path, double factor) {
+        const int row = table->rowCount();
+        table->insertRow(row);
+        auto *spin = new QDoubleSpinBox;
+        spin->setObjectName(QString("resultsCombineFactor%1").arg(row));
+        spin->setRange(-1000, 1000);
+        spin->setDecimals(4);
+        spin->setValue(factor);
+        table->setCellWidget(row, 0, spin);
+        auto *item = new QTableWidgetItem(QDir::toNativeSeparators(path));
+        item->setData(Qt::UserRole, path);
+        item->setToolTip(path);
+        item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+        table->setItem(row, 1, item);
+    };
+    addRow(data.source, 1);
+    auto *buttons = new QHBoxLayout;
+    auto *add = new QPushButton(lineIcon("plus"), tr("CUBEを追加…"));
+    add->setObjectName("resultsCombineAdd");
+    auto *remove = new QPushButton(tr("選択行を削除"));
+    remove->setObjectName("resultsCombineRemove");
+    buttons->addWidget(add);
+    buttons->addWidget(remove);
+    buttons->addStretch();
+    layout->addLayout(buttons);
+    connect(add, &QPushButton::clicked, &dialog, [&] {
+        const auto files =
+            QFileDialog::getOpenFileNames(&dialog, tr("組み合わせるCUBE"),
+                                          QFileInfo(data.source).absolutePath(), tr("CUBE (*.cube *.cub)"));
+        for (const auto &file : files)
+            addRow(file, -1);
+    });
+    connect(remove, &QPushButton::clicked, &dialog, [table] {
+        const int row = table->currentRow();
+        if (row >= 0 && table->rowCount() > 1)
+            table->removeRow(row);
+    });
+    auto *outputRow = new QHBoxLayout;
+    outputRow->addWidget(new QLabel(tr("保存先")));
+    const QFileInfo source(data.source);
+    auto *output = new QLineEdit(source.dir().filePath(source.completeBaseName() + "_combined.cube"));
+    output->setObjectName("resultsCombineOutput");
+    outputRow->addWidget(output, 1);
+    auto *browse = new QPushButton(tr("参照…"));
+    outputRow->addWidget(browse);
+    layout->addLayout(outputRow);
+    connect(browse, &QPushButton::clicked, &dialog, [&] {
+        const auto path = QFileDialog::getSaveFileName(&dialog, tr("CUBEの保存先"), output->text(),
+                                                       tr("CUBE (*.cube *.cub)"));
+        if (!path.isEmpty())
+            output->setText(path);
+    });
+    auto *box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    box->button(QDialogButtonBox::Ok)->setText(tr("作成して表示"));
+    box->button(QDialogButtonBox::Ok)->setProperty("primary", true);
+    layout->addWidget(box);
+    connect(box, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(box, &QDialogButtonBox::accepted, &dialog, [&] {
+        window->safe([&] {
+            if (table->rowCount() < 2)
+                fail(tr("組み合わせるCUBEを2つ以上指定してください。"));
+            const auto target = output->text().trimmed();
+            if (target.isEmpty())
+                fail(tr("保存先を指定してください。"));
+            QVector<CubeTerm> terms;
+            for (int row = 0; row < table->rowCount(); ++row)
+                terms.append({table->item(row, 1)->data(Qt::UserRole).toString(),
+                              static_cast<QDoubleSpinBox *>(table->cellWidget(row, 0))->value(),
+                              row == 0 ? data.dataset : 0});
+            if (QFileInfo::exists(target) &&
+                QMessageBox::question(
+                    &dialog, tr("CUBEの差・和"),
+                    tr("%1 は既にあります。置き換えますか？").arg(QFileInfo(target).fileName()),
+                    QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+                return;
+            dialog.accept();
+            combineCubes(terms, target);
+        });
+    });
+    dialog.exec();
+}
 void ResultsPanel::openDirectory(const QString &path) {
     cancelLoad();
     try {
@@ -1577,7 +1699,7 @@ void ResultsPanel::renderOrbital(int orbital) {
 }
 void ResultsPanel::startLoad(const QString &path, double iso, int channel, int orbital,
                              const QString &normalization, int divisions, bool reuseOrbital, bool animation,
-                             bool reread) {
+                             bool reread, const QVector<CubeTerm> &combine) {
     cancelLoad();
     stopAnimation();
     if (path.isEmpty())
@@ -1663,7 +1785,7 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
     // change the height of the level diagram, so that the line under the settings says it instead.
     orbitalLoad = reuseOrbital && sameSource ? orbital : -1;
     try {
-        loader.start({path, iso, channel, orbital, normalization, divisions, animation, reread});
+        loader.start({path, iso, channel, orbital, normalization, divisions, animation, reread, combine});
         if (orbitalLoad >= 0)
             status->clear();
         else
@@ -1724,6 +1846,7 @@ void ResultsPanel::updateActions() {
     modeExport->setEnabled(playMode->isEnabled());
     energyReference->setEnabled(ready && !data.energies.isEmpty());
     applyIso->setEnabled(ready && data.format == "CUBE");
+    combineCube->setEnabled(applyIso->isEnabled());
     dataset->setEnabled(applyIso->isEnabled());
     const int selected = orbitals->currentRow();
     const bool orbitalReady = ready && data.format == "MOLDEN" && data.orbitalBasis;

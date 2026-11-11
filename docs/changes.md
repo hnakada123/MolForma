@@ -21,6 +21,8 @@
 | 配座平均スペクトル | [ツール → 配座セット…](features/molecule_pages.md#配座平均スペクトル) | 分布を重みにしたIR・通常ラマン・UV–Vis・ECDの平均スペクトルと、NMRの平均遮蔽定数 |
 | 励起状態の軌道の内訳 | [結果ビューア](features/results.md) → 励起状態 | TDDFTの各励起状態について、主な遷移と、占有軌道から仮想軌道への寄与（X・Y係数と重み）を表示 |
 | 結合指数 | [結果ビューア](features/results.md) → 物性 | Mulliken解析の結合指数（結合次数）と原子価を表示 |
+| 励起状態の密度 | [2 計算条件 → 軌道・出力ファイル](features/advanced.md#励起状態の密度を出力する) → CUBEの内容 | TDDFTの励起状態の遷移密度、励起状態の電子密度、差密度（励起状態 − 基底状態）をCUBEで出力。密度と差密度はTDDFTの勾配計算から |
+| 差電子密度 | [結果ビューア → CUBE / 等値面](features/results.md#cubeの差和差電子密度) → CUBEの差・和を作る… | 同じ格子のCUBEを係数付きで足し合わせ（ρ(AB) − ρ(A) − ρ(B) など）、新しいCUBEとして保存・表示。MCPの `combine_cubes` |
 | NMR | [結果ビューア → スペクトル](features/results.md#nmr通常ラマン溶液esrのスペクトル) | 基準遮蔽定数を指定した¹H・¹³Cの分裂なしチャート |
 | 通常ラマン | [2 計算条件 → 物性](features/calculation.md#追加の分光格子計算) | 閉殻DFTの振動数計算とラマン活性の表示。ログまたは`.normal`を読込 |
 | ESR／EPR | [結果ビューア → スペクトル](features/results.md#nmr通常ラマン溶液esrのスペクトル) | 二重項DFT/ZORAのg・Aテンソルから、S＝1/2溶液の吸収・一次微分を表示 |

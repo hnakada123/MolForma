@@ -1820,7 +1820,21 @@ static NwchemGeneratedInput generation(const Document &d) {
             text += "  cis\n";
         if (s["tddft_cdspectrum"].toBool())
             text += "  cdspectrum\n";
-        out.block("tddft", text + "end\n", "tddft");
+        NwchemInputBuilder body;
+        body.append(text);
+        // The CUBE of an excited state: the CI vectors for its transition density, and a gradient of that
+        // state for its density matrices.
+        const auto advanced = nwchemAdvanced(d);
+        if (advanced["cube_output"].toBool() && nwchemCubeExcited(advanced["cube_type"].toString())) {
+            body.sourced("  civecs\n", {"cube_output", "cube_type"}, true);
+            if (nwchemCubeGradient(d)) {
+                const auto root = QString::number(nwchemCubeRoot(d));
+                body.sourced("  target " + root + "\n  grad\n    root " + root + "\n  end\n",
+                             {"cube_output", "cube_type", "cube_root"}, true);
+            }
+        }
+        body.append("end\n");
+        out.block("tddft", body.result, "tddft", "visualization");
     }
     if (calc.driver()) {
         NwchemInputBuilder body;
@@ -1927,7 +1941,7 @@ static NwchemGeneratedInput generation(const Document &d) {
                          {"numerical_frequencies"});
             out.block("task", body.result, "task");
         } else if (calc.dft() && s["tddft"].toBool())
-            taskLine("task tddft energy\n");
+            taskLine(nwchemCubeGradient(d) ? "task tddft gradient\n" : "task tddft energy\n");
         else if (!calc.optimization())
             taskLine("task " + theory + ' ' + str("task") + '\n');
     }

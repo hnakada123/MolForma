@@ -27,7 +27,7 @@ Each page describes the features and their limitations. Keyboard operations are 
 | 2 | [Right-side pages of “1 Molecule”](features/molecule_pages.md) | 1 Molecule | Edit, Transform, Attributes, Coordination, Residue and Charge; structure tools (optimization with xTB included); saving and batch-evaluating conformer sets |
 | 3 | [Coordinate table](features/coordinates.md) | 1 Molecule | Editing the table of coordinates and attributes, loading and exporting structure files, output as an NWChem geometry block |
 | 4 | [“2 Calculation”](features/calculation.md) | 2 Calculation | Methods, basis sets, solvents, relativity, TS/IRC/NEB/constraints/scans, spectroscopy, property grids, BSSE, input import and diagnostics |
-| 5 | [Advanced settings and CUBE/MOLDEN output](features/advanced.md) | 2 Calculation | “Advanced settings” of each section (56 items), scope and precedence, writing CUBE and MOLDEN files |
+| 5 | [Advanced settings and CUBE/MOLDEN output](features/advanced.md) | 2 Calculation | “Advanced settings” of each section (57 items), scope and precedence, writing CUBE and MOLDEN files |
 | 6 | [“3 Run settings”](features/execution.md) | 3 Run settings | NWChem/MPI settings, queue registration, sequential runs and chains from earlier calculations, the run panel and logs, failure explanations |
 | 7 | [“4 Input preview”](features/input_preview.md) | 4 Input preview | Showing the generated NWChem input, its structure and where each part is set, input for export and at run time, copying and exporting |
 | 8 | [“Result viewer”](features/results.md) | Result viewer | Structures, orbitals, vibrations, NEB paths, NMR/Raman/ESR/ECD/ORD, properties in 3D, grid slices, figures and videos, and preparing recalculations |
