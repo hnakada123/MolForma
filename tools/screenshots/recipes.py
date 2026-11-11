@@ -14,6 +14,10 @@ atoms_and_bonds_variations (saves, calculates, then figures 13 and 14), caffeine
 phenoxyl_radical, stereochemistry, aromatic_substitution (default: all of these).
 Shots go to $MOLFORMA_SHOTS_DIR/shots/<language>/recipes/<recipe>/<name>.png.
 
+calculation_figures: the figures of "2 計算条件" of several recipes (2026-11-11). butane_conformers_figures and
+sn2_transition_state_figures (the scan and the IRC, also in the result viewer) after butane_conformers_job and
+sn2_transition_state_jobs (about an hour of NWChem together).
+
 Figures of the result viewer and the history, which need the jobs of their recipes (named on the command
 line; not part of the default): reuse_result_jobs (p-nitroaniline at B3LYP/6-31G*, optimization and
 frequencies, then TDDFT at CAM-B3LYP/6-31+G*: more than an hour) before reuse_result (figures 1 and 6 and
@@ -331,13 +335,13 @@ def aromatic_substitution(g):
     g.snap("aromatic_substitution")
 
 
-def calculate(g, key, hours=3):
+def calculate(g, key, hours=3, states=("finished",)):
     """Runs the calculation of the document and notes its job folder under the key."""
     g.tool("calculation", action="start")
     time.sleep(2)
     calculation = g.idle(hours * 3600)["calculation"]
     print(key, json.dumps(calculation, ensure_ascii=False), flush=True)
-    if calculation["state"] != "finished":
+    if calculation["state"] not in states:
         raise RuntimeError(f"{key}: {calculation['state']}")
     path = WORK / "recipe_jobs.json"
     jobs = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
@@ -403,6 +407,142 @@ def hydrated_sodium(g):
     g.edit("set_nwchem", settings={"task": "energy", "prop_mulliken": True})
     results(g, "hydrated_sodium/charges", "物性")
     g.snap("hydrated_sodium/08_mulliken")
+
+
+def sn2_transition_state_jobs(g):
+    """Steps 4-5 of the recipe: the transition state with frequencies (about 13 minutes), then IRC from it in
+    both directions, which stops in the forward one with "mepgs: could not optimize" (about 25 minutes), and
+    backward only (about 15 minutes); M06-2X/aug-cc-pVDZ at 8 MPI processes."""
+    g.open(SAMPLES + "sn2_ts_guess.molforma.json")
+    g.setup_execution(8)
+    calculate(g, "sn2_transition_state/ts")
+    g.tool("results_action", action="open_directory", path=job("sn2_transition_state/ts"))
+    g.idle()
+    g.tool("results_action", action="apply_structure")
+    g.tool("history", action="confirm")
+    g.edit("set_nwchem", settings={"task": "irc", "irc_points": 60, "irc_stride": 0.15})
+    calculate(g, "sn2_transition_state/irc", states=("finished", "failed"))
+    g.edit("set_nwchem", settings={"irc_direction": "backward"})
+    calculate(g, "sn2_transition_state/irc_backward")
+
+
+def butane_conformers_job(g):
+    """Step 4 of the recipe: the relaxed scan of the practice file (13 points, B3LYP/6-31G*)."""
+    g.open(SAMPLES + "butane_scan.molforma.json")
+    g.setup_execution(6)
+    calculate(g, "butane_conformers/scan", hours=4)
+
+
+# Figures of "2 計算条件", taken again on 2026-11-11 when the tab gained NEB (a task and the section "IRC・スキャン・NEB").
+# A recipe that builds its molecule shows "新規分子": the practice file is read over MCP into a new molecule, and a
+# title the recipe does not set goes back to the default, so that the changed settings are those of the recipe.
+def section(g, key):
+    """Scrolls the form to a section; again once the sections opened their details, which move it."""
+    rows = g.item("calculationSections")["items"]
+    row = next(r["row"] for r in rows if r["cells"][0]["data"] == key)
+    for _ in range(2):
+        g.select("calculationSections", index=row, seconds=1.0)
+
+
+def built(g, sample, **settings):
+    g.new()
+    g.open(SAMPLES + sample)
+    g.edit("set_nwchem", settings={"title": "MolForma calculation", **settings})
+    g.tab(1)
+    section(g, "basic")  # The form keeps where it was scrolled to for the last molecule.
+
+
+def calculation_figures(g):
+    built(g, "ethanol.molforma.json")
+    g.snap("atoms_and_bonds/07_calculation")
+    built(g, "p_nitroaniline.molforma.json")
+    g.snap("aromatic_substitution/05_calculation")
+    built(g, "co_en_complex.molforma.json")
+    g.snap("cobalt_complex/08_calculation")
+    built(g, "benzene_water.molforma.json")
+    section(g, "bsse")
+    g.snap("benzene_water/05_bsse")
+    built(g, "phenolate.molforma.json")
+    g.snap("phenoxyl_radical/07_symmetry_check")
+    built(g, "pf5.molforma.json")
+    g.snap("main_group/07_symmetry_check")
+    built(g, "sn2_ts_guess.molforma.json")
+    g.snap("sn2_transition_state/06_ts_settings")
+    # Phenol without the hydrogen of its OH: 49 electrons at multiplicity 1.
+    built(g, "phenol.molforma.json")
+    g.tab(0)
+    atoms, bonds = g.atoms()
+    element = {a["id"]: a["element"] for a in atoms}
+    oxygen = next(a for a in element if element[a] == "O")
+    hydrogen = next(b["a"] if b["b"] == oxygen else b["b"] for b in bonds
+                    if oxygen in (b["a"], b["b"]) and element[b["a"] if b["b"] == oxygen else b["b"]] == "H")
+    g.select_atoms([hydrogen])
+    g.activate("deleteSelection", seconds=0.6)
+    g.confirm()
+    g.tab(1)
+    section(g, "electronic")
+    g.snap("phenoxyl_radical/02_mismatch")
+    # Opened practice files keep their names.
+    g.new()
+    g.open_dialog(SAMPLES + "ethanol_opt.molforma.json")
+    g.edit("set_nwchem", settings={"task": "frequencies"})
+    g.tab(1)
+    section(g, "basic")
+    g.snap("isotopes/03_frequencies")
+    g.new()
+    g.open_dialog(SAMPLES + "na_h2o4.molforma.json")
+    g.open(SAMPLES + "na_h2o4_charges.molforma.json")  # The water turned into point charges.
+    g.edit("set_nwchem", settings={"title": "[Na(H2O)4]+ single point"})
+    g.tab(1)
+    section(g, "environment")
+    g.snap("hydrated_sodium/06_environment")
+    g.new()
+    g.open_dialog(SAMPLES + "ace_ahe_nme.molforma.json")
+    g.tab(1)
+    section(g, "environment")
+    g.snap("capped_peptide/08_environment")
+    g.new()
+    g.open_dialog(SAMPLES + "p_nitroaniline.molforma.json")
+    g.edit("set_nwchem", settings={"functional": "cam-b3lyp", "basis": "6-31+g*", "task": "energy", "tddft": True,
+                                   "tddft_roots": 10})
+    g.tab(1)
+    section(g, "excited")
+    g.snap("reuse_result/04_tddft_settings")
+
+
+def butane_conformers_figures(g):
+    """Figures 5 (the scan in "2 計算条件") and 7 (its result, after butane_conformers_job)."""
+    g.new()
+    g.open_dialog(SAMPLES + "butane_anti.molforma.json")
+    atoms = g.ids("C3", "C1", "C2", "C8")
+    g.select_atoms(atoms)
+    # As "選択中の原子を設定" and the fields would: MCP refuses a scan without its coordinate.
+    g.edit("set_nwchem", settings={"task": "scan", "method": "dft", "basis": "6-31g*", "scan_atoms": atoms,
+                                   "scan_start": 180, "scan_end": 0, "scan_steps": 13})
+    g.tab(1)
+    section(g, "path")
+    g.snap("butane_conformers/05_scan_settings")
+    results(g, "butane_conformers/scan", "経路・スキャン")
+    g.snap("butane_conformers/07_scan_profile")
+
+
+def sn2_transition_state_figures(g):
+    """Figures 8-10: the IRC from the transition state (after sn2_transition_state_jobs)."""
+    g.new()
+    g.open_dialog(SAMPLES + "sn2_ts_guess.molforma.json")
+    g.tool("results_action", action="open_directory", path=job("sn2_transition_state/ts"))
+    g.idle()
+    g.tool("results_action", action="apply_structure")
+    g.tool("history", action="confirm")
+    g.edit("set_nwchem", settings={"task": "irc", "irc_points": 60, "irc_stride": 0.15})
+    g.tab(1)
+    section(g, "path")
+    g.snap("sn2_transition_state/08_irc_settings")
+    results(g, "sn2_transition_state/irc", "経路・スキャン")
+    g.snap("sn2_transition_state/09_irc_forward_stopped")
+    g.edit("set_nwchem", settings={"irc_direction": "backward"})
+    results(g, "sn2_transition_state/irc_backward", "経路・スキャン")
+    g.snap("sn2_transition_state/10_irc_backward")
 
 
 RECIPES = [atoms_and_bonds, atoms_and_bonds_run, atoms_and_bonds_variations, caffeine_smiles, my_parts, phenoxyl_radical,

@@ -52,13 +52,13 @@ Turning a dihedral is refused for ring bonds, where one side cannot turn alone, 
 
 1. Keep the four carbons chosen in the order C3 → C1 → C2 → C8 and open “2 Calculation”.
 2. In “Basics”, set the task to “Coordinate scan”, the method to “DFT” (B3LYP) and the basis set to “6-31G*”.
-3. In “IRC and coordinate scan” in the list on the left, press “Use selected atoms”. The dihedral of the four atoms becomes the scan coordinate, with its present value as the start.
+3. In “IRC, scans and NEB” in the list on the left, press “Use selected atoms”. The dihedral of the four atoms becomes the scan coordinate, with its present value as the start.
 4. Set the start to 180, the end to 0 and the number of points to 13 (every 15°). Keep “Optimize the other coordinates at each point (relaxed scan)” on.
 5. The changed settings on the right list the task, method, basis, scan coordinate (4 atoms), start, end and number of points.
 
-   ![“IRC and coordinate scan” in “2 Calculation”: scan coordinate dihedral 3-1-2-8, start 180, end 0, 13 points, relaxed scan on, and seven changed settings listed on the right](images/butane_conformers/05_scan_settings.png)
+   ![“IRC, scans and NEB” in “2 Calculation”: scan coordinate dihedral 3-1-2-8, start 180, end 0, 13 points, relaxed scan on, and seven changed settings listed on the right](images/butane_conformers/05_scan_settings.png)
 
-   **Figure 5** The settings in “IRC and coordinate scan”: the scan coordinate, start, end and number of points.
+   **Figure 5** The settings in “IRC, scans and NEB”: the scan coordinate, start, end and number of points.
 
 In “4 Input preview”, each point has its own `geometry scanN` with `torsion 3 1 2 8 … constant` in `zcoord`, and `task dft optimize` appears 13 times, optimizing everything else with the dihedral held. The `title` of each point carries `MolForma scan k/13`, which the Result viewer uses to read the structure and energy of each point.
 

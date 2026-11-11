@@ -53,10 +53,11 @@ class Shots(Gui):
         self.pages = set(pages)
 
     def want(self, page):
-        return not self.pages or page in self.pages
+        # "spectra" needs a session of its own (see below): only when named.
+        return page in self.pages or (not self.pages and page != "spectra")
 
-    def snap(self, name, target="mainWindow", settle=True):
-        if self.want(name.split("/")[0]):
+    def snap(self, name, target="mainWindow", settle=True, page=None):
+        if self.want(page or name.split("/")[0]):
             # The status bar shows the composition once the message of the last operation (5–8 s) is gone.
             for _ in range(60 if settle else 0):
                 if not self.tool("get_app_state")["status"]:
@@ -203,6 +204,25 @@ def shots(language, pages):
             g.tab(2)
             g.activate("executionCheck", seconds=0.8)
             g.snap("execution/01_settings")
+            # The queue with two waiting calculations: water for Raman, the methyl radical for ESR.
+            g.tool("chemistry", action="smiles", smiles="O")
+            g.idle()
+            g.tool("history", action="confirm")
+            g.edit("set_nwchem", settings={"start": "raman_test", "method": "dft", "task": "frequencies",
+                                           "basis": "6-31g*", "prop_raman": True})
+            g.tool("calculation", action="enqueue")
+            g.tool("chemistry", action="smiles", smiles="[CH3]")
+            g.idle()
+            g.tool("history", action="confirm")
+            g.edit("set_nwchem", settings={"start": "epr_test", "method": "dft", "task": "energy", "prop_raman": False,
+                                           "relativistic": "zora", "basis": "x2c-svpall", "prop_epr": True},
+                   multiplicity=2)
+            g.tool("calculation", action="enqueue")
+            g.activate("executionQueue", seconds=0.8)
+            dialog = next(i["target"] for i in g.ui(query="calculationQueueDialog", limit=20)["items"]
+                          if i.get("objectName") == "calculationQueueDialog")
+            g.snap("execution/03_queue", dialog)
+            g.key(dialog, "Escape")
 
         if g.want("input_preview"):
             g.fresh("ethanol.molforma.json")
@@ -240,6 +260,19 @@ def shots(language, pages):
             time.sleep(2.0)
             g.idle()
             g.snap("results/04_orbital")
+
+        if g.want("spectra"):
+            # Spectra of the NWChem logs of the tests, in a session that has not opened a job (whose name the bar
+            # keeps room for): ESR of the methyl radical, ECD of H2O2. Named "spectra", not part of "results".
+            fixtures = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tests", "fixtures",
+                                    "nwchem")
+            g.fresh()
+            for log, name in (("methyl_epr.out", "results/05_epr"), ("peroxide_ecd.out", "results/06_ecd")):
+                g.tool("results_action", action="open_file", path=os.path.realpath(os.path.join(fixtures, log)))
+                g.idle()
+                g.tab(4)
+                g.tab_text("resultsDetails", T("スペクトル"))
+                g.snap(name, page="spectra")
 
         if g.want("history"):
             memos = {"ethanol": ("題材1の練習データ", "Practice file of recipe 1"),

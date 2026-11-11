@@ -50,7 +50,7 @@ The queue holds up to 1,000 entries. The waiting calculations, their order and t
 3. Open “Calculation queue”, select waiting rows and use “Move up” or “Move down” as needed. Check “Pause the queue on failure, stop or timeout”, then press “Start / resume queue”.
 4. If a failure pauses the queue, inspect the run-panel diagnosis and log. Correct settings and register a new job; resume the queue to continue the remaining entries.
 
-![Two waiting entries in the calculation queue: water Raman and methyl-radical ESR, with start/resume, reorder, cancel and failure-policy controls](images/execution/03_queue.png)
+![Two waiting entries in the calculation queue: water Raman and methyl-radical ESR, both with the structure “Molecule as registered”, with start/resume, reorder, cancel, go-on-from-a-calculation and failure-policy controls](images/execution/03_queue.png)
 
 **Figure 3** Jobs run one at a time using their saved molecules and settings. Waiting bundles are also accessible from History.
 

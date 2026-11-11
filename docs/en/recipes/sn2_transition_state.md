@@ -1,6 +1,6 @@
 # Recipe 13 Transition states and reaction paths (F⁻ + CH₃Cl → CH₃F + Cl⁻)
 
-Find the transition state [F···CH₃···Cl]⁻ of an SN2 reaction. There is no feature that builds a path between two structures, so build a guess close to the transition state by hand, setting distances and angles by value. Run a transition-state search and frequencies with M06-2X/aug-cc-pVDZ, check that there is exactly one imaginary frequency, and follow the path toward reactants and products with IRC. Optimize the reactant complex too and get the activation energy.
+Find the transition state [F···CH₃···Cl]⁻ of an SN2 reaction. Here a guess close to the transition state is built by hand, setting distances and angles by value (with the structures of the reactant and the product, the task “NEB” can also find the path between them, and the search can start from its highest point). Run a transition-state search and frequencies with M06-2X/aug-cc-pVDZ, check that there is exactly one imaginary frequency, and follow the path toward reactants and products with IRC. Optimize the reactant complex too and get the activation energy.
 
 | What you build | Details |
 | --- | --- |
@@ -79,9 +79,9 @@ At the transition state CH3 is planar, and both C–F and C–Cl are stretched.
 ## 5. Follow the path with IRC
 
 1. Bring the transition-state structure into “1 Molecule” with “Apply as candidate” in the “Result viewer” and confirm.
-2. Set the task in “2 Calculation” to “IRC”, and set “IRC points (per direction)” and “IRC step / amu½·Bohr” in “IRC and coordinate scan”. If the points run out before a minimum is reached NWChem ends with an error, so allow enough (60 points and 0.15 here).
+2. Set the task in “2 Calculation” to “IRC”, and set “IRC points (per direction)” and “IRC step / amu½·Bohr” in “IRC, scans and NEB”. If the points run out before a minimum is reached NWChem ends with an error, so allow enough (60 points and 0.15 here).
 
-   ![“IRC and coordinate scan” with IRC points (per direction) 60, IRC step 0.150 and IRC direction both; the summary on the right reads IRC (reaction path from a transition state)](images/sn2_transition_state/08_irc_settings.png)
+   ![“IRC, scans and NEB” with IRC points (per direction) 60, IRC step 0.150 and IRC direction both; the summary on the right reads IRC (reaction path from a transition state)](images/sn2_transition_state/08_irc_settings.png)
 
    **Figure 8** The IRC settings: the number of points and the step.
 
@@ -93,7 +93,7 @@ For this reaction, an IRC in both directions stops with “NWChem error: mepgs: 
 
 **Figure 9** The IRC in both directions stops partway in the forward direction; the “Path / scan” tab lists the forward points.
 
-4. Compute the remaining direction from the same transition-state structure with “IRC direction” in “IRC and coordinate scan” set to “Backward only”. The backward path reaches the product complex CH₃F···Cl⁻ at a path length of 2.35, and the result says “IRC: 9 points, converged in the backward direction”.
+4. Compute the remaining direction from the same transition-state structure with “IRC direction” in “IRC, scans and NEB” set to “Backward only”. The backward path reaches the product complex CH₃F···Cl⁻ at a path length of 2.35, and the result says “IRC: 9 points, converged in the backward direction”.
 
    ![The “Path / scan” tab of the “Backward only” IRC: the table of nine backward points and the transition state, and the energy curve falling by about 33 kcal/mol toward the product complex](images/sn2_transition_state/10_irc_backward.png)
 
@@ -109,7 +109,7 @@ Open `sn2_reactant.molforma.json` and run “Optimization → frequencies” wit
 | --- | --- | --- | --- | --- |
 | Reactant complex F⁻···CH₃Cl (optimized) | −599.924707582 Eh | 2.446 Å | 1.867 Å | None |
 | Transition state [F···CH₃···Cl]⁻ | −599.920574451 Eh | 2.053 Å | 2.095 Å | One (477.7i cm⁻¹, IR intensity 1180) |
-| Product complex CH₃F···Cl⁻ (end of the IRC) | −599.972948960 Eh | 1.417 Å | 3.144 Å | — |
+| Product complex CH₃F···Cl⁻ (end of the IRC) | −599.972946683 Eh | 1.417 Å | 3.145 Å | — |
 
 - The transition-state search converged in 10 steps with exactly one imaginary frequency.
 - Activation energy from the complex: ΔE‡ = 2.59 kcal/mol, ΔH‡ = 2.10 kcal/mol (enthalpy at 298 K) and ΔG‡ = 3.21 kcal/mol (free energy)
@@ -122,6 +122,6 @@ Open `sn2_reactant.molforma.json` and run “Optimization → frequencies” wit
 - **An angle of 180 gives “The angle must be greater than 0° and less than 180°.”**: In a straight line the direction to turn is undefined; use a value just off, such as 179.9.
 - **Two or more imaginary frequencies**: The guess is too far from the top. Look at the extra modes; if they are unrelated to the reaction (a methyl rotation and so on), start again from a structure displaced along them.
 - **IRC stops with “mepgs: could not optimize”**: Too few points, or a side where the minimum is close to the transition state (a path shorter than 1 amu½·Bohr). Check in “Path / scan” whether the last point of that side reached a minimum; if so, compute the remaining direction alone with “IRC direction”.
-- **The transition-state search does not converge**: Raise the maximum iterations in the advanced settings of “Optimization and frequencies”, or estimate the top first with an optimization constraining the reaction coordinates (the C–F and C–Cl distances) or a relaxed scan ([recipe 5](butane_conformers.md)).
+- **The transition-state search does not converge**: Raise the maximum iterations in the advanced settings of “Optimization and frequencies”, or estimate the top first with an optimization constraining the reaction coordinates (the C–F and C–Cl distances), a relaxed scan ([recipe 5](butane_conformers.md)) or an NEB between the reactant and product complexes ([“2 Calculation”](../features/calculation.md#neb-reaction-path-between-two-structures)).
 
 See also: transition states, IRC, constraints and scans in [“2 Calculation”](../features/calculation.md), [recipe 14 From a result to the next calculation](reuse_result.md).
