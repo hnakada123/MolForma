@@ -153,7 +153,7 @@ Notes and limitations:
 - The working folder and job folder paths on the destination may hold only letters, digits and `. _ / + -` (a home path with a space fails).
 - Destinations are saved in the same app settings as “Edit → Preferences”; projects keep only the name. A project whose destination is not registered on this PC cannot run, and a registered destination you did not choose in MolForma is confirmed before the run. A job whose destination was removed or now leads to another host cannot be reconnected.
 - MCP cannot change the destination (`remote` of `set_execution` is protected). The headless MCP server (`--mcp`) needs `--mcp-keep-runs` for remote runs.
-- The behavior was checked with test programs standing in for `ssh`, `scp` and Slurm (below). It has not been checked with a real SSH server, Slurm or PBS, nor on Windows and macOS.
+- With real SSH, Shell submission (in the background) has been checked on Linux (below). Slurm and PBS were checked with test programs only, not with a real scheduler, nor on Windows and macOS.
 
 ## Environment and paths
 
@@ -211,5 +211,7 @@ QT_QPA_PLATFORM=offscreen MOLFORMA_EXECUTION_ARTIFACTS=/tmp/molforma-execution \
 ```
 
 On 2026-10-22, NWChem 7.3.1 was launched with 2 MPI processes, 1 OpenMP/BLAS thread each and 256 MB of memory per process, and an HF/STO-3G calculation of water was confirmed to complete with exit code 0 and an SCF energy of −74.945628203255 Hartree. A DFT/cc-pVTZ optimization and frequency job was stopped after the DFT module started, and it was confirmed that on Linux no child processes with the job folder as working directory remained. All 6 CTest suites and the AddressSanitizer check of the run settings tests passed.
+
+On 2026-11-11, on Linux (OpenSSH 10.6), with an sshd of this PC listening on 127.0.0.1 as the destination, a B3LYP/6-31G* “Optimize → Frequencies” of ethanol with NWChem 7.3.1 (4 MPI processes) was run with Shell submission. Copying the job folder, the start with `setsid nohup` (`mpirun` and four NWChem processes), the log and progress while it ran, the connection error while sshd was stopped and the continuation after it came back, and fetching back at the end (`output.out` identical to the one on the destination, with the database, orbitals and Hessian) were checked, and the result viewer showed the optimization converged without imaginary frequencies (E = −155.033797408 Eh, 133 seconds). Stopped while running, no NWChem process was left and the run became “Cancelled”; when the supervisor was killed, the window started a new one, which followed the calculation to its end.
 
 See also: [“History”](history.md), [recipe 1 Building from atoms and bonds](../recipes/atoms_and_bonds.md), the list of pages in “[Features](../features.md)”.
