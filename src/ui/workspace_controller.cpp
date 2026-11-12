@@ -4,6 +4,7 @@
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_restart.h"
+#include "nwchem/result_files.h"
 #include "ui/execution_panel.h"
 #include "ui/history_panel.h"
 #include "ui/main_window.h"
@@ -73,7 +74,7 @@ void WorkspaceController::restart(const QString &directory, const QString &mode)
 }
 void WorkspaceController::openResults(const QString &directory) {
     window.checkMcpPath(directory);
-    if (resultFiles(directory).isEmpty())
+    if (nwchemResultFiles(directory).isEmpty())
         return;
     window.showPanel(&results);
     results.openDirectory(directory);
@@ -81,7 +82,7 @@ void WorkspaceController::openResults(const QString &directory) {
 }
 void WorkspaceController::runFinished(const QString &directory, bool open) {
     summaryDirectory.clear();
-    if (open && !results.loading() && !resultFiles(directory).isEmpty()) {
+    if (open && !results.loading() && !nwchemResultFiles(directory).isEmpty()) {
         summaryDirectory = directory;
         results.openDirectory(directory);
     }

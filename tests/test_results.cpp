@@ -2,8 +2,10 @@
 #include "editing/coordinates.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
+#include "nwchem/result_files.h"
 #include "results/energy_profile.h"
 #include "results/field_analysis.h"
+#include "results/result_files.h"
 #include "results/result_summary.h"
 #include "results/spectrum.h"
 #include "ui/calculation_panel.h"
@@ -299,7 +301,8 @@ class ResultsTest : public QObject {
         QTemporaryDir job;
         for (const auto *name : {"output.out", "hcn.nebpath_000001.xyz", "hcn.neb_final.xyz"})
             writeFile(QDir(job.path()).filePath(name), "x");
-        QCOMPARE(resultFiles(job.path()), QStringList({"hcn.neb_final.xyz", "output.out"}));
+        QCOMPARE(nwchemResultFiles(job.path()), QStringList({"hcn.neb_final.xyz", "output.out"}));
+        QVERIFY(resultFiles(job.path()).contains("hcn.nebpath_000001.xyz"));
     }
     void chainedStructuresOfLogs() {
         // The structures a queued calculation can take from a job: the final one, the highest point of a
@@ -1540,7 +1543,7 @@ class ResultsTest : public QObject {
         const auto s = calculateSpectrum(r, {{"kind", "raman"}, {"width", 20}});
         QCOMPARE(s.sticks.size(), 3);
         QCOMPARE(s.yUnit, "Å⁴/amu");
-        QVERIFY(resultFiles(root).contains("water_raman.normal"));
+        QVERIFY(nwchemResultFiles(root).contains("water_raman.normal"));
         QVERIFY_THROWS_EXCEPTION(
             std::runtime_error,
             readResult(save("bad.normal", "normal Raman Scattering Plot\nS [Ang**4/amu]\n1 100 ***\n")));

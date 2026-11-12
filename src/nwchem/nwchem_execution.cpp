@@ -305,42 +305,51 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
     static_cast<ValidationReport &>(r) = calculation;
     if (d.data.contains("nwchem_execution") && !d.data["nwchem_execution"].isObject())
         r.error("execution.object", "nwchem_execution",
-                tr("NWChem実行設定はオブジェクトである必要があります。"), {}, 2);
+                tr("NWChem実行設定はオブジェクトである必要があります。"), {}, SettingTarget::Execution);
     const auto defaults = executionDefaults();
     for (auto it = defaults.begin(); it != defaults.end(); ++it) {
         const auto v = s[it.key()];
         if (v.type() != it.value().type())
-            r.error("execution.type", it.key(), tr("実行設定の型が不正です: %1").arg(it.key()), {}, 2);
+            r.error("execution.type", it.key(), tr("実行設定の型が不正です: %1").arg(it.key()), {},
+                    SettingTarget::Execution);
         else if (v.isString() && (controls(v.toString()) || v.toString().size() > 4096))
             r.error("execution.string", it.key(),
-                    tr("実行設定に制御文字または長すぎる文字列があります: %1").arg(it.key()), {}, 2);
+                    tr("実行設定に制御文字または長すぎる文字列があります: %1").arg(it.key()), {},
+                    SettingTarget::Execution);
     }
     auto integer = [&](const QString &key, int lo, int hi) {
         const double n = s[key].toDouble(-1);
         if (!s[key].isDouble() || !std::isfinite(n) || std::floor(n) != n || n < lo || n > hi)
             r.error("execution.integer", key,
-                    tr("%1 は %2〜%3 の整数で指定してください。").arg(key).arg(lo).arg(hi), {}, 2);
+                    tr("%1 は %2〜%3 の整数で指定してください。").arg(key).arg(lo).arg(hi), {},
+                    SettingTarget::Execution);
     };
     const bool mpi = s["mode"] == "mpi";
     if (!mpi && s["mode"] != "direct")
-        r.error("execution.mode", "mode", tr("起動方式はMPIまたは直接実行を選んでください。"), {}, 2);
+        r.error("execution.mode", "mode", tr("起動方式はMPIまたは直接実行を選んでください。"), {},
+                SettingTarget::Execution);
     for (const auto &range : executionRanges())
         integer(range.key, range.minimum, range.maximum);
     for (const auto &key : {"executable", "job_root"})
         if (s[key].toString().trimmed().isEmpty())
-            r.error("execution.required", key, tr("%1 を指定してください。").arg(key), {}, 2);
+            r.error("execution.required", key, tr("%1 を指定してください。").arg(key), {},
+                    SettingTarget::Execution);
     if (mpi && s["launcher"].toString().trimmed().isEmpty())
-        r.error("execution.launcher", "launcher", tr("MPIランチャーを指定してください。"), {}, 2);
+        r.error("execution.launcher", "launcher", tr("MPIランチャーを指定してください。"), {},
+                SettingTarget::Execution);
     if (!QStringList{"none", "shell", "slurm", "pbs"}.contains(s["job_script"].toString()))
         r.error("execution.job_script", "job_script",
-                tr("ジョブスクリプトは、作らない・シェル・Slurm・PBSから選んでください。"), {}, 2);
+                tr("ジョブスクリプトは、作らない・シェル・Slurm・PBSから選んでください。"), {},
+                SettingTarget::Execution);
     if (!QRegularExpression("^[A-Za-z0-9_.@:+-]{0,64}$").match(s["job_queue"].toString()).hasMatch())
         r.error("execution.job_queue", "job_queue",
-                tr("キュー・パーティション名は英数字と _ . @ : + - の64文字以内で指定してください。"), {}, 2);
+                tr("キュー・パーティション名は英数字と _ . @ : + - の64文字以内で指定してください。"), {},
+                SettingTarget::Execution);
     const auto stack = s["omp_stacksize"].toString();
     if (!stack.isEmpty() && !QRegularExpression("^[1-9][0-9]{0,8}[BKMGbkmg]?$").match(stack).hasMatch())
         r.error("execution.stack", "omp_stacksize",
-                tr("OpenMPスタックは64M・1G等の正の整数と単位B/K/M/Gで指定してください。"), {}, 2);
+                tr("OpenMPスタックは64M・1G等の正の整数と単位B/K/M/Gで指定してください。"), {},
+                SettingTarget::Execution);
     r.environment = {{"OMP_NUM_THREADS", QString::number(s["omp_threads"].toInt())},
                      {"OMP_DYNAMIC", "FALSE"},
                      {"MKL_DYNAMIC", "FALSE"}};
@@ -354,7 +363,7 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
         const auto row = entry.toObject();
         if (!entry.isObject() || !row["enabled"].isBool()) {
             r.error("execution.environment_enabled", "environment",
-                    tr("環境変数の行に有効・無効の指定がありません。"), {}, 2);
+                    tr("環境変数の行に有効・無効の指定がありません。"), {}, SettingTarget::Execution);
             continue;
         }
         if (!row["enabled"].toBool())
@@ -364,12 +373,13 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
             !QRegularExpression("^[A-Za-z_][A-Za-z0-9_]*$").match(name).hasMatch() ||
             !row["value"].isString() || controls(value) || value.size() > 8192) {
             r.error("execution.environment_value", "environment",
-                    tr("有効な環境変数の名前・値を確認してください。"), {}, 2);
+                    tr("有効な環境変数の名前・値を確認してください。"), {}, SettingTarget::Execution);
             continue;
         }
         if (seen.contains(name) || managedEnvironment.contains(name)) {
             r.error("execution.environment_duplicate", "environment",
-                    tr("環境変数が重複、または専用の資源設定と重複しています: %1").arg(name), {}, 2);
+                    tr("環境変数が重複、または専用の資源設定と重複しています: %1").arg(name), {},
+                    SettingTarget::Execution);
             continue;
         }
         seen.insert(name);
@@ -394,7 +404,7 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
                        "実行設定」で実行先を選び直してくだ"
                        "さい。")
                         .arg(remoteName),
-                    {}, 2);
+                    {}, SettingTarget::Execution);
         else
             r.remote = remoteHostSummary(*remote);
         if (nwchemAdvanced(d)["vectors_guess"].toString() == "file")
@@ -402,7 +412,7 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
                     tr("リモート実行では、ファイルから読む初期軌道（入力movecs）を使えません。前のジョブから"
                        "続けると"
                        "きは「履歴」の「続きから実行を準備」を使ってください。"),
-                    {}, 2);
+                    {}, SettingTarget::Execution);
     } else {
         r.executable = locateProgram(s["executable"].toString(), base, environment);
         r.launcher = locateProgram(s["launcher"].toString(), base, environment);
@@ -411,7 +421,7 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
         r.error(
             "execution.network", "job_root",
             tr("ネットワーク上の場所 %1 は、「編集 → 環境設定」で指定した場合だけ使えます。").arg(network),
-            {}, 2);
+            {}, SettingTarget::Execution);
         local = false; // Not even looked at.
     }
     if (local) {
@@ -419,7 +429,7 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
                                const QString &error) {
             r.checks << ExecutionCheck{label, ok ? found : error, ok ? QString() : error, ok};
             if (!ok)
-                r.error("execution.local", key, error, {}, 2);
+                r.error("execution.local", key, error, {}, SettingTarget::Execution);
         };
         const auto program = [&](const QString &key, const QString &path, const QString &label,
                                  const QString &error) {
@@ -468,22 +478,23 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
     if (mpi && ranks == 1)
         r.warning("execution.mpi_pr", "mpi_ranks",
                   tr("MPI-PR版NWChemは補助プロセスを必要とします。1計算プロセスでもMPI起動数2が必要です。"),
-                  {}, 2);
+                  {}, SettingTarget::Execution);
     if (!mpi)
         r.warning("execution.direct", "mode",
                   tr("直接実行は対応する逐次版等に使用してください。MPI版はMPIランチャーを選んでください。"),
-                  {}, 2);
+                  {}, SettingTarget::Execution);
     if (remoteName.isEmpty() &&
         ranks * std::max(s["omp_threads"].toInt(), s["blas_threads"].toInt()) > QThread::idealThreadCount())
         r.warning("execution.cpus", "mpi_ranks", tr("指定した並列度が、このPCの論理CPU数を超えています。"),
-                  {}, 2);
+                  {}, SettingTarget::Execution);
     if (s["omp_threads"].toInt() > 1 && s["blas_threads"].toInt() > 1)
         r.warning("execution.threads", "omp_threads",
-                  tr("OpenMPとBLASの多重並列により、想定より多くのスレッドを使う場合があります。"), {}, 2);
+                  tr("OpenMPとBLASの多重並列により、想定より多くのスレッドを使う場合があります。"), {},
+                  SettingTarget::Execution);
     for (auto it = s.begin(); it != s.end(); ++it)
         if (!defaults.contains(it.key()))
             r.warning("execution.unknown", it.key(), tr("未対応の実行設定を保持しています: %1").arg(it.key()),
-                      {}, 2);
+                      {}, SettingTarget::Execution);
     r.errors.removeDuplicates();
     return r;
 }

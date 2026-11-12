@@ -7,6 +7,7 @@
 #include "ui/editor_chrome.h"
 #include "ui/input_highlighter.h"
 #include "ui/main_window.h"
+#include "ui/setting_navigation.h"
 #include "ui/theme.h"
 #include <QtWidgets>
 
@@ -393,9 +394,11 @@ void InputPreviewPanel::openSource(int tab, const QString &setting, const QStrin
 }
 QList<InputPreviewPanel::Source> InputPreviewPanel::sources(const NwchemInputBlock &b) {
     QList<Source> result;
-    for (const int tab : b.tabs)
+    for (const auto owner : b.targets) {
+        const int tab = workspaceTab(owner) + 1;
         if (tab != 2 || !b.setting.isEmpty() || b.group.isEmpty()) // Not when only the details set it.
             result << Source{tab, tab == 1 ? QString() : b.setting, {}};
+    }
     if (!b.group.isEmpty())
         result << Source{2, {}, b.group};
     return result;
@@ -492,7 +495,7 @@ void InputPreviewPanel::followCursor() {
         connect(link, &QPushButton::clicked, this,
                 [this, source] { openSource(source.tab, source.setting, source.group); });
     }
-    sourceChip->setVisible(!b.tabs.isEmpty());
+    sourceChip->setVisible(!b.targets.isEmpty());
     sourceChip->adjustSize();
 }
 void InputPreviewPanel::refresh() {
@@ -504,9 +507,10 @@ void InputPreviewPanel::refresh() {
     QString html;
     // The setting a message is about in "2 計算条件" or "3 実行設定", else its tab.
     const auto target = [](const Diagnostic &d) {
-        if (d.setting.isEmpty() || (d.tab != 1 && d.tab != 2))
-            return QString("tab:%1").arg(d.tab);
-        return (d.tab == 1 ? "field:" : "execution:") + d.setting;
+        const int tab = workspaceTab(d.target);
+        if (d.setting.isEmpty() || (tab != 1 && tab != 2))
+            return QString("tab:%1").arg(tab);
+        return (tab == 1 ? "field:" : "execution:") + d.setting;
     };
     auto append = [&](const QString &label, const QString &message, const QString &link,
                       const QColor &color) {

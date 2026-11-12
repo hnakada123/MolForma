@@ -27,6 +27,9 @@ find_package(rdkit CONFIG QUIET)
 # Keep dependency directions visible in both the target graph and source includes.
 set(MOLFORMA_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
 include(cmake/CheckLayers.cmake)
+add_library(molforma_project STATIC src/project/atom_references.cpp)
+target_include_directories(molforma_project PUBLIC src)
+target_link_libraries(molforma_project PUBLIC Qt6::Core)
 add_library(molforma_model STATIC
     src/model/document.cpp
     src/model/geometry.cpp
@@ -36,7 +39,7 @@ add_library(molforma_model STATIC
     assets/resources.qrc)
 target_include_directories(molforma_model PUBLIC src)
 target_compile_definitions(molforma_model PUBLIC MOLFORMA_VERSION="${PROJECT_VERSION}")
-target_link_libraries(molforma_model PUBLIC Qt6::Core Qt6::Gui Eigen3::Eigen PRIVATE ZLIB::ZLIB)
+target_link_libraries(molforma_model PUBLIC molforma_project Qt6::Core Qt6::Gui Eigen3::Eigen PRIVATE ZLIB::ZLIB)
 
 add_library(molforma_editing STATIC
     src/editing/atom_properties.cpp
@@ -71,14 +74,25 @@ add_library(molforma_results STATIC
     src/results/field_analysis.cpp
     src/results/energy_profile.cpp
     src/results/molden_orbitals.cpp
+    src/results/result_files.cpp
     src/results/result_loader.cpp
     src/results/result_presentation.cpp
     src/results/result_summary.cpp
     src/results/spectrum.cpp
+    src/results/cube_reader.cpp
+    src/results/molden_reader.cpp
+    src/results/nwchem_log.cpp
+    src/results/result_cache.cpp
+    src/results/result_codec.cpp
+    src/results/result_parsing.cpp
+    src/results/result_surface.cpp
+    src/results/result_worker.cpp
+    src/results/xyz_reader.cpp
     src/results/results.cpp)
 target_link_libraries(molforma_results PUBLIC molforma_model PRIVATE Threads::Threads)
 
 add_library(molforma_nwchem STATIC
+    src/nwchem/result_files.cpp
     src/nwchem/history.cpp
     src/nwchem/history_import.cpp
     src/nwchem/nwchem.cpp
@@ -98,13 +112,14 @@ if(MSVC)
     target_compile_definitions(molforma_nwchem PRIVATE USING_DYNAMIC_LIBS)
 endif()
 
-add_library(molforma_io STATIC src/io/document_storage.cpp src/io/structure_io.cpp)
-target_link_libraries(molforma_io PUBLIC molforma_model PRIVATE molforma_nwchem molforma_editing)
+add_library(molforma_io STATIC src/io/document_storage.cpp src/io/structure_io.cpp
+    src/io/file_download.cpp src/io/pdb_download.cpp src/io/pubchem.cpp)
+target_link_libraries(molforma_io PUBLIC molforma_model PRIVATE molforma_nwchem molforma_editing Qt6::Network)
 
 # Preserve the convenient aggregate for applications/tests without hiding the internal graph.
 add_library(molforma_core INTERFACE)
 target_link_libraries(molforma_core INTERFACE molforma_io molforma_nwchem molforma_editing molforma_results molforma_model)
-foreach(target molforma_model molforma_editing molforma_results molforma_nwchem molforma_io)
+foreach(target molforma_project molforma_model molforma_editing molforma_results molforma_nwchem molforma_io)
     target_compile_options(${target} PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 endforeach()
 add_library(molforma_ui STATIC
@@ -143,7 +158,7 @@ add_library(molforma_ui STATIC
     src/ui/translations.cpp
     docs/manual.qrc)
 # McpGui shares tool definitions, result views and the access policy with the headless server.
-target_link_libraries(molforma_ui PUBLIC molforma_core molforma_mcp Qt6::Widgets PRIVATE Qt6::Network ${MOLFORMA_OPENBABEL})
+target_link_libraries(molforma_ui PUBLIC molforma_core molforma_mcp Qt6::Widgets PRIVATE ${MOLFORMA_OPENBABEL})
 if(MSVC)
     # Both renderers use Open Babel van der Waals radii.
     target_compile_definitions(molforma_ui PRIVATE USING_DYNAMIC_LIBS)

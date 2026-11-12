@@ -5,9 +5,13 @@
 MolForma is a native Qt6 Widgets / C++20 molecular editor. Sources are grouped
 by responsibility, with paired headers and implementations in the same directory:
 
+- `src/project/`: `atom_references.*` adapts the persisted atom references in version-1 project
+  settings when IDs are removed or renamed, preserving unknown fields. It depends only on Qt Core;
+  the molecular model delegates this schema traversal to it.
 - `src/model/`: `document.*` owns the stable-ID document and the `.molforma.json`
   project serialization (format `molforma-project`, version 1); `geometry.*` owns double-precision geometry.
-  `diagnostic.h` defines diagnostics with stable codes, setting targets and typed fixes, and
+  `setting_target.h` defines semantic owners (molecule, calculation, execution), independent of
+  workspace tabs. `diagnostic.h` defines diagnostics with stable codes, setting targets and typed fixes, and
   `ValidationFailure`, which throws a refused report whole. `units.h` owns coordinate units and
   physical conversion constants; `numbers.h` reads numbers with Fortran exponents ("1.5D-03").
   `topology.*` indexes a document's atoms by ID with their bonded neighbors for loops over many atoms
@@ -25,7 +29,9 @@ by responsibility, with paired headers and implementations in the same directory
   `coordinates.*` implements coordinate edits, structure replacement and Z-matrices.
 - `src/io/`: `structure_io.*` routes project, XYZ, NWChem, Gaussian and native Open Babel
   import/export; `document_storage.*` owns project persistence, recent files and locked
-  autosave/recovery copies. Recovery choices and file dialogs stay in the UI.
+  autosave/recovery copies. `file_download.*` owns cancellable, atomic file transfers;
+  `pdb_download.*` owns PDB identifiers/URLs and `pubchem.*` the query, cache naming and 3D-to-2D fallback.
+  These services use Qt Network without widgets; recovery choices, progress and file dialogs stay in the UI.
 - `src/nwchem/`: `nwchem.*` validates computational settings and generates complete
   NWChem input. Its setting specifications share defaults, types, ranges, choices and applicability
   with the UI; `nwchem_validation.*` validates basic values from these specifications, independently
@@ -40,17 +46,23 @@ by responsibility, with paired headers and implementations in the same directory
   `nwchem_queue.*` runs saved bundles in sequence and keeps the waiting ones in a file between
   sessions; a chained entry (`QueueChain`) takes the structure of an earlier entry's job
   (`chainedDocument`) when that has finished and saves its bundle only then. NEB (`task` "neb") keeps
-  its end in the setting `neb_end` (positions by atom ID, kept through `Document::remove`/`renameIds`). `nwchem_restart.*` prepares documents that go on from a job's NWChem database
+  its end in the setting `neb_end` (positions by atom ID, kept through `Document::remove`/`renameIds` and the project adapter). `nwchem_restart.*` prepares documents that go on from a job's NWChem database
   (settings `restart`: the input says `restart`, has no geometry and skips finished tasks) and
   copies its files into the new job. `history.*` scans saved bundles and validates snapshots;
-  `history_import.cpp` registers runs made outside MolForma.
-- `src/results/`: `results.*` reads NWChem logs, XYZ, CUBE and MOLDEN and generates
-  bounded isosurfaces; `NwchemLog` shares one optimization state (task, steps, thresholds and
-  convergence) between live progress and loaded results. `result_presentation.*` owns frame/mode
-  selection, playback and the reference/visible geometry used by the result viewer and its exports.
-  `molden_orbitals.*` evaluates normalized Gaussian MOs with
-  Cartesian/spherical s–g bases. `result_loader.*` owns cancellable reader processes and source
-  freshness checks shared by GUI and headless MCP.
+  `history_import.cpp` registers runs made outside MolForma. `result_files.*` interprets
+  job manifests and supplies the result-file list, including visualization outputs and excluding
+  intermediate NEB paths, to the generic result readers.
+- `src/results/`: `results.*` holds result data and routes readers; `nwchem_log.cpp`,
+  `xyz_reader.cpp`, `cube_reader.cpp` and `molden_reader.cpp` parse their formats. `result_parsing.*`
+  shares lexical readers and bounds, `result_surface.cpp` generates bounded isosurfaces,
+  `result_cache.*` keeps parsed data and orbital grids, and `result_codec.*` owns the versioned binary
+  worker/cache payload. `result_worker.cpp` owns the worker entry points. `result_files.*` only
+  discovers physical files, groups animations and checks source stamps; job schemas stay in nwchem.
+  `NwchemLog` shares one optimization state (task, steps, thresholds and convergence) between live
+  progress and loaded results. `result_presentation.*` owns frame/mode selection, playback and the
+  reference/visible geometry used by the result viewer and its exports. `molden_orbitals.*` evaluates
+  normalized Gaussian MOs with Cartesian/spherical s–g bases. `result_loader.*` owns cancellable
+  reader processes and source freshness checks shared by GUI and headless MCP.
 - `src/ui/`: `main_window.*` owns the application window, project lifecycle and shared editor context.
   `molecule_panel.*` and `molecule_properties.cpp` own the molecular workspace, selection, palette,
   tools and property pages; document transactions still go through `EditorSession`.
@@ -67,10 +79,12 @@ by responsibility, with paired headers and implementations in the same directory
   The numbered tabs are "1 分子" through "4 入力プレビュー". `coordinates_panel.*`
   provides the coordinate table of "1 分子" (a `CoordinateModel` over the shown document),
   shown under the 3D view or in its place (layouts 3D / 3D＋表 / 表). `calculation_panel.*` provides "2 計算条件"; each
-  section opens its `nwchem_advanced.*` overrides as "詳細設定". `execution_panel.*`
+  section opens its `nwchem_advanced.*` overrides as "詳細設定". NEB endpoints read from output logs use
+  `ResultLoader`, with cancellation and a revision check before applying them. `execution_panel.*`
   provides the settings of "3 実行設定" and the run panel below the tabs (state,
   `run_progress.*` and log), opened from the header run pill; its form (`execution_form.*`) is
-  also that of Preferences. `run_progress.*` also holds the state labels of runs and their colors. `input_preview_panel.*`
+  also that of Preferences. `setting_navigation.h` maps semantic setting targets to UI tabs and reads
+  legacy tab numbers from old job diagnostics. `run_progress.*` also holds the state labels of runs and their colors. `input_preview_panel.*`
   provides the read-only "4 入力プレビュー" tab using the shared NWChem input
   generator and execution plan.
   `results_panel.*` provides the independent result viewer with cancellable native
@@ -93,8 +107,8 @@ by responsibility, with paired headers and implementations in the same directory
 `src/`, for example `#include "model/document.h"`. The `molforma_core` target
 is an interface aggregate of `molforma_model`, `molforma_editing`, `molforma_results`,
 `molforma_nwchem` and `molforma_io`. Dependencies flow from io to nwchem, from nwchem
-to editing/results, and from editing/results to model. Only `molforma_ui` links
-Qt Widgets; core libraries use Qt Core/Gui. `molforma_ui` contains ui and links to
+to editing/results, and from editing/results to model, then from model to the project-schema adapter. Only `molforma_ui` links
+Qt Widgets; core libraries use Qt Core/Gui, with Qt Network private to io. `molforma_ui` contains ui and links to
 core and mcp; `molforma_mcp` contains mcp and links to core. `cmake/CheckLayers.cmake`
 checks source-header dependency directions during configuration and in CTest.
 

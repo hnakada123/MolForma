@@ -213,10 +213,10 @@ QString nwchemSectionUnused(const Document &document, const QString &section);
 QString nwchemInput(const Document &document);
 // A top-level directive or block of a generated input, and where it is set.
 struct NwchemInputBlock {
-    int line = 0, lines = 1; // First line (from 0) and the number of lines, up to its "end".
-    QString keyword, title;  // "dft", and its header line as shown ("geometry（3 原子）").
-    QList<int> tabs;         // The workspace tabs that set it, by number (1 分子 … 3 実行設定).
-    QString setting, group;  // A setting key, and a group of the details of "2 計算条件", if any.
+    int line = 0, lines = 1;      // First line (from 0) and the number of lines, up to its "end".
+    QString keyword, title;       // "dft", and its header line as shown ("geometry（3 原子）").
+    QList<SettingTarget> targets; // The owners of the source settings, independent of workspace layout.
+    QString setting, group;       // A setting key, and a group of the details of "2 計算条件", if any.
     bool operator==(const NwchemInputBlock &) const = default;
 };
 struct NwchemInputOutline {

@@ -41,7 +41,8 @@ class NwchemInputBuilder {
         append(text);
     }
     void block(const QString &keyword, const NwchemGeneratedInput &body, const QString &setting = {},
-               const QString &group = {}, QList<int> tabs = {2}, QString title = {}) {
+               const QString &group = {}, QList<SettingTarget> targets = {SettingTarget::Calculation},
+               QString title = {}) {
         if (body.text.isEmpty())
             return;
         int first = 0;
@@ -52,18 +53,19 @@ class NwchemInputBuilder {
             visible.chop(1);
         if (title.isEmpty())
             title = visible.section('\n', 0, 0).trimmed();
-        NwchemInputBlock block{line + first, int(visible.count('\n') + 1), keyword, title, tabs, setting,
+        NwchemInputBlock block{line + first, int(visible.count('\n') + 1), keyword, title, targets, setting,
                                group};
         if (body.outline.advanced.isEmpty())
             block.group.clear();
-        if (!body.outline.advanced.isEmpty() && !block.tabs.contains(2))
-            block.tabs << 2;
+        if (!body.outline.advanced.isEmpty() && !block.targets.contains(SettingTarget::Calculation))
+            block.targets << SettingTarget::Calculation;
         result.outline.blocks << block;
         append(body);
     }
     void block(const QString &keyword, const QString &text, const QString &setting = {},
-               const QString &group = {}, QList<int> tabs = {2}, const QString &title = {}) {
-        block(keyword, NwchemGeneratedInput{text, {}}, setting, group, tabs, title);
+               const QString &group = {}, QList<SettingTarget> targets = {SettingTarget::Calculation},
+               const QString &title = {}) {
+        block(keyword, NwchemGeneratedInput{text, {}}, setting, group, targets, title);
     }
     void advancedBlock(const QString &keyword, const QString &text, const QStringList &keys,
                        const QString &group) {

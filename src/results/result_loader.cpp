@@ -26,7 +26,7 @@ QStringList sourceFiles(const ResultLoadRequest &request) {
         return {source.absoluteFilePath()};
     const auto match = animationStep.match(source.fileName());
     if (match.hasMatch())
-        for (const auto &group : resultFileGroups(source.absolutePath()))
+        for (const auto &group : resultFileGroups(resultFiles(source.absolutePath())))
             if (group.mode == match.captured(2).toInt() && group.animationName == match.captured(1)) {
                 QStringList paths;
                 for (const auto &name : group.files)
@@ -46,46 +46,6 @@ QString sourceStamp(const QStringList &paths) {
     return QString::fromUtf8(QJsonDocument(stamps).toJson(QJsonDocument::Compact));
 }
 } // namespace
-QVector<ResultFileGroup> resultFileGroups(const QString &directory) {
-    QVector<ResultFileGroup> groups;
-    QMap<QPair<QString, int>, QStringList> animations;
-    for (const auto &name : resultFiles(directory)) {
-        const auto match = animationStep.match(name);
-        if (match.hasMatch())
-            animations[{match.captured(1), match.captured(2).toInt()}] << name;
-        else
-            groups.append({{name}, {}, -1});
-    }
-    for (auto it = animations.begin(); it != animations.end(); ++it) {
-        auto files = it.value();
-        std::stable_sort(files.begin(), files.end(), [](const QString &a, const QString &b) {
-            return animationStep.match(a).captured(3).toInt() < animationStep.match(b).captured(3).toInt();
-        });
-        groups.append({files, it.key().first, it.key().second});
-    }
-    return groups;
-}
-QString preferredResultFile(const QString &directory) {
-    const QDir dir(directory);
-    if (!dir.exists())
-        fail(tr("フォルダーが見つかりません。"));
-    const auto files = resultFiles(dir.absolutePath());
-    if (files.isEmpty())
-        fail(tr("対応する結果ファイルがありません。"));
-    return dir.absoluteFilePath(files.contains("output.out") ? "output.out" : files.first());
-}
-QString resultSourceStamp(const QString &path) {
-    const QFileInfo file(path);
-    if (!file.isFile())
-        return {};
-    return QString::fromUtf8(
-        QJsonDocument(
-            QJsonArray{
-                file.absoluteFilePath(), file.canonicalFilePath(), QString::number(file.size()),
-                QString::number(file.lastModified().toMSecsSinceEpoch()),
-                QString::number(file.fileTime(QFileDevice::FileMetadataChangeTime).toMSecsSinceEpoch())})
-            .toJson(QJsonDocument::Compact));
-}
 ResultLoader::ResultLoader(QObject *parent) : QObject(parent) {}
 ResultLoader::~ResultLoader() {
     cancel();

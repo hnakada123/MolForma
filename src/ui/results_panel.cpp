@@ -4,6 +4,7 @@
 #include "model/geometry.h"
 #include "model/i18n.h"
 #include "model/units.h"
+#include "nwchem/result_files.h"
 #include "results/molden_orbitals.h"
 #include "ui/editor_chrome.h"
 #include "ui/figure_export.h"
@@ -1560,7 +1561,7 @@ void ResultsPanel::showCombineDialog() {
 void ResultsPanel::openDirectory(const QString &path) {
     cancelLoad();
     try {
-        const auto first = preferredResultFile(path);
+        const auto first = preferredResultFile(path, nwchemResultFiles(path));
         folder = QFileInfo(first).absolutePath();
         fillFiles(QFileInfo(first).fileName());
         openEntry(files->currentData().toString());
@@ -1581,7 +1582,7 @@ void ResultsPanel::fillFiles(const QString &selected) {
     };
     QVector<QStringList> groups(4);
     QVector<ResultFileGroup> modes;
-    for (const auto &group : resultFileGroups(folder)) {
+    for (const auto &group : resultFileGroups(nwchemResultFiles(folder))) {
         if (group.mode >= 0)
             modes << group;
         else
@@ -1633,7 +1634,7 @@ void ResultsPanel::openEntry(const QString &entry) {
 QString ResultsPanel::jobMolden() const {
     if (data.format != "NWChem")
         return {};
-    for (const auto &name : resultFiles(QFileInfo(data.source).absolutePath()))
+    for (const auto &name : nwchemResultFiles(QFileInfo(data.source).absolutePath()))
         if (QStringList{"molden", "mld", "molde"}.contains(QFileInfo(name).suffix().toLower()) &&
             files->findData(name) >= 0)
             return name;

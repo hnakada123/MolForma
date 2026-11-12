@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "nwchem/nwchem_advanced.h"
+#include "results/result_loader.h"
 #include <QHash>
 #include <QJsonArray>
 #include <QMap>
@@ -48,6 +49,7 @@ class CalculationPanel : public QWidget {
     // Stop focus-out callbacks before the owner's document and undo stack are destroyed.
     void stopEditing() {
         busy = true;
+        nebLoader.cancel();
     }
     void applyChromeStyle();
     // The end of an NEB path ("neb_end"): from a structure file or NWChem log (its last structure), the
@@ -58,6 +60,14 @@ class CalculationPanel : public QWidget {
     void setNebEndFromResult();
     void setNebEndFromCurrent();
     void swapNebEnds();
+    bool loadingNebEnd() const {
+        return nebLoader.active();
+    }
+    void cancelNebEndLoad();
+
+  signals:
+    void nebEndLoaded();
+    void nebEndLoadFailed(QString message);
 
   protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -94,6 +104,11 @@ class CalculationPanel : public QWidget {
         bool showUnused = false;
     };
     MainWindow *window;
+    ResultLoader nebLoader;
+    quint64 nebRevision = 0;
+    QLabel *nebLoadStatus;
+    QPushButton *nebCancel;
+    void nebLoadFailed(const QString &message);
     bool busy = false, scrolling = false;
     QMap<QString, Detail> details;         // Option key → its row.
     QMap<QString, DetailBox> detailBoxes;  // Section key → its details.

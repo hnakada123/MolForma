@@ -5,6 +5,7 @@
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_restart.h"
 #include "nwchem/remote_execution.h"
+#include "nwchem/result_files.h"
 #include "nwchem/run_diagnostics.h"
 #include "ui/editor_chrome.h"
 #include "ui/energy_profile_dialog.h"
@@ -1960,7 +1961,7 @@ void HistoryPanel::updateActions() {
     const auto *e = selectedEntry();
     const bool exists = e && QFileInfo(e->directory).isDir();
     const bool owned = e && e->directory == activeDirectory();
-    viewer->setEnabled(exists && !resultFiles(e->directory).isEmpty());
+    viewer->setEnabled(exists && !nwchemResultFiles(e->directory).isEmpty());
     folder->setEnabled(exists);
     reuse->setEnabled(exists && e->valid && !window->hasCandidate() && !window->chemistryRunning());
     next->setEnabled(exists && e->valid);

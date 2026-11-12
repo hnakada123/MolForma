@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
+#include "results/result_files.h"
 #include "results/results.h"
 #include <QObject>
 #include <QProcess>
@@ -20,15 +21,6 @@ struct ResultLoadRequest {
     // A CUBE the worker makes first (combineCubes) and writes to path, which is then read.
     QVector<CubeTerm> combine = {};
 };
-struct ResultFileGroup {
-    QStringList files; // Names relative to the directory, in step order for an animation.
-    QString animationName;
-    int mode = -1; // -1 for an ordinary file.
-};
-QVector<ResultFileGroup> resultFileGroups(const QString &directory);
-// The same file selection and cancellable reader for GUI and headless sessions.
-QString preferredResultFile(const QString &directory);
-QString resultSourceStamp(const QString &path);
 class ResultLoader : public QObject {
     Q_OBJECT
   public:

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/chemistry_job.h"
 #include "io/document_storage.h"
+#include "io/pdb_download.h"
+#include "io/pubchem.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -57,6 +59,62 @@ class ServicesTest : public QObject {
         qputenv("XDG_DATA_HOME", home.filePath("data").toUtf8());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, home.path());
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, home.path());
+    }
+    void downloadsWithoutWidgets() {
+        QTemporaryDir source, cache;
+        const auto from = source.filePath("source.sdf"), to = cache.filePath("kept.sdf");
+        writeFile(from, "downloaded");
+        writeFile(to, "previous");
+        FileDownload cancelled(QUrl::fromLocalFile(from), to, "test", "missing");
+        QSignalSpy cancelledDone(&cancelled, &Download::finished);
+        cancelled.start();
+        cancelled.cancel();
+        QTRY_COMPARE(cancelledDone.count(), 1);
+        QVERIFY(cancelled.cancelled());
+        QCOMPARE(readFile(to), QByteArray("previous"));
+        FileDownload missing(QUrl::fromLocalFile(source.filePath("missing")), to, "test", "missing");
+        QSignalSpy missingDone(&missing, &Download::finished);
+        missing.start();
+        QTRY_COMPARE(missingDone.count(), 1);
+        QVERIFY(missing.notFound());
+        QCOMPARE(missingDone[0][0].toString(), QString("missing"));
+        QCOMPARE(readFile(to), QByteArray("previous"));
+        FileDownload success(QUrl::fromLocalFile(from), to, "test", "missing");
+        QSignalSpy successDone(&success, &Download::finished);
+        success.start();
+        QTRY_COMPARE(successDone.count(), 1);
+        QVERIFY(successDone[0][0].toString().isEmpty());
+        QCOMPARE(readFile(to), QByteArray("downloaded"));
+        QCOMPARE(QDir(cache.path()).entryList(QDir::Files), QStringList{"kept.sdf"});
+    }
+    void pubchemWithoutWidgets() {
+        QTemporaryDir source, cache;
+        const auto url =
+            QUrl::fromLocalFile(source.filePath("X.sdf")).toString().replace("X.sdf", "%1_%2_%3.sdf");
+        writeFile(source.filePath("cid_2244_3d.sdf"), "3D record");
+        writeFile(source.filePath("name_benzene_2d.sdf"), "2D record");
+        PubchemDownload conformer(*pubchemQuery("cid:2244"), cache.path(), url);
+        QSignalSpy done(&conformer, &Download::finished);
+        conformer.start();
+        QTRY_COMPARE(done.count(), 1);
+        QVERIFY(done[0][0].toString().isEmpty());
+        QVERIFY(conformer.record().threeD);
+        QCOMPARE(readFile(conformer.path()), QByteArray("3D record"));
+        PubchemDownload fallback(*pubchemQuery("benzene"), cache.path(), url);
+        QSignalSpy fallbackDone(&fallback, &Download::finished);
+        fallback.start();
+        QTRY_COMPARE(fallbackDone.count(), 1);
+        QVERIFY(fallbackDone[0][0].toString().isEmpty());
+        QVERIFY(!fallback.record().threeD);
+        QCOMPARE(readFile(fallback.path()), QByteArray("2D record"));
+        PubchemDownload cancelled(*pubchemQuery("benzene"), cache.filePath("cancelled"), url);
+        QSignalSpy cancelledDone(&cancelled, &Download::finished);
+        cancelled.start();
+        cancelled.cancel();
+        QTRY_COMPARE(cancelledDone.count(), 1);
+        QVERIFY(cancelled.cancelled());
+        QVERIFY(cancelled.path().isEmpty());
+        QVERIFY(QDir(cache.filePath("cancelled")).entryList(QDir::Files).isEmpty());
     }
     void chemistryCandidateKeepsSnapshotAndProvenance() {
         EditorSession session;

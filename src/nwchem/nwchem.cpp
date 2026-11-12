@@ -1391,7 +1391,7 @@ NwchemValidation validateNwchem(const Document &d) {
 static NwchemValidation validation(const Document &d) {
     NwchemValidation result;
     for (const auto &message : d.validate())
-        result.error("geometry.validation", {}, message, {}, 0);
+        result.error("geometry.validation", {}, message, {}, SettingTarget::Molecule);
     auto &errors = result.errors;
     const auto s = nwchemSettings(d);
     const auto advanced = nwchemAdvanced(d);
@@ -1480,7 +1480,8 @@ static NwchemValidation validation(const Document &d) {
                      tr("基底 %1 の対応元素に含まれません: %2").arg(basis, sorted(unsupported).join(", ")));
     if (!realAtoms)
         result.error("geometry.empty", QString(),
-                     tr("実原子を追加してください（ゴーストのみの計算はできません）。"), {}, 0);
+                     tr("実原子を追加してください（ゴーストのみの計算はできません）。"), {},
+                     SettingTarget::Molecule);
     result.electrons -= charge;
     if (calc.correlated() && advanced.contains("corr_freeze"))
         result.frozenOrbitals = advanced["corr_freeze"].toInt();
@@ -1896,7 +1897,7 @@ static NwchemValidation validation(const Document &d) {
             nwchemGeometry(d,
                            CoordinateUnit::Angstrom); // Also validate isotope masses before enabling export.
     } catch (const std::exception &e) {
-        result.error("geometry.invalid", QString(), QString::fromUtf8(e.what()), {}, 0);
+        result.error("geometry.invalid", QString(), QString::fromUtf8(e.what()), {}, SettingTarget::Molecule);
     }
     validateNwchemAdvanced(d, result);
     if (s["followup"].toBool() && errors.isEmpty()) {
@@ -2008,8 +2009,9 @@ void geometryBlocks(NwchemInputBuilder &out, const Document &d, CoordinateUnit u
     const auto end = part.geometry.indexOf('\n') + 1;
     body.sourced(part.geometry.left(end), {"driver_cartesian"}, cartesianOverride);
     body.append(part.geometry.mid(end));
-    out.block("geometry", body.result, {}, "driver", {1}, tr("geometry（%n 原子）", nullptr, d.atoms.size()));
-    out.block("constraints", part.constraints, {}, {}, {1});
+    out.block("geometry", body.result, {}, "driver", {SettingTarget::Molecule},
+              tr("geometry（%n 原子）", nullptr, d.atoms.size()));
+    out.block("constraints", part.constraints, {}, {}, {SettingTarget::Molecule});
 }
 void basisBlocks(NwchemInputBuilder &out, const Document &d, const QJsonObject &s, bool allGhosts) {
     const NwchemCalculation calc(s);
@@ -2054,8 +2056,8 @@ void basisBlocks(NwchemInputBuilder &out, const Document &d, const QJsonObject &
         else
             text += QString("  bq%1 library %1 \"%2\"\n").arg(symbol, elementBasis(s, symbol));
     text += "end\n";
-    out.block("basis", text, p.basis.lines.isEmpty() ? QString("basis") : QString("basis_custom"), {}, {2},
-              perElement ? QString() : "basis \"" + basis + '"');
+    out.block("basis", text, p.basis.lines.isEmpty() ? QString("basis") : QString("basis_custom"), {},
+              {SettingTarget::Calculation}, perElement ? QString() : "basis \"" + basis + '"');
     if (calc.dft() && s["ri_j"].toBool()) {
         text = "\nbasis \"cd basis\"" + type + "  * library \"weigend coulomb fitting\"\n";
         for (const auto &symbol : sorted(ghosts))
@@ -2153,7 +2155,8 @@ void extraInput(NwchemInputBuilder &out, const QString &text, const QString &key
     body.sourced("\n# Additional input (not checked by MolForma)\n" + text.trimmed() + '\n', {key}, false,
                  true);
     // Free-form input is one opaque region, even if it contains nested blocks or repeated directives.
-    out.block("additional", body.result, key, {}, {2}, text.trimmed().section('\n', 0, 0));
+    out.block("additional", body.result, key, {}, {SettingTarget::Calculation},
+              text.trimmed().section('\n', 0, 0));
 }
 // Takes a block and its lines out of a generated input; the lines after it move up.
 void removeBlock(NwchemGeneratedInput &input, int index) {
@@ -2250,7 +2253,8 @@ static NwchemGeneratedInput generation(const Document &d) {
         out.block("start", "start " + str("start") + '\n', "start");
     if (!str("title").isEmpty())
         out.block("title", "title \"" + str("title") + "\"\n", "title");
-    out.block("memory", "memory total " + integer("memory_mb") + " mb\n", "memory_mb", {}, {3});
+    out.block("memory", "memory total " + integer("memory_mb") + " mb\n", "memory_mb", {},
+              {SettingTarget::Execution});
     out.append(nwchemAdvancedLines(d, "files"));
     out.block("charge", "charge " + QString::number(d.charge) + '\n', "charge");
     if (!restart.active())
@@ -2294,7 +2298,8 @@ static NwchemGeneratedInput generation(const Document &d) {
             text += QString("  %1 %2 %3 %4\n")
                         .arg(shortest(q.position.x()), shortest(q.position.y()), shortest(q.position.z()),
                              shortest(q.charge));
-        out.block("bq", text + "end\n", "include_point_charges", {}, {1, 2});
+        out.block("bq", text + "end\n", "include_point_charges", {},
+                  {SettingTarget::Molecule, SettingTarget::Calculation});
     }
     if (const auto relativistic = str("relativistic"); relativistic != "none")
         out.block("relativistic",

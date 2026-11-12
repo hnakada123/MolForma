@@ -90,7 +90,7 @@ class CalculationTest : public QObject {
         for (int i = 0; i < japanese.diagnostics.size(); ++i) {
             const auto &a = japanese.diagnostics[i], &b = english.diagnostics[i];
             QCOMPARE(a.identity(), b.identity());
-            QCOMPARE(a.tab, b.tab);
+            QCOMPARE(a.target, b.target);
             QCOMPARE(a.severity, b.severity);
             if (a.code == "dispersion.parameters") {
                 found = true;
@@ -1087,6 +1087,52 @@ class CalculationTest : public QObject {
         auto other = dir.filePath("water.xyz");
         writeFile(other, "3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n");
         QVERIFY_THROWS_EXCEPTION(std::exception, panel->setNebEndFromFile(other));
+    }
+    void panelNebLogLoading() {
+        QTemporaryDir dir;
+        const auto file = dir.filePath("end.out");
+        writeFile(file, "NWChem\n Output coordinates in angstroms (scale by 1.8897 to convert to a.u.)\n\n"
+                        " No. Tag Charge X Y Z\n ---- ---- ------ ----- ----- -----\n"
+                        " 1 O 8.0 0.0 0.0 0.0\n 2 H 1.0 0.9 0.0 0.6\n"
+                        " 3 H 1.0 -0.9 0.0 0.6\n\n");
+        MainWindow w;
+        w.loadDocument(water());
+        auto *panel = w.findChild<CalculationPanel *>();
+        QSignalSpy loaded(panel, &CalculationPanel::nebEndLoaded);
+        QSignalSpy failed(panel, &CalculationPanel::nebEndLoadFailed);
+        const auto before = w.document();
+        panel->setNebEndFromFile(file);
+        QVERIFY(panel->loadingNebEnd());
+        QCOMPARE(w.document(), before);
+        panel->cancelNebEndLoad();
+        QVERIFY(!panel->loadingNebEnd());
+        QCOMPARE(w.document(), before);
+        QCOMPARE(loaded.count(), 0);
+        // A result for an earlier document must not overwrite edits made while it was loading.
+        panel->setNebEndFromFile(file);
+        w.edit("change conditions", [](Document &d) { setNwchemSetting(d, "title", "changed"); });
+        QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 10000);
+        QVERIFY2(failed[0][0].toString().contains("読込中"), qPrintable(failed[0][0].toString()));
+        QVERIFY(!nwchemNebEnd(w.document()).document);
+        const auto changed = w.document();
+        // Replacing a request cancels its worker; only the latest one can apply an undoable edit.
+        const auto latest = dir.filePath("latest.out");
+        writeFile(latest, QByteArray(readFile(file)).replace("0.9", "1.2"));
+        panel->setNebEndFromFile(file);
+        panel->setNebEndFromFile(latest);
+        QTRY_COMPARE_WITH_TIMEOUT(loaded.count(), 1, 10000);
+        QCOMPARE(failed.count(), 1);
+        const auto endpoint = nwchemNebEnd(w.document()).document;
+        QVERIFY(endpoint);
+        QVERIFY(std::abs((endpoint->atoms[1].position - endpoint->atoms[0].position).norm() -
+                         std::sqrt(1.2 * 1.2 + 0.6 * 0.6)) < 1e-9);
+        QVERIFY(!panel->loadingNebEnd());
+        w.history()->undo();
+        QCOMPARE(w.document(), changed);
+        // Closing the window cancels its reader, too.
+        panel->setNebEndFromFile(file);
+        panel->stopEditing();
+        QVERIFY(!panel->loadingNebEnd());
     }
     void bsseFollowupPropertiesAndExtraInput() {
         auto dimer = Document::fromXyz("6\nwater dimer\nO -1.551007 -0.114520 0\nH -1.934259 0.762503 0\n"
@@ -2095,5 +2141,11 @@ class CalculationTest : public QObject {
         QVERIFY(w.grab().save(path + "/calculation.png"));
     }
 };
-QTEST_MAIN(CalculationTest)
+int main(int argc, char **argv) {
+    if (const int code = resultWorkerMain(argc, argv); code >= 0)
+        return code;
+    QApplication app(argc, argv);
+    CalculationTest test;
+    return QTest::qExec(&test, argc, argv);
+}
 #include "test_calculation.moc"

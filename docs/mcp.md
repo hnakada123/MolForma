@@ -224,6 +224,8 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 | `get_results` | 読込済み結果の要約（計算のエネルギー `final_energy`（最後のtask・振動数の参照構造・BSSE補正後）・熱化学・双極子・最適化状態・スキャンとIRCの各点・NEBの経路（`neb`: 像ごとの `bead`・`energy`・`frame`・`distance`（始点からの経路の長さ、Å）、`iteration`・`steps`・`thresholds`・`converged`）・BSSE・溶媒和・原子ごとのMulliken/ESP/RESP電荷・NMR遮蔽・分極率を含む `properties`。Mulliken解析のあるログでは原子ごとの原子価 `valency`・自由電子数 `free_electrons` と、結合指数（Mayerの結合次数。基底関数に依存）が絶対値0.05以上の原子対 `bond_indices`（`{a, b, value}`、原子番号は1始まり）も含む）、構造列・エネルギー・軌道（`number` はスピンごとの軌道番号で、ログに一部の軌道しかなくてもMOLDENと同じ番号）・振動数（並進・回転は `rigid`）・励起状態（`contributions` は占有→仮想軌道の対 `{from, to, spin, x, y, weight, transition}` を重みの大きい順に並べたもの。NWChemが出力する係数0.05超の対で、`y` は出力されたときだけ、`weight` は X² − Y² の出力された対の合計に対する百分率、`transition` は `HOMO−1 → LUMO` の形で、HOMOの番号は `properties.tddft` のα・β電子数による）・最適化ステップ・変位・ログ。`section: "bond_indices"` は結合指数を読み込んだ全部の原子対（`counts.bondIndices` 件）を `{a, b, value, elements, distance}`（距離は最後の構造のÅ）で返す。原子対が2万を超える分子では絶対値0.05未満の対を読み込まず、その数が `properties.bond_indices_omitted` |
 | `results_action` | 結果ファイル・計算フォルダーの読込、再読込、読込の取消、CUBEの差・和（`combine_cubes`） |
 
+計算状態の `diagnostics` は `target`（`molecule`・`calculation`・`execution`）で診断に関係する対象を返します。既存クライアント向けの `tab`（0・1・2）も引き続き返します。以前のジョブ記録にある `tab` も読み込めます。
+
 画面なしモードの計算と読込はバックグラウンドで進み、`calculation` / `results_action` はすぐに戻ります。完了はタスクか `get_app_state` で確認します。計算はMolFormaの終了（標準入力を閉じる）とともに停止します。結果の表示・再生・画像取得はGUIモードだけです。
 
 次のツールは `--mcp-gui` で追加されます。

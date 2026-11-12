@@ -13,6 +13,7 @@
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
 #include "ui/remote_hosts_dialog.h"
+#include "ui/setting_navigation.h"
 #include <QtTest>
 #include <QtWidgets>
 #ifdef Q_OS_UNIX
@@ -82,6 +83,11 @@ class ExecutionTest : public QObject {
         QCOMPARE(scf[0].toObject()["code"].toString(), "scf_convergence");
         QCOMPARE(scf[0].toObject()["setting"].toString(), "scf_maxiter");
         QCOMPARE(scf[0].toObject()["source"].toString(), "stdout");
+        QCOMPARE(scf[0].toObject()["target"].toString(), "calculation");
+        QVERIFY(!scf[0].toObject().contains("tab"));
+        QCOMPARE(runDiagnosticTab(scf[0].toObject()), 1);
+        QCOMPARE(runDiagnosticTab(QJsonObject{{"tab", 1}}), 1); // Older saved records.
+        QCOMPARE(runDiagnosticTab(QJsonObject{{"target", "execution"}, {"tab", 0}}), 2);
         QCOMPARE(diagnoseRun(RunState::Finished, "maxiter 20\nSCF converged\n", {}).size(), 0);
         const auto memory = diagnoseRun(RunState::Finished, {}, "MA_alloc_get: failed\n");
         QCOMPARE(memory[0].toObject()["code"].toString(), "memory");

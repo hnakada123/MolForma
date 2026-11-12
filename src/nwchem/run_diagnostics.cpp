@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "nwchem/run_diagnostics.h"
 #include "model/i18n.h"
+#include "model/setting_target.h"
 #include <QJsonObject>
 #include <QRegularExpression>
 
@@ -27,32 +28,35 @@ QString runDiagnosisText(const QString &code) {
 QJsonArray diagnoseRun(RunState state, const QString &output, const QString &errors,
                        const QString &launchError) {
     QJsonArray result;
-    const auto add = [&](const QString &code, const QString &setting, int tab, const QString &source,
-                         const QString &evidence) {
+    const auto add = [&](const QString &code, const QString &setting, SettingTarget target,
+                         const QString &source, const QString &evidence) {
         result.append(QJsonObject{{"code", code},
                                   {"setting", setting},
-                                  {"tab", tab},
+                                  {"target", settingTargetKey(target)},
                                   {"source", source},
                                   {"evidence", evidence.left(512)}});
     };
     if (state == RunState::TimedOut)
-        add("time_limit", "timeout_seconds", 2, "run", {});
+        add("time_limit", "timeout_seconds", SettingTarget::Execution, "run", {});
     if (state == RunState::Failed && !launchError.isEmpty())
-        add("launch", "executable", 2, "run", launchError);
+        add("launch", "executable", SettingTarget::Execution, "run", launchError);
     struct Pattern {
         const char *code, *setting, *expression;
-        int tab;
+        SettingTarget target;
     };
     const Pattern patterns[]{
         {"scf_convergence", "scf_maxiter",
-         "(?:scf|dft).*?(?:failed to converge|convergence failure|not converged)|dft energy failed", 1},
+         "(?:scf|dft).*?(?:failed to converge|convergence failure|not converged)|dft energy failed",
+         SettingTarget::Calculation},
         {"optimization_limit", "opt_maxiter",
          "maximum number of (?:optimization )?steps exceeded|failed to converge in.*steps|driver:.*too many "
          "steps",
-         1},
+         SettingTarget::Calculation},
         {"memory", "memory_mb",
-         "out of memory|insufficient memory|not enough memory|ma_alloc.*fail|failed to allocate", 2},
-        {"basis", "basis", "failed opening basis file|error in the specified basis set", 1}};
+         "out of memory|insufficient memory|not enough memory|ma_alloc.*fail|failed to allocate",
+         SettingTarget::Execution},
+        {"basis", "basis", "failed opening basis file|error in the specified basis set",
+         SettingTarget::Calculation}};
     for (const auto &pattern : patterns) {
         const QRegularExpression expression(QString::fromLatin1(pattern.expression),
                                             QRegularExpression::CaseInsensitiveOption);
@@ -62,7 +66,7 @@ QJsonArray diagnoseRun(RunState state, const QString &output, const QString &err
             const auto lines = source.second.split('\n');
             for (auto line = lines.crbegin(); line != lines.crend(); ++line)
                 if (expression.match(*line).hasMatch()) {
-                    add(pattern.code, pattern.setting, pattern.tab, source.first, line->trimmed());
+                    add(pattern.code, pattern.setting, pattern.target, source.first, line->trimmed());
                     found = true;
                     break;
                 }
@@ -71,7 +75,7 @@ QJsonArray diagnoseRun(RunState state, const QString &output, const QString &err
         }
     }
     if (state == RunState::Failed && result.isEmpty())
-        add("process", "", 2, "stderr", errors.trimmed().right(512));
+        add("process", "", SettingTarget::Execution, "stderr", errors.trimmed().right(512));
     return result;
 }
 } // namespace mf

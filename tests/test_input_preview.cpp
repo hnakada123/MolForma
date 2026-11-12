@@ -266,17 +266,17 @@ class InputPreviewTest : public QObject {
         for (const auto &b : outline.blocks)
             blocks.insert(b.keyword, b);
         QCOMPARE(blocks["geometry"].title, QString("geometry（3 原子）"));
-        QCOMPARE(blocks["geometry"].tabs, QList<int>{1});
+        QCOMPARE(blocks["geometry"].targets, QList<SettingTarget>{SettingTarget::Molecule});
         QCOMPARE(blocks["geometry"].lines, 5);
         QCOMPARE(blocks["basis"].title, QString("basis \"sto-3g\""));
-        QCOMPARE(blocks["dft"].tabs, QList<int>{2});
+        QCOMPARE(blocks["dft"].targets, QList<SettingTarget>{SettingTarget::Calculation});
         QCOMPARE(blocks["dft"].setting, QString("method"));
         QCOMPARE(blocks["dft"].group, QString("dft"));
         QCOMPARE(lines[blocks["dft"].line + blocks["dft"].lines - 1], QString("end"));
         QCOMPARE(blocks["driver"].group, QString("driver"));
-        QCOMPARE(blocks["additional"].tabs, QList<int>{2});
+        QCOMPARE(blocks["additional"].targets, QList<SettingTarget>{SettingTarget::Calculation});
         QCOMPARE(blocks["additional"].setting, QString("extra_input"));
-        QCOMPARE(blocks["task"].tabs, QList<int>{2});
+        QCOMPARE(blocks["task"].targets, QList<SettingTarget>{SettingTarget::Calculation});
         QCOMPARE(lines[blocks["task"].line], QString("task dft optimize"));
         // A block that only the details write belongs to them alone.
         setNwchemAdvanced(d, "molden_output", true);
@@ -284,7 +284,7 @@ class InputPreviewTest : public QObject {
         const auto property = std::find_if(withMolden.blocks.begin(), withMolden.blocks.end(),
                                            [](const auto &b) { return b.keyword == "property"; });
         QVERIFY(property != withMolden.blocks.end());
-        QCOMPARE(property->tabs, QList<int>{2});
+        QCOMPARE(property->targets, QList<SettingTarget>{SettingTarget::Calculation});
         QCOMPARE(property->setting, QString());
         QCOMPARE(property->group, QString("visualization"));
         // Without such settings nothing is marked; an empty input has no outline.

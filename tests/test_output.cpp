@@ -2,7 +2,9 @@
 #include "model/i18n.h"
 #include "model/units.h"
 #include "nwchem/nwchem_output.h"
+#include "nwchem/result_files.h"
 #include "results/molden_orbitals.h"
+#include "results/result_files.h"
 #include "results/result_loader.h"
 #include "ui/calculation_panel.h"
 #include "ui/execution_panel.h"
@@ -426,7 +428,8 @@ class OutputTest : public QObject {
                  QJsonArray({"permanent/molforma.molden", "permanent/molforma_density.cube"}));
         writeFile(plan.directory + "/output.out", "NWChem\n Total SCF energy = -75\n Total times  cpu: 1s\n");
         writeFile(plan.directory + "/permanent/molforma_density.cube", cube().toUtf8());
-        QVERIFY(resultFiles(plan.directory).contains("permanent/molforma_density.cube"));
+        QVERIFY(nwchemResultFiles(plan.directory).contains("permanent/molforma_density.cube"));
+        QVERIFY(!resultFiles(plan.directory).contains("permanent/molforma_density.cube"));
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, executionPlan(d, tmp.path(), plan.directory));
         MainWindow w;
         w.loadDocument(d);
@@ -445,12 +448,12 @@ class OutputTest : public QObject {
         QCOMPARE(w.document().project(), before);
         const auto moved = tmp.filePath("moved");
         QVERIFY(QDir().rename(plan.directory, moved));
-        QVERIFY(resultFiles(moved).contains("permanent/molforma_density.cube"));
+        QVERIFY(nwchemResultFiles(moved).contains("permanent/molforma_density.cube"));
 #ifndef Q_OS_WIN // There absolute paths start with a drive, and NWChem input takes no ":" in them.
         // An absolute permanent directory uses the same discovery path without recursively scanning it.
         setNwchemAdvanced(d, "permanent_dir", moved + "/permanent");
         const auto external = saveExecutionBundle(d, tmp.path());
-        QVERIFY(resultFiles(external.directory).contains(moved + "/permanent/molforma_density.cube"));
+        QVERIFY(nwchemResultFiles(external.directory).contains(moved + "/permanent/molforma_density.cube"));
 #endif
         setNwchemAdvanced(d, "vectors_output", "./direct/custom.movecs");
         const auto direct = saveExecutionBundle(d, tmp.path());
@@ -527,7 +530,7 @@ class OutputTest : public QObject {
                 const auto result = readResult(path);
                 QVERIFY(!result.frames.isEmpty());
                 QCOMPARE(result.frames.first().molecule.atoms.size(), d.atoms.size());
-                QVERIFY(resultFiles(folder).contains(name));
+                QVERIFY(nwchemResultFiles(folder).contains(name));
                 if (result.format == "MOLDEN")
                     QVERIFY(!result.orbitals.isEmpty());
                 if (result.format == "CUBE")

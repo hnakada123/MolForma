@@ -1197,6 +1197,7 @@ class CoreTest : public QObject {
         settings["constraints"] =
             QJsonArray{QJsonObject{{"type", "bond"}, {"atoms", QJsonArray{cobalt, donor}}, {"value", 2.0}}};
         settings["scan_atoms"] = QJsonArray{donor, cobalt};
+        settings["future_reference"] = QJsonObject{{"atom", cobalt}, {"value", 42}};
         d.data["nwchem"] = settings;
         auto renamed = d;
         renamed.renameIds({{cobalt, "co"}, {donor, "n1"}, {part, "en1"}});
@@ -1211,6 +1212,7 @@ class CoreTest : public QObject {
         QCOMPARE(renamed.data["nwchem"].toObject()["scan_atoms"].toArray(), (QJsonArray{"n1", "co"}));
         QCOMPARE(renamed.data["nwchem"].toObject()["constraints"].toArray()[0].toObject()["atoms"].toArray(),
                  (QJsonArray{"co", "n1"}));
+        QCOMPARE(renamed.data["nwchem"].toObject()["future_reference"], settings["future_reference"]);
         // Removing the center leaves its ligands unplaced and drops the coordinates that used it.
         auto removed = d;
         removed.remove({cobalt});
@@ -1219,6 +1221,7 @@ class CoreTest : public QObject {
             QVERIFY(p.center().isEmpty() && !p.metadata.contains("sites"));
         QVERIFY(removed.data["nwchem"].toObject()["constraints"].toArray().isEmpty());
         QVERIFY(removed.data["nwchem"].toObject()["scan_atoms"].toArray().isEmpty());
+        QCOMPARE(removed.data["nwchem"].toObject()["future_reference"], settings["future_reference"]);
     }
     void mutationKeepsReferences() {
         // A mutated residue keeps its place and the IDs of the atoms it keeps by name, and with them the

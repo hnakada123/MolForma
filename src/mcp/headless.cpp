@@ -2,6 +2,7 @@
 #include "mcp/headless.h"
 #include "mcp/tools.h"
 #include "model/settings.h"
+#include "nwchem/result_files.h"
 #include "results/result_summary.h"
 #include <QCoreApplication>
 #include <QDateTime>
@@ -206,7 +207,7 @@ QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
         fail("Specify path.");
     policy.checkPath(path);
     if (action == "open_directory") {
-        path = preferredResultFile(path);
+        path = preferredResultFile(path, nwchemResultFiles(path));
         policy.checkPath(path); // The file chosen in the folder may be a link that leads out of it.
     }
     load(path, action);

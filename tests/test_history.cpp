@@ -324,11 +324,18 @@ class HistoryTest : public QObject {
         auto *execution = widget<ExecutionPanel>(w, "executionTab");
         auto *viewer = widget<ResultsPanel>(w, "resultsTab");
         QSignalSpy loaded(viewer, &ResultsPanel::loaded);
+        bool finished = false, shownAtFinish = false;
+        connect(execution, &ExecutionPanel::runFinished, &w, [&] {
+            finished = true;
+            shownAtFinish = execution->runPanelShown();
+        });
         execution->startCalculation();
         QVERIFY(execution->runPanelShown());
-        QTRY_VERIFY(!execution->running());
-        // Open while the viewer reads the run, closed once it shows the results.
-        QVERIFY(execution->runPanelShown());
+        QTRY_VERIFY(finished);
+        QVERIFY(!execution->running());
+        // Observe the intermediate state at the signal: a fast reader may already have loaded
+        // and closed the panel by the time QTRY_VERIFY next checks the event loop.
+        QVERIFY(shownAtFinish);
         QTRY_COMPARE_WITH_TIMEOUT(loaded.count(), 1, 10000);
         QVERIFY(!execution->runPanelShown());
     }

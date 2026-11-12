@@ -1,4 +1,7 @@
 {
+    "%1 の構造をPubChemから取得しています…": "Downloading the structure of %1 from PubChem…",
+    "読込中に分子・計算条件が変更されたため、NEBの終点を適用しませんでした。": "The NEB endpoint was not applied because the molecule or calculation settings changed while loading.",
+    "NEBの終点を読み込んでいます…": "Loading the NEB endpoint…",
     "%1 は %2〜%3 の有限の数値で指定してください。": "Specify %1 as a finite number between %2 and %3.",
     "再生には2つ以上の構造が必要です。": "At least two structures are required for playback.",
     "このモードには変位データがありません。": "This mode has no displacement data.",
@@ -3396,8 +3399,6 @@
     "名前は改行を含めず300文字以内で入力してください。": "Enter a name of at most 300 characters without line breaks.",
     "PubChemに %1 が見つかりません。名前・CIDを確かめてください。": "PubChem has no %1. Check the name or CID.",
     "PubChemから取得": "Get from PubChem",
-    "%1 の3D構造をPubChemから取得しています…": "Getting the 3D structure of %1 from PubChem…",
-    "%1 の2D構造をPubChemから取得しています…": "Getting the 2D structure of %1 from PubChem…",
     "PubChemから取得…": "Get from PubChem…",
     "溶媒和殻を配置…": "Place a solvation shell…",
     "水などの溶媒分子を、選択した原子または分子全体のまわりに置きます。": "Places solvent molecules such as water around the selected atoms or the whole molecule.",

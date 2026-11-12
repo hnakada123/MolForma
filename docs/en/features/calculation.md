@@ -74,6 +74,8 @@ Running calculations and MPI launch settings are in “3 Run settings”; output
 
 The task “NEB” finds the path between two structures, such as a reactant and a product, with NWChem's nudged elastic band method (the `neb` block and `task … neb`). The structure of “1 Molecule” is the start (`geometry`) and the structure set as “End of the NEB” in “IRC, scans and NEB” is the end (`geometry endgeom`). NWChem starts from “images” on the straight line between the two and optimizes the images between them while both ends stay fixed.
 
+Loading an endpoint from NWChem output runs in a separate process and can be cancelled with “Cancel loading”. If the molecule, calculation settings or candidate changes while loading, the endpoint is not applied; load it again.
+
 1. Have the start in “1 Molecule” (for example an optimized reactant, taken in with “Apply as candidate” in the result viewer).
 2. Set the end with “End of the NEB”. “From a file…” takes a structure file (the last frame of an XYZ) or the last structure of an NWChem output, “Result viewer structure” the structure shown in the result viewer (an optimized product, for example), and “Current structure as end” records the current structure of “1 Molecule” as the end (edit the molecule back into the start afterwards). Ends from a file or the result viewer are fitted onto the start (Kabsch), so that no rotation or translation of the whole molecule is left. Each of them sets the task to NEB.
 3. “Swap start and end” exchanges the structure of “1 Molecule” with the end, so that the end can be checked and edited in the 3D view. Press it again to go back (undo also does).

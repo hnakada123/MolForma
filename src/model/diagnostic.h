@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
+#include "model/setting_target.h"
 #include <QJsonValue>
 #include <QStringList>
 #include <QVector>
@@ -15,7 +16,7 @@ struct DiagnosticFix {
 struct Diagnostic {
     QString code, setting, message;
     DiagnosticSeverity severity = DiagnosticSeverity::Error;
-    int tab = 1; // Workspace index: molecule 0, calculation 1, execution 2.
+    SettingTarget target = SettingTarget::Calculation;
     std::optional<DiagnosticFix> fix;
     QString identity() const {
         return code + ':' + setting;
@@ -36,12 +37,12 @@ struct ValidationReport {
         diagnostics << std::move(diagnostic);
     }
     void error(const QString &code, const QString &setting, const QString &message,
-               std::optional<DiagnosticFix> fix = {}, int tab = 1) {
-        add({code, setting, message, DiagnosticSeverity::Error, tab, std::move(fix)});
+               std::optional<DiagnosticFix> fix = {}, SettingTarget target = SettingTarget::Calculation) {
+        add({code, setting, message, DiagnosticSeverity::Error, target, std::move(fix)});
     }
     void warning(const QString &code, const QString &setting, const QString &message,
-                 std::optional<DiagnosticFix> fix = {}, int tab = 1) {
-        add({code, setting, message, DiagnosticSeverity::Warning, tab, std::move(fix)});
+                 std::optional<DiagnosticFix> fix = {}, SettingTarget target = SettingTarget::Calculation) {
+        add({code, setting, message, DiagnosticSeverity::Warning, target, std::move(fix)});
     }
 };
 // A refusal that keeps the diagnostics behind it, so that a caller can still point at each setting.

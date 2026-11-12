@@ -1807,7 +1807,8 @@ void MainWindow::preferences() {
                 setExecutionSetting(probe, it.key(), it.value());
             QStringList errors;
             for (const auto &diagnostic : validateExecution(probe, QDir::homePath(), false).diagnostics)
-                if (diagnostic.severity == DiagnosticSeverity::Error && diagnostic.tab == 2)
+                if (diagnostic.severity == DiagnosticSeverity::Error &&
+                    diagnostic.target == SettingTarget::Execution)
                     errors << diagnostic.message;
             for (auto it = headers.begin(); it != headers.end(); ++it)
                 for (const auto &error : jobHeaderErrors(it.value()->toPlainText()))

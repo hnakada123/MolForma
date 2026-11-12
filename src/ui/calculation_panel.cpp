@@ -369,6 +369,32 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     auto *nebEndLayout = new QVBoxLayout(nebEndRow);
     nebEndLayout->setContentsMargins(0, 0, 0, 0);
     nebEndLayout->addWidget(nebEnd);
+    auto *nebLoading = new QHBoxLayout;
+    nebLoadStatus = new QLabel;
+    nebLoadStatus->setObjectName("calculationNebLoadStatus");
+    nebLoadStatus->setTextFormat(Qt::PlainText);
+    nebLoadStatus->setWordWrap(true);
+    nebCancel = new QPushButton(tr("読込を中止"));
+    nebCancel->setObjectName("calculationNebCancel");
+    nebCancel->hide();
+    nebLoading->addWidget(nebLoadStatus, 1);
+    nebLoading->addWidget(nebCancel);
+    nebEndLayout->addLayout(nebLoading);
+    connect(nebCancel, &QPushButton::clicked, this, &CalculationPanel::cancelNebEndLoad);
+    connect(&nebLoader, &ResultLoader::failed, this, &CalculationPanel::nebLoadFailed);
+    connect(&nebLoader, &ResultLoader::loaded, this, [this](const ResultData &result) {
+        nebCancel->hide();
+        try {
+            if (window->revision() != nebRevision)
+                fail(tr("読込中に分子・計算条件が変更されたため、NEBの終点を適用しませんでした。"));
+            if (result.frames.isEmpty())
+                fail(tr("このファイルに構造がありません。"));
+            setNebEnd(result.frames.last().molecule, true, tr("NEBの終点をファイルから設定"));
+            emit nebEndLoaded();
+        } catch (const std::exception &e) {
+            nebLoadFailed(QString::fromUtf8(e.what()));
+        }
+    });
     auto *nebButtons = new QHBoxLayout;
     nebButtons->setContentsMargins(0, 0, 0, 0);
     const auto nebButton = [&](const QString &text, const char *name, const QString &tip, auto slot) {
@@ -1151,6 +1177,7 @@ void CalculationPanel::refreshConstraints(const QJsonObject &s) {
                                              .arg(parts.join(tr("、"))));
 }
 void CalculationPanel::setNebEnd(const Document &end, bool fit, const QString &name) {
+    cancelNebEndLoad();
     if (busy || !editable())
         fail(tr("候補を確定・取消し、整形の終了後に設定してください。"));
     const auto setting = nwchemNebEndSetting(window->document(), end, fit);
@@ -1160,20 +1187,39 @@ void CalculationPanel::setNebEnd(const Document &end, bool fit, const QString &n
     });
 }
 void CalculationPanel::setNebEndFromFile(const QString &path) {
+    cancelNebEndLoad();
+    if (busy || !editable())
+        fail(tr("候補を確定・取消し、整形の終了後に設定してください。"));
     window->checkMcpPath(path);
     Document end;
     const auto suffix = QFileInfo(path).suffix().toLower();
     if (suffix == "out" || suffix == "log" || suffix == "nwo") {
-        const auto result = readResult(path);
-        if (result.frames.isEmpty())
-            fail(tr("このファイルに構造がありません。"));
-        end = result.frames.last().molecule;
+        nebRevision = window->revision();
+        nebLoadStatus->setText(tr("NEBの終点を読み込んでいます…"));
+        nebCancel->show();
+        try {
+            nebLoader.start({path});
+        } catch (...) {
+            cancelNebEndLoad();
+            throw;
+        }
+        return;
     } else if (suffix == "xyz") {
         const int frames = int(xyzFrames(QString::fromUtf8(readFile(path))).size());
         end = importStructure(path, {}, frames > 1 ? frames - 1 : -1);
     } else
         end = importStructure(path);
     setNebEnd(end, true, tr("NEBの終点をファイルから設定"));
+}
+void CalculationPanel::cancelNebEndLoad() {
+    nebLoader.cancel();
+    nebCancel->hide();
+    nebLoadStatus->clear();
+}
+void CalculationPanel::nebLoadFailed(const QString &message) {
+    nebCancel->hide();
+    nebLoadStatus->setText(message);
+    emit nebEndLoadFailed(message);
 }
 void CalculationPanel::setNebEndFromResult() {
     setNebEnd(window->resultStructure(), true, tr("NEBの終点を結果の構造から設定"));
@@ -1182,6 +1228,7 @@ void CalculationPanel::setNebEndFromCurrent() {
     setNebEnd(window->document(), false, tr("今の構造をNEBの終点に設定"));
 }
 void CalculationPanel::swapNebEnds() {
+    cancelNebEndLoad();
     if (busy || !editable())
         fail(tr("候補を確定・取消し、整形の終了後に設定してください。"));
     const auto end = nwchemNebEnd(window->document());

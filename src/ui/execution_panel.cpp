@@ -6,12 +6,14 @@
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_restart.h"
 #include "nwchem/remote_execution.h"
+#include "nwchem/result_files.h"
 #include "nwchem/run_diagnostics.h"
 #include "ui/editor_chrome.h"
 #include "ui/execution_form.h"
 #include "ui/main_window.h"
 #include "ui/remote_hosts_dialog.h"
 #include "ui/run_progress.h"
+#include "ui/setting_navigation.h"
 #include "ui/theme.h"
 #include <QtWidgets>
 
@@ -441,7 +443,7 @@ void ExecutionPanel::buildRunPanel() {
         for (const auto &value : run.plan().manifest["diagnostics"].toArray()) {
             const auto item = value.toObject();
             if (!item["setting"].toString().isEmpty()) {
-                window->showSetting(item["tab"].toInt(), item["setting"].toString());
+                window->showSetting(runDiagnosticTab(item), item["setting"].toString());
                 break;
             }
         }
@@ -1206,7 +1208,7 @@ void ExecutionPanel::updateRun() {
                               .arg(QDateTime::currentDateTime().addSecs(-seconds).toString("HH:mm"))
                         : tr("所要 %1").arg(elapsedClock(seconds)));
     openFolder->setVisible(!saved.directory.isEmpty());
-    viewResults->setEnabled(!saved.directory.isEmpty() && !resultFiles(saved.directory).isEmpty());
+    viewResults->setEnabled(!saved.directory.isEmpty() && !nwchemResultFiles(saved.directory).isEmpty());
     // The next step once a run has ended well.
     const bool nextStep = showingRun && run.state() == RunState::Finished;
     if (viewResults->property("primary").toBool() != nextStep) {

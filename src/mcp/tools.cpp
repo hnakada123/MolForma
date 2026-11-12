@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "mcp/tools.h"
+#include "model/setting_target.h"
 #include "model/units.h"
 #include "nwchem/remote_execution.h"
 #include "nwchem/run_diagnostics.h"
@@ -212,6 +213,21 @@ QJsonObject calculationJson(const NwchemRun &run, const QString &savedBundle, co
     QJsonArray diagnostics;
     for (const auto &value : run.plan().manifest["diagnostics"].toArray()) {
         auto item = value.toObject();
+        // Preserve the legacy MCP response field; these are protocol compatibility values,
+        // not positions used by the current UI or stored in new job records.
+        if (const auto target = settingTargetFromKey(item["target"].toString())) {
+            switch (*target) {
+            case SettingTarget::Molecule:
+                item["tab"] = 0;
+                break;
+            case SettingTarget::Calculation:
+                item["tab"] = 1;
+                break;
+            case SettingTarget::Execution:
+                item["tab"] = 2;
+                break;
+            }
+        }
         item["message"] = runDiagnosisText(item["code"].toString());
         diagnostics.append(item);
     }

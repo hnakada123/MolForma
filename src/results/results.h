@@ -230,7 +230,6 @@ int resultWorker(const QString &request, const QString &response);
 // given them as a JSON line on standard input; the end of input ends it. Its exit code, or -1 when
 // argv starts neither (prepare runs once the application exists, e.g. for the translations).
 int resultWorkerMain(int argc, char **argv, void (*prepare)() = nullptr);
-QStringList resultFiles(const QString &directory);
 Document resultModeGeometry(const ResultData &data, int mode, double phase, double amplitude);
 // Translations and rotations among the normal modes: the 6 (linear: 5, atom: 3) modes with the
 // smallest |frequency| of a complete 3N-mode set. Other mode sets are all treated as vibrations.

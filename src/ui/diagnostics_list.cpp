@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/diagnostics_list.h"
 #include "model/i18n.h"
+#include "ui/setting_navigation.h"
 #include <QResizeEvent>
 #include <QStyle>
 
@@ -33,7 +34,7 @@ void DiagnosticsList::setDiagnostics(const QVector<Diagnostic> &diagnostics) {
             item->setData(MessageRole, d.message);
             item->setData(CodeRole, d.code);
             item->setData(SettingRole, d.setting);
-            item->setData(TabRole, d.tab);
+            item->setData(TabRole, workspaceTab(d.target));
             if (d.fix) {
                 item->setData(FixRole, d.fix->label);
                 item->setText(tr("%1\n　→ ダブルクリックで修正: %2").arg(text, d.fix->label));
