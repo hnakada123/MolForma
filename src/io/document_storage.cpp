@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "io/document_storage.h"
+#include "foundation/files.h"
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>

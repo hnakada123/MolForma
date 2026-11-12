@@ -2,7 +2,7 @@
 #include "ui/sequence_track.h"
 #include "editing/pdb.h"
 #include "editing/peptide.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include "ui/editor_chrome.h"
 #include <QFontDatabase>
 #include <QHBoxLayout>

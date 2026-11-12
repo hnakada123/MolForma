@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-#include "model/structure_file.h"
-#include "model/document.h"
-#include "model/i18n.h"
+#include "foundation/structure_file.h"
+#include "foundation/error.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include <QFileInfo>
 #include <QScopeGuard>
 #include <new>

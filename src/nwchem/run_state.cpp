@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "nwchem/run_state.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include <utility>
 
 namespace mf {

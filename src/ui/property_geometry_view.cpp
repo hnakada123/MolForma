@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/property_geometry_view.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include "results/field_analysis.h"
-#include "ui/main_window.h"
+#include "ui/editor_context.h"
 #include "ui/molecule_view.h"
 #include <QtWidgets>
 #include <cmath>
@@ -40,7 +40,8 @@ class FieldSlice : public QWidget {
         p.drawText(QRect(8, height() - 28, width() - 16, 24), Qt::AlignLeft, label);
     }
 };
-PropertyGeometryView::PropertyGeometryView(MainWindow *owner) : QWidget(owner), window(owner), loader(this) {
+PropertyGeometryView::PropertyGeometryView(UiServices &uiServices, QWidget *parent)
+    : QWidget(parent), uiContext(uiServices), loader(this) {
     setObjectName("propertyGeometryView");
     auto *layout = new QVBoxLayout(this);
     view = new MoleculeView;
@@ -103,10 +104,10 @@ PropertyGeometryView::PropertyGeometryView(MainWindow *owner) : QWidget(owner), 
     auto *png = new QPushButton("PNG…");
     layout->addWidget(png);
     connect(png, &QPushButton::clicked, this, [this] {
-        window->safe([this] {
+        uiContext.safe([this] {
             const auto path = QFileDialog::getSaveFileName(this, tr("画像を保存"), {}, "PNG (*.png)");
             if (!path.isEmpty()) {
-                window->checkMcpPath(path);
+                uiContext.checkMcpPath(path);
                 view->renderNow();
                 if (!grab().save(path))
                     fail(tr("画像を保存できません。"));
@@ -114,7 +115,7 @@ PropertyGeometryView::PropertyGeometryView(MainWindow *owner) : QWidget(owner), 
         });
     });
     connect(open, &QPushButton::clicked, this, [this] {
-        window->safe([this] {
+        uiContext.safe([this] {
             const auto path =
                 QFileDialog::getOpenFileName(this, tr("色付け用CUBEを開く"), {}, "CUBE (*.cube *.cub)");
             if (!path.isEmpty())
@@ -168,7 +169,7 @@ void PropertyGeometryView::setResult(const ResultData &r) {
 void PropertyGeometryView::openColorField(const QString &path) {
     if (data.format != "CUBE")
         fail(tr("色付けには原子座標とCUBE格子が必要です。"));
-    window->checkMcpPath(path);
+    uiContext.checkMcpPath(path);
     if (!QStringList{"cube", "cub"}.contains(QFileInfo(path).suffix().toLower()))
         fail(tr("色付けには原子座標とCUBE格子が必要です。"));
     ResultLoadRequest request;

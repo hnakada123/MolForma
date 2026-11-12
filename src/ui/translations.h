@@ -2,7 +2,7 @@
 #pragma once
 class QCoreApplication;
 namespace mf {
-// MolForma's interface is Japanese or English (model/i18n.h): MOLFORMA_LANGUAGE ("ja" or "en") if
+// MolForma's interface is Japanese or English (foundation/i18n.h): MOLFORMA_LANGUAGE ("ja" or "en") if
 // set, else the language chosen in Preferences ("ui/language"), else the system's language.
 // Qt's own dialogs and standard buttons follow it: in Japanese, Qt's qtbase translation is used
 // when installed and built-in texts cover the standard buttons without it. The choice is put in

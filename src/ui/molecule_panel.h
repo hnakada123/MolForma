@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "editing/editor_session.h"
+#include "ui/editor_context.h"
 #include "ui/editor_tool.h"
 #include "ui/molecule_view.h"
 #include <QHash>
@@ -29,7 +30,6 @@ class QFrame;
 class QVBoxLayout;
 namespace mf {
 class CandidateControls;
-class MainWindow;
 class SettingsCard;
 class ViewControls;
 class CoordinatesPanel;
@@ -40,7 +40,9 @@ class SequenceTrack;
 class MoleculePanel : public QWidget {
     Q_OBJECT
   public:
-    MoleculePanel(MainWindow &window, const EditorSession &session, QSettings &settings);
+    MoleculePanel(EditorContext &editorContext, UiServices &uiContext, WorkspaceActions &workspace,
+                  ExecutionAccess &executionAccess, const EditorSession &session, QSettings &settings,
+                  QWidget *parent = nullptr);
     MoleculeView *canvas() const {
         return view;
     }
@@ -78,7 +80,10 @@ class MoleculePanel : public QWidget {
     void downloadRequested();
 
   private:
-    MainWindow &window;
+    EditorContext &editorContext;
+    UiServices &uiContext;
+    WorkspaceActions &workspace;
+    ExecutionAccess &executionAccess;
     const EditorSession &session;
     QSettings &settings;
     Ids selected;
@@ -222,7 +227,7 @@ class MoleculePanel : public QWidget {
     }
     void edit(const QString &name, const std::function<void(Document &)> &operation, bool preview = false);
     void safe(const std::function<void()> &operation);
-    QStatusBar *statusBar() const;
+    void showMessage(const QString &message, int timeout = 0) const;
     bool chemistryRunning() const;
     void runWorker(const QString &mode, const QString &smiles = {}, const Ids &moving = {}, int count = 10);
     void cancelWorker();

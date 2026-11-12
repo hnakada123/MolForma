@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/pubchem.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include "ui/pdb_download.h"
 namespace mf {
 PubchemRecord downloadPubchem(QWidget *parent, const PubchemQuery &query, const QString &folder,

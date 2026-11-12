@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/translations.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include "model/settings.h"
 #include <QCoreApplication>
 #include <QHash>

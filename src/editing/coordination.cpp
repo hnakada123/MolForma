@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordination.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include <Eigen/SVD>
 #include <algorithm>
 #include <cmath>

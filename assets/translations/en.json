@@ -3582,5 +3582,7 @@
     "%n 鎖": [
         "%n chain",
         "%n chains"
-    ]
+    ],
+    "配座とジョブの件数が一致しません。": "The number of conformers and jobs does not match.",
+    "配座セットの比較条件が不正です。": "The conformer set comparison settings are invalid."
 }

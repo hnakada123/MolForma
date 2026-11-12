@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/library.h"
-#include "model/i18n.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include <algorithm>
 #include <cmath>
 namespace mf {

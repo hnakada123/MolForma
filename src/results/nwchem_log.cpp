@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+#include "foundation/i18n.h"
 #include "model/geometry.h"
-#include "model/i18n.h"
 #include "model/numbers.h"
 #include "model/units.h"
 #include "results/result_parsing.h"

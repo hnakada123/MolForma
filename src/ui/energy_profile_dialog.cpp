@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/energy_profile_dialog.h"
-#include "model/i18n.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "results/energy_profile.h"
+#include "ui/editor_context.h"
 #include "ui/figure_export.h"
-#include "ui/main_window.h"
 #include "ui/result_charts.h"
 #include <QtWidgets>
 
 namespace mf {
-EnergyProfileDialog::EnergyProfileDialog(MainWindow *owner) : QDialog(owner), window(owner), loader(this) {
+EnergyProfileDialog::EnergyProfileDialog(UiServices &uiServices, QWidget *parent)
+    : QDialog(parent), uiContext(uiServices), loader(this) {
     setObjectName("energyProfileDialog");
     setWindowTitle(tr("熱補正・反応エネルギー図"));
     resize(1050, 700);
@@ -111,7 +113,7 @@ EnergyProfileDialog::EnergyProfileDialog(MainWindow *owner) : QDialog(owner), wi
         auto *b = new QPushButton(title);
         b->setObjectName(name);
         row->addWidget(b);
-        connect(b, &QPushButton::clicked, this, [this, fn] { window->safe(fn); });
+        connect(b, &QPushButton::clicked, this, [this, fn] { uiContext.safe(fn); });
     };
     button(actions, tr("段階を追加"), "profileAddStage", [this] {
         if (!records.isEmpty())
@@ -195,7 +197,7 @@ EnergyProfileDialog::EnergyProfileDialog(MainWindow *owner) : QDialog(owner), wi
         const auto path = QFileDialog::getSaveFileName(this, tr("比較表を書き出す"), {}, "CSV (*.csv)");
         if (path.isEmpty())
             return;
-        window->checkMcpPath(path);
+        uiContext.checkMcpPath(path);
         // The rate constant (s⁻¹, Eyring) and exp(−ΔG/RT) are empty unless G is compared.
         QByteArray csv = "stage,hartree,relative,unit,metric,temperature,standard_state,frequency_scale,"
                          "entropy_model,entropy_cutoff,standard_state_correction,boltzmann_factor,"
@@ -223,14 +225,14 @@ EnergyProfileDialog::EnergyProfileDialog(MainWindow *owner) : QDialog(owner), wi
         evaluateEnergyProfile(specification());
         const auto path = askFigurePath(this, tr("反応図を書き出す"), "profile");
         if (!path.isEmpty()) {
-            window->checkMcpPath(path);
+            uiContext.checkMcpPath(path);
             saveFigure(chart, path);
         }
     });
     connect(&loader, &ResultLoader::failed, this, [this](const QString &error) { message->setText(error); });
     connect(this, &QDialog::finished, &loader, &ResultLoader::cancel);
     connect(&loader, &ResultLoader::loaded, this, [this](const ResultData &r, const QString &stamp) {
-        window->safe([&] {
+        uiContext.safe([&] {
             auto record = energyRecord(r, pending, pendingSettings);
             record["source_stamp"] = stamp;
             records.append(record);
@@ -256,9 +258,9 @@ EnergyProfileDialog::EnergyProfileDialog(MainWindow *owner) : QDialog(owner), wi
 void EnergyProfileDialog::addJob(const QString &directory) {
     if (loader.active() || records.size() >= 200)
         fail(tr("読込の終了を待ってください。比較の上限は200件です。"));
-    window->checkMcpPath(directory);
+    uiContext.checkMcpPath(directory);
     for (const auto *name : {"run.json", "project.molforma.json", "input.nw", "output.out"})
-        window->checkMcpPath(QDir(directory).filePath(name));
+        uiContext.checkMcpPath(QDir(directory).filePath(name));
     pending = historyDocument(directory);
     pendingSettings = nwchemFinalSettings(pending);
     loader.start({.path = QDir(directory).filePath("output.out")});
@@ -445,13 +447,13 @@ void EnergyProfileDialog::updateProfile() {
     }
 }
 void EnergyProfileDialog::save(const QString &path) const {
-    window->checkMcpPath(path);
+    uiContext.checkMcpPath(path);
     const auto p = specification();
     evaluateEnergyProfile(p);
     writeFile(path, QJsonDocument(p).toJson());
 }
 void EnergyProfileDialog::load(const QString &path) {
-    window->checkMcpPath(path);
+    uiContext.checkMcpPath(path);
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly) || file.size() > 16 * 1024 * 1024)
         fail(tr("エネルギー比較ファイルを読めません。"));

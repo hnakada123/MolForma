@@ -3,6 +3,7 @@
 #include "results/result_loader.h"
 #include "results/result_presentation.h"
 #include "results/result_summary.h"
+#include "ui/editor_context.h"
 #include <QCache>
 #include <QTimer>
 #include <QWidget>
@@ -31,7 +32,6 @@ class ElidedLabel;
 class ViewControls;
 class ToolbarFit;
 class FrameTimeline;
-class MainWindow;
 class MoleculeView;
 class OrbitalLevels;
 struct ResultViewerState {
@@ -43,7 +43,8 @@ struct ResultViewerState {
 class ResultsPanel : public QWidget {
     Q_OBJECT
   public:
-    explicit ResultsPanel(MainWindow *owner);
+    ResultsPanel(EditorContext &editorContext, UiServices &uiContext, WorkspaceActions &workspace,
+                 QWidget *parent = nullptr);
     ~ResultsPanel() override;
     void openFile(const QString &path);
     void openDirectory(const QString &path);
@@ -85,7 +86,9 @@ class ResultsPanel : public QWidget {
     void recalculationRequested(const QString &directory, const Document &geometry, const QString &task);
 
   private:
-    MainWindow *window;
+    EditorContext &editorContext;
+    UiServices &uiContext;
+    WorkspaceActions &workspace;
     ResultData data;
     ResultLoader loader;
     QTimer animation;

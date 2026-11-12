@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "io/pdb_download.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include <QDir>
 #include <QRegularExpression>
 namespace mf {

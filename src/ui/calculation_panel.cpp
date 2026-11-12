@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/calculation_panel.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include "io/structure_io.h"
 #include "model/geometry.h"
-#include "model/i18n.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_output.h"
 #include "results/results.h"
 #include "ui/diagnostics_list.h"
 #include "ui/editor_chrome.h"
+#include "ui/editor_context.h"
 #include "ui/input_highlighter.h"
-#include "ui/main_window.h"
 #include <QtWidgets>
 #include <algorithm>
 
@@ -36,7 +37,9 @@ QString marked(const QString &text, bool changed, const QColor &accent) {
 }
 } // namespace
 
-CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(owner) {
+CalculationPanel::CalculationPanel(EditorContext &editorServices, UiServices &uiServices,
+                                   WorkspaceActions &workspaceActions, QWidget *parent)
+    : QWidget(parent), editorContext(editorServices), uiContext(uiServices), workspace(workspaceActions) {
     setObjectName("calculationTab");
     setAttribute(Qt::WA_StyledBackground);
     auto *outer = new QVBoxLayout(this);
@@ -64,7 +67,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     storeButton->setObjectName("calculationStorePreset");
     tools->addWidget(storeButton);
     connect(storeButton, &QPushButton::clicked, this, &CalculationPanel::storePreset);
-    userPresets = QJsonDocument::fromJson(window->preference("nwchem/presets").toByteArray()).array();
+    userPresets = QJsonDocument::fromJson(uiContext.preference("nwchem/presets").toByteArray()).array();
     reloadPresets();
     connect(presetMenu, &QMenu::aboutToShow, this, [this] {
         // What each preset would change, against the current settings.
@@ -102,7 +105,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     tools->addWidget(resetAll);
     connect(resetAll, &QPushButton::clicked, this, [this] {
         QStringList keys;
-        for (const auto &key : changedKeys(nwchemSettings(window->document())))
+        for (const auto &key : changedKeys(nwchemSettings(editorContext.document())))
             if (!QStringList{"start", "title", "geometry_units"}.contains(key))
                 keys << key;
         reset(keys, tr("計算条件をすべて既定に戻す"), {"*"});
@@ -214,7 +217,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     paste->setToolTip(
         tr("ライブラリにない基底・ECPを、NWChemの形式（Basis Set ExchangeでNWChemを選んだもの）で"
            "貼り付けます。貼り付けた元素はその基底を使います。"));
-    connect(paste, &QPushButton::clicked, this, [this] { window->safe([this] { pasteBasis(); }); });
+    connect(paste, &QPushButton::clicked, this, [this] { uiContext.safe([this] { pasteBasis(); }); });
     auto *pastedRow = new QWidget;
     auto *pastedLayout = new QHBoxLayout(pastedRow);
     pastedLayout->setContentsMargins(0, 0, 0, 0);
@@ -243,7 +246,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     electronic->addRow(QString(), formalCharge);
     rowKeys[formalCharge] = "charge";
     connect(formalCharge, &QPushButton::clicked, this,
-            [this] { change("charge", window->document().expectedCharge()); });
+            [this] { change("charge", editorContext.document().expectedCharge()); });
     fragments = new QTableWidget(0, 3);
     fragments->setObjectName("nwchem_fragment_guess");
     fragments->setHorizontalHeaderLabels({tr("フラグメントの原子"), tr("電荷"), tr("多重度")});
@@ -277,7 +280,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
             "から全体を計算します。不対電子の合計が全体と同じ組（閉殻どうし、高スピン）に使えます。"));
     connect(removeFragment, &QPushButton::clicked, this, [this] {
         const int row = fragments->currentRow();
-        auto list = nwchemSettings(window->document())["fragment_guess"].toArray();
+        auto list = nwchemSettings(editorContext.document())["fragment_guess"].toArray();
         if (row < 0 || row >= list.size())
             return;
         list.removeAt(row);
@@ -286,7 +289,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     connect(fragments, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
         if (busy || item->column() == 0)
             return;
-        auto list = nwchemSettings(window->document())["fragment_guess"].toArray();
+        auto list = nwchemSettings(editorContext.document())["fragment_guess"].toArray();
         if (item->row() >= list.size())
             return;
         bool ok;
@@ -385,7 +388,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     connect(&nebLoader, &ResultLoader::loaded, this, [this](const ResultData &result) {
         nebCancel->hide();
         try {
-            if (window->revision() != nebRevision)
+            if (editorContext.revision() != nebRevision)
                 fail(tr("読込中に分子・計算条件が変更されたため、NEBの終点を適用しませんでした。"));
             if (result.frames.isEmpty())
                 fail(tr("このファイルに構造がありません。"));
@@ -402,7 +405,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
         b->setObjectName(name);
         b->setToolTip(tip);
         nebButtons->addWidget(b);
-        connect(b, &QPushButton::clicked, this, [this, slot] { window->safe([&] { (this->*slot)(); }); });
+        connect(b, &QPushButton::clicked, this, [this, slot] { uiContext.safe([&] { (this->*slot)(); }); });
         return b;
     };
     auto *nebFile = new QPushButton(tr("ファイルから…"));
@@ -411,7 +414,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
                            "最後の構造を終点にします。原子の数と順番が同じ構造に使えます。"));
     nebButtons->addWidget(nebFile);
     connect(nebFile, &QPushButton::clicked, this, [this] {
-        window->safe([&] {
+        uiContext.safe([&] {
             const auto file =
                 QFileDialog::getOpenFileName(this, tr("NEBの終点の構造"), {},
                                              tr("構造・NWChem出力 (*.xyz *.mol *.sdf *.mol2 *.cml *.pdb "
@@ -477,7 +480,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     connect(addConstraintButton, &QPushButton::clicked, this, &CalculationPanel::addConstraint);
     connect(removeConstraint, &QPushButton::clicked, this, [this] {
         const int row = constraints->currentRow();
-        auto list = nwchemSettings(window->document())["constraints"].toArray();
+        auto list = nwchemSettings(editorContext.document())["constraints"].toArray();
         if (row < 0 || row >= list.size())
             return;
         list.removeAt(row);
@@ -486,7 +489,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     connect(constraints, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
         if (busy || item->column() == 0)
             return;
-        auto list = nwchemSettings(window->document())["constraints"].toArray();
+        auto list = nwchemSettings(editorContext.document())["constraints"].toArray();
         if (item->row() >= list.size())
             return;
         if (item->column() == 2) {
@@ -594,7 +597,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     memoryState = new QLabel;
     memoryState->setObjectName("calculationMemoryState");
     auto *memoryLink = linkButton(tr("3 実行設定で変更"), "calculationMemoryLink");
-    connect(memoryLink, &QPushButton::clicked, this, [this] { window->showSetting(2, "memory_mb"); });
+    connect(memoryLink, &QPushButton::clicked, this, [this] { workspace.showSetting(2, "memory_mb"); });
     auto *memoryRow = readOnlyRow(memoryState, memoryLink);
     output->addRow(tr("メモリ"), memoryRow);
     rows["memory_mb"] = memoryRow;
@@ -630,8 +633,8 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
         const auto before = extraInput->toPlainText(), after = extraTasks->toPlainText();
         if (busy || !editable())
             return;
-        window->safe([&] {
-            window->edit(tr("NWChemの追加入力を変更"), [&](Document &d) {
+        uiContext.safe([&] {
+            editorContext.edit(tr("NWChemの追加入力を変更"), [&](Document &d) {
                 auto s = d.data["nwchem"].toObject();
                 s["extra_input"] = before;
                 s["extra_tasks"] = after;
@@ -663,7 +666,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     body->addWidget(railScroll);
     summaryCard = new CalculationSummary("calculation", tr("この計算"), [this](const QString &link) {
         if (link == "memory")
-            window->showSetting(2, "memory_mb");
+            workspace.showSetting(2, "memory_mb");
     });
     railLayout->addWidget(summaryCard);
 
@@ -682,7 +685,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     validation->setFitContents(220);
     checkLayout->addWidget(validation);
     connect(validation, &DiagnosticsList::diagnosticClicked, this,
-            [this](const QString &setting, int tab) { window->showSetting(tab, setting); });
+            [this](const QString &setting, int tab) { workspace.showSetting(tab, setting); });
     connect(validation, &DiagnosticsList::fixRequested, this, &CalculationPanel::applyFix);
     railLayout->addWidget(validationCard);
 
@@ -762,7 +765,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
             [this] { changeDetail(selectedDetail, QJsonValue::Undefined); });
     connect(showInInput, &QPushButton::clicked, this, [this] {
         if (const auto line = showInInput->property("line").toInt(); line >= 0)
-            window->showInputLine(line);
+            workspace.showInputLine(line);
     });
     detailCard->hide();
     railLayout->addWidget(detailCard);
@@ -789,7 +792,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     changes->setColumnWidth(2, 30);
     changeCard->body()->addWidget(changes, 1);
     connect(changes, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *item) {
-        window->showSetting(1, item->data(0, Qt::UserRole).toString());
+        workspace.showSetting(1, item->data(0, Qt::UserRole).toString());
     });
     noChanges = new QLabel(tr("なし（HF / STO-3G・一点エネルギー）"));
     noChanges->setObjectName("calculationNoChanges");
@@ -803,7 +806,7 @@ CalculationPanel::CalculationPanel(MainWindow *owner) : QWidget(owner), window(o
     previewRow->addStretch();
     previewRow->addWidget(showPreview);
     railLayout->addLayout(previewRow);
-    connect(showPreview, &QPushButton::clicked, this, [this] { window->showInputLine(); });
+    connect(showPreview, &QPushButton::clicked, this, [this] { workspace.showInputLine(); });
 
     // Labels for search and the list of changes: form rows, plus the fields with their own rows.
     QStringList completions = labels.values();
@@ -894,7 +897,7 @@ QString CalculationPanel::sectionTitle(const QString &key) const {
     return {};
 }
 void CalculationPanel::applyFix(const QString &code, const QString &setting) {
-    const auto report = validateNwchem(window->document());
+    const auto report = validateNwchem(editorContext.document());
     for (const auto &diagnostic : report.diagnostics)
         if (diagnostic.code == code && diagnostic.setting == setting && diagnostic.fix) {
             change(diagnostic.fix->setting, diagnostic.fix->value);
@@ -909,7 +912,7 @@ void CalculationPanel::searchSettings(const QString &text) {
     if (!detailed)
         for (auto it = labels.begin(); it != labels.end(); ++it)
             if (it.value().contains(query, Qt::CaseInsensitive)) {
-                window->showSetting(1, it.key());
+                workspace.showSetting(1, it.key());
                 return;
             }
     // A detailed option by its name, then by its NWChem keyword or key.
@@ -923,7 +926,7 @@ void CalculationPanel::searchSettings(const QString &text) {
             showDetail(o.key);
             return;
         }
-    window->statusBar()->showMessage(tr("「%1」に一致する設定はありません。").arg(query), 5000);
+    uiContext.showMessage(tr("「%1」に一致する設定はありません。").arg(query), 5000);
 }
 QFormLayout *CalculationPanel::group(const QString &key, const QString &title) {
     auto *card = new SettingsCard(title);
@@ -1031,7 +1034,7 @@ void CalculationPanel::help(QFormLayout *form, const QString &text) {
 }
 void CalculationPanel::refreshElementBases(const QJsonObject &s) {
     QStringList symbols;
-    for (const auto &a : window->displayDocument().atoms)
+    for (const auto &a : editorContext.displayDocument().atoms)
         if (!symbols.contains(a.element))
             symbols << a.element;
     std::sort(symbols.begin(), symbols.end(),
@@ -1055,7 +1058,7 @@ void CalculationPanel::refreshElementBases(const QJsonObject &s) {
                 combo->addItem(c.label, c.value);
             elementBases->setCellWidget(row, 1, combo);
             connect(combo, &QComboBox::currentIndexChanged, this, [this, combo, symbol] {
-                auto next = nwchemSettings(window->document())["basis_overrides"].toObject();
+                auto next = nwchemSettings(editorContext.document())["basis_overrides"].toObject();
                 if (combo->currentData().toString().isEmpty())
                     next.remove(symbol);
                 else
@@ -1080,7 +1083,7 @@ void CalculationPanel::refreshElementBases(const QJsonObject &s) {
     elementBases->setFixedHeight(std::min(height, 220));
 }
 void CalculationPanel::refreshConstraints(const QJsonObject &s) {
-    const auto &d = window->displayDocument();
+    const auto &d = editorContext.displayDocument();
     const auto list = s["constraints"].toArray();
     const QSignalBlocker blocker(constraints);
     constraints->setRowCount(list.size());
@@ -1180,8 +1183,8 @@ void CalculationPanel::setNebEnd(const Document &end, bool fit, const QString &n
     cancelNebEndLoad();
     if (busy || !editable())
         fail(tr("候補を確定・取消し、整形の終了後に設定してください。"));
-    const auto setting = nwchemNebEndSetting(window->document(), end, fit);
-    window->edit(name, [&](Document &d) {
+    const auto setting = nwchemNebEndSetting(editorContext.document(), end, fit);
+    editorContext.edit(name, [&](Document &d) {
         setNwchemSetting(d, "neb_end", setting);
         setNwchemSetting(d, "task", "neb");
     });
@@ -1190,11 +1193,11 @@ void CalculationPanel::setNebEndFromFile(const QString &path) {
     cancelNebEndLoad();
     if (busy || !editable())
         fail(tr("候補を確定・取消し、整形の終了後に設定してください。"));
-    window->checkMcpPath(path);
+    uiContext.checkMcpPath(path);
     Document end;
     const auto suffix = QFileInfo(path).suffix().toLower();
     if (suffix == "out" || suffix == "log" || suffix == "nwo") {
-        nebRevision = window->revision();
+        nebRevision = editorContext.revision();
         nebLoadStatus->setText(tr("NEBの終点を読み込んでいます…"));
         nebCancel->show();
         try {
@@ -1222,22 +1225,22 @@ void CalculationPanel::nebLoadFailed(const QString &message) {
     emit nebEndLoadFailed(message);
 }
 void CalculationPanel::setNebEndFromResult() {
-    setNebEnd(window->resultStructure(), true, tr("NEBの終点を結果の構造から設定"));
+    setNebEnd(workspace.resultStructure(), true, tr("NEBの終点を結果の構造から設定"));
 }
 void CalculationPanel::setNebEndFromCurrent() {
-    setNebEnd(window->document(), false, tr("今の構造をNEBの終点に設定"));
+    setNebEnd(editorContext.document(), false, tr("今の構造をNEBの終点に設定"));
 }
 void CalculationPanel::swapNebEnds() {
     cancelNebEndLoad();
     if (busy || !editable())
         fail(tr("候補を確定・取消し、整形の終了後に設定してください。"));
-    const auto end = nwchemNebEnd(window->document());
+    const auto end = nwchemNebEnd(editorContext.document());
     if (!end.document)
         fail(end.problem);
-    for (const auto &a : window->document().atoms)
+    for (const auto &a : editorContext.document().atoms)
         if (a.fixed)
             fail(tr("固定原子を含む構造では始点と終点を入れ替えられません。"));
-    window->edit(tr("NEBの始点と終点を入れ替え"), [&](Document &d) {
+    editorContext.edit(tr("NEBの始点と終点を入れ替え"), [&](Document &d) {
         const auto start = nwchemNebEndSetting(d, d, false); // The molecule's positions, by atom ID.
         for (int i = 0; i < d.atoms.size(); ++i)
             d.atoms[i].position = end.document->atoms[i].position;
@@ -1245,22 +1248,22 @@ void CalculationPanel::swapNebEnds() {
     });
 }
 // The internal coordinate of the ordered selection in the editor, with its current value.
-static std::pair<Ids, double> selectedCoordinate(MainWindow *window, const Ids &selection) {
+static std::pair<Ids, double> selectedCoordinate(EditorContext &editorContext, const Ids &selection) {
     if (selection.size() < 2 || selection.size() > 4)
         fail(tr("「1 分子」で2〜4原子を順に選択してください（距離・角度・二面角）。"));
-    return {selection, measure(window->document(), selection)};
+    return {selection, measure(editorContext.document(), selection)};
 }
 void CalculationPanel::addConstraint() {
-    window->safe([&] {
-        const auto [ids, value] = selectedCoordinate(window, window->selection());
-        auto list = nwchemSettings(window->document())["constraints"].toArray();
+    uiContext.safe([&] {
+        const auto [ids, value] = selectedCoordinate(editorContext, editorContext.selection());
+        auto list = nwchemSettings(editorContext.document())["constraints"].toArray();
         list.append(QJsonObject{{"atoms", idsToJson(ids)}, {"value", std::round(value * 1e4) / 1e4}});
         change("constraints", list);
     });
 }
 void CalculationPanel::setScanCoordinate(bool second) {
-    window->safe([&] {
-        const auto [ids, value] = selectedCoordinate(window, window->selection());
+    uiContext.safe([&] {
+        const auto [ids, value] = selectedCoordinate(editorContext, editorContext.selection());
         // A first guess for the range: +0.5 Å, +60° or half a turn, kept inside the valid range.
         const double start = std::round(value * 1e4) / 1e4;
         const double end = ids.size() == 2   ? start + 0.5
@@ -1269,7 +1272,7 @@ void CalculationPanel::setScanCoordinate(bool second) {
         if (busy || !editable())
             return;
         const QString prefix = second ? "scan2_" : "scan_";
-        window->edit(second ? tr("スキャン座標2を設定") : tr("スキャン座標を設定"), [&](Document &d) {
+        editorContext.edit(second ? tr("スキャン座標2を設定") : tr("スキャン座標を設定"), [&](Document &d) {
             auto s = d.data["nwchem"].toObject();
             s[prefix + "atoms"] = idsToJson(ids);
             s[prefix + "start"] = start;
@@ -1280,10 +1283,10 @@ void CalculationPanel::setScanCoordinate(bool second) {
     });
 }
 void CalculationPanel::addFragment(bool rest) {
-    window->safe([&] {
+    uiContext.safe([&] {
         if (busy || !editable())
             return;
-        const auto &d = window->document();
+        const auto &d = editorContext.document();
         auto list = nwchemSettings(d)["fragment_guess"].toArray();
         QSet<QString> taken;
         for (const auto &value : std::as_const(list))
@@ -1297,7 +1300,7 @@ void CalculationPanel::addFragment(bool rest) {
             if (atoms.isEmpty())
                 fail(tr("すべての原子がどれかのフラグメントに含まれています。"));
         } else {
-            atoms = window->selection();
+            atoms = editorContext.selection();
             if (atoms.isEmpty())
                 fail(tr("フラグメントにする原子を「1 分子」で選択してください。"));
             for (const auto &id : std::as_const(atoms))
@@ -1322,7 +1325,7 @@ void CalculationPanel::addFragment(bool rest) {
 void CalculationPanel::pasteBasis() {
     if (busy || !editable())
         fail(tr("候補を確定・取消し、整形の終了後に設定してください。"));
-    const auto s = nwchemSettings(window->document());
+    const auto s = nwchemSettings(editorContext.document());
     QDialog dialog(this);
     dialog.setObjectName("pasteBasisDialog");
     dialog.setWindowTitle(tr("基底・ECPを貼り付け"));
@@ -1381,22 +1384,22 @@ void CalculationPanel::pasteBasis() {
         return;
     const auto basis = edits[0]->toPlainText().trimmed().isEmpty() ? QString() : edits[0]->toPlainText(),
                ecp = edits[1]->toPlainText().trimmed().isEmpty() ? QString() : edits[1]->toPlainText();
-    window->edit(tr("基底・ECPを貼り付け"), [&](Document &d) {
+    editorContext.edit(tr("基底・ECPを貼り付け"), [&](Document &d) {
         setNwchemSetting(d, "basis_custom", basis);
         setNwchemSetting(d, "ecp_custom", ecp);
     });
 }
 bool CalculationPanel::editable() const {
-    return !window->hasCandidate() && !window->chemistryRunning();
+    return !editorContext.hasCandidate() && !editorContext.chemistryRunning();
 }
 void CalculationPanel::change(const QString &key, const QJsonValue &value) {
     if (busy || !editable())
         return;
-    const auto &current = window->document();
+    const auto &current = editorContext.document();
     if (nwchemSettingValue(current, nwchemSettings(current), key) == value)
         return;
-    window->safe([&] {
-        window->edit(tr("NWChem計算条件を変更"), [&](Document &d) { setNwchemSetting(d, key, value); });
+    uiContext.safe([&] {
+        editorContext.edit(tr("NWChem計算条件を変更"), [&](Document &d) { setNwchemSetting(d, key, value); });
     });
 }
 QStringList CalculationPanel::changedKeys(const QJsonObject &s) const {
@@ -1428,8 +1431,8 @@ void CalculationPanel::reset(const QStringList &keys, const QString &name, const
     if (busy || !editable())
         return;
     const auto defaults = nwchemDefaults();
-    const auto changed = changedKeys(nwchemSettings(window->document()));
-    const auto a = nwchemAdvanced(window->document());
+    const auto changed = changedKeys(nwchemSettings(editorContext.document()));
+    const auto a = nwchemAdvanced(editorContext.document());
     QStringList targets, options;
     for (const auto &key : keys)
         if (changed.contains(key) && key != "extra_input" && key != "extra_tasks")
@@ -1450,8 +1453,8 @@ void CalculationPanel::reset(const QStringList &keys, const QString &name, const
                     what = section.title;
         title = tr("「%1」を既定に戻す").arg(what);
     }
-    window->safe([&] {
-        window->edit(title, [&](Document &d) {
+    uiContext.safe([&] {
+        editorContext.edit(title, [&](Document &d) {
             auto s = d.data["nwchem"].toObject();
             for (const auto &key : targets)
                 s[key] = defaults[key];
@@ -1488,7 +1491,7 @@ void CalculationPanel::followScroll() {
 }
 void CalculationPanel::filterRows() {
     const bool only = changedOnly();
-    const auto &d = window->displayDocument();
+    const auto &d = editorContext.displayDocument();
     const auto changed = changedKeys(nwchemSettings(d));
     const auto a = nwchemAdvanced(d);
     // The details: what the calculation uses and what is changed, the rest on request.
@@ -1538,7 +1541,7 @@ void CalculationPanel::filterRows() {
     }
 }
 void CalculationPanel::refreshChanges(const QJsonObject &s) {
-    const auto &d = window->displayDocument();
+    const auto &d = editorContext.displayDocument();
     const auto changed = changedKeys(s);
     const ChromeColors colors(palette());
     for (auto it = fieldLabels.begin(); it != fieldLabels.end(); ++it) {
@@ -1660,14 +1663,14 @@ void CalculationPanel::reloadPresets() {
             if (i >= userPresets.size())
                 return;
             userPresets.removeAt(i);
-            window->setPreference("nwchem/presets",
-                                  QJsonDocument(userPresets).toJson(QJsonDocument::Compact));
+            uiContext.setPreference("nwchem/presets",
+                                    QJsonDocument(userPresets).toJson(QJsonDocument::Compact));
             QTimer::singleShot(0, this, &CalculationPanel::reloadPresets); // Not inside its own menu.
         });
     }
 }
 QString CalculationPanel::describePreset(const QJsonObject &selected) const {
-    const auto current = nwchemPresetSettings(nwchemSettings(window->displayDocument()));
+    const auto current = nwchemPresetSettings(nwchemSettings(editorContext.displayDocument()));
     QStringList changes;
     auto keys = fieldOrder; // In the order of the form.
     for (const auto &key : selected.keys())
@@ -1695,18 +1698,17 @@ QString CalculationPanel::describePreset(const QJsonObject &selected) const {
 void CalculationPanel::applyPreset(const QString &name, const QJsonObject &preset) {
     if (busy || !editable())
         return;
-    const auto before = nwchemSettings(window->document());
-    window->safe([&] {
-        window->edit(tr("NWChemプリセットを適用"), [&](Document &d) { applyNwchemPreset(d, preset); });
+    const auto before = nwchemSettings(editorContext.document());
+    uiContext.safe([&] {
+        editorContext.edit(tr("NWChemプリセットを適用"), [&](Document &d) { applyNwchemPreset(d, preset); });
     });
-    if (nwchemSettings(window->document()) != before)
-        window->statusBar()->showMessage(
-            tr("プリセット「%1」を適用しました。「元に戻す」で戻せます。").arg(name), 8000);
+    if (nwchemSettings(editorContext.document()) != before)
+        uiContext.showMessage(tr("プリセット「%1」を適用しました。「元に戻す」で戻せます。").arg(name), 8000);
 }
 void CalculationPanel::storePreset() {
     if (!editable())
         return;
-    const auto settings = nwchemPresetSettings(nwchemSettings(window->document()));
+    const auto settings = nwchemPresetSettings(nwchemSettings(editorContext.document()));
     bool ok;
     auto name =
         QInputDialog::getText(this, tr("NWChemプリセットを登録"), tr("名前"), QLineEdit::Normal, {}, &ok)
@@ -1720,15 +1722,15 @@ void CalculationPanel::storePreset() {
             return;
         }
     userPresets << QJsonObject{{"name", name}, {"settings", settings}};
-    window->setPreference("nwchem/presets", QJsonDocument(userPresets).toJson(QJsonDocument::Compact));
+    uiContext.setPreference("nwchem/presets", QJsonDocument(userPresets).toJson(QJsonDocument::Compact));
     reloadPresets();
-    window->statusBar()->showMessage(tr("プリセット「%1」を登録しました。").arg(name), 5000);
+    uiContext.showMessage(tr("プリセット「%1」を登録しました。").arg(name), 5000);
 }
 void CalculationPanel::refresh() {
     if (busy)
         return;
     QScopedValueRollback guard(busy, true);
-    const auto &d = window->displayDocument();
+    const auto &d = editorContext.displayDocument();
     const auto s = nwchemSettings(d);
     for (auto it = fields.begin(); it != fields.end(); ++it) {
         const auto value = nwchemSettingValue(d, s, it.key());
@@ -1777,10 +1779,10 @@ void CalculationPanel::refresh() {
     for (auto *b : {presetButton, storeButton})
         b->setEnabled(canEdit);
     resetAll->setEnabled(canEdit);
-    message->setText(window->hasCandidate()
+    message->setText(editorContext.hasCandidate()
                          ? tr("未確定の分子候補を表示しています。確定・取消後に条件を編集できます。")
-                     : window->chemistryRunning() ? tr("分子の整形中です。終了後に条件を編集できます。")
-                                                  : QString());
+                     : editorContext.chemistryRunning() ? tr("分子の整形中です。終了後に条件を編集できます。")
+                                                        : QString());
     banner->setVisible(!message->text().isEmpty());
     const auto restart = nwchemRestart(s);
     restartBanner->setVisible(!s["restart"].toObject().isEmpty());
@@ -1992,8 +1994,8 @@ void CalculationPanel::showDetail(const QString &key) {
     if (!details.contains(key))
         return;
     const auto detail = details.value(key);
-    const auto &d = window->displayDocument();
-    window->showPanel(this);
+    const auto &d = editorContext.displayDocument();
+    workspace.showPanel(this);
     if (changedOnly() && !nwchemAdvanced(d).contains(key))
         changeFilter->setCurrentIndex(0);
     openDetails(detail.section, !nwchemAdvancedApplies(*detail.option, d));
@@ -2009,8 +2011,8 @@ void CalculationPanel::showDetailGroup(const QString &group) {
     for (auto it = detailBoxes.cbegin(); it != detailBoxes.cend(); ++it) {
         if (!it->groups.contains(group))
             continue;
-        const auto &d = window->displayDocument();
-        window->showPanel(this);
+        const auto &d = editorContext.displayDocument();
+        workspace.showPanel(this);
         if (changedOnly())
             changeFilter->setCurrentIndex(0);
         bool used = false; // A group the calculation does not use is shown all the same.
@@ -2027,10 +2029,11 @@ void CalculationPanel::showDetailGroup(const QString &group) {
     }
 }
 void CalculationPanel::changeDetail(const QString &key, const QJsonValue &value) {
-    if (busy || !editable() || nwchemAdvanced(window->document()).value(key) == value)
+    if (busy || !editable() || nwchemAdvanced(editorContext.document()).value(key) == value)
         return;
-    window->safe([&] {
-        window->edit(tr("NWChem詳細設定を変更"), [&](Document &d) { setNwchemAdvanced(d, key, value); });
+    uiContext.safe([&] {
+        editorContext.edit(tr("NWChem詳細設定を変更"),
+                           [&](Document &d) { setNwchemAdvanced(d, key, value); });
     });
 }
 QString CalculationPanel::detailValueText(const AdvancedOption &o, const QJsonValue &value) const {
@@ -2126,7 +2129,7 @@ void CalculationPanel::describeDetail() {
         return;
     const auto &detail = details[selectedDetail];
     const auto &o = *detail.option;
-    const auto &d = window->displayDocument();
+    const auto &d = editorContext.displayDocument();
     const auto a = nwchemAdvanced(d);
     detailTitle->setText(o.label);
     detailKeyword->setText(nwchemAdvancedBlock(o, d) == o.keyword || o.group == "files"
@@ -2150,7 +2153,7 @@ void CalculationPanel::describeDetail() {
 }
 void CalculationPanel::showSnippet(const AdvancedOption &o) {
     // The block of the generated input that carries the option, its own lines marked.
-    const auto &d = window->displayDocument();
+    const auto &d = editorContext.displayDocument();
     snippet->clear();
     snippet->setExtraSelections({});
     showInInput->setProperty("line", -1);
@@ -2253,7 +2256,7 @@ void CalculationPanel::resizeEvent(QResizeEvent *event) {
     navColumn->setVisible(width() >= 1040);
 }
 void CalculationPanel::applyChromeStyle() {
-    const auto pal = static_cast<QWidget *>(window)->palette();
+    const auto pal = palette();
     setStyleSheet(chromeRules(settingsRules() + R"(
         #calculationTab, #calculationRailScroll, #calculationRail { background: @window; }
         #calculationNav { background: @base; border: none; border-right: 1px solid @line; }

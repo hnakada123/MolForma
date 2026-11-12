@@ -2,6 +2,7 @@
 #include "editing/coordination.h"
 #include "editing/library.h"
 #include "editing/peptide.h"
+#include "foundation/files.h"
 #include "io/structure_io.h"
 #include "mcp/headless.h"
 #include "mcp/server.h"

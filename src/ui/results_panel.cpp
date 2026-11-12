@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/results_panel.h"
 #include "editing/coordinates.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include "model/geometry.h"
-#include "model/i18n.h"
 #include "model/units.h"
 #include "nwchem/result_files.h"
 #include "results/molden_orbitals.h"
+#include "results/spectrum.h"
 #include "ui/editor_chrome.h"
+#include "ui/editor_context.h"
 #include "ui/figure_export.h"
-#include "ui/main_window.h"
 #include "ui/molecule_view.h"
 #include "ui/property_geometry_view.h"
 #include "ui/result_charts.h"
@@ -298,7 +300,9 @@ const char *TileRules = R"(
 )";
 } // namespace
 
-ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
+ResultsPanel::ResultsPanel(EditorContext &editorServices, UiServices &uiServices,
+                           WorkspaceActions &workspaceActions, QWidget *parent)
+    : QWidget(parent), editorContext(editorServices), uiContext(uiServices), workspace(workspaceActions) {
     setObjectName("resultsTab");
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -371,7 +375,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     recalculate->setToolTip(tr("保存済みの計算条件を読み込み、表示中の構造を候補にします。確定後、新しいジョ"
                                "ブとして実行できます。"));
     connect(recalculate, &QPushButton::clicked, this,
-            [this] { window->safe([this] { prepareRecalculation(); }); });
+            [this] { uiContext.safe([this] { prepareRecalculation(); }); });
     exportButton = new QToolButton;
     exportButton->setObjectName("resultsExport");
     exportButton->setText(tr("書き出し"));
@@ -454,7 +458,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     auto *labelMenu = new QMenu(viewControlsFrame->menuButton());
     labelMenu->addSection(tr("ラベル"));
     auto *labelGroup = new QActionGroup(labelMenu);
-    auto savedLabels = window->preference("results/labels", "all").toString();
+    auto savedLabels = uiContext.preference("results/labels", "all").toString();
     if (!QStringList{"all", "heavy", "selection", "none"}.contains(savedLabels))
         savedLabels = "all";
     for (const auto &[label, mode] : {std::pair{QT_TR_NOOP("すべて"), "all"},
@@ -473,7 +477,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     view->setLabelMode(savedLabels);
     connect(labelGroup, &QActionGroup::triggered, this, [this](QAction *a) {
         view->setLabelMode(a->data().toString());
-        window->setPreference("results/labels", a->data().toString());
+        uiContext.setPreference("results/labels", a->data().toString());
     });
     viewArea->addOverlay(viewControlsFrame, Qt::AlignTop | Qt::AlignRight);
     // Distance, angle or dihedral of the atoms clicked in order, and the ones kept on the view.
@@ -511,7 +515,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
             if (n < d.atoms.size())
                 ids << d.atoms[n].id;
         bool valid = false;
-        window->safe([&] {
+        uiContext.safe([&] {
             if (picked.size() < 2 || ids.size() != picked.size())
                 fail(tr("2〜4原子をクリックしてから表示してください。"));
             measure(d, ids); // Rejects coincident or collinear atoms before pinning.
@@ -903,9 +907,9 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         showPresentation();
     });
     connect(saveModeImages, &QAction::triggered, this,
-            [this] { window->safe([this] { exportMode(true); }); });
+            [this] { uiContext.safe([this] { exportMode(true); }); });
     connect(saveModeTrajectory, &QAction::triggered, this,
-            [this] { window->safe([this] { exportMode(false); }); });
+            [this] { uiContext.safe([this] { exportMode(false); }); });
     auto *optimizationPage = new QWidget;
     optimizationPage->setObjectName("resultsOptimizationPage");
     auto *opl = new QVBoxLayout(optimizationPage);
@@ -1007,12 +1011,12 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     // Every chart of the viewer saves itself as a figure from its context menu.
     for (auto *chart : {irSpectrum, energyChart, gradientChart, spectrum, pathChart})
         chart->setExport([this, chart] {
-            window->safe([&] {
+            uiContext.safe([&] {
                 const auto path =
                     askFigurePath(this, tr("グラフを保存"), chart->objectName().mid(7).toLower());
                 if (path.isEmpty())
                     return;
-                window->checkMcpPath(path);
+                uiContext.checkMcpPath(path);
                 saveFigure(chart, path);
             });
         });
@@ -1044,7 +1048,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
             path->setCurrentCell(best, 0);
     });
     connect(pathSaddle, &QPushButton::clicked, this,
-            [this] { window->safe([this] { prepareRecalculation("saddle_frequencies"); }); });
+            [this] { uiContext.safe([this] { prepareRecalculation("saddle_frequencies"); }); });
     auto *pathHint =
         new QLabel(tr("座標スキャン: 各点の最後のエネルギー（緩和スキャンは最適化後）で、ΔEは最小値基準です。"
                       "IRC: 遷移状態を0とし、前進方向を正・後退方向を負の反応座標（amu½·Bohr）で表示し、"
@@ -1194,9 +1198,9 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     log = logView("resultsLog");
     logLayout->addWidget(log, 1);
     tabs->addTab(logPage, tr("元ファイル"));
-    propertyGeometry = new PropertyGeometryView(window);
+    propertyGeometry = new PropertyGeometryView(uiContext, this);
     tabs->addTab(propertyGeometry, tr("物性3D・断面"));
-    spectroscopy = new SpectroscopyView(window);
+    spectroscopy = new SpectroscopyView(uiContext, this);
     tabs->addTab(spectroscopy, tr("スペクトル"));
     connect(spectroscopy, &SpectroscopyView::atomSelected, this, [this](int index) {
         if (index < 0 || data.frames.isEmpty() || index >= data.frames.last().molecule.atoms.size())
@@ -1236,7 +1240,7 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     });
     connect(files, &QComboBox::currentIndexChanged, this, [this](int index) {
         if (index >= 0)
-            window->safe([&] { openEntry(files->itemData(index).toString()); });
+            uiContext.safe([&] { openEntry(files->itemData(index).toString()); });
     });
     connect(reload, &QPushButton::clicked, this, &ResultsPanel::reloadResult);
     connect(cancel, &QPushButton::clicked, this, &ResultsPanel::cancelLoad);
@@ -1282,10 +1286,10 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         startLoad(data.source, n, dataset->currentIndex());
     });
     connect(applyGeometry, &QPushButton::clicked, this,
-            [this] { window->safe([this] { applyStructure(); }); });
+            [this] { uiContext.safe([this] { applyStructure(); }); });
     connect(compareGeometry, &QPushButton::clicked, this, [this] {
-        window->safe([this] {
-            const auto fit = superpose(displayedGeometry(), window->document());
+        uiContext.safe([this] {
+            const auto fit = superpose(displayedGeometry(), editorContext.document());
             status->setPlainText(
                 tr("編集中の分子との比較: RMSD（座標そのまま）%1 Å、重ね合わせ後 %2 Å（水素以外 "
                    "%3 Å）、最大のずれ %4 Å")
@@ -1296,15 +1300,15 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         });
     });
     connect(saveXyz, &QAction::triggered, this, [this] {
-        window->safe([&] {
+        uiContext.safe([&] {
             const auto p =
                 QFileDialog::getSaveFileName(this, tr("表示中の基準構造を保存"), "result.xyz", "XYZ (*.xyz)");
             if (!p.isEmpty())
                 saveGeometry(p.endsWith(".xyz", Qt::CaseInsensitive) ? p : p + ".xyz");
         });
     });
-    connect(savePng, &QAction::triggered, this, [this] { window->safe([this] { exportImage(); }); });
-    connect(saveFrames, &QAction::triggered, this, [this] { window->safe([this] { exportFrames(); }); });
+    connect(savePng, &QAction::triggered, this, [this] { uiContext.safe([this] { exportImage(); }); });
+    connect(saveFrames, &QAction::triggered, this, [this] { uiContext.safe([this] { exportFrames(); }); });
     display(true);
     updateActions();
 }
@@ -1312,7 +1316,7 @@ ResultsPanel::~ResultsPanel() {
     cancelLoad();
 }
 void ResultsPanel::applyChromeStyle() {
-    const auto pal = static_cast<QWidget *>(window)->palette();
+    const auto pal = palette();
     // The rules of the other tabs, and the parts of this one.
     setStyleSheet(chromeRules(settingsRules() + R"(
         #resultsTab { background: @window; }
@@ -1447,8 +1451,8 @@ void ResultsPanel::combineCubes(const QVector<CubeTerm> &terms, const QString &o
     if (terms.isEmpty())
         fail(tr("組み合わせるCUBEを指定してください。"));
     for (const auto &term : terms)
-        window->checkMcpPath(term.path);
-    window->checkMcpPath(output);
+        uiContext.checkMcpPath(term.path);
+    uiContext.checkMcpPath(output);
     bool ok = true;
     const double iso = isovalue->text().toDouble(&ok);
     startLoad(output, ok && std::isfinite(iso) && iso > 0 && iso <= 1e6 ? iso : .03, 0, -1, "auto", 40, false,
@@ -1535,7 +1539,7 @@ void ResultsPanel::showCombineDialog() {
     layout->addWidget(box);
     connect(box, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     connect(box, &QDialogButtonBox::accepted, &dialog, [&] {
-        window->safe([&] {
+        uiContext.safe([&] {
             if (table->rowCount() < 2)
                 fail(tr("組み合わせるCUBEを2つ以上指定してください。"));
             const auto target = output->text().trimmed();
@@ -1676,7 +1680,7 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
         return;
     try {
         // The file itself: one picked from a folder may be a link that leads out of the allowed ones.
-        window->checkMcpPath(path);
+        uiContext.checkMcpPath(path);
     } catch (const std::exception &e) {
         error(QString::fromUtf8(e.what()));
         return;
@@ -2403,7 +2407,7 @@ void ResultsPanel::showOutcome() {
         banner->setProperty("tone", failed ? "bad" : "warn");
         repolishAll(banner);
     }
-    const ChromeColors c(static_cast<QWidget *>(window)->palette());
+    const ChromeColors c(palette());
     bannerIcon->setPixmap(lineIcon("warning", failed ? c.bad : c.candidateText).pixmap(QSize(20, 20)));
     bannerTitle->setText(failed ? tr("NWChemのエラーを検出しました")
                                 : tr("NWChemの正常終了の記録がありません"));
@@ -2479,32 +2483,32 @@ QString ResultsPanel::briefSummary() const {
 }
 void ResultsPanel::showSpectrum() {
     const bool nm = spectrumAxis->currentData() == "nm";
-    const double fwhm = broadening->value(), sigma = fwhm / (2 * std::sqrt(2 * std::log(2.)));
-    QVector<QPointF> sticks, curve;
-    double lo = INFINITY, hi = -INFINITY;
-    for (const auto &x : data.excitations)
-        if (x.ev > 0) {
-            lo = std::min(lo, x.ev);
-            hi = std::max(hi, x.ev);
-            if (x.oscillator > 0)
-                sticks << QPointF(nm ? EvNanometer / x.ev : x.ev, x.oscillator);
-        }
-    if (!(hi > 0) || sticks.isEmpty()) {
+    try {
+        // The viewer owns its axis limits; the shared model owns peaks and broadening.
+        const double width = broadening->value();
+        double low = INFINITY, high = -INFINITY;
+        for (const auto &state : data.excitations)
+            if (state.ev > 0) {
+                low = std::min(low, state.ev);
+                high = std::max(high, state.ev);
+            }
+        auto values = calculateSpectrum(data, {{"kind", "uv"},
+                                               {"width", width},
+                                               {"minimum", std::max(.5, low - 3 * width)},
+                                               {"maximum", high + 3 * width}});
+        if (nm)
+            for (auto *points : {&values.sticks, &values.curve})
+                for (auto &point : *points)
+                    point.setX(EvNanometer / point.x());
+        spectrum->setToolTip({});
+        spectrum->setChart(tr("吸収スペクトル（表示用）"), nm ? tr("波長 / nm") : tr("励起エネルギー / eV"),
+                           tr("振動子強度"),
+                           {{tr("広がり"), values.curve, ChartTone::Accent},
+                            {tr("各状態"), values.sticks, ChartTone::Contrast, true}});
+    } catch (const std::exception &e) {
         spectrum->clear();
-        return;
+        spectrum->setToolTip(QString::fromUtf8(e.what()));
     }
-    lo = std::max(.5, lo - 3 * fwhm);
-    hi += 3 * fwhm;
-    for (int k = 0; k <= 400; ++k) {
-        const double e = lo + (hi - lo) * k / 400;
-        double y = 0;
-        for (const auto &x : data.excitations)
-            y += x.oscillator * std::exp(-.5 * std::pow((e - x.ev) / sigma, 2));
-        curve << QPointF(nm ? EvNanometer / e : e, y);
-    }
-    spectrum->setChart(
-        tr("吸収スペクトル（表示用）"), nm ? tr("波長 / nm") : tr("励起エネルギー / eV"), tr("振動子強度"),
-        {{tr("広がり"), curve, ChartTone::Accent}, {tr("各状態"), sticks, ChartTone::Contrast, true}});
 }
 void ResultsPanel::showContributions() {
     const int state = excitations->currentRow();
@@ -2849,38 +2853,28 @@ void ResultsPanel::showProperties() {
     propertySummary->setText(text.trimmed());
 }
 void ResultsPanel::showIrSpectrum() {
-    QVector<QPointF> sticks, curve;
     irModes.clear();
-    double top = 0;
-    for (int i = 0; i < data.modes.size(); ++i) {
-        const auto &m = data.modes[i];
-        if (modeKinds.value(i) == ResultModeKind::Rigid || m.frequency <= 0 || !std::isfinite(m.intensity))
-            continue;
-        sticks << QPointF(m.frequency, m.intensity);
-        irModes << i;
-        top = std::max(top, m.frequency);
-    }
-    if (sticks.isEmpty()) {
+    try {
+        double top = 0;
+        for (int i = 0; i < data.modes.size(); ++i)
+            if (modeKinds.value(i) != ResultModeKind::Rigid && std::isfinite(data.modes[i].intensity))
+                top = std::max(top, data.modes[i].frequency);
+        const auto values = calculateSpectrum(
+            data, {{"kind", "ir"}, {"width", irWidth->value()}, {"minimum", 0.}, {"maximum", top + 200}});
+        for (const auto &peak : values.peaks)
+            irModes << peak.toObject()["mode"].toInt();
+        irSpectrum->setToolTip({});
+        irSpectrum->setChart(tr("IRスペクトル（表示用）"), tr("波数 / cm⁻¹"), tr("IR強度 / km mol⁻¹"),
+                             {{tr("広がり"), values.curve, ChartTone::Muted},
+                              {tr("各モード"), values.sticks, ChartTone::Text, true}});
+        irSpectrum->setSelectedStick(1, irModes.indexOf(presentation.mode()));
+    } catch (const std::exception &e) {
         irSpectrum->clear();
-        return;
+        irSpectrum->setToolTip(QString::fromUtf8(e.what()));
     }
-    // Sample at a quarter of the half width (at most 20000 points) so narrow peaks keep their height.
-    const double gamma = irWidth->value() / 2, end = top + 200;
-    const int samples = std::clamp(int(std::ceil(end / (gamma / 2))), 1000, 20000);
-    for (int k = 0; k <= samples; ++k) {
-        const double x = end * k / samples;
-        double y = 0;
-        for (const auto &s : sticks)
-            y += s.y() * gamma * gamma / ((x - s.x()) * (x - s.x()) + gamma * gamma);
-        curve << QPointF(x, y);
-    }
-    irSpectrum->setChart(
-        tr("IRスペクトル（表示用）"), tr("波数 / cm⁻¹"), tr("IR強度 / km mol⁻¹"),
-        {{tr("広がり"), curve, ChartTone::Muted}, {tr("各モード"), sticks, ChartTone::Text, true}});
-    irSpectrum->setSelectedStick(1, irModes.indexOf(presentation.mode()));
 }
 void ResultsPanel::showOptimization() {
-    const ChromeColors c(static_cast<QWidget *>(window)->palette());
+    const ChromeColors c(palette());
     const auto thresholds = data.properties.value("thresholds").toObject();
     // The four criteria of the last step against their thresholds.
     auto *box = static_cast<QVBoxLayout *>(criteria->layout());
@@ -2985,7 +2979,7 @@ void ResultsPanel::exportMode(bool images) {
         const auto target = animationTarget(this, options, name, folder);
         if (target.isEmpty())
             return;
-        window->checkMcpPath(target);
+        uiContext.checkMcpPath(target);
         const auto saved = presentation;
         const auto restore = qScopeGuard([&] {
             presentation = saved;
@@ -2999,8 +2993,8 @@ void ResultsPanel::exportMode(bool images) {
             return view->renderImage(options.scale, options.background);
         });
         if (written)
-            window->statusBar()->showMessage(
-                tr("振動の%n枚の画像を書き出しました: %1", nullptr, steps).arg(target), 8000);
+            uiContext.showMessage(tr("振動の%n枚の画像を書き出しました: %1", nullptr, steps).arg(target),
+                                  8000);
         return;
     }
     auto file = QFileDialog::getSaveFileName(this, tr("振動をXYZで保存"), name + ".xyz", "XYZ (*.xyz)");
@@ -3008,7 +3002,7 @@ void ResultsPanel::exportMode(bool images) {
         return;
     if (!file.endsWith(".xyz", Qt::CaseInsensitive))
         file += ".xyz";
-    window->checkMcpPath(file);
+    uiContext.checkMcpPath(file);
     QString text;
     for (int k = 0; k < steps; ++k) {
         auto frameText = resultModeGeometry(data, n, 2 * M_PI * k / steps, presentation.amplitude()).xyz();
@@ -3034,10 +3028,10 @@ void ResultsPanel::exportImage() {
         return;
     if (!path.endsWith(".png", Qt::CaseInsensitive))
         path += ".png";
-    window->checkMcpPath(path);
+    uiContext.checkMcpPath(path);
     if (!view->renderImage(options.scale, options.background).save(path))
         fail(tr("画像を保存できません。"));
-    window->statusBar()->showMessage(tr("画像を保存しました: %1").arg(path), 8000);
+    uiContext.showMessage(tr("画像を保存しました: %1").arg(path), 8000);
 }
 void ResultsPanel::exportFrames() {
     if (loading() || data.frames.size() < 2)
@@ -3059,7 +3053,7 @@ void ResultsPanel::exportFrames() {
     const auto target = animationTarget(this, options, "path", folder);
     if (target.isEmpty())
         return;
-    window->checkMcpPath(target);
+    uiContext.checkMcpPath(target);
     stopAnimation();
     const auto saved = presentation;
     const auto restore = qScopeGuard([&] {
@@ -3072,8 +3066,7 @@ void ResultsPanel::exportFrames() {
         return view->renderImage(options.scale, options.background);
     });
     if (written)
-        window->statusBar()->showMessage(
-            tr("%n構造を書き出しました: %1", nullptr, int(list.size())).arg(target), 8000);
+        uiContext.showMessage(tr("%n構造を書き出しました: %1", nullptr, int(list.size())).arg(target), 8000);
 }
 void ResultsPanel::setViewDocument(const Document &d) {
     const auto ids = [&](const QVector<int> &numbers) {
@@ -3186,17 +3179,16 @@ void ResultsPanel::saveGeometry(const QString &path) const {
 void ResultsPanel::applyStructure() {
     const auto result = displayedGeometry();
     std::pair<double, double> moved;
-    window->edit(
+    editorContext.edit(
         tr("計算結果の構造を適用"), [&](Document &d) { moved = applyResultGeometry(d, result); }, true);
-    if (!window->hasCandidate())
+    if (!editorContext.hasCandidate())
         fail(tr("編集中の分子と結果の座標は同じです。"));
-    window->showPanel(0);
-    window->statusBar()->showMessage(
-        tr("結果の構造を候補にしました（RMSD %1 Å、最大変位 %2 Å）。「変更を確定」"
-           "で適用します。")
-            .arg(moved.first, 0, 'f', 4)
-            .arg(moved.second, 0, 'f', 4),
-        15000);
+    workspace.showPanel(0);
+    uiContext.showMessage(tr("結果の構造を候補にしました（RMSD %1 Å、最大変位 %2 Å）。「変更を確定」"
+                             "で適用します。")
+                              .arg(moved.first, 0, 'f', 4)
+                              .arg(moved.second, 0, 'f', 4),
+                          15000);
 }
 void ResultsPanel::prepareRecalculation(const QString &task) {
     emit recalculationRequested(QFileInfo(data.source).absolutePath(), displayedGeometry(), task);

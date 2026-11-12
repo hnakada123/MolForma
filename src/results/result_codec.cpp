@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "results/result_codec.h"
-#include "model/i18n.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include "results/result_parsing.h"
 #include "results/results.h"
 #include <QDataStream>

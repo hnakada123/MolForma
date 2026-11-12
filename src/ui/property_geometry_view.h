@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "results/result_loader.h"
+#include "ui/editor_context.h"
 #include <QWidget>
 class QLabel;
 class QComboBox;
@@ -8,13 +9,12 @@ class QDoubleSpinBox;
 class QSpinBox;
 class QCheckBox;
 namespace mf {
-class MainWindow;
 class MoleculeView;
 class FieldSlice;
 class PropertyGeometryView : public QWidget {
     Q_OBJECT
   public:
-    explicit PropertyGeometryView(MainWindow *window);
+    PropertyGeometryView(UiServices &uiContext, QWidget *parent = nullptr);
     void setResult(const ResultData &data);
     void openColorField(const QString &path);
 
@@ -23,7 +23,7 @@ class PropertyGeometryView : public QWidget {
 
   private:
     bool fitPending = true;
-    MainWindow *window;
+    UiServices &uiContext;
     ResultData data, field;
     ResultLoader loader;
     MoleculeView *view;

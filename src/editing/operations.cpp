@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/operations.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include "model/topology.h"
 #include <algorithm>
 #include <cmath>

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordination.h"
 #include "editing/library.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include "ui/main_window.h"
 #include <QAbstractButton>
 #include <QAbstractItemView>

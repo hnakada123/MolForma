@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "results/spectrum.h"
+#include "ui/editor_context.h"
 #include <QWidget>
 class QComboBox;
 class QLineEdit;
@@ -11,11 +12,10 @@ class QCheckBox;
 class QFormLayout;
 namespace mf {
 class ChartView;
-class MainWindow;
 class SpectroscopyView : public QWidget {
     Q_OBJECT
   public:
-    explicit SpectroscopyView(MainWindow *window);
+    SpectroscopyView(UiServices &uiContext, QWidget *parent = nullptr);
     void setResult(const ResultData &result);
     void selectAtom(int index);
     QJsonObject parameters() const;
@@ -29,7 +29,7 @@ class SpectroscopyView : public QWidget {
     void excitationSelected(int index);
 
   private:
-    MainWindow *window;
+    UiServices &uiContext;
     QFormLayout *form;
     ResultData result;
     SpectrumData spectrum;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "results/energy_profile.h"
+#include "foundation/i18n.h"
 #include "model/geometry.h"
-#include "model/i18n.h"
 #include "model/units.h"
 #include "results/result_summary.h"
 #include <QUuid>

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/template_delegate.h"
+#include "foundation/i18n.h"
 #include "model/document.h"
-#include "model/i18n.h"
 #include "ui/editor_chrome.h"
 #include <QApplication>
 #include <QFontMetrics>

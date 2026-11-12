@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/execution_panel.h"
 #include "editing/coordinates.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
+#include "io/document_storage.h"
+#include "mcp/policy.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_restart.h"
@@ -9,8 +11,8 @@
 #include "nwchem/result_files.h"
 #include "nwchem/run_diagnostics.h"
 #include "ui/editor_chrome.h"
+#include "ui/editor_context.h"
 #include "ui/execution_form.h"
-#include "ui/main_window.h"
 #include "ui/remote_hosts_dialog.h"
 #include "ui/run_progress.h"
 #include "ui/setting_navigation.h"
@@ -117,8 +119,11 @@ QString endedMessage(RunState state) {
 }
 } // namespace
 
-ExecutionPanel::ExecutionPanel(MainWindow *owner)
-    : QWidget(owner), window(owner), run(this), queue(run, this) {
+ExecutionPanel::ExecutionPanel(EditorContext &editorServices, UiServices &uiServices,
+                               WorkspaceActions &workspaceActions, ExecutionAccess &executionServices,
+                               QWidget *parent)
+    : QWidget(parent), editorContext(editorServices), uiContext(uiServices), workspace(workspaceActions),
+      executionAccess(executionServices), run(this), queue(run, this) {
     setObjectName("executionTab");
     setAttribute(Qt::WA_StyledBackground);
     run.setObjectName("nwchemRun");
@@ -150,9 +155,9 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner)
     openResults->setToolTip(
         tr("計算が終わると、ジョブフォルダーを「結果ビューア」に読み込みます（タブは切り替えません）。"
            "終了はステータスバーとデスクトップ通知でも知らせます。"));
-    openResults->setChecked(window->preference("execution/open_results", true).toBool());
+    openResults->setChecked(uiContext.preference("execution/open_results", true).toBool());
     connect(openResults, &QCheckBox::toggled, this,
-            [this](bool on) { window->setPreference("execution/open_results", on); });
+            [this](bool on) { uiContext.setPreference("execution/open_results", on); });
     tools->addWidget(openResults);
     prepare = new QPushButton(tr("ジョブとして保存"));
     prepare->setObjectName("executionPrepare");
@@ -160,13 +165,13 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner)
     prepare->setToolTip(tr("NWChemを起動せず、入力とプロジェクトを新しいジョブフォルダーに保存します"
                            "（別のPCで実行するときなど）。"));
     tools->addWidget(prepare);
-    connect(prepare, &QPushButton::clicked, this, [this] { window->safe([this] { saveBundle(); }); });
+    connect(prepare, &QPushButton::clicked, this, [this] { uiContext.safe([this] { saveBundle(); }); });
     enqueue = new QPushButton(tr("キューに追加"));
     enqueue->setObjectName("executionEnqueue");
     enqueue->setToolTip(tr("現在の分子と条件を保存し、順番に実行する計算へ登録します。"));
     tools->addWidget(enqueue);
     connect(enqueue, &QPushButton::clicked, this, [this] {
-        window->safe([this] {
+        uiContext.safe([this] {
             if (!enqueueCalculation().isEmpty())
                 showQueue();
         });
@@ -205,8 +210,8 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner)
     forms->addWidget(settingsForm);
     connect(settingsForm, &ExecutionForm::changed, this, &ExecutionPanel::change);
     connect(settingsForm, &ExecutionForm::remoteHostsRequested, this, [this] {
-        const auto s = executionSettings(window->document());
-        RemoteHostsDialog hosts(s["executable"].toString(), s["launcher"].toString(), window);
+        const auto s = executionSettings(editorContext.document());
+        RemoteHostsDialog hosts(s["executable"].toString(), s["launcher"].toString(), this);
         hosts.select(s["remote"].toString());
         hosts.exec();
         refresh();
@@ -227,10 +232,11 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner)
     memoryLayout->addWidget(memory);
     settingsForm->resourcesGrid()->addWidget(memoryCell, 1, 1);
     connect(memory, &QSpinBox::valueChanged, this, [this](int n) {
-        if (busy || window->hasCandidate() || window->chemistryRunning())
+        if (busy || editorContext.hasCandidate() || editorContext.chemistryRunning())
             return;
-        window->safe([&] {
-            window->edit(tr("NWChemメモリを変更"), [&](Document &d) { setNwchemSetting(d, "memory_mb", n); });
+        uiContext.safe([&] {
+            editorContext.edit(tr("NWChemメモリを変更"),
+                               [&](Document &d) { setNwchemSetting(d, "memory_mb", n); });
         });
     });
     // What the run takes of this PC, under the resources.
@@ -299,7 +305,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner)
     commandCard->body()->addWidget(command);
     connect(copyCommand, &QToolButton::clicked, this, [this] {
         QApplication::clipboard()->setText(command->toPlainText());
-        window->statusBar()->showMessage(tr("起動コマンドをコピーしました。"), 5000);
+        uiContext.showMessage(tr("起動コマンドをコピーしました。"), 5000);
     });
     output->addWidget(commandCard);
     // As tall as their contents; the room left is below them.
@@ -326,7 +332,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner)
     runStatus->setAutoRaise(true);
     runStatus->setToolTip(tr("実行状況とログの表示を切り替えます。"));
     runStatus->hide();
-    window->statusBar()->addPermanentWidget(runStatus);
+    uiContext.addStatusWidget(runStatus);
     connect(runStatus, &QToolButton::clicked, this, [this] { showRunPanel(!runPanelShown()); });
     connect(&run, &NwchemRun::changed, this, [this] {
         if (run.state() != previousRunState) {
@@ -334,7 +340,7 @@ ExecutionPanel::ExecutionPanel(MainWindow *owner)
             previousRunState = run.state();
             // The next session looks for a run this one may leave to its supervisor.
             if (run.supervised())
-                window->setPreference("execution/running", run.active() ? run.plan().directory : QString());
+                uiContext.setPreference("execution/running", run.active() ? run.plan().directory : QString());
             refresh();
             emit bundleChanged(run.plan().directory);
             if (ended)
@@ -351,7 +357,7 @@ void ExecutionPanel::buildRunPanel() {
     runPanel->setObjectName("runPanel");
     runPanel->setAttribute(Qt::WA_StyledBackground);
     runPanel->hide();
-    panelHeight = window->preference("execution/run_panel_height", 0).toInt();
+    panelHeight = uiContext.preference("execution/run_panel_height", 0).toInt();
     auto *panel = new QVBoxLayout(runPanel);
     panel->setContentsMargins(14, 4, 12, 12);
     panel->setSpacing(4);
@@ -443,7 +449,7 @@ void ExecutionPanel::buildRunPanel() {
         for (const auto &value : run.plan().manifest["diagnostics"].toArray()) {
             const auto item = value.toObject();
             if (!item["setting"].toString().isEmpty()) {
-                window->showSetting(runDiagnosticTab(item), item["setting"].toString());
+                workspace.showSetting(runDiagnosticTab(item), item["setting"].toString());
                 break;
             }
         }
@@ -455,7 +461,7 @@ void ExecutionPanel::buildRunPanel() {
            "新しいジョブとして実行します。"));
     detail->addWidget(continueRun);
     connect(continueRun, &QPushButton::clicked, this,
-            [this] { window->safe([this] { emit restartRequested(run.plan().directory, "continue"); }); });
+            [this] { uiContext.safe([this] { emit restartRequested(run.plan().directory, "continue"); }); });
     progress = new RunProgress("execution", 4);
     detail->addWidget(progress);
     detail->addStretch();
@@ -530,7 +536,7 @@ void ExecutionPanel::dockRunPanel(QSplitter *split) {
     dock->installEventFilter(this);
     connect(dock, &QSplitter::splitterMoved, this, [this] {
         panelHeight = runPanel->height();
-        window->setPreference("execution/run_panel_height", panelHeight);
+        uiContext.setPreference("execution/run_panel_height", panelHeight);
     });
 }
 void ExecutionPanel::showRunPanel(bool show) {
@@ -542,7 +548,7 @@ void ExecutionPanel::showRunPanel(bool show) {
         runPanel->hide();
         dock->widget(0)->show();
     }
-    window->setRunPanelShown(show);
+    workspace.setRunPanelShown(show);
 }
 bool ExecutionPanel::runPanelShown() const {
     return !runPanel->isHidden();
@@ -585,20 +591,21 @@ bool ExecutionPanel::eventFilter(QObject *watched, QEvent *event) {
     return QWidget::eventFilter(watched, event);
 }
 QString ExecutionPanel::baseDirectory() const {
-    return window->projectPath().isEmpty() ? QDir::currentPath()
-                                           : QFileInfo(window->projectPath()).absolutePath();
+    return editorContext.projectPath().isEmpty() ? QDir::currentPath()
+                                                 : QFileInfo(editorContext.projectPath()).absolutePath();
 }
 void ExecutionPanel::change(const QString &key, const QJsonValue &value) {
-    if (busy || window->hasCandidate() || window->chemistryRunning() ||
-        executionSettings(window->document()).value(key) == value)
+    if (busy || editorContext.hasCandidate() || editorContext.chemistryRunning() ||
+        executionSettings(editorContext.document()).value(key) == value)
         return;
-    window->safe([&] {
-        window->edit(tr("NWChem実行設定を変更"), [&](Document &d) { setExecutionSetting(d, key, value); });
+    uiContext.safe([&] {
+        editorContext.edit(tr("NWChem実行設定を変更"),
+                           [&](Document &d) { setExecutionSetting(d, key, value); });
     });
 }
 void ExecutionPanel::commitPendingEdits() {
     // A stale tab first catches up, dropping typing that an eager refresh would have replaced.
-    window->refreshPanel(this);
+    workspace.refreshPanel(this);
     if (auto *focused = QApplication::focusWidget(); focused && isAncestorOf(focused))
         focused->clearFocus();
     settingsForm->commitEnvironment();
@@ -609,34 +616,34 @@ void ExecutionPanel::showField(const QString &key) {
         target->setFocus(Qt::OtherFocusReason);
 }
 void ExecutionPanel::saveBundle() {
-    if (window->hasCandidate() || window->chemistryRunning() || run.active())
+    if (editorContext.hasCandidate() || editorContext.chemistryRunning() || run.active())
         fail(tr("候補・整形・実行中は入力一式を保存できません。"));
     commitPendingEdits();
-    if (window->accessPolicy() && window->remoteRequest())
-        window->accessPolicy()->checkRun(window->document(), baseDirectory());
-    saved = saveExecutionBundle(window->document(), baseDirectory());
+    if (executionAccess.accessPolicy() && executionAccess.remoteRequest())
+        executionAccess.accessPolicy()->checkRun(editorContext.document(), baseDirectory());
+    saved = saveExecutionBundle(editorContext.document(), baseDirectory());
     updateRun();
     emit bundleChanged(saved.directory);
 }
 void ExecutionPanel::startCalculation() {
-    if (window->hasCandidate() || window->chemistryRunning() || run.active())
+    if (editorContext.hasCandidate() || editorContext.chemistryRunning() || run.active())
         fail(tr("候補・整形・実行中は新しい計算を開始できません。"));
     commitPendingEdits();
     if (!authorizeCalculation())
         return;
     closeOnResults = false;
     logChannel->setCurrentIndex(0);
-    run.start(window->document(), baseDirectory());
+    run.start(editorContext.document(), baseDirectory());
     showRunPanel();
 }
 bool ExecutionPanel::authorizeCalculation() {
-    const auto *policy = window->accessPolicy();
-    const bool remote = window->remoteRequest();
+    const auto *policy = executionAccess.accessPolicy();
+    const bool remote = executionAccess.remoteRequest();
     if (policy && remote)
-        policy->checkRun(window->document(), baseDirectory());
+        policy->checkRun(editorContext.document(), baseDirectory());
     // The executable, launcher, environment and additional input choose what runs: values that came
     // from a file, the history, an autosave copy or MCP run only once the user confirmed them.
-    if ((!policy || !policy->allowExecutionSettings) && !window->untrustedExecution().isEmpty()) {
+    if ((!policy || !policy->allowExecutionSettings) && !executionAccess.untrustedExecution().isEmpty()) {
         if (remote)
             fail(tr("実行先・NWChem実行ファイル・MPIランチャー・追加の環境変数・NWChemの追加入力に、利用者が"
                     "MolFormaで入力・確認していない値があります（MCP経由の変更や、プロジェクト・履歴・"
@@ -644,20 +651,20 @@ bool ExecutionPanel::authorizeCalculation() {
                     "利用者が「2 計算条件」「3 実行設定」タブで設定を確認してください。"));
         if (!confirmExecution())
             return false;
-        window->trustCurrentExecution();
+        executionAccess.trustCurrentExecution();
     }
     return true;
 }
 QString ExecutionPanel::enqueueCalculation(const QueueChain &chain) {
-    if (window->hasCandidate() || window->chemistryRunning())
+    if (editorContext.hasCandidate() || editorContext.chemistryRunning())
         fail(tr("候補を確定・取消し、整形の終了後に実行できます。"));
     commitPendingEdits();
     if (!authorizeCalculation())
         return {};
-    const auto document = window->document();
+    const auto document = editorContext.document();
     const auto base = baseDirectory();
     std::function<void()> check;
-    if (const auto *policy = window->accessPolicy(); policy && window->remoteRequest())
+    if (const auto *policy = executionAccess.accessPolicy(); policy && executionAccess.remoteRequest())
         check = [policy = *policy, document, base] { policy.checkRun(document, base); };
     const auto id = queue.enqueue(document, base, check, chain);
     if (!chain.active())
@@ -666,7 +673,7 @@ QString ExecutionPanel::enqueueCalculation(const QueueChain &chain) {
 }
 QStringList ExecutionPanel::enqueueChain(const QString &from, const QString &structure,
                                          const QStringList &steps, bool endFrequencies) {
-    if (window->hasCandidate() || window->chemistryRunning())
+    if (editorContext.hasCandidate() || editorContext.chemistryRunning())
         fail(tr("候補を確定・取消し、整形の終了後に実行できます。"));
     if (steps.isEmpty())
         fail(tr("登録する計算を選んでください。"));
@@ -674,9 +681,9 @@ QStringList ExecutionPanel::enqueueChain(const QString &from, const QString &str
     if (!authorizeCalculation())
         return {};
     const auto base = baseDirectory();
-    const auto *policy = window->accessPolicy();
-    const bool remote = policy && window->remoteRequest();
-    return queue.enqueueChain(window->document(), base, from, structure, steps, endFrequencies,
+    const auto *policy = executionAccess.accessPolicy();
+    const bool remote = policy && executionAccess.remoteRequest();
+    return queue.enqueueChain(editorContext.document(), base, from, structure, steps, endFrequencies,
                               [policy, remote, base](const Document &d) -> std::function<void()> {
                                   if (!remote)
                                       return {};
@@ -738,7 +745,7 @@ void ExecutionPanel::showChainDialog() {
     single->setObjectName("calculationChainCurrent");
     QString task;
     for (const auto &c : nwchemChoices("task"))
-        if (c.value == nwchemSettings(window->document())["task"].toString())
+        if (c.value == nwchemSettings(editorContext.document())["task"].toString())
             task = c.label;
     single->setText(tr("「2 計算条件」の今の条件で1件（%1）").arg(task));
     auto *recipe = new QRadioButton(tr("反応経路の連鎖"));
@@ -770,7 +777,7 @@ void ExecutionPanel::showChainDialog() {
     layout->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::close);
     connect(add, &QPushButton::clicked, dialog, [=, this] {
-        window->safe([&] {
+        uiContext.safe([&] {
             if (source->currentIndex() < 0)
                 fail(tr("キューに引継ぎ元の計算を登録してください。"));
             QStringList chosen;
@@ -785,8 +792,8 @@ void ExecutionPanel::showChainDialog() {
                              endFrequencies->isChecked());
             if (!ids.isEmpty()) {
                 dialog->close();
-                window->statusBar()->showMessage(
-                    tr("%n件の計算をキューに登録しました。", nullptr, int(ids.size())), 8000);
+                uiContext.showMessage(tr("%n件の計算をキューに登録しました。", nullptr, int(ids.size())),
+                                      8000);
                 showQueue();
             }
         });
@@ -883,9 +890,9 @@ void ExecutionPanel::showQueue() {
     connect(pause, &QPushButton::clicked, dialog, [this] { queue.pause(); });
     connect(stopOnFailure, &QCheckBox::toggled, &queue, &NwchemQueue::setStopOnFailure);
     connect(cancel, &QPushButton::clicked, dialog,
-            [this, selected] { window->safe([&] { queue.cancel(selected()); }); });
+            [this, selected] { uiContext.safe([&] { queue.cancel(selected()); }); });
     const auto move = [this, selected, table](int direction) {
-        window->safe([&] {
+        uiContext.safe([&] {
             for (int row = table->currentRow() + direction; row >= 0 && row < queue.entries().size();
                  row += direction)
                 if (queue.entries()[row].state == RunState::Prepared) {
@@ -901,7 +908,7 @@ void ExecutionPanel::showQueue() {
     dialog->show();
 }
 QStringList ExecutionPanel::enqueueGeometries(const QVector<Document> &geometries, bool frequencies) {
-    if (window->hasCandidate() || window->chemistryRunning())
+    if (editorContext.hasCandidate() || editorContext.chemistryRunning())
         fail(tr("候補を確定・取消し、整形の終了後に実行できます。"));
     if (geometries.isEmpty() || geometries.size() + queue.entries().size() > 1000)
         fail(tr("キューにはこのセッションで1000件まで登録できます。"));
@@ -911,7 +918,7 @@ QStringList ExecutionPanel::enqueueGeometries(const QVector<Document> &geometrie
     QVector<Document> documents;
     const auto base = baseDirectory();
     for (int i = 0; i < geometries.size(); ++i) {
-        auto d = window->document();
+        auto d = editorContext.document();
         applyResultGeometry(d, geometries[i]);
         setNwchemSetting(d, "task", frequencies ? "optimize_frequencies" : "optimize");
         setNwchemSetting(d, "start", nwchemSettings(d)["start"].toString() + QString("_conf%1").arg(i + 1));
@@ -921,7 +928,7 @@ QStringList ExecutionPanel::enqueueGeometries(const QVector<Document> &geometrie
     QStringList directories;
     for (const auto &d : documents) {
         std::function<void()> check;
-        if (const auto *policy = window->accessPolicy(); policy && window->remoteRequest())
+        if (const auto *policy = executionAccess.accessPolicy(); policy && executionAccess.remoteRequest())
             check = [policy = *policy, d, base] { policy.checkRun(d, base); };
         queue.enqueue(d, base, check);
         directories << queue.entries().last().plan.directory;
@@ -932,7 +939,7 @@ QStringList ExecutionPanel::enqueueGeometries(const QVector<Document> &geometrie
 }
 bool ExecutionPanel::confirmExecution() {
     // A person started the run: confirm in a dialog that MCP cannot see or press.
-    const auto &d = window->document();
+    const auto &d = editorContext.document();
     const auto settings = protectedExecution(d);
     const auto report = validateExecution(d, baseDirectory(), false);
     // Show where a name or relative path leads (for example a program beside the project file).
@@ -955,7 +962,7 @@ bool ExecutionPanel::confirmExecution() {
            "値があります（プロジェクト・履歴・自動保存の読込やMCPによる変更）。これらの設定は任意の"
            "プログラムを起動できます。内容を確認し、信頼できる場合だけ実行してください。"
            "この設定で実行しますか？"),
-        QMessageBox::Yes | QMessageBox::No, window);
+        QMessageBox::Yes | QMessageBox::No, this);
     box.setInformativeText(
         tr("実行先: %1\n実行ファイル: %2\nランチャー: %3\n環境変数: %4\nNWChemの追加入力: %5")
             .arg(settings["remote"].toString().isEmpty()
@@ -974,7 +981,7 @@ bool ExecutionPanel::confirmExecution() {
 }
 void ExecutionPanel::confirmStop() {
     if (!run.active()) {
-        window->statusBar()->showMessage(tr("実行中の計算はありません。"), 5000);
+        uiContext.showMessage(tr("実行中の計算はありません。"), 5000);
         return;
     }
     if (QMessageBox::question(this, tr("計算の停止"),
@@ -983,10 +990,10 @@ void ExecutionPanel::confirmStop() {
         run.stop();
 }
 void ExecutionPanel::startFromMenu() {
-    window->refreshPanel(this, true); // The tab may be stale while another one is shown.
+    workspace.refreshPanel(this, true); // The tab may be stale while another one is shown.
     if (!startable) {
-        window->showPanel(this);
-        window->statusBar()->showMessage(
+        workspace.showPanel(this);
+        uiContext.showMessage(
             run.active() ? tr("計算を実行中です。")
                          : tr("計算を開始できません。「3 実行設定」の「実行前の確認」を見てください。"),
             10000);
@@ -998,7 +1005,7 @@ void ExecutionPanel::refresh() {
     if (busy)
         return;
     QScopedValueRollback guard(busy, true);
-    const auto &d = window->displayDocument();
+    const auto &d = editorContext.displayDocument();
     const auto s = executionSettings(d);
     settingsForm->setSettings(s);
     for (auto *group : std::as_const(choices))
@@ -1007,7 +1014,7 @@ void ExecutionPanel::refresh() {
         const QSignalBlocker blocker(memory);
         memory->setValue(nwchemSettings(d)["memory_mb"].toInt());
     }
-    const bool editable = !window->hasCandidate() && !window->chemistryRunning();
+    const bool editable = !editorContext.hasCandidate() && !editorContext.chemistryRunning();
     settingsForm->setEnabled(editable);
     const int ranks = s["mode"] == "mpi" ? s["mpi_ranks"].toInt() : 1;
     const int threads = std::max(s["omp_threads"].toInt(), s["blas_threads"].toInt());
@@ -1226,7 +1233,7 @@ void ExecutionPanel::updateRun() {
         startable = false;
         prepare->setEnabled(false);
     }
-    window->showRun(run.active(), tr("実行中 %1").arg(elapsedClock(seconds)), stoppable);
+    workspace.showRun(run.active(), tr("実行中 %1").arg(elapsedClock(seconds)), stoppable);
     // Always visible in the status bar, whatever the tab.
     if (!run.plan().directory.isEmpty()) {
         runStatus->setText(
@@ -1297,17 +1304,17 @@ void ExecutionPanel::runEnded() {
     const auto message = QString("%1: %2").arg(endedMessage(run.state()), QFileInfo(directory).fileName());
     // The run status at the right of the status bar says how it ended; a message at the left only
     // adds what the log says once it is read (setResultSummary).
-    QApplication::alert(window); // Taskbar attention while MolForma is in the background.
-    if (!window->isActiveWindow() && QSystemTrayIcon::isSystemTrayAvailable() &&
+    QApplication::alert(QWidget::window()); // Taskbar attention while MolForma is in the background.
+    if (!isActiveWindow() && QSystemTrayIcon::isSystemTrayAvailable() &&
         QSystemTrayIcon::supportsMessages()) {
         if (!tray) {
             const auto icon = QApplication::windowIcon();
             tray = new QSystemTrayIcon(icon.isNull() ? style()->standardIcon(QStyle::SP_ComputerIcon) : icon,
                                        this);
-            connect(tray, &QSystemTrayIcon::messageClicked, window, [this] {
-                window->showNormal();
-                window->raise();
-                window->activateWindow();
+            connect(tray, &QSystemTrayIcon::messageClicked, this, [this] {
+                QWidget::window()->showNormal();
+                QWidget::window()->raise();
+                QWidget::window()->activateWindow();
             });
         }
         tray->show();
@@ -1329,7 +1336,7 @@ void ExecutionPanel::setResultSummary(const QString &directory, const QString &s
     resultSummary = summary;
     updateRun();
     if (!resultSummary.isEmpty())
-        window->statusBar()->showMessage(tr("計算が終了しました: %1").arg(resultSummary), 60000);
+        uiContext.showMessage(tr("計算が終了しました: %1").arg(resultSummary), 60000);
 }
 void ExecutionPanel::stopEditing() {
     busy = true;
@@ -1345,7 +1352,7 @@ void ExecutionPanel::shutdown(bool keepRunning) {
 void ExecutionPanel::superviseRuns(const QString &program) {
     run.setSupervisor(program);
     // Beside the autosave copies, in the application's data folder.
-    const auto folder = QFileInfo(MainWindow::autosaveDirectory()).absolutePath();
+    const auto folder = QFileInfo(DocumentStorage::autosaveDirectory()).absolutePath();
     if (folder.isEmpty() || !QDir().mkpath(folder))
         return;
     // A second window on the same account keeps its queue to itself, as before.
@@ -1366,9 +1373,9 @@ QString ExecutionPanel::restoreRuns(bool withQueue) {
             "前回のキューの待機中 %n 件を復元しました（「計算キュー」の「キューを開始・再開」で続けます）。",
             nullptr, waiting);
     // The run of the last session, if the queue has not taken it up already.
-    const auto last = window->preference("execution/running").toString();
+    const auto last = uiContext.preference("execution/running").toString();
     if (!last.isEmpty() && !run.active() && !run.attach(last)) {
-        window->setPreference("execution/running", {});
+        uiContext.setPreference("execution/running", {});
         try {
             const auto entry = readHistoryEntry(last);
             if (entry.valid)
@@ -1383,7 +1390,7 @@ QString ExecutionPanel::restoreRuns(bool withQueue) {
     return notes.join(' ');
 }
 void ExecutionPanel::applyChromeStyle() {
-    const auto pal = static_cast<QWidget *>(window)->palette();
+    const auto pal = palette();
     const QString rules = settingsRules() + R"(
         #executionTab { background: @window; }
         #runPanel { background: @window; border: none; border-top: 1px solid @line; }

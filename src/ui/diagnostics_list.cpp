@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/diagnostics_list.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include "ui/setting_navigation.h"
 #include <QResizeEvent>
 #include <QStyle>

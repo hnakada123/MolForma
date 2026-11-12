@@ -2,12 +2,14 @@
 #include "editing/chemistry.h"
 #include "editing/coordinates.h"
 #include "editing/operations.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include "io/structure_io.h"
-#include "model/i18n.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_geometry.h"
 #include "nwchem/nwchem_import.h"
+#include "nwchem/nwchem_plan.h"
 #include "ui/calculation_panel.h"
 #include "ui/main_window.h"
 #include <QListWidget>
@@ -71,6 +73,35 @@ class CalculationTest : public QObject {
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
                            settingsDir.path()); // MolForma uses NativeFormat.
+    }
+    void taskPlanMatchesWrittenInput() {
+        const QVector<QPair<QJsonObject, QStringList>> cases{
+            {{{"task", "energy"}}, {"task scf energy"}},
+            {{{"task", "optimize_frequencies"}}, {"task scf optimize", "task scf frequencies"}},
+            {{{"task", "optimize_frequencies"}, {"method", "mp2"}},
+             {"task mp2 optimize", "task mp2 frequencies numerical"}},
+            {{{"task", "optimize_frequencies"},
+              {"followup", true},
+              {"followup_method", "hf"},
+              {"followup_basis", "sto-3g"},
+              {"prop_nmr", true},
+              {"advanced", QJsonObject{{"molden_output", true}, {"cube_output", true}}}},
+             {"task scf optimize", "task scf frequencies", "task scf energy", "task scf property",
+              "task scf property", "task dplot"}},
+            {{{"task", "frequencies"}, {"method", "dft"}, {"prop_raman", true}},
+             {"task dft frequencies", "task dft raman"}},
+            {{{"task", "energy"}, {"prop_ord", true}, {"ord_points", 2}},
+             {"task scf energy", "task scf property", "task scf property"}},
+            {{{"task", "gradient"}, {"extra_input", "task scf energy"}, {"extra_tasks", "task scf energy"}},
+             {"task scf energy", "task scf gradient", "task scf energy"}}};
+        for (const auto &[settings, expected] : cases) {
+            auto d = water();
+            d.data["nwchem"] = settings;
+            const auto report = validateNwchem(d);
+            QVERIFY2(report.errors.isEmpty(), qPrintable(report.errors.join('\n')));
+            QCOMPARE(nwchemTaskPlan(d).commands(), expected);
+            QCOMPARE(nwchemTaskLines(generateNwchemInput(d).text), expected);
+        }
     }
     void diagnosticIdentityDoesNotDependOnLanguage() {
         auto d = water();
@@ -761,6 +792,7 @@ class CalculationTest : public QObject {
         QVERIFY(validateNwchem(d).warnings.join('\n').contains("3 × 3 = 9 点"));
         const auto input = nwchemInput(d);
         QCOMPARE(nwchemTaskLines(input).size(), 9);
+        QCOMPARE(nwchemTaskPlan(d).commands(), nwchemTaskLines(input));
         QVERIFY(input.contains("title \"MolForma scan 4/9 bond 1 2 = 1.55 and torsion 3 1 2 6 = 60\""));
         QVERIFY(
             input.contains("    bond 1 2 1.55 mfscan constant\n    torsion 3 1 2 6 60 mfscan2 constant\n"));
@@ -818,6 +850,7 @@ class CalculationTest : public QObject {
                                "molforma_frag2.movecs\nend\n"));
         QCOMPARE(nwchemTaskLines(input),
                  (QStringList{"task dft energy", "task dft energy", "task dft energy"}));
+        QCOMPARE(nwchemTaskPlan(d).commands(), nwchemTaskLines(input));
         QVERIFY(validateNwchem(d).warnings.join('\n').contains("フラグメント 2 個"));
         // HF: the reference of the molecule for each fragment.
         set(d, "method", "hf");

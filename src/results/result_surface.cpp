@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include "results/result_fields.h"
 #include "results/result_parsing.h"
 #include "results/results.h"

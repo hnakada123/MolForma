@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "results/result_cache.h"
+#include "foundation/files.h"
 #include "results/result_codec.h"
 #include "results/result_files.h"
 #include <QCryptographicHash>

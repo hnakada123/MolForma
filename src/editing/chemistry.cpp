@@ -4,9 +4,10 @@
 #include "editing/pdb.h"
 #include "editing/peptide.h"
 #include "editing/stereochemistry.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
+#include "foundation/structure_file.h"
 #include "model/geometry.h"
-#include "model/i18n.h"
-#include "model/structure_file.h"
 #include "model/topology.h"
 #include <QFileInfo>
 #include <QRegularExpression>

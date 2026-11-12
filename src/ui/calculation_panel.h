@@ -2,6 +2,7 @@
 #pragma once
 #include "nwchem/nwchem_advanced.h"
 #include "results/result_loader.h"
+#include "ui/editor_context.h"
 #include <QHash>
 #include <QJsonArray>
 #include <QMap>
@@ -20,7 +21,6 @@ class QTableWidget;
 class QToolButton;
 class QTreeWidget;
 namespace mf {
-class MainWindow;
 class CalculationSummary;
 class ChoiceButtons;
 class DiagnosticsList;
@@ -37,9 +37,10 @@ class StatusCard;
 class CalculationPanel : public QWidget {
     Q_OBJECT
   public:
-    explicit CalculationPanel(MainWindow *window);
+    CalculationPanel(EditorContext &editorContext, UiServices &uiContext, WorkspaceActions &workspace,
+                     QWidget *parent = nullptr);
     void refresh();
-    // Shows this panel's field ("advanced:<key>" for details). Use MainWindow::showSetting for routing.
+    // Shows this panel's field ("advanced:<key>" for details). Use WorkspaceActions::showSetting for routing.
     void showField(const QString &key);
     // Shows a detailed option (opening its section's details), or the details of a group ("dft").
     void showDetail(const QString &key);
@@ -103,7 +104,9 @@ class CalculationPanel : public QWidget {
         QStringList groups;
         bool showUnused = false;
     };
-    MainWindow *window;
+    EditorContext &editorContext;
+    UiServices &uiContext;
+    WorkspaceActions &workspace;
     ResultLoader nebLoader;
     quint64 nebRevision = 0;
     QLabel *nebLoadStatus;

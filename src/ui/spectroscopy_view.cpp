@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/spectroscopy_view.h"
-#include "model/i18n.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include "results/result_loader.h"
+#include "ui/editor_context.h"
 #include "ui/figure_export.h"
-#include "ui/main_window.h"
 #include "ui/result_charts.h"
 #include <QtWidgets>
 
 namespace mf {
-SpectroscopyView::SpectroscopyView(MainWindow *owner) : QWidget(owner), window(owner) {
+SpectroscopyView::SpectroscopyView(UiServices &uiServices, QWidget *parent)
+    : QWidget(parent), uiContext(uiServices) {
     setObjectName("resultsSpectroscopy");
     auto *layout = new QVBoxLayout(this);
     form = new QFormLayout;
@@ -102,7 +104,7 @@ SpectroscopyView::SpectroscopyView(MainWindow *owner) : QWidget(owner), window(o
         auto *b = new QPushButton(text);
         b->setObjectName(name);
         buttons->addWidget(b);
-        connect(b, &QPushButton::clicked, this, [this, action] { window->safe(action); });
+        connect(b, &QPushButton::clicked, this, [this, action] { uiContext.safe(action); });
     };
     button(tr("表示条件を保存…"), "spectrumSaveSettings", [this] {
         const auto path = QFileDialog::getSaveFileName(this, tr("表示条件を保存"), {}, "JSON (*.json)");
@@ -124,7 +126,7 @@ SpectroscopyView::SpectroscopyView(MainWindow *owner) : QWidget(owner), window(o
             fail(message->text());
         const auto path = askFigurePath(this, tr("スペクトルを書き出す"), "spectrum");
         if (!path.isEmpty()) {
-            window->checkMcpPath(path);
+            uiContext.checkMcpPath(path);
             saveFigure(chart, path);
         }
     });
@@ -405,7 +407,7 @@ void SpectroscopyView::selectAtom(int index) {
         }
 }
 void SpectroscopyView::saveSettings(const QString &path) const {
-    window->checkMcpPath(path);
+    uiContext.checkMcpPath(path);
     calculateSpectrum(result, parameters());
     writeFile(path, QJsonDocument(QJsonObject{{"format", "molforma-spectrum"},
                                               {"version", 1},
@@ -415,7 +417,7 @@ void SpectroscopyView::saveSettings(const QString &path) const {
                         .toJson());
 }
 void SpectroscopyView::loadSettings(const QString &path) {
-    window->checkMcpPath(path);
+    uiContext.checkMcpPath(path);
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly) || file.size() > 1024 * 1024)
         fail(tr("スペクトルの表示条件を読めません。"));
@@ -426,7 +428,7 @@ void SpectroscopyView::loadSettings(const QString &path) {
     setParameters(p["parameters"].toObject());
 }
 void SpectroscopyView::exportCsv(const QString &path) const {
-    window->checkMcpPath(path);
+    uiContext.checkMcpPath(path);
     writeFile(path, spectrumCsv(calculateSpectrum(result, parameters())));
 }
 } // namespace mf

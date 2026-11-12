@@ -2,9 +2,9 @@
 #include "ui/structure_import.h"
 #include "editing/crystal.h"
 #include "editing/mmcif.h"
+#include "foundation/i18n.h"
+#include "foundation/structure_file.h"
 #include "io/structure_io.h"
-#include "model/i18n.h"
-#include "model/structure_file.h"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordinates.h"
+#include "foundation/files.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/result_files.h"
@@ -28,6 +29,25 @@
 using namespace mf;
 
 namespace {
+class TestUiServices : public UiServices {
+  public:
+    QMap<QString, QVariant> preferences;
+    mutable QStringList checkedPaths;
+    void safe(const std::function<void()> &operation) override {
+        operation();
+    }
+    QVariant preference(const QString &key, const QVariant &fallback = {}) const override {
+        return preferences.value(key, fallback);
+    }
+    void setPreference(const QString &key, const QVariant &value) override {
+        preferences[key] = value;
+    }
+    void checkMcpPath(const QString &path) const override {
+        checkedPaths << path;
+    }
+    void showMessage(const QString &, int = 0) override {}
+    void addStatusWidget(QWidget *) override {}
+};
 // Equal JSON, with numbers equal to the last few bits: values computed from the read numbers (such as
 // the dipole moment by std::hypot) round differently between C++ libraries (libstdc++, libc++, MSVC).
 bool sameReading(const QJsonValue &a, const QJsonValue &b) {
@@ -1382,6 +1402,43 @@ class ResultsTest : public QObject {
                      .properties,
                  r.properties);
     }
+    void viewerSpectraUseSharedCalculation() {
+        MainWindow window;
+        auto *panel = widget<ResultsPanel>(window, "resultsTab");
+        const QString root = QString(FIXTURE_DIR) + "/nwchem/";
+        panel->openFile(root + "conformers/nitrous_acid_cis.out");
+        QTRY_VERIFY_WITH_TIMEOUT(!panel->loading(), 10000);
+        QVERIFY2(!panel->result().excitations.isEmpty(), qPrintable(panel->message()));
+        auto *axis = widget<QComboBox>(window, "resultsSpectrumAxis");
+        auto *width = widget<QDoubleSpinBox>(window, "resultsBroadening");
+        auto *chart = widget<ChartView>(window, "resultsSpectrum");
+        axis->setCurrentIndex(axis->findData("ev"));
+        width->setValue(.45);
+        QCOMPARE(chart->seriesData().size(), 2);
+        const auto &curve = chart->seriesData()[0].points;
+        const auto uv = calculateSpectrum(
+            panel->result(),
+            {{"kind", "uv"}, {"width", .45}, {"minimum", curve.first().x()}, {"maximum", curve.last().x()}});
+        QCOMPARE(chart->seriesData()[0].points, uv.curve);
+        QCOMPARE(chart->seriesData()[1].points, uv.sticks);
+        axis->setCurrentIndex(axis->findData("nm"));
+        for (int i = 0; i < uv.curve.size(); ++i) {
+            QCOMPARE(chart->seriesData()[0].points[i].x(), EvNanometer / uv.curve[i].x());
+            QCOMPARE(chart->seriesData()[0].points[i].y(), uv.curve[i].y());
+        }
+        auto *irChart = widget<ChartView>(window, "resultsIrSpectrum");
+        widget<QDoubleSpinBox>(window, "resultsIrWidth")->setValue(30);
+        QCOMPARE(irChart->seriesData().size(), 2);
+        const auto ir =
+            calculateSpectrum(panel->result(), {{"kind", "ir"},
+                                                {"width", 30.},
+                                                {"minimum", 0.},
+                                                {"maximum", irChart->seriesData()[0].points.last().x()}});
+        QCOMPARE(irChart->seriesData()[0].points, ir.curve);
+        QCOMPARE(irChart->seriesData()[1].points, ir.sticks);
+        emit irChart->stickClicked(1, 0);
+        QCOMPARE(panel->viewerState().mode, ir.peaks[0].toObject()["mode"].toInt());
+    }
     void nmrSpectrum() {
         ResultData r;
         r.properties["shielding"] =
@@ -1413,8 +1470,8 @@ class ResultsTest : public QObject {
         auto parsed = readResult(path);
         QCOMPARE(parsed.properties["shielding"].toArray().size(), 1);
         QCOMPARE(parsed.properties["shielding"][0].toObject()["atom"].toInt(), 3);
-        MainWindow w;
-        SpectroscopyView view(&w);
+        TestUiServices services;
+        SpectroscopyView view(services);
         view.setResult(parsed);
         p = {{"kind", "nmr"}, {"nucleus", "1H"}, {"reference_ppm", 31.0}, {"width", .05}};
         view.setParameters(p);
@@ -1427,6 +1484,8 @@ class ResultsTest : public QObject {
         QCOMPARE(view.parameters()["reference_ppm"].toDouble(), 31.0);
         view.exportCsv(files.filePath("nmr-spectrum.csv"));
         QVERIFY(readFile(files.filePath("nmr-spectrum.csv")).contains("peak,3,,2,1"));
+        QVERIFY(services.checkedPaths.contains(settingsFile));
+        QVERIFY(services.checkedPaths.contains(files.filePath("nmr-spectrum.csv")));
         parsed.source = save("another-result.out", "NWChem\n");
         view.setResult(parsed);
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, view.loadSettings(settingsFile));
@@ -1492,7 +1551,7 @@ class ResultsTest : public QObject {
         QCOMPARE(calculateSpectrum(r, p).peaks.size(), 3);
         // The view lists the multiplet.
         MainWindow w;
-        SpectroscopyView view(&w);
+        SpectroscopyView view(w, &w);
         view.setResult(r);
         p["coupling"] = true;
         view.setParameters(p);
@@ -1590,7 +1649,7 @@ class ResultsTest : public QObject {
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, evaluateEnergyProfile(p));
         p["temperature"] = 300.;
         MainWindow w;
-        EnergyProfileDialog dialog(&w);
+        EnergyProfileDialog dialog(w, &w);
         dialog.setSpecification(p);
         QCOMPARE(dialog.specification()["stages"], p["stages"]);
         QCOMPARE(dialog.findChild<QTableWidget *>("profileValues")->rowCount(), 2);
@@ -1608,7 +1667,7 @@ class ResultsTest : public QObject {
         MainWindow w;
         w.loadDocument(base);
         int queued = 0;
-        ConformerSetDialog dialog(&w, [&](const QVector<Document> &documents, bool frequencies) {
+        ConformerSetDialog dialog(w, w, w, [&](const QVector<Document> &documents, bool frequencies) {
             queued = documents.size();
             if (frequencies)
                 return QStringList{};
@@ -1951,7 +2010,7 @@ class ResultsTest : public QObject {
         // The dialog shows both for G, keeps the choices of the corrections and labels the standard state.
         p["metric"] = "G";
         MainWindow w;
-        EnergyProfileDialog dialog(&w);
+        EnergyProfileDialog dialog(w, &w);
         dialog.setSpecification(p);
         auto *values = dialog.findChild<QTableWidget *>("profileValues");
         QVERIFY(!values->isColumnHidden(3) && !values->isColumnHidden(4));
@@ -2181,7 +2240,7 @@ class ResultsTest : public QObject {
                                {"spectra", spectra}};
         };
         MainWindow w;
-        ConformerSetDialog dialog(&w, [](const QVector<Document> &, bool) { return QStringList{}; });
+        ConformerSetDialog dialog(w, w, w, [](const QVector<Document> &, bool) { return QStringList{}; });
         auto *button = dialog.findChild<QPushButton *>("conformerSpectrum");
         QVERIFY(!button->isEnabled());
         QJsonObject spec{
@@ -2269,7 +2328,7 @@ class ResultsTest : public QObject {
         QVERIFY_THROWS_EXCEPTION(std::runtime_error,
                                  calculateSpectrum(repeated, {{"kind", "ord"}, {"width", 1.}}));
         MainWindow w;
-        SpectroscopyView view(&w);
+        SpectroscopyView view(w, &w);
         view.setResult(ecd);
         QCOMPARE(view.parameters()["kind"].toString(), "ecd");
         view.setResult(ord);
@@ -2301,7 +2360,7 @@ class ResultsTest : public QObject {
         QVERIFY_THROWS_EXCEPTION(std::runtime_error,
                                  polarizabilityAxes({1., 2., 0., 0., 1., 0., 0., 0., 1.}));
         MainWindow w;
-        PropertyGeometryView view(&w);
+        PropertyGeometryView view(w, &w);
         view.setResult(r);
         QVERIFY(view.findChild<MoleculeView *>("propertyGeometryMolecule"));
     }
@@ -2344,7 +2403,7 @@ class ResultsTest : public QObject {
         p["nuclei"] = QJsonArray{QJsonObject{{"atom", 2}, {"isotope", "13C"}}};
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, calculateSpectrum(r, p));
         MainWindow w;
-        SpectroscopyView view(&w);
+        SpectroscopyView view(w, &w);
         view.setResult(r);
         QCOMPARE(view.findChild<QTableWidget *>("spectrumEprNuclei")->rowCount(), 4);
         QCOMPARE(view.parameters()["nuclei"].toArray().size(), 3);

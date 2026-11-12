@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/mmcif.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include <QHash>
 #include <cctype>
 #include <cstring>

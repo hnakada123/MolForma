@@ -7,7 +7,8 @@
 #include "editing/peptide.h"
 #include "editing/site.h"
 #include "editing/stereochemistry.h"
-#include "model/i18n.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include "nwchem/nwchem.h"
 #include "ui/editor_chrome.h"
 #include "ui/molecule_panel.h"
@@ -379,9 +380,9 @@ void MoleculePanel::buildEditPanel() {
                              .arg(document().atom(b.b).element)
                              .arg(document().index(b.b) + 1)
                              .arg(b.stereo);
-        statusBar()->showMessage(found.isEmpty() ? tr("記録する不斉中心・E/Zの二重結合はありません。")
-                                                 : tr("立体配置を記録しました: %1").arg(found.join(", ")),
-                                 10000);
+        showMessage(found.isEmpty() ? tr("記録する不斉中心・E/Zの二重結合はありません。")
+                                    : tr("立体配置を記録しました: %1").arg(found.join(", ")),
+                    10000);
     });
     stereo->setEnabled(hasStereochemistryBackend());
     if (!hasStereochemistryBackend())
@@ -710,7 +711,7 @@ void MoleculePanel::buildResiduePanel() {
             const SiteOptions options{radius->value(), wholeResidues->isChecked(), waters->isChecked()};
             const auto ids = siteAtoms(displayDocument(), requireSelection(), options);
             setSelection(ids);
-            statusBar()->showMessage(
+            showMessage(
                 tr("周囲の%n原子を選択しました（半径 %1 Å）。", nullptr, ids.size()).arg(options.radius),
                 5000);
         },

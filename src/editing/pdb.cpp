@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/pdb.h"
+#include "foundation/i18n.h"
 #include "model/document.h"
-#include "model/i18n.h"
 #include <QHash>
 #include <QMap>
 #include <QRegularExpression>

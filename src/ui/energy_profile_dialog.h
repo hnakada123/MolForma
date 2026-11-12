@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "results/result_loader.h"
+#include "ui/editor_context.h"
 #include <QDialog>
 class QComboBox;
 class QDoubleSpinBox;
@@ -9,17 +10,16 @@ class QLabel;
 class QTableWidget;
 namespace mf {
 class ChartView;
-class MainWindow;
 class EnergyProfileDialog : public QDialog {
     Q_OBJECT
   public:
-    explicit EnergyProfileDialog(MainWindow *window);
+    EnergyProfileDialog(UiServices &uiContext, QWidget *parent = nullptr);
     void addJob(const QString &directory);
     QJsonObject specification() const;
     void setSpecification(const QJsonObject &specification);
 
   private:
-    MainWindow *window;
+    UiServices &uiContext;
     ResultLoader loader;
     Document pending;
     QJsonObject pendingSettings;

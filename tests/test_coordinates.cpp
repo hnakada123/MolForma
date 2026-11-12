@@ -4,6 +4,7 @@
 #include "editing/crystal.h"
 #include "editing/mmcif.h"
 #include "editing/peptide.h"
+#include "foundation/files.h"
 #include "gzip.h"
 #include "io/structure_io.h"
 #include "model/geometry.h"

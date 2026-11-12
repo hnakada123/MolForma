@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+#include "foundation/files.h"
 #include "nwchem/nwchem_advanced.h"
 #include "ui/calculation_panel.h"
 #include "ui/diagnostics_list.h"

@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "model/document.h"
-#include "model/i18n.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include "model/memo.h"
 #include "model/topology.h"
 #include "project/atom_references.h"
-#include <QFile>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QRegularExpression>
-#include <QSaveFile>
 #include <QSet>
 #include <QUuid>
 #include <algorithm>
@@ -21,9 +20,6 @@ static void initResources() {
 namespace mf {
 QString newId() {
     return QUuid::createUuid().toString(QUuid::Id128);
-}
-void fail(const QString &s) {
-    throw std::runtime_error(s.toStdString());
 }
 Vec vectorFromJson(const QJsonValue &v) {
     const auto a = v.toArray();
@@ -45,24 +41,6 @@ Ids idsFromJson(const QJsonValue &v) {
 }
 QJsonArray idsToJson(const Ids &ids) {
     return QJsonArray::fromStringList(ids);
-}
-QByteArray readFile(const QString &p) {
-    QFile f(p);
-    if (!f.open(QIODevice::ReadOnly))
-        fail(f.errorString());
-    return f.readAll();
-}
-void writeFile(const QString &p, const QByteArray &bytes) {
-    QSaveFile f(p);
-    if (!f.open(QIODevice::WriteOnly) || f.write(bytes) != bytes.size() || !f.commit())
-        fail(f.errorString());
-}
-QJsonObject parseJson(const QByteArray &b) {
-    QJsonParseError error;
-    auto d = QJsonDocument::fromJson(b, &error);
-    if (error.error != QJsonParseError::NoError || !d.isObject())
-        fail(tr("JSONを読めません: %1").arg(error.errorString()));
-    return d.object();
 }
 const QVector<Element> &elements() {
     static QVector<Element> values = [] {

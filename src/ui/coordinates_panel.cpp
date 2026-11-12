@@ -2,12 +2,13 @@
 #include "ui/coordinates_panel.h"
 #include "editing/chemistry.h"
 #include "editing/peptide.h"
+#include "foundation/files.h"
+#include "foundation/structure_file.h"
 #include "io/structure_io.h"
 #include "model/geometry.h"
-#include "model/structure_file.h"
 #include "nwchem/nwchem_geometry.h"
 #include "ui/editor_chrome.h"
-#include "ui/main_window.h"
+#include "ui/editor_context.h"
 #include "ui/periodic_table.h"
 #include "ui/structure_import.h"
 #include "ui/theme.h"
@@ -249,7 +250,9 @@ QIcon CoordinateModel::mark(const QString &kind) const {
     return icon;
 }
 
-CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(owner) {
+CoordinatesPanel::CoordinatesPanel(EditorContext &editorServices, UiServices &uiServices,
+                                   WorkspaceActions &workspaceActions, QWidget *parent)
+    : QWidget(parent), editorContext(editorServices), uiContext(uiServices), workspace(workspaceActions) {
     setObjectName("coordinatesTab");
     setAcceptDrops(true);
     // Commands, the selection (or the candidate), the table and a footer, under the 3D view of
@@ -295,17 +298,17 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
         auto *a = sortMenu->addAction(text);
         a->setObjectName(QString("coordinateSort_") + mode);
         connect(a, &QAction::triggered, this,
-                [this, mode = QString(mode)] { attempt([this, mode] { window->sortAtoms(mode); }); });
+                [this, mode = QString(mode)] { attempt([this, mode] { workspace.sortAtoms(mode); }); });
         editActions << a;
     }
     connect(sortMenu, &QMenu::aboutToShow, this, [this] {
         findChild<QAction *>("coordinateSort_selected")
-            ->setEnabled(editable() && !window->selection().isEmpty());
+            ->setEnabled(editable() && !editorContext.selection().isEmpty());
     });
     structureMenu->addSeparator();
     structureAction(
         tr("全原子を削除"), "coordinateClear", "delete", tr("すべての原子を削除する候補を作ります。"),
-        [this] { window->edit(tr("全原子を削除"), [](Document &d) { d.remove(d.ids()); }, true); });
+        [this] { editorContext.edit(tr("全原子を削除"), [](Document &d) { d.remove(d.ids()); }, true); });
     structure->setMenu(structureMenu);
     tools->addWidget(structure);
     editControls << structure;
@@ -324,10 +327,10 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     attributes->setObjectName("coordinateAttributeColumns");
     attributes->setCheckable(true);
     attributes->setToolTip(tr("形式電荷・不対電子・原子名の列を表示して編集します。"));
-    attributes->setChecked(window->preference("coordinates/attributes", false).toBool());
+    attributes->setChecked(uiContext.preference("coordinates/attributes", false).toBool());
     tools->addWidget(attributes);
     connect(attributes, &QPushButton::toggled, this, [this](bool on) {
-        window->setPreference("coordinates/attributes", on);
+        uiContext.setPreference("coordinates/attributes", on);
         for (const int column : {ChargeColumn, RadicalColumn, NameColumn})
             table->setColumnHidden(column, !on);
     });
@@ -414,7 +417,7 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
     deselect->setIcon(lineIcon("close"));
     deselect->setToolTip(tr("選択を解除"));
     bar->addWidget(deselect);
-    connect(deselect, &QToolButton::clicked, this, [this] { window->setSelection({}); });
+    connect(deselect, &QToolButton::clicked, this, [this] { editorContext.setSelection({}); });
     selectionItems << deselect;
     auto *candidateIcon = new QLabel;
     candidateIcon->setObjectName("coordinateCandidateIcon");
@@ -480,8 +483,8 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
         [this](const QString &id, CoordinateColumn column, const QString &text) {
             const auto unit = tableUnit();
             attempt([&] {
-                window->edit(tr("座標表を編集"),
-                             [=](Document &d) { setCoordinateCell(d, id, column, text, unit); });
+                editorContext.edit(tr("座標表を編集"),
+                                   [=](Document &d) { setCoordinateCell(d, id, column, text, unit); });
             });
             refresh();
         },
@@ -523,7 +526,7 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
         const QSet<QString> rows(ids.begin(), ids.end());
         Ids ordered;
         QSet<QString> kept;
-        for (const auto &id : window->selection())
+        for (const auto &id : editorContext.selection())
             if (rows.contains(id) && !kept.contains(id)) {
                 ordered << id;
                 kept.insert(id);
@@ -531,7 +534,7 @@ CoordinatesPanel::CoordinatesPanel(MainWindow *owner) : QWidget(owner), window(o
         for (const auto &id : ids)
             if (!kept.contains(id))
                 ordered << id;
-        window->setSelection(ordered);
+        editorContext.setSelection(ordered);
     });
     auto *empty = new QWidget;
     empty->setObjectName("coordinateEmpty");
@@ -606,18 +609,18 @@ QPushButton *CoordinatesPanel::button(QLayout *layout, const QString &text, cons
     return b;
 }
 void CoordinatesPanel::showAttributes() {
-    window->showCoordinateTable();
+    workspace.showCoordinateTable();
     attributes->setChecked(true);
     table->scrollTo(model->index(std::max(0, table->currentIndex().row()), ChargeColumn));
 }
 bool CoordinatesPanel::editable() const {
-    return !window->hasCandidate() && !window->chemistryRunning();
+    return !editorContext.hasCandidate() && !editorContext.chemistryRunning();
 }
 CoordinateUnit CoordinatesPanel::tableUnit() const {
     return units->currentIndex() == 1 ? CoordinateUnit::Bohr : CoordinateUnit::Angstrom;
 }
 CoordinateUnit CoordinatesPanel::exportUnit() const {
-    return window->displayDocument().data["nwchem"].toObject()["geometry_units"] == "bohr"
+    return editorContext.displayDocument().data["nwchem"].toObject()["geometry_units"] == "bohr"
                ? CoordinateUnit::Bohr
                : CoordinateUnit::Angstrom;
 }
@@ -637,9 +640,9 @@ void CoordinatesPanel::refresh() {
     if (busy)
         return;
     QScopedValueRollback guard(busy, true);
-    const auto &d = window->displayDocument();
-    const bool candidate = window->hasCandidate();
-    const auto changes = candidate ? atomChanges(window->document(), d) : AtomChanges{};
+    const auto &d = editorContext.displayDocument();
+    const bool candidate = editorContext.hasCandidate();
+    const auto changes = candidate ? atomChanges(editorContext.document(), d) : AtomChanges{};
     const ChromeColors colors(palette());
     model->show({d, changes, atomPlaces(d), tableUnit(), editable(), colors.muted, colors.good,
                  colors.candidateText});
@@ -662,7 +665,7 @@ void CoordinatesPanel::refresh() {
     refreshSelection();
 }
 void CoordinatesPanel::refreshExport() {
-    const auto &d = window->displayDocument();
+    const auto &d = editorContext.displayDocument();
     bool valid = !d.atoms.isEmpty();
     try {
         nwchemGeometry(d, exportUnit());
@@ -678,7 +681,7 @@ void CoordinatesPanel::refreshExport() {
 }
 void CoordinatesPanel::applyFilter() {
     const auto needle = filter->text().trimmed();
-    const bool changedOnly = window->hasCandidate() && showChanged->isChecked();
+    const bool changedOnly = editorContext.hasCandidate() && showChanged->isChecked();
     const auto text = [this](int row, int column) { return model->index(row, column).data().toString(); };
     for (int row = 0; row < model->rowCount(); ++row) {
         bool shown = !changedOnly || !text(row, ChangeColumn).isEmpty();
@@ -692,10 +695,10 @@ void CoordinatesPanel::applyFilter() {
     refreshCount();
 }
 void CoordinatesPanel::refreshCount() {
-    const auto &d = window->displayDocument();
-    if (window->hasCandidate()) {
-        count->setText(
-            tr("候補 %n 原子（今は %1）", nullptr, int(d.atoms.size())).arg(window->document().atoms.size()));
+    const auto &d = editorContext.displayDocument();
+    if (editorContext.hasCandidate()) {
+        count->setText(tr("候補 %n 原子（今は %1）", nullptr, int(d.atoms.size()))
+                           .arg(editorContext.document().atoms.size()));
         return;
     }
     int hidden = 0;
@@ -704,16 +707,17 @@ void CoordinatesPanel::refreshCount() {
     const auto fixed = std::count_if(d.atoms.begin(), d.atoms.end(), [](const Atom &a) { return a.fixed; });
     const int n = d.atoms.size();
     count->setText(
-        hidden ? tr("%n 原子・選択 %1・固定 %2・表示 %3", nullptr, n)
-                     .arg(window->selection().size())
-                     .arg(fixed)
-                     .arg(n - hidden)
-               : tr("%n 原子・選択 %1・固定 %2", nullptr, n).arg(window->selection().size()).arg(fixed));
+        hidden
+            ? tr("%n 原子・選択 %1・固定 %2・表示 %3", nullptr, n)
+                  .arg(editorContext.selection().size())
+                  .arg(fixed)
+                  .arg(n - hidden)
+            : tr("%n 原子・選択 %1・固定 %2", nullptr, n).arg(editorContext.selection().size()).arg(fixed));
 }
 void CoordinatesPanel::refreshSelection() {
     QScopedValueRollback guard(busy, true);
     // One selection of row ranges: selecting item by item is quadratic in the selected rows.
-    const QSet<QString> chosen(window->selection().begin(), window->selection().end());
+    const QSet<QString> chosen(editorContext.selection().begin(), editorContext.selection().end());
     const int last = ColumnCount - 1;
     QItemSelection rows;
     for (int row = 0; row < model->rowCount(); ++row) {
@@ -741,19 +745,19 @@ void CoordinatesPanel::refreshSelection() {
     refreshSelectionBar();
 }
 void CoordinatesPanel::refreshSelectionBar() {
-    const auto &d = window->displayDocument();
-    const bool candidate = window->hasCandidate();
+    const auto &d = editorContext.displayDocument();
+    const bool candidate = editorContext.hasCandidate();
     if (selectionBar->property("candidate").toBool() != candidate) {
         selectionBar->setProperty("candidate", candidate);
         selectionBar->style()->unpolish(selectionBar);
         selectionBar->style()->polish(selectionBar);
     }
     QHash<QString, int> index;
-    for (int i = 0; !window->selection().isEmpty() && i < d.atoms.size(); ++i)
+    for (int i = 0; !editorContext.selection().isEmpty() && i < d.atoms.size(); ++i)
         index.insert(d.atoms[i].id, i);
     // Atoms that a candidate removes are left out until it is confirmed or cancelled.
     Ids shown;
-    for (const auto &id : window->selection())
+    for (const auto &id : editorContext.selection())
         if (index.contains(id))
             shown << id;
     const bool selecting = !candidate && !shown.isEmpty();
@@ -788,7 +792,7 @@ void CoordinatesPanel::refreshSelectionBar() {
         moreAtoms->setVisible(n > chips.size());
         moreAtoms->setText(tr("ほか %n 原子", nullptr, n - int(chips.size())));
         QString measured;
-        if (n >= 2 && n <= 4 && n == window->selection().size()) {
+        if (n >= 2 && n <= 4 && n == editorContext.selection().size()) {
             try {
                 const double m = measure(d, shown);
                 measured = QString("%1 %2 %3")
@@ -801,14 +805,14 @@ void CoordinatesPanel::refreshSelectionBar() {
         }
         measurement->setText(measured);
         // The measurement panel of the 3D view shows it, unless the table is shown in its place.
-        measurement->setVisible(!measured.isEmpty() && window->moleculeLayoutMode() == "table");
+        measurement->setVisible(!measured.isEmpty() && workspace.moleculeLayoutMode() == "table");
     }
     refreshCount();
 }
 void CoordinatesPanel::addAtom() {
     if (!editable())
         fail(tr("候補を確定・取消し、実行中の整形を終了してください。"));
-    const auto base = window->revision();
+    const auto base = editorContext.revision();
     const auto unit = tableUnit();
     QDialog dialog(this);
     dialog.setObjectName("coordinateAtomDialog");
@@ -820,7 +824,7 @@ void CoordinatesPanel::addAtom() {
         QToolButton:checked { background: @accent; border-color: @accent; color: @onAccent; font-weight: bold; }
         QLabel[note="true"] { color: @muted; }
     )",
-                                     static_cast<QWidget *>(window)->palette()));
+                                     palette()));
     auto *layout = new QVBoxLayout(&dialog);
     layout->setSpacing(8);
     // A muted explanation, indented under the check box it explains.
@@ -841,7 +845,7 @@ void CoordinatesPanel::addAtom() {
         layout->addWidget(label);
     };
     auto *hint = new QLabel(tr("1原子を末尾（%1 番）に追加します。結合や水素の補完は「1 分子」で行えます。")
-                                .arg(window->document().atoms.size() + 1));
+                                .arg(editorContext.document().atoms.size() + 1));
     hint->setWordWrap(true);
     layout->addWidget(hint);
     heading(tr("元素"));
@@ -925,7 +929,7 @@ void CoordinatesPanel::addAtom() {
     buttons->button(QDialogButtonBox::Ok)->setText(tr("1原子を追加"));
     layout->addWidget(buttons);
     std::optional<Atom> atom;
-    const auto &current = window->document();
+    const auto &current = editorContext.document();
     const auto places = atomPlaces(current);
     auto validate = [&] {
         atom.reset();
@@ -956,7 +960,7 @@ void CoordinatesPanel::addAtom() {
             auto entered =
                 coordinateAtom(symbol->currentText(), {xyz[0]->text(), xyz[1]->text(), xyz[2]->text()},
                                mass->text(), unit, ghost->isChecked(), fixed->isChecked());
-            Document next = window->document();
+            Document next = editorContext.document();
             next.atoms << entered;
             auto errors = next.validate();
             if (!errors.isEmpty())
@@ -993,19 +997,19 @@ void CoordinatesPanel::addAtom() {
     validate();
     if (dialog.exec() != QDialog::Accepted)
         return;
-    if (base != window->revision() || !editable())
+    if (base != editorContext.revision() || !editable())
         fail(tr("入力中に分子が変更されました。原子を追加し直してください。"));
-    window->edit(tr("座標から原子を追加"), [&](Document &d) { d.atoms << *atom; });
-    window->setSelection({atom->id});
+    editorContext.edit(tr("座標から原子を追加"), [&](Document &d) { d.atoms << *atom; });
+    editorContext.setSelection({atom->id});
     table->scrollTo(model->index(model->rowCount() - 1, 0));
-    window->canvas()->keepInView();
+    workspace.fitMoleculeView();
 }
 void CoordinatesPanel::previewStructure(const Document &structure) {
-    window->edit(
+    editorContext.edit(
         tr("座標から構造を読込"), [&](Document &d) { replaceCoordinateStructure(d, structure); }, true);
 }
 void CoordinatesPanel::pasteXyz() {
-    const auto base = window->revision();
+    const auto base = editorContext.revision();
     bool ok;
     const QString text = QInputDialog::getMultiLineText(
         this, tr("XYZを貼り付けて置き換え"),
@@ -1013,33 +1017,33 @@ void CoordinatesPanel::pasteXyz() {
         QApplication::clipboard()->text(), &ok);
     if (!ok)
         return;
-    if (base != window->revision())
+    if (base != editorContext.revision())
         fail(tr("入力中に分子が変更されました。貼り付けをやり直してください。"));
     previewStructure(xyzStructure(text));
 }
 void CoordinatesPanel::importFile() {
-    const auto base = window->revision();
+    const auto base = editorContext.revision();
     QString path = QFileDialog::getOpenFileName(
-        this, tr("構造を読み込んで置換候補を作成"), window->preference("directory").toString(),
+        this, tr("構造を読み込んで置換候補を作成"), uiContext.preference("directory").toString(),
         tr("分子構造 (*.xyz *.mol *.sdf *.pdb *.ent *.cif *.mmcif *.gz)"));
     if (path.isEmpty())
         return;
-    if (base != window->revision())
+    if (base != editorContext.revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
     importPath(path);
 }
 void CoordinatesPanel::importPath(const QString &path) {
-    window->checkMcpPath(path);
+    uiContext.checkMcpPath(path);
     if (!editable())
         fail(tr("候補を確定・取消し、実行中の整形を終了してから読み込んでください。"));
-    const auto base = window->revision();
+    const auto base = editorContext.revision();
     const auto options = chooseStructureImport(this, path);
     if (!options)
         return;
-    if (base != window->revision())
+    if (base != editorContext.revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
     previewStructure(importStructure(path, options->selection, options->frame, options->crystal));
-    window->setPreference("directory", QFileInfo(path).absolutePath());
+    uiContext.setPreference("directory", QFileInfo(path).absolutePath());
 }
 void CoordinatesPanel::dragEnterEvent(QDragEnterEvent *event) {
     // Structure files become a replacement candidate here; other files (results, projects) go on to
@@ -1075,15 +1079,16 @@ void CoordinatesPanel::resizeEvent(QResizeEvent *event) {
 void CoordinatesPanel::showEvent(QShowEvent *event) {
     QWidget::showEvent(event);
     // Shown with "1 分子" or by its layout: catch up with what changed while hidden.
-    window->refreshPanel(this);
+    workspace.refreshPanel(this);
 }
 void CoordinatesPanel::exportText(bool xyz, bool save) {
     if (!editable())
         fail(tr("候補を確定・取消し、実行中の整形を終了してから出力してください。"));
-    const QString text = xyz ? window->document().xyz() : nwchemGeometry(window->document(), exportUnit());
+    const QString text =
+        xyz ? editorContext.document().xyz() : nwchemGeometry(editorContext.document(), exportUnit());
     if (!save) {
         QApplication::clipboard()->setText(text);
-        window->statusBar()->showMessage(
+        uiContext.showMessage(
             xyz ? tr("XYZ（Å）をコピーしました。") : tr("NWChem座標ブロックをコピーしました。"), 5000);
         return;
     }
@@ -1098,7 +1103,7 @@ void CoordinatesPanel::exportText(bool xyz, bool save) {
     writeFile(path, text.toUtf8());
 }
 void CoordinatesPanel::applyChromeStyle() {
-    const auto pal = static_cast<QWidget *>(window)->palette();
+    const auto pal = palette();
     const ChromeColors c(pal);
     setStyleSheet(chromeRules(settingsRules() + R"(
         #coordinateSelectionBar, #coordinateFooter, #coordinateEmpty { background: @base; }

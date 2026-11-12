@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "nwchem/nwchem_execution.h"
-#include "model/i18n.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include "model/settings.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"

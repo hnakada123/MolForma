@@ -9,10 +9,11 @@
 #include "editing/site.h"
 #include "editing/solvation.h"
 #include "editing/stereochemistry.h"
+#include "foundation/files.h"
+#include "foundation/structure_file.h"
 #include "gzip.h"
 #include "io/structure_io.h"
 #include "model/geometry.h"
-#include "model/structure_file.h"
 #include "model/topology.h"
 #include "nwchem/nwchem.h"
 #include <QJsonDocument>

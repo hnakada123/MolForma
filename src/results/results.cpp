@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "results/results.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include "model/numbers.h"
 #include "results/result_cache.h"
 #include "results/result_fields.h"

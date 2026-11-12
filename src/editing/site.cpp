@@ -3,7 +3,7 @@
 #include "editing/operations.h"
 #include "editing/pdb.h"
 #include "editing/peptide.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include "model/topology.h"
 
 namespace mf {

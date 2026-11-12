@@ -5,6 +5,7 @@
 #include "editing/xtb.h"
 #include "io/document_storage.h"
 #include "mcp/policy.h"
+#include "ui/editor_context.h"
 #include "ui/molecule_view.h"
 #include <QHash>
 #include <QMainWindow>
@@ -46,51 +47,59 @@ class InputPreviewPanel;
 class ResultsPanel;
 class HistoryPanel;
 class ConformerSetDialog;
-class MainWindow : public QMainWindow {
+class MainWindow : public QMainWindow,
+                   public EditorContext,
+                   public UiServices,
+                   public WorkspaceActions,
+                   public ExecutionAccess {
     Q_OBJECT
   public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
-    const Document &document() const {
+    const Document &document() const override {
         return session.document();
     }
-    const Document &displayDocument() const {
+    const Document &displayDocument() const override {
         return session.displayDocument();
     }
     // Grows with every change of the document or its candidate (EditorSession::revision).
-    quint64 revision() const {
+    quint64 revision() const override {
         return session.revision();
     }
-    bool hasCandidate() const {
+    bool hasCandidate() const override {
         return session.candidate().has_value();
     }
-    void edit(const QString &name, const std::function<void(Document &)> &operation, bool preview = false);
-    void confirmCandidate();
-    void cancelCandidate();
+    void edit(const QString &name, const std::function<void(Document &)> &operation,
+              bool preview = false) override;
+    void confirmCandidate() override;
+    void cancelCandidate() override;
     void remoteHistory(const QString &action);
     // Without ask, the choices of what to read are those the dialogs propose (a screenshot from the command
     // line).
     void loadPath(const QString &path, bool ask = true);
-    bool chemistryRunning() const {
+    bool chemistryRunning() const override {
         return chemistry.active();
     }
-    QString projectPath() const {
+    QString projectPath() const override {
         return storage.path();
     }
     void clearProjectPath() {
         storage.setPath({});
     }
-    void setSelection(const Ids &ids);
+    void setSelection(const Ids &ids) override;
     void loadDocument(const Document &d);
     // Ask about unsaved edits, then replace the project with an unsaved copy and reset its history.
-    bool replaceUnsavedDocument(const Document &d);
+    bool replaceUnsavedDocument(const Document &d) override;
     QUndoStack *history() {
         return &undo;
     }
     MoleculeView *canvas() {
         return view;
     }
-    void safe(const std::function<void()> &operation);
+    void safe(const std::function<void()> &operation) override;
+    void showMessage(const QString &message, int timeout = 0) override;
+    void addStatusWidget(QWidget *widget) override;
+    void fitMoleculeView() override;
     // Interactive sessions: periodic autosave of unsaved work, and recovery after a crash.
     // The copies go to <AppLocalDataLocation>/autosave, on Windows and macOS too under XDG_DATA_HOME when it
     // is set.
@@ -104,7 +113,7 @@ class MainWindow : public QMainWindow {
     // Brings tabs that were hidden during edits up to date (McpGui calls it before using the GUI).
     void refreshStalePanels();
     // Shows the table of the coordinates under the 3D view of "1 分子" (or in its place).
-    void showCoordinateTable();
+    void showCoordinateTable() override;
     // A practice file of the recipes, embedded with the manual: a part (.molforma-part.json) joins
     // "マイ部品"; a molecule is saved as a copy (asked where when target is empty) and opened. Returns
     // whether it was used.
@@ -115,14 +124,14 @@ class MainWindow : public QMainWindow {
     const std::optional<Document> &candidate() const {
         return session.candidate();
     }
-    const Ids &selection() const;
+    const Ids &selection() const override;
     bool modified() const {
         return !undo.isClean();
     }
-    QVariant preference(const QString &key, const QVariant &fallback = {}) const {
+    QVariant preference(const QString &key, const QVariant &fallback = {}) const override {
         return settings.value(key, fallback);
     }
-    void setPreference(const QString &key, const QVariant &value) {
+    void setPreference(const QString &key, const QVariant &value) override {
         settings.setValue(key, value);
     }
     ExecutionPanel *executionPanel() const {
@@ -134,26 +143,26 @@ class MainWindow : public QMainWindow {
     HistoryPanel *historyPanel() const {
         return calculationHistory;
     }
-    void showPanel(QWidget *panel);
-    void showPanel(int index);
+    void showPanel(QWidget *panel) override;
+    void showPanel(int index) override;
     // Routes a setting to its owning panel. Tab indices are zero-based, as in showPanel().
     // Memory belongs to execution; detailed groups belong to calculation settings.
-    void showSetting(int tab, const QString &setting = {}, const QString &group = {});
-    QString settingSectionTitle(const QString &setting) const;
-    void showInputLine(int line = -1);
-    void commitPendingSettings();
+    void showSetting(int tab, const QString &setting = {}, const QString &group = {}) override;
+    QString settingSectionTitle(const QString &setting) const override;
+    void showInputLine(int line = -1) override;
+    void commitPendingSettings() override;
     QWidget *currentPanel() const;
     int currentPanelIndex() const;
-    QString moleculeLayoutMode() const;
-    void setPanelDiagnostics(QWidget *panel, bool error, const QString &tip);
-    void setRunPanelShown(bool shown);
-    const McpPolicy *accessPolicy() const {
+    QString moleculeLayoutMode() const override;
+    void setPanelDiagnostics(QWidget *panel, bool error, const QString &tip) override;
+    void setRunPanelShown(bool shown) override;
+    const McpPolicy *accessPolicy() const override {
         return mcp.policy;
     }
     void setAccessPolicy(const McpPolicy *policy) {
         mcp.policy = policy;
     }
-    bool remoteRequest() const {
+    bool remoteRequest() const override {
         return mcp.depth > 0;
     }
     QScopedValueRollback<int> remoteScope() {
@@ -161,27 +170,28 @@ class MainWindow : public QMainWindow {
     }
     // Keys of protectedExecution() whose current values the user has neither entered in MolForma,
     // confirmed before a run, nor saved in Preferences: runs with them need a confirmation.
-    QStringList untrustedExecution() const;
-    void trustCurrentExecution();
+    QStringList untrustedExecution() const override;
+    void trustCurrentExecution() override;
 
     // Paths reached by an MCP-driven GUI action obey --mcp-allow-dir like the semantic tools.
-    void checkMcpPath(const QString &path) const;
+    void checkMcpPath(const QString &path) const override;
     // Sorts the atoms: "element", "residue" or "selected" (the selection first).
-    void sortAtoms(const QString &mode);
+    void sortAtoms(const QString &mode) override;
     bool confirmDiscard();
-    bool resolveCandidate();
-    void refreshPanel(QWidget *panel, bool always = false);
+    bool resolveCandidate() override;
+    void refreshPanel(QWidget *panel, bool always = false) override;
     // The header while a run is active: the elapsed time, and stop instead of run.
-    void showRun(bool active, const QString &text, bool stoppable);
-    void cancelWorker();
+    void showRun(bool active, const QString &text, bool stoppable) override;
+    void cancelWorker() override;
     // mode: smiles, fragment, refine, regenerate or conformers (count: conformers to keep).
-    void runWorker(const QString &mode, const QString &smiles = {}, const Ids &moving = {}, int count = 10);
+    void runWorker(const QString &mode, const QString &smiles = {}, const Ids &moving = {},
+                   int count = 10) override;
     // Optimizes the structure with xtb (the program named in Preferences, "xtb/executable"); the
     // result becomes a candidate. MCP cannot choose the program.
     void runXtb(const XtbOptions &options);
     void xtbDialog();
     // The structure the result viewer shows; fails while it shows none.
-    Document resultStructure() const;
+    Document resultStructure() const override;
   signals:
     void panelChanged();
 

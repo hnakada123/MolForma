@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/solvation.h"
 #include "editing/library.h"
+#include "foundation/i18n.h"
 #include "model/geometry.h"
-#include "model/i18n.h"
 #include <QHash>
 #include <algorithm>
 #include <cmath>

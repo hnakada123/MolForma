@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "editing/coordinates.h"
+#include "ui/editor_context.h"
 #include <QAbstractTableModel>
 #include <QColor>
 #include <QHash>
@@ -18,7 +19,6 @@ class QStackedWidget;
 class QTableView;
 class QToolButton;
 namespace mf {
-class MainWindow;
 // Cells of the coordinate table. The atom cell holds the element and shows the atom as the 3D view
 // labels it ("C14"), with a lock when the atom is fixed. Coordinates read at a glance with six
 // decimals, right aligned; editing a cell shows and keeps the full value, so an unchanged cell
@@ -75,7 +75,8 @@ class CoordinateModel : public QAbstractTableModel {
 class CoordinatesPanel : public QWidget {
     Q_OBJECT
   public:
-    explicit CoordinatesPanel(MainWindow *window);
+    CoordinatesPanel(EditorContext &editorContext, UiServices &uiContext, WorkspaceActions &workspace,
+                     QWidget *parent = nullptr);
     void refresh();
     void refreshSelection();
     // Shows the columns of the atom attributes (formal charge, unpaired electrons, atom name).
@@ -94,7 +95,9 @@ class CoordinatesPanel : public QWidget {
     void resizeEvent(QResizeEvent *event) override;
 
   private:
-    MainWindow *window;
+    EditorContext &editorContext;
+    UiServices &uiContext;
+    WorkspaceActions &workspace;
     QTableView *table;
     CoordinateModel *model;
     QStackedWidget *tablePages;

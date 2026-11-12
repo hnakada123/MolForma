@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/molecule_view.h"
 #include "editing/peptide.h"
+#include "foundation/i18n.h"
 #include "model/geometry.h"
-#include "model/i18n.h"
 #include "model/settings.h"
 #include "ui/bond_style.h"
 #include "ui/theme.h"

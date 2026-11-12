@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
+#include "foundation/error.h"
 #include <Eigen/Core>
 #include <QColor>
 #include <QJsonArray>
@@ -15,7 +16,6 @@ using Vec = Eigen::Vector3d;
 using Mat = Eigen::Matrix3d;
 using Ids = QStringList;
 QString newId();
-[[noreturn]] void fail(const QString &message);
 Vec vectorFromJson(const QJsonValue &value);
 QJsonArray vectorToJson(const Vec &v);
 Ids idsFromJson(const QJsonValue &value);
@@ -153,7 +153,4 @@ struct Document {
     static Document fromXyz(const QString &text);
     void inferBonds();
 };
-QByteArray readFile(const QString &path);
-void writeFile(const QString &path, const QByteArray &bytes);
-QJsonObject parseJson(const QByteArray &bytes);
 } // namespace mf

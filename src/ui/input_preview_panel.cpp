@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/input_preview_panel.h"
 #include "editing/coordinates.h"
-#include "model/i18n.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
 #include "ui/editor_chrome.h"
+#include "ui/editor_context.h"
 #include "ui/input_highlighter.h"
-#include "ui/main_window.h"
 #include "ui/setting_navigation.h"
 #include "ui/theme.h"
 #include <QtWidgets>
@@ -134,7 +135,9 @@ class InputEditor : public QPlainTextEdit {
     }
 };
 
-InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window(owner) {
+InputPreviewPanel::InputPreviewPanel(EditorContext &editorServices, UiServices &uiServices,
+                                     WorkspaceActions &workspaceActions, QWidget *parent)
+    : QWidget(parent), editorContext(editorServices), uiContext(uiServices), workspace(workspaceActions) {
     setObjectName("inputPreviewTab");
     setAttribute(Qt::WA_StyledBackground);
     auto *outer = new QVBoxLayout(this);
@@ -319,7 +322,7 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     body->addWidget(railScroll);
     summaryCard = new CalculationSummary("inputPreview", tr("この入力"), [this](const QString &link) {
         if (link == "memory")
-            window->showSetting(2, "memory_mb");
+            workspace.showSetting(2, "memory_mb");
     });
     railLayout->addWidget(summaryCard);
     checkCard = new StatusCard;
@@ -338,10 +341,11 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     // How the paths of the input are written, folded with a summary (and remembered).
     pathCard = new SettingsCard(tr("書き出し後のパス"));
     pathCard->setObjectName("inputPreviewPathCard");
-    auto *pathsToggle = pathCard->setCollapsible(window->preference("inputPreview/showPaths", true).toBool());
+    auto *pathsToggle =
+        pathCard->setCollapsible(uiContext.preference("inputPreview/showPaths", true).toBool());
     pathsToggle->setObjectName("inputPreviewPathsToggle");
     connect(pathsToggle, &QToolButton::clicked, this,
-            [this](bool on) { window->setPreference("inputPreview/showPaths", on); });
+            [this](bool on) { uiContext.setPreference("inputPreview/showPaths", on); });
     paths = new QLabel;
     paths->setObjectName("inputPreviewPaths");
     paths->setWordWrap(true);
@@ -356,9 +360,9 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
         if (url.scheme() == "tab" && ok)
             navigate(tab);
         else if (url.scheme() == "field")
-            window->showSetting(1, url.path());
+            workspace.showSetting(1, url.path());
         else if (url.scheme() == "execution")
-            window->showSetting(2, url.path());
+            workspace.showSetting(2, url.path());
     };
     connect(paths, &QLabel::linkActivated, this, openLink);
     connect(diagnostics, &QTextBrowser::anchorClicked, this,
@@ -379,18 +383,18 @@ InputPreviewPanel::InputPreviewPanel(MainWindow *owner) : QWidget(owner), window
     });
 }
 void InputPreviewPanel::showLine(int line) {
-    window->showPanel(this);
-    window->refreshPanel(this);
+    workspace.showPanel(this);
+    workspace.refreshPanel(this);
     QTextCursor cursor(input->document()->findBlockByNumber(line));
     input->setTextCursor(cursor);
     input->centerCursor();
     input->setFocus();
 }
 void InputPreviewPanel::navigate(int tab) {
-    window->showPanel(tab);
+    workspace.showPanel(tab);
 }
 void InputPreviewPanel::openSource(int tab, const QString &setting, const QString &group) {
-    window->showSetting(tab - 1, setting, group);
+    workspace.showSetting(tab - 1, setting, group);
 }
 QList<InputPreviewPanel::Source> InputPreviewPanel::sources(const NwchemInputBlock &b) {
     QList<Source> result;
@@ -486,7 +490,7 @@ void InputPreviewPanel::followCursor() {
         } else if ((source.setting == "extra_input" || source.setting == "extra_tasks"))
             text = tr("%1 › 追加入力").arg(text);
         else if (source.tab == 2 && !source.setting.isEmpty())
-            if (const auto section = window->settingSectionTitle(source.setting); !section.isEmpty())
+            if (const auto section = workspace.settingSectionTitle(source.setting); !section.isEmpty())
                 text += " › " + section;
         auto *link = new QPushButton(text);
         link->setProperty("link", true);
@@ -499,7 +503,7 @@ void InputPreviewPanel::followCursor() {
     sourceChip->adjustSize();
 }
 void InputPreviewPanel::refresh() {
-    const auto &d = window->displayDocument();
+    const auto &d = editorContext.displayDocument();
     const auto report = validateNwchem(d);
     const bool resolved = mode->currentData() == "execution";
     modes->sync();
@@ -525,9 +529,9 @@ void InputPreviewPanel::refresh() {
     NwchemInputOutline generatedOutline;
     try {
         if (resolved) {
-            const auto base = window->projectPath().isEmpty()
+            const auto base = editorContext.projectPath().isEmpty()
                                   ? QDir::currentPath()
-                                  : QFileInfo(window->projectPath()).absolutePath();
+                                  : QFileInfo(editorContext.projectPath()).absolutePath();
             const auto plan = executionPreviewPlan(d, base);
             text = plan.input;
             generatedOutline = plan.inputOutline;
@@ -580,11 +584,11 @@ void InputPreviewPanel::refresh() {
                       " で確認してください。ここではNWChemを起動しません。")
                        .arg(c.accentText.name()));
     summaryCard->update(d);
-    const bool pending = window->hasCandidate() || window->chemistryRunning();
-    hint->setText(window->hasCandidate()
+    const bool pending = editorContext.hasCandidate() || editorContext.chemistryRunning();
+    hint->setText(editorContext.hasCandidate()
                       ? tr("未確定の分子候補を表示しています。確定または取消後にコピー・保存できます。")
-                  : window->chemistryRunning() ? tr("分子の整形中です。終了後にコピー・保存できます。")
-                                               : QString());
+                  : editorContext.chemistryRunning() ? tr("分子の整形中です。終了後にコピー・保存できます。")
+                                                     : QString());
     banner->setVisible(pending);
     if (pending)
         checkCard->setState(StatusCard::Waiting, tr("候補・整形の完了待ち（出力不可）"));
@@ -624,18 +628,18 @@ void InputPreviewPanel::refresh() {
     setBadge(!d.atoms.isEmpty() && !errors.isEmpty(), checkCard->headline()->text());
 }
 void InputPreviewPanel::refreshBadge() {
-    const auto &d = window->displayDocument();
+    const auto &d = editorContext.displayDocument();
     const auto errors = validateNwchem(d).errors;
     setBadge(!d.atoms.isEmpty() && !errors.isEmpty(),
              errors.isEmpty() ? tr("入力を生成できます")
                               : tr("入力を生成できません（エラー %n 件）", nullptr, int(errors.size())));
 }
 void InputPreviewPanel::setBadge(bool failed, const QString &tip) {
-    window->setPanelDiagnostics(this, failed, tip);
+    workspace.setPanelDiagnostics(this, failed, tip);
 }
 QString InputPreviewPanel::prepareExport() {
-    window->commitPendingSettings();
-    if (window->hasCandidate() || window->chemistryRunning())
+    workspace.commitPendingSettings();
+    if (editorContext.hasCandidate() || editorContext.chemistryRunning())
         fail(tr("分子候補の確定・取消、または整形の終了後に出力してください。"));
     refresh();
     if (contents.isEmpty())
@@ -647,12 +651,12 @@ void InputPreviewPanel::saveInput(const QString &path) {
     writeFile(path, text.toUtf8());
 }
 void InputPreviewPanel::exportInput(bool toFile) {
-    window->safe([&] {
+    uiContext.safe([&] {
         const auto text = prepareExport();
         if (toFile) {
             auto path = QFileDialog::getSaveFileName(
                 this, tr("NWChem入力ファイルを書き出す"),
-                nwchemSettings(window->document())["start"].toString() + ".nw", "NWChem (*.nw)");
+                nwchemSettings(editorContext.document())["start"].toString() + ".nw", "NWChem (*.nw)");
             if (path.isEmpty())
                 return;
             if (!path.endsWith(".nw", Qt::CaseInsensitive))
@@ -660,7 +664,7 @@ void InputPreviewPanel::exportInput(bool toFile) {
             writeFile(path, text.toUtf8());
         } else
             QApplication::clipboard()->setText(text);
-        window->statusBar()->showMessage(
+        uiContext.showMessage(
             toFile ? tr("NWChem入力を書き出しました。") : tr("NWChem入力をコピーしました。"), 5000);
     });
 }
@@ -679,7 +683,7 @@ void InputPreviewPanel::findText(bool backwards) {
     searchStatus->setText(found ? tr("一致する文字列を選択しました。") : tr("一致する文字列はありません。"));
 }
 void InputPreviewPanel::applyChromeStyle() {
-    const auto pal = static_cast<QWidget *>(window)->palette();
+    const auto pal = palette();
     const auto advanced = advancedMark(pal).name(), extra = extraMark(pal).name();
     setStyleSheet(chromeRules(settingsRules() + R"(
         #inputPreviewTab { background: @window; }

@@ -5,6 +5,9 @@
 MolForma is a native Qt6 Widgets / C++20 molecular editor. Sources are grouped
 by responsibility, with paired headers and implementations in the same directory:
 
+- `src/foundation/`: `files.*` owns byte-level file reads, atomic writes and JSON parsing;
+  `structure_file.*` reads plain/gzip structure files with bounded decompression. `i18n.*` owns translation and
+  `error.h` the common exception helper. This layer uses Qt Core and zlib, with no domain dependencies.
 - `src/project/`: `atom_references.*` adapts the persisted atom references in version-1 project
   settings when IDs are removed or renamed, preserving unknown fields. It depends only on Qt Core;
   the molecular model delegates this schema traversal to it.
@@ -32,10 +35,12 @@ by responsibility, with paired headers and implementations in the same directory
   autosave/recovery copies. `file_download.*` owns cancellable, atomic file transfers;
   `pdb_download.*` owns PDB identifiers/URLs and `pubchem.*` the query, cache naming and 3D-to-2D fallback.
   These services use Qt Network without widgets; recovery choices, progress and file dialogs stay in the UI.
-- `src/nwchem/`: `nwchem.*` validates computational settings and generates complete
-  NWChem input. Its setting specifications share defaults, types, ranges, choices and applicability
-  with the UI; `nwchem_validation.*` validates basic values from these specifications, independently
-  of the chemical combinations. `input_builder.h` records source lines as input is generated; do not infer them
+- `src/nwchem/`: `nwchem.*` owns computational setting specifications, defaults, presets and applicability.
+  `nwchem_catalog.*` shares basis/functionals and pasted-basis parsing; `nwchem_paths.*` handles
+  constraints, scans, fragments and NEB endpoints. `nwchem_validation.*` validates primitive settings
+  and chemical combinations. `nwchem_plan.*` produces the ordered task plan shared by restart
+  validation and `nwchem_input.cpp`, which generates the complete input. Validation must not generate
+  input to discover its tasks. `input_builder.h` records source lines as input is generated; do not infer them
   by diffing or parsing generated text. `nwchem_advanced.*` defines typed overrides and applicability.
   `nwchem_geometry.*` generates geometry fragments and fixed-atom constraints.
   `nwchem_output.*` validates visualization settings and generates CUBE/MOLDEN output
@@ -52,6 +57,8 @@ by responsibility, with paired headers and implementations in the same directory
   `history_import.cpp` registers runs made outside MolForma. `result_files.*` interprets
   job manifests and supplies the result-file list, including visualization outputs and excluding
   intermediate NEB paths, to the generic result readers.
+  `conformer_set.*` owns version-1 conformer-set persistence, job associations, cancellable result
+  loading and population/spectrum-member preparation; its UI only supplies settings and actions.
 - `src/results/`: `results.*` holds result data and routes readers; `nwchem_log.cpp`,
   `xyz_reader.cpp`, `cube_reader.cpp` and `molden_reader.cpp` parse their formats. `result_parsing.*`
   shares lexical readers and bounds, `result_surface.cpp` generates bounded isosurfaces,
@@ -64,6 +71,9 @@ by responsibility, with paired headers and implementations in the same directory
   normalized Gaussian MOs with Cartesian/spherical s–g bases. `result_loader.*` owns cancellable
   reader processes and source freshness checks shared by GUI and headless MCP.
 - `src/ui/`: `main_window.*` owns the application window, project lifecycle and shared editor context.
+  It implements the capabilities in `editor_context.h`: editor operations, UI services, workspace
+  actions and execution access. Panels/dialogs receive the capabilities they use and a separate widget
+  parent; only composition/adapters (`main_window`, `workspace_controller`, `mcp_gui`) include MainWindow.
   `molecule_panel.*` and `molecule_properties.cpp` own the molecular workspace, selection, palette,
   tools and property pages; document transactions still go through `EditorSession`.
   `candidate_controls.*` shares the candidate controls across workspace tabs.
@@ -88,7 +98,8 @@ by responsibility, with paired headers and implementations in the same directory
   provides the read-only "4 入力プレビュー" tab using the shared NWChem input
   generator and execution plan.
   `results_panel.*` provides the independent result viewer with cancellable native
-  readers. `figure_export.*` writes pictures of the 3D view (`MoleculeView::renderImage`: scale and
+  readers. UV/IR curves use `results/spectrum.*`; the panel owns axis limits and units.
+  `figure_export.*` writes pictures of the 3D view (`MoleculeView::renderImage`: scale and
   background, VTK in tiles), animations (its own GIF encoder, MP4 through `ffmpeg` from PATH, PNG
   files) and figures of charts (PNG, PDF, and SVG with the optional Qt SVG). `history_panel.*` provides calculation history (its list a `HistoryModel`), log
   browsing, reuse and result navigation. `mcp_gui.*` exposes GUI, execution and result tools to MCP
@@ -107,7 +118,8 @@ by responsibility, with paired headers and implementations in the same directory
 `src/`, for example `#include "model/document.h"`. The `molforma_core` target
 is an interface aggregate of `molforma_model`, `molforma_editing`, `molforma_results`,
 `molforma_nwchem` and `molforma_io`. Dependencies flow from io to nwchem, from nwchem
-to editing/results, and from editing/results to model, then from model to the project-schema adapter. Only `molforma_ui` links
+to editing/results, and from editing/results to model, then from model to the project-schema adapter
+and `molforma_foundation`. All layers except project may use foundation. Only `molforma_ui` links
 Qt Widgets; core libraries use Qt Core/Gui, with Qt Network private to io. `molforma_ui` contains ui and links to
 core and mcp; `molforma_mcp` contains mcp and links to core. `cmake/CheckLayers.cmake`
 checks source-header dependency directions during configuration and in CTest.
@@ -168,7 +180,7 @@ from the Japanese pages to their English versions (never the other way, and not 
 language links chose a language (`remember_language` from `language.html`, kept in `localStorage`). Keep the manual pages plain Markdown without front
 matter (the app shows them verbatim) and keep `{{` and `{%` out of them.
 
-The interface is Japanese or English (`src/model/i18n.h`). Write user-visible
+The interface is Japanese or English (`src/foundation/i18n.h`). Write user-visible
 text in Japanese inside `tr("…")` (`QT_TR_NOOP("…")` in tables, shown through
 `translated()`), with `%1` templates instead of concatenated fragments and
 `tr("…%n…", nullptr, n)` for counts; core functions return translated text.

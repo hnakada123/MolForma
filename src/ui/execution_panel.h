@@ -3,6 +3,7 @@
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_queue.h"
 #include "results/results.h"
+#include "ui/editor_context.h"
 #include <QLockFile>
 #include <QStringDecoder>
 #include <QWidget>
@@ -19,7 +20,6 @@ class QSpinBox;
 class QSplitter;
 class QVBoxLayout;
 namespace mf {
-class MainWindow;
 class ChoiceButtons;
 class ExecutionForm;
 class RunProgress;
@@ -31,7 +31,8 @@ class StatusCard;
 class ExecutionPanel : public QWidget {
     Q_OBJECT
   public:
-    explicit ExecutionPanel(MainWindow *owner);
+    ExecutionPanel(EditorContext &editorContext, UiServices &uiContext, WorkspaceActions &workspace,
+                   ExecutionAccess &executionAccess, QWidget *parent = nullptr);
     void refresh();
     void stopEditing();
     // Ends the session: stops the run, or with keepRunning leaves a supervised run to go on
@@ -110,7 +111,10 @@ class ExecutionPanel : public QWidget {
     // Asks the user whether to run with execution settings they have not entered or confirmed.
     bool confirmExecution();
     bool authorizeCalculation();
-    MainWindow *window;
+    EditorContext &editorContext;
+    UiServices &uiContext;
+    WorkspaceActions &workspace;
+    ExecutionAccess &executionAccess;
     NwchemRun run;
     NwchemQueue queue;
     std::unique_ptr<QLockFile> queueLock; // One session at a time keeps the stored queue.

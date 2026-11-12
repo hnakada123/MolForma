@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/editor_chrome.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include "nwchem/nwchem.h"
 #include "ui/molecule_view.h"
 #include "ui/theme.h"

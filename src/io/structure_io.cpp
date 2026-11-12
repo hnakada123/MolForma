@@ -2,8 +2,9 @@
 #include "io/structure_io.h"
 #include "editing/chemistry.h"
 #include "editing/mmcif.h"
-#include "model/i18n.h"
-#include "model/structure_file.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
+#include "foundation/structure_file.h"
 #include "nwchem/nwchem_import.h"
 #include <QFileInfo>
 #include <QRegularExpression>

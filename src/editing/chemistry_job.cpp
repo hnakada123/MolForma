@@ -2,7 +2,8 @@
 #include "editing/chemistry_job.h"
 #include "editing/coordinates.h"
 #include "editing/operations.h"
-#include "model/i18n.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>

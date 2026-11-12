@@ -3,6 +3,7 @@
 #include "editing/library.h"
 #include "editing/operations.h"
 #include "editing/peptide.h"
+#include "foundation/files.h"
 #include "model/geometry.h"
 #include "model/settings.h"
 #include "nwchem/nwchem.h"

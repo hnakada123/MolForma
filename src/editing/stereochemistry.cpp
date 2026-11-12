@@ -2,7 +2,7 @@
 #include "editing/stereochemistry.h"
 #include "editing/library.h"
 #include "editing/peptide.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include "model/topology.h"
 #include <algorithm>
 #include <memory>

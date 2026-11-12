@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-#include "model/i18n.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include "model/units.h"
 #include "nwchem/nwchem_output.h"
 #include "nwchem/result_files.h"

@@ -32,6 +32,9 @@ class ChartView : public QWidget {
                   const QVector<ChartSeries> &series, bool logY = false,
                   const QVector<QPair<QString, double>> &levels = {});
     void clear();
+    const QVector<ChartSeries> &seriesData() const {
+        return series;
+    }
     // Larger x on the left, as IR spectra are drawn in wavenumbers.
     void setReversedX(bool on);
     void setXRange(double minimum, double maximum);

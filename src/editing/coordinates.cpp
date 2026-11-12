@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordinates.h"
 #include "editing/atom_properties.h"
+#include "foundation/i18n.h"
 #include "model/geometry.h"
-#include "model/i18n.h"
 #include "model/numbers.h"
 #include "model/topology.h"
 #include <QRegularExpression>

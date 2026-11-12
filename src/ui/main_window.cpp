@@ -4,10 +4,11 @@
 #include "editing/coordinates.h"
 #include "editing/library.h"
 #include "editing/stereochemistry.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
+#include "foundation/structure_file.h"
 #include "io/structure_io.h"
-#include "model/i18n.h"
 #include "model/settings.h"
-#include "model/structure_file.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_import.h"
@@ -92,6 +93,15 @@ MainWindow::~MainWindow() {
     cancelWorker();
     session.disconnect(this);
     undo.disconnect(this); // ~QUndoStack signals while clearing, after later members are gone.
+}
+void MainWindow::showMessage(const QString &message, int timeout) {
+    statusBar()->showMessage(message, timeout);
+}
+void MainWindow::addStatusWidget(QWidget *widget) {
+    statusBar()->addPermanentWidget(widget);
+}
+void MainWindow::fitMoleculeView() {
+    view->keepInView();
 }
 void MainWindow::safe(const std::function<void()> &operation) {
     try {
@@ -312,24 +322,24 @@ void MainWindow::buildUi() {
     workspaceSplit->setHandleWidth(6);
     workspaceSplit->addWidget(workspaceTabs);
     outer->addWidget(workspaceSplit, 1);
-    moleculePage = new MoleculePanel(*this, session, settings);
+    moleculePage = new MoleculePanel(*this, *this, *this, *this, session, settings, this);
     view = moleculePage->canvas();
     coordinates = moleculePage->coordinatePanel();
     workspaceTabs->addTab(moleculePage, tr("1 分子"));
     connect(moleculePage, &MoleculePanel::openRequested, this, &MainWindow::open);
     connect(moleculePage, &MoleculePanel::downloadRequested, this,
             [this] { safe([this] { downloadPdb(); }); });
-    calculation = new CalculationPanel(this);
+    calculation = new CalculationPanel(*this, *this, *this, this);
     workspaceTabs->addTab(calculation, tr("2 計算条件"));
-    execution = new ExecutionPanel(this);
+    execution = new ExecutionPanel(*this, *this, *this, *this, this);
     workspaceTabs->addTab(execution, tr("3 実行設定"));
     execution->dockRunPanel(workspaceSplit);
     connect(workspaceTabs, &QTabWidget::currentChanged, execution, &ExecutionPanel::showWorkspace);
-    inputPreview = new InputPreviewPanel(this);
+    inputPreview = new InputPreviewPanel(*this, *this, *this, this);
     workspaceTabs->addTab(inputPreview, tr("4 入力プレビュー"));
-    results = new ResultsPanel(this);
+    results = new ResultsPanel(*this, *this, *this, this);
     workspaceTabs->addTab(results, tr("結果ビューア"));
-    calculationHistory = new HistoryPanel(this, execution->currentRun());
+    calculationHistory = new HistoryPanel(*this, *this, *this, execution->currentRun(), this);
     workspaceTabs->addTab(calculationHistory, tr("履歴"));
     new WorkspaceController(*this, *execution, *calculationHistory, *results);
     connect(workspaceTabs, &QTabWidget::currentChanged, this, [this](int index) {
@@ -1206,10 +1216,12 @@ void MainWindow::xtbDialog() {
 }
 ConformerSetDialog *MainWindow::conformerSetDialog() {
     if (!conformerSet)
-        conformerSet =
-            new ConformerSetDialog(this, [this](const QVector<Document> &geometries, bool frequencies) {
+        conformerSet = new ConformerSetDialog(
+            *this, *this, *this,
+            [this](const QVector<Document> &geometries, bool frequencies) {
                 return execution->enqueueGeometries(geometries, frequencies);
-            });
+            },
+            this);
     return conformerSet;
 }
 void MainWindow::chemistryReady(const ChemistryResult &result) {

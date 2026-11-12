@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/chemistry_job.h"
+#include "foundation/i18n.h"
 #include "mcp/headless.h"
 #include "mcp/server.h"
 #include "mcp/stdio_transport.h"
-#include "model/i18n.h"
 #include "model/settings.h"
 #include "nwchem/nwchem_execution.h"
 #include "results/results.h"

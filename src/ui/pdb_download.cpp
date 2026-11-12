@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/pdb_download.h"
+#include "foundation/i18n.h"
 #include "model/document.h"
-#include "model/i18n.h"
 #include <QEventLoop>
 #include <QProgressDialog>
 namespace mf {

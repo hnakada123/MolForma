@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/history_panel.h"
-#include "model/i18n.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
+#include "mcp/policy.h"
 #include "model/units.h"
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_restart.h"
@@ -8,8 +10,8 @@
 #include "nwchem/result_files.h"
 #include "nwchem/run_diagnostics.h"
 #include "ui/editor_chrome.h"
+#include "ui/editor_context.h"
 #include "ui/energy_profile_dialog.h"
-#include "ui/main_window.h"
 #include "ui/run_progress.h"
 #include <QtWidgets>
 #include <algorithm>
@@ -505,8 +507,10 @@ QVariant HistoryModel::data(const QModelIndex &index, int role) const {
     }
 }
 
-HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
-    : QWidget(owner), window(owner), run(activeRun), scan(this) {
+HistoryPanel::HistoryPanel(EditorContext &editorServices, UiServices &uiServices,
+                           ExecutionAccess &executionServices, const NwchemRun &activeRun, QWidget *parent)
+    : QWidget(parent), editorContext(editorServices), uiContext(uiServices),
+      executionAccess(executionServices), run(activeRun), scan(this) {
     setObjectName("historyTab");
     setAttribute(Qt::WA_StyledBackground);
     auto *outer = new QVBoxLayout(this);
@@ -616,10 +620,10 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
     auto *profile = moreMenu->addAction(tr("熱補正・反応エネルギー図…"));
     profile->setObjectName("historyEnergyProfile");
     connect(profile, &QAction::triggered, this, [this] {
-        window->safe([this] {
-            auto *dialog = window->findChild<EnergyProfileDialog *>("energyProfileDialog");
+        uiContext.safe([this] {
+            auto *dialog = findChild<EnergyProfileDialog *>("energyProfileDialog");
             if (!dialog)
-                dialog = new EnergyProfileDialog(window);
+                dialog = new EnergyProfileDialog(uiContext, this);
             dialog->show();
             dialog->raise();
             if (!selectedDirectory().isEmpty())
@@ -634,7 +638,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
            "登録します。同じ名前の入力（.nw）と軌道などのファイルも複写します。"));
     moreMenu->setToolTipsVisible(true);
     connect(import, &QAction::triggered, this, [this] {
-        window->safe([this] {
+        uiContext.safe([this] {
             const auto path =
                 QFileDialog::getOpenFileName(this, tr("外部で実行した計算を取り込む"), root,
                                              tr("NWChemの出力 (*.out *.log);;すべてのファイル (*)"));
@@ -934,7 +938,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
         item->setObjectName("historyNext_" + mode);
         item->setData(mode);
         connect(item, &QAction::triggered, this,
-                [this, mode] { window->safe([&] { restartSelected(mode); }); });
+                [this, mode] { uiContext.safe([&] { restartSelected(mode); }); });
     }
     // The reasons need the job's files: looked up when the menu opens.
     connect(nextMenu, &QMenu::aboutToShow, this, [this, nextMenu] {
@@ -942,7 +946,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
         QVector<RestartChoice> choices;
         if (!directory.isEmpty())
             choices = restartChoices(directory);
-        const bool free = !window->hasCandidate() && !window->chemistryRunning();
+        const bool free = !editorContext.hasCandidate() && !editorContext.chemistryRunning();
         for (auto *item : nextMenu->actions()) {
             QString reason = free ? QString() : tr("候補を確定・取消し、整形の終了後に準備してください。");
             for (const auto &choice : std::as_const(choices))
@@ -1087,13 +1091,13 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
         auto p = QFileDialog::getSaveFileName(this, tr("表示中の一覧を書き出す"), "nwchem-history.csv",
                                               "CSV (*.csv)");
         if (!p.isEmpty())
-            window->safe([&] {
+            uiContext.safe([&] {
                 if (QFileInfo(p).suffix().isEmpty())
                     p += ".csv";
                 exportCsv(p);
             });
     });
-    connect(repairAll, &QPushButton::clicked, this, [this] { window->safe([this] { repairOrphans(); }); });
+    connect(repairAll, &QPushButton::clicked, this, [this] { uiContext.safe([this] { repairOrphans(); }); });
     connect(&scan, &HistoryScan::finished, this, [this] {
         entries = scan.entries;
         for (const auto &path : std::as_const(changedJobs)) {
@@ -1121,7 +1125,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
             &HistoryPanel::showDetails);
     connect(table, &QTreeView::doubleClicked, this, [this](const QModelIndex &index) {
         if (!index.data(DirectoryRole).toString().isEmpty())
-            window->safe([this] { openResult(); });
+            uiContext.safe([this] { openResult(); });
     });
     connect(header, &QHeaderView::sortIndicatorChanged, this, [this](int column, Qt::SortOrder order) {
         sortColumn = column;
@@ -1147,20 +1151,20 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
             static_cast<QPlainTextEdit *>(fileStack->currentWidget())->toPlainText());
     });
     connect(filesToggle, &QToolButton::clicked, this, [this](bool on) { setFilesOpen(on); });
-    connect(viewer, &QPushButton::clicked, this, [this] { window->safe([this] { openResult(); }); });
-    connect(reuse, &QPushButton::clicked, this, [this] { window->safe([this] { reuseSelected(); }); });
+    connect(viewer, &QPushButton::clicked, this, [this] { uiContext.safe([this] { openResult(); }); });
+    connect(reuse, &QPushButton::clicked, this, [this] { uiContext.safe([this] { reuseSelected(); }); });
     connect(resume, &QPushButton::clicked, this,
-            [this] { window->safe([this] { restartSelected("continue"); }); });
+            [this] { uiContext.safe([this] { restartSelected("continue"); }); });
     connect(folder, &QPushButton::clicked, this, [this] {
-        window->safe([this] {
+        uiContext.safe([this] {
             if (selectedDirectory().isEmpty())
                 return;
-            window->checkMcpPath(selectedDirectory());
+            uiContext.checkMcpPath(selectedDirectory());
             if (!QDesktopServices::openUrl(QUrl::fromLocalFile(selectedDirectory())))
                 fail(tr("保存先を開けません。"));
         });
     });
-    connect(registerRun, &QPushButton::clicked, this, [this] { window->safe([this] { importRun(); }); });
+    connect(registerRun, &QPushButton::clicked, this, [this] { uiContext.safe([this] { importRun(); }); });
     connect(stop, &QPushButton::clicked, this, [this] {
         const auto directory = selectedDirectory();
         if (directory.isEmpty())
@@ -1170,8 +1174,8 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
             return;
         }
         // A calculation another session left to its supervisor: the supervisor is asked.
-        window->safe([&] {
-            window->checkMcpPath(directory);
+        uiContext.safe([&] {
+            uiContext.checkMcpPath(directory);
             if (QMessageBox::question(
                     this, tr("NWChemを停止"),
                     tr("別のウィンドウまたは前回の起動で始めた計算を停止しますか？ログは保存先に"
@@ -1181,7 +1185,7 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
             if (!requestRunStop(directory))
                 fail(tr("この計算を見張るプロセスがありません。計算が終わっていれば「記録を修復」を使ってくだ"
                         "さい。"));
-            window->statusBar()->showMessage(tr("計算の停止を依頼しました。"), 8000);
+            uiContext.showMessage(tr("計算の停止を依頼しました。"), 8000);
             QTimer::singleShot(3000, this, [this] { refresh(); });
         });
     });
@@ -1198,8 +1202,8 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
     });
     connect(showExecution, &QPushButton::clicked, this, [this] { emit runPanelRequested(); });
     connect(stopComparing, &QPushButton::clicked, this, [this] { setComparing(false); });
-    connect(repair, &QPushButton::clicked, this, [this] { window->safe([this] { repairSelected(); }); });
-    connect(trash, &QPushButton::clicked, this, [this] { window->safe([this] { trashSelected(); }); });
+    connect(repair, &QPushButton::clicked, this, [this] { uiContext.safe([this] { repairSelected(); }); });
+    connect(trash, &QPushButton::clicked, this, [this] { uiContext.safe([this] { trashSelected(); }); });
     memoTimer.setSingleShot(true);
     memoTimer.setInterval(600);
     connect(&memoTimer, &QTimer::timeout, this, &HistoryPanel::saveMemo);
@@ -1220,11 +1224,11 @@ HistoryPanel::HistoryPanel(MainWindow *owner, const NwchemRun &activeRun)
         updateLive();
     });
     timer.start();
-    const auto saved = window->preference("history/root").toString();
+    const auto saved = uiContext.preference("history/root").toString();
     followsExecution = saved.isEmpty();
     root = saved;
     // The files are opened when wanted: the list first.
-    setFilesOpen(window->preference("history/files_open", false).toBool(), false);
+    setFilesOpen(uiContext.preference("history/files_open", false).toBool(), false);
     updateActions();
 }
 void HistoryPanel::fitDetail() {
@@ -1268,9 +1272,9 @@ bool HistoryPanel::eventFilter(QObject *watched, QEvent *event) {
     return QWidget::eventFilter(watched, event);
 }
 QString HistoryPanel::executionRoot() const {
-    return historyRoot(window->document(), window->projectPath().isEmpty()
-                                               ? QDir::currentPath()
-                                               : QFileInfo(window->projectPath()).absolutePath());
+    return historyRoot(editorContext.document(), editorContext.projectPath().isEmpty()
+                                                     ? QDir::currentPath()
+                                                     : QFileInfo(editorContext.projectPath()).absolutePath());
 }
 void HistoryPanel::setRoot(const QString &path, bool remember) {
     auto value = path.trimmed();
@@ -1282,7 +1286,7 @@ void HistoryPanel::setRoot(const QString &path, bool remember) {
         return;
     value = QFileInfo(value).absoluteFilePath();
     followsExecution = !remember;
-    window->setPreference("history/root", remember ? value : QString());
+    uiContext.setPreference("history/root", remember ? value : QString());
     if (root != value) {
         saveMemo();
         scan.cancel();
@@ -1301,13 +1305,13 @@ void HistoryPanel::refresh() {
     if (root.isEmpty())
         return;
     try { // Showing the tab over MCP must not scan outside --mcp-allow-dir.
-        window->checkMcpPath(root);
+        uiContext.checkMcpPath(root);
     } catch (const std::exception &e) {
         status->setText(QString::fromUtf8(e.what()));
         return;
     }
     // A network folder named by the project rather than chosen by the user is not looked at.
-    if (followsExecution && networkPath(root) && !untrustedNetworkPath(window->document()).isEmpty()) {
+    if (followsExecution && networkPath(root) && !untrustedNetworkPath(editorContext.document()).isEmpty()) {
         status->setText(
             tr("ネットワーク上の場所 %1 は、「編集 → 環境設定」で指定した場合だけ使えます。").arg(root));
         return;
@@ -1575,7 +1579,7 @@ void HistoryPanel::showEmptyPage() {
         return;
     QString count;
     try { // Over MCP, folders outside --mcp-allow-dir are not counted.
-        window->checkMcpPath(other);
+        uiContext.checkMcpPath(other);
         const int n = historyJobCount(other);
         count = n < 0       ? tr("（見つかりません）")
                 : n >= 2000 ? tr("（2000 件以上）")
@@ -1614,7 +1618,7 @@ void HistoryPanel::setFilesOpen(bool open, bool remember) {
         filesHeight = listSplit->sizes().value(1);
     filesOpen = open;
     if (remember)
-        window->setPreference("history/files_open", open);
+        uiContext.setPreference("history/files_open", open);
     filesCard->setOpen(open);
     for (QWidget *w :
          {static_cast<QWidget *>(fileName), static_cast<QWidget *>(follow), static_cast<QWidget *>(copyFile)})
@@ -1632,7 +1636,7 @@ void HistoryPanel::showDetails() {
     const auto *e = selectedEntry();
     try {
         if (e)
-            window->checkMcpPath(e->directory);
+            uiContext.checkMcpPath(e->directory);
     } catch (const std::exception &) {
         e = nullptr; // An MCP selection does not read jobs outside --mcp-allow-dir.
     }
@@ -1680,9 +1684,9 @@ void HistoryPanel::showDetails() {
     showFacts(*e, owned);
     // Over MCP with --mcp-allow-dir, memos are written only inside the allowed folders.
     bool outside = false;
-    if (window->accessPolicy() && window->accessPolicy()->restricted())
+    if (executionAccess.accessPolicy() && executionAccess.accessPolicy()->restricted())
         try {
-            window->accessPolicy()->checkPath(e->directory);
+            executionAccess.accessPolicy()->checkPath(e->directory);
         } catch (const std::exception &) {
             outside = true;
         }
@@ -1963,7 +1967,8 @@ void HistoryPanel::updateActions() {
     const bool owned = e && e->directory == activeDirectory();
     viewer->setEnabled(exists && !nwchemResultFiles(e->directory).isEmpty());
     folder->setEnabled(exists);
-    reuse->setEnabled(exists && e->valid && !window->hasCandidate() && !window->chemistryRunning());
+    reuse->setEnabled(exists && e->valid && !editorContext.hasCandidate() &&
+                      !editorContext.chemistryRunning());
     next->setEnabled(exists && e->valid);
     // Whether the job left a database is looked up once per job and state, not at every refresh.
     if (resume->isVisibleTo(detail) || !resume->isHidden()) {
@@ -1976,7 +1981,7 @@ void HistoryPanel::updateActions() {
                     if (choice.mode == "continue")
                         resumeReason = choice.reason;
         }
-        const bool free = !window->hasCandidate() && !window->chemistryRunning();
+        const bool free = !editorContext.hasCandidate() && !editorContext.chemistryRunning();
         resume->setEnabled(exists && free && resumeReason.isEmpty());
         resume->setToolTip(!resumeReason.isEmpty() ? resumeReason
                                                    : tr("終わらなかった計算を、NWChemのデータベースに残った最"
@@ -1985,7 +1990,7 @@ void HistoryPanel::updateActions() {
     }
     stop->setEnabled(exists && (owned ? run.state() != RunState::Stopping
                                       : runStateActive(e->status) && runSupervised(e->manifest)));
-    registerRun->setEnabled(exists && !window->hasCandidate());
+    registerRun->setEnabled(exists && !editorContext.hasCandidate());
     const bool unfinished = e && runStateActive(e->status);
     repair->setEnabled(exists && e->valid && e->orphaned && !owned);
     repairBox->setVisible(e && e->orphaned && !owned && !comparing);
@@ -2044,7 +2049,7 @@ void HistoryPanel::saveMemo() {
     if (!e || !e->valid || e->memo == text)
         return;
     try {
-        window->checkMcpPath(memoDirectory);
+        uiContext.checkMcpPath(memoDirectory);
         setHistoryMemo(memoDirectory, text);
         for (auto &x : entries)
             if (x.directory == memoDirectory) {
@@ -2086,7 +2091,7 @@ void HistoryPanel::trashSelected() {
     const auto directory = selectedDirectory();
     if (directory.isEmpty())
         return;
-    window->checkMcpPath(directory);
+    uiContext.checkMcpPath(directory);
     QMessageBox box(
         QMessageBox::Question, tr("ジョブをごみ箱へ"),
         tr("入力・プロジェクト・結果を含む次のフォルダーをごみ箱へ移動します。\n%1").arg(directory),
@@ -2102,7 +2107,7 @@ void HistoryPanel::repairSelected() {
     const auto directory = selectedDirectory();
     if (directory.isEmpty())
         return;
-    window->checkMcpPath(directory);
+    uiContext.checkMcpPath(directory);
     if (directory == activeDirectory())
         fail(tr("このウィンドウで実行中の計算です。"));
     repairOrReconnect(directory);
@@ -2120,25 +2125,24 @@ void HistoryPanel::repairOrReconnect(const QString &directory) {
     if (!resumeRemoteRun(directory, run.supervisorProgram()))
         fail(
             tr("リモートの計算に再接続できません（別のPCで見張られているか、実行中の記録ではありません）。"));
-    window->statusBar()->showMessage(tr("リモートの計算に再接続しました: %1").arg(entry.name), 8000);
+    uiContext.showMessage(tr("リモートの計算に再接続しました: %1").arg(entry.name), 8000);
     QTimer::singleShot(3000, this, [this] { refresh(); });
 }
 void HistoryPanel::importRun(const QString &path) {
     const auto source = path.isEmpty() ? selectedDirectory() : path;
     if (source.isEmpty())
         return;
-    window->checkMcpPath(source);
-    window->checkMcpPath(root);
+    uiContext.checkMcpPath(source);
+    uiContext.checkMcpPath(root);
     const auto job = importExternalRun(source, root);
     refresh();
     selectDirectory(job);
-    window->statusBar()->showMessage(
-        tr("外部で実行した計算を登録しました: %1").arg(QFileInfo(job).fileName()), 8000);
+    uiContext.showMessage(tr("外部で実行した計算を登録しました: %1").arg(QFileInfo(job).fileName()), 8000);
 }
 void HistoryPanel::repairOrphans() {
     for (const auto &e : std::as_const(entries))
         if (e.orphaned && e.directory != activeDirectory()) {
-            window->checkMcpPath(e.directory);
+            uiContext.checkMcpPath(e.directory);
             repairOrReconnect(e.directory);
         }
     refresh();
@@ -2147,7 +2151,7 @@ void HistoryPanel::exportCsv(const QString &path) const {
     writeFile(path, historyCsv(visibleEntries()).toUtf8());
 }
 void HistoryPanel::applyChromeStyle() {
-    const auto pal = static_cast<QWidget *>(window)->palette();
+    const auto pal = palette();
     setStyleSheet(chromeRules(settingsRules() + R"(
         #historyTab { background: @window; }
         #historyRail { background: @base; }

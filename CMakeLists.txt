@@ -30,16 +30,20 @@ include(cmake/CheckLayers.cmake)
 add_library(molforma_project STATIC src/project/atom_references.cpp)
 target_include_directories(molforma_project PUBLIC src)
 target_link_libraries(molforma_project PUBLIC Qt6::Core)
+add_library(molforma_foundation STATIC
+    src/foundation/files.cpp
+    src/foundation/structure_file.cpp
+    src/foundation/i18n.cpp
+    assets/resources.qrc)
+target_include_directories(molforma_foundation PUBLIC src)
+target_link_libraries(molforma_foundation PUBLIC Qt6::Core PRIVATE ZLIB::ZLIB)
 add_library(molforma_model STATIC
     src/model/document.cpp
     src/model/geometry.cpp
-    src/model/i18n.cpp
-    src/model/structure_file.cpp
-    src/model/topology.cpp
-    assets/resources.qrc)
+    src/model/topology.cpp)
 target_include_directories(molforma_model PUBLIC src)
 target_compile_definitions(molforma_model PUBLIC MOLFORMA_VERSION="${PROJECT_VERSION}")
-target_link_libraries(molforma_model PUBLIC molforma_project Qt6::Core Qt6::Gui Eigen3::Eigen PRIVATE ZLIB::ZLIB)
+target_link_libraries(molforma_model PUBLIC molforma_project molforma_foundation Qt6::Core Qt6::Gui Eigen3::Eigen)
 
 add_library(molforma_editing STATIC
     src/editing/atom_properties.cpp
@@ -92,10 +96,15 @@ add_library(molforma_results STATIC
 target_link_libraries(molforma_results PUBLIC molforma_model PRIVATE Threads::Threads)
 
 add_library(molforma_nwchem STATIC
+    src/nwchem/conformer_set.cpp
     src/nwchem/result_files.cpp
     src/nwchem/history.cpp
     src/nwchem/history_import.cpp
     src/nwchem/nwchem.cpp
+    src/nwchem/nwchem_catalog.cpp
+    src/nwchem/nwchem_paths.cpp
+    src/nwchem/nwchem_plan.cpp
+    src/nwchem/nwchem_input.cpp
     src/nwchem/nwchem_validation.cpp
     src/nwchem/nwchem_advanced.cpp
     src/nwchem/nwchem_execution.cpp
@@ -119,7 +128,7 @@ target_link_libraries(molforma_io PUBLIC molforma_model PRIVATE molforma_nwchem 
 # Preserve the convenient aggregate for applications/tests without hiding the internal graph.
 add_library(molforma_core INTERFACE)
 target_link_libraries(molforma_core INTERFACE molforma_io molforma_nwchem molforma_editing molforma_results molforma_model)
-foreach(target molforma_project molforma_model molforma_editing molforma_results molforma_nwchem molforma_io)
+foreach(target molforma_foundation molforma_project molforma_model molforma_editing molforma_results molforma_nwchem molforma_io)
     target_compile_options(${target} PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 endforeach()
 add_library(molforma_ui STATIC
@@ -237,6 +246,7 @@ if(BUILD_TESTING)
     add_executable(fake_xtb tests/fake_xtb.cpp)
     target_link_libraries(fake_xtb PRIVATE Qt6::Core)
     add_dependencies(test_services fake_xtb)
+    target_compile_definitions(test_services PRIVATE FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
     add_executable(test_core tests/test_core.cpp)
     target_link_libraries(test_core PRIVATE molforma_core Qt6::Test ZLIB::ZLIB)
     target_compile_definitions(test_core PRIVATE FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"

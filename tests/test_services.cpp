@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/chemistry_job.h"
+#include "foundation/files.h"
 #include "io/document_storage.h"
 #include "io/pdb_download.h"
 #include "io/pubchem.h"
+#include "nwchem/conformer_set.h"
+#include "nwchem/nwchem_execution.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -59,6 +62,104 @@ class ServicesTest : public QObject {
         qputenv("XDG_DATA_HOME", home.filePath("data").toUtf8());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, home.path());
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, home.path());
+    }
+    void conformerSetWithoutWidgets() {
+        auto base = Document::fromXyz("3\nwater\nO 0 0 0\nH .8 0 .6\nH -.8 0 .6\n");
+        auto moved = base;
+        moved.atoms[1].position.x() += .3;
+        ConformerSet set;
+        set.setConformers(base, {{base, 0, "MMFF94"}, {moved, 1, "MMFF94"}});
+        auto saved = set.specification();
+        saved["future"] = QJsonObject{{"keep", true}};
+        auto entries = saved["entries"].toArray();
+        auto row = entries[1].toObject();
+        row["future_entry"] = "keep";
+        entries[1] = row;
+        saved["entries"] = entries;
+        set.setSpecification(saved);
+        QCOMPARE(set.specification(), saved);
+        // An invalid load must leave the entire current set intact.
+        auto bad = saved;
+        bad["rmsd"] = -1;
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, set.setSpecification(bad));
+        QCOMPARE(set.specification(), saved);
+        bad["rmsd"] = .1;
+        bad["entries"] = QJsonArray{QJsonObject{{"geometry", "1\nwrong\nHe 0 0 0\n"}}};
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, set.setSpecification(bad));
+        QCOMPARE(set.specification(), saved);
+        set.setSelected(0, false);
+        set.setName(1, "second");
+        auto options = set.options();
+        options.frequencies = true;
+        set.setOptions(options);
+        const auto beforeQueue = set.specification();
+        set.queueSelected([](const QVector<Document> &, bool) { return QStringList{}; });
+        QCOMPARE(set.specification(), beforeQueue);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, set.queueSelected([](const QVector<Document> &, bool) {
+            return QStringList{"a", "b"};
+        }));
+        QCOMPARE(set.specification(), beforeQueue);
+        QVector<Document> queued;
+        bool frequencies = false;
+        set.queueSelected([&](const QVector<Document> &docs, bool freq) {
+            queued = docs;
+            frequencies = freq;
+            return QStringList{"second-job"};
+        });
+        QVERIFY(frequencies);
+        QCOMPARE(queued.size(), 1);
+        QVERIFY((queued[0].atoms[1].position - moved.atoms[1].position).norm() < 1e-9);
+        QCOMPARE(queued[0].ids(), base.ids());
+        QVERIFY(!set.entries()[0].toObject().contains("job"));
+        QCOMPARE(set.entries()[1].toObject()["job"].toString(), "second-job");
+        QCOMPARE(set.entries()[1].toObject()["future_entry"].toString(), "keep");
+        QCOMPARE(set.selectedXyz(), set.geometry(1).xyz().toUtf8());
+    }
+    void conformerResultsAndCancellation() {
+        const auto result = readResult(QString(FIXTURE_DIR) + "/nwchem/water_optfreq.out");
+        auto base = result.frames.last().molecule;
+        setExecutionSetting(base, "job_root", home.filePath("conformer-jobs"));
+        auto job = saveExecutionBundle(base, home.path());
+        const QDir dir(job.directory);
+        writeFile(dir.filePath("output.out"), readFile(result.source));
+        job.manifest["status"] = "finished";
+        job.manifest["exit_code"] = 0;
+        writeFile(dir.filePath("run.json"), QJsonDocument(job.manifest).toJson());
+        ConformerSet set;
+        set.setConformers(base, {{base, 0, "MMFF94"}});
+        set.queueSelected([&](const QVector<Document> &, bool) { return QStringList{job.directory}; });
+        QStringList checked;
+        set.refreshResults([&](const QString &path) { checked << path; });
+        QTRY_VERIFY_WITH_TIMEOUT(!set.loading(), 15000);
+        QCOMPARE(checked.size(), 5);
+        QVERIFY(checked.contains(dir.filePath("output.out")));
+        QVERIFY2(!set.entries()[0].toObject()["result"].toObject().isEmpty(),
+                 qPrintable(set.entries()[0].toObject()["error"].toString()));
+        const auto analysis = set.analyze();
+        QCOMPARE(analysis.rows.size(), 1);
+        QCOMPARE(analysis.rows[0].toObject()["entry"].toInt(), 0);
+        QCOMPARE(analysis.rows[0].toObject()["population"].toDouble(), 1.);
+        QVERIFY(analysis.spectra[0].toObject()["spectra"].toObject().contains("ir"));
+        // A refused path must invalidate previously cached results, without reading its files.
+        set.refreshResults([](const QString &) { fail("denied"); });
+        QTRY_VERIFY(!set.loading());
+        QCOMPARE(set.entries()[0].toObject()["error"].toString(), "denied");
+        QVERIFY(set.analyze().rows.isEmpty());
+        // Neither a cancelled worker nor a queued next read may change a newly loaded set.
+        set.refreshResults();
+        QVERIFY(set.loading());
+        set.cancel();
+        set.setConformers(base, {{base, 7, "new"}});
+        const auto fresh = set.specification();
+        QCoreApplication::processEvents();
+        QCOMPARE(set.specification(), fresh);
+        set.queueSelected([](const QVector<Document> &, bool) { return QStringList{"missing"}; });
+        set.refreshResults(); // Schedules a next read for a missing/unfinished job.
+        set.setConformers(base, {{base, 8, "last"}});
+        const auto last = set.specification();
+        QCoreApplication::processEvents();
+        QCOMPARE(set.specification(), last);
+        QVERIFY(!set.loading());
     }
     void downloadsWithoutWidgets() {
         QTemporaryDir source, cache;
@@ -337,6 +438,8 @@ class ServicesTest : public QObject {
 };
 
 int main(int argc, char **argv) {
+    if (const int code = resultWorkerMain(argc, argv); code >= 0)
+        return code;
     QCoreApplication app(argc, argv);
     if (argc == 4 && QString::fromLocal8Bit(argv[1]) == "--worker") {
         // Deterministic stand-in for chemistry: echo one displaced atom, or wait for cancellation.

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/peptide.h"
+#include "foundation/files.h"
 #include "ui/figure_export.h"
 #include "ui/main_window.h"
 #include "ui/molecule_view.h"

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "nwchem/nwchem.h"
+#include "ui/editor_context.h"
 #include <QWidget>
 class QComboBox;
 class QFrame;
@@ -12,7 +13,6 @@ class QPushButton;
 class QTextBrowser;
 class QToolButton;
 namespace mf {
-class MainWindow;
 class CalculationSummary;
 class ChoiceButtons;
 class InputEditor;
@@ -24,7 +24,8 @@ class StatusCard;
 class InputPreviewPanel : public QWidget {
     Q_OBJECT
   public:
-    explicit InputPreviewPanel(MainWindow *owner);
+    InputPreviewPanel(EditorContext &editorContext, UiServices &uiContext, WorkspaceActions &workspace,
+                      QWidget *parent = nullptr);
     void refresh();
     // Only the tab's error color and tool tip, while the tab is hidden and not refreshed.
     void refreshBadge();
@@ -36,7 +37,9 @@ class InputPreviewPanel : public QWidget {
     void applyChromeStyle();
 
   private:
-    MainWindow *window;
+    EditorContext &editorContext;
+    UiServices &uiContext;
+    WorkspaceActions &workspace;
     QComboBox *mode;
     ChoiceButtons *modes;
     QLineEdit *search;

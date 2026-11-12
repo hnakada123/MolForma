@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/conformer_set_dialog.h"
 #include "editing/coordinates.h"
-#include "model/i18n.h"
-#include "nwchem/history.h"
-#include "nwchem/nwchem.h"
-#include "results/energy_profile.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
+#include "ui/editor_context.h"
 #include "ui/figure_export.h"
-#include "ui/main_window.h"
 #include "ui/result_charts.h"
 #include <QtWidgets>
 
 namespace mf {
-ConformerSetDialog::ConformerSetDialog(MainWindow *owner, Enqueue callback)
-    : QDialog(owner), window(owner), enqueue(std::move(callback)), loader(this) {
+ConformerSetDialog::ConformerSetDialog(EditorContext &editorServices, UiServices &uiServices,
+                                       WorkspaceActions &workspaceActions, Enqueue callback, QWidget *parent)
+    : QDialog(parent), editorContext(editorServices), uiContext(uiServices), workspace(workspaceActions),
+      enqueue(std::move(callback)), model(this) {
     setObjectName("conformerSetDialog");
     setWindowTitle(tr("配座セット"));
     resize(1050, 600);
@@ -93,21 +93,18 @@ ConformerSetDialog::ConformerSetDialog(MainWindow *owner, Enqueue callback)
         auto *b = new QPushButton(text);
         b->setObjectName(name);
         row->addWidget(b);
-        connect(b, &QPushButton::clicked, this, [this, fn] { window->safe(fn); });
+        connect(b, &QPushButton::clicked, this, [this, fn] { uiContext.safe(fn); });
         return b;
     };
     button(actions, tr("候補にする"), "conformerApply", [this] { applySelected(); });
     button(actions, tr("元の分子を復元"), "conformerRestore", [this] {
-        if (original.atoms.isEmpty())
+        if (model.original().atoms.isEmpty())
             return;
-        window->replaceUnsavedDocument(original);
+        editorContext.replaceUnsavedDocument(model.original());
     });
     button(actions, tr("選択配座を最適化キューへ"), "conformerQueue", [this] { queueSelected(); });
     button(actions, tr("結果を更新"), "conformerRefresh", [this] { refreshResults(); });
-    button(actions, tr("読込を中止"), "conformerCancel", [this] {
-        loader.cancel();
-        pending.clear();
-    });
+    button(actions, tr("読込を中止"), "conformerCancel", [this] { model.cancel(); });
     spectrumButton =
         button(actions, tr("配座平均スペクトル…"), "conformerSpectrum", [this] { showSpectrum(); });
     spectrumButton->setToolTip(tr("分布を重みにしたIR・通常ラマン・UV–Vis・ECD・NMRの平均スペクトルです。"
@@ -115,14 +112,14 @@ ConformerSetDialog::ConformerSetDialog(MainWindow *owner, Enqueue callback)
     button(files, tr("保存…"), "conformerSave", [this] {
         const auto path = QFileDialog::getSaveFileName(this, tr("配座セットを保存"), {}, "JSON (*.json)");
         if (!path.isEmpty()) {
-            window->checkMcpPath(path);
+            uiContext.checkMcpPath(path);
             writeFile(path, QJsonDocument(specification()).toJson());
         }
     });
     button(files, tr("読込…"), "conformerLoad", [this] {
         const auto path = QFileDialog::getOpenFileName(this, tr("配座セットを読込"), {}, "JSON (*.json)");
         if (!path.isEmpty()) {
-            window->checkMcpPath(path);
+            uiContext.checkMcpPath(path);
             QFile file(path);
             if (!file.open(QIODevice::ReadOnly) || file.size() > 16 * 1024 * 1024)
                 fail(tr("配座セットを読めません。"));
@@ -132,219 +129,86 @@ ConformerSetDialog::ConformerSetDialog(MainWindow *owner, Enqueue callback)
     button(files, tr("XYZを書き出す…"), "conformerXyz", [this] {
         const auto path = QFileDialog::getSaveFileName(this, tr("配座を書き出す"), {}, "XYZ (*.xyz)");
         if (!path.isEmpty()) {
-            window->checkMcpPath(path);
-            QByteArray xyz;
-            for (int i = 0; i < entries.size(); ++i)
-                if (entries[i].toObject()["selected"].toBool())
-                    xyz += geometry(i).xyz().toUtf8();
-            writeFile(path, xyz);
+            uiContext.checkMcpPath(path);
+            writeFile(path, model.selectedXyz());
         }
     });
     connect(table, &QTableWidget::cellChanged, this, [this](int row, int column) {
-        if (row < 0 || row >= entries.size())
+        if (row < 0 || row >= model.entries().size())
             return;
-        auto item = entries[row].toObject();
         if (column == 0)
-            item["selected"] = table->item(row, 0)->checkState() == Qt::Checked;
+            model.setSelected(row, table->item(row, 0)->checkState() == Qt::Checked);
         if (column == 1)
-            item["name"] = table->item(row, 1)->text();
-        entries[row] = item;
-        if (column == 0)
-            refresh();
-        else if (spectrumDialog)
-            spectrumDialog->setMembers(spectrumMembers());
+            model.setName(row, table->item(row, 1)->text());
     });
     for (auto *combo : {metric, entropyModel})
         connect(combo, &QComboBox::currentIndexChanged, this, &ConformerSetDialog::refresh);
     for (auto *spin : {temperature, tolerance, frequencyScale, entropyCutoff})
         connect(spin, &QDoubleSpinBox::valueChanged, this, &ConformerSetDialog::refresh);
-    connect(&loader, &ResultLoader::loaded, this, [this](const ResultData &r, const QString &stamp) {
-        if (reading < 0 || reading >= entries.size())
-            return;
-        auto item = entries[reading].toObject();
-        try {
-            if (r.properties["optimization"] != "converged")
-                fail(tr("最適化の収束を確認できません。"));
-            auto result = energyRecord(r, pendingOriginal, nwchemFinalSettings(pendingOriginal));
-            result["source_stamp"] = stamp;
-            item["result"] = result;
-            // What the log holds for the averaged spectra of the set.
-            item["spectra"] = spectrumContributions(r);
-            item.remove("error");
-        } catch (const std::exception &e) {
-            item["error"] = QString::fromUtf8(e.what());
-        }
-        entries[reading] = item;
-        refresh();
-        QTimer::singleShot(0, this, &ConformerSetDialog::readNext);
-    });
-    connect(&loader, &ResultLoader::failed, this, [this](const QString &error) {
-        if (reading >= 0 && reading < entries.size()) {
-            auto item = entries[reading].toObject();
-            item["error"] = error;
-            entries[reading] = item;
-        }
-        refresh();
-        QTimer::singleShot(0, this, &ConformerSetDialog::readNext);
-    });
-    connect(this, &QDialog::finished, this, [this] {
-        loader.cancel();
-        pending.clear();
-    });
+    connect(frequencies, &QCheckBox::toggled, this, &ConformerSetDialog::refresh);
+    connect(&model, &ConformerSet::changed, this, &ConformerSetDialog::refresh);
+    connect(this, &QDialog::finished, this, [this] { model.cancel(); });
     refresh();
+}
+ConformerOptions ConformerSetDialog::options() const {
+    return {metric->currentData().toString(),
+            temperature->value(),
+            tolerance->value(),
+            frequencies->isChecked(),
+            {frequencyScale->value(), entropyModel->currentData().toString(), entropyCutoff->value()}};
 }
 void ConformerSetDialog::setConformers(const Document &base, const QVector<Conformer> &conformers) {
-    QJsonArray rows;
-    for (int i = 0; i < conformers.size(); ++i)
-        rows.append(QJsonObject{{"name", tr("配座 %1").arg(i + 1)},
-                                {"selected", true},
-                                {"geometry", conformers[i].document.xyz()},
-                                {"force_field", conformers[i].forceField},
-                                {"force_field_kcal", conformers[i].energy}});
-    setSpecification({{"format", "molforma-conformer-set"},
-                      {"version", 1},
-                      {"original", base.project()},
-                      {"entries", rows},
-                      {"metric", "E"},
-                      {"temperature", 298.15},
-                      {"rmsd", .1}});
+    const QSignalBlocker block(model);
+    model.setConformers(base, conformers);
+    setSpecification(model.specification());
 }
 QJsonObject ConformerSetDialog::specification() const {
-    return {{"format", "molforma-conformer-set"},
-            {"version", 1},
-            {"original", original.project()},
-            {"entries", entries},
-            {"metric", metric->currentData().toString()},
-            {"temperature", temperature->value()},
-            {"rmsd", tolerance->value()},
-            {"frequencies", frequencies->isChecked()},
-            {"frequency_scale", frequencyScale->value()},
-            {"entropy_model", entropyModel->currentData().toString()},
-            {"entropy_cutoff", entropyCutoff->value()}};
+    return model.specification();
 }
 void ConformerSetDialog::setSpecification(const QJsonObject &p) {
-    if (p["format"] != "molforma-conformer-set" || p["version"] != 1 || p["entries"].toArray().isEmpty() ||
-        p["entries"].toArray().size() > 100)
-        fail(tr("配座セットの形式が不正です（1〜100配座）。"));
-    const auto base = Document::fromProject(p["original"].toObject());
-    for (const auto &value : p["entries"].toArray()) {
-        auto candidate = base;
-        applyResultGeometry(candidate, Document::fromXyz(value.toObject()["geometry"].toString()));
-    }
-    loader.cancel();
-    pending.clear();
-    reading = -1;
-    original = base;
-    entries = p["entries"].toArray();
+    const QSignalBlocker block(model);
+    model.setSpecification(p);
+    const auto &o = model.options();
     const QSignalBlocker bm(metric), bt(temperature), br(tolerance), bs(frequencyScale), be(entropyModel),
-        bc(entropyCutoff);
-    metric->setCurrentIndex(metric->findData(p["metric"].toString("E")));
-    temperature->setValue(p["temperature"].toDouble(298.15));
-    tolerance->setValue(p["rmsd"].toDouble(.1));
-    frequencies->setChecked(p["frequencies"].toBool());
-    // Sets saved before these corrections have none of the fields.
-    frequencyScale->setValue(p["frequency_scale"].toDouble(1));
-    entropyModel->setCurrentIndex(std::max(0, entropyModel->findData(p["entropy_model"].toString("rrho"))));
-    entropyCutoff->setValue(p["entropy_cutoff"].toDouble(100));
+        bc(entropyCutoff), bf(frequencies);
+    metric->setCurrentIndex(metric->findData(o.metric));
+    temperature->setValue(o.temperature);
+    tolerance->setValue(o.rmsd);
+    frequencies->setChecked(o.frequencies);
+    frequencyScale->setValue(o.thermal.scale);
+    entropyModel->setCurrentIndex(entropyModel->findData(o.thermal.model));
+    entropyCutoff->setValue(o.thermal.cutoff);
     refresh();
 }
-Document ConformerSetDialog::geometry(int index) const {
-    if (index < 0 || index >= entries.size())
-        fail(tr("配座を選んでください。"));
-    auto d = original;
-    applyResultGeometry(d, Document::fromXyz(entries[index].toObject()["geometry"].toString()));
-    return d;
-}
 void ConformerSetDialog::checkMolecule() const {
-    if (window->hasCandidate() || window->chemistryRunning())
+    if (editorContext.hasCandidate() || editorContext.chemistryRunning())
         fail(tr("候補を確定・取消し、整形の終了後に実行できます。"));
-    if (window->document().ids() != original.ids() || window->document().bonds != original.bonds)
+    if (editorContext.document().ids() != model.original().ids() ||
+        editorContext.document().bonds != model.original().bonds)
         fail(tr("配座セットと編集中の分子が一致しません。元の分子を復元してください。"));
 }
 void ConformerSetDialog::applySelected() {
     checkMolecule();
-    const auto d = geometry(table->currentRow());
-    window->edit(tr("配座を適用"), [&](Document &next) { applyResultGeometry(next, d); }, true);
-    window->showPanel(0);
+    const auto d = model.geometry(table->currentRow());
+    editorContext.edit(tr("配座を適用"), [&](Document &next) { applyResultGeometry(next, d); }, true);
+    workspace.showPanel(0);
 }
 void ConformerSetDialog::queueSelected() {
     checkMolecule();
-    QVector<Document> selected;
-    QVector<int> indices;
-    for (int i = 0; i < entries.size(); ++i)
-        if (entries[i].toObject()["selected"].toBool()) {
-            selected.append(geometry(i));
-            indices.append(i);
-        }
-    if (selected.isEmpty())
-        fail(tr("配座を選んでください。"));
-    const auto jobs = enqueue(selected, frequencies->isChecked());
-    for (int i = 0; i < jobs.size(); ++i) {
-        auto entry = entries[indices[i]].toObject();
-        entry["job"] = jobs[i];
-        entry.remove("result");
-        entry.remove("spectra");
-        entry.remove("error");
-        entries[indices[i]] = entry;
-    }
-    refresh();
+    model.setOptions(options());
+    model.queueSelected(enqueue);
 }
 void ConformerSetDialog::refreshResults() {
-    if (loader.active())
-        return;
-    pending.clear();
-    for (int i = 0; i < entries.size(); ++i)
-        if (!entries[i].toObject()["job"].toString().isEmpty())
-            pending.append(i);
-    readNext();
-}
-void ConformerSetDialog::readNext() {
-    if (pending.isEmpty()) {
-        reading = -1;
-        refresh();
-        return;
-    }
-    reading = pending.takeFirst();
-    auto item = entries[reading].toObject();
-    const auto dir = item["job"].toString();
-    try {
-        window->checkMcpPath(dir);
-        for (const auto *file : {"run.json", "project.molforma.json", "input.nw", "output.out"})
-            window->checkMcpPath(QDir(dir).filePath(file));
-        const auto job = readHistoryEntry(dir);
-        item["state"] = historyStatus(job.status);
-        item.remove("result");
-        item.remove("spectra");
-        entries[reading] = item;
-        if (job.status != RunState::Finished) {
-            QTimer::singleShot(0, this, &ConformerSetDialog::readNext);
-            return;
-        }
-        pendingOriginal = historyDocument(dir);
-        loader.start({.path = QDir(dir).filePath("output.out")});
-    } catch (const std::exception &e) {
-        item["error"] = QString::fromUtf8(e.what());
-        entries[reading] = item;
-        QTimer::singleShot(0, this, &ConformerSetDialog::readNext);
-    }
+    model.refreshResults([this](const QString &path) { uiContext.checkMcpPath(path); });
 }
 void ConformerSetDialog::refresh() {
     const QSignalBlocker block(table);
     const int selected = table->currentRow();
+    const auto &entries = model.entries();
     table->setRowCount(entries.size());
-    QJsonArray results;
-    QVector<int> indices;
-    bool complete = true;
     for (int i = 0; i < entries.size(); ++i) {
         const auto row = entries[i].toObject();
         const auto result = row["result"].toObject();
-        if (row["selected"].toBool()) {
-            complete &= !result.isEmpty();
-            if (!result.isEmpty()) {
-                results.append(result);
-                indices.append(i);
-            }
-        }
         const QStringList cells{
             "",
             row["name"].toString(),
@@ -378,28 +242,21 @@ void ConformerSetDialog::refresh() {
     for (auto *widget : {static_cast<QWidget *>(frequencyScale), static_cast<QWidget *>(entropyModel)})
         widget->setEnabled(gibbs);
     entropyCutoff->setEnabled(gibbs && entropyModel->currentData() != "rrho");
-    populations.fill(-1, entries.size());
-    if (complete && !results.isEmpty()) {
-        try {
-            const auto rows = conformerPopulations(results, metric->currentData().toString(),
-                                                   temperature->value(), tolerance->value(),
-                                                   {{"frequency_scale", frequencyScale->value()},
-                                                    {"entropy_model", entropyModel->currentData().toString()},
-                                                    {"entropy_cutoff", entropyCutoff->value()}});
-            for (int k = 0; k < rows.size(); ++k) {
-                const auto r = rows[k].toObject();
-                const int i = indices[k];
-                populations[i] = r["population"].toDouble();
-                table->item(i, 6)->setText(QString::number(r["relative_kcal"].toDouble(), 'f', 4));
-                table->item(i, 7)->setText(QString::number(r["group"].toInt()));
-                table->item(i, 8)->setText(QString::number(100 * r["population"].toDouble(), 'f', 3));
-            }
-        } catch (const std::exception &e) {
-            populations.fill(-1);
-            message->setText(message->text() + '\n' + QString::fromUtf8(e.what()));
+    members = {};
+    try {
+        model.setOptions(options());
+        const auto analysis = model.analyze();
+        members = analysis.spectra;
+        for (const auto &value : analysis.rows) {
+            const auto r = value.toObject();
+            const int i = r["entry"].toInt();
+            table->item(i, 6)->setText(QString::number(r["relative_kcal"].toDouble(), 'f', 4));
+            table->item(i, 7)->setText(QString::number(r["group"].toInt()));
+            table->item(i, 8)->setText(QString::number(100 * r["population"].toDouble(), 'f', 3));
         }
+    } catch (const std::exception &e) {
+        message->setText(message->text() + '\n' + QString::fromUtf8(e.what()));
     }
-    const auto members = spectrumMembers();
     spectrumButton->setEnabled(!members.isEmpty());
     if (spectrumDialog)
         spectrumDialog->setMembers(members);
@@ -409,13 +266,6 @@ void ConformerSetDialog::refresh() {
         table->selectRow(0);
 }
 QJsonArray ConformerSetDialog::spectrumMembers() const {
-    QJsonArray members;
-    for (int i = 0; i < entries.size() && i < populations.size(); ++i)
-        if (populations[i] >= 0) {
-            const auto entry = entries[i].toObject();
-            members.append(QJsonObject{
-                {"name", entry["name"]}, {"weight", populations[i]}, {"spectra", entry["spectra"]}});
-        }
     return members;
 }
 ConformerSpectrumDialog *ConformerSetDialog::showSpectrum() {
@@ -423,14 +273,14 @@ ConformerSpectrumDialog *ConformerSetDialog::showSpectrum() {
     if (members.isEmpty())
         fail(tr("分布を計算できる配座がありません。選択した配座の結果を読み込んでから開いてください。"));
     if (!spectrumDialog)
-        spectrumDialog = new ConformerSpectrumDialog(window, this);
+        spectrumDialog = new ConformerSpectrumDialog(uiContext, this);
     spectrumDialog->setMembers(members);
     spectrumDialog->show();
     spectrumDialog->raise();
     return spectrumDialog;
 }
-ConformerSpectrumDialog::ConformerSpectrumDialog(MainWindow *owner, QWidget *parent)
-    : QDialog(parent), window(owner) {
+ConformerSpectrumDialog::ConformerSpectrumDialog(UiServices &uiServices, QWidget *parent)
+    : QDialog(parent), uiContext(uiServices) {
     setObjectName("conformerSpectrumDialog");
     setWindowTitle(tr("配座平均スペクトル"));
     resize(780, 560);
@@ -480,7 +330,7 @@ ConformerSpectrumDialog::ConformerSpectrumDialog(MainWindow *owner, QWidget *par
         auto *b = new QPushButton(text);
         b->setObjectName(name);
         buttons->addWidget(b);
-        connect(b, &QPushButton::clicked, this, [this, action] { window->safe(action); });
+        connect(b, &QPushButton::clicked, this, [this, action] { uiContext.safe(action); });
     };
     button(tr("CSV…"), "conformerSpectrumCsv", [this] {
         const auto path = QFileDialog::getSaveFileName(this, tr("スペクトルを書き出す"), {}, "CSV (*.csv)");
@@ -492,7 +342,7 @@ ConformerSpectrumDialog::ConformerSpectrumDialog(MainWindow *owner, QWidget *par
             fail(message->text());
         const auto path = askFigurePath(this, tr("スペクトルを書き出す"), "spectrum");
         if (!path.isEmpty()) {
-            window->checkMcpPath(path);
+            uiContext.checkMcpPath(path);
             saveFigure(chart, path);
         }
     });
@@ -599,7 +449,7 @@ void ConformerSpectrumDialog::refresh() {
     }
 }
 void ConformerSpectrumDialog::exportCsv(const QString &path) const {
-    window->checkMcpPath(path);
+    uiContext.checkMcpPath(path);
     writeFile(path, spectrumCsv(averagedSpectrum(members, parameters())));
 }
 } // namespace mf

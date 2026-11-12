@@ -8,14 +8,15 @@
 #include "editing/peptide.h"
 #include "editing/solvation.h"
 #include "editing/stereochemistry.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include "io/structure_io.h"
-#include "model/i18n.h"
 #include "model/topology.h"
 #include "nwchem/nwchem.h"
 #include "ui/candidate_controls.h"
 #include "ui/coordinates_panel.h"
 #include "ui/editor_chrome.h"
-#include "ui/main_window.h"
+#include "ui/editor_context.h"
 #include "ui/periodic_table.h"
 #include "ui/sequence_track.h"
 #include "ui/structure_import.h"
@@ -91,8 +92,11 @@ static QString atomName(const Document &d, const QString &id) {
     return d.atom(id).element + QString::number(d.index(id) + 1);
 }
 
-MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSettings &preferences)
-    : QWidget(&owner), window(owner), session(editor), settings(preferences) {
+MoleculePanel::MoleculePanel(EditorContext &editorServices, UiServices &uiServices,
+                             WorkspaceActions &workspaceActions, ExecutionAccess &executionServices,
+                             const EditorSession &editor, QSettings &preferences, QWidget *parent)
+    : QWidget(parent), editorContext(editorServices), uiContext(uiServices), workspace(workspaceActions),
+      executionAccess(executionServices), session(editor), settings(preferences) {
     customParts = settings.value("parts").toJsonArray();
     auto *root = this;
     auto *page = new QHBoxLayout(root);
@@ -456,7 +460,7 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
     // The view gives way to four rows of the table, under its bars wrapped where the window is narrow.
     viewArea->setMinimumHeight(120);
     moleculeSplit->addWidget(viewArea);
-    coordinates = new CoordinatesPanel(&window);
+    coordinates = new CoordinatesPanel(editorContext, uiContext, workspace, this);
     moleculeSplit->addWidget(coordinates);
     // 3D:表 = 6:4 until the border is dragged (applyMoleculeLayout() restores the drag). Without
     // stretch factors the sizes are shares, kept as the window is resized.
@@ -676,13 +680,12 @@ MoleculePanel::MoleculePanel(MainWindow &owner, const EditorSession &editor, QSe
                     // person's click never confirms an MCP candidate, but MCP may continue its own.
                     const bool chained = session.candidate() &&
                                          session.candidateSerial() == ligandCandidate &&
-                                         (!session.candidateRemote() || window.remoteRequest());
+                                         (!session.candidateRemote() || executionAccess.remoteRequest());
                     if (chained)
                         confirmCandidate();
                     proposeLigand(c, indices, t);
                     if (chained)
-                        statusBar()->showMessage(tr("前の配位子を確定し、次の配位子を候補にしました。"),
-                                                 8000);
+                        showMessage(tr("前の配位子を確定し、次の配位子を候補にしました。"), 8000);
                 }
             } else
                 siteInput->setText(QString::number(site + 1));
@@ -908,7 +911,7 @@ void MoleculePanel::addViewActions(QMenu *viewMenu) {
                 hidden.insert(id);
             setSelection({});
             view->setHidden(hidden);
-            statusBar()->showMessage(
+            showMessage(
                 tr("%n原子を隠しています（表示のみ。計算・保存には含みます）。", nullptr, hidden.size()),
                 8000);
         });
@@ -952,7 +955,7 @@ void MoleculePanel::addViewActions(QMenu *viewMenu) {
         a->setToolTip(moleculeLayout->itemText(i));
         layoutGroup->addAction(a);
         connect(a, &QAction::triggered, this, [this, i] {
-            window.showPanel(this);
+            workspace.showPanel(this);
             moleculeLayout->setCurrentIndex(i);
         });
     }
@@ -1349,8 +1352,8 @@ void MoleculePanel::paletteChosen() {
 bool MoleculePanel::hasSelection(int count) {
     if (!selected.isEmpty() && (!count || selected.size() == count))
         return true;
-    statusBar()->showMessage(
-        count ? tr("%n原子を選択してください。", nullptr, count) : tr("原子を選択してください。"), 5000);
+    showMessage(count ? tr("%n原子を選択してください。", nullptr, count) : tr("原子を選択してください。"),
+                5000);
     return false;
 }
 
@@ -1581,7 +1584,7 @@ void MoleculePanel::applyMoleculeLayout() {
 }
 
 void MoleculePanel::showCoordinateTable() {
-    window.showPanel(this);
+    workspace.showPanel(this);
     if (moleculeLayout->currentData() == "view")
         moleculeLayout->setCurrentIndex(moleculeLayout->findData("both"));
 }
@@ -1765,7 +1768,7 @@ void MoleculePanel::copySelection() {
         part.remove(others);
     }
     QApplication::clipboard()->setText(part.xyz());
-    statusBar()->showMessage(tr("%n原子をXYZでコピーしました。", nullptr, part.atoms.size()), 5000);
+    showMessage(tr("%n原子をXYZでコピーしました。", nullptr, part.atoms.size()), 5000);
 }
 
 void MoleculePanel::pasteFragment() {
@@ -2081,7 +2084,7 @@ void MoleculePanel::zMatrixDialog() {
     });
     connect(copy, &QPushButton::clicked, &dialog, [&] {
         QApplication::clipboard()->setText(zMatrixText(document()));
-        statusBar()->showMessage(tr("Z-matrixをコピーしました。"), 5000);
+        showMessage(tr("Z-matrixをコピーしました。"), 5000);
     });
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     dialog.exec();
@@ -2154,10 +2157,10 @@ void MoleculePanel::symmetryDialog() {
             }
         },
         true);
-    statusBar()->showMessage(tr("%1に対称化した候補です（最大の移動 %2 Å）。「変更を確定」で適用します。")
-                                 .arg(group.name)
-                                 .arg(moved, 0, 'f', 4),
-                             15000);
+    showMessage(tr("%1に対称化した候補です（最大の移動 %2 Å）。「変更を確定」で適用します。")
+                    .arg(group.name)
+                    .arg(moved, 0, 'f', 4),
+                15000);
 }
 void MoleculePanel::solvationDialog() {
     if (session.candidate() || chemistryRunning())
@@ -2211,7 +2214,7 @@ void MoleculePanel::solvationDialog() {
         options.around = selection();
     int placed = 0;
     edit(tr("溶媒和殻を配置"), [&](Document &d) { placed = solvate(d, t, options); }, true);
-    statusBar()->showMessage(
+    showMessage(
         placed < options.count
             ? tr("%1を%2個置いた候補です（指定の%3個のうち、残りは置ける場所がありません）。")
                   .arg(templateName(t))
@@ -2362,7 +2365,7 @@ void MoleculePanel::stopEditing() {
     for (auto *child : findChildren<QObject *>())
         child->disconnect(this);
     propertyColumn->removeEventFilter(this);
-    disconnect(this, nullptr, &window, nullptr);
+    disconnect(this, nullptr, nullptr, nullptr);
 }
 void MoleculePanel::savePreferences() {
     settings.setValue("keepSelection", keepSelection->isChecked());
@@ -2377,39 +2380,39 @@ QString MoleculePanel::layoutMode() const {
 }
 void MoleculePanel::edit(const QString &name, const std::function<void(Document &)> &operation,
                          bool preview) {
-    window.edit(name, operation, preview);
+    editorContext.edit(name, operation, preview);
 }
 void MoleculePanel::safe(const std::function<void()> &operation) {
-    window.safe(operation);
+    uiContext.safe(operation);
 }
-QStatusBar *MoleculePanel::statusBar() const {
-    return window.statusBar();
+void MoleculePanel::showMessage(const QString &message, int timeout) const {
+    uiContext.showMessage(message, timeout);
 }
 bool MoleculePanel::chemistryRunning() const {
-    return window.chemistryRunning();
+    return editorContext.chemistryRunning();
 }
 void MoleculePanel::runWorker(const QString &mode, const QString &smiles, const Ids &moving, int count) {
-    window.runWorker(mode, smiles, moving, count);
+    editorContext.runWorker(mode, smiles, moving, count);
 }
 void MoleculePanel::cancelWorker() {
-    window.cancelWorker();
+    editorContext.cancelWorker();
 }
 void MoleculePanel::confirmCandidate() {
-    window.confirmCandidate();
+    editorContext.confirmCandidate();
 }
 void MoleculePanel::cancelCandidate() {
-    window.cancelCandidate();
+    editorContext.cancelCandidate();
 }
 bool MoleculePanel::resolveCandidate() {
-    return window.resolveCandidate();
+    return editorContext.resolveCandidate();
 }
 void MoleculePanel::checkMcpPath(const QString &path) const {
-    window.checkMcpPath(path);
+    uiContext.checkMcpPath(path);
 }
 void MoleculePanel::showSetting(int tab, const QString &setting) {
-    window.showSetting(tab, setting);
+    workspace.showSetting(tab, setting);
 }
 void MoleculePanel::showInputLine() {
-    window.showInputLine();
+    workspace.showInputLine();
 }
 } // namespace mf

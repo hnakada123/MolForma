@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "nwchem/nwchem_restart.h"
 #include "editing/coordinates.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_output.h"
 #include "results/results.h"
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
 
 namespace mf {
 namespace {
@@ -256,5 +258,37 @@ void copyRestartFiles(const Document &d, const QString &target) {
         if (!QDir().mkpath(QFileInfo(copy).absolutePath()) || !QFile::copy(file, copy))
             fail(tr("再開元のファイルを複写できません: %1").arg(relative));
     }
+}
+NwchemRestart nwchemRestart(const QJsonObject &settings) {
+    const auto stored = settings["restart"].toObject();
+    NwchemRestart restart;
+    restart.mode = stored["mode"].toString();
+    restart.job = stored["job"].toString();
+    restart.geometry = stored["geometry"].toString();
+    for (const auto &line : stored["done"].toArray())
+        restart.done << line.toString();
+    return restart;
+}
+QString nwchemRestartDigest(const Document &d, bool masses) {
+    QCryptographicHash hash(QCryptographicHash::Sha1);
+    const auto number = [](double value) { return QString::number(value, 'g', 17); };
+    for (const auto &a : d.atoms)
+        hash.addData(QStringList{a.element, a.ghost ? "g" : "", a.fixed ? "f" : "", number(a.position.x()),
+                                 number(a.position.y()), number(a.position.z()),
+                                 masses ? QString::number(a.isotope) : QString(),
+                                 masses ? number(a.mass) : QString()}
+                         .join(' ')
+                         .toUtf8() +
+                     '\n');
+    hash.addData(
+        QJsonDocument(d.data["nwchem"].toObject()["constraints"].toArray()).toJson(QJsonDocument::Compact));
+    return QString::fromLatin1(hash.result().toHex());
+}
+QStringList nwchemTaskLines(const QString &input) {
+    QStringList lines;
+    for (const auto &line : input.split('\n'))
+        if (line.startsWith("task "))
+            lines << line.simplified();
+    return lines;
 }
 } // namespace mf

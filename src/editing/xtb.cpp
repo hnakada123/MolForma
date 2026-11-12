@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/xtb.h"
+#include "foundation/files.h"
+#include "foundation/i18n.h"
 #include "model/geometry.h"
-#include "model/i18n.h"
 #include <QDir>
 #include <QFileInfo>
 #include <QRegularExpression>

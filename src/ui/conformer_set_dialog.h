@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "editing/chemistry.h"
-#include "results/result_loader.h"
+#include "nwchem/conformer_set.h"
 #include "results/spectrum.h"
+#include "ui/editor_context.h"
 #include <QDialog>
 #include <QPointer>
 class QTableWidget;
@@ -14,13 +15,12 @@ class QLineEdit;
 class QPushButton;
 namespace mf {
 class ChartView;
-class MainWindow;
 // The spectrum of a conformer set in fast exchange: the sticks of every conformer times its
 // population, broadened once (averagedSpectrum), or for NMR the mean shielding of each atom.
 class ConformerSpectrumDialog : public QDialog {
     Q_OBJECT
   public:
-    explicit ConformerSpectrumDialog(MainWindow *window, QWidget *parent);
+    ConformerSpectrumDialog(UiServices &uiContext, QWidget *parent = nullptr);
     // [{name, weight, spectra}] of the conformers with a population.
     void setMembers(const QJsonArray &members);
     QJsonObject parameters() const;
@@ -28,7 +28,7 @@ class ConformerSpectrumDialog : public QDialog {
     void exportCsv(const QString &path) const;
 
   private:
-    MainWindow *window;
+    UiServices &uiContext;
     QJsonArray members;
     SpectrumData spectrum;
     QComboBox *kind, *nucleus;
@@ -41,8 +41,9 @@ class ConformerSpectrumDialog : public QDialog {
 class ConformerSetDialog : public QDialog {
     Q_OBJECT
   public:
-    using Enqueue = std::function<QStringList(const QVector<Document> &, bool)>;
-    ConformerSetDialog(MainWindow *window, Enqueue enqueue);
+    using Enqueue = ConformerSet::Enqueue;
+    ConformerSetDialog(EditorContext &editorContext, UiServices &uiContext, WorkspaceActions &workspace,
+                       Enqueue enqueue, QWidget *parent = nullptr);
     void setConformers(const Document &original, const QVector<Conformer> &conformers);
     QJsonObject specification() const;
     void setSpecification(const QJsonObject &specification);
@@ -55,14 +56,13 @@ class ConformerSetDialog : public QDialog {
     ConformerSpectrumDialog *showSpectrum();
 
   private:
-    MainWindow *window;
+    EditorContext &editorContext;
+    UiServices &uiContext;
+    WorkspaceActions &workspace;
     Enqueue enqueue;
-    Document original, pendingOriginal;
-    QJsonArray entries;
-    QVector<double> populations; // Of each entry; negative without one.
-    ResultLoader loader;
-    QVector<int> pending;
-    int reading = -1;
+    ConformerSet model;
+    QJsonArray members;
+    ConformerOptions options() const;
     QTableWidget *table;
     QDoubleSpinBox *temperature, *tolerance, *frequencyScale, *entropyCutoff;
     QComboBox *metric, *entropyModel;
@@ -71,8 +71,6 @@ class ConformerSetDialog : public QDialog {
     QLabel *message;
     QPointer<ConformerSpectrumDialog> spectrumDialog;
     void refresh();
-    void readNext();
-    Document geometry(int index) const;
     void checkMolecule() const;
 };
 } // namespace mf

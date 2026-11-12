@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "nwchem/history.h"
+#include "ui/editor_context.h"
 #include <QHash>
 #include <QSet>
 #include <QTimer>
@@ -21,7 +22,6 @@ class QToolButton;
 class QTreeView;
 class QVBoxLayout;
 namespace mf {
-class MainWindow;
 class NwchemRun;
 class ChoiceButtons;
 class ElidedLabel;
@@ -36,7 +36,8 @@ class ToolbarFit;
 class HistoryPanel : public QWidget {
     Q_OBJECT
   public:
-    HistoryPanel(MainWindow *owner, const NwchemRun &run);
+    HistoryPanel(EditorContext &editorContext, UiServices &uiContext, ExecutionAccess &executionAccess,
+                 const NwchemRun &run, QWidget *parent = nullptr);
     void refresh();
     void setRoot(const QString &path, bool remember = true);
     QString rootDirectory() const {
@@ -95,7 +96,9 @@ class HistoryPanel : public QWidget {
         std::optional<double> delta; // ΔE / Hartree against the reference.
         QString note;                // Why there is no ΔE.
     };
-    MainWindow *window;
+    EditorContext &editorContext;
+    UiServices &uiContext;
+    ExecutionAccess &executionAccess;
     const NwchemRun &run;
     HistoryScan scan;
     QTimer timer, memoTimer;

@@ -2,7 +2,7 @@
 #include "editing/crystal.h"
 #include "editing/chemistry.h"
 #include "editing/mmcif.h"
-#include "model/i18n.h"
+#include "foundation/i18n.h"
 #include <QRegularExpression>
 #include <algorithm>
 #include <cmath>
