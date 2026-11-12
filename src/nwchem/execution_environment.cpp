@@ -2,7 +2,8 @@
 #include "nwchem/execution_environment.h"
 #include "foundation/i18n.h"
 #include "model/settings.h"
-#include "nwchem/nwchem_execution.h"
+#include "nwchem/execution_settings.h"
+#include "nwchem/job_script.h"
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QRegularExpression>

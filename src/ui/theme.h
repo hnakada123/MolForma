@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
+#include "model/elements.h"
 #include <QColor>
 #include <QPalette>
 
 namespace mf {
+// A color of the model (an element's) as Qt draws it.
+inline QColor toColor(const Rgb &color) {
+    return QColor(color.red, color.green, color.blue);
+}
 // Colors derived from the widget palette, so light and dark themes both stay readable.
 inline bool darkPalette(const QPalette &palette) {
     return palette.color(QPalette::Window).lightness() < 128;

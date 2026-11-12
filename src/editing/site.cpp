@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/site.h"
 #include "editing/operations.h"
-#include "editing/pdb.h"
 #include "editing/peptide.h"
 #include "foundation/i18n.h"
 #include "model/topology.h"

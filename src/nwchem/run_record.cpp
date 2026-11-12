@@ -3,8 +3,8 @@
 #include "foundation/error.h"
 #include "foundation/files.h"
 #include "foundation/i18n.h"
+#include "nwchem/execution_plan.h"
 #include "nwchem/history.h"
-#include "nwchem/nwchem_execution.h"
 #include "nwchem/run_diagnostics.h"
 #include <QCryptographicHash>
 #include <QDir>

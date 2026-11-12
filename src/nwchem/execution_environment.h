@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
-#include "nwchem/remote_execution.h"
+#include "model/document.h"
+#include "nwchem/remote_host.h"
 #include <QJsonObject>
 #include <QMap>
 #include <QVector>

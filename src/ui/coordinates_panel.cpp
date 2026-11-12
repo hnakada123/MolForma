@@ -236,7 +236,7 @@ QIcon CoordinateModel::atomDot(const Atom &atom) const {
     pixmap.fill(Qt::transparent);
     QPainter p(&pixmap);
     p.setRenderHint(QPainter::Antialiasing);
-    const auto color = element(atom.element).color;
+    const auto color = toColor(element(atom.element).color);
     // A ghost has no nucleus: only the outline.
     p.setPen(QPen(color.darker(160), atom.ghost ? 1.6 : 1));
     p.setBrush(atom.ghost ? QBrush(Qt::NoBrush) : QBrush(color));
@@ -778,7 +778,7 @@ void CoordinatesPanel::refreshSelectionBar() {
                 continue;
             const int row = index[shown[i]];
             const auto &atom = d.atoms[row];
-            auto color = element(atom.element).color;
+            auto color = toColor(element(atom.element).color);
             if (color.lightness() > 200) // Hydrogen's white would not show on the chip.
                 color = colors.muted;
             const auto place = n <= 2 ? atomPlace(d, atom.id) : QString();

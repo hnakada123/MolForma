@@ -317,7 +317,7 @@ void MoleculeView::refreshColors() {
     atomColors.reserve(doc.atoms.size());
     for (const auto &atom : doc.atoms)
         atomColors << (colorMode == "uniform" ? uniformColor
-                                              : colors.value(atom.id, element(atom.element).color));
+                                              : colors.value(atom.id, toColor(element(atom.element).color)));
     moleculeDirty = true;
 }
 void MoleculeView::renderScene() {

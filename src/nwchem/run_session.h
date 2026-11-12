@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
-#include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_queue.h"
+#include "nwchem/nwchem_run.h"
 #include <QLockFile>
 #include <functional>
 #include <memory>

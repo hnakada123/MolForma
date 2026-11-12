@@ -4,6 +4,7 @@
 #include "model/geometry.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
+#include "nwchem/nwchem_execution.h"
 #include "nwchem/result_files.h"
 #include "results/energy_profile.h"
 #include "results/field_analysis.h"

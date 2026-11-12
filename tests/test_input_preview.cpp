@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "foundation/files.h"
+#include "io/document_storage.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
 #include "ui/diagnostics_list.h"
@@ -131,7 +132,7 @@ class InputPreviewTest : public QObject {
         setNwchemAdvanced(d, "vectors_output", "output/final.movecs");
         setNwchemAdvanced(d, "scratch_dir", "scratch");
         const auto project = files.filePath("preview.molforma.json");
-        d.save(project);
+        saveProject(d, project);
         MainWindow w;
         w.loadPath(project);
         openPreview(w);

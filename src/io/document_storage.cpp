@@ -11,6 +11,15 @@
 #include <QStandardPaths>
 
 namespace mf {
+void saveProject(const Document &document, const QString &path) {
+    auto errors = document.validate();
+    if (!errors.isEmpty())
+        fail(errors.join('\n'));
+    writeFile(path, QJsonDocument(document.project()).toJson());
+}
+Document loadProject(const QString &path) {
+    return Document::fromProject(parseJson(readFile(path)));
+}
 void RecoveryCopy::discard() const {
     QFile::remove(file);
 }
@@ -22,7 +31,7 @@ DocumentStorage::~DocumentStorage() {
     close();
 }
 void DocumentStorage::save(const Document &document, const QString &path) {
-    document.save(path);
+    saveProject(document, path);
     projectPath = path;
     remember(path);
     removeAutosave();

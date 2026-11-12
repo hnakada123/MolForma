@@ -3,6 +3,7 @@
 #include "foundation/i18n.h"
 #include "model/document.h"
 #include "ui/editor_chrome.h"
+#include "ui/theme.h"
 #include <QApplication>
 #include <QFontMetrics>
 #include <QJsonArray>
@@ -48,14 +49,15 @@ QIcon elementThumbnail(const Element &e, const QFont &font, qreal ratio) {
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing);
     const QRectF tile(10, 3, 40, 38);
-    painter.setPen(QPen(e.color.lightness() > 225 ? QColor("#cbd5e1") : e.color.darker(125), 1));
-    painter.setBrush(e.color);
+    const auto color = toColor(e.color);
+    painter.setPen(QPen(color.lightness() > 225 ? QColor("#cbd5e1") : color.darker(125), 1));
+    painter.setBrush(color);
     painter.drawRoundedRect(tile, 8, 8);
     QFont symbolFont(font);
     symbolFont.setPixelSize(20);
     symbolFont.setWeight(QFont::DemiBold);
     painter.setFont(symbolFont);
-    painter.setPen(e.color.lightness() < 135 ? QColor(Qt::white) : QColor("#1e293b"));
+    painter.setPen(color.lightness() < 135 ? QColor(Qt::white) : QColor("#1e293b"));
     painter.drawText(tile, Qt::AlignCenter, e.symbol);
     painter.end();
     return QIcon(pixmap);

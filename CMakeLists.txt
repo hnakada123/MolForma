@@ -38,12 +38,15 @@ add_library(molforma_foundation STATIC
 target_include_directories(molforma_foundation PUBLIC src)
 target_link_libraries(molforma_foundation PUBLIC Qt6::Core PRIVATE ZLIB::ZLIB)
 add_library(molforma_model STATIC
+    src/model/bond_inference.cpp
     src/model/document.cpp
+    src/model/elements.cpp
     src/model/geometry.cpp
-    src/model/topology.cpp)
+    src/model/topology.cpp
+    src/model/xyz.cpp)
 target_include_directories(molforma_model PUBLIC src)
 target_compile_definitions(molforma_model PUBLIC MOLFORMA_VERSION="${PROJECT_VERSION}")
-target_link_libraries(molforma_model PUBLIC molforma_project molforma_foundation Qt6::Core Qt6::Gui Eigen3::Eigen)
+target_link_libraries(molforma_model PUBLIC molforma_project molforma_foundation Qt6::Core Eigen3::Eigen)
 
 add_library(molforma_editing STATIC
     src/editing/atom_properties.cpp
@@ -52,17 +55,15 @@ add_library(molforma_editing STATIC
     src/editing/editor_session.cpp
     src/editing/coordinates.cpp
     src/editing/coordination.cpp
-    src/editing/crystal.cpp
     src/editing/library.cpp
-    src/editing/mmcif.cpp
     src/editing/operations.cpp
-    src/editing/pdb.cpp
     src/editing/peptide.cpp
     src/editing/site.cpp
     src/editing/solvation.cpp
     src/editing/stereochemistry.cpp
     src/editing/xtb.cpp)
-target_link_libraries(molforma_editing PUBLIC molforma_model PRIVATE ${MOLFORMA_OPENBABEL})
+# Qt Gui only for the undo stack of EditorSession (QUndoStack); the layers below use Qt Core alone.
+target_link_libraries(molforma_editing PUBLIC molforma_model Qt6::Gui PRIVATE ${MOLFORMA_OPENBABEL})
 if(TARGET RDKit::CIPLabeler)
     target_link_libraries(molforma_editing PRIVATE RDKit::CIPLabeler RDKit::GraphMol RDKit::SubstructMatch)
     target_compile_definitions(molforma_editing PUBLIC MOLFORMA_HAS_RDKIT=1)
@@ -100,6 +101,9 @@ target_link_libraries(molforma_results PUBLIC molforma_model PRIVATE Threads::Th
 add_library(molforma_nwchem STATIC
     src/nwchem/conformer_set.cpp
     src/nwchem/execution_environment.cpp
+    src/nwchem/execution_plan.cpp
+    src/nwchem/execution_settings.cpp
+    src/nwchem/job_script.cpp
     src/nwchem/result_files.cpp
     src/nwchem/history.cpp
     src/nwchem/history_import.cpp
@@ -110,25 +114,44 @@ add_library(molforma_nwchem STATIC
     src/nwchem/nwchem_input.cpp
     src/nwchem/nwchem_validation.cpp
     src/nwchem/nwchem_advanced.cpp
-    src/nwchem/nwchem_execution.cpp
     src/nwchem/nwchem_geometry.cpp
     src/nwchem/nwchem_import.cpp
     src/nwchem/nwchem_output.cpp
     src/nwchem/nwchem_queue.cpp
     src/nwchem/nwchem_restart.cpp
-    src/nwchem/remote_execution.cpp
+    src/nwchem/nwchem_run.cpp
+    src/nwchem/remote_host.cpp
+    src/nwchem/remote_probe.cpp
+    src/nwchem/remote_run.cpp
+    src/nwchem/remote_shell.cpp
+    src/nwchem/remote_supervisor.cpp
     src/nwchem/run_diagnostics.cpp
+    src/nwchem/run_process.cpp
     src/nwchem/run_record.cpp
     src/nwchem/run_session.cpp
-    src/nwchem/run_state.cpp)
+    src/nwchem/run_state.cpp
+    src/nwchem/run_supervisor.cpp)
 target_link_libraries(molforma_nwchem PUBLIC molforma_model PRIVATE molforma_editing molforma_results ${MOLFORMA_OPENBABEL})
 if(MSVC)
     target_compile_definitions(molforma_nwchem PRIVATE USING_DYNAMIC_LIBS)
 endif()
 
-add_library(molforma_io STATIC src/io/document_storage.cpp src/io/structure_io.cpp
-    src/io/file_download.cpp src/io/pdb_download.cpp src/io/pubchem.cpp)
-target_link_libraries(molforma_io PUBLIC molforma_model PRIVATE molforma_nwchem molforma_editing molforma_results Qt6::Network)
+add_library(molforma_io STATIC
+    src/io/babel_io.cpp
+    src/io/crystal.cpp
+    src/io/document_storage.cpp
+    src/io/file_download.cpp
+    src/io/mmcif.cpp
+    src/io/pdb.cpp
+    src/io/pdb_download.cpp
+    src/io/pubchem.cpp
+    src/io/structure_io.cpp)
+# Open Babel for the structure files read and written through its API (babel_io.cpp).
+target_link_libraries(molforma_io PUBLIC molforma_model
+    PRIVATE molforma_nwchem molforma_editing molforma_results Qt6::Network ${MOLFORMA_OPENBABEL})
+if(MSVC)
+    target_compile_definitions(molforma_io PRIVATE USING_DYNAMIC_LIBS)
+endif()
 
 # Preserve the convenient aggregate for applications/tests without hiding the internal graph.
 add_library(molforma_core INTERFACE)
@@ -222,8 +245,12 @@ else()
     message(STATUS "MolForma rendering: QPainter (VTK disabled)")
 endif()
 add_library(molforma_mcp STATIC
+    src/mcp/document_adapter.cpp
+    src/mcp/document_tools.cpp
     src/mcp/headless.cpp
+    src/mcp/json_schema.cpp
     src/mcp/policy.cpp
+    src/mcp/prompts.cpp
     src/mcp/server.cpp
     src/mcp/stdio_transport.cpp
     src/mcp/tools.cpp)

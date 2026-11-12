@@ -4,6 +4,7 @@
 #include "editing/operations.h"
 #include "editing/peptide.h"
 #include "foundation/files.h"
+#include "io/document_storage.h"
 #include "model/geometry.h"
 #include "model/settings.h"
 #include "nwchem/nwchem.h"
@@ -13,6 +14,7 @@
 #include "ui/periodic_table.h"
 #include "ui/sequence_track.h"
 #include "ui/template_delegate.h"
+#include "ui/theme.h"
 #include "ui/translations.h"
 #include <QAbstractTextDocumentLayout>
 #include <QApplication>
@@ -946,7 +948,7 @@ class EditorTest : public QObject {
         int colorPixels = 0;
         for (int y = 0; y < image.height(); ++y)
             for (int x = 0; x < image.width(); ++x)
-                if (image.pixelColor(x, y) == element("Zn").color)
+                if (image.pixelColor(x, y) == toColor(element("Zn").color))
                     ++colorPixels;
         QVERIFY2(colorPixels > 100, "The coordination center element icon is missing");
 
@@ -1265,7 +1267,7 @@ class EditorTest : public QObject {
         QCOMPARE(w.canvas()->atomColor(oxygen), QColor("#654321"));
         color->setCurrentIndex(color->findData("element"));
         QVERIFY(!uniform->isEnabled());
-        QCOMPARE(w.canvas()->atomColor(oxygen), element("O").color);
+        QCOMPARE(w.canvas()->atomColor(oxygen), toColor(element("O").color));
         QVERIFY(w.findChild<QPushButton *>("preparePdb"));
 
         // The task is set in "2 計算条件" only.
@@ -1441,8 +1443,8 @@ class EditorTest : public QObject {
 
         QTemporaryDir dir;
         const auto path = dir.filePath("legacy.molforma.json");
-        w.document().save(path);
-        const auto loaded = Document::load(path);
+        saveProject(w.document(), path);
+        const auto loaded = loadProject(path);
         QCOMPARE(loaded.project(), w.document().project());
         QCOMPARE(loaded.envelope["external_field"].toString(), "preserve");
         while (w.history()->canUndo())

@@ -3,6 +3,7 @@
 #include "model/settings.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
+#include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_restart.h"
 #include "ui/execution_panel.h"
 #include "ui/history_panel.h"

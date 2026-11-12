@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "io/structure_io.h"
 #include "editing/chemistry.h"
-#include "editing/mmcif.h"
 #include "foundation/files.h"
 #include "foundation/i18n.h"
 #include "foundation/structure_file.h"
+#include "io/babel_io.h"
+#include "io/document_storage.h"
+#include "io/mmcif.h"
 #include "nwchem/nwchem_import.h"
 #include "results/results.h"
 #include <QFileInfo>
@@ -96,7 +98,7 @@ StructureImport importStructureWithNotes(const QString &path, const Macromolecul
     if (ext == "json") {
         if (compressedFile(path))
             fail(tr("圧縮したプロジェクトは開けません。展開してから開いてください。"));
-        return {Document::load(path), {}};
+        return {loadProject(path), {}};
     }
     if (ext == "xyz") {
         const auto frames = xyzFrames(QString::fromUtf8(readStructureFile(path)));
@@ -153,7 +155,7 @@ Document nebEndFromFile(const QString &path) {
 void exportStructure(const Document &document, const QString &path) {
     const auto ext = QFileInfo(path).suffix().toLower();
     if (ext == "json")
-        document.save(path);
+        saveProject(document, path);
     else if (ext == "xyz")
         writeFile(path, document.xyz().toUtf8());
     else

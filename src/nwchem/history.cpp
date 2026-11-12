@@ -2,8 +2,9 @@
 #include "nwchem/history.h"
 #include "foundation/files.h"
 #include "foundation/i18n.h"
+#include "nwchem/execution_settings.h"
 #include "nwchem/nwchem.h"
-#include "nwchem/nwchem_execution.h"
+#include "nwchem/run_process.h"
 #include "nwchem/run_record.h"
 #include "results/results.h"
 #include <QCryptographicHash>

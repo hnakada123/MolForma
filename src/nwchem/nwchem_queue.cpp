@@ -3,6 +3,7 @@
 #include "editing/coordinates.h"
 #include "foundation/files.h"
 #include "foundation/i18n.h"
+#include "nwchem/execution_settings.h"
 #include "nwchem/history.h"
 #include "nwchem/run_record.h"
 #include "results/result_path.h"

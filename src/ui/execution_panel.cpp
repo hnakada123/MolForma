@@ -5,6 +5,7 @@
 #include "model/settings.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
+#include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_restart.h"
 #include "nwchem/remote_execution.h"
 #include "nwchem/result_files.h"

@@ -45,10 +45,17 @@ QT_QPA_PLATFORM=offscreen ./build/test_editor someTestFunction   # one Qt Test s
 
 Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#include "model/document.h"`):
 
-- `molforma_core` — `src/model`, `src/editing`, `src/nwchem`, `src/results`, plus `assets/resources.qrc`
-  (fragment template/element data embedded as Qt resources; no runtime file dependency). No UI code here.
+- `molforma_core` — an interface aggregate of `molforma_model` (`src/model`), `molforma_editing`
+  (`src/editing`), `molforma_results` (`src/results`), `molforma_nwchem` (`src/nwchem`) and `molforma_io`
+  (`src/io`: structure-file readers and writers, project files, downloads), over `molforma_project`
+  (`src/project`: the atom references of project settings) and `molforma_foundation` (`src/foundation`: files,
+  errors, translation, and `assets/resources.qrc` — fragment template/element data embedded as Qt resources; no
+  runtime file dependency). Includes go one way (foundation/project < model < editing, results < nwchem < io <
+  mcp < ui; `cmake/CheckLayers.cmake`). No UI code here: the model uses Qt Core alone, and Qt Gui comes in with
+  editing's undo stack only.
 - `molforma_ui` — `src/ui`, links core and mcp (McpGui reuses the shared tool definitions and policy).
-  `main_window.*` + `editor_panels.cpp` host the editor; `editor_chrome.*` holds the header (workflow steps that
+  `main_window.*` hosts the editor, with `molecule_panel.*` + `molecule_properties.cpp` as its molecular
+  workspace; `editor_chrome.*` holds the header (workflow steps that
   switch the hidden tab bar), tool rail, flow layout and 3D-view overlays. The numbered tabs are "1 分子" (the 3D
   view with the `coordinates_panel.*` table under it or in its place), "2 計算条件" (`calculation_panel.*`; each
   section opens its advanced overrides as "詳細設定"), "3 実行設定" (`execution_panel.*`, settings only, with the form `execution_form.*` that Preferences shares; the run
@@ -62,7 +69,10 @@ Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#inc
   signal of the asking panel, connected by whoever composes the two (`MainWindow`, `WorkspaceController`,
   `MoleculePanel` for its coordinate table); `cmake/CheckLayers.cmake` forbids the includes that would bypass this.
 - `molforma_mcp` — `src/mcp`, links core only. A JSON-RPC MCP server over stdio (protocols 2026-07-28 and legacy
-  2025-11-25); see `docs/mcp.md`. `headless.*` adds NWChem runs and result loading to `--mcp`, `tools.*` holds
+  2025-11-25); see `docs/mcp.md`. `server.cpp` holds the protocol, tasks, resources and dispatch of `McpServer`,
+  `document_adapter.cpp` the document behind its tools and `document_tools.cpp` the tools themselves
+  (`json_schema.*`: their schemas and validator; `prompts.*`: the prompt catalogue). `headless.*` adds NWChem runs
+  and result loading to `--mcp`, `tools.*` holds
   definitions/result views shared with `McpGui`, and `policy.*` holds the command-line access policy.
 - `molforma` executable (`src/main.cpp`) links all of them and has several modes selected by argv:
   normal GUI, `--screenshot`, `--mcp` (headless, `QCoreApplication`), `--mcp-gui` (MCP driving a real
@@ -74,7 +84,10 @@ Key cross-cutting designs:
 
 - **Document model**: `mf::Document` (`model/document.*`) holds atoms with stable IDs, bonds, residues,
   coordination centers, fragments, fixed atoms, isotopes, point charges and calculation/execution settings, and
-  serializes to the `.molforma.json` project envelope (format `molforma-project`, version 1). Atom references are
+  serializes to the `.molforma.json` project envelope (format `molforma-project`, version 1) as JSON
+  (`project`/`fromProject`; the file itself is read and written by `saveProject`/`loadProject` of
+  `io/document_storage.*`). The element table is `model/elements.*`, the XYZ dialect `model/xyz.cpp` and the
+  bonds by distance `model/bond_inference.cpp`. Atom references are
   stored by stable ID and only
   translated to indices at export (NWChem input, XYZ). Coordinates are doubles in Å; camera/view never edits them.
   `Document::atom`/`index`/`neighbors`/`bond` scan the document: loops over many atoms (proteins of 10k+ atoms)
@@ -102,8 +115,11 @@ Key cross-cutting designs:
   session cache folder: a CUBE/MOLDEN file read before is not parsed again for another dataset, orbital or
   isovalue (keys hold the file's stamp; an explicit reload starts a new cache).
 - **NWChem pipeline**: `nwchem/nwchem.*` validates settings and generates full input; `nwchem_advanced.*` layers typed
-  overrides (blank = default) on the base settings; `nwchem_output.*` adds CUBE/MOLDEN tasks; `nwchem_execution.*`
-  saves immutable run bundles and controls NWChem/MPI processes; `history.*` scans those bundles. The Input preview
+  overrides (blank = default) on the base settings; `nwchem_output.*` adds CUBE/MOLDEN tasks;
+  `execution_settings.*` checks the launch settings, `execution_plan.*` saves immutable run bundles, `job_script.*`
+  writes `job.sh` and `nwchem_run.*` (with `run_process.*` and `run_supervisor.*`) controls NWChem/MPI processes
+  (`nwchem_execution.h` includes them all; `remote_execution.h` likewise the `remote_*` files of runs on another
+  computer); `history.*` scans those bundles. The Input preview
   tab and the MCP tools reuse the same generator and execution plan — don't fork generation logic in the UI.
 - **Execution environment**: what Preferences keep machine-wide about running calculations (the execution settings
   of new documents, remote destinations, the preparation lines and header templates of job scripts) is read and
@@ -202,7 +218,7 @@ Key cross-cutting designs:
   shown in the feature pages, update those pages (and their screenshots) too. `tools/screenshots` (see its README)
   takes the screenshots by driving `molforma --mcp-gui`; Python is only a development tool there.
 - **Interface language**: Japanese is the source language; English comes from `assets/translations/en.json`
-  (`src/model/i18n.h`). Write user-visible text as `tr("日本語")` (QObject::tr in QObject classes, `mf::tr`
+  (`src/foundation/i18n.h`). Write user-visible text as `tr("日本語")` (QObject::tr in QObject classes, `mf::tr`
   elsewhere — same catalog), `QT_TR_NOOP("…")` in tables shown via `translated()`, `%1` templates rather than
   concatenation, and `tr("…%n…", nullptr, n)` with a `["one", "other"]` entry for counts. Core functions return
   translated text; don't cache translated text in statics (or keep one copy per `english()`). Element and

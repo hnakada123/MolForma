@@ -3,6 +3,7 @@
 #include "editing/library.h"
 #include "editing/peptide.h"
 #include "foundation/files.h"
+#include "io/document_storage.h"
 #include "io/structure_io.h"
 #include "mcp/headless.h"
 #include "mcp/server.h"
@@ -1343,7 +1344,7 @@ class McpTest : public QObject {
         QTemporaryDir directory;
         auto path = directory.filePath("molecule.molforma.json");
         QVERIFY(!failed(change(server, "save_file", {{"path", path}})));
-        QCOMPARE(Document::load(path).toJson(), committed(server).toJson());
+        QCOMPARE(loadProject(path).toJson(), committed(server).toJson());
         QVERIFY(failed(change(server, "save_file", {{"path", path}})));
         QVERIFY(!failed(change(server, "save_file", {{"path", path}, {"overwrite", true}})));
         QVERIFY(!failed(change(server, "open_file", {{"path", path}})));
@@ -1530,7 +1531,7 @@ class McpTest : public QObject {
             save(clientCapabilities(true, false), {{"inputResponses", accept}, {"requestState", state}});
         QVERIFY2(!failed(saved), QJsonDocument(saved).toJson().constData());
         QCOMPARE(saved["result"].toObject()["resultType"].toString(), QString("complete"));
-        QCOMPARE(Document::load(path).toJson(), committed(server).toJson());
+        QCOMPARE(loadProject(path).toJson(), committed(server).toJson());
         // A state is bound to the document revision it was issued for.
         QVERIFY(!failed(change(server, "translate",
                                {{"ids", QJsonArray{committed(server).atoms[0].id}},

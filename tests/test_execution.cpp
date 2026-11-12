@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "foundation/files.h"
 #include "foundation/i18n.h"
+#include "io/document_storage.h"
 #include "mcp/policy.h"
 #include "mcp/tools.h"
 #include "model/settings.h"
@@ -402,7 +403,7 @@ class ExecutionTest : public QObject {
         writeFile(xyz, "3\nwater\nO 0 0 0\nH .76 0 .5\nH -.76 0 .5\n");
         auto own = water();
         setExecutionSetting(own, "mpi_ranks", 3);
-        own.save(project);
+        saveProject(own, project);
         {
             MainWindow w;
             QCOMPARE(executionSettings(w.document())["mpi_ranks"].toInt(), 6);
@@ -1116,7 +1117,7 @@ class ExecutionTest : public QObject {
     }
     void saveFocusedFieldsAndTeardown() {
         const auto path = files.filePath("settings.molforma.json");
-        configured().save(path);
+        saveProject(configured(), path);
         MainWindow w;
         w.loadPath(path);
         w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(2);

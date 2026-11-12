@@ -2,6 +2,7 @@
 #include "ui/periodic_table.h"
 #include "foundation/i18n.h"
 #include "model/document.h"
+#include "ui/theme.h"
 #include <QtWidgets>
 #include <algorithm>
 
@@ -32,9 +33,10 @@ class ElementButton : public QAbstractButton {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
         const auto base = palette().color(QPalette::Base);
-        QColor fill = QColor::fromRgbF(base.redF() * .85 + e.color.redF() * .15,
-                                       base.greenF() * .85 + e.color.greenF() * .15,
-                                       base.blueF() * .85 + e.color.blueF() * .15);
+        const auto color = toColor(e.color);
+        QColor fill = QColor::fromRgbF(base.redF() * .85 + color.redF() * .15,
+                                       base.greenF() * .85 + color.greenF() * .15,
+                                       base.blueF() * .85 + color.blueF() * .15);
         const auto highlight = palette().color(QPalette::Highlight);
         if (isDown() || isChecked())
             fill = highlight;

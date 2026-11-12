@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "foundation/files.h"
+#include "io/document_storage.h"
 #include "nwchem/nwchem_advanced.h"
 #include "ui/calculation_panel.h"
 #include "ui/diagnostics_list.h"
@@ -438,7 +439,7 @@ class AdvancedTest : public QObject {
     void saveShortcutAndFocusedTeardown() {
         QTemporaryDir files;
         const auto path = files.filePath("advanced.molforma.json");
-        water().save(path);
+        saveProject(water(), path);
         MainWindow w;
         w.loadPath(path);
         w.findChild<QTabWidget *>("workspaceTabs")

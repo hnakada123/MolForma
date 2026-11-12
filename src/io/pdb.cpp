@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-#include "editing/pdb.h"
+#include "io/pdb.h"
+#include "editing/peptide.h"
 #include "foundation/i18n.h"
 #include "model/document.h"
 #include <QHash>
@@ -8,10 +9,6 @@
 #include <QSet>
 
 namespace mf {
-bool waterResidue(const QString &code) {
-    static const QSet<QString> waters{"HOH", "WAT", "H2O", "DOD", "D2O", "TIP", "TIP3", "TIP4", "SPC", "SOL"};
-    return waters.contains(code);
-}
 bool MacromoleculeSelection::keeps(const QString &chain, ResidueKind kind) const {
     return (chains.isEmpty() || chains.contains(chain)) && (kind == ResidueKind::Polymer  ? polymer
                                                             : kind == ResidueKind::Ligand ? ligands

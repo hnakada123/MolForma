@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
-#include "nwchem/nwchem_execution.h"
+#include "nwchem/nwchem_run.h"
 #include <functional>
 
 namespace mf {

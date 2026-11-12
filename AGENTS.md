@@ -14,7 +14,12 @@ by responsibility, with paired headers and implementations in the same directory
   atom IDs (`nwchemAtomReferenceKeys`) must name the same settings as the specifications mark
   (`NwchemSettingSpec::atomReferences`); `test_core atomReferenceSettings` compares the two.
 - `src/model/`: `document.*` owns the stable-ID document and the `.molforma.json`
-  project serialization (format `molforma-project`, version 1); `geometry.*` owns double-precision geometry,
+  project serialization (format `molforma-project`, version 1) as JSON (`project`, `fromProject`); it
+  reads and writes no file (`saveProject`/`loadProject` of `io/document_storage.*` do).
+  `elements.*` owns the element table (`Element`, `elements()`, `element()`), whose colors are plain
+  channels (`Rgb`): the model uses Qt Core only, and the UI makes a `QColor` of one (`toColor` in
+  `ui/theme.h`). `xyz.cpp` holds the XYZ dialect (`Document::xyz`, `fromXyz`) and `bond_inference.cpp`
+  the bonds by distance (`Document::inferBonds`). `geometry.*` owns double-precision geometry,
   point groups and the passes that symmetrize a structure onto one.
   Atom references kept in a part's metadata (the eta groups of a ligand, `Part::hapto`) go through typed
   accessors, and `Document::remove`/`renameIds`/`validate` keep them like any other reference.
@@ -36,20 +41,30 @@ by responsibility, with paired headers and implementations in the same directory
   call these; a widget holds no such rule of its own. `editor_session.*` owns document edits, candidates and undo for both GUI and MCP,
   and the revision that stale checks and the MCP `revision` compare (never serialize documents for that).
   `atom_properties.*` shares atom-property edits and validation across panels and MCP.
-  `chemistry.*` uses the Open Babel C++ API; `chemistry_job.*` owns cancellable chemistry
+  `chemistry.*` uses the Open Babel C++ API (bond orders of XYZ structures, SMILES, refinement,
+  conformers); `babel_molecule.h` declares its conversion between a document and an Open Babel
+  molecule (`toOB`, `fromOB`) for `io/babel_io.cpp`, the only other file that includes it. Editing reads
+  no structure file: the format readers are in `src/io/`, and what editing needs of a residue's name
+  is in `peptide.*` (`polymerResidue`, `waterResidue`). `chemistry_job.*` owns cancellable chemistry
   processes, stale-result checks and candidate application, including runs of the external `xtb`
   (`xtb.*`: its input, `$fix` of fixed atoms and reading `xtbopt.xyz`; the program comes from
   Preferences `xtb/executable`, never from MCP).
   `stereochemistry.*` optionally uses native RDKit for CIP and residue recognition.
   `coordinates.*` implements coordinate edits, structure replacement and Z-matrices.
 - `src/io/`: `structure_io.*` routes project, XYZ, NWChem, Gaussian and native Open Babel
-  import/export, with the notes of what an NWChem input holds that was not imported
+  import/export (`babel_io.*`: the formats read and written through the Open Babel API, mmCIF atoms
+  made a molecule the same way, and the SMILES of a MOL/SDF file; `pdb.*`: what a PDB entry holds and
+  the records of a selection, `MacromoleculeSelection`; `mmcif.*`: PDBx/mmCIF entries and the blocks of
+  any CIF file; `crystal.*`: small-molecule crystal structures of CIF files and their molecules), with
+  the notes of what an NWChem input holds that was not imported
   (`importStructureWithNotes`), and the file an NEB end is read from (`nebEndFromFile`: which files are
   logs, the last structure of a structure file, the 128 MiB limit; the GUI reads logs through its
-  cancellable `ResultLoader` and `nebEndFromLog`). `document_storage.*` owns project persistence, recent files and locked
+  cancellable `ResultLoader` and `nebEndFromLog`). `document_storage.*` owns project persistence (`saveProject`,
+  `loadProject`: the project file of a document), recent files and locked
   autosave/recovery copies. `file_download.*` owns cancellable, atomic file transfers;
   `pdb_download.*` owns PDB identifiers/URLs and `pubchem.*` the query, cache naming and 3D-to-2D fallback.
-  These services use Qt Network without widgets; recovery choices, progress and file dialogs stay in the UI.
+  The download services use Qt Network without widgets; recovery choices, progress and file dialogs stay in
+  the UI.
 - `src/nwchem/`: `nwchem.*` owns computational setting specifications, defaults, presets and applicability
   (also of the sections of "2 計算条件": `NwchemSection` with its keys, and `nwchemSectionUse`, whose
   result the panel puts into words; never compare translated text),
@@ -75,12 +90,31 @@ by responsibility, with paired headers and implementations in the same directory
   that read and save what Preferences keep of it (the execution settings of new documents, the remote
   destinations, the preparation lines and header templates of job scripts) and the snapshot of all of
   it, `ExecutionEnvironment`, with its one loader `executionEnvironment()`.
-  `nwchem_execution.*` validates launch settings (each `ExecutionCheck` names its setting by
-  `key`; find a check by that, not by its label), saves immutable run bundles
-  (with `job.sh` for runs on another computer) and controls cancellable NWChem processes:
-  as a child process, or through a supervisor (`runJobMain`, the executable's `--run-job <job>`
-  mode) that outlives the window and is followed and stopped through `run.json` and `stop.request`.
-  Its checks and generators (`validateExecution`, `executionPlan`, `executionPreviewPlan`,
+  Running a calculation from this computer is one file per responsibility, and `nwchem_execution.h`
+  only includes them all for code outside this folder (files here include what they use):
+  `execution_settings.*` owns the launch settings of a document (defaults, ranges, getters and setters),
+  the paths they name (`absolutePath`, `networkPath`, `untrustedNetworkPath`) and their checks
+  (`validateExecution`: each `ExecutionCheck` names its setting by `key`; find a check by that, not by
+  its label). `execution_plan.*` owns the plan of a job (`ExecutionPlan`, `executionPlan`,
+  `executionPreviewPlan`), the command shown for it (`executionCommand`) and the immutable run bundle
+  (`saveExecutionBundle`). `job_script.*` owns `job.sh` for runs on another computer
+  (`executionJobScript`), the header templates of schedulers with their placeholders
+  (`defaultJobHeader`, `jobHeaderErrors`, `renderJobHeader`), the submit command as texts show it
+  (`jobSubmitCommand`) and the preview of a remote job (`remoteJobPreview`). `run_process.*` owns the
+  processes of a run as its record names them (`executionProcessIdentity`, `executionProcessGone`,
+  `executionRunGone`, `runSupervised`) and the request to stop one (`requestRunStop`).
+  `nwchem_run.*` owns `NwchemRun`, which controls a cancellable NWChem process:
+  as a child process, or through a supervisor (`run_supervisor.*`: `runJobMain`, the executable's
+  `--run-job <job>` mode, and `runSupervisorProgram`) that outlives the window and is followed and
+  stopped through `run.json` and `stop.request`. `execution_detail.h` declares the few helpers these
+  files share (shell quoting, control characters, the job root, the stop request), each defined once.
+  Runs on a remote destination are split the same way, with `remote_execution.h` including them all:
+  `remote_host.*` (the destinations `RemoteHost`, their checks and words), `remote_shell.*` (internal:
+  scripts and replies over the ssh and scp of this computer), `remote_supervisor.*` (`remoteJobMain`,
+  which copies a job there, submits, follows and fetches it, and `resumeRemoteRun`), `remote_run.*`
+  (what the record of a remote run says: `remoteRun`, `remoteRunText`) and `remote_probe.*`
+  (`RemoteProbe`, "接続を確認").
+  The checks and generators (`validateExecution`, `executionPlan`, `executionPreviewPlan`,
   `executionJobScript`, `saveExecutionBundle`, `untrustedNetworkPath`; `remoteJobPreview`) take the
   `ExecutionEnvironment` as an argument and read no preference themselves, nor does anything they
   call: the argument defaults to the loader for single calls, and `NwchemRun::start`, the queue
@@ -197,7 +231,12 @@ by responsibility, with paired headers and implementations in the same directory
   MainWindow or one another through friendship. Playback kind is explicit, independent of timer intervals.
 - `src/mcp/`: `server.*` implements the MCP JSON-RPC server (protocols 2026-07-28
   and legacy 2025-11-25) with document tools, candidates and undo; editor hooks
-  let it operate a GUI document, otherwise it owns a headless one. `headless.*`
+  let it operate a GUI document, otherwise it owns a headless one. `server.cpp` keeps the protocol,
+  the Tasks extension, resources and dispatch; the other parts of `McpServer` are
+  `document_adapter.cpp` (the document behind the tools: the editor's or its own session, summaries,
+  edits with MCP's size limit) and `document_tools.cpp` (the registrations of the tools with their
+  handlers), with `json_schema.*` (the schemas of tools and their validator), `prompts.*` (the prompt
+  catalogue) and `server_detail.h` (what those files share) internal to this folder. `headless.*`
   adds NWChem runs (a `RunSession` of its own) and result loading to `--mcp`; `tools.*` holds tool
   definitions and result views shared with `mcp_gui.*`; `policy.*` holds the
   command-line access policy (protected execution settings, allowed directories).
@@ -210,7 +249,9 @@ is an interface aggregate of `molforma_model`, `molforma_editing`, `molforma_res
 `molforma_nwchem` and `molforma_io`. Dependencies flow from io to nwchem, from nwchem
 to editing/results, and from editing/results to model, then from model to the project-schema adapter
 and `molforma_foundation`. All layers except project may use foundation. Only `molforma_ui` links
-Qt Widgets; core libraries use Qt Core/Gui, with Qt Network private to io. `molforma_ui` contains ui and links to
+Qt Widgets; foundation, project, model and results use Qt Core alone, `molforma_editing` links Qt Gui
+for the undo stack of `EditorSession` (`QUndoStack`; the layers above get it from there), and Qt
+Network is private to io. Open Babel is linked by editing, nwchem, io and ui only. `molforma_ui` contains ui and links to
 core and mcp; `molforma_mcp` contains mcp and links to core. `cmake/CheckLayers.cmake`
 checks source-header dependency directions during configuration and in CTest.
 

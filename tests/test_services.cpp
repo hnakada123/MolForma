@@ -593,6 +593,27 @@ class ServicesTest : public QObject {
     // The checks and generators of a run take the machine-wide environment from the snapshot they are
     // given and read nothing from the Preferences: what only the snapshot holds shows in their results,
     // what only the Preferences hold does not.
+    // The submit command of a job script has one spelling: the command shown for a remote plan ends its
+    // ssh line with the text of jobSubmitCommand.
+    void submitCommandHasOneSpelling() {
+        QCOMPARE(jobSubmitCommand("slurm"), QString("sbatch job.sh"));
+        QCOMPARE(jobSubmitCommand("pbs"), QString("qsub job.sh"));
+        QCOMPARE(jobSubmitCommand("shell"), QString("nohup ./job.sh &"));
+        for (const auto *scheduler : {"slurm", "pbs", "shell"}) {
+            RemoteHost host;
+            host.name = "cluster";
+            host.host = "user@login";
+            host.scheduler = scheduler;
+            ExecutionPlan plan;
+            plan.directory = "/jobs/water-1";
+            plan.program = "nwchem";
+            plan.arguments = {"input.nw"};
+            plan.manifest["remote"] = QJsonObject{{"host", host.json()}};
+            QVERIFY2(executionCommand(plan).contains("'cd ~/molforma-jobs/water-1 && " +
+                                                     jobSubmitCommand(scheduler) + "'\n# job.sh: "),
+                     scheduler);
+        }
+    }
     void executionUsesTheEnvironmentItIsGiven() {
         QTemporaryDir jobs;
         auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n");
@@ -962,7 +983,7 @@ class ServicesTest : public QObject {
         d.envelope["future"] = QJsonObject{{"value", 42}};
         const auto path = home.filePath("project.molforma.json");
         storage.save(d, path);
-        QCOMPARE(Document::load(path).project(), d.project());
+        QCOMPARE(loadProject(path).project(), d.project());
         QCOMPARE(storage.path(), path);
         QCOMPARE(storage.recentFiles(), QStringList{path});
         storage.startAutosave();

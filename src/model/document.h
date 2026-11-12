@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "foundation/error.h"
+#include "model/elements.h"
 #include <Eigen/Core>
-#include <QColor>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMap>
@@ -96,17 +96,6 @@ struct PointCharge {
     static PointCharge fromJson(const QJsonObject &o);
     bool operator==(const PointCharge &) const = default;
 };
-struct Element {
-    QString symbol;
-    int number;
-    double mass, radius;
-    QColor color;
-    QString nameJa, nameEn;
-    QString name() const; // In the interface language.
-};
-const QVector<Element> &elements();
-const Element &element(const QString &symbol);
-
 struct Document {
     QVector<Atom> atoms;
     QVector<Bond> bonds;
@@ -152,10 +141,10 @@ struct Document {
     static Document fromJson(const QJsonObject &o);
     QJsonObject project() const;
     static Document fromProject(const QJsonObject &o);
-    void save(const QString &path) const;
-    static Document load(const QString &path);
+    // The XYZ dialect (xyz.cpp): reading infers the bonds.
     QString xyz() const;
     static Document fromXyz(const QString &text);
+    // Single bonds by distance and covalent radii (bond_inference.cpp).
     void inferBonds();
 };
 } // namespace mf

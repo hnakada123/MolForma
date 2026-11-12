@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/sequence_track.h"
-#include "editing/pdb.h"
 #include "editing/peptide.h"
 #include "foundation/i18n.h"
 #include "model/settings.h"

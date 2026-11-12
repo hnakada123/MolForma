@@ -54,7 +54,7 @@ struct RunSummary {
     QString energyMethod, energySource; // As stored: see historyEnergyMethod; final|frequency_reference|…
     bool normalTermination = false;     // Whether NWChem printed its normal end.
 };
-// The part of a record about a run on another computer (run.json "remote", see remote_execution.h).
+// The part of a record about a run on another computer (run.json "remote", see remote_run.h).
 struct RunRemote {
     QString destination, scheduler; // The destination as it was when the job was saved.
     QString job, phase, state;      // The job there, how far its supervisor has come, how the job stands.

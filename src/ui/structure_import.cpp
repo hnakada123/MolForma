@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/structure_import.h"
-#include "editing/crystal.h"
-#include "editing/mmcif.h"
 #include "foundation/i18n.h"
 #include "foundation/structure_file.h"
+#include "io/crystal.h"
+#include "io/mmcif.h"
 #include "io/structure_io.h"
 #include <QCheckBox>
 #include <QComboBox>

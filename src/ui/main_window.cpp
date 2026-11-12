@@ -6,6 +6,7 @@
 #include "editing/stereochemistry.h"
 #include "foundation/files.h"
 #include "foundation/i18n.h"
+#include "io/babel_io.h"
 #include "io/structure_io.h"
 #include "model/settings.h"
 #include "nwchem/history.h"

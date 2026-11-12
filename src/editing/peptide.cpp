@@ -41,6 +41,10 @@ bool polymerResidue(const Residue &r) {
     return (r.atoms.contains("N") && r.atoms.contains("CA") && r.atoms.contains("C")) ||
            r.atoms.contains("C1'");
 }
+bool waterResidue(const QString &code) {
+    static const QSet<QString> waters{"HOH", "WAT", "H2O", "DOD", "D2O", "TIP", "TIP3", "TIP4", "SPC", "SOL"};
+    return waters.contains(code);
+}
 QString residueForAtom(const Document &d, const QString &id) {
     for (const auto &r : d.residues)
         for (const auto &a : r.atoms)

@@ -4,6 +4,7 @@
 #include "editing/operations.h"
 #include "foundation/files.h"
 #include "foundation/i18n.h"
+#include "io/document_storage.h"
 #include "io/structure_io.h"
 #include "nwchem/input_builder.h"
 #include "nwchem/nwchem.h"
@@ -2275,7 +2276,7 @@ class CalculationTest : public QObject {
         QTemporaryDir files;
         QVERIFY(files.isValid());
         const auto path = files.filePath("test.molforma.json");
-        water().save(path);
+        saveProject(water(), path);
         MainWindow w;
         w.loadPath(path);
         w.findChild<QTabWidget *>("workspaceTabs")->setCurrentIndex(1);

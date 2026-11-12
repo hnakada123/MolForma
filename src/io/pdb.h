@@ -9,7 +9,6 @@ namespace mf {
 // The residues of an entry: polymer chains (proteins and nucleic acids, with their modified residues), the
 // other hetero groups (ligands, ions, sugars) and water.
 enum class ResidueKind { Polymer, Ligand, Water };
-bool waterResidue(const QString &code);
 struct MacromoleculeChain {
     QString id, description; // The molecule's name, where the file gives it (COMPND, _entity).
     int residues = 0;        // Of the polymer.

@@ -10,6 +10,10 @@
 #include <vector>
 
 namespace mf {
+// The project file (.molforma.json) of a document. Saving checks the document first (Document::validate)
+// and replaces the file in one step; loading fails for a file that is no version-1 project.
+void saveProject(const Document &document, const QString &path);
+Document loadProject(const QString &path);
 struct RecoveryCopy {
     Document document;
     QString file, origin, time;

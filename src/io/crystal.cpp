@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-#include "editing/crystal.h"
+#include "io/crystal.h"
 #include "editing/chemistry.h"
-#include "editing/mmcif.h"
 #include "foundation/i18n.h"
+#include "io/mmcif.h"
 #include <QRegularExpression>
 #include <algorithm>
 #include <cmath>

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "foundation/files.h"
 #include "foundation/i18n.h"
+#include "io/document_storage.h"
 #include "model/units.h"
+#include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_output.h"
 #include "nwchem/result_files.h"
 #include "results/molden_orbitals.h"
@@ -542,7 +544,7 @@ class OutputTest : public QObject {
             verifyCubeValues(d, QDir(folder).filePath(output[1]), QDir(folder).filePath(output[0]));
             if (QTest::currentTestFailed())
                 return;
-            d.save(root + '/' + name + ".molforma.json");
+            saveProject(d, root + '/' + name + ".molforma.json");
             writeFile(root + '/' + name + "-directory.txt", folder.toUtf8());
         };
         runCase(water(), "hf_density");

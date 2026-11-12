@@ -3,7 +3,6 @@
 #include "editing/coordinates.h"
 #include "editing/coordination.h"
 #include "editing/editor_session.h"
-#include "editing/mmcif.h"
 #include "editing/operations.h"
 #include "editing/peptide.h"
 #include "editing/site.h"
@@ -12,6 +11,9 @@
 #include "foundation/files.h"
 #include "foundation/structure_file.h"
 #include "gzip.h"
+#include "io/babel_io.h"
+#include "io/document_storage.h"
+#include "io/mmcif.h"
 #include "io/structure_io.h"
 #include "model/geometry.h"
 #include "model/topology.h"
@@ -223,10 +225,13 @@ class CoreTest : public QObject {
         QCOMPARE(elements().size(), 118);
         QCOMPARE(elements().first().symbol, QString("H"));
         QCOMPARE(elements().last().symbol, QString("Og"));
+        // The colors are plain channels of the model, read from "#rrggbb".
+        QCOMPARE(element("O").color, (Rgb{0xd3, 0x3c, 0x32}));
+        QCOMPARE(element("H").color, (Rgb{0xf7, 0xf7, 0xf7}));
         for (int i = 0; i < elements().size(); ++i) {
             const auto &e = elements()[i];
             QCOMPARE(e.number, i + 1);
-            QVERIFY(e.mass > 0 && e.radius > 0 && e.color.isValid());
+            QVERIFY(e.mass > 0 && e.radius > 0);
             QVERIFY(!e.nameJa.isEmpty() && !e.nameEn.isEmpty());
             auto d = Document::fromXyz(QString("1\nelement\n%1 1.2 -3.4 5.6\n").arg(e.symbol));
             d.envelope["custom"] = "preserved";
@@ -1033,7 +1038,7 @@ class CoreTest : public QObject {
         writeFile(single, "2\none\nH 0 0 0\nH 0 0 0.7\n");
         QVERIFY((nebEndFromFile(single).atoms[1].position - Vec(0, 0, 0.7)).norm() < 1e-12);
         const auto project = dir.filePath("end.molforma.json");
-        Document::fromXyz("1\nNe\nNe 1 2 3\n").save(project);
+        saveProject(Document::fromXyz("1\nNe\nNe 1 2 3\n"), project);
         QVERIFY(!nebEndFileIsLog(project));
         QVERIFY((nebEndFromFile(project).atoms[0].position - Vec(1, 2, 3)).norm() < 1e-12);
         // The last structure of a log.
@@ -1140,7 +1145,7 @@ class CoreTest : public QObject {
                                {"sn2_reactant", "CH3ClF", 6, -1, 1, "task dft optimize"},
                                {"tms_benzene", "C9H14Si", 24, 0, 1, "task dft optimize"}};
         for (const auto &s : samples) {
-            const auto d = Document::load(QString(RECIPES_DIR) + "/" + s.name + ".molforma.json");
+            const auto d = loadProject(QString(RECIPES_DIR) + "/" + s.name + ".molforma.json");
             QVERIFY2(d.formula() == s.formula, s.name);
             QVERIFY2(d.atoms.size() == s.atoms, s.name);
             QVERIFY2(d.charge == s.charge, s.name);
@@ -1150,8 +1155,8 @@ class CoreTest : public QObject {
             QVERIFY2(nwchemInput(d).contains(s.input), s.name);
             QVERIFY2(!d.data.contains("nwchem_execution"), s.name); // No local run settings or paths.
         }
-        QCOMPARE(Document::load(RECIPES_DIR "/lactic_R.molforma.json").atoms[0].stereo, QString("R"));
-        QCOMPARE(Document::load(RECIPES_DIR "/lactic_S.molforma.json").atoms[0].stereo, QString("S"));
+        QCOMPARE(loadProject(RECIPES_DIR "/lactic_R.molforma.json").atoms[0].stereo, QString("R"));
+        QCOMPARE(loadProject(RECIPES_DIR "/lactic_S.molforma.json").atoms[0].stereo, QString("S"));
         // The part of recipe 16 replaces a hydrogen of benzene; the 2D file of recipe 4 has no hydrogens.
         QFile file(RECIPES_DIR "/trimethylsilyl.molforma-part.json");
         QVERIFY(file.open(QIODevice::ReadOnly));
@@ -1169,10 +1174,10 @@ class CoreTest : public QObject {
     }
     void projectRoundTrip() {
         for (auto name : {"benzoic_acid", "co_en", "ala_gly_ser", "water_dimer_counterpoise"}) {
-            auto d = Document::load(QString(FIXTURE_DIR) + "/" + name + ".molforma.json");
+            auto d = loadProject(QString(FIXTURE_DIR) + "/" + name + ".molforma.json");
             QTemporaryDir temp;
             QString file = temp.filePath("test.molforma.json");
-            d.save(file);
+            saveProject(d, file);
             const auto saved = parseJson(readFile(file));
             QCOMPARE(saved["format"].toString(), QString("molforma-project"));
             QCOMPARE(saved["version"].toInt(), 1);
@@ -1183,7 +1188,7 @@ class CoreTest : public QObject {
             QCOMPARE(saved["document"].toObject(),
                      parseJson(readFile(QString(FIXTURE_DIR) + "/" + name + ".molforma.json"))["document"]
                          .toObject());
-            auto copy = Document::load(file);
+            auto copy = loadProject(file);
             QCOMPARE(copy.ids(), d.ids());
             QCOMPARE(copy.bonds.size(), d.bonds.size());
             QCOMPARE(copy.toJson()["residues"], d.toJson()["residues"]);
@@ -1202,7 +1207,7 @@ class CoreTest : public QObject {
     }
     void residueValidationAtEveryBoundary() {
         QFETCH(QString, problem);
-        auto d = Document::load(QString(FIXTURE_DIR) + "/ala_gly_ser.molforma.json");
+        auto d = loadProject(QString(FIXTURE_DIR) + "/ala_gly_ser.molforma.json");
         d.envelope["future_field"] = QJsonObject{{"preserved", true}};
         QVERIFY(d.validate().isEmpty()); // Populate the memo before changing only residue/chain data.
         auto invalid = d;
@@ -1224,11 +1229,11 @@ class CoreTest : public QObject {
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, Document::fromProject(invalid.project()));
         QTemporaryDir tmp;
         const auto path = tmp.filePath("project.molforma.json");
-        d.save(path);
+        saveProject(d, path);
         const auto saved = readFile(path);
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, invalid.save(path));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, saveProject(invalid, path));
         QCOMPARE(readFile(path), saved);
-        QCOMPARE(Document::load(path).project(), d.project());
+        QCOMPARE(loadProject(path).project(), d.project());
         EditorSession session;
         session.reset(d);
         const auto revision = session.revision();
@@ -1301,7 +1306,7 @@ class CoreTest : public QObject {
         // The practice files of the recipes are in the current format: the typed document writes back what
         // it read.
         for (const auto &file : QDir(RECIPES_DIR).entryInfoList({"*.molforma.json"}))
-            QVERIFY2(Document::load(file.filePath()).project() == parseJson(readFile(file.filePath())),
+            QVERIFY2(loadProject(file.filePath()).project() == parseJson(readFile(file.filePath())),
                      qPrintable(file.fileName()));
     }
     void structureReferences() {
