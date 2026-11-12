@@ -55,8 +55,12 @@ Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#inc
   editing's undo stack only.
 - `molforma_ui` — `src/ui`, links core and mcp (McpGui reuses the shared tool definitions and policy).
   `main_window.*` hosts the editor, with `molecule_panel.*` + `molecule_properties.cpp` as its molecular
-  workspace; `editor_chrome.*` holds the header (workflow steps that
-  switch the hidden tab bar), tool rail, flow layout and 3D-view overlays. The numbered tabs are "1 分子" (the 3D
+  workspace; its dialogs are files of their own (`preferences_dialog.*`, `xtb_dialog.*`, and `help_dialogs.*` for
+  the manual viewer and the shortcuts window), opened by thin members of the window. `editor_chrome.*` holds the
+  header (workflow steps that switch the hidden tab bar), tool rail and 3D-view overlays; the rest of the chrome is
+  one file per responsibility, included by what uses it: `theme.*` (every color and the style rules),
+  `line_icons.*`, `chrome_layouts.*` (flow layout, form layout, toolbar fit), `settings_widgets.*` (cards and
+  controls of the settings tabs), `calculation_summary.*` and `view_controls.*`. The numbered tabs are "1 分子" (the 3D
   view with the `coordinates_panel.*` table under it or in its place), "2 計算条件" (`calculation_panel.*`; each
   section opens its advanced overrides as "詳細設定"), "3 実行設定" (`execution_panel.*`, settings only, with the form `execution_form.*` that Preferences shares; the run
   state and log are its run panel below the tabs, a `QSplitter` with them so that it covers nothing, opened from the header run pill) and "4 入力プレビュー"
@@ -73,7 +77,8 @@ Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#inc
   `document_adapter.cpp` the document behind its tools and `document_tools.cpp` the tools themselves
   (`json_schema.*`: their schemas and validator; `prompts.*`: the prompt catalogue). `headless.*` adds NWChem runs
   and result loading to `--mcp`, `tools.*` holds
-  definitions/result views shared with `McpGui`, and `policy.*` holds the command-line access policy.
+  definitions/result views shared with `McpGui`, `policy.*` holds the command-line access policy and
+  `execution_trust.*` which values of the protected execution settings a run may use without asking.
 - `molforma` executable (`src/main.cpp`) links all of them and has several modes selected by argv:
   normal GUI, `--screenshot`, `--mcp` (headless, `QCoreApplication`), `--mcp-gui` (MCP driving a real
   `MainWindow` via `src/ui/mcp_gui.*`), and the internal `--worker` / `--result-worker <in> <out>` /
@@ -100,8 +105,10 @@ Key cross-cutting designs:
   mirrors this: `McpEditor` hooks (`mcp/server.h`) expose `document`/`candidate`/`edit`/`history`, and without hooks
   the server owns its own headless document and undo stack. Fixed atoms must never move.
 - **MCP access policy**: MCP must not choose the NWChem executable, launcher or environment overrides (only
-  `--mcp-allow-execution-settings` permits it). `MainWindow::mcp` records the values last changed outside MCP;
-  runs started over MCP must match them. `--mcp-allow-dir` confines MCP file paths, including paths reached through GUI actions
+  `--mcp-allow-execution-settings` permits it). `ExecutionTrust` (`mcp/execution_trust.*`, no widgets; the window
+  holds one and tells it of every change) keeps the values the user entered in MolForma or confirmed before a run;
+  runs started over MCP must use those or the ones saved in Preferences (`McpHeadless` asks one that stays empty).
+  `--mcp-allow-dir` confines MCP file paths, including paths reached through GUI actions
   (`MainWindow::checkMcpPath`). Widgets with `mcpExecutionSetting` or `mcpProtected` are refused by
   `McpGui`; `mcpPath` widgets only while `--mcp-allow-dir` is set. Edits made or confirmed over MCP
   never make execution settings trusted, even on undo/redo. Panels do not hold the policy: they ask

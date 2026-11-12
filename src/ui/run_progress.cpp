@@ -3,7 +3,7 @@
 #include "nwchem/nwchem_plan.h"
 #include "nwchem/run_record.h"
 #include "results/result_summary.h"
-#include "ui/editor_chrome.h"
+#include "ui/theme.h"
 #include <QtWidgets>
 
 namespace mf {

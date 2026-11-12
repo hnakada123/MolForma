@@ -2,7 +2,6 @@
 #include "ui/result_charts.h"
 #include "model/units.h"
 #include "results/molden_orbitals.h"
-#include "ui/editor_chrome.h"
 #include "ui/theme.h"
 #include <QContextMenuEvent>
 #include <QHelpEvent>

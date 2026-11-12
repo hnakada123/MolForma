@@ -8,9 +8,11 @@
 #include "model/geometry.h"
 #include "model/settings.h"
 #include "nwchem/nwchem_geometry.h"
-#include "ui/editor_chrome.h"
+#include "ui/chrome_layouts.h"
 #include "ui/editor_context.h"
+#include "ui/line_icons.h"
 #include "ui/periodic_table.h"
+#include "ui/settings_widgets.h"
 #include "ui/structure_import.h"
 #include "ui/theme.h"
 #include <QtWidgets>

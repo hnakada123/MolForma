@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/remote_hosts_dialog.h"
 #include "nwchem/execution_environment.h"
-#include "ui/editor_chrome.h"
+#include "ui/chrome_layouts.h"
+#include "ui/line_icons.h"
+#include "ui/theme.h"
 #include <QtWidgets>
 
 namespace mf {

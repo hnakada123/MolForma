@@ -3,7 +3,9 @@
 #include "mcp/policy.h"
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/remote_execution.h"
-#include "ui/editor_chrome.h"
+#include "ui/line_icons.h"
+#include "ui/settings_widgets.h"
+#include "ui/theme.h"
 #include <QtWidgets>
 
 namespace mf {

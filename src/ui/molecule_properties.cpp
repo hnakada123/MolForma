@@ -11,8 +11,10 @@
 #include "foundation/i18n.h"
 #include "model/settings.h"
 #include "nwchem/nwchem.h"
-#include "ui/editor_chrome.h"
+#include "ui/chrome_layouts.h"
 #include "ui/molecule_panel.h"
+#include "ui/settings_widgets.h"
+#include "ui/theme.h"
 #include <QJsonDocument>
 #include <QtWidgets>
 namespace mf {

@@ -2,7 +2,6 @@
 #include "ui/template_delegate.h"
 #include "foundation/i18n.h"
 #include "model/document.h"
-#include "ui/editor_chrome.h"
 #include "ui/theme.h"
 #include <QApplication>
 #include <QFontMetrics>

@@ -4,6 +4,7 @@
 #include "editing/editor_session.h"
 #include "editing/xtb.h"
 #include "io/document_storage.h"
+#include "mcp/execution_trust.h"
 #include "mcp/policy.h"
 #include "nwchem/run_session.h"
 #include "ui/editor_context.h"
@@ -221,11 +222,10 @@ class MainWindow : public QMainWindow,
         const McpPolicy *policy = nullptr;
         int depth = 0; // > 0 while an MCP request or GUI command is being applied
     } mcp;
-    // Values of the executable, launcher, environment and additional NWChem input (per key of
-    // protectedExecution) that the user entered in MolForma or confirmed before a run. Values read
-    // from a project, an autosave copy or the history, and those set over MCP, count only once
-    // confirmed; those saved in Preferences always count.
-    QHash<QString, QList<QJsonValue>> trustedExecution;
+    // Which values of the executable, launcher, environment and additional NWChem input a run may use
+    // without asking (mcp/execution_trust.h): the window tells it of every change of the document and
+    // of what the user confirmed before a run.
+    ExecutionTrust executionTrust;
     QMenu *recentMenu = nullptr;
     QUndoStack &undo = session.history();
     QSettings settings;
@@ -275,8 +275,6 @@ class MainWindow : public QMainWindow,
     QList<QWidget *> workspacePanels() const;
     void refreshPanels();
     void announceHistory(const QString &verb, const QString &name, const Document &from, const Document &to);
-    void trackExecution(const Document &before, const Document &after);
-    void trustExecution(const QJsonObject &values);
     void newDocument();
     void open();
     // Downloads a PDB entry by its ID from RCSB PDB into the cache folder and opens it.

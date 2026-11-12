@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
+#include "mcp/execution_trust.h"
 #include "mcp/policy.h"
 #include "mcp/server.h"
 #include "nwchem/run_session.h"
@@ -26,8 +27,10 @@ class McpHeadless : public QObject {
     RunSession session;
     NwchemRun &run = session.run();
     NwchemQueue &queue = session.queue();
-    // Without a GUI only the user's saved defaults are trusted: MCP cannot pick another program.
+    // Without a GUI only the user's saved defaults are trusted: MCP cannot pick another program. Nothing
+    // is entered or confirmed here (every request is MCP's), so the trust itself stays empty.
     QJsonObject trusted;
+    const ExecutionTrust trust{};
     ResultData data;
     ResultLoader loader;
     QString loadMessage, loadAction, runWork, loadWork;

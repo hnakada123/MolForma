@@ -10,10 +10,13 @@
 #include "nwchem/result_files.h"
 #include "nwchem/run_diagnostics.h"
 #include "nwchem/run_record.h"
-#include "ui/editor_chrome.h"
+#include "ui/chrome_layouts.h"
 #include "ui/editor_context.h"
 #include "ui/energy_profile_dialog.h"
+#include "ui/line_icons.h"
 #include "ui/run_progress.h"
+#include "ui/settings_widgets.h"
+#include "ui/theme.h"
 #include <QtWidgets>
 #include <algorithm>
 

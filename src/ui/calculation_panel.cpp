@@ -8,10 +8,14 @@
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_output.h"
 #include "results/results.h"
+#include "ui/calculation_summary.h"
+#include "ui/chrome_layouts.h"
 #include "ui/diagnostics_list.h"
-#include "ui/editor_chrome.h"
 #include "ui/editor_context.h"
 #include "ui/input_highlighter.h"
+#include "ui/line_icons.h"
+#include "ui/settings_widgets.h"
+#include "ui/theme.h"
 #include <QtWidgets>
 #include <algorithm>
 

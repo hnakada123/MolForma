@@ -163,6 +163,12 @@ by responsibility, with paired headers and implementations in the same directory
   it, not from `ResultData::properties` or from table cells.
 - `src/ui/`: `main_window.*` owns the application window, project lifecycle, shared editor context and
   the session's `RunSession` (supervising, restoring and ending its runs; `main.cpp` asks the window).
+  The dialogs it opens are files of their own, functions that take the capabilities they use and a
+  parent, never the window: `preferences_dialog.*` ("環境設定"; the document's execution settings reach it
+  as a callback), `xtb_dialog.*` (`chooseXtbOptions` returns the chosen `XtbOptions`, the window runs
+  them) and `help_dialogs.*` (the manual viewer, which hands a practice file's link to a callback, the
+  shortcuts window, and `initManualResources` for the embedded manual and icon). The window keeps thin
+  members (`preferences`, `xtbDialog`, `showManual`, `showShortcuts`) for its menus.
   It implements the four capabilities of `editor_context.h`, which panels/dialogs receive (only those
   they use) with a separate widget parent; only composition/adapters (`main_window`,
   `workspace_controller`, `mcp_gui`) include MainWindow. `EditorContext` is the document: reading it and
@@ -179,7 +185,9 @@ by responsibility, with paired headers and implementations in the same directory
   (`nwchem/nwchem.h`: the memory is the execution's), and diagnostics carry their target.
   `ExecutionAccess` is the gate of a calculation as checks (`runCheck`: MCP's folders for a request of
   MCP, else none; `mayChooseExecutionSettings`; `mayConfirmExecution`: the user can be asked, a request
-  of MCP is refused; `untrustedExecution`, `trustCurrentExecution`); no panel sees the `McpPolicy`.
+  of MCP is refused; `untrustedExecution`, `trustCurrentExecution`: the window forwards both to its
+  `ExecutionTrust` of `mcp/execution_trust.*`, which it tells of every change of the document and who
+  made it); no panel sees the `McpPolicy`.
   Anything else one panel needs of another is a signal of the panel that asks, connected where the two
   are composed: do not add a method to these interfaces for one caller.
   The window holds the preferences store (`userPreferences()`, also handed to `DocumentStorage` for
@@ -203,8 +211,20 @@ by responsibility, with paired headers and implementations in the same directory
   table's requests itself (`CoordinatesPanel::sortRequested`, `tableRequested`, `fitRequested`), telling
   it when it stands in place of the 3D view (`setViewHidden`). `molecule_view.*` owns camera/input, Qt annotations and
   the QPainter fallback; `vtk_molecule_renderer.*` provides optional retained
-  native VTK/OpenGL rendering; both draw bonds and isosurfaces by `bond_style.h`. `editor_chrome.*` holds the window header, tool rail,
-  wrapping option bar layout, 3D-view overlays and palette-derived chrome colors.
+  native VTK/OpenGL rendering; both draw bonds and isosurfaces by `bond_style.h`.
+  `editor_chrome.*` holds the window chrome proper: the header (`HeaderBar`), the
+  buttons of the tool rail (`ToolRailButton`) and the overlays of a 3D view (`OverlayHost`). What the
+  panels share besides is one file per responsibility, and a file includes those it uses (no header
+  re-exports the others): `theme.*` owns every color and the style rules (an element's color as a
+  `QColor`, the colors derived from the palette, `ChromeColors`, `chromeRules` with its tokens, the
+  rules shared by the tabs `settingsRules`, `repolish`); `line_icons.*` the stroked icons (`lineIcon`,
+  `stepIcon`, `changeIcon`); `chrome_layouts.*` the layouts (`FlowLayout`, `FormLayout`, `ToolbarFit`
+  with `setIconOnly`); `settings_widgets.*` the widgets of the settings tabs (`ChoiceButtons`,
+  `NavList`, `SettingsCard`, `Disclosure`, `StatusCard`, `ElidedLabel`, link, log and copy buttons);
+  `calculation_summary.*` the calculation in brief (`CalculationSummary`, `calculationBrief`: the one
+  file here that asks the NWChem validation); `view_controls.*` the controls bound to a
+  `MoleculeView` (`ViewControls`). The colors of run states stay with their labels in `run_progress.*`
+  (`pillColors`, `pillRules`).
   `template_delegate.*` renders and caches the palette's molecular thumbnails and
   tiles; `periodic_table.*` provides the element picker.
   The numbered tabs are "1 分子" through "4 入力プレビュー". `coordinates_panel.*`
@@ -240,6 +260,12 @@ by responsibility, with paired headers and implementations in the same directory
   adds NWChem runs (a `RunSession` of its own) and result loading to `--mcp`; `tools.*` holds tool
   definitions and result views shared with `mcp_gui.*`; `policy.*` holds the
   command-line access policy (protected execution settings, allowed directories).
+  `execution_trust.*` owns the trust of those protected settings (`ExecutionTrust`, no widgets and no
+  preference read): the values a run may use without asking are those the user entered in MolForma or
+  confirmed before a run, and those saved in Preferences, which the caller hands it; values of loads,
+  undo/redo and MCP count only once confirmed. The window keeps one for its session; `McpHeadless`,
+  where nothing is entered or confirmed, asks one that stays empty (`test_mcp
+  executionTrustCountsWhatTheUserEnteredOrConfirmed`).
   `stdio_transport.*` provides newline-delimited stdio transport. See `docs/mcp.md`.
 
 `src/main.cpp` is the entry point; `--mcp` runs the headless MCP server and

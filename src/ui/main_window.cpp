@@ -12,33 +12,30 @@
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_execution.h"
-#include "nwchem/remote_execution.h"
 #include "ui/calculation_panel.h"
 #include "ui/candidate_controls.h"
 #include "ui/conformer_set_dialog.h"
 #include "ui/coordinates_panel.h"
 #include "ui/editor_chrome.h"
-#include "ui/execution_form.h"
 #include "ui/execution_panel.h"
 #include "ui/figure_export.h"
+#include "ui/help_dialogs.h"
 #include "ui/history_panel.h"
 #include "ui/input_preview_panel.h"
+#include "ui/line_icons.h"
 #include "ui/molecule_panel.h"
 #include "ui/pdb_download.h"
+#include "ui/preferences_dialog.h"
 #include "ui/pubchem.h"
-#include "ui/remote_hosts_dialog.h"
 #include "ui/results_panel.h"
 #include "ui/setting_navigation.h"
 #include "ui/structure_import.h"
 #include "ui/theme.h"
 #include "ui/workspace_controller.h"
+#include "ui/xtb_dialog.h"
 #include <Eigen/Eigenvalues>
 #include <QJsonDocument>
 #include <QtWidgets>
-// Embedded manual and icon (docs/manual.qrc in this static library); outside namespace mf.
-static void initManualResources() {
-    Q_INIT_RESOURCE(manual);
-}
 namespace mf {
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), settings(userPreferences()), storage(settings), chemistry(session), runs(this) {
@@ -61,8 +58,12 @@ MainWindow::MainWindow(QWidget *parent)
     connect(&session, &EditorSession::changed, this, &MainWindow::refresh);
     connect(&session, &EditorSession::applied, this,
             [this](const Document &before, const Document &after, bool remote, EditorSession::Change change) {
-                if (!remote && change == EditorSession::Change::Edit)
-                    trackExecution(before, after);
+                using Origin = ExecutionTrust::Origin;
+                executionTrust.documentChanged(before, after,
+                                               change == EditorSession::Change::Reset     ? Origin::Load
+                                               : change == EditorSession::Change::History ? Origin::History
+                                               : remote || mcp.depth > 0                  ? Origin::Mcp
+                                                                                          : Origin::User);
                 moleculePage->pruneSelection(after);
             });
     connect(&session, &EditorSession::historyMoved, this,
@@ -111,32 +112,10 @@ void MainWindow::safe(const std::function<void()> &operation) {
         box.exec();
     }
 }
-void MainWindow::trackExecution(const Document &before, const Document &after) {
-    // Only the values an edit made in MolForma itself changes become trusted: never those of loads,
-    // undo/redo or MCP requests, nor the other values kept beside an edited one.
-    if (mcp.depth > 0)
-        return;
-    const auto old = protectedExecution(before), now = protectedExecution(after);
-    QJsonObject changed;
-    for (auto it = now.begin(); it != now.end(); ++it)
-        if (old[it.key()] != it.value())
-            changed[it.key()] = it.value();
-    trustExecution(changed);
-}
-void MainWindow::trustExecution(const QJsonObject &values) {
-    for (auto it = values.begin(); it != values.end(); ++it)
-        if (auto &known = trustedExecution[it.key()]; !known.contains(it.value()))
-            known.append(it.value());
-}
 QStringList MainWindow::untrustedExecution() const {
     Document preferred;
     applyExecutionPreferences(preferred);
-    const auto preferences = protectedExecution(preferred), current = protectedExecution(document());
-    QStringList keys;
-    for (auto it = current.begin(); it != current.end(); ++it)
-        if (it.value() != preferences[it.key()] && !trustedExecution.value(it.key()).contains(it.value()))
-            keys << it.key();
-    return keys;
+    return executionTrust.untrusted(document(), protectedExecution(preferred));
 }
 void MainWindow::checkMcpPath(const QString &path) const {
     if (mcp.policy && mcp.depth > 0)
@@ -298,7 +277,7 @@ void MainWindow::setRunPanelShown(bool shown) {
         runPanelAction->setChecked(shown);
 }
 void MainWindow::trustCurrentExecution() {
-    trustExecution(protectedExecution(document()));
+    executionTrust.confirm(document());
 }
 void MainWindow::buildUi() {
     auto *central = new QWidget;
@@ -1138,74 +1117,8 @@ void MainWindow::runXtb(const XtbOptions &options) {
     statusBar()->showMessage(tr("xTB（%1）で構造を最適化しています…").arg(xtbMethodName(options.method)));
 }
 void MainWindow::xtbDialog() {
-    if (hasCandidate() || chemistryRunning())
-        fail(tr("候補を確定・取消し、整形の終了後に実行してください。"));
-    QDialog dialog(this);
-    dialog.setObjectName("xtbDialog");
-    dialog.setWindowTitle(tr("xTBで構造を最適化"));
-    auto *layout = new QVBoxLayout(&dialog);
-    const auto program = xtbExecutable(settings.value(Preference::xtbExecutable).toString());
-    auto *intro = new QLabel(
-        tr("半経験的なGFN-xTB（xtbプログラム）で構造を最適化し、候補として表示します。金属錯体・配位結合を"
-           "含む構造も扱えます（Rnまで）。DFT計算の前の粗い整形に使います。電荷・多重度は「2 計算条件」の"
-           "値、固定原子は動かしません。外部点電荷は含めません。"));
-    intro->setWordWrap(true);
-    layout->addWidget(intro);
-    auto *found =
-        new QLabel(program.isEmpty() ? tr("xtbが見つかりません。「編集 → 環境設定」の「xTB実行ファイル」"
-                                          "で指定してください。")
-                                     : tr("実行ファイル: %1").arg(program));
-    found->setObjectName("xtbExecutable");
-    found->setWordWrap(true);
-    found->setTextFormat(Qt::PlainText);
-    found->setProperty("muted", true);
-    layout->addWidget(found);
-    auto *form = new QFormLayout;
-    layout->addLayout(form);
-    auto *method = new QComboBox;
-    method->setObjectName("xtbMethod");
-    for (const auto &key : xtbMethods())
-        method->addItem(xtbMethodName(key), key);
-    method->setToolTip(tr("GFN2-xTBが標準です。GFN-FFは力場で、大きな構造（数百原子以上）を速く整えます。"));
-    form->addRow(tr("手法"), method);
-    auto *level = new QComboBox;
-    level->setObjectName("xtbLevel");
-    for (const auto &key : xtbLevels())
-        level->addItem(xtbLevelName(key), key);
-    level->setCurrentIndex(level->findData("normal"));
-    form->addRow(tr("収束の基準"), level);
-    auto *solvent = new QComboBox;
-    solvent->setObjectName("xtbSolvent");
-    solvent->addItem(tr("なし（気相）"), QString());
-    for (const auto &name : xtbSolvents())
-        solvent->addItem(name, name);
-    solvent->setToolTip(tr("ALPB暗黙溶媒モデルの溶媒名（xtbの名前）です。"));
-    form->addRow(tr("溶媒（ALPB）"), solvent);
-    auto *selected = new QCheckBox(tr("選択した原子だけを動かす（ほかは固定）"));
-    selected->setObjectName("xtbSelectionOnly");
-    selected->setEnabled(!selection().isEmpty());
-    form->addRow(QString(), selected);
-    auto *state =
-        new QLabel(tr("電荷 %1・多重度 %2（「2 計算条件」）・%n 原子", nullptr, int(document().atoms.size()))
-                       .arg(document().charge)
-                       .arg(document().multiplicity));
-    state->setProperty("muted", true);
-    form->addRow(QString(), state);
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    buttons->button(QDialogButtonBox::Ok)->setText(tr("最適化"));
-    buttons->button(QDialogButtonBox::Ok)->setEnabled(!program.isEmpty());
-    layout->addWidget(buttons);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    if (dialog.exec() != QDialog::Accepted)
-        return;
-    XtbOptions options;
-    options.method = method->currentData().toString();
-    options.level = level->currentData().toString();
-    options.solvent = solvent->currentData().toString();
-    if (selected->isChecked())
-        options.moving = selection();
-    runXtb(options);
+    if (const auto options = chooseXtbOptions(this, *this, *this))
+        runXtb(*options);
 }
 ConformerSetDialog *MainWindow::conformerSetDialog() {
     if (!conformerSet)
@@ -1420,174 +1333,10 @@ void MainWindow::offerRecovery() {
     }
 }
 void MainWindow::showShortcuts() {
-    QDialog dialog(this);
-    dialog.setObjectName("shortcutsDialog");
-    dialog.setWindowTitle(tr("キーボードショートカット"));
-    dialog.resize(560, 600);
-    auto *layout = new QVBoxLayout(&dialog);
-    auto *table = new QTableWidget(0, 3);
-    table->setObjectName("shortcutsTable");
-    table->setHorizontalHeaderLabels({tr("キー"), tr("操作"), tr("有効な場所")});
-    table->verticalHeader()->hide();
-    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    table->horizontalHeader()->setStretchLastSection(true);
-    QList<QAction *> actions;
-    std::function<void(QMenu *)> collect = [&](QMenu *menu) {
-        for (auto *a : menu->actions()) {
-            if (a->menu())
-                collect(a->menu());
-            else if (!a->shortcut().isEmpty() && !actions.contains(a))
-                actions << a;
-        }
-    };
-    for (auto *a : menuBar()->actions())
-        if (a->menu())
-            collect(a->menu());
-    const auto row = [&](const QString &key, const QString &text, const QString &where) {
-        const int r = table->rowCount();
-        table->insertRow(r);
-        table->setItem(r, 0, new QTableWidgetItem(key));
-        table->setItem(r, 1, new QTableWidgetItem(text));
-        table->setItem(r, 2, new QTableWidgetItem(where));
-    };
-    for (auto *a : actions) {
-        QStringList keys;
-        for (const auto &k : a->shortcuts())
-            keys << k.toString(QKeySequence::NativeText);
-        // Undo/Redo name the next operation in the menu; the list names the command itself.
-        const auto text = a == undoAction   ? tr("元に戻す（候補があれば取消）")
-                          : a == redoAction ? tr("やり直す")
-                                            : QString(a->text()).remove('&');
-        row(keys.join(" / "), text,
-            a->shortcutContext() == Qt::WidgetWithChildrenShortcut ? tr("「1 分子」") : tr("全体", "where"));
-    }
-    for (const auto &[key, text] : {std::pair{tr("左ドラッグ"), tr("視点を回転（画面の縦・横軸まわり）")},
-                                    {tr("右ドラッグ"), tr("視点を平行移動")},
-                                    {tr("移動ツールで原子をドラッグ"), tr("原子の座標を動かす")},
-                                    {tr("ホイール"), tr("カーソル位置を中心に拡大・縮小")},
-                                    {tr("クリック"), tr("原子を選択（選択単位に従う）")},
-                                    {tr("Shift／Ctrl＋クリック"), tr("選択へ追加・解除（順番を保持）")},
-                                    {tr("Shift／Ctrlドラッグ"), tr("範囲選択（Ctrlは追加）")},
-                                    {"Ctrl+Tab", tr("次のタブ（タブ内にフォーカスがあるとき）")}})
-        row(key, text, tr("3D画面・タブ"));
-    table->resizeColumnsToContents();
-    layout->addWidget(table, 1);
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close);
-    layout->addWidget(buttons);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    dialog.exec();
+    shortcutsDialog(this, menuBar(), undoAction, redoAction);
 }
 void MainWindow::showManual() {
-    initManualResources();
-    QDialog dialog(this);
-    dialog.setObjectName("manualDialog");
-    dialog.setWindowTitle(tr("MolForma 操作ガイド・マニュアル"));
-    dialog.resize(900, 720);
-    auto *layout = new QVBoxLayout(&dialog);
-    auto *tips = new QLabel(
-        tr("左のパレットで部品・原子を選び、3D画面をクリックするかドロップして配置します。"
-           "左端の列でツールを切り替え、3D画面の上にツールの設定、下にクリックしたときの動作を表示します。"
-           "原子をクリックで選択、Shift／Ctrl＋クリックで順に追加し、2〜4原子で距離・角度・二面角を"
-           "測定できます。配位子・削除・整形などは「変更を確定」（Ctrl+Enter）で適用し、Escで"
-           "候補を取消、Ctrl+Zで確定済みの変更を戻します。計算は「計算 → 計算を実行」（F5）で"
-           "始めます。キー操作の一覧は「ヘルプ → キーボードショートカット一覧」にあります。"));
-    tips->setWordWrap(true);
-    layout->addWidget(tips);
-    auto *bar = new QHBoxLayout;
-    layout->addLayout(bar);
-    auto *pages = new QComboBox;
-    pages->setObjectName("manualPage");
-    // The English manual beside the Japanese one.
-    const QString docs = english() ? ":/docs/en/" : ":/docs/";
-    pages->addItem(tr("機能と操作（はじめに・各タブの説明）"), docs + "features.md");
-    pages->addItem(tr("題材から選ぶ実習（分子を組んで計算するまで）"), docs + "recipes.md");
-    pages->addItem(tr("MCPサーバー（AIクライアントからの操作）"), docs + "mcp.md");
-    auto *back = new QPushButton(tr("戻る"));
-    back->setObjectName("manualBack");
-    back->setEnabled(false);
-    bar->addWidget(back);
-    bar->addWidget(pages);
-    auto *find = new QLineEdit;
-    find->setObjectName("manualSearch");
-    find->setPlaceholderText(tr("検索（Enterで次へ）"));
-    find->setClearButtonEnabled(true);
-    bar->addWidget(find, 1);
-    auto *browser = new QTextBrowser;
-    browser->setObjectName("manualText");
-    layout->addWidget(browser, 1);
-    // Links are followed here: the practice files beside the recipes are used rather than shown.
-    browser->setOpenLinks(false);
-    connect(browser, &QTextBrowser::anchorClicked, &dialog, [this, browser, &dialog](const QUrl &url) {
-        if (url.scheme() != "qrc")
-            QDesktopServices::openUrl(url);
-        else if (!url.path().startsWith("/docs/recipes/samples/"))
-            browser->setSource(url);
-        else
-            safe([&] {
-                if (useSample(":" + url.path()))
-                    dialog.accept();
-            });
-    });
-    // Pages are shown by their resource URL, so links between them and their images resolve.
-    const auto show = [browser, pages] {
-        const auto path = pages->currentData().toString();
-        if (QFile::exists(path))
-            browser->setSource(QUrl("qrc" + path), QTextDocument::MarkdownResource);
-        else
-            browser->setPlainText(tr("マニュアルを読み込めません。"));
-    };
-    connect(back, &QPushButton::clicked, browser, &QTextBrowser::backward);
-    connect(browser, &QTextBrowser::backwardAvailable, back, &QPushButton::setEnabled);
-    // Screenshots in the recipes are wider than the page: they are shown smoothly scaled to its width
-    // (the document itself would scale them pixel by pixel).
-    const auto fitImages = [browser] {
-        auto *document = browser->document();
-        const int width = browser->viewport()->width() - 2 * int(document->documentMargin()) - 8;
-        const double ratio = browser->devicePixelRatioF();
-        QTextCursor cursor(document);
-        for (auto block = document->begin(); block.isValid(); block = block.next()) {
-            // Figures inside the steps of a list are indented (Markdown continuation paragraphs).
-            const auto format = block.blockFormat();
-            double indent = format.leftMargin() + format.indent() * document->indentWidth();
-            if (auto *list = block.textList())
-                indent += list->format().indent() * document->indentWidth();
-            const int fit = width - std::max(0, int(indent));
-            for (auto it = block.begin(); !it.atEnd(); ++it) {
-                const auto fragment = it.fragment();
-                if (!fragment.charFormat().isImageFormat())
-                    continue;
-                auto image = fragment.charFormat().toImageFormat();
-                const auto url = document->baseUrl().resolved(QUrl(image.name()));
-                QImage original(url.scheme() == "qrc" ? ":" + url.path() : url.toLocalFile());
-                if (original.isNull() || original.width() <= fit)
-                    continue;
-                auto fitted = original.scaledToWidth(int(fit * ratio), Qt::SmoothTransformation);
-                fitted.setDevicePixelRatio(ratio);
-                const QUrl name =
-                    document->baseUrl().resolved(QString("fitted/%1/%2").arg(fit).arg(image.name()));
-                document->addResource(QTextDocument::ImageResource, name, fitted);
-                image.setName(name.toString());
-                image.setWidth(fit);
-                image.setHeight(original.height() * double(fit) / original.width());
-                cursor.setPosition(fragment.position());
-                cursor.setPosition(fragment.position() + fragment.length(), QTextCursor::KeepAnchor);
-                cursor.setCharFormat(image);
-            }
-        }
-    };
-    connect(browser, &QTextBrowser::sourceChanged, &dialog, fitImages);
-    show();
-    connect(pages, &QComboBox::currentIndexChanged, &dialog, show);
-    connect(find, &QLineEdit::returnPressed, &dialog, [browser, find] {
-        if (!browser->find(find->text())) {
-            browser->moveCursor(QTextCursor::Start); // Wrap around.
-            browser->find(find->text());
-        }
-    });
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close);
-    layout->addWidget(buttons);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    dialog.exec();
+    manualDialog(this, *this, [this](const QString &resource) { return useSample(resource); });
 }
 void MainWindow::closeEvent(QCloseEvent *e) {
     bool keepRunning = false;
@@ -1678,189 +1427,6 @@ QString MainWindow::restoreRuns(bool withQueue) {
     return notes.join(' ');
 }
 void MainWindow::preferences() {
-    QDialog dialog(this);
-    dialog.setObjectName("preferencesDialog");
-    dialog.setProperty("mcpProtected", true); // Same protection as the executable fields in "3 実行設定".
-    dialog.setProperty("canvas", true);
-    dialog.setWindowTitle(tr("環境設定"));
-    dialog.resize(640, 700);
-    // The cards and controls of "3 実行設定", for the settings new documents start with.
-    dialog.setStyleSheet(
-        chromeRules(settingsRules() + "QDialog { background: @window; }", QMainWindow::palette()));
-    auto *outer = new QVBoxLayout(&dialog);
-    outer->setContentsMargins(0, 0, 0, 14);
-    outer->setSpacing(12);
-    // The cards scroll; the buttons stay below them.
-    auto *scroll = new QScrollArea;
-    scroll->setObjectName("preferencesScroll");
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setProperty("canvas", true);
-    auto *page = new QWidget;
-    page->setProperty("canvas", true);
-    scroll->setWidget(page);
-    outer->addWidget(scroll, 1);
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(16, 14, 16, 0);
-    layout->setSpacing(12);
-    auto *intro =
-        new QLabel(tr("新規作成、およびプロジェクト以外の構造ファイル（XYZ・SDF・PDB等）を開いたときの"
-                      "実行設定です。開いているプロジェクトの設定は「3 実行設定」で変更します。"));
-    intro->setWordWrap(true);
-    intro->setProperty("muted", true);
-    layout->addWidget(intro);
-    // The cards of "3 実行設定" for the machine-wide settings; the dialog keeps what they show.
-    auto chosen = executionPreferences();
-    auto *form = new ExecutionForm(ExecutionForm::Scope::Preferences, "preferences");
-    form->setSettings(chosen);
-    connect(form, &ExecutionForm::changed, &dialog,
-            [&chosen, form](const QString &key, const QJsonValue &value) {
-                chosen[key] = value;
-                form->setSettings(chosen);
-            });
-    connect(form, &ExecutionForm::remoteHostsRequested, &dialog, [&] {
-        RemoteHostsDialog hosts(chosen["executable"].toString(), chosen["launcher"].toString(), &dialog);
-        hosts.select(chosen["remote"].toString());
-        hosts.exec();
-        form->setSettings(chosen);
-    });
-    layout->addWidget(form);
-    const auto card = [&](const QString &title) {
-        auto *c = new SettingsCard(title);
-        auto *rows = new FormLayout;
-        rows->setHorizontalSpacing(12);
-        rows->setVerticalSpacing(8);
-        c->body()->addLayout(rows);
-        layout->addWidget(c);
-        return rows;
-    };
-    auto *script = card(tr("ジョブスクリプト（別の計算機で実行）"));
-    auto *prelude = new QPlainTextEdit(executionJobPrelude());
-    prelude->setObjectName("preferences_job_prelude");
-    prelude->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    prelude->setLineWrapMode(QPlainTextEdit::NoWrap);
-    prelude->setFixedHeight(prelude->fontMetrics().lineSpacing() * 4 + 16);
-    prelude->setPlaceholderText(tr("例: module load nwchem/7.3.1"));
-    prelude->setToolTip(
-        tr("job.sh でNWChemを起動する前に実行する行です（モジュールの読込みなど）。プロジェクトには保存"
-           "せず、このPCで作るすべてのジョブスクリプトに加えます。"));
-    script->addRow(tr("準備の行"), prelude);
-    // The headers of Slurm and PBS scripts, for saved jobs and remote destinations alike.
-    QMap<QString, QPlainTextEdit *> headers;
-    for (const auto &kind : {QString("slurm"), QString("pbs")}) {
-        auto *text = new QPlainTextEdit(jobHeaderTemplate(kind));
-        text->setObjectName("preferences_job_header_" + kind);
-        text->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-        text->setLineWrapMode(QPlainTextEdit::NoWrap);
-        text->setTabChangesFocus(true);
-        text->setFixedHeight(text->fontMetrics().lineSpacing() * 6 + 16);
-        headers[kind] = text;
-        script->addRow(kind == "slurm" ? tr("Slurmの見出し") : tr("PBSの見出し"), text);
-    }
-    auto *placeholders = new QLabel(tr("見出しの行は # で始めます。プレースホルダー: "
-                                       "%1。値のないプレースホルダー（制限時間なしの {time}、"
-                                       "キューなしの {queue}）を含む行は書きません。")
-                                        .arg("{" + jobHeaderPlaceholders().join("} {") + "}"));
-    placeholders->setProperty("caption", true);
-    placeholders->setWordWrap(true);
-    placeholders->setTextFormat(Qt::PlainText);
-    auto *resetHeaders = new QPushButton(tr("見出しを既定に戻す"));
-    resetHeaders->setObjectName("preferencesResetHeaders");
-    connect(resetHeaders, &QPushButton::clicked, &dialog, [headers] {
-        for (auto it = headers.begin(); it != headers.end(); ++it)
-            it.value()->setPlainText(defaultJobHeader(it.key()));
-    });
-    auto *headerHelp = new QVBoxLayout;
-    headerHelp->addWidget(placeholders);
-    headerHelp->addWidget(resetHeaders, 0, Qt::AlignLeft);
-    script->addRow(QString(), headerHelp);
-    auto *programs = card(tr("外部プログラム"));
-    auto *xtbProgram = new QLineEdit(settings.value(Preference::xtbExecutable).toString());
-    xtbProgram->setObjectName("preferences_xtb");
-    xtbProgram->setPlaceholderText("xtb");
-    xtbProgram->setToolTip(
-        tr("「ツール → xTBで構造を最適化…」で起動するxtbです。名前（PATHから検索）またはパスで"
-           "指定します。空欄ではPATHのxtbを使います。"));
-    programs->addRow(tr("xTB実行ファイル"), xtbProgram);
-    auto *xtbFound = new QLabel;
-    xtbFound->setProperty("muted", true);
-    xtbFound->setWordWrap(true);
-    xtbFound->setTextFormat(Qt::PlainText);
-    const auto showXtb = [xtbProgram, xtbFound] {
-        const auto found = xtbExecutable(xtbProgram->text());
-        xtbFound->setText(found.isEmpty() ? tr("見つかりません") : found);
-    };
-    connect(xtbProgram, &QLineEdit::textChanged, &dialog, showXtb);
-    showXtb();
-    programs->addRow(QString(), xtbFound);
-    auto *startup = card(tr("起動・表示"));
-    auto *water = new QCheckBox(tr("起動時に水分子を読み込む"));
-    water->setObjectName("preferences_startupWater");
-    water->setChecked(settings.value(Preference::startupWater, false).toBool());
-    startup->addRow(tr("新しいウィンドウ"), water);
-    auto *renderer = new QComboBox;
-    renderer->addItem(tr("自動（VTKを優先）"), "auto");
-    renderer->addItem(tr("QPainter（CPU）"), "painter");
-    renderer->setCurrentIndex(settings.value(Preference::viewRenderer).toString() == "painter" ? 1 : 0);
-    startup->addRow(tr("3D描画（再起動後に反映）"), renderer);
-    // Named in both languages, so that either reader finds it.
-    auto *language = new QComboBox;
-    language->setObjectName("preferences_language");
-    language->addItem(tr("システムに合わせる"), "");
-    language->addItem("日本語", "ja"); // i18n-exempt
-    language->addItem("English", "en");
-    language->setCurrentIndex(
-        std::max(0, language->findData(settings.value(Preference::language).toString())));
-    startup->addRow(tr("表示言語 / Language（再起動後に反映）"), language);
-    layout->addStretch();
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    buttons->button(QDialogButtonBox::Ok)->setProperty("primary", true);
-    auto *current = buttons->addButton(tr("現在の実行設定を読み込む"), QDialogButtonBox::ResetRole);
-    buttons->setContentsMargins(16, 0, 16, 0);
-    outer->addWidget(buttons);
-    connect(current, &QPushButton::clicked, &dialog, [&] {
-        const auto s = executionSettings(document());
-        for (const auto &key : executionPreferenceKeys())
-            chosen[key] = s[key];
-        form->setSettings(chosen);
-    });
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
-        safe([&] {
-            form->commitEnvironment();
-            // Rows left empty are dropped.
-            QJsonArray rows;
-            for (const auto &row : chosen["environment"].toArray())
-                if (const auto entry = row.toObject();
-                    !entry["name"].toString().isEmpty() || !entry["value"].toString().isEmpty())
-                    rows.append(entry);
-            chosen["environment"] = rows;
-            // Check the values with the rules of "3 実行設定", leaving out the molecule's own.
-            Document probe;
-            for (auto it = chosen.begin(); it != chosen.end(); ++it)
-                setExecutionSetting(probe, it.key(), it.value());
-            QStringList errors;
-            for (const auto &diagnostic : validateExecution(probe, QDir::homePath(), false).diagnostics)
-                if (diagnostic.severity == DiagnosticSeverity::Error &&
-                    diagnostic.target == SettingTarget::Execution)
-                    errors << diagnostic.message;
-            for (auto it = headers.begin(); it != headers.end(); ++it)
-                for (const auto &error : jobHeaderErrors(it.value()->toPlainText()))
-                    errors
-                        << (it.key() == "slurm" ? tr("Slurmの見出し: %1") : tr("PBSの見出し: %1")).arg(error);
-            if (!errors.isEmpty())
-                fail(errors.join('\n'));
-            saveExecutionJobPrelude(prelude->toPlainText());
-            for (auto it = headers.begin(); it != headers.end(); ++it)
-                saveJobHeaderTemplate(it.key(), it.value()->toPlainText());
-            settings.setValue(Preference::xtbExecutable, xtbProgram->text().trimmed());
-            saveExecutionPreferences(chosen);
-            settings.setValue(Preference::startupWater, water->isChecked());
-            settings.setValue(Preference::viewRenderer, renderer->currentData().toString());
-            settings.setValue(Preference::language, language->currentData().toString());
-            dialog.accept();
-        });
-    });
-    dialog.exec();
+    preferencesDialog(this, *this, [this] { return executionSettings(document()); });
 }
 } // namespace mf

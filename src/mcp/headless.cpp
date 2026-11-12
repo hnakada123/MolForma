@@ -127,7 +127,7 @@ QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
         }
         if (run.active() && action != "enqueue")
             fail("A calculation is already running.");
-        if (!policy.allowExecutionSettings && protectedExecution(d) != trusted)
+        if (!policy.allowExecutionSettings && !trust.untrusted(d, trusted).isEmpty())
             fail("The NWChem executable, MPI launcher, environment overrides or additional NWChem input "
                  "differ from the defaults this headless server trusts (MolForma's saved Preferences, "
                  "otherwise nwchem and mpirun from PATH with no overrides and no additional input). MCP "

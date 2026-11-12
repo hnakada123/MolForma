@@ -3,8 +3,10 @@
 #include "editing/peptide.h"
 #include "foundation/i18n.h"
 #include "model/settings.h"
-#include "ui/editor_chrome.h"
 #include "ui/editor_context.h"
+#include "ui/line_icons.h"
+#include "ui/settings_widgets.h"
+#include "ui/theme.h"
 #include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QHelpEvent>

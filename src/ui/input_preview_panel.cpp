@@ -6,10 +6,14 @@
 #include "model/settings.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
+#include "ui/calculation_summary.h"
+#include "ui/chrome_layouts.h"
 #include "ui/editor_chrome.h"
 #include "ui/editor_context.h"
 #include "ui/input_highlighter.h"
+#include "ui/line_icons.h"
 #include "ui/setting_navigation.h"
+#include "ui/settings_widgets.h"
 #include "ui/theme.h"
 #include <QtWidgets>
 

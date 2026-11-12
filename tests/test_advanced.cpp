@@ -4,8 +4,8 @@
 #include "nwchem/nwchem_advanced.h"
 #include "ui/calculation_panel.h"
 #include "ui/diagnostics_list.h"
-#include "ui/editor_chrome.h"
 #include "ui/main_window.h"
+#include "ui/settings_widgets.h"
 #include <QtTest>
 #include <QtWidgets>
 using namespace mf;

@@ -5,6 +5,7 @@
 #include "foundation/files.h"
 #include "io/document_storage.h"
 #include "io/structure_io.h"
+#include "mcp/execution_trust.h"
 #include "mcp/headless.h"
 #include "mcp/server.h"
 #include "mcp/stdio_transport.h"
@@ -1877,6 +1878,65 @@ class McpTest : public QObject {
         s["extra_input"] = "set cphf:maxiter 50";
         edited.data["nwchem"] = s;
         QVERIFY(protectedExecution(edited) != protectedExecution(committed(server)));
+    }
+    void executionTrustCountsWhatTheUserEnteredOrConfirmed() {
+        // The rule behind MainWindow::untrustedExecution and the headless server's check, without a window.
+        using Origin = ExecutionTrust::Origin;
+        const auto with = [](Document d, const QString &key, const QJsonValue &value) {
+            setExecutionSetting(d, key, value);
+            return d;
+        };
+        const Document plain;
+        const auto preferences = protectedExecution(plain);
+        ExecutionTrust trust;
+        QVERIFY(trust.untrusted(plain, preferences).isEmpty());
+        // What the user enters in MolForma is trusted: the value the edit changed, not the others kept
+        // beside it (a launcher that came with the file).
+        const auto opened = with(plain, "launcher", "/opt/mpi/bin/srun");
+        const auto entered = with(opened, "executable", "/opt/nwchem/bin/nwchem");
+        QCOMPARE(trust.untrusted(entered, preferences), (QStringList{"executable", "launcher"}));
+        trust.documentChanged(opened, entered, Origin::User);
+        QCOMPARE(trust.untrusted(entered, preferences), QStringList{"launcher"});
+        // It stays trusted when it comes back later, whoever brings it.
+        trust.documentChanged(entered, plain, Origin::History);
+        trust.documentChanged(plain, entered, Origin::Load);
+        QCOMPARE(trust.untrusted(entered, preferences), QStringList{"launcher"});
+        // The values of a load, of undo/redo and of MCP are not trusted, whatever they replace.
+        auto loaded = with(plain, "executable", "/tmp/engine");
+        auto calculation = loaded.data["nwchem"].toObject();
+        calculation["extra_input"] = "set cphf:maxiter 50";
+        loaded.data["nwchem"] = calculation;
+        loaded =
+            with(loaded, "environment",
+                 QJsonArray{QJsonObject{{"enabled", true}, {"name", "LD_PRELOAD"}, {"value", "/tmp/x.so"}}});
+        const QStringList carried{"environment", "executable", "extra_input"};
+        for (const auto origin : {Origin::Load, Origin::History, Origin::Mcp}) {
+            trust.documentChanged(plain, loaded, origin);
+            QCOMPARE(trust.untrusted(loaded, preferences), carried);
+        }
+        // … until the user confirms them before a run: then all of them are, also for MCP's next run.
+        trust.confirm(loaded);
+        QVERIFY(trust.untrusted(loaded, preferences).isEmpty());
+        trust.documentChanged(plain, loaded, Origin::Mcp);
+        QVERIFY(trust.untrusted(loaded, preferences).isEmpty());
+        // Another value of a confirmed setting asks again; the confirmed one is kept beside it.
+        const auto other = with(loaded, "executable", "/tmp/other engine");
+        QCOMPARE(trust.untrusted(other, preferences), QStringList{"executable"});
+        trust.confirm(other);
+        QVERIFY(trust.untrusted(other, preferences).isEmpty());
+        QVERIFY(trust.untrusted(loaded, preferences).isEmpty());
+        // What Preferences hold always counts, with nothing entered or confirmed: the saved values of
+        // the moment, not those of an earlier one.
+        const ExecutionTrust empty{};
+        const auto saved = protectedExecution(opened);
+        QVERIFY(empty.untrusted(opened, saved).isEmpty());
+        QCOMPARE(empty.untrusted(opened, preferences), QStringList{"launcher"});
+        QCOMPARE(empty.untrusted(plain, saved), QStringList{"launcher"});
+        // That empty trust is the headless server's rule: a run only with exactly the trusted values.
+        for (const auto &document : {plain, opened, entered, loaded, other})
+            for (const auto &baseline : {preferences, saved, protectedExecution(loaded)})
+                QCOMPARE(empty.untrusted(document, baseline).isEmpty(),
+                         protectedExecution(document) == baseline);
     }
     void guiExecutionGuard() {
         QTemporaryDir jobs;

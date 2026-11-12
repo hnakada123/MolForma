@@ -164,6 +164,8 @@ add_library(molforma_ui STATIC
     src/ui/energy_profile_dialog.cpp
     src/ui/figure_export.cpp
     src/ui/calculation_panel.cpp
+    src/ui/calculation_summary.cpp
+    src/ui/chrome_layouts.cpp
     src/ui/coordinates_panel.cpp
     src/ui/diagnostics_list.cpp
     src/ui/editor_chrome.cpp
@@ -173,14 +175,17 @@ add_library(molforma_ui STATIC
     src/ui/candidate_controls.cpp
     src/ui/execution_form.cpp
     src/ui/execution_panel.cpp
+    src/ui/help_dialogs.cpp
     src/ui/history_panel.cpp
     src/ui/input_highlighter.cpp
     src/ui/input_preview_panel.cpp
+    src/ui/line_icons.cpp
     src/ui/main_window.cpp
     src/ui/mcp_gui.cpp
     src/ui/molecule_view.cpp
     src/ui/pdb_download.cpp
     src/ui/periodic_table.cpp
+    src/ui/preferences_dialog.cpp
     src/ui/result_charts.cpp
     src/ui/property_geometry_view.cpp
     src/ui/pubchem.cpp
@@ -188,11 +193,15 @@ add_library(molforma_ui STATIC
     src/ui/spectroscopy_view.cpp
     src/ui/results_panel.cpp
     src/ui/sequence_track.cpp
+    src/ui/settings_widgets.cpp
     src/ui/structure_import.cpp
     src/ui/workspace_controller.cpp
     src/ui/run_progress.cpp
     src/ui/template_delegate.cpp
+    src/ui/theme.cpp
     src/ui/translations.cpp
+    src/ui/view_controls.cpp
+    src/ui/xtb_dialog.cpp
     docs/manual.qrc)
 # McpGui shares tool definitions, result views and the access policy with the headless server.
 target_link_libraries(molforma_ui PUBLIC molforma_core molforma_mcp Qt6::Widgets PRIVATE ${MOLFORMA_OPENBABEL})
@@ -247,6 +256,7 @@ endif()
 add_library(molforma_mcp STATIC
     src/mcp/document_adapter.cpp
     src/mcp/document_tools.cpp
+    src/mcp/execution_trust.cpp
     src/mcp/headless.cpp
     src/mcp/json_schema.cpp
     src/mcp/policy.cpp
