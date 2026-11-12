@@ -4,8 +4,8 @@
 #include "foundation/files.h"
 #include "foundation/i18n.h"
 #include "nwchem/history.h"
-#include "results/results.h"
-#include <QCryptographicHash>
+#include "nwchem/run_record.h"
+#include "results/result_path.h"
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -14,14 +14,6 @@
 #include <algorithm>
 
 namespace mf {
-namespace {
-// What a job folder's record says, so that a restored entry is the job that was registered.
-QString recordDigest(const QString &directory) {
-    return QString::fromLatin1(
-        QCryptographicHash::hash(readFile(QDir(directory).filePath("run.json")), QCryptographicHash::Sha256)
-            .toHex());
-}
-} // namespace
 QStringList queueChainStructures() {
     return {"final", "highest", "irc_forward", "irc_backward"};
 }
@@ -33,7 +25,7 @@ QString queueChainStructureName(const QString &structure) {
                                          : structure;
 }
 Document chainedDocument(const Document &document, const QString &job, const QString &structure) {
-    const auto log = QDir(job).filePath("output.out");
+    const auto log = jobFile(job, JobFile::output);
     if (!QFileInfo(log).isFile())
         fail(tr("引継ぎ元のジョブに出力（output.out）がありません: %1").arg(job));
     const auto result = readResult(log);
@@ -41,23 +33,16 @@ Document chainedDocument(const Document &document, const QString &job, const QSt
     if (structure == "final")
         frame = int(result.frames.size()) - 1;
     else if (structure == "highest") {
-        // The points of the path with a structure; an NEB's ends are fixed, never its highest point.
-        const auto &p = result.properties;
-        QJsonArray points = p.value("scan").toArray();
-        if (const auto neb = p.value("neb").toObject()["points"].toArray(); !neb.isEmpty())
-            for (int i = 1; i + 1 < neb.size(); ++i)
-                points << neb[i];
-        const auto irc = p.value("irc").toObject();
-        for (const auto &point : irc["points"].toArray())
-            points << point;
-        if (irc.contains("ts_energy"))
-            points << QJsonObject{{"energy", irc["ts_energy"]}, {"frame", irc["ts_frame"]}};
+        // The highest point with a structure of the paths in the log. The ends of an NEB are fixed, never
+        // its highest point; a scan or an IRC (with its transition state) may be highest at an end.
         double highest = -INFINITY;
-        for (const auto &value : std::as_const(points)) {
-            const auto point = value.toObject();
-            if (point["frame"].toInt(-1) >= 0 && point["energy"].toDouble(-INFINITY) > highest) {
-                highest = point["energy"].toDouble();
-                frame = point["frame"].toInt();
+        for (const auto kind : {ResultPathKind::Scan, ResultPathKind::Neb, ResultPathKind::Irc}) {
+            const auto path = resultPath(result, kind);
+            const int point =
+                path.highest(kind == ResultPathKind::Neb ? PathEnds::Excluded : PathEnds::Included, true);
+            if (point >= 0 && path.points[point].energy > highest) {
+                highest = path.points[point].energy;
+                frame = path.points[point].frame;
             }
         }
         if (frame < 0)
@@ -175,23 +160,16 @@ int NwchemQueue::restore() {
                 item.state = run.state();
                 currentId = item.id;
             } else {
+                // What the job folder's record says, so that a restored entry is the job that was registered.
                 item.record = row["record"].toString();
-                if (item.record.isEmpty() || recordDigest(directory) != item.record)
+                if (item.record.isEmpty() || runRecordDigest(directory) != item.record)
                     continue;
                 item.document = historyDocument(directory);
-                const auto manifest = parseJson(readFile(QDir(directory).filePath("run.json")));
-                if (runStateFromKey(manifest["status"].toString()) != RunState::Prepared)
+                const auto manifest = readRunRecord(directory, RecordCheck::Json);
+                if (RunRecord(manifest).state() != RunState::Prepared)
                     continue;
-                item.plan.directory = QDir::cleanPath(directory);
-                item.plan.manifest = manifest;
-                item.plan.program = manifest["program"].toString();
-                for (const auto &argument : manifest["arguments"].toArray())
-                    item.plan.arguments << argument.toString();
-                const auto overrides = manifest["environment_overrides"].toObject();
-                for (auto it = overrides.begin(); it != overrides.end(); ++it)
-                    item.plan.environment[it.key()] = it.value().toString();
-                item.plan.timeoutSeconds = manifest["timeout_seconds"].toInt();
-                item.plan.input = historyText(directory, "input.nw");
+                item.plan = runRecordPlan(QDir::cleanPath(directory), manifest);
+                item.plan.input = historyText(directory, JobFile::input);
             }
         } catch (const std::exception &) {
             continue;
@@ -214,7 +192,7 @@ NwchemQueue::NwchemQueue(NwchemRun &runner, QObject *parent) : QObject(parent), 
             item.error = run.message();
             if (!run.active()) {
                 if (stopOnError && (item.state != RunState::Finished ||
-                                    !item.plan.manifest["diagnostics"].toArray().isEmpty()))
+                                    !RunRecord(item.plan.manifest).diagnostics().isEmpty()))
                     isPaused = true;
                 currentId.clear();
             }
@@ -247,7 +225,7 @@ int NwchemQueue::pending() const {
                              [](const auto &item) { return item.state == RunState::Prepared; }));
 }
 QString NwchemQueue::enqueue(const Document &d, const QString &base, std::function<void()> check,
-                             const QueueChain &chain) {
+                             const QueueChain &chain, const ExecutionEnvironment &environment) {
     if (closed || items.size() >= 1000)
         fail(tr("キューにはこのセッションで1000件まで登録できます。"));
     if (check)
@@ -276,12 +254,12 @@ QString NwchemQueue::enqueue(const Document &d, const QString &base, std::functi
         if (!same)
             fail(tr("引継ぎ元の計算（%1）と原子の数・順番が異なります。").arg(source.name));
         // Checked now, saved when the structure is there.
-        executionPlan(d, item.base, {}, true);
+        executionPlan(d, item.base, {}, true, environment);
         item.chain = chain;
         item.chain.directory = source.plan.directory;
     } else {
-        item.plan = saveExecutionBundle(d, item.base, true);
-        item.record = recordDigest(item.plan.directory);
+        item.plan = saveExecutionBundle(d, item.base, true, environment);
+        item.record = runRecordDigest(item.plan.directory);
     }
     item.checkAccess = std::move(check);
     const auto id = item.id;
@@ -293,7 +271,6 @@ QString NwchemQueue::enqueue(const Document &d, const QString &base, std::functi
 QStringList NwchemQueue::enqueueChain(const Document &current, const QString &base, const QString &from,
                                       const QString &structure, const QStringList &steps, bool endFrequencies,
                                       const std::function<std::function<void()>(const Document &)> &access) {
-    const auto name = nwchemSettings(current)["start"].toString();
     // Each step: the document, the step its structure comes from (-1: the entry `from`) and which one.
     struct Step {
         Document document;
@@ -303,10 +280,9 @@ QStringList NwchemQueue::enqueueChain(const Document &current, const QString &ba
     QVector<Step> plan;
     const auto step = [&](const QString &task, const QString &suffix, int source, const QString &which) {
         auto d = current;
-        setNwchemSetting(d, "task", task);
+        deriveNwchemCalculation(d, task, suffix);
         if (task == "irc")
             setNwchemSetting(d, "irc_direction", "both");
-        setNwchemSetting(d, "start", (name + suffix).left(64));
         plan.append({d, source, which});
     };
     for (const auto &key : steps)
@@ -339,12 +315,15 @@ QStringList NwchemQueue::enqueueChain(const Document &current, const QString &ba
     if (closed || items.size() + plan.size() > 1000)
         fail(tr("キューにはこのセッションで1000件まで登録できます。"));
     index(from);
+    // One state of the Preferences for all the steps.
+    const auto environment = executionEnvironment();
     for (const auto &item : plan) // Every step is checked before any is registered.
-        executionPlan(item.document, QFileInfo(base).absoluteFilePath(), {}, true);
+        executionPlan(item.document, QFileInfo(base).absoluteFilePath(), {}, true, environment);
     QStringList ids;
     for (const auto &item : plan)
         ids << enqueue(item.document, base, access ? access(item.document) : std::function<void()>(),
-                       QueueChain{item.source < 0 ? from : ids[item.source], item.structure, {}});
+                       QueueChain{item.source < 0 ? from : ids[item.source], item.structure, {}},
+                       environment);
     return ids;
 }
 void NwchemQueue::resume() {
@@ -417,35 +396,37 @@ void NwchemQueue::advance() {
         try {
             if (item.checkAccess)
                 item.checkAccess();
+            // The Preferences as they are now that the entry's turn has come.
+            const auto environment = executionEnvironment();
             if (item.chain.active() && item.plan.directory.isEmpty()) {
                 // The structure of the earlier job, now that it has ended, and then the bundle.
                 const int source = find(item.chain.from);
                 auto directory = source >= 0 ? items[source].plan.directory : item.chain.directory;
                 auto state = source >= 0 ? items[source].state : RunState::Idle;
                 if (source < 0 && !directory.isEmpty())
-                    state = runStateFromKey(
-                        parseJson(readFile(QDir(directory).filePath("run.json")))["status"].toString());
+                    state = RunRecord(readRunRecord(directory, RecordCheck::Json)).state();
                 if (state != RunState::Finished || directory.isEmpty())
                     fail(tr("引継ぎ元の計算が正常に終わっていないため開始できません。"));
                 item.document = chainedDocument(item.document, directory, item.chain.structure);
                 item.chain.directory = directory;
-                item.plan = saveExecutionBundle(item.document, item.base, true);
-                item.record = recordDigest(item.plan.directory);
+                item.plan = saveExecutionBundle(item.document, item.base, true, environment);
+                item.record = runRecordDigest(item.plan.directory);
                 emit bundleSaved(item.plan.directory);
             }
             if (QFileInfo(item.plan.directory).isSymLink())
                 fail(tr("登録したジョブが変更されたため開始できません: %1").arg(item.plan.directory));
-            for (const auto *file : {"output.out", "stderr.err"}) {
+            for (const auto *file : {JobFile::output, JobFile::errors}) {
                 const QFileInfo output(QDir(item.plan.directory).filePath(file));
                 if (output.exists() || output.isSymLink())
                     fail(tr("登録したジョブが変更されたため開始できません: %1").arg(item.plan.directory));
             }
             historyDocument(item.plan.directory); // Throws on digest/format/reference failures.
-            const auto manifest = parseJson(historyText(item.plan.directory, "run.json", false).toUtf8());
+            const auto manifest = readRunRecord(item.plan.directory, RecordCheck::Complete);
             if (manifest != item.plan.manifest)
                 fail(tr("登録したジョブが変更されたため開始できません: %1").arg(item.plan.directory));
             // Revalidate programs and output collisions after waiting, without changing the snapshot.
-            const auto checked = executionPlan(item.document, item.base, item.plan.directory, true);
+            const auto checked =
+                executionPlan(item.document, item.base, item.plan.directory, true, environment);
             if (checked.program != item.plan.program || checked.arguments != item.plan.arguments ||
                 checked.environment != item.plan.environment || checked.input != item.plan.input)
                 fail(tr("登録後に実行条件が変わりました。キューへ登録し直してください。"));

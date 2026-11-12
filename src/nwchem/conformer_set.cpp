@@ -4,6 +4,8 @@
 #include "foundation/i18n.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
+#include "nwchem/run_record.h"
+#include "results/result_properties.h"
 #include "results/spectrum.h"
 #include <QDir>
 #include <QTimer>
@@ -39,7 +41,7 @@ ConformerSet::ConformerSet(QObject *parent) : QObject(parent), loader(this) {
             return;
         auto item = items[reading].toObject();
         try {
-            if (r.properties["optimization"] != "converged")
+            if (!resultOptimizationConverged(r).value_or(false))
                 fail(tr("最適化の収束を確認できません。"));
             auto result = energyRecord(r, pendingOriginal, nwchemFinalSettings(pendingOriginal));
             result["source_stamp"] = stamp;
@@ -167,9 +169,9 @@ void ConformerSet::readNext() {
     try {
         if (checkPath)
             checkPath(dir);
-        for (const auto *file : {"run.json", "project.molforma.json", "input.nw", "output.out"})
+        for (const auto *file : {JobFile::record, JobFile::project, JobFile::input, JobFile::output})
             if (checkPath)
-                checkPath(QDir(dir).filePath(file));
+                checkPath(jobFile(dir, file));
         const auto job = readHistoryEntry(dir);
         item["state"] = historyStatus(job.status);
         items[reading] = item;
@@ -178,7 +180,7 @@ void ConformerSet::readNext() {
             return;
         }
         pendingOriginal = historyDocument(dir);
-        loader.start({.path = QDir(dir).filePath("output.out")});
+        loader.start({.path = jobFile(dir, JobFile::output)});
     } catch (const std::exception &e) {
         item["error"] = QString::fromUtf8(e.what());
         items[reading] = item;

@@ -4,19 +4,15 @@
 #include "model/settings.h"
 #include "nwchem/nwchem.h"
 #include <QDir>
-#include <QSettings>
 
 namespace mf {
 namespace {
 // The job a session left to its supervisor, for the next session to follow.
-const auto RunningKey = "execution/running";
 QString rememberedRun() {
-    return QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
-        .value(RunningKey)
-        .toString();
+    return userPreferences().value(Preference::runningJob).toString();
 }
 void rememberRun(const QString &directory) {
-    QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma").setValue(RunningKey, directory);
+    userPreferences().setValue(Preference::runningJob, directory);
 }
 } // namespace
 RunSession::RunSession(QObject *parent) : QObject(parent), runner(this), pending(runner, this) {
@@ -79,7 +75,8 @@ void RunSession::shutdown(bool keepRunning) {
         runner.shutdown();
 }
 ExecutionPlan RunSession::saveBundle(const Document &document, const QString &base) {
-    bundle = saveExecutionBundle(document, base);
+    // The Preferences as they are when the job is saved.
+    bundle = saveExecutionBundle(document, base, false, executionEnvironment());
     emit bundleChanged(bundle.directory);
     return bundle;
 }
@@ -107,18 +104,21 @@ QStringList RunSession::enqueueGeometries(const Document &current, const QString
                                           const Check &check) {
     if (geometries.isEmpty() || geometries.size() + pending.entries().size() > 1000)
         fail(tr("キューにはこのセッションで1000件まで登録できます。"));
+    // One state of the Preferences for the whole batch.
+    const auto environment = executionEnvironment();
     QVector<Document> documents;
     for (int i = 0; i < geometries.size(); ++i) {
         auto d = current;
         applyResultGeometry(d, geometries[i]);
         setNwchemSetting(d, "task", frequencies ? "optimize_frequencies" : "optimize");
         setNwchemSetting(d, "start", nwchemSettings(d)["start"].toString() + QString("_conf%1").arg(i + 1));
-        executionPlan(d, base, {}, true); // Validate the entire batch before writing any bundle.
+        // Validate the entire batch before writing any bundle.
+        executionPlan(d, base, {}, true, environment);
         documents.append(d);
     }
     QStringList directories;
     for (const auto &d : documents) {
-        pending.enqueue(d, base, turn(check, d, base));
+        pending.enqueue(d, base, turn(check, d, base), {}, environment);
         directories << pending.entries().last().plan.directory;
         emit bundleChanged(directories.last());
     }

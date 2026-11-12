@@ -2,10 +2,12 @@
 #include "foundation/files.h"
 #include "foundation/i18n.h"
 #include "mcp/policy.h"
+#include "mcp/tools.h"
 #include "model/settings.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
+#include "nwchem/nwchem_plan.h"
 #include "nwchem/nwchem_queue.h"
 #include "nwchem/nwchem_restart.h"
 #include "nwchem/remote_execution.h"
@@ -86,9 +88,29 @@ class ExecutionTest : public QObject {
         QCOMPARE(scf[0].toObject()["source"].toString(), "stdout");
         QCOMPARE(scf[0].toObject()["target"].toString(), "calculation");
         QVERIFY(!scf[0].toObject().contains("tab"));
-        QCOMPARE(runDiagnosticTab(scf[0].toObject()), 1);
-        QCOMPARE(runDiagnosticTab(QJsonObject{{"tab", 1}}), 1); // Older saved records.
-        QCOMPARE(runDiagnosticTab(QJsonObject{{"target", "execution"}, {"tab", 0}}), 2);
+        // The tab of a diagnostic as a record holds it.
+        const auto tab = [](const QJsonObject &diagnostic) {
+            const RunRecord record(QJsonObject{{"diagnostics", QJsonArray{diagnostic}}});
+            return runDiagnosticTab(record.diagnostics().first());
+        };
+        QCOMPARE(tab(scf[0].toObject()), 1);
+        QCOMPARE(tab(QJsonObject{{"tab", 1}}), 1); // Older saved records.
+        QCOMPARE(tab(QJsonObject{{"target", "execution"}, {"tab", 0}}), 2);
+        QCOMPARE(tab(QJsonObject{{"tab", 0}}), 0);
+        QCOMPARE(tab(QJsonObject{{"tab", 9}}), 2); // Any other number, or none, was the execution's.
+        QCOMPARE(tab(QJsonObject{}), 2);
+        // The legacy numbers have one definition beside the targets; today's tabs are the UI's.
+        for (const auto target :
+             {SettingTarget::Molecule, SettingTarget::Calculation, SettingTarget::Execution}) {
+            QVERIFY(settingTargetFromLegacyTab(legacySettingTab(target)) == target);
+            const RunRecord record(
+                QJsonObject{{"diagnostics", QJsonArray{QJsonObject{{"tab", legacySettingTab(target)}}}}});
+            QVERIFY(!record.diagnostics().first().target && record.diagnostics().first().owner() == target);
+        }
+        QCOMPARE(legacySettingTab(SettingTarget::Molecule), 0);
+        QCOMPARE(legacySettingTab(SettingTarget::Calculation), 1);
+        QCOMPARE(legacySettingTab(SettingTarget::Execution), 2);
+        QVERIFY(settingTargetFromLegacyTab(-1) == SettingTarget::Execution);
         QCOMPARE(diagnoseRun(RunState::Finished, "maxiter 20\nSCF converged\n", {}).size(), 0);
         const auto memory = diagnoseRun(RunState::Finished, {}, "MA_alloc_get: failed\n");
         QCOMPARE(memory[0].toObject()["code"].toString(), "memory");
@@ -758,19 +780,35 @@ class ExecutionTest : public QObject {
     void checksAndProgressParsing() {
         // The checks before a run, one per program, folder and the input.
         const auto report = validateExecution(configured(), files.path(), true);
-        QStringList labels;
+        QStringList labels, keys;
         for (const auto &c : report.checks) {
             labels << c.label;
+            keys << c.key;
             QVERIFY2(c.ok, qPrintable(c.label + ": " + c.detail));
         }
         QCOMPARE(labels,
                  (QStringList{"NWChem実行ファイル", "参照ファイルの基準", "ジョブ保存先", "NWChem入力"}));
+        // Each check names its setting; that of the input has none.
+        QCOMPARE(keys, (QStringList{"executable", "reference_directory", "job_root", ""}));
         QCOMPARE(report.checks[0].detail, helper);
         auto broken = configured();
         setExecutionSetting(broken, "executable", files.filePath("missing"));
         const auto failed = validateExecution(broken, files.path(), true);
         QVERIFY(!failed.checks[0].ok);
         QVERIFY(failed.errors.contains(failed.checks[0].error));
+        // With MPI the launcher has a check of its own, found by its key whatever the language.
+        setExecutionSetting(broken, "mode", "mpi");
+        setExecutionSetting(broken, "launcher", files.filePath("missing launcher"));
+        const auto parallel = validateExecution(broken, files.path(), true);
+        const auto check = [&](const QString &key) {
+            const auto found = std::find_if(parallel.checks.begin(), parallel.checks.end(),
+                                            [&](const ExecutionCheck &c) { return c.key == key; });
+            return found == parallel.checks.end() ? ExecutionCheck() : *found;
+        };
+        QCOMPARE(check("launcher").label, QString("MPIランチャー"));
+        QCOMPARE(check("launcher").error, QString("MPIランチャーが見つからないか、実行権限がありません。"));
+        QVERIFY(!check("launcher").ok && !check("executable").ok);
+        QCOMPARE(check("executable").label, QString("NWChem実行ファイル"));
         // What a running log tells: tasks begun, DRIVER steps against thresholds, the energy.
         NwchemLog progress;
         for (const auto &line :
@@ -798,10 +836,28 @@ class ExecutionTest : public QObject {
         const auto input =
             QString("driver\n  maxiter 80\nend\ntask dft optimize\ntask dft frequencies numerical\n"
                     "task tddft energy\ntask dplot\n");
-        QCOMPARE(NwchemLog::tasks(input),
+        QCOMPARE(nwchemInputStages(input),
                  (QStringList{"構造最適化", "振動数", "励起状態（TDDFT）", "CUBE出力"}));
-        QCOMPARE(NwchemLog::driverSteps(input), 80);
-        QCOMPARE(NwchemLog::driverSteps("task scf energy\n"), 0);
+        QCOMPARE(nwchemInputDriverSteps(input), 80);
+        QCOMPARE(nwchemInputDriverSteps("task scf energy\n"), 0);
+        // Every operation in its words: those of the choices of "task" where a choice is one task, short
+        // names for the paths, and an operation without a name as the input writes it.
+        QCOMPARE(nwchemInputStages("task scf\ntask scf energy\ntask dft gradient\ntask mp2 saddle\n"
+                                   "task dft freq\ntask dft mepgs\ntask scf neb\ntask dft property\n"
+                                   "task esp\ntask tddft optimize\ntask dft raman\n"),
+                 (QStringList{"一点エネルギー", "一点エネルギー", "勾配", "遷移状態探索", "振動数", "IRC",
+                              "NEB", "物性", "ESP電荷", "励起状態の構造最適化（TDDFT）", "raman"}));
+        const auto choice = [](const QString &value) {
+            for (const auto &c : nwchemChoices("task"))
+                if (c.value == value)
+                    return c.label;
+            return QString();
+        };
+        QCOMPARE(nwchemInputStages("task dft optimize\n"), QStringList{choice("optimize")});
+        QVERIFY(nwchemInputStages("task scf neb\n") != QStringList{choice("neb")});
+        // Only lines as the generator writes them: not indented, in lower case.
+        QCOMPARE(nwchemInputStages("  task dft optimize\nTASK dft energy\ntitle \"task\"\n"), QStringList());
+        QCOMPARE(nwchemInputDriverSteps("  driver\n  maxiter 5\nend\n"), 0);
     }
     void runningProgressAndHeader() {
         MainWindow w;
@@ -1112,6 +1168,15 @@ class ExecutionTest : public QObject {
         QCOMPARE(run.state(), RunState::Failed);
         QCOMPARE(run.plan().manifest["exit_code"].toInt(), 7);
         QVERIFY(!run.plan().manifest["diagnostics"].toArray().isEmpty());
+        // MCP clients still get the legacy number of a diagnostic's owner beside its target.
+        const auto reported = calculationJson(run, {})["diagnostics"].toArray();
+        QCOMPARE(reported.size(), run.plan().manifest["diagnostics"].toArray().size());
+        for (const auto &value : reported) {
+            const auto target = settingTargetFromKey(value.toObject()["target"].toString());
+            QVERIFY(target.has_value());
+            QCOMPARE(value.toObject()["tab"].toInt(-1), legacySettingTab(*target));
+            QVERIFY(!value.toObject()["message"].toString().isEmpty());
+        }
         auto limited = configured("slow");
         setExecutionSetting(limited, "timeout_seconds", 1);
         run.start(limited, files.path());
@@ -1389,11 +1454,15 @@ class ExecutionTest : public QObject {
                  qPrintable(script));
         // No NWChem is looked for on this computer; the destination and ssh are.
         auto report = validateExecution(d, files.path());
-        QStringList labels;
-        for (const auto &check : report.checks)
+        QStringList labels, keys;
+        for (const auto &check : report.checks) {
             labels << check.label;
+            keys << check.key;
+        }
         QVERIFY2(labels.contains(tr("リモート実行先")) && !labels.contains(tr("NWChem実行ファイル")),
                  qPrintable(labels.join(", ")));
+        QVERIFY2(keys.contains("remote") && !keys.contains("executable") && !keys.contains("launcher"),
+                 qPrintable(keys.join(", ")));
         QVERIFY(report.remote.contains("chemist@cluster.example.org"));
         setExecutionSetting(d, "remote", "nowhere");
         QVERIFY(validateExecution(d, files.path(), false).errors.join('\n').contains("nowhere"));

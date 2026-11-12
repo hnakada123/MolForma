@@ -11,6 +11,7 @@
 #include "foundation/files.h"
 #include "foundation/i18n.h"
 #include "io/structure_io.h"
+#include "model/settings.h"
 #include "model/topology.h"
 #include "nwchem/nwchem.h"
 #include "ui/candidate_controls.h"
@@ -94,10 +95,10 @@ static QString atomName(const Document &d, const QString &id) {
 
 MoleculePanel::MoleculePanel(EditorContext &editorServices, UiServices &uiServices,
                              WorkspaceActions &workspaceActions, ExecutionAccess &executionServices,
-                             const EditorSession &editor, QSettings &preferences, QWidget *parent)
+                             const EditorSession &editor, QWidget *parent)
     : QWidget(parent), editorContext(editorServices), uiContext(uiServices), workspace(workspaceActions),
-      executionAccess(executionServices), session(editor), settings(preferences) {
-    customParts = settings.value("parts").toJsonArray();
+      executionAccess(executionServices), session(editor) {
+    customParts = uiContext.preference(Preference::customParts).toJsonArray();
     auto *root = this;
     auto *page = new QHBoxLayout(root);
     page->setContentsMargins(0, 0, 0, 0);
@@ -280,7 +281,7 @@ MoleculePanel::MoleculePanel(EditorContext &editorServices, UiServices &uiServic
     ll->addWidget(palette, 1);
     splitter->addWidget(left);
     // Folded in an earlier session, it waits for the rail's "パレット" or a tool that uses it.
-    const bool paletteShown = settings.value("molecule/palette", true).toBool();
+    const bool paletteShown = uiContext.preference(Preference::moleculePalette, true).toBool();
     left->setVisible(paletteShown);
     paletteToggle->setChecked(paletteShown);
     auto *middle = new QWidget;
@@ -348,7 +349,7 @@ MoleculePanel::MoleculePanel(EditorContext &editorServices, UiServices &uiServic
     keepTool = new QCheckBox(tr("部品の配置後もツールを保持"));
     keepTool->setToolTip(tr("オフでは、骨格・置換基・アミノ酸などの部品を1つ置くと「選択」ツールに戻ります。"
                             "原子・配位中心や配位サイトへの配位子の配置は、切り替えるまで続きます。"));
-    keepTool->setChecked(settings.value("keepTool", false).toBool());
+    keepTool->setChecked(uiContext.preference(Preference::keepTool, false).toBool());
     optionGroup("keepToolOption", {keepTool});
     toolDeleteTerminate = new QCheckBox(tr("削除後に水素で終端化"));
     toolDeleteTerminate->setObjectName("toolDeleteTerminate");
@@ -393,12 +394,12 @@ MoleculePanel::MoleculePanel(EditorContext &editorServices, UiServices &uiServic
     ml->addWidget(topRow);
     // The sequence of the residues in a row of its own under the options, so that it never covers
     // the molecule; clicking residues selects their atoms.
-    sequence = new SequenceTrack(settings);
+    sequence = new SequenceTrack(uiContext);
     connect(sequence, &SequenceTrack::selectionRequested, this,
             [this](const Ids &ids) { safe([this, ids] { setSelection(ids); }); });
     ml->addWidget(sequence);
     // The 3D view, with the view controls and the measurement in its corners.
-    view = new MoleculeView;
+    view = new MoleculeView(rendererChoice(uiContext.preference(Preference::viewRenderer)));
     auto *viewArea = new OverlayHost(view);
     viewArea->setObjectName("viewArea");
     viewControls = new ViewControls(view, {{"viewAxisX", "viewAxisY", "viewAxisZ"},
@@ -466,7 +467,7 @@ MoleculePanel::MoleculePanel(EditorContext &editorServices, UiServices &uiServic
     // stretch factors the sizes are shares, kept as the window is resized.
     moleculeSplit->setSizes({600, 400});
     connect(moleculeSplit, &QSplitter::splitterMoved, this,
-            [this] { settings.setValue("molecule/split", moleculeSplit->saveState()); });
+            [this] { uiContext.setPreference(Preference::moleculeSplit, moleculeSplit->saveState()); });
     ml->addWidget(moleculeSplit, 1);
     // Under them: what a click does with the tool and the mouse controls of the view, and the layout.
     auto *hintBar = new QWidget;
@@ -499,10 +500,10 @@ MoleculePanel::MoleculePanel(EditorContext &editorServices, UiServices &uiServic
     layouts->setToolTip(
         tr("3D表示と座標の表の並べ方です。表では座標・質量・ゴースト・固定を直接編集します。"));
     hintRow->addWidget(layouts, 0, Qt::AlignVCenter);
-    moleculeLayout->setCurrentIndex(
-        std::max(0, moleculeLayout->findData(settings.value("molecule/layout", "view").toString())));
+    moleculeLayout->setCurrentIndex(std::max(
+        0, moleculeLayout->findData(uiContext.preference(Preference::moleculeLayout, "view").toString())));
     connect(moleculeLayout, &QComboBox::currentIndexChanged, this, [this] {
-        settings.setValue("molecule/layout", moleculeLayout->currentData().toString());
+        uiContext.setPreference(Preference::moleculeLayout, moleculeLayout->currentData().toString());
         applyMoleculeLayout();
     });
     ml->addWidget(hintBar);
@@ -582,7 +583,7 @@ MoleculePanel::MoleculePanel(EditorContext &editorServices, UiServices &uiServic
     showIndices->setCheckable(true);
     showIndices->setChecked(true);
     labelModes = new QActionGroup(this);
-    const auto labels = settings.value("view/labels", "all").toString();
+    const auto labels = uiContext.preference(Preference::viewLabels, "all").toString();
     for (const auto &[label, mode] : {std::pair{tr("すべて"), "all"},
                                       {tr("水素以外"), "heavy"},
                                       {tr("選択した原子"), "selection"},
@@ -624,7 +625,7 @@ MoleculePanel::MoleculePanel(EditorContext &editorServices, UiServices &uiServic
     connect(showIndices, &QAction::toggled, view, &MoleculeView::setShowIndices);
     connect(labelModes, &QActionGroup::triggered, this, [this](QAction *a) {
         view->setLabelMode(a->data().toString());
-        settings.setValue("view/labels", a->data().toString());
+        uiContext.setPreference(Preference::viewLabels, a->data().toString());
     });
     connect(search, &QLineEdit::textChanged, this, &MoleculePanel::refreshPalette);
     connect(categoryGroup, &QButtonGroup::buttonToggled, this, [this](QAbstractButton *, bool on) {
@@ -886,7 +887,7 @@ void MoleculePanel::addViewActions(QMenu *viewMenu) {
     labelMenu->addActions(labelModes->actions());
     auto *styles = viewMenu->addMenu(lineIcon("sphere"), tr("表示スタイル"));
     auto *styleGroup = new QActionGroup(this);
-    const auto chosenStyle = settings.value("view/style", "ball_and_stick").toString();
+    const auto chosenStyle = uiContext.preference(Preference::viewStyle, "ball_and_stick").toString();
     for (const auto &[label, style, name] :
          {std::tuple{tr("ボール＆スティック"), "ball_and_stick", "viewStyleBallAndStick"},
           {tr("スティック"), "stick", "viewStyleStick"},
@@ -900,7 +901,7 @@ void MoleculePanel::addViewActions(QMenu *viewMenu) {
         styleGroup->addAction(a);
         connect(a, &QAction::triggered, this, [this, style = QString(style)] {
             view->setStyle(style);
-            settings.setValue("view/style", style);
+            uiContext.setPreference(Preference::viewStyle, style);
         });
     }
     view->setStyle(chosenStyle);
@@ -923,13 +924,13 @@ void MoleculePanel::addViewActions(QMenu *viewMenu) {
     auto *hbondAction = viewMenu->addAction(tr("水素結合を表示"));
     hbondAction->setObjectName("viewHydrogenBonds");
     hbondAction->setCheckable(true);
-    hbondAction->setChecked(settings.value("view/hydrogen_bonds", false).toBool());
+    hbondAction->setChecked(uiContext.preference(Preference::viewHydrogenBonds, false).toBool());
     hbondAction->setToolTip(
         tr("N・O・Fに結合したHと、N・O・Fの間（H···Y 1.5〜2.6 Å、X–H···Y 120°以上）を破線で表示します。"));
     view->setHydrogenBonds(hbondAction->isChecked());
     connect(hbondAction, &QAction::toggled, this, [this](bool on) {
         view->setHydrogenBonds(on);
-        settings.setValue("view/hydrogen_bonds", on);
+        uiContext.setPreference(Preference::viewHydrogenBonds, on);
     });
     action(viewMenu, tr("選択中の計測を画面に表示"), QKeySequence("Ctrl+M"), "ruler", [this] {
         if (selected.size() < 2 || selected.size() > 4)
@@ -1287,7 +1288,7 @@ void MoleculePanel::setPaletteCategory(const QString &code) {
 void MoleculePanel::showPalette(bool show) {
     paletteColumn->setVisible(show);
     paletteToggle->setChecked(show);
-    settings.setValue("molecule/palette", show);
+    uiContext.setPreference(Preference::moleculePalette, show);
 }
 
 QString MoleculePanel::selectionUnit() const {
@@ -1569,7 +1570,8 @@ void MoleculePanel::applyMoleculeLayout() {
             this,
             [this] {
                 if (moleculeLayout->currentData() == "both" &&
-                    !moleculeSplit->restoreState(settings.value("molecule/split").toByteArray()))
+                    !moleculeSplit->restoreState(
+                        uiContext.preference(Preference::moleculeSplit).toByteArray()))
                     moleculeSplit->setSizes({600, 400});
                 coordinates->refreshSelection();
             },
@@ -1691,7 +1693,7 @@ void MoleculePanel::addFragmentFromSmiles(const QString &initial) {
 
 void MoleculePanel::addFragmentFromFile() {
     const auto p = QFileDialog::getOpenFileName(
-        this, tr("断片を追加"), settings.value("directory").toString(),
+        this, tr("断片を追加"), uiContext.preference(Preference::directory).toString(),
         tr("構造 (*.xyz *.mol *.sdf *.mol2 *.cml *.pdb *.ent *.cif *.mmcif *.gz *.nw *.gjf *.com)"));
     if (p.isEmpty())
         return;
@@ -1970,7 +1972,7 @@ void MoleculePanel::compareDialog() {
     if (!resolveCandidate())
         return;
     const auto p = QFileDialog::getOpenFileName(
-        this, tr("比較する構造"), settings.value("directory").toString(),
+        this, tr("比較する構造"), uiContext.preference(Preference::directory).toString(),
         tr("構造 (*.molforma.json *.json *.xyz *.mol *.sdf *.mol2 *.cml *.pdb *.ent *.cif *.mmcif *.gz "
            "*.nw *.gjf *.com);;すべて (*)"));
     if (p.isEmpty())
@@ -2102,7 +2104,7 @@ void MoleculePanel::symmetryDialog() {
     tolerance->setRange(.001, .5);
     tolerance->setDecimals(3);
     tolerance->setSingleStep(.01);
-    tolerance->setValue(settings.value("symmetry/tolerance", .05).toDouble());
+    tolerance->setValue(uiContext.preference(Preference::symmetryTolerance, .05).toDouble());
     tolerance->setSuffix(" Å");
     form->addRow(tr("許容差（原子の位置）"), tolerance);
     auto *result = new QLabel;
@@ -2122,7 +2124,7 @@ void MoleculePanel::symmetryDialog() {
     PointGroup group;
     const auto evaluate = [&] {
         group = pointGroup(displayDocument(), tolerance->value());
-        settings.setValue("symmetry/tolerance", tolerance->value());
+        uiContext.setPreference(Preference::symmetryTolerance, tolerance->value());
         if (group.name.isEmpty())
             result->setText(displayDocument().atoms.size() > 200 ? tr("200原子を超える構造は判定しません。")
                                                                  : tr("点群を決められませんでした。"));
@@ -2143,20 +2145,7 @@ void MoleculePanel::symmetryDialog() {
         return;
     const double limit = tolerance->value();
     double moved = 0;
-    edit(
-        tr("点群に合わせて対称化"),
-        [&](Document &d) {
-            // A few passes: within tolerance the found operations are only nearly a group.
-            auto current = pointGroup(d, limit);
-            for (int pass = 0; pass < 5 && !current.name.isEmpty(); ++pass) {
-                moved = std::max(moved, symmetrize(d, current));
-                const auto next = pointGroup(d, limit);
-                if (next.name != current.name || next.deviation < 1e-10)
-                    break;
-                current = next;
-            }
-        },
-        true);
+    edit(tr("点群に合わせて対称化"), [&](Document &d) { moved = symmetrizeToPointGroup(d, limit); }, true);
     showMessage(tr("%1に対称化した候補です（最大の移動 %2 Å）。「変更を確定」で適用します。")
                     .arg(group.name)
                     .arg(moved, 0, 'f', 4),
@@ -2183,12 +2172,13 @@ void MoleculePanel::solvationDialog() {
     solvent->setObjectName("solvationSolvent");
     for (const auto &id : solventTemplates())
         solvent->addItem(templateName(findTemplate(id)), id);
-    solvent->setCurrentIndex(std::max(0, solvent->findData(settings.value("solvation/solvent").toString())));
+    solvent->setCurrentIndex(
+        std::max(0, solvent->findData(uiContext.preference(Preference::solvationSolvent).toString())));
     form->addRow(tr("溶媒"), solvent);
     auto *count = new QSpinBox;
     count->setObjectName("solvationCount");
     count->setRange(1, 1000);
-    count->setValue(settings.value("solvation/count", 6).toInt());
+    count->setValue(uiContext.preference(Preference::solvationCount, 6).toInt());
     count->setToolTip(tr("置ける場所が足りないときは、置けた数だけ置きます。"));
     form->addRow(tr("溶媒分子の数"), count);
     auto *around =
@@ -2205,8 +2195,8 @@ void MoleculePanel::solvationDialog() {
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     if (dialog.exec() != QDialog::Accepted)
         return;
-    settings.setValue("solvation/solvent", solvent->currentData());
-    settings.setValue("solvation/count", count->value());
+    uiContext.setPreference(Preference::solvationSolvent, solvent->currentData());
+    uiContext.setPreference(Preference::solvationCount, count->value());
     const auto t = findTemplate(solvent->currentData().toString());
     SolvationOptions options;
     options.count = count->value();
@@ -2245,7 +2235,7 @@ void MoleculePanel::savePart() {
         return;
     writeFile(p, QJsonDocument(t).toJson());
     customParts.append(t);
-    settings.setValue("parts", customParts);
+    uiContext.setPreference(Preference::customParts, customParts);
     refreshPalette();
 }
 
@@ -2265,7 +2255,7 @@ void MoleculePanel::loadPartFile(const QString &p) {
         if (customParts[i].toObject()["id"] == t["id"])
             customParts.removeAt(i);
     customParts.append(t);
-    settings.setValue("parts", customParts);
+    uiContext.setPreference(Preference::customParts, customParts);
     setPaletteCategory("my");
     showPalette(true);
     refreshPalette();
@@ -2368,9 +2358,9 @@ void MoleculePanel::stopEditing() {
     disconnect(this, nullptr, nullptr, nullptr);
 }
 void MoleculePanel::savePreferences() {
-    settings.setValue("keepSelection", keepSelection->isChecked());
-    settings.setValue("keepTool", keepTool->isChecked());
-    settings.setValue("parts", customParts);
+    uiContext.setPreference(Preference::keepSelection, keepSelection->isChecked());
+    uiContext.setPreference(Preference::keepTool, keepTool->isChecked());
+    uiContext.setPreference(Preference::customParts, customParts);
 }
 void MoleculePanel::setWorkerRunning(bool running) {
     cancelWorkerButton->setVisible(running);

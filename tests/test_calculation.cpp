@@ -5,6 +5,7 @@
 #include "foundation/files.h"
 #include "foundation/i18n.h"
 #include "io/structure_io.h"
+#include "nwchem/input_builder.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_geometry.h"
@@ -105,8 +106,10 @@ class CalculationTest : public QObject {
     }
     // A continued restart leaves out the generated tasks the other job finished. The tasks of the additional
     // input are among those it finished, but they are the user's text: they stay, and count for no
-    // generated task.
+    // generated task. The plan's steps say so, and the input has the tasks of the steps it does not skip.
     void continuedRestartKeepsUnfinishedTasks() {
+        using Phase = NwchemTaskPhase;
+        using Steps = QList<NwchemTaskStep>;
         const auto continued = [](Document d, const QStringList &done) {
             set(d, "restart",
                 QJsonObject{{"mode", "continue"},
@@ -122,25 +125,149 @@ class CalculationTest : public QObject {
         auto d = water();
         set(d, "task", "optimize_frequencies");
         set(d, "prop_mulliken", true);
+        auto plan = nwchemTaskPlan(d);
+        QCOMPARE(plan.steps, Steps({{Phase::Main, "task scf optimize"},
+                                    {Phase::Main, "task scf frequencies"},
+                                    {Phase::Properties, "task scf property"}}));
+        QCOMPARE(plan.finished, 0);
+        QCOMPARE(plan.frequency, 1);
         auto next = continued(d, {"task scf optimize"});
-        QCOMPARE(nwchemTaskPlan(next).finished, 1);
+        plan = nwchemTaskPlan(next);
+        QCOMPARE(plan.steps, Steps({{Phase::Main, "task scf optimize", true},
+                                    {Phase::Main, "task scf frequencies"},
+                                    {Phase::Properties, "task scf property"}}));
+        QCOMPARE(plan.finished, 1);
+        QCOMPARE(plan.frequency, 1);
+        QCOMPARE(plan.commands(), nwchemTaskPlan(d).commands()); // Skipped or not.
         QCOMPARE(tasks(next), QStringList({"task scf frequencies", "task scf property"}));
+        // What stands around a task that is left out is written as before.
+        const auto input = generateNwchemInput(next);
+        QVERIFY(input.text.contains("\ndriver\n"));
+        QVERIFY(input.text.contains("end\n\ntask scf frequencies\n\nproperty\n"));
+        QCOMPARE(int(std::count_if(input.outline.blocks.cbegin(), input.outline.blocks.cend(),
+                                   [](const auto &block) { return block.keyword == "task"; })),
+                 2);
         // A task before the generated ones, indented and in upper case as NWChem also reads it.
         set(d, "extra_input", "set scf:maxiter 60\n  TASK scf energy");
-        QCOMPARE(nwchemTaskPlan(d).before, QStringList{"TASK scf energy"});
+        QCOMPARE(nwchemTaskPlan(d).commands(Phase::Before), QStringList{"TASK scf energy"});
         next = continued(d, {"TASK scf energy"}); // The optimization was under way.
-        QCOMPARE(nwchemTaskPlan(next).finished, 0);
+        plan = nwchemTaskPlan(next);
+        QCOMPARE(plan.steps, Steps({{Phase::Before, "TASK scf energy"},
+                                    {Phase::Main, "task scf optimize"},
+                                    {Phase::Main, "task scf frequencies"},
+                                    {Phase::Properties, "task scf property"}}));
+        QVERIFY(!plan.steps[0].generated());
+        QVERIFY(plan.steps[1].generated());
+        QCOMPARE(plan.finished, 0);
+        QCOMPARE(plan.frequency, 1); // Among the tasks of its phase.
         QCOMPARE(tasks(next), QStringList({"TASK scf energy", "task scf optimize", "task scf frequencies",
                                            "task scf property"}));
         next = continued(d, {"TASK scf energy", "task scf optimize"}); // The frequencies were under way.
-        QCOMPARE(nwchemTaskPlan(next).finished, 1);
+        plan = nwchemTaskPlan(next);
+        QCOMPARE(plan.steps, Steps({{Phase::Before, "TASK scf energy"},
+                                    {Phase::Main, "task scf optimize", true},
+                                    {Phase::Main, "task scf frequencies"},
+                                    {Phase::Properties, "task scf property"}}));
+        QCOMPARE(plan.finished, 1);
         QCOMPARE(tasks(next), QStringList({"TASK scf energy", "task scf frequencies", "task scf property"}));
         // Tasks after the generated ones: those of them that ended run again with the others.
         set(d, "extra_tasks", "task scf gradient\ntask scf energy");
+        const Steps user({{Phase::Before, "TASK scf energy"},
+                          {Phase::Main, "task scf optimize", true},
+                          {Phase::Main, "task scf frequencies", true},
+                          {Phase::Properties, "task scf property", true},
+                          {Phase::After, "task scf gradient"},
+                          {Phase::After, "task scf energy"}});
         next = continued(d, {"TASK scf energy", "task scf optimize", "task scf frequencies",
                              "task scf property", "task scf gradient"});
-        QCOMPARE(nwchemTaskPlan(next).finished, 3);
+        plan = nwchemTaskPlan(next);
+        QCOMPARE(plan.steps, user);
+        QVERIFY(!plan.steps[4].generated());
+        QCOMPARE(plan.finished, 3);
         QCOMPARE(tasks(next), QStringList({"TASK scf energy", "task scf gradient", "task scf energy"}));
+        // The settings of a line that is left out stay known to the outline, without a line.
+        QVERIFY(generateNwchemInput(next).outline.settings.value("numerical_frequencies").isEmpty());
+        // However many tasks the other job finished, the user's are never among the skipped ones.
+        next = continued(d, nwchemTaskPlan(d).commands() + QStringList{"task scf energy"});
+        plan = nwchemTaskPlan(next);
+        QCOMPARE(plan.steps, user);
+        QCOMPARE(plan.finished, 3);
+    }
+    // The input writer takes the generated tasks of a plan in their order, each in the phase it expects:
+    // it cannot write a task the plan does not have, nor leave one of the plan's out.
+    void taskCursorFollowsPlan() {
+        using Phase = NwchemTaskPhase;
+        auto d = water();
+        set(d, "task", "optimize");
+        set(d, "prop_esp", true);
+        set(d, "extra_input", "task scf energy");
+        set(d, "extra_tasks", "task scf gradient");
+        NwchemTaskCursor tasks(nwchemTaskPlan(d));
+        QCOMPARE(tasks.plan.commands(),
+                 QStringList({"task scf energy", "task scf optimize", "task esp", "task scf gradient"}));
+        QVERIFY(tasks.at(Phase::Main)); // The user's task before it is not the writer's.
+        QVERIFY(!tasks.at(Phase::Before));
+        QVERIFY(!tasks.at(Phase::Esp));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, tasks.take(Phase::Esp));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, tasks.finish());
+        QCOMPARE(tasks.take(Phase::Main).command, QString("task scf optimize"));
+        QVERIFY(!tasks.at(Phase::Main));
+        QCOMPARE(tasks.take(Phase::Esp).command, QString("task esp"));
+        QVERIFY(!tasks.at(Phase::After));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, tasks.take(Phase::After));
+        tasks.finish();
+        // A skipped step is taken like the others: the writer leaves its task out, not its place.
+        set(d, "restart",
+            QJsonObject{{"mode", "continue"},
+                        {"job", "/job"},
+                        {"done", QJsonArray{"task scf energy", "task scf optimize"}},
+                        {"geometry", nwchemRestartDigest(d, true)}});
+        NwchemTaskCursor left(nwchemTaskPlan(d));
+        QVERIFY(left.take(Phase::Main).skipped);
+        QVERIFY(!left.take(Phase::Esp).skipped);
+        left.finish();
+    }
+    // The lines around a task that is left out read as if its line had been taken out of the complete
+    // input: of two empty lines around it one goes, and the lines after it are counted without it.
+    void skippedTaskLeavesNoGap() {
+        using Phase = NwchemTaskPhase;
+        const auto written = [](const QList<NwchemTaskStep> &steps, const QString &after) {
+            NwchemTaskPlan plan;
+            plan.steps = steps;
+            NwchemTaskCursor tasks(plan);
+            NwchemInputBuilder out;
+            out.append("charge 0\n\n");
+            for (const auto &step : steps)
+                out.task(tasks, step.phase, "task", {"numerical_frequencies"});
+            out.block("property", after, "prop_mulliken");
+            tasks.finish();
+            return out.result;
+        };
+        const NwchemTaskStep optimize{Phase::Main, "task scf optimize", true},
+            frequencies{Phase::Main, "task scf frequencies", true},
+            energy{Phase::Followup, "task scf energy"};
+        auto input = written({optimize}, "\nproperty\nend\n");
+        QCOMPARE(input.text, QString("charge 0\n\nproperty\nend\n"));
+        QCOMPARE(input.outline.blocks.size(), 1);
+        QCOMPARE(input.outline.blocks[0].line, 2);
+        QVERIFY(input.outline.settings.contains("numerical_frequencies"));
+        QVERIFY(input.outline.settings["numerical_frequencies"].isEmpty());
+        // A line that follows at once keeps the empty line before the task.
+        QCOMPARE(written({optimize}, "property\nend\n").text, QString("charge 0\n\nproperty\nend\n"));
+        input = written({optimize, frequencies, energy}, "\nproperty\nend\n");
+        QCOMPARE(input.text, QString("charge 0\n\ntask scf energy\n\nproperty\nend\n"));
+        QCOMPARE(input.outline.blocks[0].line, 2);
+        QCOMPARE(input.outline.settings["numerical_frequencies"], QSet<int>{2});
+        QCOMPARE(input.outline.blocks[1].line, 4);
+        QCOMPARE(written({optimize, frequencies}, "\nproperty\nend\n").text,
+                 QString("charge 0\n\nproperty\nend\n"));
+        // The end of the input counts as an empty line.
+        QCOMPARE(written({optimize, frequencies}, {}).text, QString("charge 0\n"));
+        // Written tasks take no line with them.
+        auto run = optimize;
+        run.skipped = false;
+        QCOMPARE(written({run, frequencies}, "\nproperty\nend\n").text,
+                 QString("charge 0\n\ntask scf optimize\n\nproperty\nend\n"));
     }
     void diagnosticIdentityDoesNotDependOnLanguage() {
         auto d = water();
@@ -1082,7 +1209,7 @@ class CalculationTest : public QObject {
             "\nneb\n  nbeads 10\n  kbeads 1\n  maxiter 50\n  stepsize 0.1\n  print_shift 1\nend\n"));
         QVERIFY(text.contains("\ntask scf neb\n"));
         QVERIFY(!text.contains("\ndriver\n"));
-        QCOMPARE(nwchemSectionUnused(d, "path"), QString());
+        QVERIFY(nwchemSectionUse(d, NwchemSection::Path).used);
         // An NWChem NEB input reads back with its end.
         const auto imported = importNwchemInput(text).document;
         QCOMPARE(nwchemSettings(imported)["task"].toString(), QString("neb"));
@@ -1159,6 +1286,44 @@ class CalculationTest : public QObject {
         auto other = dir.filePath("water.xyz");
         writeFile(other, "3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n");
         QVERIFY_THROWS_EXCEPTION(std::exception, panel->setNebEndFromFile(other));
+        // A file beyond 128 MiB is refused before anything is read, as over MCP.
+        const auto set = w.document();
+        for (const auto *name : {"large.xyz", "large.out"}) {
+            QFile large(dir.filePath(name));
+            QVERIFY(large.open(QIODevice::WriteOnly));
+            QVERIFY(large.resize(qint64(128) * 1024 * 1024 + 1)); // Sparse: no data is written.
+            large.close();
+            try {
+                panel->setNebEndFromFile(large.fileName());
+                QFAIL("A file beyond the limit was read");
+            } catch (const std::exception &e) {
+                QVERIFY2(QString::fromUtf8(e.what()).contains("128 MiB"), e.what());
+            }
+            QVERIFY(!panel->loadingNebEnd());
+            QVERIFY(large.remove());
+        }
+        QCOMPARE(w.document(), set);
+    }
+    void openingNwchemInputShowsItsNotes() {
+        // Both suffixes of NWChem inputs list what was not imported when the file is opened.
+        QTemporaryDir dir;
+        const QByteArray input = "geometry\n Ne 0 0 0\nend\nset geometry:actlist 1\ntask scf energy\n";
+        QVERIFY(!importNwchemInput(QString::fromUtf8(input)).notes.isEmpty());
+        for (const auto *name : {"neon.nw", "neon.nwinp"}) {
+            writeFile(dir.filePath(name), input);
+            MainWindow w;
+            QString shown;
+            QTimer::singleShot(0, &w, [&shown] {
+                if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                    shown = box->text();
+                    box->accept();
+                }
+            });
+            w.loadPath(dir.filePath(name));
+            QVERIFY2(shown.contains("取り込まなかった項目"), name);
+            QCOMPARE(w.document().atoms.size(), 1);
+            QCOMPARE(w.document().atoms[0].element, QString("Ne"));
+        }
     }
     void panelNebLogLoading() {
         QTemporaryDir dir;
@@ -1430,22 +1595,36 @@ class CalculationTest : public QObject {
     void sectionsChangesAndResets() {
         // Sections without a part in the calculation, and why.
         auto d = water();
-        QCOMPARE(nwchemSectionUnused(d, "path"), QString("使わない"));
-        QCOMPARE(nwchemSectionUnused(d, "constraints"), QString("最適化のみ"));
-        QCOMPARE(nwchemSectionUnused(d, "optimization"), QString("使わない"));
-        QCOMPARE(nwchemSectionUnused(d, "bsse"), QString("単量体なし"));
-        QCOMPARE(nwchemSectionUnused(d, "excited"), QString("DFTのみ"));
-        QVERIFY(nwchemSectionUnused(d, "basic").isEmpty());
+        using Section = NwchemSection;
+        const auto unused = [](const QString &reason = {}) { return NwchemSectionUse{false, reason}; };
+        QCOMPARE(nwchemSectionUse(d, Section::Path), unused());
+        QCOMPARE(nwchemSectionUse(d, Section::Constraints), unused("最適化のみ"));
+        QCOMPARE(nwchemSectionUse(d, Section::Optimization), unused());
+        QCOMPARE(nwchemSectionUse(d, Section::Followup), unused("最適化のみ"));
+        QCOMPARE(nwchemSectionUse(d, Section::Bsse), unused("単量体なし"));
+        QCOMPARE(nwchemSectionUse(d, Section::Excited), unused("DFTのみ"));
         set(d, "method", "dft");
-        QVERIFY(nwchemSectionUnused(d, "excited").isEmpty());
+        QCOMPARE(nwchemSectionUse(d, Section::Excited), NwchemSectionUse());
         set(d, "task", "optimize_frequencies");
-        QCOMPARE(nwchemSectionUnused(d, "excited"), QString("一点・最適化"));
-        QVERIFY(nwchemSectionUnused(d, "constraints").isEmpty() &&
-                nwchemSectionUnused(d, "optimization").isEmpty());
+        QCOMPARE(nwchemSectionUse(d, Section::Excited), unused("一点・最適化"));
+        QVERIFY(nwchemSectionUse(d, Section::Constraints).used &&
+                nwchemSectionUse(d, Section::Optimization).used &&
+                nwchemSectionUse(d, Section::Followup).used);
+        // A section in use has no reason.
+        QVERIFY(nwchemSectionUse(d, Section::Followup).reason.isEmpty());
         set(d, "task", "scan");
         set(d, "scan_relaxed", false);
-        QVERIFY(nwchemSectionUnused(d, "path").isEmpty());
-        QCOMPARE(nwchemSectionUnused(d, "constraints"), QString("最適化のみ"));
+        QVERIFY(nwchemSectionUse(d, Section::Path).used);
+        QCOMPARE(nwchemSectionUse(d, Section::Constraints), unused("最適化のみ"));
+        // The panel's cards of these sections have the keys of the core; the others have none.
+        QStringList keys;
+        for (const auto section : {Section::Path, Section::Constraints, Section::Optimization,
+                                   Section::Followup, Section::Bsse, Section::Excited}) {
+            keys << nwchemSectionKey(section);
+            QVERIFY(nwchemSectionFromKey(keys.last()) == section);
+        }
+        QCOMPARE(keys, (QStringList{"path", "constraints", "optimization", "followup", "bsse", "excited"}));
+        QVERIFY(!nwchemSectionFromKey("basic") && !nwchemSectionFromKey(""));
 
         MainWindow w;
         w.loadDocument(water());
@@ -1456,7 +1635,16 @@ class CalculationTest : public QObject {
                     return sections->item(i);
             return nullptr;
         };
+        // What the list and the card say of a section without a part: with its reason, if it has one.
         QCOMPARE(entry("path")->data(Qt::UserRole + 12).toString(), QString("使わない"));
+        QCOMPARE(entry("path")->toolTip(), QString("この計算では使いません"));
+        QCOMPARE(entry("constraints")->data(Qt::UserRole + 12).toString(), QString("最適化のみ"));
+        QCOMPARE(entry("constraints")->toolTip(), QString("この計算では使いません（最適化のみ）"));
+        QVERIFY(entry("path")->data(Qt::UserRole + 13).toBool());
+        QVERIFY(entry("basic")->data(Qt::UserRole + 12).toString().isEmpty() &&
+                entry("basic")->toolTip().isEmpty() && !entry("basic")->data(Qt::UserRole + 13).toBool());
+        for (const auto &key : keys)
+            QVERIFY2(w.findChild<QWidget *>("calculationCard_" + key), qPrintable(key));
         QVERIFY(entry("basic")->data(Qt::UserRole + 11).toString().isEmpty());
         // Chips and segments set the hidden combo boxes that hold the values.
         w.findChild<QToolButton *>("nwchem_task_optimize")->click();

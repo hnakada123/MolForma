@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/property_geometry_view.h"
 #include "foundation/i18n.h"
+#include "model/settings.h"
 #include "results/field_analysis.h"
+#include "results/result_properties.h"
 #include "ui/editor_context.h"
 #include "ui/molecule_view.h"
 #include <QtWidgets>
@@ -44,7 +46,7 @@ PropertyGeometryView::PropertyGeometryView(UiServices &uiServices, QWidget *pare
     : QWidget(parent), uiContext(uiServices), loader(this) {
     setObjectName("propertyGeometryView");
     auto *layout = new QVBoxLayout(this);
-    view = new MoleculeView;
+    view = new MoleculeView(rendererChoice(uiContext.preference(Preference::viewRenderer)));
     view->setObjectName("propertyGeometryMolecule");
     view->setAngles(30, 20, 0);
     layout->addWidget(view, 2);
@@ -228,13 +230,14 @@ void PropertyGeometryView::refresh() {
         view->setSurface({});
         if (data.frames.isEmpty())
             return;
-        const auto d = data.properties["dipole"].toObject();
+        const auto d = resultDipole(data);
         const auto p = data.properties["polarizability"].toObject();
-        if (dipole->isChecked() && tensor->isChecked() && !d.isEmpty() && !p.isEmpty() &&
-            d["geometry"] != p["geometry"])
+        if (dipole->isChecked() && tensor->isChecked() && d && !p.isEmpty() &&
+            d->geometry != p["geometry"].toString())
             fail(tr("双極子と分極率の座標が異なります。一方だけを選択してください。"));
-        const auto geometry =
-            tensor->isChecked() && !p.isEmpty() ? p["geometry"].toString() : d["geometry"].toString();
+        const auto geometry = tensor->isChecked() && !p.isEmpty() ? p["geometry"].toString()
+                              : d                                 ? d->geometry
+                                                                  : QString();
         const auto molecule = geometry.isEmpty() ? data.frames.last().molecule : Document::fromXyz(geometry);
         view->setDocument(molecule);
         Vec center = Vec::Zero();
@@ -244,8 +247,8 @@ void PropertyGeometryView::refresh() {
         center /= std::max<qsizetype>(1, atoms.size());
         QVector<std::pair<Vec, Vec>> arrows, lines;
         QStringList values;
-        if (dipole->isChecked() && !d.isEmpty()) {
-            const Vec vector(d["x"].toDouble(), d["y"].toDouble(), d["z"].toDouble());
+        if (dipole->isChecked() && d) {
+            const Vec vector = d->au;
             arrows.append({center, vector * 2.541746473 * dipoleScale->value()});
             values << tr("双極子: %1 D").arg(vector.norm() * 2.541746473, 0, 'g', 7);
         }

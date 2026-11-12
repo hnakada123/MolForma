@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/calculation_panel.h"
-#include "foundation/files.h"
 #include "foundation/i18n.h"
 #include "io/structure_io.h"
 #include "model/geometry.h"
+#include "model/settings.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_output.h"
@@ -67,7 +67,8 @@ CalculationPanel::CalculationPanel(EditorContext &editorServices, UiServices &ui
     storeButton->setObjectName("calculationStorePreset");
     tools->addWidget(storeButton);
     connect(storeButton, &QPushButton::clicked, this, &CalculationPanel::storePreset);
-    userPresets = QJsonDocument::fromJson(uiContext.preference("nwchem/presets").toByteArray()).array();
+    userPresets =
+        QJsonDocument::fromJson(uiContext.preference(Preference::nwchemPresets).toByteArray()).array();
     reloadPresets();
     connect(presetMenu, &QMenu::aboutToShow, this, [this] {
         // What each preset would change, against the current settings.
@@ -312,7 +313,7 @@ CalculationPanel::CalculationPanel(EditorContext &editorServices, UiServices &ui
     flag(convergence, tr("RI-J（Coulomb項のフィッティング、DFT）"), "ri_j");
     flag(convergence, tr("相関計算で内殻を凍結（freeze atomic）"), "freeze_core");
     integer(convergence, tr("CC最大反復"), "cc_maxiter");
-    auto *opt = group("optimization", tr("最適化・振動数"));
+    auto *opt = group(NwchemSection::Optimization, tr("最適化・振動数"));
     integer(opt, tr("最適化最大反復"), "opt_maxiter");
     choice(opt, tr("最適化収束"), "opt_convergence");
     flag(opt, tr("数値Hessianを使用"), "numerical_frequencies");
@@ -320,7 +321,7 @@ CalculationPanel::CalculationPanel(EditorContext &editorServices, UiServices &ui
                  "固定原子・ゴースト・外部点電荷を含む振動数解析は未対応です。"));
 
     nav->addHeading(tr("計算目的に応じて"));
-    auto *path = group("path", tr("IRC・スキャン・NEB"));
+    auto *path = group(NwchemSection::Path, tr("IRC・スキャン・NEB"));
     integer(path, tr("IRCの点数（各方向）"), "irc_points");
     real(path, tr("IRCの刻み幅 / amu½·Bohr"), "irc_stride");
     choice(path, tr("IRCの方向"), "irc_direction");
@@ -390,9 +391,7 @@ CalculationPanel::CalculationPanel(EditorContext &editorServices, UiServices &ui
         try {
             if (editorContext.revision() != nebRevision)
                 fail(tr("読込中に分子・計算条件が変更されたため、NEBの終点を適用しませんでした。"));
-            if (result.frames.isEmpty())
-                fail(tr("このファイルに構造がありません。"));
-            setNebEnd(result.frames.last().molecule, true, tr("NEBの終点をファイルから設定"));
+            setNebEnd(nebEndFromLog(result), true, tr("NEBの終点をファイルから設定"));
             emit nebEndLoaded();
         } catch (const std::exception &e) {
             nebLoadFailed(QString::fromUtf8(e.what()));
@@ -446,7 +445,7 @@ CalculationPanel::CalculationPanel(EditorContext &editorServices, UiServices &ui
                   "経路を最適化します。始点と終点は同じ原子を同じ順番で持つ構造にします（終点は始点に"
                   "重ね合わせて記録します）。経路の最高点から遷移状態探索へ進めます。"));
 
-    auto *constrained = group("constraints", tr("内部座標の拘束・追加"));
+    auto *constrained = group(NwchemSection::Constraints, tr("内部座標の拘束・追加"));
     constraints = new QTableWidget(0, 3);
     constraints->setObjectName("nwchem_constraints");
     constraints->setHorizontalHeaderLabels({tr("座標"), tr("値（Å・°）"), tr("固定")});
@@ -459,7 +458,7 @@ CalculationPanel::CalculationPanel(EditorContext &editorServices, UiServices &ui
     rowKeys[constraints] = "constraints";
     rows["constraints"] = constraints;
     labels["constraints"] = tr("内部座標の拘束・追加");
-    sectionOf["constraints"] = "constraints";
+    sectionOf["constraints"] = sections.last().key;
     sections.last().keys << "constraints";
     auto *constraintButtons = new QWidget;
     auto *constraintRow = new QHBoxLayout(constraintButtons);
@@ -514,14 +513,14 @@ CalculationPanel::CalculationPanel(EditorContext &editorServices, UiServices &ui
         change("constraints", list);
     });
 
-    auto *followup = group("followup", tr("後続の一点計算"));
+    auto *followup = group(NwchemSection::Followup, tr("後続の一点計算"));
     flag(followup, tr("最適化後に別の手法・基底で一点エネルギーを計算"), "followup");
     choice(followup, tr("手法"), "followup_method");
     choice(followup, tr("DFT汎関数"), "followup_functional");
     choice(followup, tr("DFT分散補正"), "followup_dispersion");
     choice(followup, tr("基底関数（全元素）"), "followup_basis");
 
-    auto *counterpoise = group("bsse", tr("BSSE補正"));
+    auto *counterpoise = group(NwchemSection::Bsse, tr("BSSE補正"));
     flag(counterpoise, tr("単量体ごとのcounterpoise補正（BSSE）"), "bsse");
     monomers = new QLabel;
     monomers->setObjectName("calculationMonomers");
@@ -552,7 +551,7 @@ CalculationPanel::CalculationPanel(EditorContext &editorServices, UiServices &ui
     help(properties, tr("最後の計算（後続の一点計算があればその条件）の後に計算します。"
                         "結果は「結果ビューア」の「物性」に表示します。"));
 
-    auto *excited = group("excited", tr("励起状態（TDDFT）"));
+    auto *excited = group(NwchemSection::Excited, tr("励起状態（TDDFT）"));
     flag(excited, tr("TDDFTで励起エネルギー・振動子強度を計算"), "tddft");
     integer(excited, tr("励起状態の数（nroots）"), "tddft_roots");
     flag(excited, tr("三重項も計算（閉殻）"), "tddft_triplets");
@@ -645,7 +644,7 @@ CalculationPanel::CalculationPanel(EditorContext &editorServices, UiServices &ui
     forms->addStretch();
     // The detailed options under the fields of their sections; open where they are all there is.
     addDetails("convergence", {"scf", "dft", "correlation"}, false);
-    addDetails("optimization", {"driver", "frequency"}, false);
+    addDetails(nwchemSectionKey(NwchemSection::Optimization), {"driver", "frequency"}, false);
     addDetails("environment", {"cosmo"}, false);
     addDetails("orbitals", {"files", "visualization"}, true);
 
@@ -953,8 +952,13 @@ QFormLayout *CalculationPanel::group(const QString &key, const QString &title) {
     form->setHorizontalSpacing(14);
     form->setVerticalSpacing(10);
     card->body()->addLayout(form);
-    sections << Section{key, title, card, form, {}, note, resetButton};
+    sections << Section{key, title, card, form, {}, note, resetButton, {}};
     nav->addEntry(title, key);
+    return form;
+}
+QFormLayout *CalculationPanel::group(NwchemSection section, const QString &title) {
+    auto *form = group(nwchemSectionKey(section), title);
+    sections.last().conditional = section;
     return form;
 }
 void CalculationPanel::addRow(QFormLayout *form, const QString &key, const QString &label, QWidget *field) {
@@ -1194,9 +1198,8 @@ void CalculationPanel::setNebEndFromFile(const QString &path) {
     if (busy || !editable())
         fail(tr("候補を確定・取消し、整形の終了後に設定してください。"));
     uiContext.checkMcpPath(path);
-    Document end;
-    const auto suffix = QFileInfo(path).suffix().toLower();
-    if (suffix == "out" || suffix == "log" || suffix == "nwo") {
+    // A log is read by a worker that can be cancelled; a structure file at once.
+    if (nebEndFileIsLog(path)) {
         nebRevision = editorContext.revision();
         nebLoadStatus->setText(tr("NEBの終点を読み込んでいます…"));
         nebCancel->show();
@@ -1207,12 +1210,8 @@ void CalculationPanel::setNebEndFromFile(const QString &path) {
             throw;
         }
         return;
-    } else if (suffix == "xyz") {
-        const int frames = int(xyzFrames(QString::fromUtf8(readFile(path))).size());
-        end = importStructure(path, {}, frames > 1 ? frames - 1 : -1);
-    } else
-        end = importStructure(path);
-    setNebEnd(end, true, tr("NEBの終点をファイルから設定"));
+    }
+    setNebEnd(nebEndFromFile(path), true, tr("NEBの終点をファイルから設定"));
 }
 void CalculationPanel::cancelNebEndLoad() {
     nebLoader.cancel();
@@ -1558,14 +1557,16 @@ void CalculationPanel::refreshChanges(const QJsonObject &s) {
             count += changed.contains(key);
         for (const auto &detail : std::as_const(details))
             count += detail.section == section.key && a.contains(detail.option->key);
-        const auto unused = nwchemSectionUnused(d, section.key);
-        section.note->setText(unused.isEmpty()           ? QString()
-                              : unused == tr("使わない") ? tr("この計算では使いません")
-                                                         : tr("この計算では使いません（%1）").arg(unused));
+        const auto use = section.conditional ? nwchemSectionUse(d, *section.conditional) : NwchemSectionUse();
+        section.note->setText(use.used               ? QString()
+                              : use.reason.isEmpty() ? tr("この計算では使いません")
+                                                     : tr("この計算では使いません（%1）").arg(use.reason));
         if (auto *entry = nav->entry(section.key)) {
             entry->setData(NavList::BadgeRole, count ? tr("変更 %1").arg(count) : QString());
-            entry->setData(NavList::NoteRole, unused);
-            entry->setData(NavList::MutedRole, !unused.isEmpty());
+            entry->setData(NavList::NoteRole, use.used               ? QString()
+                                              : use.reason.isEmpty() ? tr("使わない")
+                                                                     : use.reason);
+            entry->setData(NavList::MutedRole, !use.used);
             entry->setToolTip(section.note->text());
         }
         section.reset->setVisible(count && section.key != "extra");
@@ -1663,7 +1664,7 @@ void CalculationPanel::reloadPresets() {
             if (i >= userPresets.size())
                 return;
             userPresets.removeAt(i);
-            uiContext.setPreference("nwchem/presets",
+            uiContext.setPreference(Preference::nwchemPresets,
                                     QJsonDocument(userPresets).toJson(QJsonDocument::Compact));
             QTimer::singleShot(0, this, &CalculationPanel::reloadPresets); // Not inside its own menu.
         });
@@ -1722,7 +1723,8 @@ void CalculationPanel::storePreset() {
             return;
         }
     userPresets << QJsonObject{{"name", name}, {"settings", settings}};
-    uiContext.setPreference("nwchem/presets", QJsonDocument(userPresets).toJson(QJsonDocument::Compact));
+    uiContext.setPreference(Preference::nwchemPresets,
+                            QJsonDocument(userPresets).toJson(QJsonDocument::Compact));
     reloadPresets();
     uiContext.showMessage(tr("プリセット「%1」を登録しました。").arg(name), 5000);
 }

@@ -6,9 +6,13 @@
 #include "io/pubchem.h"
 #include "model/settings.h"
 #include "nwchem/conformer_set.h"
+#include "nwchem/history.h"
 #include "nwchem/nwchem_execution.h"
+#include "nwchem/run_diagnostics.h"
+#include "nwchem/run_record.h"
 #include "nwchem/run_session.h"
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -163,6 +167,277 @@ class ServicesTest : public QObject {
         QCOMPARE(set.specification(), last);
         QVERIFY(!set.loading());
     }
+    // A job saved without running, for the tests of its record.
+    ExecutionPlan savedJob(const QTemporaryDir &jobs) {
+        auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n");
+        setExecutionSetting(d, "mode", "direct");
+        setExecutionSetting(d, "executable", QCoreApplication::applicationFilePath());
+        setExecutionSetting(d, "job_root", jobs.filePath("jobs"));
+        setExecutionSetting(d, "timeout_seconds", 90);
+        setExecutionSetting(
+            d, "environment",
+            QJsonArray{QJsonObject{{"enabled", true}, {"name", "MOLFORMA_LITERAL"}, {"value", "kept"}}});
+        return saveExecutionBundle(d, jobs.path());
+    }
+    // The record of a job has one reader and one writer: what is written is read back, each reader gets
+    // what it asks for, and a record that is a link is neither replaced nor taken for a job.
+    void runRecordRoundTripAndChecks() {
+        QTemporaryDir jobs;
+        const auto plan = savedJob(jobs);
+        const auto job = plan.directory;
+        for (const auto *name : {JobFile::record, JobFile::project, JobFile::input})
+            QVERIFY2(QFileInfo(jobFile(job, name)).isFile(), name);
+        QCOMPARE(jobFile(job, JobFile::record), job + "/run.json");
+        for (const auto check : {RecordCheck::Json, RecordCheck::Supported, RecordCheck::Complete})
+            QCOMPARE(readRunRecord(job, check), plan.manifest);
+        // Every record names its format and the files of its folder.
+        const auto fresh = newRunRecord();
+        for (auto it = fresh.begin(); it != fresh.end(); ++it)
+            QCOMPARE(plan.manifest[it.key()], it.value());
+        QCOMPARE(fresh["format"].toString(), QString(RunRecord::format));
+        QCOMPARE(fresh["stdout"].toString(), QString(JobFile::output));
+        QVERIFY(RunRecord(plan.manifest).supported());
+        QCOMPARE(RunRecord(plan.manifest).state(), RunState::Prepared);
+        // A written record is the bytes of its JSON, with the keys this code does not know.
+        auto record = plan.manifest;
+        record["future"] = QJsonObject{{"keep", true}};
+        writeRunRecord(job, record);
+        const auto bytes = QJsonDocument(record).toJson();
+        QCOMPARE(readFile(jobFile(job, JobFile::record)), bytes);
+        QCOMPARE(readRunRecord(job, RecordCheck::Complete), record);
+        QCOMPARE(runRecordDigest(job),
+                 QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex()));
+        QVERIFY(readHistoryEntry(job).valid);
+        // Another version is a record only for the processes of its own run.
+        auto other = record;
+        other["version"] = 2;
+        writeRunRecord(job, other);
+        QCOMPARE(readRunRecord(job, RecordCheck::Json), other);
+        QVERIFY(RunRecord(other).hasFormat() && !RunRecord(other).supported());
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readRunRecord(job, RecordCheck::Supported));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readRunRecord(job, RecordCheck::Complete));
+        // The history asks more: a finished run has ended with code 0.
+        other = record;
+        other["status"] = "finished";
+        writeRunRecord(job, other);
+        QCOMPARE(readRunRecord(job, RecordCheck::Supported), other);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readRunRecord(job, RecordCheck::Complete));
+        other["stdout"] = "elsewhere.out";
+        other["exit_code"] = 0;
+        writeRunRecord(job, other);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readRunRecord(job, RecordCheck::Complete));
+        // A record larger than the history reads still serves the run it belongs to.
+        other = record;
+        other["padding"] = QString(256 * 1024, 'x');
+        writeRunRecord(job, other);
+        QCOMPARE(readRunRecord(job, RecordCheck::Json), other);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readRunRecord(job, RecordCheck::Supported));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readRunRecord(job, RecordCheck::Complete));
+        writeFile(jobFile(job, JobFile::record), "{");
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readRunRecord(job, RecordCheck::Json));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, runRecordDigest(jobs.filePath("missing")));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 readRunRecord(jobs.filePath("missing"), RecordCheck::Json));
+#ifdef Q_OS_UNIX
+        // A record that is a symbolic link: not written through, and no job of the history.
+        const auto elsewhere = jobs.filePath("elsewhere.json");
+        writeFile(elsewhere, bytes);
+        QVERIFY(QFile::remove(jobFile(job, JobFile::record)));
+        QVERIFY(QFile::link(elsewhere, jobFile(job, JobFile::record)));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, writeRunRecord(job, plan.manifest));
+        QCOMPARE(readFile(elsewhere), bytes);
+        QVERIFY(QFileInfo(jobFile(job, JobFile::record)).isSymLink());
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readRunRecord(job, RecordCheck::Complete));
+        QVERIFY(!readHistoryEntry(job).valid);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readJobFile(job, JobFile::record, 1024 * 1024));
+#endif
+    }
+    // The end of a run is recorded in one place, with what its caller knows of it.
+    void runEndIsRecordedOnce() {
+        QTemporaryDir jobs;
+        const auto plan = savedJob(jobs);
+        const auto job = plan.directory;
+        const auto ended = QDateTime::fromString("2026-01-02T03:04:05.678Z", Qt::ISODateWithMs);
+        // A finished run: the state, how the process ended and when, and the summary of its whole log.
+        writeFile(jobFile(job, JobFile::output), "                NWChem Input Module\n"
+                                                 "         Total DFT energy =      -76.380000000000\n"
+                                                 " Total times  cpu:       12.3s     wall:       45.6s\n");
+        writeFile(jobFile(job, JobFile::errors), {});
+        auto record = plan.manifest;
+        recordRunEnd(record, job,
+                     {.state = RunState::Finished,
+                      .exitCode = 0,
+                      .normalExit = true,
+                      .finished = ended,
+                      .elapsedSeconds = 12,
+                      .error = QString()});
+        auto expected = plan.manifest;
+        expected["status"] = "finished";
+        expected["exit_code"] = 0;
+        expected["exit_status"] = "normal";
+        expected["finished_at"] = "2026-01-02T03:04:05.678Z";
+        expected["elapsed_seconds"] = 12;
+        expected["error"] = "";
+        expected["summary"] = QJsonObject{{"energy", -76.38},
+                                          {"energy_method", "DFT"},
+                                          {"energy_source", "final"},
+                                          {"normal_termination", true}};
+        expected["diagnostics"] = QJsonArray();
+        QCOMPARE(record, expected);
+        writeRunRecord(job, record);
+        const auto entry = readHistoryEntry(job);
+        QVERIFY2(entry.valid, qPrintable(entry.warnings.join('\n')));
+        QCOMPARE(entry.status, RunState::Finished);
+        QCOMPARE(*entry.energy, -76.38);
+        QCOMPARE(entry.seconds, 12);
+        // A failed run: its exit code, and what the ends of its output and errors say went wrong.
+        writeFile(jobFile(job, JobFile::output), "  dft energy failed\n");
+        writeFile(jobFile(job, JobFile::errors), "ma_alloc_get: failed\n");
+        record = plan.manifest;
+        recordRunEnd(record, job,
+                     {.state = RunState::Failed,
+                      .exitCode = 7,
+                      .normalExit = false,
+                      .finished = ended,
+                      .elapsedSeconds = 3,
+                      .error = QString("起動できません"),
+                      .launchError = "no such program"});
+        QCOMPARE(record["status"].toString(), "failed");
+        QCOMPARE(record["exit_code"].toInt(), 7);
+        QCOMPARE(record["exit_status"].toString(), "crash");
+        QCOMPARE(record["error"].toString(), "起動できません");
+        QCOMPARE(record["summary"].toObject(), (QJsonObject{{"normal_termination", false}}));
+        auto diagnostics = RunRecord(record).diagnostics();
+        QCOMPARE(diagnostics.size(), 3);
+        QCOMPARE(diagnostics[0].code, "launch");
+        QCOMPARE(diagnostics[0].setting, "executable");
+        QCOMPARE(diagnostics[0].evidence, "no such program");
+        QCOMPARE(diagnostics[1].code, "scf_convergence");
+        QCOMPARE(diagnostics[1].source, "stdout");
+        QCOMPARE(diagnostics[2].code, "memory");
+        QCOMPARE(diagnostics[2].source, "stderr");
+        QCOMPARE(record["diagnostics"].toArray(), diagnoseRun(RunState::Failed, "  dft energy failed\n",
+                                                              "ma_alloc_get: failed\n", "no such program"));
+        // A run that did not start on another computer points at its destination.
+        recordRunEnd(record, job,
+                     {.state = RunState::Failed, .launchError = "unreachable", .launchSetting = "remote"});
+        QCOMPARE(RunRecord(record).diagnostics()[0].setting, "remote");
+        QCOMPARE(RunRecord(record).diagnostics()[1].setting, "scf_maxiter");
+        QCOMPARE(record["exit_code"].toInt(), 7); // What this caller did not give stays.
+        // What no one saw end: the state and the summary, and nothing else (a repaired record).
+        record = plan.manifest;
+        recordRunEnd(record, job, {.state = RunState::Interrupted, .diagnose = false});
+        expected = plan.manifest;
+        expected["status"] = "interrupted";
+        expected["summary"] = QJsonObject{{"normal_termination", false}};
+        QCOMPARE(record, expected);
+        // A log brought from elsewhere: its summary as read, and the wall time NWChem printed.
+        writeFile(jobFile(job, JobFile::output), " Total times  cpu:       12.3s     wall:       45.6s\n");
+        record = plan.manifest;
+        const QJsonObject summary{{"normal_termination", true}, {"given", true}};
+        recordRunEnd(record, job,
+                     {.state = RunState::Finished, .summary = summary, .wallTime = true, .needsLog = true});
+        QCOMPARE(record["summary"].toObject(), summary);
+        QCOMPARE(record["elapsed_seconds"].toInt(), 45);
+        QVERIFY(!record.contains("finished_at") && !record.contains("exit_code"));
+        // Without a log there is no summary; only one who needs the log is refused.
+        QVERIFY(QFile::remove(jobFile(job, JobFile::output)));
+        record = expected;
+        recordRunEnd(record, job, {.state = RunState::Cancelled});
+        QVERIFY(!record.contains("summary"));
+        QCOMPARE(record["status"].toString(), "cancelled");
+        QCOMPARE(RunRecord(record).diagnostics().size(), 1); // The errors are still there.
+        QCOMPARE(RunRecord(record).diagnostics()[0].code, "memory");
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 recordRunEnd(record, job, {.state = RunState::Finished, .needsLog = true}));
+    }
+    // A record gives the plan it was saved from, and says what the panels and MCP show of it.
+    void runRecordPlanAndTypedAccess() {
+        QTemporaryDir jobs;
+        const auto saved = savedJob(jobs);
+        const auto plan =
+            runRecordPlan(saved.directory, readRunRecord(saved.directory, RecordCheck::Complete));
+        QCOMPARE(plan.directory, saved.directory);
+        QCOMPARE(plan.program, saved.program);
+        QCOMPARE(plan.arguments, saved.arguments);
+        QCOMPARE(plan.arguments, QStringList{JobFile::input});
+        QCOMPARE(plan.environment, saved.environment);
+        QCOMPARE(plan.environment.value("MOLFORMA_LITERAL"), QString("kept"));
+        QCOMPARE(plan.timeoutSeconds, 90);
+        QCOMPARE(plan.manifest, saved.manifest);
+        QVERIFY(plan.input.isEmpty()); // The input stays in its file.
+        // A saved job: no run, nothing of one.
+        const RunRecord prepared(saved.manifest);
+        QVERIFY(prepared.created().isValid());
+        QVERIFY(!prepared.started().isValid() && !prepared.finished().isValid());
+        QVERIFY(!prepared.exitCode() && !prepared.summary().recorded && !prepared.summary().energy);
+        QVERIFY(prepared.diagnostics().isEmpty() && !prepared.remote() && prepared.error().isEmpty());
+        // A record with diagnostics (one of them from before semantic targets) and a remote part.
+        auto json = saved.manifest;
+        json["status"] = "failed";
+        json["started_at"] = "2026-01-02T03:04:05.678Z";
+        json["finished_at"] = "2026-01-02T03:05:00.000Z";
+        json["exit_code"] = 7;
+        json["error"] = "ジョブを投入できません。";
+        json["summary"] = QJsonObject{{"energy", -1.5},
+                                      {"energy_method", "DFT・BSSE補正"},
+                                      {"energy_source", "bsse_corrected"},
+                                      {"normal_termination", false}};
+        json["diagnostics"] = QJsonArray{QJsonObject{{"code", "memory"},
+                                                     {"setting", "memory_mb"},
+                                                     {"target", "execution"},
+                                                     {"source", "stderr"},
+                                                     {"evidence", "out of memory"},
+                                                     {"future", 1}},
+                                         QJsonObject{{"code", "basis"}, {"setting", "basis"}, {"tab", 1}}};
+        json["remote"] = QJsonObject{{"host", QJsonObject{{"name", "cluster"}, {"scheduler", "slurm"}}},
+                                     {"job", "4711"},
+                                     {"phase", "submitted"},
+                                     {"state", "queued"},
+                                     {"message", "実行先へ接続できません。"},
+                                     {"detail", "Connection refused"}};
+        const RunRecord record(json);
+        QCOMPARE(record.json(), json);
+        QCOMPARE(record.state(), RunState::Failed);
+        QCOMPARE(record.error(), "ジョブを投入できません。");
+        QCOMPARE(record.started(), QDateTime::fromString("2026-01-02T03:04:05.678Z", Qt::ISODateWithMs));
+        QCOMPARE(record.started().toUTC().time(), QTime(3, 4, 5, 678));
+        QCOMPARE(record.started().secsTo(record.finished()), 54);
+        QCOMPARE(*record.exitCode(), 7);
+        const auto summary = record.summary();
+        QVERIFY(summary.recorded && !summary.normalTermination);
+        QCOMPARE(*summary.energy, -1.5);
+        QCOMPARE(summary.energyMethod, "DFT・BSSE補正");
+        QCOMPARE(summary.energySource, "bsse_corrected");
+        const auto diagnostics = record.diagnostics();
+        QCOMPARE(diagnostics.size(), 2);
+        QCOMPARE(diagnostics[0].code, "memory");
+        QCOMPARE(diagnostics[0].setting, "memory_mb");
+        QCOMPARE(diagnostics[0].source, "stderr");
+        QCOMPARE(diagnostics[0].evidence, "out of memory");
+        QVERIFY(diagnostics[0].target == SettingTarget::Execution);
+        QCOMPARE(diagnostics[0].stored, json["diagnostics"].toArray()[0].toObject());
+        QVERIFY(diagnostics[0].owner() == SettingTarget::Execution);
+        QVERIFY(!diagnostics[1].target);
+        QCOMPARE(diagnostics[1].legacyTab, 1);
+        QVERIFY(diagnostics[1].owner() == SettingTarget::Calculation);
+        QCOMPARE(runDiagnosisLines(json),
+                 (QStringList{runDiagnosisText("memory"), "out of memory", runDiagnosisText("basis")}));
+        const auto remote = record.remote();
+        QVERIFY(remote.has_value());
+        QCOMPARE(remote->destination, "cluster");
+        QCOMPARE(remote->scheduler, "slurm");
+        QCOMPARE(remote->job, "4711");
+        QCOMPARE(remote->phase, "submitted");
+        QCOMPARE(remote->state, "queued");
+        QCOMPARE(remote->message, "実行先へ接続できません。");
+        QCOMPARE(remote->detail, "Connection refused");
+        // An empty remote part is a run on this computer; an exit code that is recorded is one, even 0.
+        json["remote"] = QJsonObject();
+        json["exit_code"] = 0;
+        QVERIFY(!RunRecord(json).remote());
+        QCOMPARE(*RunRecord(json).exitCode(), 0);
+    }
     // The calculations of a session, what it leaves for the next one and the checks of who asked, with
     // no window: the queue starts paused, so nothing runs here.
     void runSessionWithoutWidgets() {
@@ -240,6 +515,203 @@ class ServicesTest : public QObject {
         QVERIFY(!second.keepQueue(jobs.filePath("data")));
         session.shutdown();
         QVERIFY(session.queue().paused());
+    }
+    // The one factory of the preferences: the store that tests redirect (QSettings::setPath), with the
+    // format, scope, organization and application of the files users have.
+    void userPreferencesFollowTheRedirectedPath() {
+        const QString key = "services/factory_probe";
+        userPreferences().setValue(key, 42);
+        QSettings plain(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma");
+        QCOMPARE(plain.value(key).toInt(), 42);
+        QVERIFY2(QDir::cleanPath(plain.fileName()).startsWith(QDir::cleanPath(home.path()) + '/'),
+                 qPrintable(plain.fileName()));
+        {
+            const auto store = userPreferences();
+            QCOMPARE(store.fileName(), plain.fileName());
+            QCOMPARE(store.format(), SettingsFormat);
+            QCOMPARE(store.scope(), QSettings::UserScope);
+            QCOMPARE(store.organizationName(), QString("MolForma"));
+            QCOMPARE(store.applicationName(), QString("MolForma"));
+        }
+        // On disk too, once written; and what another store writes is read through the factory.
+        plain.sync();
+        QVERIFY(QFileInfo::exists(plain.fileName()));
+        plain.setValue(key, 7);
+        QCOMPARE(userPreferences().value(key).toInt(), 7);
+        userPreferences().remove(key);
+        QVERIFY(!plain.contains(key));
+    }
+    // The names of the keys are those of the preference files users have: none is renamed.
+    void preferenceKeysStayAsStored() {
+        const QVector<std::pair<QString, QString>> keys{
+            {Preference::windowGeometry, "geometry"},
+            {Preference::directory, "directory"},
+            {Preference::recentFiles, "recentFiles"},
+            {Preference::startupWater, "startupWater"},
+            {Preference::language, "ui/language"},
+            {Preference::xtbExecutable, "xtb/executable"},
+            {Preference::keepSelection, "keepSelection"},
+            {Preference::keepTool, "keepTool"},
+            {Preference::customParts, "parts"},
+            {Preference::moleculePalette, "molecule/palette"},
+            {Preference::moleculeSplit, "molecule/split"},
+            {Preference::moleculeLayout, "molecule/layout"},
+            {Preference::sequenceCollapsed, "molecule/sequenceCollapsed"},
+            {Preference::coordinateAttributes, "coordinates/attributes"},
+            {Preference::symmetryTolerance, "symmetry/tolerance"},
+            {Preference::solvationSolvent, "solvation/solvent"},
+            {Preference::solvationCount, "solvation/count"},
+            {Preference::viewRenderer, "view/renderer"},
+            {Preference::viewLabels, "view/labels"},
+            {Preference::viewStyle, "view/style"},
+            {Preference::viewHydrogenBonds, "view/hydrogen_bonds"},
+            {Preference::nwchemPresets, "nwchem/presets"},
+            {Preference::inputPreviewPaths, "inputPreview/showPaths"},
+            {Preference::resultLabels, "results/labels"},
+            {Preference::historyRoot, "history/root"},
+            {Preference::historyFilesOpen, "history/files_open"},
+            {Preference::imageScale, "export/image_scale"},
+            {Preference::imageBackground, "export/image_background"},
+            {Preference::animationFormat, "export/animation_format"},
+            {Preference::animationScale, "export/animation_scale"},
+            {Preference::animationBackground, "export/animation_background"},
+            {Preference::openResults, "execution/open_results"},
+            {Preference::runPanelHeight, "execution/run_panel_height"},
+            {Preference::executionDefaults, "execution/defaults"},
+            {Preference::remoteHosts, "execution/remotes"},
+            {Preference::jobPrelude, "execution/job_prelude"},
+            {Preference::jobHeader("slurm"), "execution/job_header_slurm"},
+            {Preference::jobHeader("pbs"), "execution/job_header_pbs"},
+            {Preference::runningJob, "execution/running"}};
+        QSet<QString> seen;
+        for (const auto &[constant, stored] : keys) {
+            QCOMPARE(constant, stored);
+            QVERIFY2(!seen.contains(stored), qPrintable(stored));
+            seen.insert(stored);
+        }
+    }
+    // The checks and generators of a run take the machine-wide environment from the snapshot they are
+    // given and read nothing from the Preferences: what only the snapshot holds shows in their results,
+    // what only the Preferences hold does not.
+    void executionUsesTheEnvironmentItIsGiven() {
+        QTemporaryDir jobs;
+        auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n");
+        setExecutionSetting(d, "mode", "direct");
+        setExecutionSetting(d, "executable", QCoreApplication::applicationFilePath());
+        setExecutionSetting(d, "job_root", jobs.filePath("jobs"));
+        const auto hasError = [](const ExecutionValidation &report, const QString &code) {
+            return std::any_of(report.diagnostics.begin(), report.diagnostics.end(), [&](const auto &item) {
+                return item.code == code && item.severity == DiagnosticSeverity::Error;
+            });
+        };
+        // In the Preferences only: a destination, preparation lines and a header.
+        const auto forget = qScopeGuard([] {
+            saveRemoteHosts({});
+            saveExecutionJobPrelude({});
+            saveJobHeaderTemplate("slurm", {});
+            saveExecutionPreferences({});
+        });
+        RemoteHost saved;
+        saved.name = "saved";
+        saved.host = "user@saved.example.org";
+        saveRemoteHosts({saved});
+        saveExecutionJobPrelude("module load saved-only");
+        saveJobHeaderTemplate("slurm", "#SBATCH --comment=saved-only\n");
+        // In a hand-built snapshot only: another destination, other lines and another header.
+        RemoteHost cluster;
+        cluster.name = "given";
+        cluster.host = "user@given.example.org";
+        cluster.scheduler = "slurm";
+        ExecutionEnvironment given;
+        given.remotes = {cluster};
+        given.jobPrelude = "module load given-only";
+        given.jobHeaders["slurm"] = "#SBATCH --comment=given-only\n";
+
+        // The loader is the snapshot of the Preferences.
+        const auto loaded = executionEnvironment();
+        QCOMPARE(loaded.remotes, QVector<RemoteHost>{saved});
+        QCOMPARE(loaded.jobPrelude, QString("module load saved-only"));
+        QCOMPARE(loaded.jobHeader("slurm"), QString("#SBATCH --comment=saved-only\n"));
+        QCOMPARE(loaded.jobHeader("pbs"), defaultJobHeader("pbs"));
+        QCOMPARE(loaded.preferences, executionPreferences());
+        QVERIFY(loaded.remote("saved") && !loaded.remote("given") && !loaded.remote({}));
+        // A snapshot without a header, or with lines that are no header, has the default one.
+        QCOMPARE(ExecutionEnvironment{}.jobHeader("slurm"), defaultJobHeader("slurm"));
+        ExecutionEnvironment broken;
+        broken.jobHeaders["slurm"] = "rm -rf ~";
+        QCOMPARE(broken.jobHeader("slurm"), defaultJobHeader("slurm"));
+
+        // validateExecution: the destinations are those of the snapshot.
+        setExecutionSetting(d, "remote", "given");
+        auto report = validateExecution(d, jobs.path(), false, given);
+        QVERIFY2(report.errors.isEmpty(), qPrintable(report.errors.join('\n')));
+        QCOMPARE(report.remote, remoteHostSummary(cluster));
+        QVERIFY(hasError(validateExecution(d, jobs.path(), false), "execution.remote"));
+        setExecutionSetting(d, "remote", "saved");
+        QVERIFY(hasError(validateExecution(d, jobs.path(), false, given), "execution.remote"));
+        report = validateExecution(d, jobs.path(), false);
+        QVERIFY2(report.errors.isEmpty(), qPrintable(report.errors.join('\n')));
+        QCOMPARE(report.remote, remoteHostSummary(saved));
+
+        // executionJobScript: the header and the preparation lines are those of the snapshot.
+        setExecutionSetting(d, "remote", "");
+        setExecutionSetting(d, "job_script", "slurm");
+        auto script = executionJobScript(d, nullptr, given);
+        QVERIFY2(script.startsWith("#!/bin/bash\n#SBATCH --comment=given-only\n"), qPrintable(script));
+        QVERIFY2(script.contains("\nmodule load given-only\n"), qPrintable(script));
+        QVERIFY2(!script.contains("saved-only"), qPrintable(script));
+        script = executionJobScript(d);
+        QVERIFY2(script.startsWith("#!/bin/bash\n#SBATCH --comment=saved-only\n"), qPrintable(script));
+        QVERIFY2(script.contains("\nmodule load saved-only\n"), qPrintable(script));
+        QVERIFY2(!script.contains("given-only"), qPrintable(script));
+        script = executionJobScript(d, nullptr, ExecutionEnvironment{});
+        QVERIFY2(script.startsWith("#!/bin/bash\n#SBATCH --job-name=molforma\n"), qPrintable(script));
+        QVERIFY2(!script.contains("module load") && !script.contains("-only"), qPrintable(script));
+        // With a destination, its own lines follow those of the snapshot.
+        cluster.prelude = "module load at-destination";
+        script = executionJobScript(d, &cluster, given);
+        QVERIFY2(script.contains("\nmodule load given-only\nmodule load at-destination\n"),
+                 qPrintable(script));
+        cluster.prelude.clear();
+
+        // executionPlan and its preview: the record takes the destination from the snapshot.
+        setExecutionSetting(d, "remote", "given");
+        const auto preview = executionPreviewPlan(d, jobs.path(), false, given);
+        QCOMPARE(RemoteHost::fromJson(preview.manifest["remote"].toObject()["host"].toObject()), cluster);
+        QCOMPARE(executionPlan(d, jobs.path(), jobs.filePath("job"), false, given).manifest.value("remote"),
+                 preview.manifest.value("remote"));
+        QVERIFY_THROWS_EXCEPTION(ValidationFailure, executionPreviewPlan(d, jobs.path()));
+        QVERIFY_THROWS_EXCEPTION(ValidationFailure, executionPlan(d, jobs.path(), jobs.filePath("job")));
+        QCOMPARE(remoteJobPreview(d, given).section('\n', 1), executionJobScript(d, &cluster, given));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, remoteJobPreview(d, executionEnvironment()));
+
+        // saveExecutionBundle: the saved record and job.sh come from the same snapshot.
+        const auto bundle = saveExecutionBundle(d, jobs.path(), false, given);
+        const auto recorded = RunRecord(readRunRecord(bundle.directory, RecordCheck::Json)).remote();
+        QVERIFY(recorded.has_value());
+        QCOMPARE(recorded->destination, QString("given"));
+        const auto savedScript = QString::fromUtf8(readFile(jobFile(bundle.directory, JobFile::script)));
+        QCOMPARE(savedScript, executionJobScript(d, nullptr, given));
+        QVERIFY2(savedScript.contains("given-only") && !savedScript.contains("saved-only"),
+                 qPrintable(savedScript));
+        QVERIFY_THROWS_EXCEPTION(ValidationFailure, saveExecutionBundle(d, jobs.path()));
+
+        // untrustedNetworkPath: a network location is trusted where the snapshot's preferences name it.
+        auto network = d;
+        setExecutionSetting(network, "remote", "");
+        setExecutionSetting(network, "job_root", "//server/share/jobs");
+        ExecutionEnvironment trusting;
+        trusting.preferences = QJsonObject{{"job_root", "//server/share/jobs"}};
+        QCOMPARE(untrustedNetworkPath(network, given), QString("//server/share/jobs"));
+        QVERIFY(untrustedNetworkPath(network, trusting).isEmpty());
+        QVERIFY(hasError(validateExecution(network, jobs.path(), false, given), "execution.network"));
+        QVERIFY(!hasError(validateExecution(network, jobs.path(), false, trusting), "execution.network"));
+        // Saved in the Preferences, it is trusted by the loader's snapshot and still not by another.
+        auto preferred = executionPreferences();
+        preferred["job_root"] = "//server/share/jobs";
+        saveExecutionPreferences(preferred);
+        QVERIFY(untrustedNetworkPath(network).isEmpty());
+        QCOMPARE(untrustedNetworkPath(network, given), QString("//server/share/jobs"));
     }
     void downloadsWithoutWidgets() {
         QTemporaryDir source, cache;

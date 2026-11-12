@@ -6,6 +6,7 @@
 #include "foundation/i18n.h"
 #include "foundation/structure_file.h"
 #include "nwchem/nwchem_import.h"
+#include "results/results.h"
 #include <QFileInfo>
 #include <QRegularExpression>
 
@@ -89,13 +90,13 @@ Document gaussianStructure(const QString &text) {
     d.multiplicity = multiplicity;
     return d;
 }
-Document importStructure(const QString &path, const MacromoleculeSelection &selection, int xyzFrame,
-                         const CrystalSelection &crystal) {
+StructureImport importStructureWithNotes(const QString &path, const MacromoleculeSelection &selection,
+                                         int xyzFrame, const CrystalSelection &crystal) {
     const auto ext = structureSuffix(path);
     if (ext == "json") {
         if (compressedFile(path))
             fail(tr("圧縮したプロジェクトは開けません。展開してから開いてください。"));
-        return Document::load(path);
+        return {Document::load(path), {}};
     }
     if (ext == "xyz") {
         const auto frames = xyzFrames(QString::fromUtf8(readStructureFile(path)));
@@ -103,12 +104,14 @@ Document importStructure(const QString &path, const MacromoleculeSelection &sele
             fail(tr("%1フレームのXYZです。読み込むフレーム（0〜%2）を指定してください。")
                      .arg(frames.size())
                      .arg(frames.size() - 1));
-        return xyzStructure(frames.value(std::max(0, xyzFrame)));
+        return {xyzStructure(frames.value(std::max(0, xyzFrame))), {}};
     }
-    if (ext == "nw" || ext == "nwinp")
-        return importNwchemInput(QString::fromUtf8(readStructureFile(path))).document;
+    if (ext == "nw" || ext == "nwinp") {
+        const auto input = importNwchemInput(QString::fromUtf8(readStructureFile(path)));
+        return {input.document, input.notes};
+    }
     if (ext == "gjf" || ext == "com" || ext == "gau")
-        return gaussianStructure(QString::fromUtf8(readStructureFile(path)));
+        return {gaussianStructure(QString::fromUtf8(readStructureFile(path))), {}};
     if (ext == "cif" || ext == "mmcif") {
         // A crystal structure of a small molecule, rather than an entry of the PDB.
         if (const auto bytes = readStructureFile(path); crystalCif(bytes)) {
@@ -116,10 +119,36 @@ Document importStructure(const QString &path, const MacromoleculeSelection &sele
             auto meta = d.data["metadata"].toObject();
             meta["source_file"] = path;
             d.data["metadata"] = meta;
-            return d;
+            return {d, {}};
         }
     }
-    return importBabelStructure(path, selection);
+    return {importBabelStructure(path, selection), {}};
+}
+Document importStructure(const QString &path, const MacromoleculeSelection &selection, int xyzFrame,
+                         const CrystalSelection &crystal) {
+    return importStructureWithNotes(path, selection, xyzFrame, crystal).document;
+}
+bool nebEndFileIsLog(const QString &path) {
+    const QFileInfo info(path);
+    if (!info.isFile() || info.size() > MaximumNebEndFileBytes)
+        fail(
+            tr("%1 MiB以下の通常のファイルを指定してください。").arg(MaximumNebEndFileBytes / (1024 * 1024)));
+    const auto suffix = info.suffix().toLower();
+    return suffix == "out" || suffix == "log" || suffix == "nwo";
+}
+Document nebEndFromLog(const ResultData &log) {
+    if (log.frames.isEmpty())
+        fail(tr("このファイルに構造がありません。"));
+    return log.frames.last().molecule;
+}
+Document nebEndFromFile(const QString &path) {
+    if (nebEndFileIsLog(path))
+        return nebEndFromLog(readResult(path));
+    if (QFileInfo(path).suffix().toLower() == "xyz") {
+        const int frames = int(xyzFrames(QString::fromUtf8(readFile(path))).size());
+        return importStructure(path, {}, frames > 1 ? frames - 1 : -1);
+    }
+    return importStructure(path);
 }
 void exportStructure(const Document &document, const QString &path) {
     const auto ext = QFileInfo(path).suffix().toLower();

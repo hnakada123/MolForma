@@ -3,6 +3,7 @@
 #include "editing/coordinates.h"
 #include "foundation/files.h"
 #include "foundation/i18n.h"
+#include "model/settings.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
 #include "ui/editor_chrome.h"
@@ -342,10 +343,10 @@ InputPreviewPanel::InputPreviewPanel(EditorContext &editorServices, UiServices &
     pathCard = new SettingsCard(tr("書き出し後のパス"));
     pathCard->setObjectName("inputPreviewPathCard");
     auto *pathsToggle =
-        pathCard->setCollapsible(uiContext.preference("inputPreview/showPaths", true).toBool());
+        pathCard->setCollapsible(uiContext.preference(Preference::inputPreviewPaths, true).toBool());
     pathsToggle->setObjectName("inputPreviewPathsToggle");
     connect(pathsToggle, &QToolButton::clicked, this,
-            [this](bool on) { uiContext.setPreference("inputPreview/showPaths", on); });
+            [this](bool on) { uiContext.setPreference(Preference::inputPreviewPaths, on); });
     paths = new QLabel;
     paths->setObjectName("inputPreviewPaths");
     paths->setWordWrap(true);

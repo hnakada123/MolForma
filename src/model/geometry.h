@@ -59,4 +59,9 @@ PointGroup pointGroup(const Document &d, double tolerance = .05);
 // Averages the coordinates over the group, so the structure becomes exactly symmetric. Fixed
 // atoms must not move. Returns the largest displacement (Å).
 double symmetrize(Document &d, const PointGroup &group);
+// Symmetrizes onto the point group found within tolerance (Å), in up to five passes: within the tolerance
+// the operations found are only nearly a group, so one averaging may leave a deviation. Stops when the
+// group changes or the structure is exact. Returns the largest displacement of a pass (Å); nothing
+// happens, and 0 is returned, when no group is determined.
+double symmetrizeToPointGroup(Document &d, double tolerance = .05);
 } // namespace mf

@@ -2,11 +2,10 @@
 #include "nwchem/remote_execution.h"
 #include "foundation/files.h"
 #include "foundation/i18n.h"
-#include "model/settings.h"
-#include "nwchem/history.h"
+#include "nwchem/execution_environment.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_execution.h"
-#include "nwchem/run_diagnostics.h"
+#include "nwchem/run_record.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -18,7 +17,6 @@
 #include <QLockFile>
 #include <QRandomGenerator>
 #include <QRegularExpression>
-#include <QSaveFile>
 #include <QStandardPaths>
 #include <QSysInfo>
 #include <QThread>
@@ -33,13 +31,11 @@ namespace {
 const QStringList schedulers{"shell", "slurm", "pbs"};
 // Files of a job folder that stay on this computer: the record, the project, the user's note and what
 // asks the supervisor to stop. The output and errors come back from the destination.
-const QStringList localFiles{"run.json",        "project.molforma.json",
-                             "memo.txt",        "stop.request",
-                             "supervisor.lock", "output.out",
-                             "stderr.err",      ".retrieved"};
+const QStringList localFiles{JobFile::record,         JobFile::project, JobFile::memo,   JobFile::stopRequest,
+                             JobFile::supervisorLock, JobFile::output,  JobFile::errors, ".retrieved"};
 // What the copy that comes back does not replace: the record and inputs of this computer.
-const QStringList keptFiles{
-    "run.json", "project.molforma.json", "memo.txt", "stop.request", "supervisor.lock", "input.nw", "job.sh"};
+const QStringList keptFiles{JobFile::record,         JobFile::project, JobFile::memo,  JobFile::stopRequest,
+                            JobFile::supervisorLock, JobFile::input,   JobFile::script};
 QString quote(QString s) {
     s.replace('\'', "'\\''");
     return "'" + s + "'";
@@ -204,9 +200,11 @@ constexpr qint64 logChunk = 4 * 1024 * 1024;
 // The supervisor of one remote run (see remoteJobMain).
 class RemoteSupervisor {
   public:
-    RemoteSupervisor(QString job, QJsonObject record)
+    // registered: the destination of that name in the user's Preferences as the supervisor starts.
+    RemoteSupervisor(QString job, QJsonObject record, const ExecutionEnvironment &environment)
         : directory(std::move(job)), manifest(std::move(record)) {
         connection.host = RemoteHost::fromJson(remote()["host"].toObject());
+        registered = environment.remote(connection.host.name);
     }
     int exec();
 
@@ -214,6 +212,7 @@ class RemoteSupervisor {
     QString directory;
     QJsonObject manifest;
     Connection connection;
+    std::optional<RemoteHost> registered;
     RunState status = RunState::Starting;
     bool cancelSent = false, timedOut = false;
     int unwritable = 0, cancelFailures = 0;
@@ -232,10 +231,10 @@ class RemoteSupervisor {
         return QDir(directory).filePath(name);
     }
     bool stopAsked() const {
-        return QFileInfo::exists(path("stop.request"));
+        return QFileInfo::exists(path(JobFile::stopRequest));
     }
     qint64 elapsed() const {
-        const auto started = QDateTime::fromString(manifest["started_at"].toString(), Qt::ISODateWithMs);
+        const auto started = RunRecord(manifest).started();
         return started.isValid() ? std::max<qint64>(0, started.secsTo(QDateTime::currentDateTimeUtc())) : 0;
     }
     void save();
@@ -276,67 +275,46 @@ class RemoteSupervisor {
 void RemoteSupervisor::save() {
     manifest["status"] = runStateKey(status);
     manifest["elapsed_seconds"] = elapsed();
-    QSaveFile file(path("run.json"));
-    const auto bytes = QJsonDocument(manifest).toJson();
-    if (file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size() && file.commit())
+    try {
+        writeRunRecord(directory, manifest);
         unwritable = 0;
-    else
+    } catch (const std::exception &) {
         ++unwritable;
+    }
 }
 int RemoteSupervisor::end(RunState state, const char *message, const QString &detail,
                           std::optional<int> exitCode) {
     status = state;
-    // Kept in Japanese whatever the language: the run panel and the history show it through translated().
-    manifest["error"] = message ? QString::fromUtf8(message) : QString();
     set("detail", detail.isEmpty() ? QJsonValue() : QJsonValue(detail));
     set("message", {});
     set("failing_since", {});
     set("phase", "done");
-    if (exitCode) {
-        manifest["exit_code"] = *exitCode;
-        manifest["exit_status"] = "normal";
-    } else {
-        manifest["exit_code"] = -1;
-        manifest["exit_status"] = "crash";
-    }
-    manifest["finished_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
-    for (const auto *name : {"output.out", "stderr.err"})
+    for (const auto *name : {JobFile::output, JobFile::errors})
         if (!QFileInfo(path(name)).isFile())
             writeFile(path(name), {});
-    try {
-        manifest["summary"] = nwchemLogSummary(path("output.out"));
-    } catch (const std::exception &) {
-        manifest.remove("summary");
-    }
-    QString output, errors;
-    try {
-        output = historyText(directory, "output.out", true);
-    } catch (const std::exception &) {
-    }
-    try {
-        errors = historyText(directory, "stderr.err", true);
-    } catch (const std::exception &) {
-    }
     // A job that never ran failed to start; the rest is for the log to tell.
     const bool started = remote().contains("job");
-    auto diagnostics = diagnoseRun(state, output, errors,
-                                   !started && message ? translated(QString::fromUtf8(message)) : QString());
-    // A run that did not start there points at its destination, not at the programs of this PC.
-    for (qsizetype i = 0; i < diagnostics.size(); ++i)
-        if (auto item = diagnostics[i].toObject(); item["setting"].toString() == "executable") {
-            item["setting"] = "remote";
-            diagnostics[i] = item;
-        }
-    manifest["diagnostics"] = diagnostics;
+    recordRunEnd(manifest, directory,
+                 {.state = state,
+                  .exitCode = exitCode ? *exitCode : -1,
+                  .normalExit = exitCode.has_value(),
+                  .finished = QDateTime::currentDateTimeUtc(),
+                  .elapsedSeconds = elapsed(),
+                  // Kept in Japanese whatever the language: the run panel and the history show it through
+                  // translated().
+                  .error = message ? QString::fromUtf8(message) : QString(),
+                  .launchError = !started && message ? translated(QString::fromUtf8(message)) : QString(),
+                  // A run that did not start there points at its destination, not at the programs of this PC.
+                  .launchSetting = "remote"});
     save();
-    QFile::remove(path("stop.request"));
+    QFile::remove(path(JobFile::stopRequest));
     return 0;
 }
 bool RemoteSupervisor::upload() {
     status = RunState::Starting;
     set("phase", "upload");
     save();
-    for (const auto *name : {"output.out", "stderr.err"})
+    for (const auto *name : {JobFile::output, JobFile::errors})
         if (!QFileInfo::exists(path(name)))
             writeFile(path(name), {});
     const auto job = QFileInfo(directory).fileName();
@@ -475,7 +453,7 @@ Look RemoteSupervisor::look() {
     // How much of the output there has come here so far.
     const auto offset = remote().contains("log_offset")
                             ? qint64(remote()["log_offset"].toDouble())
-                            : std::max<qint64>(0, QFileInfo(path("output.out")).size());
+                            : std::max<qint64>(0, QFileInfo(path(JobFile::output)).size());
     const auto reply = connection.run(
         scriptStart(nonce) + "if ! cd -- " + quote(remote()["directory"].toString()) +
         " 2>/dev/null; then printf 'missing\\n%s\\n' " + quote(nonce + "-LOG") + "; " +
@@ -614,7 +592,6 @@ bool RemoteSupervisor::retrieve() {
 int RemoteSupervisor::exec() {
     // Only a destination of this user's Preferences, where it still leads: a record does not choose
     // where to connect.
-    const auto registered = findRemoteHost(connection.host.name);
     if (!registered || registered->host != connection.host.host || registered->port != connection.host.port)
         return end(RunState::Failed,
                    QT_TR_NOOP("実行先が環境設定にないか、接続先が変わっています。「3 "
@@ -623,7 +600,7 @@ int RemoteSupervisor::exec() {
     if (connection.ssh.isEmpty() || connection.scp.isEmpty())
         return end(RunState::Failed, QT_TR_NOOP("このPCに ssh と scp が見つかりません。"));
     manifest["supervisor"] = executionProcessIdentity(QCoreApplication::applicationPid());
-    status = runStateFromKey(manifest["status"].toString());
+    status = RunRecord(manifest).state();
     // A stop that an earlier supervisor of the job already delivered.
     cancelSent = remote().contains("cancelled");
     timedOut = remote()["cancelled"].toString() == "time_limit";
@@ -663,7 +640,7 @@ int RemoteSupervisor::exec() {
                 if (cancelSent) {
                     set("cancelled", timedOut ? QJsonValue("time_limit") : QJsonValue("stop"));
                     save();
-                    QFile::remove(path("stop.request"));
+                    QFile::remove(path(JobFile::stopRequest));
                 } else {
                     if (++cancelFailures >= 3)
                         return end(
@@ -677,9 +654,9 @@ int RemoteSupervisor::exec() {
                 // The log as far as it has come, for the run panel; the job folder brings the whole of it.
                 const auto offset = remote().contains("log_offset")
                                         ? qint64(remote()["log_offset"].toDouble())
-                                        : QFileInfo(path("output.out")).size();
+                                        : QFileInfo(path(JobFile::output)).size();
                 if (!last.log.isEmpty() || last.from > offset) {
-                    QFile log(path("output.out"));
+                    QFile log(path(JobFile::output));
                     if (log.open(QIODevice::WriteOnly | QIODevice::Append)) {
                         if (last.from > offset)
                             log.write(
@@ -772,18 +749,6 @@ QString remoteSchedulerName(const QString &scheduler) {
         return tr("PBS（qsub）");
     return tr("シェル（バックグラウンド）");
 }
-QVector<RemoteHost> remoteHosts() {
-    const auto stored =
-        QJsonDocument::fromJson(QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
-                                    .value("execution/remotes")
-                                    .toByteArray())
-            .array();
-    QVector<RemoteHost> hosts;
-    for (const auto &value : stored)
-        if (value.isObject())
-            hosts << RemoteHost::fromJson(value.toObject());
-    return hosts;
-}
 QStringList remoteHostErrors(const RemoteHost &h) {
     QStringList errors;
     const auto name = h.name.trimmed();
@@ -817,29 +782,6 @@ QStringList remoteHostErrors(const RemoteHost &h) {
     errors.removeDuplicates();
     return errors;
 }
-void saveRemoteHosts(const QVector<RemoteHost> &hosts) {
-    QJsonArray stored;
-    QSet<QString> names;
-    for (const auto &h : hosts) {
-        const auto errors = remoteHostErrors(h);
-        if (!errors.isEmpty())
-            fail(tr("実行先「%1」: %2").arg(h.name, errors.join('\n')));
-        if (names.contains(h.name))
-            fail(tr("実行先の名前が重複しています: %1").arg(h.name));
-        names.insert(h.name);
-        stored.append(h.json());
-    }
-    QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
-        .setValue("execution/remotes", QJsonDocument(stored).toJson(QJsonDocument::Compact));
-}
-std::optional<RemoteHost> findRemoteHost(const QString &name) {
-    if (name.isEmpty())
-        return std::nullopt;
-    for (const auto &h : remoteHosts())
-        if (h.name == name)
-            return h;
-    return std::nullopt;
-}
 QString remoteHostSummary(const RemoteHost &h) {
     const auto where = h.port ? tr("%1（ポート %2）").arg(h.host).arg(h.port) : h.host;
     const auto kind = h.scheduler == "slurm" ? QString("Slurm")
@@ -870,30 +812,6 @@ QString defaultJobHeader(const QString &scheduler) {
                "#PBS -q {queue}\n"
                "#PBS -j oe\n";
     return {};
-}
-QString jobHeaderTemplate(const QString &scheduler) {
-    const auto stored = QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
-                            .value("execution/job_header_" + scheduler)
-                            .toString();
-    return stored.trimmed().isEmpty() || !jobHeaderErrors(stored).isEmpty() ? defaultJobHeader(scheduler)
-                                                                            : stored;
-}
-void saveJobHeaderTemplate(const QString &scheduler, const QString &text) {
-    if (scheduler != "slurm" && scheduler != "pbs")
-        fail("Unknown scheduler: " + scheduler);
-    if (const auto errors = jobHeaderErrors(text); !errors.isEmpty())
-        fail(errors.join('\n'));
-    QSettings settings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma");
-    const auto key = "execution/job_header_" + scheduler;
-    QStringList lines;
-    for (const auto &line : text.split('\n'))
-        if (!line.trimmed().isEmpty())
-            lines << line.trimmed();
-    const auto normalized = lines.isEmpty() ? QString() : lines.join('\n') + '\n';
-    if (normalized.isEmpty() || normalized == defaultJobHeader(scheduler))
-        settings.remove(key);
-    else
-        settings.setValue(key, normalized);
 }
 QStringList jobHeaderErrors(const QString &text) {
     QStringList errors;
@@ -976,11 +894,11 @@ QString remoteRunText(const QJsonObject &manifest) {
     return parts.join(" · ");
 }
 int remoteJobMain(const QString &directory, QJsonObject manifest) {
-    const auto state = runStateFromKey(manifest["status"].toString());
+    const auto state = RunRecord(manifest).state();
     const auto phase = manifest["remote"].toObject()["phase"].toString();
     QByteArray input;
     try {
-        input = readFile(QDir(directory).filePath("input.nw"));
+        input = readFile(jobFile(directory, JobFile::input));
     } catch (const std::exception &) {
         return 2;
     }
@@ -996,7 +914,7 @@ int remoteJobMain(const QString &directory, QJsonObject manifest) {
         (!keeper.isEmpty() &&
          (keeper["host"].toString() != QSysInfo::machineHostName() || !executionProcessGone(keeper))))
         return 2;
-    QLockFile lock(QDir(directory).filePath("supervisor.lock"));
+    QLockFile lock(jobFile(directory, JobFile::supervisorLock));
     lock.setStaleLockTime(0);
     if (!lock.tryLock(0))
         return 2;
@@ -1006,19 +924,20 @@ int remoteJobMain(const QString &directory, QJsonObject manifest) {
     for (const int signal : {SIGTERM, SIGINT, SIGHUP})
         std::signal(signal, remoteSignal);
 #endif
-    RemoteSupervisor supervisor(directory, std::move(manifest));
+    // The Preferences as they are when this supervisor takes the job up.
+    RemoteSupervisor supervisor(directory, std::move(manifest), executionEnvironment());
     return supervisor.exec();
 }
 bool resumeRemoteRun(const QString &directory, const QString &program, qint64 *pid) {
     const auto job = QDir::cleanPath(QFileInfo(directory).absoluteFilePath());
     QJsonObject manifest;
     try {
-        manifest = parseJson(readFile(QDir(job).filePath("run.json")));
+        manifest = readRunRecord(job, RecordCheck::Json);
     } catch (const std::exception &) {
         return false;
     }
-    if (manifest["format"] != "molforma-nwchem-run" || !remoteRun(manifest) ||
-        !runStateActive(runStateFromKey(manifest["status"].toString())))
+    if (!RunRecord(manifest).hasFormat() || !remoteRun(manifest) ||
+        !runStateActive(RunRecord(manifest).state()))
         return false;
     const auto keeper = manifest["supervisor"].toObject();
     if (!keeper.isEmpty() &&
@@ -1026,10 +945,11 @@ bool resumeRemoteRun(const QString &directory, const QString &program, qint64 *p
         return false;
     // Until the new supervisor writes its own identity, the record names none that has ended.
     manifest.remove("supervisor");
-    QSaveFile file(QDir(job).filePath("run.json"));
-    const auto bytes = QJsonDocument(manifest).toJson();
-    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
+    try {
+        writeRunRecord(job, manifest);
+    } catch (const std::exception &) {
         return false;
+    }
     QProcess starter;
     starter.setProgram(program);
     starter.setArguments({"--run-job", job});
@@ -1044,9 +964,9 @@ bool resumeRemoteRun(const QString &directory, const QString &program, qint64 *p
         *pid = started;
     return true;
 }
-QString remoteJobPreview(const Document &d) {
+QString remoteJobPreview(const Document &d, const ExecutionEnvironment &environment) {
     const auto name = executionSettings(d)["remote"].toString();
-    const auto host = findRemoteHost(name);
+    const auto host = environment.remote(name);
     if (!host)
         fail(tr("実行先「%1」はこのPCの環境設定に登録されていません。").arg(name));
     const QString submit = host->scheduler == "slurm" ? "sbatch job.sh"
@@ -1057,7 +977,7 @@ QString remoteJobPreview(const Document &d) {
     return tr("# ssh・scpで %1 "
               "へ複写し、そこで「%2」として投入します。終わると同じジョブフォルダーへ回収します。")
                .arg(where, submit) +
-           '\n' + executionJobScript(d, &*host);
+           '\n' + executionJobScript(d, &*host, environment);
 }
 
 RemoteProbe::RemoteProbe(QObject *parent) : QObject(parent) {
@@ -1070,7 +990,8 @@ RemoteProbe::RemoteProbe(QObject *parent) : QObject(parent) {
 RemoteProbe::~RemoteProbe() {
     cancel();
 }
-void RemoteProbe::start(const RemoteHost &host, const QString &program, const QString &mpi) {
+void RemoteProbe::start(const RemoteHost &host, const QString &prelude, const QString &program,
+                        const QString &mpi) {
     cancel();
     probed = host;
     executable = host.executable.isEmpty() ? program : host.executable;
@@ -1083,7 +1004,7 @@ void RemoteProbe::start(const RemoteHost &host, const QString &program, const QS
     nonce = newNonce();
     QString script = scriptStart(nonce);
     // As the job script prepares NWChem: the lines of Preferences, then those of the destination.
-    if (const auto prelude = executionJobPrelude(); !prelude.isEmpty())
+    if (!prelude.isEmpty())
         script += prelude + '\n';
     if (!host.prelude.trimmed().isEmpty())
         script += host.prelude + '\n';

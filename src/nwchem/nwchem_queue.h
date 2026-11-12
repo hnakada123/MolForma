@@ -46,8 +46,12 @@ class NwchemQueue : public QObject {
     int restore();
     // With a chain, the entry takes its structure from an earlier entry when its turn comes; its bundle is
     // saved then. Cancelling an entry also cancels the waiting entries that take their structure from it.
+    // The entry is checked and its bundle saved with the environment (the Preferences as they are now,
+    // unless the caller registers several with one snapshot); when its turn comes, it is checked again
+    // with the Preferences of that moment.
     QString enqueue(const Document &document, const QString &base, std::function<void()> checkAccess = {},
-                    const QueueChain &chain = {});
+                    const QueueChain &chain = {},
+                    const ExecutionEnvironment &environment = executionEnvironment());
     // Calculations that go on from an entry (from), with the conditions of `current` and only their tasks
     // and names changed: "current" (the document as it is), else the steps of a reaction path in this
     // order: "saddle" (transition state → frequencies, name + "_ts"), "irc" (both directions, "_irc"),

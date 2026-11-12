@@ -7,6 +7,8 @@
 #include "results/energy_profile.h"
 #include "results/field_analysis.h"
 #include "results/result_files.h"
+#include "results/result_path.h"
+#include "results/result_properties.h"
 #include "results/result_summary.h"
 #include "results/spectrum.h"
 #include "ui/calculation_panel.h"
@@ -368,6 +370,152 @@ class ResultsTest : public QObject {
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, chainedDocument(other, irc->path(), "final"));
         QTemporaryDir empty;
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, chainedDocument(start, empty.path(), "final"));
+    }
+    void reactionPaths() {
+        using Role = ResultPathPoint::Role;
+        // No path: nothing to show, nothing highest.
+        QCOMPARE(resultPath(ResultData()).kind, ResultPathKind::None);
+        QVERIFY(resultPath(ResultData()).points.isEmpty());
+        QCOMPARE(resultPath(ResultData()).highest(PathEnds::Included), -1);
+        // A scan: its points in their order, against the lowest; highest at an end unless the ends are
+        // left out.
+        ResultData scan;
+        scan.properties["scan"] = QJsonArray{
+            QJsonObject{
+                {"point", 1}, {"coordinate", "bond 1 2"}, {"value", 0.9}, {"energy", -76.0}, {"frame", 0}},
+            QJsonObject{
+                {"point", 2}, {"coordinate", "bond 1 2"}, {"value", 1.0}, {"energy", -76.3}, {"frame", 1}},
+            QJsonObject{{"point", 3}, {"coordinate", "bond 1 2"}, {"value", 1.1}, {"energy", -76.2}},
+            QJsonObject{
+                {"point", 4}, {"coordinate", "bond 1 2"}, {"value", 1.2}, {"energy", -76.1}, {"frame", 2}}};
+        auto path = resultPath(scan);
+        QCOMPARE(path.kind, ResultPathKind::Scan);
+        QVERIFY(!path.plane);
+        QCOMPARE(path.points.size(), 4);
+        QCOMPARE(path.points[1].number, 2);
+        QCOMPARE(path.points[1].x, 1.0);
+        QCOMPARE(path.points[1].coordinate, QString("bond 1 2"));
+        QCOMPARE(path.points[2].frame, -1);
+        QVERIFY(std::isnan(path.points[1].y));
+        QCOMPARE(path.reference, -76.3);
+        QCOMPARE(path.relative(1), 0.0);
+        QVERIFY(std::abs(path.relative(0) - 0.3) < 1e-12);
+        QCOMPARE(path.highest(PathEnds::Included), 0);
+        QCOMPARE(path.highest(PathEnds::Excluded), 2);
+        QCOMPARE(path.highest(PathEnds::Excluded, true), 1); // Point 3 has no structure.
+        // Two coordinates make a plane.
+        ResultData plane;
+        plane.properties["scan"] = QJsonArray{QJsonObject{{"point", 1},
+                                                          {"coordinate", "bond 1 2"},
+                                                          {"value", 0.9},
+                                                          {"coordinate2", "angle 2 1 3"},
+                                                          {"value2", 104.5},
+                                                          {"energy", -76.0}}};
+        path = resultPath(plane);
+        QVERIFY(path.plane);
+        QCOMPARE(path.points[0].y, 104.5);
+        QCOMPARE(path.points[0].coordinate2, QString("angle 2 1 3"));
+        QCOMPARE(path.highest(PathEnds::Excluded), -1);
+        // An NEB: from the start, whose energy is the reference; the ends never count as its highest
+        // point even where they are, and equal energies give the first.
+        ResultData neb;
+        neb.properties["neb"] = QJsonObject{
+            {"iteration", 4},
+            {"points",
+             QJsonArray{QJsonObject{{"bead", 1}, {"energy", -1.0}, {"frame", 5}, {"distance", 0.0}},
+                        QJsonObject{{"bead", 2}, {"energy", -1.2}, {"frame", 6}, {"distance", 0.4}},
+                        QJsonObject{{"bead", 3}, {"energy", -1.1}, {"frame", 7}, {"distance", 0.9}},
+                        QJsonObject{{"bead", 4}, {"energy", -1.1}, {"frame", 8}, {"distance", 1.5}},
+                        QJsonObject{{"bead", 5}, {"energy", -0.5}, {"frame", 9}, {"distance", 2.0}}}}};
+        path = resultPath(neb);
+        QCOMPARE(path.kind, ResultPathKind::Neb);
+        QVERIFY(path.lengths);
+        QCOMPARE(path.points.first().role, Role::Start);
+        QCOMPARE(path.points.last().role, Role::End);
+        QCOMPARE(path.points[2].role, Role::Point);
+        QCOMPARE(path.points[3].x, 1.5);
+        QCOMPARE(path.points[3].frame, 8);
+        QCOMPARE(path.reference, -1.0);
+        QCOMPARE(path.highest(PathEnds::Excluded), 2);
+        QCOMPARE(path.highest(PathEnds::Included), 4);
+        // Energies without structures: the images by their number.
+        ResultData bare;
+        bare.properties["neb"] =
+            QJsonObject{{"points", QJsonArray{QJsonObject{{"bead", 1}, {"energy", -1.0}},
+                                              QJsonObject{{"bead", 2}, {"energy", -0.9}},
+                                              QJsonObject{{"bead", 3}, {"energy", -1.0}}}}};
+        path = resultPath(bare);
+        QVERIFY(!path.lengths);
+        QCOMPARE(path.points[1].x, 2.0);
+        QCOMPARE(path.highest(PathEnds::Excluded), 1);
+        QCOMPARE(path.highest(PathEnds::Excluded, true), -1);
+        // An IRC: the backward points reversed, the transition state (the reference, at 0), the forward
+        // points; the log lists forward first.
+        ResultData irc;
+        const auto point = [](const char *direction, int number, double s, double energy, int frame) {
+            return QJsonObject{
+                {"direction", direction}, {"point", number}, {"s", s}, {"energy", energy}, {"frame", frame}};
+        };
+        QJsonObject properties{
+            {"points", QJsonArray{point("forward", 1, 0.1, -2.1, 1), point("forward", 2, 0.2, -2.3, 2),
+                                  point("backward", 1, 0.1, -2.2, 3), point("backward", 2, 0.2, -2.4, 4)}},
+            {"ts_energy", -2.0},
+            {"ts_frame", 0}};
+        irc.properties["irc"] = properties;
+        path = resultPath(irc);
+        QCOMPARE(path.kind, ResultPathKind::Irc);
+        QVector<int> frames;
+        QVector<double> places;
+        for (const auto &p : path.points) {
+            frames << p.frame;
+            places << p.x;
+        }
+        QCOMPARE(frames, QVector<int>({4, 3, 0, 1, 2}));
+        QCOMPARE(places, QVector<double>({-0.2, -0.1, 0, 0.1, 0.2}));
+        QCOMPARE(path.points[0].role, Role::Backward);
+        QCOMPARE(path.points[0].number, 2);
+        QCOMPARE(path.points[2].role, Role::TransitionState);
+        QCOMPARE(path.points[4].role, Role::Forward);
+        QCOMPARE(path.reference, -2.0);
+        QCOMPARE(path.highest(PathEnds::Included), 2);
+        QCOMPARE(path.highest(PathEnds::Excluded), 2);
+        // Without the transition state the first point of the path is the reference.
+        properties.remove("ts_energy");
+        properties.remove("ts_frame");
+        irc.properties["irc"] = properties;
+        path = resultPath(irc);
+        QCOMPARE(path.points.size(), 4);
+        QCOMPARE(path.reference, -2.4);
+        QCOMPARE(path.highest(PathEnds::Included), 2); // Forward 1.
+        // The viewer shows a scan before an NEB before an IRC; each kind can still be asked for.
+        irc.properties["neb"] = neb.properties["neb"];
+        QCOMPARE(resultPath(irc).kind, ResultPathKind::Neb);
+        QCOMPARE(resultPath(irc, ResultPathKind::Irc).points.size(), 4);
+        QCOMPARE(resultPath(irc, ResultPathKind::Scan).kind, ResultPathKind::None);
+        irc.properties["scan"] = scan.properties["scan"];
+        QCOMPARE(resultPath(irc).kind, ResultPathKind::Scan);
+        // NWChem's logs: the NEB of HCN (five images), the IRC of ammonia through its transition state.
+        const auto hcn = readResult(FIXTURE_DIR "/nwchem/hcn_neb.out");
+        path = resultPath(hcn);
+        QCOMPARE(path.kind, ResultPathKind::Neb);
+        QCOMPARE(path.points.size(), 5);
+        QCOMPARE(path.highest(PathEnds::Excluded), 2);
+        QCOMPARE(path.points[2].energy, -90.12077085630793);
+        const auto ammonia = readResult(FIXTURE_DIR "/nwchem/nh3_irc.out");
+        path = resultPath(ammonia);
+        QCOMPARE(path.kind, ResultPathKind::Irc);
+        const int ts = path.highest(PathEnds::Included, true);
+        QVERIFY(ts > 0 && ts + 1 < path.points.size());
+        QCOMPARE(path.points[ts].role, Role::TransitionState);
+        QCOMPARE(path.points[ts].frame, ammonia.properties["irc"].toObject()["ts_frame"].toInt());
+        for (int i = 0; i < path.points.size(); ++i) {
+            QCOMPARE(path.points[i].role, i < ts   ? Role::Backward
+                                          : i > ts ? Role::Forward
+                                                   : Role::TransitionState);
+            if (i > 0)
+                QVERIFY(path.points[i].x > path.points[i - 1].x);
+            QVERIFY(path.relative(i) <= 0);
+        }
     }
     void logGeometryEnergyAndFailure() {
         auto source = "NWChem\n" + geometry() +
@@ -865,6 +1013,50 @@ class ResultsTest : public QObject {
         energy = r.properties["final_energy"].toObject();
         QCOMPARE(energy["hartree"].toDouble(), -76.30);
         QCOMPARE(energy["source"].toString(), "final");
+    }
+    void typedProperties() {
+        // What several views read of the properties, as typed values: from real logs,
+        const auto root = QString(FIXTURE_DIR) + "/nwchem/";
+        const auto optimized = readResult(root + "water_optfreq.out");
+        auto energy = resultFinalEnergy(optimized);
+        QVERIFY(energy.has_value());
+        QCOMPARE(energy->hartree, -74.965901191753);
+        QCOMPARE(energy->method, QString("SCF"));
+        QVERIFY(energy->source == ResultEnergySource::FrequencyReference);
+        QCOMPARE(energy->stored, optimized.properties["final_energy"].toObject());
+        QVERIFY(resultOptimizationConverged(optimized) == std::optional<bool>(true));
+        const auto dipole = resultDipole(optimized);
+        QVERIFY(dipole.has_value());
+        QVERIFY(dipole->au == Vec(0, 0, -0.672449));
+        QCOMPARE(dipole->debye, optimized.properties["dipole"].toObject()["debye"].toDouble());
+        QVERIFY(std::abs(dipole->debye - 1.709195) < 1e-6);
+        QCOMPARE(Document::fromXyz(dipole->geometry).atoms.size(), 3);
+        const auto dimer = readResult(root + "water_dimer_bsse.out");
+        QVERIFY(resultFinalEnergy(dimer)->source == ResultEnergySource::BsseCorrected);
+        QCOMPARE(resultFinalEnergy(dimer)->hartree,
+                 dimer.properties["bsse"].toObject()["corrected"].toDouble());
+        QVERIFY(!resultOptimizationConverged(dimer).has_value()); // A single point has no optimization.
+        // and by their rules: nothing without the fact, and any other state or source is the plain one.
+        ResultData r;
+        QVERIFY(!resultFinalEnergy(r) && !resultOptimizationConverged(r) && !resultDipole(r));
+        r.properties["optimization"] = "not_converged";
+        QVERIFY(resultOptimizationConverged(r) == std::optional<bool>(false));
+        r.properties["optimization"] = "converged";
+        QVERIFY(*resultOptimizationConverged(r));
+        r.properties["final_energy"] = QJsonObject{{"hartree", -1.5}, {"method", "MP2"}, {"source", "final"}};
+        energy = resultFinalEnergy(r);
+        QVERIFY(energy->source == ResultEnergySource::Final);
+        QCOMPARE(energy->hartree, -1.5);
+        QCOMPARE(energy->method, QString("MP2"));
+        QCOMPARE(resultBriefSummary(r), QString("最適化: 収束 · E = −1.5 Eh（MP2）"));
+        r.properties["final_energy"] = QJsonObject{{"hartree", -2.}, {"method", "DFT"}};
+        QVERIFY(resultFinalEnergy(r)->source == ResultEnergySource::Final);
+        r.properties["final_energy"] = QJsonObject();
+        QVERIFY(!resultFinalEnergy(r));
+        r.properties["dipole"] = QJsonObject{{"x", 1.}, {"y", -2.}, {"z", .5}, {"debye", 5.8}};
+        QVERIFY(resultDipole(r)->au == Vec(1, -2, .5));
+        QCOMPARE(resultDipole(r)->debye, 5.8);
+        QVERIFY(resultDipole(r)->geometry.isEmpty());
     }
     void transferAndBounds() {
         auto r = readResult(save("transfer.cube", cubeText()), .25);
@@ -1576,7 +1768,6 @@ class ResultsTest : public QObject {
                      .properties["scan"][0]
                      .toObject()
                      .contains("value2"));
-        QCOMPARE(NwchemLog::tasks("task tddft optimize\n"), QStringList{"励起状態の構造最適化（TDDFT）"});
     }
     void normalRaman() {
         const auto root = QString(FIXTURE_DIR) + "/nwchem/";

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "model/setting_target.h"
-#include <QJsonObject>
+#include "nwchem/run_record.h"
 namespace mf {
 // Only the UI translates semantic owners into the current workspace order (zero-based).
 inline int workspaceTab(SettingTarget target) {
@@ -15,17 +15,9 @@ inline int workspaceTab(SettingTarget target) {
     }
     return 1;
 }
-inline int runDiagnosticTab(const QJsonObject &diagnostic) {
-    if (const auto target = settingTargetFromKey(diagnostic["target"].toString()))
-        return workspaceTab(*target);
-    // Version-1 job records written before semantic targets stored the old workspace index.
-    switch (diagnostic["tab"].toInt(2)) {
-    case 0:
-        return workspaceTab(SettingTarget::Molecule);
-    case 1:
-        return workspaceTab(SettingTarget::Calculation);
-    default:
-        return workspaceTab(SettingTarget::Execution);
-    }
+// Version-1 job records written before semantic targets name the owner by its legacy number
+// (RunDiagnostic::owner).
+inline int runDiagnosticTab(const RunDiagnostic &diagnostic) {
+    return workspaceTab(diagnostic.owner());
 }
 } // namespace mf

@@ -2,12 +2,14 @@
 #include "ui/execution_panel.h"
 #include "foundation/i18n.h"
 #include "mcp/policy.h"
+#include "model/settings.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_restart.h"
 #include "nwchem/remote_execution.h"
 #include "nwchem/result_files.h"
 #include "nwchem/run_diagnostics.h"
+#include "nwchem/run_record.h"
 #include "ui/editor_chrome.h"
 #include "ui/editor_context.h"
 #include "ui/execution_form.h"
@@ -152,9 +154,9 @@ ExecutionPanel::ExecutionPanel(EditorContext &editorServices, UiServices &uiServ
     openResults->setToolTip(
         tr("計算が終わると、ジョブフォルダーを「結果ビューア」に読み込みます（タブは切り替えません）。"
            "終了はステータスバーとデスクトップ通知でも知らせます。"));
-    openResults->setChecked(uiContext.preference("execution/open_results", true).toBool());
+    openResults->setChecked(uiContext.preference(Preference::openResults, true).toBool());
     connect(openResults, &QCheckBox::toggled, this,
-            [this](bool on) { uiContext.setPreference("execution/open_results", on); });
+            [this](bool on) { uiContext.setPreference(Preference::openResults, on); });
     tools->addWidget(openResults);
     prepare = new QPushButton(tr("ジョブとして保存"));
     prepare->setObjectName("executionPrepare");
@@ -350,7 +352,7 @@ void ExecutionPanel::buildRunPanel() {
     runPanel->setObjectName("runPanel");
     runPanel->setAttribute(Qt::WA_StyledBackground);
     runPanel->hide();
-    panelHeight = uiContext.preference("execution/run_panel_height", 0).toInt();
+    panelHeight = uiContext.preference(Preference::runPanelHeight, 0).toInt();
     auto *panel = new QVBoxLayout(runPanel);
     panel->setContentsMargins(14, 4, 12, 12);
     panel->setSpacing(4);
@@ -439,13 +441,11 @@ void ExecutionPanel::buildRunPanel() {
     diagnosisSetting->setObjectName("executionDiagnosisSetting");
     detail->addWidget(diagnosisSetting);
     connect(diagnosisSetting, &QPushButton::clicked, this, [this] {
-        for (const auto &value : run.plan().manifest["diagnostics"].toArray()) {
-            const auto item = value.toObject();
-            if (!item["setting"].toString().isEmpty()) {
-                workspace.showSetting(runDiagnosticTab(item), item["setting"].toString());
+        for (const auto &item : RunRecord(run.plan().manifest).diagnostics())
+            if (!item.setting.isEmpty()) {
+                workspace.showSetting(runDiagnosticTab(item), item.setting);
                 break;
             }
-        }
     });
     continueRun = new QPushButton(restartLabel("continue"));
     continueRun->setObjectName("executionContinue");
@@ -488,8 +488,8 @@ void ExecutionPanel::buildRunPanel() {
     logCard->layout()->setSpacing(6);
     logChannel = new QComboBox;
     logChannel->setObjectName("executionLogChannel");
-    logChannel->addItem(tr("標準出力（末尾128 KiB）"), "output.out");
-    logChannel->addItem(tr("標準エラー（末尾128 KiB）"), "stderr.err");
+    logChannel->addItem(tr("標準出力（末尾128 KiB）"), JobFile::output);
+    logChannel->addItem(tr("標準エラー（末尾128 KiB）"), JobFile::errors);
     auto *channels =
         new ChoiceButtons(logChannel, ChoiceButtons::Segments, {tr("標準出力"), tr("標準エラー")});
     choices << channels;
@@ -529,7 +529,7 @@ void ExecutionPanel::dockRunPanel(QSplitter *split) {
     dock->installEventFilter(this);
     connect(dock, &QSplitter::splitterMoved, this, [this] {
         panelHeight = runPanel->height();
-        uiContext.setPreference("execution/run_panel_height", panelHeight);
+        uiContext.setPreference(Preference::runPanelHeight, panelHeight);
     });
 }
 void ExecutionPanel::showRunPanel(bool show) {
@@ -1008,7 +1008,9 @@ void ExecutionPanel::refresh() {
                              .arg(qint64(ranks) * memory->value())
                              .arg(ranks)
                              .arg(memory->value()));
-    const auto report = validateExecution(d, baseDirectory(), true);
+    // One state of the Preferences for the checks, the command and the preview of this refresh.
+    const auto environment = executionEnvironment();
+    const auto report = validateExecution(d, baseDirectory(), true, environment);
     // The checks one per row, then the messages they do not cover.
     while (auto *item = checkList->takeAt(0)) {
         delete item->widget();
@@ -1042,7 +1044,7 @@ void ExecutionPanel::refresh() {
         settingsForm->setFound(key, {}, true);
     for (const auto &key : {"executable", "launcher"})
         for (const auto &c : report.checks)
-            if (c.label == (QString(key) == "executable" ? tr("NWChem実行ファイル") : tr("MPIランチャー"))) {
+            if (c.key == key) {
                 const auto value = s[key].toString();
                 const bool named = !value.contains('/') && !value.contains('\\');
                 settingsForm->setFound(key,
@@ -1062,14 +1064,14 @@ void ExecutionPanel::refresh() {
     bool portable = false;
     bool runnable = report.errors.isEmpty();
     try {
-        const auto preview = executionPreviewPlan(d, baseDirectory());
-        command->setPlainText(remote ? remoteJobPreview(d) : executionCommand(preview));
+        const auto preview = executionPreviewPlan(d, baseDirectory(), false, environment);
+        command->setPlainText(remote ? remoteJobPreview(d, environment) : executionCommand(preview));
         // A remote run shows its whole job.sh.
         command->setFixedHeight(command->fontMetrics().lineSpacing() * (remote ? 14 : 5) + 14);
         portable = true;
         if (runnable) {
             try {
-                executionPreviewPlan(d, baseDirectory(), true);
+                executionPreviewPlan(d, baseDirectory(), true, environment);
             } catch (const std::exception &e) {
                 messages << tr("実行前の確認: %1").arg(QString::fromUtf8(e.what()));
                 runnable = false;
@@ -1121,12 +1123,7 @@ void ExecutionPanel::updateRun() {
                           ? tr("結果: %1（「結果ビューア」に読み込みました）").arg(resultSummary)
                           : tr("結果は「結果ビューアへ」で確認できます。"));
         lines << translated(run.message());
-        for (const auto &value : run.plan().manifest["diagnostics"].toArray()) {
-            const auto item = value.toObject();
-            lines << runDiagnosisText(item["code"].toString());
-            if (!item["evidence"].toString().isEmpty())
-                lines << item["evidence"].toString();
-        }
+        lines << runDiagnosisLines(run.plan().manifest);
         lines.removeAll(QString());
     }
     const auto stateText = showingRun ? lines.join('\n')
@@ -1136,8 +1133,8 @@ void ExecutionPanel::updateRun() {
     if (state->text() != stateText)
         state->setText(stateText);
     bool hasSetting = false;
-    for (const auto &value : run.plan().manifest["diagnostics"].toArray())
-        hasSetting |= !value.toObject()["setting"].toString().isEmpty();
+    for (const auto &item : RunRecord(run.plan().manifest).diagnostics())
+        hasSetting |= !item.setting.isEmpty();
     diagnosisSetting->setVisible(showingRun && !run.active() && hasSetting);
     // A run that did not end leaves NWChem's database: the calculation can go on from it.
     const bool unfinished =
@@ -1155,7 +1152,8 @@ void ExecutionPanel::updateRun() {
     const auto remoteText = remoteRunText(saved.manifest);
     remoteLine->setText(remoteText);
     remoteLine->setVisible(!remoteText.isEmpty());
-    const bool unreachable = !saved.manifest["remote"].toObject()["message"].toString().isEmpty();
+    const auto remote = RunRecord(saved.manifest).remote();
+    const bool unreachable = remote && !remote->message.isEmpty();
     if (remoteLine->property("bad").toBool() != unreachable) {
         remoteLine->setProperty("bad", unreachable);
         repolish(remoteLine);
@@ -1290,8 +1288,8 @@ void ExecutionPanel::runEnded() {
     resultSummary.clear();
     closeOnResults = run.state() == RunState::Finished && runPanelShown();
     if (run.state() == RunState::Failed) { // Why it failed stays in sight.
-        if (QFileInfo(QDir(directory).filePath("stderr.err")).size() > 0)
-            logChannel->setCurrentIndex(logChannel->findData("stderr.err"));
+        if (QFileInfo(jobFile(directory, JobFile::errors)).size() > 0)
+            logChannel->setCurrentIndex(logChannel->findData(JobFile::errors));
         showRunPanel();
     }
     emit runFinished(directory, openResults->isChecked() && run.state() == RunState::Finished);

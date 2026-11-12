@@ -5,7 +5,6 @@
 #include "ui/editor_tool.h"
 #include "ui/molecule_view.h"
 #include <QHash>
-#include <QSettings>
 #include <QWidget>
 class QStatusBar;
 class QComboBox;
@@ -41,8 +40,7 @@ class MoleculePanel : public QWidget {
     Q_OBJECT
   public:
     MoleculePanel(EditorContext &editorContext, UiServices &uiContext, WorkspaceActions &workspace,
-                  ExecutionAccess &executionAccess, const EditorSession &session, QSettings &settings,
-                  QWidget *parent = nullptr);
+                  ExecutionAccess &executionAccess, const EditorSession &session, QWidget *parent = nullptr);
     MoleculeView *canvas() const {
         return view;
     }
@@ -85,7 +83,6 @@ class MoleculePanel : public QWidget {
     WorkspaceActions &workspace;
     ExecutionAccess &executionAccess;
     const EditorSession &session;
-    QSettings &settings;
     Ids selected;
     QVector<Ids> monitors;
     bool refreshing = false;

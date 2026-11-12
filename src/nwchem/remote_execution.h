@@ -8,9 +8,11 @@
 #include <optional>
 
 namespace mf {
+struct ExecutionEnvironment; // nwchem/execution_environment.h
 // A computer that runs calculations over SSH ("リモート実行先"). Destinations are kept in Preferences
-// only: a project names one ("remote" of the execution settings) but never says where it is, how to
-// reach it or what runs there. Keys and passwords stay with ssh (ssh-agent, ~/.ssh/config).
+// only (execution_environment.h reads and saves them): a project names one ("remote" of the execution
+// settings) but never says where it is, how to reach it or what runs there. Keys and passwords stay
+// with ssh (ssh-agent, ~/.ssh/config).
 struct RemoteHost {
     QString name;                          // As the project names it.
     QString host;                          // For ssh: "user@login.example.org" or a Host of ~/.ssh/config.
@@ -30,12 +32,7 @@ struct RemoteHost {
 };
 QStringList remoteSchedulers(); // shell, slurm, pbs
 QString remoteSchedulerName(const QString &scheduler);
-// The destinations saved in Preferences (QSettings "execution/remotes").
-QVector<RemoteHost> remoteHosts();
-// Checks every destination (remoteHostErrors, names told apart) and saves them; fails otherwise.
-void saveRemoteHosts(const QVector<RemoteHost> &hosts);
 QStringList remoteHostErrors(const RemoteHost &host);
-std::optional<RemoteHost> findRemoteHost(const QString &name);
 // "user@host:~/molforma-jobs（Slurm）".
 QString remoteHostSummary(const RemoteHost &host);
 // ssh and scp of this computer, found in PATH (empty when missing).
@@ -43,13 +40,10 @@ QString remoteProgram(const QString &name);
 
 // The header of a job script for a scheduler (slurm, pbs): a template of lines starting with "#" whose
 // placeholders ({name}, {ranks}, …) take the values of the calculation. A line with a placeholder that
-// has no value ({time} without a time limit, {queue} without a queue) is left out.
+// has no value ({time} without a time limit, {queue} without a queue) is left out. The user's own
+// templates are kept in Preferences (jobHeaderTemplate in execution_environment.h).
 QStringList jobHeaderPlaceholders();
 QString defaultJobHeader(const QString &scheduler);
-// The template saved in Preferences, else the default.
-QString jobHeaderTemplate(const QString &scheduler);
-// Saves a template (the default when it is empty or the same); fails when jobHeaderErrors finds any.
-void saveJobHeaderTemplate(const QString &scheduler, const QString &text);
 QStringList jobHeaderErrors(const QString &text);
 QStringList renderJobHeader(const QString &text, const QMap<QString, QString> &values);
 
@@ -61,23 +55,27 @@ bool remoteRun(const QJsonObject &manifest);
 QString remoteRunText(const QJsonObject &manifest);
 // The supervisor (runJobMain) of a remote run: copies the job there, submits it, follows it and copies
 // the folder back when it ends. Started again for a job it left (resume), it goes on from the record.
+// It loads the destinations of Preferences once, when it starts: only a destination that is still
+// among them, where it still leads, is connected to.
 int remoteJobMain(const QString &directory, QJsonObject manifest);
 // Starts a supervisor for a remote run whose supervisor has ended (the computer restarted): it looks
 // at the job again and copies its results back once it ends. False when the record is no such run
 // (or is followed on another computer). program: this executable (runSupervisorProgram()).
 bool resumeRemoteRun(const QString &directory, const QString &program, qint64 *pid = nullptr);
-// What "3 実行設定" shows instead of a local command: where the job goes and its job.sh.
-QString remoteJobPreview(const Document &document);
+// What "3 実行設定" shows instead of a local command: where the job goes and its job.sh, with the
+// destination, preparation lines and header of the environment.
+QString remoteJobPreview(const Document &document, const ExecutionEnvironment &environment);
 
-// "接続を確認" of a destination: connects once, runs its preparation lines and reports what was found
-// there (the folder, the scheduler's commands, NWChem and the launcher).
+// "接続を確認" of a destination: connects once, runs the preparation lines of every job script (prelude:
+// executionJobPrelude(), given by the caller) and then its own, and reports what was found there (the
+// folder, the scheduler's commands, NWChem and the launcher).
 class RemoteProbe : public QObject {
     Q_OBJECT
   public:
     explicit RemoteProbe(QObject *parent = nullptr);
     ~RemoteProbe() override;
     // executable and launcher: as "3 実行設定" names them when the destination does not.
-    void start(const RemoteHost &host, const QString &executable = "nwchem",
+    void start(const RemoteHost &host, const QString &prelude, const QString &executable = "nwchem",
                const QString &launcher = "mpirun");
     void cancel();
     bool active() const {

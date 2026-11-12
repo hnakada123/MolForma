@@ -16,6 +16,9 @@
 #include "model/geometry.h"
 #include "model/topology.h"
 #include "nwchem/nwchem.h"
+#include "nwchem/nwchem_import.h"
+#include "project/atom_references.h"
+#include "results/results.h"
 #include <QJsonDocument>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -947,6 +950,146 @@ class CoreTest : public QObject {
         QCOMPARE(protonated.charge, 0);
         QVERIFY(protonated.pointCharges.isEmpty());
     }
+    void siteOfACalculation() {
+        // The point charges a cut leaves belong to the calculation: the setting goes on with them.
+        Document d;
+        buildPeptide(d, {"GLY", "LYS", "GLY", "ASP", "GLY"}, "charged", "charged");
+        d.charge = d.expectedCharge();
+        setNwchemSetting(d, "title", "kept");
+        const auto site = siteAtoms(d, d.residues[2].atoms.values(), {.radius = 0.1});
+        QVERIFY(!nwchemSettings(d)["include_point_charges"].toBool());
+        auto plain = d, reference = d;
+        QCOMPARE(cutOutNwchemSite(plain, site, {}).size(), cutOutSite(reference, site, {}).size());
+        QCOMPARE(plain.atoms.size(), reference.atoms.size());
+        QVERIFY(plain.pointCharges.isEmpty());
+        QVERIFY(!plain.data["nwchem"].toObject().contains("include_point_charges"));
+        auto charged = d;
+        cutOutNwchemSite(charged, site, {.charges = true, .chargeRadius = 100});
+        QCOMPARE(charged.pointCharges.size(), 6);
+        QVERIFY(nwchemSettings(charged)["include_point_charges"].toBool());
+        // Charges asked for, but none within reach: the setting stays.
+        auto far = d;
+        cutOutNwchemSite(far, site, {.charges = true, .chargeRadius = 0.01});
+        QVERIFY(far.pointCharges.isEmpty());
+        QVERIFY(!nwchemSettings(far)["include_point_charges"].toBool());
+        // The site of another structure replaces the document's: its charge and point charges, the
+        // document's settings.
+        auto target = Document::fromXyz("1\nNe\nNe 0 0 0\n");
+        setNwchemSetting(target, "title", "target");
+        target.charge = 3;
+        target.pointCharges << PointCharge{};
+        replaceWithNwchemSite(target, d, site, {.charges = true, .chargeRadius = 100});
+        QCOMPARE(target.atoms.size(), charged.atoms.size());
+        QCOMPARE(target.charge, charged.charge);
+        QCOMPARE(target.pointCharges.size(), 6);
+        QCOMPARE(nwchemSettings(target)["title"].toString(), QString("target"));
+        QVERIFY(nwchemSettings(target)["include_point_charges"].toBool());
+        QVERIFY2(target.validate().isEmpty(), qPrintable(target.validate().join(';')));
+        // Without charges the document keeps its own point charges and the setting.
+        auto bare = Document::fromXyz("1\nNe\nNe 0 0 0\n");
+        bare.pointCharges << PointCharge{};
+        replaceWithNwchemSite(bare, d, site, {});
+        QCOMPARE(bare.pointCharges.size(), 1);
+        QVERIFY(!nwchemSettings(bare)["include_point_charges"].toBool());
+    }
+    void derivedCalculations() {
+        // Another task under the name with a suffix, within the 64 characters a name may have.
+        auto d = Document::fromXyz("1\nNe\nNe 0 0 0\n");
+        setNwchemSetting(d, "start", "ethene");
+        auto ts = d;
+        deriveNwchemCalculation(ts, "saddle_frequencies", "_ts");
+        QCOMPARE(nwchemSettings(ts)["task"].toString(), QString("saddle_frequencies"));
+        QCOMPARE(nwchemSettings(ts)["start"].toString(), QString("ethene_ts"));
+        auto kept = d;
+        deriveNwchemCalculation(kept, "irc", "_irc", true);
+        QCOMPARE(nwchemSettings(kept)["start"].toString(), QString("ethene_irc"));
+        // Exactly 64 characters still fit; one more is cut, or with keepLongName the name stays.
+        const QString fits(61, 'a'), longer(62, 'b');
+        for (const bool keep : {false, true}) {
+            auto x = d;
+            setNwchemSetting(x, "start", fits);
+            deriveNwchemCalculation(x, "optimize", "_ts", keep);
+            QCOMPARE(nwchemSettings(x)["start"].toString(), fits + "_ts");
+            setNwchemSetting(x, "start", longer);
+            deriveNwchemCalculation(x, "energy", "_ts", keep);
+            QCOMPARE(nwchemSettings(x)["start"].toString(), keep ? longer : longer + "_t");
+            QCOMPARE(nwchemSettings(x)["task"].toString(), QString("energy"));
+            QVERIFY(nwchemSettings(x)["start"].toString().size() <= MaximumNwchemNameLength);
+        }
+    }
+    void nebEndFiles() {
+        QTemporaryDir dir;
+        // Logs by their suffix; everything else is a structure file.
+        for (const auto *name : {"a.out", "b.LOG", "c.nwo"}) {
+            writeFile(dir.filePath(name), "NWChem\n");
+            QVERIFY(nebEndFileIsLog(dir.filePath(name)));
+        }
+        const auto frames = dir.filePath("path.xyz");
+        writeFile(frames, "2\none\nH 0 0 0\nH 0 0 0.7\n2\ntwo\nH 0 0 0\nH 0 0 0.9\n");
+        QVERIFY(!nebEndFileIsLog(frames));
+        // The last frame of an XYZ with several, the structure of other files.
+        QVERIFY((nebEndFromFile(frames).atoms[1].position - Vec(0, 0, 0.9)).norm() < 1e-12);
+        const auto single = dir.filePath("one.xyz");
+        writeFile(single, "2\none\nH 0 0 0\nH 0 0 0.7\n");
+        QVERIFY((nebEndFromFile(single).atoms[1].position - Vec(0, 0, 0.7)).norm() < 1e-12);
+        const auto project = dir.filePath("end.molforma.json");
+        Document::fromXyz("1\nNe\nNe 1 2 3\n").save(project);
+        QVERIFY(!nebEndFileIsLog(project));
+        QVERIFY((nebEndFromFile(project).atoms[0].position - Vec(1, 2, 3)).norm() < 1e-12);
+        // The last structure of a log.
+        const auto log = dir.filePath("end.out");
+        const auto geometry = [](double x) {
+            return QString(" Output coordinates in angstroms (scale by 1.8897 to convert to a.u.)\n\n"
+                           " No. Tag Charge X Y Z\n ---- ---- ------ ----- ----- -----\n"
+                           " 1 O 8.0 0.0 0.0 0.0\n 2 H 1.0 %1 0.0 0.6\n 3 H 1.0 -0.9 0.0 0.6\n\n")
+                .arg(x);
+        };
+        writeFile(log, ("NWChem\n" + geometry(0.9) + geometry(1.2)).toUtf8());
+        const auto end = nebEndFromFile(log);
+        QCOMPARE(end.atoms.size(), 3);
+        QVERIFY(std::abs(end.atoms[1].position.x() - 1.2) < 1e-12);
+        writeFile(dir.filePath("empty.out"), "NWChem\n");
+        QVERIFY_THROWS_EXCEPTION(std::exception, nebEndFromFile(dir.filePath("empty.out")));
+        QVERIFY_THROWS_EXCEPTION(std::exception, nebEndFromLog(ResultData()));
+        // A regular file of at most 128 MiB, whatever its kind.
+        QCOMPARE(MaximumNebEndFileBytes, qint64(128) * 1024 * 1024);
+        QVERIFY_THROWS_EXCEPTION(std::exception, nebEndFileIsLog(dir.path()));
+        QVERIFY_THROWS_EXCEPTION(std::exception, nebEndFileIsLog(dir.filePath("missing.xyz")));
+        for (const auto *name : {"large.xyz", "large.out"}) {
+            QFile large(dir.filePath(name));
+            QVERIFY(large.open(QIODevice::WriteOnly));
+            QVERIFY(large.resize(MaximumNebEndFileBytes + 1)); // Sparse: no data is written.
+            large.close();
+            try {
+                nebEndFromFile(large.fileName());
+                QFAIL("A file beyond the limit was read");
+            } catch (const std::exception &e) {
+                QVERIFY2(QString::fromUtf8(e.what()).contains("128 MiB"), e.what());
+            }
+            QVERIFY(large.resize(MaximumNebEndFileBytes));
+            QCOMPARE(nebEndFileIsLog(large.fileName()), QString(name).endsWith(".out"));
+            QVERIFY(large.remove());
+        }
+    }
+    void importsWithNotes() {
+        QTemporaryDir dir;
+        const QByteArray input = "start water\ngeometry\n O 0 0 0\n H 0.76 0 0.5\n H -0.76 0 0.5\nend\n"
+                                 "basis\n * library sto-3g\nend\nset geometry:actlist 1\ntask scf energy\n";
+        const auto notes = importNwchemInput(QString::fromUtf8(input)).notes;
+        QVERIFY(!notes.isEmpty());
+        // Both suffixes of NWChem inputs carry the notes of what was not imported; other files none.
+        for (const auto *name : {"water.nw", "water.nwinp"}) {
+            writeFile(dir.filePath(name), input);
+            const auto imported = importStructureWithNotes(dir.filePath(name));
+            QCOMPARE(imported.notes, notes);
+            QCOMPARE(imported.document.atoms.size(), 3);
+            QCOMPARE(importStructure(dir.filePath(name)).atoms.size(), 3);
+        }
+        writeFile(dir.filePath("water.xyz"), "3\nwater\nO 0 0 0\nH 0.76 0 0.5\nH -0.76 0 0.5\n");
+        const auto xyz = importStructureWithNotes(dir.filePath("water.xyz"));
+        QVERIFY(xyz.notes.isEmpty());
+        QCOMPARE(xyz.document.atoms.size(), 3);
+    }
     void templateLibrary() {
         QCOMPARE(templates().size(), 118);
         for (auto v : templates()) {
@@ -1223,6 +1366,61 @@ class CoreTest : public QObject {
         QVERIFY(removed.data["nwchem"].toObject()["constraints"].toArray().isEmpty());
         QVERIFY(removed.data["nwchem"].toObject()["scan_atoms"].toArray().isEmpty());
         QCOMPARE(removed.data["nwchem"].toObject()["future_reference"], settings["future_reference"]);
+    }
+    void atomReferenceSettings() {
+        // The settings whose specification says that they hold atom IDs are those the project adapter
+        // follows: one that only the specification named would keep the IDs of removed and renamed atoms.
+        QStringList marked;
+        for (const auto &spec : nwchemSettingSpecs())
+            if (spec.atomReferences) {
+                marked << spec.key;
+                QVERIFY2(!spec.preset, qPrintable(spec.key)); // They belong to a project, not to a method.
+            }
+        auto adapted = project::nwchemAtomReferenceKeys();
+        QCOMPARE(adapted.size(), QSet<QString>(adapted.begin(), adapted.end()).size());
+        marked.sort();
+        adapted.sort();
+        QCOMPARE(marked, adapted);
+        QCOMPARE(adapted,
+                 (QStringList{"constraints", "fragment_guess", "neb_end", "scan2_atoms", "scan_atoms"}));
+        // Each of them follows a renaming and a removal.
+        auto d = Document::fromXyz("3\n\nO 0 0 0\nH .76 0 .6\nH -.76 0 .6\n");
+        const QStringList ids{d.atoms[0].id, d.atoms[1].id, d.atoms[2].id};
+        auto settings = d.data["nwchem"].toObject();
+        settings["constraints"] =
+            QJsonArray{QJsonObject{{"type", "bond"}, {"atoms", QJsonArray{ids[0], ids[1]}}, {"value", 1.}}};
+        settings["scan_atoms"] = QJsonArray{ids[0], ids[1]};
+        settings["scan2_atoms"] = QJsonArray{ids[1], ids[0], ids[2]};
+        settings["fragment_guess"] =
+            QJsonArray{QJsonObject{{"atoms", QJsonArray{ids[0], ids[1]}}, {"charge", 0}, {"multiplicity", 1}},
+                       QJsonObject{{"atoms", QJsonArray{ids[2]}}, {"charge", 0}, {"multiplicity", 2}}};
+        settings["neb_end"] = QJsonObject{
+            {ids[0], QJsonArray{0, 0, 0}}, {ids[1], QJsonArray{1, 0, 0}}, {ids[2], QJsonArray{0, 1, 0}}};
+        d.data["nwchem"] = settings;
+        const auto text = [](const Document &document, const QString &key) {
+            return QString::fromUtf8(
+                QJsonDocument(QJsonObject{{key, document.data["nwchem"].toObject()[key]}}).toJson());
+        };
+        const auto names = [](const QString &id) { return '"' + id + '"'; };
+        auto renamed = d;
+        renamed.renameIds({{ids[0], "oxygen"}});
+        auto removed = d;
+        removed.remove({ids[0]});
+        for (const auto &key : std::as_const(adapted)) {
+            QVERIFY2(text(d, key).contains(names(ids[0])), qPrintable(key));
+            QVERIFY2(!text(renamed, key).contains(names(ids[0])) && text(renamed, key).contains("\"oxygen\""),
+                     qPrintable(key + text(renamed, key)));
+            QVERIFY2(!text(removed, key).contains(names(ids[0])), qPrintable(key + text(removed, key)));
+        }
+        // A coordinate without one of its atoms goes; a fragment and the end of a path lose the atom.
+        const auto left = removed.data["nwchem"].toObject();
+        QVERIFY(left["constraints"].toArray().isEmpty() && left["scan_atoms"].toArray().isEmpty() &&
+                left["scan2_atoms"].toArray().isEmpty());
+        QCOMPARE(left["fragment_guess"].toArray().size(), 2);
+        QCOMPARE(left["fragment_guess"][0].toObject()["atoms"].toArray(), QJsonArray{ids[1]});
+        QStringList kept{ids[1], ids[2]};
+        kept.sort(); // As the keys of an object are; the IDs are random.
+        QCOMPARE(left["neb_end"].toObject().keys(), kept);
     }
     void mutationKeepsReferences() {
         // A mutated residue keeps its place and the IDs of the atoms it keeps by name, and with them the
@@ -1518,6 +1716,24 @@ class CoreTest : public QObject {
         QCOMPARE(exact.name, QString("C2v"));
         QVERIFY(exact.deviation < 1e-9);
         QVERIFY(pointGroup(water, .001).name == "C2v");
+        // The passes of "点群・対称化": onto the group found within the tolerance, until exact.
+        Document bent;
+        instantiate(bent, findTemplate("skeleton:water"));
+        bent.atoms[1].position += (bent.atoms[1].position - bent.atoms[0].position).normalized() * .02;
+        const double moved = symmetrizeToPointGroup(bent, .05);
+        QVERIFY(moved > .005 && moved < .05);
+        QVERIFY(pointGroup(bent, 1e-6).deviation < 1e-9);
+        QCOMPARE(pointGroup(bent, 1e-6).name, QString("C2v"));
+        QVERIFY(symmetrizeToPointGroup(bent, .05) < 1e-9); // Exact already.
+        QVERIFY_THROWS_EXCEPTION(std::exception, symmetrizeToPointGroup(fixed, .05));
+        // No group is determined for more than 200 atoms: nothing moves.
+        QString line = "201\nline\n";
+        for (int i = 0; i < 201; ++i)
+            line += QString("Ne %1 0 0\n").arg(3.01 * i);
+        auto many = Document::fromXyz(line);
+        const auto unmoved = many;
+        QCOMPARE(symmetrizeToPointGroup(many), 0.0);
+        QVERIFY(many == unmoved);
     }
     void conformersAndSuperposition() {
         const auto butane = fromSmiles("CCCC");
@@ -1804,6 +2020,114 @@ class CoreTest : public QObject {
         setTerminals(d, seq.first(), "neutral", {});
         QCOMPARE(d.atoms.size(), before - 1);
         QCOMPARE(d.formalCharge(), -1);
+    }
+    void sequenceBesideOrInPlace() {
+        // Beside a molecule: the chain as buildPeptide makes it, 6 Å beyond the largest x; the total
+        // charge follows, the settings and the molecule stay.
+        auto d = Document::fromXyz("2\nH2\nH 1 0 0\nH 1.74 0 0\n");
+        setNwchemSetting(d, "title", "kept");
+        d.envelope["future"] = 1;
+        Document alone;
+        buildPeptide(alone, parseSequence("KG"), "charged", "neutral");
+        const auto added = buildSequence(d, parseSequence("KG"), "charged", "neutral");
+        QCOMPARE(added.size(), alone.atoms.size());
+        QCOMPARE(d.atoms.size(), alone.atoms.size() + 2);
+        QVERIFY((d.atoms[1].position - Vec(1.74, 0, 0)).norm() < 1e-12);
+        for (int i = 0; i < alone.atoms.size(); ++i) {
+            QCOMPARE(d.atoms[i + 2].id, added[i]);
+            QVERIFY((d.atoms[i + 2].position - alone.atoms[i].position - Vec(7.74, 0, 0)).norm() < 1e-12);
+        }
+        QCOMPARE(d.charge, 2); // Lys and the N terminus.
+        QVERIFY2(d.validate().isEmpty(), qPrintable(d.validate().join(';')));
+        // Atoms left of −6 Å do not pull the chain to the left.
+        auto left = Document::fromXyz("1\nHe\nHe -20 0 0\n");
+        buildSequence(left, {"GLY"}, "neutral", "neutral");
+        Document glycine;
+        buildPeptide(glycine, {"GLY"}, "neutral", "neutral");
+        QVERIFY((left.atoms[1].position - glycine.atoms[0].position).norm() < 1e-12);
+        // In place of the molecule: at buildPeptide's position, with the chain's charge even when the
+        // total charge had been set by hand; the calculation settings and the envelope stay.
+        d.charge = 5;
+        buildSequence(d, parseSequence("KG"), "charged", "neutral", "L", "default", true);
+        QCOMPARE(d.atoms.size(), alone.atoms.size());
+        for (int i = 0; i < alone.atoms.size(); ++i)
+            QVERIFY((d.atoms[i].position - alone.atoms[i].position).norm() < 1e-12);
+        QCOMPARE(d.charge, 2);
+        QCOMPARE(nwchemSettings(d)["title"].toString(), QString("kept"));
+        QCOMPARE(d.envelope["future"].toInt(), 1);
+        QVERIFY_THROWS_EXCEPTION(std::exception, buildSequence(d, {}, "charged", "charged"));
+    }
+    void atomOrders() {
+        Document d;
+        buildPeptide(d, {"GLY", "ALA"}, "neutral", "neutral");
+        d.atoms.prepend(Document::fromXyz("1\nNe\nNe 0 0 20\n").atoms[0]); // Outside the residues.
+        const auto before = d;
+        const auto order = [](const Document &x) {
+            QStringList ids;
+            for (const auto &a : x.atoms)
+                ids << a.id;
+            return ids;
+        };
+        // By atomic number, atoms of an element in the order they had.
+        auto elements = d;
+        sortAtoms(elements, "element");
+        QStringList expected;
+        for (const auto *symbol : {"H", "C", "N", "O", "Ne"})
+            for (const auto &a : before.atoms)
+                if (a.element == symbol)
+                    expected << a.id;
+        QCOMPARE(order(elements), expected);
+        // Residue by residue in the order of its atom names, the atom outside residues last.
+        auto residues = elements;
+        sortAtoms(residues, "residue");
+        expected.clear();
+        for (const auto &r : before.residues)
+            expected += r.atoms.values();
+        expected << before.atoms[0].id;
+        QCOMPARE(order(residues), expected);
+        // The selected atoms first, both groups in the order they had.
+        const Ids chosen{before.atoms[5].id, before.atoms[2].id};
+        auto selected = d;
+        sortAtoms(selected, "selected", chosen);
+        expected = {before.atoms[2].id, before.atoms[5].id};
+        for (const auto &a : before.atoms)
+            if (!chosen.contains(a.id))
+                expected << a.id;
+        QCOMPARE(order(selected), expected);
+        // Only the order changes.
+        for (const auto &sorted : {elements, residues, selected}) {
+            QVERIFY(sorted.bonds == before.bonds);
+            QVERIFY(sorted.residues == before.residues);
+            QVERIFY2(sorted.validate().isEmpty(), qPrintable(sorted.validate().join(';')));
+            for (const auto &a : before.atoms)
+                QVERIFY(sorted.atom(a.id) == a);
+        }
+        QVERIFY_THROWS_EXCEPTION(std::exception, sortAtoms(d, "mass"));
+        QCOMPARE(order(d), order(before));
+    }
+    void mirrorCopies() {
+        // A copy 6 Å along +X, reflected through the plane at its own center or at the origin.
+        const auto original = Document::fromXyz("3\nwater\nO 1 0 0\nH 1.8 0.6 0\nH 0.4 0.6 0\n");
+        auto d = original;
+        const auto added = mirrorCopy(d, d.ids(), 0);
+        QCOMPARE(added.size(), 3);
+        QCOMPARE(d.atoms.size(), 6);
+        for (int i = 0; i < 3; ++i)
+            QCOMPARE(d.atoms[i].position, original.atoms[i].position);
+        const double center = centroid(original, original.ids()).x() + 6;
+        for (int i = 0; i < 3; ++i) {
+            const auto p = original.atoms[i].position;
+            QVERIFY((d.atom(added[i]).position - Vec(2 * center - (p.x() + 6), p.y(), p.z())).norm() < 1e-12);
+        }
+        QCOMPARE(d.bonds.size(), 4);
+        auto about = original;
+        const auto mirrored = mirrorCopy(about, about.ids(), 0, true);
+        for (int i = 0; i < 3; ++i) {
+            const auto p = original.atoms[i].position;
+            QVERIFY((about.atom(mirrored[i]).position - Vec(-(p.x() + 6), p.y(), p.z())).norm() < 1e-12);
+        }
+        QVERIFY_THROWS_EXCEPTION(std::exception, mirrorCopy(about, {}, 0));
+        QVERIFY_THROWS_EXCEPTION(std::exception, mirrorCopy(about, about.ids(), 3));
     }
     void peptidePrependMutateDelete() {
         Document d;

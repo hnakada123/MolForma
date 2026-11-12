@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "results/result_summary.h"
 #include "foundation/i18n.h"
+#include "results/result_properties.h"
 #include <algorithm>
 
 namespace mf {
@@ -105,13 +106,11 @@ QString resultTransitionText(const ResultData &data, const ResultTransition &t) 
 }
 QString resultBriefSummary(const ResultData &data) {
     QStringList parts;
-    if (data.properties.contains("optimization"))
-        parts << (data.properties.value("optimization") == "converged" ? tr("最適化: 収束")
-                                                                       : tr("最適化: 収束メッセージなし"));
-    if (const auto final = data.properties["final_energy"].toObject(); !final.isEmpty())
+    if (const auto converged = resultOptimizationConverged(data))
+        parts << (*converged ? tr("最適化: 収束") : tr("最適化: 収束メッセージなし"));
+    if (const auto final = resultFinalEnergy(data))
         parts << tr("E = %1 Eh（%2）")
-                     .arg(QString::number(final["hartree"].toDouble(), 'g', 12).replace('-', "−"),
-                          final["method"].toString());
+                     .arg(QString::number(final->hartree, 'g', 12).replace('-', "−"), final->method);
     if (!data.modes.isEmpty())
         parts << resultImaginaryText(resultModeCounts(resultModeKinds(data)));
     if (!data.excitations.isEmpty())

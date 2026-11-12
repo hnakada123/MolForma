@@ -33,6 +33,8 @@ class UiServices {
   public:
     virtual ~UiServices() = default;
     virtual void safe(const std::function<void()> &operation) = 0;
+    // The user's preferences, by the keys of model/settings.h (Preference::…): the one way of widgets to
+    // them. What a widget remembers goes through here, never through a store of its own.
     virtual QVariant preference(const QString &key, const QVariant &fallback = {}) const = 0;
     virtual void setPreference(const QString &key, const QVariant &value) = 0;
     virtual void checkMcpPath(const QString &path) const = 0;

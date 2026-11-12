@@ -6,6 +6,7 @@
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_output.h"
+#include "nwchem/run_record.h"
 #include "results/results.h"
 #include <QCryptographicHash>
 #include <QDir>
@@ -54,12 +55,12 @@ struct LogEnd {
     Document geometry; // The last structure printed; no atoms if none.
 };
 LogEnd readLog(const QString &job) {
-    const auto path = QDir(job).filePath("output.out");
+    const auto path = jobFile(job, JobFile::output);
     if (!regularFile(path))
         fail(tr("再開元のログ（output.out）がありません。"));
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
-        fail("output.out: " + file.errorString());
+        fail(QString(JobFile::output) + ": " + file.errorString());
     ResultData result;
     NwchemLog log(&result);
     QByteArray buffer(64 * 1024 + 1, Qt::Uninitialized);
@@ -73,7 +74,7 @@ LogEnd readLog(const QString &job) {
             result.frames.remove(0, result.frames.size() - 1);
     }
     if (file.error() != QFile::NoError)
-        fail("output.out: " + file.errorString());
+        fail(QString(JobFile::output) + ": " + file.errorString());
     LogEnd end{log.started, log.ended, {}};
     if (!result.frames.isEmpty())
         end.geometry = result.frames.last().molecule;
@@ -170,7 +171,7 @@ Document restartDocument(const QString &job, const QString &mode) {
     const int fragments = int(s["fragment_guess"].toArray().size());
     s.remove("fragment_guess");
     if (mode == "continue") {
-        const auto tasks = nwchemTaskLines(historyText(job, "input.nw"));
+        const auto tasks = nwchemTaskLines(historyText(job, JobFile::input));
         // The task under way when NWChem stopped is the first to run again.
         const int finished = log.ended ? int(tasks.size()) : std::max(0, log.started - 1);
         if (finished >= tasks.size())
@@ -227,7 +228,7 @@ Document orbitalReuseDocument(const QString &job) {
 QString restartSource(const Document &d) {
     const auto s = nwchemSettings(d);
     const auto job = nwchemRestart(s).job;
-    if (job.isEmpty() || !regularFile(QDir(job).filePath("run.json")) || jobFolders(d, job).isEmpty())
+    if (job.isEmpty() || !regularFile(jobFile(job, JobFile::record)) || jobFolders(d, job).isEmpty())
         return {};
     return QDir(permanentFolder(d, job)).filePath(s["start"].toString() + ".db");
 }

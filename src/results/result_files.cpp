@@ -37,13 +37,13 @@ QVector<ResultFileGroup> resultFileGroups(const QStringList &names) {
     }
     return groups;
 }
-QString preferredResultFile(const QString &directory, const QStringList &files) {
+QString preferredResultFile(const QString &directory, const QStringList &files, const QString &preferred) {
     const QDir dir(directory);
     if (!dir.exists())
         fail(tr("フォルダーが見つかりません。"));
     if (files.isEmpty())
         fail(tr("対応する結果ファイルがありません。"));
-    return dir.absoluteFilePath(files.contains("output.out") ? "output.out" : files.first());
+    return dir.absoluteFilePath(files.contains(preferred) ? preferred : files.first());
 }
 QString resultSourceStamp(const QString &path) {
     const QFileInfo file(path);

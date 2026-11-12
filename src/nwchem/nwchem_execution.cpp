@@ -2,14 +2,13 @@
 #include "nwchem/nwchem_execution.h"
 #include "foundation/files.h"
 #include "foundation/i18n.h"
-#include "model/settings.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_output.h"
 #include "nwchem/nwchem_restart.h"
 #include "nwchem/remote_execution.h"
-#include "nwchem/run_diagnostics.h"
+#include "nwchem/run_record.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -18,8 +17,6 @@
 #include <QHash>
 #include <QJsonDocument>
 #include <QRegularExpression>
-#include <QSaveFile>
-#include <QSettings>
 #include <QStandardPaths>
 #include <QSysInfo>
 #include <QTemporaryDir>
@@ -43,8 +40,9 @@ bool networkPath(const QString &path) {
     const auto p = path.trimmed();
     return p.startsWith("//") || p.startsWith("\\\\");
 }
-QString untrustedNetworkPath(const Document &d) {
-    const auto s = executionSettings(d), preferred = executionPreferences();
+QString untrustedNetworkPath(const Document &d, const ExecutionEnvironment &environment) {
+    const auto s = executionSettings(d);
+    const auto &preferred = environment.preferences;
     for (const auto *key : {"executable", "launcher", "job_root", "reference_directory"})
         if (const auto value = s[key].toString(); networkPath(value) && value != preferred[key].toString())
             return value;
@@ -65,8 +63,8 @@ namespace {
 const QStringList managedEnvironment{"OMP_NUM_THREADS",      "OMP_STACKSIZE",    "OMP_DYNAMIC",
                                      "OPENBLAS_NUM_THREADS", "GOTO_NUM_THREADS", "MKL_NUM_THREADS",
                                      "MKL_DYNAMIC",          "BLIS_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"};
-const QStringList bundleFiles{
-    "input.nw", "project.molforma.json", "run.json", "output.out", "stderr.err", "job.sh", "exit_code"};
+const QStringList bundleFiles{JobFile::input,  JobFile::project, JobFile::record,  JobFile::output,
+                              JobFile::errors, JobFile::script,  JobFile::exitCode};
 bool controls(const QString &s) {
     return s.contains(QRegularExpression("[\\x00-\\x1f\\x7f]"));
 }
@@ -88,11 +86,9 @@ QString quote(QString s) {
     s.replace('\'', "'\\''");
     return "'" + s + "'";
 }
-void writeManifest(const ExecutionPlan &plan) {
-    QSaveFile file(QDir(plan.directory).filePath("run.json"));
-    const auto bytes = QJsonDocument(plan.manifest).toJson();
-    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
-        fail(tr("実行記録を保存できません: %1").arg(file.errorString()));
+// How job.sh and the command shown for a run send NWChem's output and errors to their files.
+QString outputRedirection() {
+    return QString(" > %1 2> %2").arg(QString(JobFile::output), QString(JobFile::errors));
 }
 #ifdef Q_OS_WIN
 // Defined last in this file, away from the macros of windows.h.
@@ -116,7 +112,7 @@ QString executionRoot(const QJsonObject &s, const QString &base) {
 }
 // The file that asks the supervisor of a job to stop it.
 QString stopRequest(const QString &directory) {
-    return QDir(directory).filePath("stop.request");
+    return jobFile(directory, JobFile::stopRequest);
 }
 // Ends the process group of a run (Unix), or the whole tree of its first process (Windows).
 void signalGroup(qint64 group, bool force) {
@@ -158,11 +154,11 @@ bool executionRunGone(const QJsonObject &manifest) {
 bool requestRunStop(const QString &directory) {
     QJsonObject manifest;
     try {
-        manifest = parseJson(readFile(QDir(directory).filePath("run.json")));
+        manifest = readRunRecord(directory, RecordCheck::Json);
     } catch (const std::exception &) {
         return false;
     }
-    if (!runStateActive(runStateFromKey(manifest["status"].toString())) || !runSupervised(manifest))
+    if (!runStateActive(RunRecord(manifest).state()) || !runSupervised(manifest))
         return false;
     QFile request(stopRequest(directory));
     return request.open(QIODevice::WriteOnly);
@@ -175,25 +171,17 @@ int runJobMain(int argc, char **argv) {
     ExecutionPlan plan;
     try {
         // Only the job MolForma has just prepared and marked as starting, with the input it saved.
-        const auto manifest = parseJson(readFile(QDir(directory).filePath("run.json")));
+        const auto manifest = readRunRecord(directory, RecordCheck::Json);
+        const RunRecord record(manifest);
         // A run on another computer: this process copies it there, follows it and fetches it back.
-        if (manifest["format"] == "molforma-nwchem-run" && remoteRun(manifest))
+        if (record.hasFormat() && remoteRun(manifest))
             return remoteJobMain(directory, manifest);
-        const auto input = readFile(QDir(directory).filePath("input.nw"));
-        if (manifest["format"] != "molforma-nwchem-run" ||
-            runStateFromKey(manifest["status"].toString()) != RunState::Starting ||
+        const auto input = readFile(jobFile(directory, JobFile::input));
+        if (!record.hasFormat() || record.state() != RunState::Starting ||
             manifest["input_sha256"].toString() !=
                 QString::fromLatin1(QCryptographicHash::hash(input, QCryptographicHash::Sha256).toHex()))
             return 2;
-        plan.directory = directory;
-        plan.program = manifest["program"].toString();
-        for (const auto &argument : manifest["arguments"].toArray())
-            plan.arguments << argument.toString();
-        const auto overrides = manifest["environment_overrides"].toObject();
-        for (auto it = overrides.begin(); it != overrides.end(); ++it)
-            plan.environment[it.key()] = it.value().toString();
-        plan.timeoutSeconds = manifest["timeout_seconds"].toInt();
-        plan.manifest = manifest;
+        plan = runRecordPlan(directory, manifest);
         plan.manifest["supervisor"] = executionProcessIdentity(QCoreApplication::applicationPid());
     } catch (const std::exception &) {
         return 2;
@@ -257,32 +245,6 @@ QStringList executionPreferenceKeys() {
             "blas_threads", "omp_stacksize", "job_root", "timeout_seconds", "environment",
             "job_script",   "job_queue",     "remote"};
 }
-QJsonObject executionPreferences() {
-    const auto stored =
-        QJsonDocument::fromJson(QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
-                                    .value("execution/defaults")
-                                    .toByteArray())
-            .object();
-    const auto defaults = executionDefaults();
-    QJsonObject result;
-    for (const auto &key : executionPreferenceKeys())
-        result[key] = stored[key].type() == defaults[key].type() ? stored[key] : defaults[key];
-    return result;
-}
-void saveExecutionPreferences(const QJsonObject &settings) {
-    QJsonObject stored;
-    for (const auto &key : executionPreferenceKeys())
-        if (settings.contains(key))
-            stored[key] = settings[key];
-    QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
-        .setValue("execution/defaults", QJsonDocument(stored).toJson(QJsonDocument::Compact));
-}
-void applyExecutionPreferences(Document &d) {
-    const auto defaults = executionDefaults(), preferences = executionPreferences();
-    for (auto it = preferences.begin(); it != preferences.end(); ++it)
-        if (it.value() != defaults[it.key()])
-            setExecutionSetting(d, it.key(), it.value());
-}
 QJsonObject executionSettings(const Document &d) {
     auto result = executionDefaults();
     const auto stored = d.data["nwchem_execution"].toObject();
@@ -299,7 +261,8 @@ void setExecutionSetting(Document &d, const QString &key, const QJsonValue &valu
     if (!s.isEmpty() || d.data.contains("nwchem_execution"))
         d.data["nwchem_execution"] = s;
 }
-ExecutionValidation validateExecution(const Document &d, const QString &base, bool local) {
+ExecutionValidation validateExecution(const Document &d, const QString &base, bool local,
+                                      const ExecutionEnvironment &environment) {
     ExecutionValidation r;
     const auto s = executionSettings(d);
     const auto calculation = validateNwchem(d);
@@ -389,15 +352,15 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
     if (r.environment.contains("NWCHEM_BASIS_LIBRARY") && !r.environment["NWCHEM_BASIS_LIBRARY"].isEmpty())
         r.environment["NWCHEM_BASIS_LIBRARY"] =
             absolutePath(r.environment["NWCHEM_BASIS_LIBRARY"], base) + '/';
-    auto environment = QProcessEnvironment::systemEnvironment();
+    auto variables = QProcessEnvironment::systemEnvironment();
     for (auto it = r.environment.begin(); it != r.environment.end(); ++it)
-        environment.insert(it.key(), it.value());
+        variables.insert(it.key(), it.value());
     r.referenceDirectory = s["reference_directory"].toString().isEmpty()
                                ? absolutePath(".", base)
                                : absolutePath(s["reference_directory"].toString(), base);
     // A remote run starts NWChem on its destination: the programs are named for that computer.
     const auto remoteName = s["remote"].toString();
-    const auto remote = findRemoteHost(remoteName);
+    const auto remote = environment.remote(remoteName);
     if (!remoteName.isEmpty()) {
         if (!remote)
             r.error("execution.remote", "remote",
@@ -415,10 +378,10 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
                        "きは「履歴」の「続きから実行を準備」を使ってください。"),
                     {}, SettingTarget::Execution);
     } else {
-        r.executable = locateProgram(s["executable"].toString(), base, environment);
-        r.launcher = locateProgram(s["launcher"].toString(), base, environment);
+        r.executable = locateProgram(s["executable"].toString(), base, variables);
+        r.launcher = locateProgram(s["launcher"].toString(), base, variables);
     }
-    if (const auto network = untrustedNetworkPath(d); !network.isEmpty()) {
+    if (const auto network = untrustedNetworkPath(d, environment); !network.isEmpty()) {
         r.error(
             "execution.network", "job_root",
             tr("ネットワーク上の場所 %1 は、「編集 → 環境設定」で指定した場合だけ使えます。").arg(network),
@@ -428,7 +391,7 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
     if (local) {
         const auto check = [&](const QString &key, const QString &label, bool ok, const QString &found,
                                const QString &error) {
-            r.checks << ExecutionCheck{label, ok ? found : error, ok ? QString() : error, ok};
+            r.checks << ExecutionCheck{key, label, ok ? found : error, ok ? QString() : error, ok};
             if (!ok)
                 r.error("execution.local", key, error, {}, SettingTarget::Execution);
         };
@@ -468,7 +431,8 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
             check("environment", "NWCHEM_BASIS_LIBRARY", QFileInfo(basis).isDir(), basis,
                   tr("NWCHEM_BASIS_LIBRARYのディレクトリがありません。"));
         // The input's own errors stay in the list; the check only counts them.
-        r.checks << ExecutionCheck{tr("NWChem入力"),
+        r.checks << ExecutionCheck{{},
+                                   tr("NWChem入力"),
                                    calculation.errors.isEmpty() ? tr("生成できます")
                                                                 : tr("生成できません（エラー %n 件）",
                                                                      nullptr, int(calculation.errors.size())),
@@ -499,8 +463,9 @@ ExecutionValidation validateExecution(const Document &d, const QString &base, bo
     r.errors.removeDuplicates();
     return r;
 }
-ExecutionPlan executionPlan(const Document &d, const QString &base, const QString &directory, bool local) {
-    const auto report = validateExecution(d, base, local);
+ExecutionPlan executionPlan(const Document &d, const QString &base, const QString &directory, bool local,
+                            const ExecutionEnvironment &environment) {
+    const auto report = validateExecution(d, base, local, environment);
     if (!report.errors.isEmpty())
         throw ValidationFailure(report);
     const auto s = executionSettings(d);
@@ -510,7 +475,7 @@ ExecutionPlan executionPlan(const Document &d, const QString &base, const QStrin
     p.environment = report.environment;
     // A remote run: the programs as job.sh starts them there (the destination's names come first), and
     // the folders of NWChem are those of that computer, not looked at here.
-    const auto remote = findRemoteHost(s["remote"].toString());
+    const auto remote = environment.remote(s["remote"].toString());
     const bool here = local && !remote;
     QString executable = report.executable.isEmpty() ? s["executable"].toString() : report.executable;
     QString launcher = report.launcher.isEmpty() ? s["launcher"].toString() : report.launcher;
@@ -523,7 +488,7 @@ ExecutionPlan executionPlan(const Document &d, const QString &base, const QStrin
         p.program = launcher;
         p.arguments = {"-np", QString::number(s["mpi_ranks"].toInt()), executable};
     }
-    p.arguments << "input.nw";
+    p.arguments << JobFile::input;
     Document resolved = d;
     const auto advanced = nwchemAdvanced(d);
     if (advanced["vectors_guess"] == "file") {
@@ -580,37 +545,37 @@ ExecutionPlan executionPlan(const Document &d, const QString &base, const QStrin
     QJsonObject overrides;
     for (auto it = p.environment.begin(); it != p.environment.end(); ++it)
         overrides[it.key()] = it.value();
-    p.manifest = {{"format", "molforma-nwchem-run"},
-                  {"version", 1},
-                  {"status", runStateKey(RunState::Prepared)},
-                  {"created_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
-                  {"directory", directory},
-                  {"program", p.program},
-                  {"arguments", QJsonArray::fromStringList(p.arguments)},
-                  {"environment_overrides", overrides},
-                  {"reference_directory", report.referenceDirectory},
-                  {"project_directory", QFileInfo(base).absoluteFilePath()},
-                  {"calculation", nwchemSettings(d)},
-                  {"formula", d.formula()},
-                  {"input", "input.nw"},
-                  {"stdout", "output.out"},
-                  {"stderr", "stderr.err"},
-                  {"project", "project.molforma.json"},
-                  {"timeout_seconds", p.timeoutSeconds},
-                  {"input_sha256",
-                   QString::fromLatin1(
-                       QCryptographicHash::hash(p.input.toUtf8(), QCryptographicHash::Sha256).toHex())}};
+    p.manifest = newRunRecord();
+    const QJsonObject saved{
+        {"status", runStateKey(RunState::Prepared)},
+        {"created_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+        {"directory", directory},
+        {"program", p.program},
+        {"arguments", QJsonArray::fromStringList(p.arguments)},
+        {"environment_overrides", overrides},
+        {"reference_directory", report.referenceDirectory},
+        {"project_directory", QFileInfo(base).absoluteFilePath()},
+        {"calculation", nwchemSettings(d)},
+        {"formula", d.formula()},
+        {"timeout_seconds", p.timeoutSeconds},
+        {"input_sha256",
+         QString::fromLatin1(
+             QCryptographicHash::hash(p.input.toUtf8(), QCryptographicHash::Sha256).toHex())}};
+    for (auto it = saved.begin(); it != saved.end(); ++it)
+        p.manifest[it.key()] = it.value();
     if (!outputs.isEmpty())
         p.manifest["visualization_files"] = QJsonArray::fromStringList(outputs);
-    // The destination as it is now: the supervisor follows the job there even if Preferences change.
+    // The destination as the environment has it: the supervisor follows the job there even if Preferences
+    // change.
     if (remote)
         p.manifest["remote"] = QJsonObject{{"host", remote->json()}, {"phase", "prepared"}};
     return p;
 }
-ExecutionPlan executionPreviewPlan(const Document &d, const QString &base, bool local) {
+ExecutionPlan executionPreviewPlan(const Document &d, const QString &base, bool local,
+                                   const ExecutionEnvironment &environment) {
     const auto root = executionRoot(executionSettings(d), base);
     const auto job = QDir(root).filePath(nwchemSettings(d)["start"].toString() + "-YYYYMMDD-HHMMSS-ID");
-    return executionPlan(d, base, job, local);
+    return executionPlan(d, base, job, local, environment);
 }
 QString executionCommand(const ExecutionPlan &p) {
     if (remoteRun(p.manifest)) {
@@ -619,13 +584,13 @@ QString executionCommand(const ExecutionPlan &p) {
         QString command = "scp -r -- " + quote(QFileInfo(p.directory).fileName()) + ' ' +
                           quote(host.host + ':' + host.directory + '/') + "\nssh " + quote(host.host) +
                           " 'cd " + job + " && ";
-        command += host.scheduler == "slurm" ? QString("sbatch job.sh'")
-                   : host.scheduler == "pbs" ? QString("qsub job.sh'")
-                                             : QString("nohup ./job.sh &'");
+        command += host.scheduler == "slurm" ? QString("sbatch %1'").arg(QString(JobFile::script))
+                   : host.scheduler == "pbs" ? QString("qsub %1'").arg(QString(JobFile::script))
+                                             : QString("nohup ./%1 &'").arg(QString(JobFile::script));
         QStringList program{quote(p.program)};
         for (const auto &arg : p.arguments)
             program << quote(arg);
-        return command + "\n# job.sh: " + program.join(' ') + " > output.out 2> stderr.err";
+        return command + "\n# " + JobFile::script + ": " + program.join(' ') + outputRedirection();
     }
     QString command = "cd -- " + quote(p.directory) + "\nenv";
     for (auto it = p.environment.begin(); it != p.environment.end(); ++it)
@@ -633,25 +598,15 @@ QString executionCommand(const ExecutionPlan &p) {
     command += ' ' + quote(p.program);
     for (const auto &arg : p.arguments)
         command += ' ' + quote(arg);
-    return command + " > output.out 2> stderr.err";
+    return command + outputRedirection();
 }
-QString executionJobPrelude() {
-    return QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
-        .value("execution/job_prelude")
-        .toString();
-}
-void saveExecutionJobPrelude(const QString &lines) {
-    if (lines.size() > 4000 || lines.contains(QRegularExpression("[\\x00-\\x08\\x0b-\\x1f\\x7f]")))
-        fail(tr("ジョブスクリプトの準備の行は、制御文字を含めず4000文字以内で指定してください。"));
-    QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
-        .setValue("execution/job_prelude", lines.trimmed());
-}
-QString executionJobScript(const Document &d, const RemoteHost *remote) {
+QString executionJobScript(const Document &d, const RemoteHost *remote,
+                           const ExecutionEnvironment &environment) {
     const auto s = executionSettings(d);
     const auto kind = remote ? remote->scheduler : s["job_script"].toString();
     if (kind == "none")
         return {};
-    const auto report = validateExecution(d, QDir::homePath(), false);
+    const auto report = validateExecution(d, QDir::homePath(), false, environment);
     if (!report.errors.isEmpty())
         throw ValidationFailure(report);
     const bool mpi = s["mode"] == "mpi";
@@ -676,7 +631,7 @@ QString executionJobScript(const Document &d, const RemoteHost *remote) {
         {"memory_mb", QString::number(nwchemSettings(d)["memory_mb"].toInt())}};
     QStringList lines{"#!/bin/bash"};
     if (kind == "slurm" || kind == "pbs") {
-        lines << renderJobHeader(jobHeaderTemplate(kind), values);
+        lines << renderJobHeader(environment.jobHeader(kind), values);
         if (remote)
             lines << renderJobHeader(remote->header, values);
     }
@@ -686,12 +641,12 @@ QString executionJobScript(const Document &d, const RemoteHost *remote) {
               << "# script, follows the job and copies the folder back when it ends.";
     else
         lines << "# Generated by MolForma. Runs NWChem in the folder of this script; copy the folder back and"
-              << "# register output.out in MolForma's history afterwards.";
+              << QString("# register %1 in MolForma's history afterwards.").arg(QString(JobFile::output));
     lines << (kind == "slurm" ? "cd \"${SLURM_SUBMIT_DIR:-$(dirname \"$0\")}\" || exit 1"
               : kind == "pbs" ? "cd \"${PBS_O_WORKDIR:-$(dirname \"$0\")}\" || exit 1"
                               : "cd \"$(dirname \"$0\")\" || exit 1");
-    if (const auto prelude = executionJobPrelude(); !prelude.isEmpty())
-        lines << prelude;
+    if (!environment.jobPrelude.isEmpty())
+        lines << environment.jobPrelude;
     if (remote && !remote->prelude.trimmed().isEmpty())
         lines << remote->prelude.trimmed();
     for (auto it = report.environment.begin(); it != report.environment.end(); ++it) {
@@ -707,14 +662,16 @@ QString executionJobScript(const Document &d, const RemoteHost *remote) {
     QStringList command;
     if (mpi)
         command << quote(launcher) << "-np" << QString::number(ranks);
-    command << quote(executable) << "input.nw";
-    lines << command.join(' ') + " > output.out 2> stderr.err";
+    command << quote(executable) << JobFile::input;
+    lines << command.join(' ') + outputRedirection();
     // How NWChem ended, for whoever looks at the folder afterwards (MolForma, when it fetches a remote run).
-    lines << "status=$?" << "echo \"$status\" > exit_code" << "exit \"$status\"";
+    lines << "status=$?" << QString("echo \"$status\" > %1").arg(QString(JobFile::exitCode))
+          << "exit \"$status\"";
     return lines.join('\n') + '\n';
 }
-ExecutionPlan saveExecutionBundle(const Document &d, const QString &base, bool forRun) {
-    const auto report = validateExecution(d, base, forRun);
+ExecutionPlan saveExecutionBundle(const Document &d, const QString &base, bool forRun,
+                                  const ExecutionEnvironment &environment) {
+    const auto report = validateExecution(d, base, forRun, environment);
     if (!report.errors.isEmpty())
         throw ValidationFailure(report);
     const auto root = executionRoot(executionSettings(d), base);
@@ -726,7 +683,7 @@ ExecutionPlan saveExecutionBundle(const Document &d, const QString &base, bool f
                                                 "-XXXXXX"));
     if (!directory.isValid())
         fail(tr("ジョブフォルダーを作成できません: %1").arg(directory.errorString()));
-    auto plan = executionPlan(d, base, directory.path(), forRun);
+    auto plan = executionPlan(d, base, directory.path(), forRun, environment);
     const auto advanced = nwchemAdvanced(d);
     for (const auto &key : {"scratch_dir", "permanent_dir", "vectors_output"}) {
         if (!advanced.contains(key))
@@ -741,26 +698,26 @@ ExecutionPlan saveExecutionBundle(const Document &d, const QString &base, bool f
         if (!QDir(directory.path()).mkpath(path))
             fail(tr("ジョブ内の出力ディレクトリを作成できません: %1").arg(path));
     }
-    writeFile(directory.filePath("input.nw"), plan.input.toUtf8());
+    writeFile(directory.filePath(JobFile::input), plan.input.toUtf8());
     const auto errors = d.validate();
     if (!errors.isEmpty())
         fail(errors.join('\n'));
     const auto project = QJsonDocument(d.project()).toJson();
-    writeFile(directory.filePath("project.molforma.json"), project);
+    writeFile(directory.filePath(JobFile::project), project);
     plan.manifest["project_sha256"] =
         QString::fromLatin1(QCryptographicHash::hash(project, QCryptographicHash::Sha256).toHex());
     copyRestartFiles(d, directory.path());
     // A job saved to run elsewhere takes its start script along, and so does a run on a remote destination.
-    const auto remote = findRemoteHost(executionSettings(d)["remote"].toString());
-    const auto script =
-        forRun ? (remote ? executionJobScript(d, &*remote) : QString()) : executionJobScript(d);
+    const auto remote = environment.remote(executionSettings(d)["remote"].toString());
+    const auto script = forRun ? (remote ? executionJobScript(d, &*remote, environment) : QString())
+                               : executionJobScript(d, nullptr, environment);
     if (!script.isEmpty()) {
-        const auto path = directory.filePath("job.sh");
+        const auto path = directory.filePath(JobFile::script);
         writeFile(path, script.toUtf8());
         QFile::setPermissions(path, QFile::permissions(path) | QFile::ExeOwner | QFile::ExeUser);
-        plan.manifest["job_script"] = "job.sh";
+        plan.manifest["job_script"] = JobFile::script;
     }
-    writeManifest(plan);
+    writeRunRecord(plan.directory, plan.manifest);
     directory.setAutoRemove(false);
     return plan;
 }
@@ -847,16 +804,15 @@ qint64 NwchemRun::elapsedSeconds() const {
     if (!active())
         return duration;
     // A run that another session started has only its record to tell the time by.
-    if (const auto started =
-            QDateTime::fromString(current.manifest["started_at"].toString(), Qt::ISODateWithMs);
-        watching && started.isValid())
+    if (const auto started = RunRecord(current.manifest).started(); watching && started.isValid())
         return std::max<qint64>(0, started.secsTo(QDateTime::currentDateTimeUtc()));
     return elapsed.elapsed() / 1000;
 }
 void NwchemRun::start(const Document &d, const QString &base) {
     if (active())
         fail(tr("計算は既に実行中です。"));
-    startPrepared(saveExecutionBundle(d, base, true));
+    // The Preferences as they are when the run begins: checked and saved with this one state of them.
+    startPrepared(saveExecutionBundle(d, base, true, executionEnvironment()));
 }
 void NwchemRun::startPrepared(const ExecutionPlan &plan) {
     if (active())
@@ -890,8 +846,8 @@ void NwchemRun::startPrepared(const ExecutionPlan &plan) {
     process.setWorkingDirectory(current.directory);
     process.setProcessEnvironment(environment);
     process.setStandardInputFile(QProcess::nullDevice());
-    process.setStandardOutputFile(QDir(current.directory).filePath("output.out"));
-    process.setStandardErrorFile(QDir(current.directory).filePath("stderr.err"));
+    process.setStandardOutputFile(jobFile(current.directory, JobFile::output));
+    process.setStandardErrorFile(jobFile(current.directory, JobFile::errors));
     current.manifest["started_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     record();
     process.start();
@@ -938,12 +894,12 @@ bool NwchemRun::attach(const QString &directory) {
     const auto job = QDir::cleanPath(QFileInfo(directory).absoluteFilePath());
     QJsonObject manifest;
     try {
-        manifest = parseJson(readFile(QDir(job).filePath("run.json")));
+        manifest = readRunRecord(job, RecordCheck::Json);
     } catch (const std::exception &) {
         return false;
     }
-    const auto state = runStateFromKey(manifest["status"].toString());
-    if (manifest["format"] != "molforma-nwchem-run" || !runStateActive(state))
+    const auto state = RunRecord(manifest).state();
+    if (!RunRecord(manifest).hasFormat() || !runStateActive(state))
         return false;
     // A remote run whose supervisor ended (the computer restarted) gets another one, which looks at the
     // job there again.
@@ -953,15 +909,9 @@ bool NwchemRun::attach(const QString &directory) {
         return false;
     if (restarted)
         manifest.remove("supervisor");
-    current = {};
-    current.directory = job;
-    current.program = manifest["program"].toString();
-    for (const auto &argument : manifest["arguments"].toArray())
-        current.arguments << argument.toString();
-    current.timeoutSeconds = manifest["timeout_seconds"].toInt();
-    current.manifest = manifest;
+    current = runRecordPlan(job, manifest);
     status = state;
-    detail = manifest["error"].toString();
+    detail = RunRecord(manifest).error();
     timedOut = false;
     watching = true;
     supervisorPid = restarted;
@@ -974,11 +924,11 @@ bool NwchemRun::attach(const QString &directory) {
 void NwchemRun::poll() {
     QJsonObject manifest;
     try {
-        manifest = parseJson(readFile(QDir(current.directory).filePath("run.json")));
+        manifest = readRunRecord(current.directory, RecordCheck::Json);
     } catch (const std::exception &) {
         manifest = {};
     }
-    auto state = runStateFromKey(manifest["status"].toString());
+    auto state = RunRecord(manifest).state();
     if (manifest.isEmpty() || state == RunState::Invalid) {
         // The record is replaced in one step, so this is no half-written file: the folder is gone.
         if (++unreadable < 20)
@@ -993,17 +943,14 @@ void NwchemRun::poll() {
     if (runStateActive(state) && !manifest.contains("supervisor") && supervisorPid > 0 &&
         executionProcessGone(executionProcessIdentity(supervisorPid))) {
         try {
-            manifest = parseJson(readFile(QDir(current.directory).filePath("run.json")));
-            if (runStateActive(runStateFromKey(manifest["status"].toString())) &&
-                !manifest.contains("supervisor")) {
+            manifest = readRunRecord(current.directory, RecordCheck::Json);
+            if (runStateActive(RunRecord(manifest).state()) && !manifest.contains("supervisor")) {
                 manifest["supervisor"] = executionProcessIdentity(supervisorPid);
-                auto plan = current;
-                plan.manifest = manifest;
-                writeManifest(plan);
+                writeRunRecord(current.directory, manifest);
             }
         } catch (const std::exception &) {
         }
-        state = runStateFromKey(manifest["status"].toString());
+        state = RunRecord(manifest).state();
     }
     if (runStateActive(state) && remoteRun(manifest) && executionRunGone(manifest)) {
         // The supervisor of a remote run ended (it was killed, the computer restarted) while the job may
@@ -1035,10 +982,10 @@ void NwchemRun::poll() {
         } catch (const std::exception &) {
         }
         try {
-            manifest = parseJson(readFile(QDir(current.directory).filePath("run.json")));
+            manifest = readRunRecord(current.directory, RecordCheck::Json);
         } catch (const std::exception &) {
         }
-        state = runStateFromKey(manifest["status"].toString());
+        state = RunRecord(manifest).state();
         if (state == RunState::Invalid)
             state = RunState::Interrupted;
     }
@@ -1046,7 +993,7 @@ void NwchemRun::poll() {
     const auto shown = status == RunState::Stopping && runStateActive(state) ? RunState::Stopping : state;
     current.manifest = manifest;
     status = shown;
-    detail = manifest["error"].toString();
+    detail = RunRecord(manifest).error();
     if (!runStateActive(state)) {
         timer.stop();
         watching = false;
@@ -1099,24 +1046,14 @@ void NwchemRun::finish(int code, QProcess::ExitStatus exitStatus, const QString 
              : !error.isEmpty() || exitStatus != QProcess::NormalExit || code != 0 ? RunState::Failed
                                                                                    : RunState::Finished;
     detail = error;
-    current.manifest["exit_code"] = code;
-    current.manifest["exit_status"] = exitStatus == QProcess::NormalExit ? "normal" : "crash";
-    current.manifest["finished_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
-    try { // The whole log, once: the history list then needs no log reading.
-        current.manifest["summary"] = nwchemLogSummary(QDir(current.directory).filePath("output.out"));
-    } catch (const std::exception &) {
-        current.manifest.remove("summary");
-    }
-    QString output, errors;
-    try {
-        output = historyText(current.directory, "output.out", true);
-    } catch (const std::exception &) {
-    }
-    try {
-        errors = historyText(current.directory, "stderr.err", true);
-    } catch (const std::exception &) {
-    }
-    current.manifest["diagnostics"] = diagnoseRun(status, output, errors, error);
+    recordRunEnd(current.manifest, current.directory,
+                 {.state = status,
+                  .exitCode = code,
+                  .normalExit = exitStatus == QProcess::NormalExit,
+                  .finished = QDateTime::currentDateTimeUtc(),
+                  .elapsedSeconds = duration,
+                  .error = error,
+                  .launchError = error});
     record();
     emit changed();
 }
@@ -1125,7 +1062,7 @@ void NwchemRun::record() {
     current.manifest["elapsed_seconds"] = elapsedSeconds();
     current.manifest["error"] = detail;
     try {
-        writeManifest(current);
+        writeRunRecord(current.directory, current.manifest);
     } catch (const std::exception &e) {
         detail = QString::fromUtf8(e.what());
     }

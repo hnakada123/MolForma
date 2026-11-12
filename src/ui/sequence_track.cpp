@@ -3,7 +3,9 @@
 #include "editing/pdb.h"
 #include "editing/peptide.h"
 #include "foundation/i18n.h"
+#include "model/settings.h"
 #include "ui/editor_chrome.h"
+#include "ui/editor_context.h"
 #include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QHelpEvent>
@@ -12,7 +14,6 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
-#include <QSettings>
 #include <QToolButton>
 #include <QToolTip>
 #include <QWheelEvent>
@@ -575,8 +576,8 @@ void SequenceStrip::request(const Ids &atoms) {
     emitting = false;
 }
 
-SequenceTrack::SequenceTrack(QSettings &preferences, QWidget *parent)
-    : QFrame(parent), settings(preferences) {
+SequenceTrack::SequenceTrack(UiServices &uiServices, QWidget *parent)
+    : QFrame(parent), uiContext(uiServices) {
     setObjectName("sequenceTrack");
     setAttribute(Qt::WA_StyledBackground);
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
@@ -619,9 +620,9 @@ SequenceTrack::SequenceTrack(QSettings &preferences, QWidget *parent)
     });
     connect(collapseButton, &QToolButton::clicked, this, [this] {
         setCollapsed(!folded);
-        settings.setValue("molecule/sequenceCollapsed", folded);
+        uiContext.setPreference(Preference::sequenceCollapsed, folded);
     });
-    setCollapsed(settings.value("molecule/sequenceCollapsed", false).toBool());
+    setCollapsed(uiContext.preference(Preference::sequenceCollapsed, false).toBool());
     hide();
 }
 void SequenceTrack::setCollapsed(bool collapsed) {

@@ -5,14 +5,13 @@
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_import.h"
-#include "nwchem/run_diagnostics.h"
+#include "nwchem/run_record.h"
 #include "results/results.h"
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QRegularExpression>
-#include <QSaveFile>
 #include <QTemporaryDir>
 
 namespace mf {
@@ -45,43 +44,27 @@ void copyFolder(const QString &from, const QString &to, int &count) {
             copyFile(info.absoluteFilePath(), target);
     }
 }
-void writeRecord(const QString &directory, const QJsonObject &manifest) {
-    const auto path = QDir(directory).filePath("run.json");
-    if (QFileInfo(path).isSymLink())
-        fail(tr("実行記録がシンボリックリンクです。"));
-    QSaveFile file(path);
-    const auto bytes = QJsonDocument(manifest).toJson();
-    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
-        fail(tr("実行記録を保存できません: %1").arg(file.errorString()));
-}
 // What the log of a run says about its end, added to the record of a job: the state, the energy
 // summary, the wall time NWChem printed and the known failures.
 void recordLog(const QString &directory, QJsonObject &manifest) {
-    const auto log = QDir(directory).filePath("output.out");
+    const auto log = jobFile(directory, JobFile::output);
     const auto summary = nwchemLogSummary(log);
     const bool normal = summary["normal_termination"].toBool();
-    const auto state = normal ? RunState::Finished : RunState::Interrupted;
-    manifest["status"] = runStateKey(state);
     manifest["external"] = true;
-    manifest["summary"] = summary;
-    manifest["finished_at"] = QFileInfo(log).lastModified().toUTC().toString(Qt::ISODateWithMs);
+    RunEnd end{.state = normal ? RunState::Finished : RunState::Interrupted,
+               .finished = QFileInfo(log).lastModified(),
+               .summary = summary,
+               .wallTime = true,
+               .needsLog = true};
     if (normal)
-        manifest["exit_code"] = 0;
+        end.exitCode = 0;
     else
         // Stored in Japanese whatever the language; the history shows it through translated().
-        manifest["error"] = QT_TR_NOOP("外部で実行した計算のログに、正常終了の記録がありません。");
-    const auto end = historyText(directory, "output.out", true);
-    static const QRegularExpression times("Total times\\s+cpu:\\s*[0-9.]+s\\s+wall:\\s*([0-9.]+)s");
-    if (const auto match = times.match(end); match.hasMatch())
-        manifest["elapsed_seconds"] = qint64(match.captured(1).toDouble());
-    if (!regularFile(QDir(directory).filePath("stderr.err")))
-        writeFile(QDir(directory).filePath("stderr.err"), {});
-    QString errors;
-    try {
-        errors = historyText(directory, "stderr.err", true);
-    } catch (const std::exception &) {
-    }
-    manifest["diagnostics"] = diagnoseRun(state, end, errors);
+        end.error = QT_TR_NOOP("外部で実行した計算のログに、正常終了の記録がありません。");
+    recordRunEnd(manifest, directory, end);
+    // A log brought from elsewhere may come without the errors of its run: the job has the file all the same.
+    if (!regularFile(jobFile(directory, JobFile::errors)))
+        writeFile(jobFile(directory, JobFile::errors), {});
 }
 // A job folder MolForma saved without running, which now holds the output of a run elsewhere.
 QString completeSavedJob(const QString &directory) {
@@ -90,13 +73,13 @@ QString completeSavedJob(const QString &directory) {
         fail(entry.warnings.join('\n'));
     if (entry.status != RunState::Prepared)
         fail(tr("このジョブは実行済みです。結果を登録できるのは「保存のみ」のジョブです。"));
-    if (!regularFile(QDir(directory).filePath("output.out")))
+    if (!regularFile(jobFile(directory, JobFile::output)))
         fail(tr("ジョブフォルダーにNWChemの出力（output.out）がありません。実行先から複写してください。"));
     historyDocument(directory); // The input and project must still be those that were saved.
     auto manifest = entry.manifest;
     manifest["directory"] = directory;
     recordLog(directory, manifest);
-    writeRecord(directory, manifest);
+    writeRunRecord(directory, manifest);
     return directory;
 }
 bool nwchemLog(const QString &path) {
@@ -177,45 +160,42 @@ QString importLog(const QString &path, const QString &root) {
         });
         if (!named || info.isSymLink() || info.absoluteFilePath() == log.absoluteFilePath() ||
             info.absoluteFilePath() == QFileInfo(input).absoluteFilePath() ||
-            QStringList{"input.nw", "output.out", "stderr.err", "run.json", "project.molforma.json"}.contains(
-                name))
+            QStringList{JobFile::input, JobFile::output, JobFile::errors, JobFile::record, JobFile::project}
+                .contains(name))
             continue;
         if (++count > fileLimit)
             fail(tr("ファイルが多すぎるフォルダーは取り込めません（%1個まで）。").arg(fileLimit));
         copyFile(info.absoluteFilePath(), directory.filePath(name));
     }
-    copyFile(log.absoluteFilePath(), directory.filePath("output.out"));
-    writeFile(directory.filePath("input.nw"), inputBytes);
+    copyFile(log.absoluteFilePath(), directory.filePath(JobFile::output));
+    writeFile(directory.filePath(JobFile::input), inputBytes);
     const auto project = QJsonDocument(d.project()).toJson();
-    writeFile(directory.filePath("project.molforma.json"), project);
-    QJsonObject manifest{{"format", "molforma-nwchem-run"},
-                         {"version", 1},
-                         {"created_at", log.lastModified().toUTC().toString(Qt::ISODateWithMs)},
-                         {"directory", directory.path()},
-                         {"program", ""},
-                         {"arguments", QJsonArray()},
-                         {"environment_overrides", QJsonObject()},
-                         {"reference_directory", folder.absolutePath()},
-                         {"project_directory", folder.absolutePath()},
-                         {"calculation", nwchemSettings(d)},
-                         {"formula", d.formula()},
-                         {"input", "input.nw"},
-                         {"stdout", "output.out"},
-                         {"stderr", "stderr.err"},
-                         {"project", "project.molforma.json"},
-                         {"timeout_seconds", 0},
-                         {"input_sha256", digest(inputBytes)},
-                         {"project_sha256", digest(project)},
-                         {"imported_from", log.absoluteFilePath()}};
+    writeFile(directory.filePath(JobFile::project), project);
+    auto manifest = newRunRecord();
+    const QJsonObject imported{{"created_at", log.lastModified().toUTC().toString(Qt::ISODateWithMs)},
+                               {"directory", directory.path()},
+                               {"program", ""},
+                               {"arguments", QJsonArray()},
+                               {"environment_overrides", QJsonObject()},
+                               {"reference_directory", folder.absolutePath()},
+                               {"project_directory", folder.absolutePath()},
+                               {"calculation", nwchemSettings(d)},
+                               {"formula", d.formula()},
+                               {"timeout_seconds", 0},
+                               {"input_sha256", digest(inputBytes)},
+                               {"project_sha256", digest(project)},
+                               {"imported_from", log.absoluteFilePath()}};
+    for (auto it = imported.begin(); it != imported.end(); ++it)
+        manifest[it.key()] = it.value();
     recordLog(directory.path(), manifest);
-    writeRecord(directory.path(), manifest);
+    writeRunRecord(directory.path(), manifest);
     directory.setAutoRemove(false);
     return directory.path();
 }
 } // namespace
 bool externalRunWaiting(const HistoryEntry &entry) {
     return entry.valid && entry.status == RunState::Prepared &&
-           regularFile(QDir(entry.directory).filePath("output.out"));
+           regularFile(jobFile(entry.directory, JobFile::output));
 }
 QString importExternalRun(const QString &source, const QString &root) {
     const QFileInfo info(source);
@@ -224,8 +204,7 @@ QString importExternalRun(const QString &source, const QString &root) {
     const auto folder = QDir::cleanPath(info.isDir() ? info.absoluteFilePath() : info.absolutePath());
     const auto home = QDir::cleanPath(QFileInfo(root).absoluteFilePath());
     // A job MolForma saved: the folder is the job, whatever file of it was chosen.
-    if (regularFile(QDir(folder).filePath("run.json")) &&
-        regularFile(QDir(folder).filePath("project.molforma.json"))) {
+    if (regularFile(jobFile(folder, JobFile::record)) && regularFile(jobFile(folder, JobFile::project))) {
         if (QFileInfo(folder).absolutePath() == home)
             return completeSavedJob(folder);
         if (!QDir().mkpath(home))

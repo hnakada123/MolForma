@@ -35,6 +35,14 @@ void replaceElement(Document &d, const Ids &ids, const QString &symbol, bool hyd
 PlacedPart attachPart(Document &d, const QString &anchor, const QJsonObject &t, double twist = 0);
 PlacedPart replacePart(Document &d, Ids ids, const QJsonObject &t, double twist = 0);
 Ids duplicate(Document &d, const Ids &ids, const Vec &offset);
+// A mirror image of whole molecules as a copy beside them: duplicated 6 Å along +X, the copy then
+// reflected through the plane normal to `axis` that passes through its center (aboutOrigin: through the
+// origin). Returns the atoms added.
+Ids mirrorCopy(Document &d, const Ids &ids, int axis, bool aboutOrigin = false);
+// Reorders the atoms; atoms that rank alike keep their order. mode "element": by atomic number;
+// "residue": in the order of the residues and of the atoms in each, atoms outside residues last;
+// "selected": the atoms of `selected` first. Only the order changes: IDs and references stay.
+void sortAtoms(Document &d, const QString &mode, const Ids &selected = {});
 // Adds another molecule (SMILES, structure file) beside the current one, 3 Å beyond it along +X.
 // Atoms, bonds, residues, parts and coordination centers are merged; point charges and settings of
 // the fragment are not; the total charge follows (followingCharge).

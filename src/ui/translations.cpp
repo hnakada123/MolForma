@@ -6,7 +6,6 @@
 #include <QHash>
 #include <QLibraryInfo>
 #include <QLocale>
-#include <QSettings>
 #include <QTranslator>
 
 namespace mf {
@@ -57,9 +56,7 @@ class Fallback : public QTranslator {
 void installTranslations(QCoreApplication &app) {
     auto language = qEnvironmentVariable("MOLFORMA_LANGUAGE");
     if (language != "ja" && language != "en")
-        language = QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
-                       .value("ui/language")
-                       .toString();
+        language = userPreferences().value(Preference::language).toString();
     if (language != "ja" && language != "en")
         language = QLocale::system().uiLanguages().value(0).startsWith("ja") ? "ja" : "en";
     qputenv("MOLFORMA_LANGUAGE", language.toUtf8());

@@ -3,12 +3,14 @@
 #include "foundation/files.h"
 #include "foundation/i18n.h"
 #include "mcp/policy.h"
+#include "model/settings.h"
 #include "model/units.h"
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_restart.h"
 #include "nwchem/remote_execution.h"
 #include "nwchem/result_files.h"
 #include "nwchem/run_diagnostics.h"
+#include "nwchem/run_record.h"
 #include "ui/editor_chrome.h"
 #include "ui/editor_context.h"
 #include "ui/energy_profile_dialog.h"
@@ -128,10 +130,10 @@ QString listTime(const QDateTime &t, bool underDay) {
 }
 // What the energy of a job is, as the run's log summary recorded it.
 QString energySource(const HistoryEntry &e) {
-    const auto summary = e.manifest["summary"].toObject();
-    if (!summary["energy"].isDouble())
+    const auto summary = RunRecord(e.manifest).summary();
+    if (!summary.energy)
         return tr("ログ末尾の最後の値");
-    const auto source = summary["energy_source"].toString();
+    const auto &source = summary.energySource;
     return source == "frequency_reference" ? tr("振動数の参照構造")
            : source == "bsse_corrected"    ? tr("BSSE補正後")
                                            : tr("最後のtask");
@@ -747,10 +749,10 @@ HistoryPanel::HistoryPanel(EditorContext &editorServices, UiServices &uiServices
     filesToggle->setObjectName("historyFilesToggle");
     fileChoice = new QComboBox;
     fileChoice->setObjectName("historyFile");
-    fileChoice->addItem(tr("保存した入力（input.nw）"), "input.nw");
-    fileChoice->addItem(tr("標準出力（output.out・末尾128 KiB）"), "output.out");
-    fileChoice->addItem(tr("標準エラー（stderr.err・末尾128 KiB）"), "stderr.err");
-    fileChoice->addItem(tr("実行記録（run.json）"), "run.json");
+    fileChoice->addItem(tr("保存した入力（input.nw）"), JobFile::input);
+    fileChoice->addItem(tr("標準出力（output.out・末尾128 KiB）"), JobFile::output);
+    fileChoice->addItem(tr("標準エラー（stderr.err・末尾128 KiB）"), JobFile::errors);
+    fileChoice->addItem(tr("実行記録（run.json）"), JobFile::record);
     auto *fileButtons = new ChoiceButtons(fileChoice, ChoiceButtons::Segments,
                                           {tr("入力"), tr("標準出力"), tr("標準エラー"), tr("実行記録")});
     fileButtons->setObjectName("historyFiles");
@@ -1224,11 +1226,11 @@ HistoryPanel::HistoryPanel(EditorContext &editorServices, UiServices &uiServices
         updateLive();
     });
     timer.start();
-    const auto saved = uiContext.preference("history/root").toString();
+    const auto saved = uiContext.preference(Preference::historyRoot).toString();
     followsExecution = saved.isEmpty();
     root = saved;
     // The files are opened when wanted: the list first.
-    setFilesOpen(uiContext.preference("history/files_open", false).toBool(), false);
+    setFilesOpen(uiContext.preference(Preference::historyFilesOpen, false).toBool(), false);
     updateActions();
 }
 void HistoryPanel::fitDetail() {
@@ -1286,7 +1288,7 @@ void HistoryPanel::setRoot(const QString &path, bool remember) {
         return;
     value = QFileInfo(value).absoluteFilePath();
     followsExecution = !remember;
-    uiContext.setPreference("history/root", remember ? value : QString());
+    uiContext.setPreference(Preference::historyRoot, remember ? value : QString());
     if (root != value) {
         saveMemo();
         scan.cancel();
@@ -1618,7 +1620,7 @@ void HistoryPanel::setFilesOpen(bool open, bool remember) {
         filesHeight = listSplit->sizes().value(1);
     filesOpen = open;
     if (remember)
-        uiContext.setPreference("history/files_open", open);
+        uiContext.setPreference(Preference::historyFilesOpen, open);
     filesCard->setOpen(open);
     for (QWidget *w :
          {static_cast<QWidget *>(fileName), static_cast<QWidget *>(follow), static_cast<QWidget *>(copyFile)})
@@ -1701,7 +1703,7 @@ void HistoryPanel::showDetails() {
     memoStatus->hide();
     memoBox->setVisible(!comparing &&
                         !(owned && runStateActive(e->status))); // A run keeps its stop button in view.
-    for (auto pair : {std::pair{input, "input.nw"}, std::pair{record, "run.json"}}) {
+    for (auto pair : {std::pair{input, JobFile::input}, std::pair{record, JobFile::record}}) {
         try {
             showText(pair.first, historyText(e->directory, pair.second));
         } catch (const std::exception &error) {
@@ -1725,7 +1727,7 @@ void HistoryPanel::showEnergy(const HistoryEntry &e, bool owned) {
         energyCaption->setText(tr("計算のE（%1）").arg(energySource(e)));
         energyValue->setText(e.energy ? hartree(*e.energy, 10) : QString("—"));
         energySuffix->setText(e.energy ? "Eh · " + historyEnergyMethod(e.energyMethod) : QString());
-        energyNote->setText(e.energy ? e.manifest["summary"].toObject()["energy"].isDouble()
+        energyNote->setText(e.energy ? RunRecord(e.manifest).summary().energy
                                            ? tr("最後のtaskの値です。収束の保証ではありません。")
                                            : tr("ログ末尾128 KiB内の最後の値です。収束の保証ではありません。")
                             : e.status == RunState::Prepared
@@ -1821,10 +1823,8 @@ void HistoryPanel::showFacts(const HistoryEntry &e, bool owned) {
         }
         return;
     }
-    const auto time = [&](const char *key) {
-        return QDateTime::fromString(e.manifest[key].toString(), Qt::ISODateWithMs);
-    };
-    const auto started = time("started_at"), finished = time("finished_at");
+    const RunRecord saved(e.manifest);
+    const auto started = saved.started(), finished = saved.finished();
     if (e.status == RunState::Prepared)
         text("created", tr("保存", "state"), e.created.isValid() ? dayAndTime(e.created) : QString("—"));
     else
@@ -1839,29 +1839,24 @@ void HistoryPanel::showFacts(const HistoryEntry &e, bool owned) {
         if (e.seconds >= 0)
             end += " · " + tr("所要 %1").arg(elapsedClock(e.seconds));
         text("finished", tr("終了", "state"), end);
-        const auto summary = e.manifest["summary"].toObject();
-        const auto code = QString::number(e.manifest["exit_code"].toInt());
+        const auto summary = saved.summary();
+        const auto exitCode = saved.exitCode();
+        const auto code = QString::number(exitCode.value_or(0));
         text("exit", tr("終了コード"),
-             !e.manifest.contains("exit_code")        ? tr("未記録")
-             : summary.isEmpty()                      ? code
-             : summary["normal_termination"].toBool() ? tr("%1 · 正常終了の記録あり").arg(code)
-                                                      : tr("%1 · 正常終了の記録なし").arg(code));
+             !exitCode                   ? tr("未記録")
+             : !summary.recorded         ? code
+             : summary.normalTermination ? tr("%1 · 正常終了の記録あり").arg(code)
+                                         : tr("%1 · 正常終了の記録なし").arg(code));
     }
     if (remoteRun(e.manifest))
         text("remote", tr("実行先"), remoteRunText(e.manifest));
     text("integrity", tr("入力照合"), historyIntegrity(e));
-    QStringList diagnoses;
-    for (const auto &value : e.manifest["diagnostics"].toArray()) {
-        const auto item = value.toObject();
-        diagnoses << runDiagnosisText(item["code"].toString());
-        if (!item["evidence"].toString().isEmpty())
-            diagnoses << item["evidence"].toString();
-    }
+    const auto diagnoses = runDiagnosisLines(e.manifest);
     if (!diagnoses.isEmpty())
         text("diagnosis", tr("診断"), diagnoses.join('\n'));
     // A repaired record keeps its note in Japanese (see repairHistoryEntry).
-    if (!e.manifest["error"].toString().isEmpty())
-        text("error", tr("実行エラー"), translated(e.manifest["error"].toString()));
+    if (!saved.error().isEmpty())
+        text("error", tr("実行エラー"), translated(saved.error()));
     if (!e.warnings.isEmpty())
         text("warnings", tr("注意"), e.warnings.join('\n'));
     auto *place = new QWidget;
@@ -1953,7 +1948,7 @@ void HistoryPanel::updateLogs() {
     const auto directory = selectedDirectory();
     if (directory.isEmpty() || !detail->isVisible())
         return;
-    for (auto pair : {std::pair{output, "output.out"}, std::pair{errors, "stderr.err"}}) {
+    for (auto pair : {std::pair{output, JobFile::output}, std::pair{errors, JobFile::errors}}) {
         try {
             showText(pair.first, historyText(directory, pair.second, true), follow->isChecked());
         } catch (const std::exception &error) {

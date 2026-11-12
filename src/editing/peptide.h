@@ -30,6 +30,12 @@ QString addTerminalResidue(Document &d, const QString &residueId, bool nTerminus
                            const QString &c);
 void buildPeptide(Document &d, const QStringList &codes, const QString &n, const QString &c,
                   const QString &chirality = "L", const QString &state = "default");
+// Builds the chain of a sequence (buildPeptide) into a document. Beside the atoms it has, the chain starts
+// 6 Å beyond their largest x (never left of where buildPeptide puts it); with `replace` it takes the place
+// of the structure instead, calculation and execution settings and the project envelope staying, and
+// the total charge becomes the chain's formal charge. Returns the atoms added.
+Ids buildSequence(Document &d, const QStringList &codes, const QString &n, const QString &c,
+                  const QString &chirality = "L", const QString &state = "default", bool replace = false);
 void setTerminals(Document &d, const QString &residueId, const QString &n = {}, const QString &c = {});
 // Sets the N terminus of the chain of a residue to n and its C terminus to c.
 void setChainTerminals(Document &d, const QString &residueId, const QString &n, const QString &c);

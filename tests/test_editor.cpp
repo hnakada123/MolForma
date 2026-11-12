@@ -63,6 +63,23 @@ class InspectableTemplateDelegate : public TemplateDelegate {
   public:
     using TemplateDelegate::initStyleOption;
 };
+// The services of a widget tested without its window: preferences kept in a map.
+class TestUiServices : public UiServices {
+  public:
+    QMap<QString, QVariant> preferences;
+    void safe(const std::function<void()> &operation) override {
+        operation();
+    }
+    QVariant preference(const QString &key, const QVariant &fallback = {}) const override {
+        return preferences.value(key, fallback);
+    }
+    void setPreference(const QString &key, const QVariant &value) override {
+        preferences[key] = value;
+    }
+    void checkMcpPath(const QString &) const override {}
+    void showMessage(const QString &, int = 0) override {}
+    void addStatusWidget(QWidget *) override {}
+};
 class EditorTest : public QObject {
     Q_OBJECT
     QTemporaryDir settingsHome;
@@ -1925,9 +1942,8 @@ class EditorTest : public QObject {
         adenine.atoms["C1'"] = newId();
         QCOMPARE(residueLetter(adenine), QChar(u'A'));
         // The chains' menu: their numbers and residues; choosing one shows its start.
-        QTemporaryDir dir;
-        QSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
-        SequenceTrack track(settings);
+        TestUiServices services;
+        SequenceTrack track(services);
         track.resize(240, 60);
         track.setDocument(d);
         track.show();

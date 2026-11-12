@@ -596,6 +596,31 @@ void mirror(Document &d, const Ids &ids, int axis, const Vec &origin) {
             a.stereo = "R";
     }
 }
+Ids mirrorCopy(Document &d, const Ids &ids, int axis, bool aboutOrigin) {
+    const auto added = duplicate(d, ids, Vec(6, 0, 0));
+    mirror(d, added, axis, aboutOrigin ? Vec(Vec::Zero()) : centroid(d, added));
+    return added;
+}
+void sortAtoms(Document &d, const QString &mode, const Ids &selected) {
+    if (mode != "element" && mode != "residue" && mode != "selected")
+        fail(tr("並べ替えの指定が不正です: %1").arg(mode));
+    QHash<QString, int> ranks;
+    if (mode == "residue") {
+        int n = 0;
+        for (const auto &r : d.residues)
+            for (const auto &id : r.atoms)
+                ranks[id] = n++;
+    }
+    const QSet<QString> first(selected.begin(), selected.end());
+    std::stable_sort(d.atoms.begin(), d.atoms.end(), [&](const Atom &a, const Atom &b) {
+        if (mode == "element")
+            return element(a.element).number < element(b.element).number;
+        if (mode == "residue")
+            return ranks.value(a.id, std::numeric_limits<int>::max()) <
+                   ranks.value(b.id, std::numeric_limits<int>::max());
+        return first.contains(a.id) > first.contains(b.id);
+    });
+}
 void invertCenter(Document &d, const QString &id) {
     auto ns = d.neighbors(id, false);
     if (ns.size() != 4)

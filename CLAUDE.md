@@ -31,7 +31,8 @@ QT_QPA_PLATFORM=offscreen ./build/test_editor someTestFunction   # one Qt Test s
   `tests/fake_xtb.cpp` a stand-in xtb used by services/editor tests.
   `test_mcp` launches the built `molforma` binary; `test_execution` uses it as the supervisor of runs. Fixtures live in `tests/fixtures/` (`FIXTURE_DIR` in `test_core`).
   Tests must not touch the user's files: MolForma's settings use `mf::SettingsFormat` (`model/settings.h`: NativeFormat,
-  an INI file on Windows and macOS), so redirect `QSettings::setPath` for both NativeFormat and IniFormat and set
+  an INI file on Windows and macOS; `mf::userPreferences()` there is the one factory of the store), so redirect
+  `QSettings::setPath` for both NativeFormat and IniFormat and set
   `XDG_CONFIG_HOME` / `XDG_DATA_HOME` (honored on Windows and macOS too)
   (autosave copies) to temporary directories, also for launched `molforma` processes.
 - New source files must be added to the explicit lists in `CMakeLists.txt` (no globbing).
@@ -95,10 +96,19 @@ Key cross-cutting designs:
   overrides (blank = default) on the base settings; `nwchem_output.*` adds CUBE/MOLDEN tasks; `nwchem_execution.*`
   saves immutable run bundles and controls NWChem/MPI processes; `history.*` scans those bundles. The Input preview
   tab and the MCP tools reuse the same generator and execution plan — don't fork generation logic in the UI.
+- **Execution environment**: what Preferences keep machine-wide about running calculations (the execution settings
+  of new documents, remote destinations, the preparation lines and header templates of job scripts) is read and
+  saved only by `nwchem/execution_environment.*`. `validateExecution`, `executionPlan`, `executionPreviewPlan`,
+  `executionJobScript`, `saveExecutionBundle`, `untrustedNetworkPath` and `remoteJobPreview` take it as an
+  `ExecutionEnvironment` snapshot and read no preference themselves; the argument defaults to the loader
+  `executionEnvironment()`, and runs, queue entries, saved jobs and the remote supervisor load one snapshot where
+  they begin and pass it down. Don't add a preference read below them.
 - **Runs that outlive the window**: `NwchemRun` either owns NWChem as a child process (tests, `--mcp`) or, with
   `setSupervisor` (interactive sessions, `--mcp-keep-runs`), starts the executable again as `--run-job <job>`:
   that supervisor owns NWChem, writes every state to `run.json` and stops on `stop.request` in the job folder,
-  so a run goes on when the window closes and another session can `attach` to it. `NwchemQueue` keeps waiting
+  so a run goes on when the window closes and another session can `attach` to it (`nwchem/run_record.*` owns
+  the job folder's file names, the reading and writing of `run.json`, what the end of a run records and the
+  typed view `RunRecord` that UI and MCP read). `NwchemQueue` keeps waiting
   entries in `queue.json` of the data folder (restored paused; a job whose `run.json` changed is dropped).
   `RunSession` (`nwchem/run_session.*`, no widgets) holds the run and the queue of one session with what it
   leaves for the next (the supervisor, the stored queue and its lock, Preferences `execution/running`);
@@ -121,7 +131,12 @@ Key cross-cutting designs:
 - **Rendering**: `ui/molecule_view.*` owns camera, input and Qt annotations and has a QPainter fallback;
   `ui/vtk_molecule_renderer.*` is compiled only with VTK. Both draw bonds and isosurfaces by `ui/bond_style.h`. Offscreen/minimal Qt platforms or missing OpenGL 3.2
   automatically fall back to QPainter.
-- Persistence: UI prefs and user presets go to `QSettings("MolForma", "MolForma")`; molecule, calculation and
+- Persistence: UI prefs and user presets go to the user's preferences, a `QSettings` that only
+  `mf::userPreferences()` (`model/settings.h`: `SettingsFormat`, user scope, "MolForma"/"MolForma") constructs and
+  whose keys are the constants `mf::Preference::…` of that header (never a literal; names and value formats are
+  those of users' files and never change). `MainWindow` holds the store; widgets use
+  `UiServices::preference`/`setPreference`, `DocumentStorage` gets it injected, and the nwchem layer reads it only in
+  `execution_environment.*` and for `RunSession`'s remembered job. Molecule, calculation and
   execution settings go into the project file. Interactive sessions autosave unsaved work to
   `AppLocalDataLocation/autosave` (with a `QLockFile` per session) and offer recovery at startup.
 - The manual (`docs/features.md`, an index of one page per screen in `docs/features/*.md` with their screenshots in

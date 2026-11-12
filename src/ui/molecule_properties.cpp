@@ -9,6 +9,7 @@
 #include "editing/stereochemistry.h"
 #include "foundation/files.h"
 #include "foundation/i18n.h"
+#include "model/settings.h"
 #include "nwchem/nwchem.h"
 #include "ui/editor_chrome.h"
 #include "ui/molecule_panel.h"
@@ -181,7 +182,7 @@ void MoleculePanel::buildEditPanel() {
     keepSelection = new QCheckBox(tr("編集後に選択維持"));
     keepSelection->setObjectName("keepSelection");
     keepSelection->setToolTip(tr("オフでは、編集を確定するたびに選択を解除します。"));
-    keepSelection->setChecked(settings.value("keepSelection", true).toBool());
+    keepSelection->setChecked(uiContext.preference(Preference::keepSelection, true).toBool());
     cardLayout->addWidget(keepSelection);
     deleteTerminate = new QCheckBox(tr("削除後に水素で終端化"));
     deleteTerminate->setObjectName("deleteTerminate");
@@ -418,15 +419,15 @@ void MoleculePanel::buildEditPanel() {
     f->addRow(copy);
     auto *mirrorButton = button(
         f, tr("指定平面で鏡映"),
-        [this, plane, copy, around] {
+        [this, plane, copy, pivot, around] {
             auto ids = requireSelection();
             int ax = value(plane).toInt();
             bool makeCopy = copy->isChecked();
+            const bool origin = value(pivot) == "origin";
             edit(tr("鏡映"), [=](Document &d) {
-                if (makeCopy) {
-                    auto added = duplicate(d, ids, Vec(6, 0, 0));
-                    mirror(d, added, ax, around(d, added));
-                } else
+                if (makeCopy)
+                    mirrorCopy(d, ids, ax, origin);
+                else
                     mirror(d, ids, ax, around(d, ids));
             });
             view->keepInView();
@@ -516,20 +517,7 @@ void MoleculePanel::buildEditPanel() {
 }
 void MoleculePanel::sortAtoms(const QString &mode) {
     const auto ids = selected;
-    edit(tr("原子を並べ替え"), [=](Document &d) {
-        QMap<QString, int> ranks;
-        int n = 0;
-        for (const auto &r : d.residues)
-            for (const auto &id : r.atoms)
-                ranks[id] = n++;
-        std::stable_sort(d.atoms.begin(), d.atoms.end(), [&](const Atom &a, const Atom &b) {
-            if (mode == "element")
-                return element(a.element).number < element(b.element).number;
-            if (mode == "residue")
-                return ranks.value(a.id, 1000000) < ranks.value(b.id, 1000000);
-            return ids.contains(a.id) > ids.contains(b.id);
-        });
-    });
+    edit(tr("原子を並べ替え"), [=](Document &d) { mf::sortAtoms(d, mode, ids); });
 }
 void MoleculePanel::removePart() {
     auto t = currentTemplate();
@@ -538,7 +526,7 @@ void MoleculePanel::removePart() {
     for (int i = customParts.size() - 1; i >= 0; --i)
         if (customParts[i].toObject()["id"] == t["id"])
             customParts.removeAt(i);
-    settings.setValue("parts", customParts);
+    uiContext.setPreference(Preference::customParts, customParts);
     refreshPalette();
 }
 QString MoleculePanel::selectedResidue() const {
@@ -748,15 +736,7 @@ void MoleculePanel::buildResiduePanel() {
             const auto ids = requireSelection();
             const SiteCutOptions options{fixCuts->isChecked(), hydrogens->isChecked(), charges->isChecked(),
                                          chargeRadius->value()};
-            edit(
-                tr("活性部位を切り出す"),
-                [=](Document &d) {
-                    const auto before = d.pointCharges.size();
-                    cutOutSite(d, ids, options);
-                    if (d.pointCharges.size() > before)
-                        setNwchemSetting(d, "include_point_charges", true);
-                },
-                true);
+            edit(tr("活性部位を切り出す"), [=](Document &d) { cutOutNwchemSite(d, ids, options); }, true);
             view->fit();
         },
         "cutOutSite");
@@ -790,26 +770,7 @@ void MoleculePanel::buildResiduePanel() {
             auto n = value(nTerm), c = value(cTerm), ch = value(chiralityBox), state = value(aminoState);
             bool clear = replace->isChecked();
             edit(
-                tr("配列から構築"),
-                [=](Document &d) {
-                    if (clear) // Keep calculation/execution settings and the project envelope.
-                        replaceCoordinateStructure(d, Document());
-                    auto old = d.ids();
-                    double shift = 0;
-                    for (const auto &a : d.atoms)
-                        shift = std::max(shift, a.position.x() + 6);
-                    buildPeptide(d, codes, n, c, ch, state);
-                    if (!old.isEmpty()) {
-                        const QSet<QString> before(old.begin(), old.end());
-                        Ids added;
-                        for (const auto &a : d.atoms)
-                            if (!before.contains(a.id))
-                                added << a.id;
-                        transform(d, added, Mat::Identity(), Vec(shift, 0, 0));
-                    }
-                    if (clear)
-                        d.charge = d.formalCharge();
-                },
+                tr("配列から構築"), [=](Document &d) { buildSequence(d, codes, n, c, ch, state, clear); },
                 true);
             view->keepInView();
         },

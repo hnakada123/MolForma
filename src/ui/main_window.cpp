@@ -6,13 +6,11 @@
 #include "editing/stereochemistry.h"
 #include "foundation/files.h"
 #include "foundation/i18n.h"
-#include "foundation/structure_file.h"
 #include "io/structure_io.h"
 #include "model/settings.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_execution.h"
-#include "nwchem/nwchem_import.h"
 #include "nwchem/remote_execution.h"
 #include "ui/calculation_panel.h"
 #include "ui/candidate_controls.h"
@@ -41,8 +39,7 @@ static void initManualResources() {
 }
 namespace mf {
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), settings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma"),
-      storage(settings), chemistry(session), runs(this) {
+    : QMainWindow(parent), settings(userPreferences()), storage(settings), chemistry(session), runs(this) {
     setObjectName("mainWindow");
     setAcceptDrops(true);
     resize(1380, 900);
@@ -72,13 +69,13 @@ MainWindow::MainWindow(QWidget *parent)
             });
     connect(&undo, &QUndoStack::cleanChanged, this, &MainWindow::refreshTitle);
     Document initial;
-    if (settings.value("startupWater", false).toBool())
+    if (settings.value(Preference::startupWater, false).toBool())
         placeTemplate(initial, findTemplate("skeleton:water"), Vec::Zero());
     applyExecutionPreferences(initial);
     session.reset(initial);
     refresh();
     QTimer::singleShot(0, view, &MoleculeView::fit);
-    auto saved = settings.value("geometry").toByteArray();
+    auto saved = settings.value(Preference::windowGeometry).toByteArray();
     if (!saved.isEmpty())
         restoreGeometry(saved);
 }
@@ -323,7 +320,7 @@ void MainWindow::buildUi() {
     workspaceSplit->setHandleWidth(6);
     workspaceSplit->addWidget(workspaceTabs);
     outer->addWidget(workspaceSplit, 1);
-    moleculePage = new MoleculePanel(*this, *this, *this, *this, session, settings, this);
+    moleculePage = new MoleculePanel(*this, *this, *this, *this, session, this);
     view = moleculePage->canvas();
     coordinates = moleculePage->coordinatePanel();
     workspaceTabs->addTab(moleculePage, tr("1 分子"));
@@ -675,7 +672,7 @@ void MainWindow::buildMenus() {
         if (document().atoms.isEmpty())
             fail(tr("表示する構造がありません。"));
         ImageOptions options;
-        if (!imageOptionsDialog(this, view->size(), options))
+        if (!imageOptionsDialog(this, *this, view->size(), options))
             return;
         auto path =
             QFileDialog::getSaveFileName(this, tr("3D画面を画像で保存"), "molecule.png", "PNG (*.png)");
@@ -1021,58 +1018,49 @@ void MainWindow::downloadPubchem() {
         15000);
 }
 void MainWindow::open() {
-    QString p = QFileDialog::getOpenFileName(this, tr("分子を開く"), settings.value("directory").toString(),
-                                             tr("分子 (*.molforma.json *.json *.xyz *.mol *.sdf *.mol2 *.cml "
-                                                "*.pdb *.ent *.cif *.mmcif *.gz *.nw *.gjf *.com);;"
-                                                "NWChem入力 (*.nw);;Gaussian入力 (*.gjf *.com);;すべて (*)"));
+    QString p =
+        QFileDialog::getOpenFileName(this, tr("分子を開く"), settings.value(Preference::directory).toString(),
+                                     tr("分子 (*.molforma.json *.json *.xyz *.mol *.sdf *.mol2 *.cml "
+                                        "*.pdb *.ent *.cif *.mmcif *.gz *.nw *.gjf *.com);;"
+                                        "NWChem入力 (*.nw);;Gaussian入力 (*.gjf *.com);;すべて (*)"));
     if (p.isEmpty() || !confirmDiscard())
         return;
     loadPath(p);
 }
 void MainWindow::loadPath(const QString &p, bool ask) {
     checkMcpPath(p); // Also for recent files and other menu paths reached over MCP.
-    // Reading errors name the file (the messages themselves give the line where they can).
-    const auto reading = [&](const std::function<Document()> &read) -> Document {
-        try {
-            return read();
-        } catch (const std::exception &e) {
-            fail(tr("%1 を読み込めません。\n%2").arg(QFileInfo(p).fileName(), QString::fromUtf8(e.what())));
-        }
-    };
     const auto base = revision();
     const auto options = chooseStructureImport(this, p, ask);
     if (!options)
         return;
-    Document next;
-    if (structureSuffix(p) == "nw") {
-        NwchemImport imported;
-        reading([&] {
-            imported = importNwchemInput(QString::fromUtf8(readStructureFile(p)));
-            return imported.document;
-        });
-        next = imported.document;
-        if (!imported.notes.isEmpty()) {
-            QStringList items;
-            for (const auto &note : imported.notes.mid(0, 20))
-                items << tr("・%1").arg(note);
-            QMessageBox box(QMessageBox::Information, tr("NWChem入力の取込み"),
-                            tr("構造・電荷・多重度と、MolFormaで扱える計算条件を取り込みました。\n\n"
-                               "取り込まなかった項目:\n%1")
-                                .arg(items.join('\n')),
-                            QMessageBox::Ok, this);
-            box.setTextFormat(Qt::PlainText); // The items quote the input file.
-            box.exec();
-        }
-    } else
-        next =
-            reading([&] { return importStructure(p, options->selection, options->frame, options->crystal); });
+    StructureImport imported;
+    try {
+        imported = importStructureWithNotes(p, options->selection, options->frame, options->crystal);
+    } catch (const std::exception &e) {
+        // Reading errors name the file (the messages themselves give the line where they can).
+        fail(tr("%1 を読み込めません。\n%2").arg(QFileInfo(p).fileName(), QString::fromUtf8(e.what())));
+    }
+    auto next = imported.document;
+    // What an NWChem input holds that MolForma did not take over.
+    if (!imported.notes.isEmpty()) {
+        QStringList items;
+        for (const auto &note : imported.notes.mid(0, 20))
+            items << tr("・%1").arg(note);
+        QMessageBox box(QMessageBox::Information, tr("NWChem入力の取込み"),
+                        tr("構造・電荷・多重度と、MolFormaで扱える計算条件を取り込みました。\n\n"
+                           "取り込まなかった項目:\n%1")
+                            .arg(items.join('\n')),
+                        QMessageBox::Ok, this);
+        box.setTextFormat(Qt::PlainText); // The items quote the input file.
+        box.exec();
+    }
     if (base != revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
     if (!p.endsWith(".json", Qt::CaseInsensitive))
         applyExecutionPreferences(next); // Structure files carry no execution settings.
     loadDocument(next);
     storage.setPath(p.endsWith(".json", Qt::CaseInsensitive) ? p : "");
-    settings.setValue("directory", QFileInfo(p).absolutePath());
+    settings.setValue(Preference::directory, QFileInfo(p).absolutePath());
     addRecent(p);
     refresh();
     // A three-dimensional structure is seen at an angle like in the result viewer, so atoms behind
@@ -1140,7 +1128,7 @@ Document MainWindow::resultStructure() const {
 }
 void MainWindow::runXtb(const XtbOptions &options) {
     ChemistryRequest request{"xtb", {}, options.moving, 10, mcp.depth > 0};
-    request.executable = xtbExecutable(settings.value("xtb/executable").toString());
+    request.executable = xtbExecutable(settings.value(Preference::xtbExecutable).toString());
     request.xtb = options;
     chemistry.start(request);
     statusBar()->showMessage(tr("xTB（%1）で構造を最適化しています…").arg(xtbMethodName(options.method)));
@@ -1152,7 +1140,7 @@ void MainWindow::xtbDialog() {
     dialog.setObjectName("xtbDialog");
     dialog.setWindowTitle(tr("xTBで構造を最適化"));
     auto *layout = new QVBoxLayout(&dialog);
-    const auto program = xtbExecutable(settings.value("xtb/executable").toString());
+    const auto program = xtbExecutable(settings.value(Preference::xtbExecutable).toString());
     auto *intro = new QLabel(
         tr("半経験的なGFN-xTB（xtbプログラム）で構造を最適化し、候補として表示します。金属錯体・配位結合を"
            "含む構造も扱えます（Rnまで）。DFT計算の前の粗い整形に使います。電荷・多重度は「2 計算条件」の"
@@ -1318,7 +1306,7 @@ void MainWindow::refreshRecent() {
     auto *clear = recentMenu->addAction(lineIcon("eraser"), tr("一覧を消去"));
     clear->setEnabled(!list.isEmpty());
     connect(clear, &QAction::triggered, this, [this] {
-        settings.remove("recentFiles");
+        settings.remove(Preference::recentFiles);
         refreshRecent();
     });
 }
@@ -1351,7 +1339,7 @@ bool MainWindow::useSample(const QString &resource, const QString &target) {
         auto *parent = QApplication::activeModalWidget();
         p = QFileDialog::getSaveFileName(
             parent ? parent : this, tr("練習データを保存して開く"),
-            QDir(settings.value("directory", QDir::homePath()).toString()).filePath(name),
+            QDir(settings.value(Preference::directory, QDir::homePath()).toString()).filePath(name),
             name.endsWith(".sdf") ? tr("構造ファイル (*.sdf)")
                                   : tr("MolFormaプロジェクト (*.molforma.json)"));
         if (p.isEmpty())
@@ -1651,7 +1639,7 @@ void MainWindow::closeEvent(QCloseEvent *e) {
     }
     cancelWorker();
     runs.shutdown(keepRunning);
-    settings.setValue("geometry", saveGeometry());
+    settings.setValue(Preference::windowGeometry, saveGeometry());
     moleculePage->savePreferences();
     removeAutosave();
     storage.close();
@@ -1783,7 +1771,7 @@ void MainWindow::preferences() {
     headerHelp->addWidget(resetHeaders, 0, Qt::AlignLeft);
     script->addRow(QString(), headerHelp);
     auto *programs = card(tr("外部プログラム"));
-    auto *xtbProgram = new QLineEdit(settings.value("xtb/executable").toString());
+    auto *xtbProgram = new QLineEdit(settings.value(Preference::xtbExecutable).toString());
     xtbProgram->setObjectName("preferences_xtb");
     xtbProgram->setPlaceholderText("xtb");
     xtbProgram->setToolTip(
@@ -1804,12 +1792,12 @@ void MainWindow::preferences() {
     auto *startup = card(tr("起動・表示"));
     auto *water = new QCheckBox(tr("起動時に水分子を読み込む"));
     water->setObjectName("preferences_startupWater");
-    water->setChecked(settings.value("startupWater", false).toBool());
+    water->setChecked(settings.value(Preference::startupWater, false).toBool());
     startup->addRow(tr("新しいウィンドウ"), water);
     auto *renderer = new QComboBox;
     renderer->addItem(tr("自動（VTKを優先）"), "auto");
     renderer->addItem(tr("QPainter（CPU）"), "painter");
-    renderer->setCurrentIndex(settings.value("view/renderer").toString() == "painter" ? 1 : 0);
+    renderer->setCurrentIndex(settings.value(Preference::viewRenderer).toString() == "painter" ? 1 : 0);
     startup->addRow(tr("3D描画（再起動後に反映）"), renderer);
     // Named in both languages, so that either reader finds it.
     auto *language = new QComboBox;
@@ -1817,7 +1805,8 @@ void MainWindow::preferences() {
     language->addItem(tr("システムに合わせる"), "");
     language->addItem("日本語", "ja"); // i18n-exempt
     language->addItem("English", "en");
-    language->setCurrentIndex(std::max(0, language->findData(settings.value("ui/language").toString())));
+    language->setCurrentIndex(
+        std::max(0, language->findData(settings.value(Preference::language).toString())));
     startup->addRow(tr("表示言語 / Language（再起動後に反映）"), language);
     layout->addStretch();
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -1860,11 +1849,11 @@ void MainWindow::preferences() {
             saveExecutionJobPrelude(prelude->toPlainText());
             for (auto it = headers.begin(); it != headers.end(); ++it)
                 saveJobHeaderTemplate(it.key(), it.value()->toPlainText());
-            settings.setValue("xtb/executable", xtbProgram->text().trimmed());
+            settings.setValue(Preference::xtbExecutable, xtbProgram->text().trimmed());
             saveExecutionPreferences(chosen);
-            settings.setValue("startupWater", water->isChecked());
-            settings.setValue("view/renderer", renderer->currentData().toString());
-            settings.setValue("ui/language", language->currentData().toString());
+            settings.setValue(Preference::startupWater, water->isChecked());
+            settings.setValue(Preference::viewRenderer, renderer->currentData().toString());
+            settings.setValue(Preference::language, language->currentData().toString());
             dialog.accept();
         });
     });

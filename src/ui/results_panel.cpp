@@ -4,9 +4,12 @@
 #include "foundation/files.h"
 #include "foundation/i18n.h"
 #include "model/geometry.h"
+#include "model/settings.h"
 #include "model/units.h"
 #include "nwchem/result_files.h"
+#include "nwchem/run_record.h"
 #include "results/molden_orbitals.h"
+#include "results/result_properties.h"
 #include "results/spectrum.h"
 #include "ui/editor_chrome.h"
 #include "ui/editor_context.h"
@@ -154,24 +157,18 @@ QString resultPropertyLines(const ResultData &data) {
                    int(data.properties.value("scan").toArray().size()));
     if (data.properties.contains("neb")) {
         const auto neb = data.properties.value("neb").toObject();
-        const auto points = neb["points"].toArray();
-        int highest = -1;
-        for (int i = 1; i + 1 < points.size(); ++i)
-            if (highest < 0 ||
-                points[i].toObject()["energy"].toDouble() > points[highest].toObject()["energy"].toDouble())
-                highest = i;
-        text += tr("NEB: 像 %n個、ステップ %1%2（「経路・スキャン」に表示）\n", nullptr, int(points.size()))
-                    .arg(neb["iteration"].toInt())
-                    .arg(!neb.contains("converged")  ? QString()
-                         : neb["converged"].toBool() ? tr("、収束")
-                                                     : tr("、未収束"));
-        if (highest > 0)
+        const auto path = resultPath(data, ResultPathKind::Neb);
+        text +=
+            tr("NEB: 像 %n個、ステップ %1%2（「経路・スキャン」に表示）\n", nullptr, int(path.points.size()))
+                .arg(neb["iteration"].toInt())
+                .arg(!neb.contains("converged")  ? QString()
+                     : neb["converged"].toBool() ? tr("、収束")
+                                                 : tr("、未収束"));
+        // The ends are fixed structures: the highest of the images between them.
+        if (const int highest = path.highest(PathEnds::Excluded); highest >= 0)
             text += tr("NEBの最高点: 像 %1（始点から %2 kcal/mol）\n")
                         .arg(highest + 1)
-                        .arg(fixed((points[highest].toObject()["energy"].toDouble() -
-                                    points[0].toObject()["energy"].toDouble()) *
-                                       HartreeToKcal,
-                                   2));
+                        .arg(fixed(path.relative(highest) * HartreeToKcal, 2));
     }
     if (data.properties.contains("irc")) {
         const auto irc = data.properties.value("irc").toObject();
@@ -421,7 +418,7 @@ ResultsPanel::ResultsPanel(EditorContext &editorServices, UiServices &uiServices
     auto *card = new QVBoxLayout(viewCard);
     card->setContentsMargins(1, 1, 1, 1);
     card->setSpacing(0);
-    view = new MoleculeView;
+    view = new MoleculeView(rendererChoice(uiContext.preference(Preference::viewRenderer)));
     view->setObjectName("resultsView");
     view->setAcceptDrops(false);
     view->setAngles(-25, 25, 0);
@@ -458,7 +455,7 @@ ResultsPanel::ResultsPanel(EditorContext &editorServices, UiServices &uiServices
     auto *labelMenu = new QMenu(viewControlsFrame->menuButton());
     labelMenu->addSection(tr("ラベル"));
     auto *labelGroup = new QActionGroup(labelMenu);
-    auto savedLabels = uiContext.preference("results/labels", "all").toString();
+    auto savedLabels = uiContext.preference(Preference::resultLabels, "all").toString();
     if (!QStringList{"all", "heavy", "selection", "none"}.contains(savedLabels))
         savedLabels = "all";
     for (const auto &[label, mode] : {std::pair{QT_TR_NOOP("すべて"), "all"},
@@ -477,7 +474,7 @@ ResultsPanel::ResultsPanel(EditorContext &editorServices, UiServices &uiServices
     view->setLabelMode(savedLabels);
     connect(labelGroup, &QActionGroup::triggered, this, [this](QAction *a) {
         view->setLabelMode(a->data().toString());
-        uiContext.setPreference("results/labels", a->data().toString());
+        uiContext.setPreference(Preference::resultLabels, a->data().toString());
     });
     viewArea->addOverlay(viewControlsFrame, Qt::AlignTop | Qt::AlignRight);
     // Distance, angle or dihedral of the atoms clicked in order, and the ones kept on the view.
@@ -1036,15 +1033,8 @@ ResultsPanel::ResultsPanel(EditorContext &editorServices, UiServices &uiServices
     pathActions->addWidget(pathSaddle);
     pl->addLayout(pathActions);
     connect(pathHighest, &QPushButton::clicked, this, [this] {
-        // The highest point between the ends, as listed in the table.
-        int best = -1;
-        double highest = -INFINITY;
-        for (int row = 1; row + 1 < path->rowCount(); ++row)
-            if (const double e = path->item(row, 3)->data(Qt::UserRole).toDouble(); e > highest) {
-                highest = e;
-                best = row;
-            }
-        if (best >= 0)
+        // The highest point between the ends; the table lists the points in their order.
+        if (const int best = shownPath.highest(PathEnds::Excluded); best >= 0)
             path->setCurrentCell(best, 0);
     });
     connect(pathSaddle, &QPushButton::clicked, this,
@@ -1059,9 +1049,9 @@ ResultsPanel::ResultsPanel(EditorContext &editorServices, UiServices &uiServices
     tabs->addTab(pathPage, tr("経路・スキャン"));
     connect(path, &QTableWidget::currentCellChanged, this, [this](int row) {
         pathMap->setSelected(row);
-        if (row < 0 || !path->item(row, 0))
+        if (row < 0 || row >= shownPath.points.size())
             return;
-        const int index = path->item(row, 0)->data(Qt::UserRole).toInt();
+        const int index = shownPath.points[row].frame;
         if (index >= 0 && index < data.frames.size())
             selectFrame(index);
     });
@@ -1565,7 +1555,7 @@ void ResultsPanel::showCombineDialog() {
 void ResultsPanel::openDirectory(const QString &path) {
     cancelLoad();
     try {
-        const auto first = preferredResultFile(path, nwchemResultFiles(path));
+        const auto first = preferredResultFile(path, nwchemResultFiles(path), JobFile::output);
         folder = QFileInfo(first).absolutePath();
         fillFiles(QFileInfo(first).fileName());
         openEntry(files->currentData().toString());
@@ -1801,7 +1791,7 @@ void ResultsPanel::updateActions() {
     saveXyz->setEnabled(ready && !data.frames.isEmpty());
     applyGeometry->setEnabled(ready && !data.frames.isEmpty());
     recalculate->setEnabled(applyGeometry->isEnabled() &&
-                            QFileInfo::exists(QFileInfo(data.source).absolutePath() + "/run.json"));
+                            QFileInfo::exists(QFileInfo(data.source).absolutePath() + '/' + JobFile::record));
     compareGeometry->setEnabled(applyGeometry->isEnabled());
     pathSaddle->setEnabled(recalculate->isEnabled());
     savePng->setEnabled(ready && !data.frames.isEmpty());
@@ -2115,7 +2105,7 @@ void ResultsPanel::updateTabs() {
                        loaded ? vibrations : 0,
                        int(data.steps.size()),
                        int(data.excitations.size()),
-                       path->rowCount(),
+                       int(shownPath.points.size()),
                        0,
                        0,
                        0};
@@ -2209,22 +2199,22 @@ void ResultsPanel::showOverview() {
             ++cell;
         }
     };
-    if (const auto final = data.properties["final_energy"].toObject(); !final.isEmpty()) {
-        const auto source = final["source"] == "frequency_reference" ? tr("振動数の参照構造")
-                            : final["source"] == "bsse_corrected"    ? tr("BSSE補正後")
-                                                                     : tr("最後のtask");
+    if (const auto final = resultFinalEnergy(data)) {
+        const auto source = final->source == ResultEnergySource::FrequencyReference ? tr("振動数の参照構造")
+                            : final->source == ResultEnergySource::BsseCorrected    ? tr("BSSE補正後")
+                                                                                    : tr("最後のtask");
         QString caption;
-        if (!data.energies.isEmpty() && data.energies.last().hartree != final["hartree"].toDouble())
+        if (!data.energies.isEmpty() && data.energies.last().hartree != final->hartree)
             caption = tr("出力の最後の記録: %1 %2 Eh")
                           .arg(data.energies.last().method, shownReal(data.energies.last().hartree));
-        tile("resultsTileEnergy", tr("計算のエネルギー（%1 · %2）").arg(final["method"].toString(), source),
-             shownReal(final["hartree"].toDouble()) + " Eh", caption, "neutral", 1, true);
+        tile("resultsTileEnergy", tr("計算のエネルギー（%1 · %2）").arg(final->method, source),
+             shownReal(final->hartree) + " Eh", caption, "neutral", 1, true);
     } else if (!data.energies.isEmpty())
         tile("resultsTileEnergy", tr("最後のエネルギー記録（%1）").arg(data.energies.last().method),
              shownReal(data.energies.last().hartree) + " Eh", tr("出力順の最後の値です。"), "neutral", 1,
              true);
-    if (data.properties.contains("optimization") || !data.steps.isEmpty()) {
-        const bool converged = data.properties.value("optimization") == "converged";
+    if (const auto optimization = resultOptimizationConverged(data); optimization || !data.steps.isEmpty()) {
+        const bool converged = optimization.value_or(false);
         QString caption;
         if (!data.steps.isEmpty()) {
             caption = tr("%nステップ", nullptr, data.steps.last().step);
@@ -2275,14 +2265,11 @@ void ResultsPanel::showOverview() {
                       shownFixed(data.orbitals[l].energy * HartreeToEv, 2)),
              "neutral", 2);
     }
-    if (data.properties.contains("dipole")) {
-        const auto d = data.properties.value("dipole").toObject();
-        tile("resultsTileDipole", tr("双極子モーメント"), fixed(d["debye"].toDouble(), 2) + " D",
+    if (const auto d = resultDipole(data))
+        tile("resultsTileDipole", tr("双極子モーメント"), fixed(d->debye, 2) + " D",
              QString("x %1 · y %2 · z %3 a.u.")
-                 .arg(shownFixed(d["x"].toDouble(), 4), shownFixed(d["y"].toDouble(), 4),
-                      shownFixed(d["z"].toDouble(), 4)),
+                 .arg(shownFixed(d->au.x(), 4), shownFixed(d->au.y(), 4), shownFixed(d->au.z(), 4)),
              "neutral", 7);
-    }
     if (!data.excitations.isEmpty()) {
         const auto strongest =
             std::max_element(data.excitations.begin(), data.excitations.end(),
@@ -2294,12 +2281,13 @@ void ResultsPanel::showOverview() {
                       fixed(EvNanometer / strongest->ev, 1)),
              "neutral", 5);
     }
-    if (path->rowCount())
+    if (!shownPath.points.isEmpty())
         tile("resultsTilePath",
              data.properties.contains("scan")  ? tr("座標スキャン")
              : data.properties.contains("neb") ? QString("NEB")
                                                : QString("IRC"),
-             tr("%n点", nullptr, path->rowCount()), tr("行を選ぶとその点の構造を表示します。"), "neutral", 6);
+             tr("%n点", nullptr, int(shownPath.points.size())), tr("行を選ぶとその点の構造を表示します。"),
+             "neutral", 6);
     if (data.format == "CUBE" || data.selectedOrbital >= 0)
         tile("resultsTileSurface", tr("等値面"), "±" + real(data.isovalue),
              tr("格子 %1 × %2 × %3 · 値 %4 ～ %5 · 三角形 %6")
@@ -2411,13 +2399,12 @@ void ResultsPanel::showOutcome() {
     bannerIcon->setPixmap(lineIcon("warning", failed ? c.bad : c.candidateText).pixmap(QSize(20, 20)));
     bannerTitle->setText(failed ? tr("NWChemのエラーを検出しました")
                                 : tr("NWChemの正常終了の記録がありません"));
-    bannerText->setText(failed
-                            ? tr("%1。詳細は「概要」のメッセージとログで確認してください。").arg(data.status)
-                            : tr("実行中・中断・途中までのログの可能性があります。%1実行中なら「再読込」で"
-                                 "更新します。")
-                                  .arg(data.properties.value("optimization") == "converged"
-                                           ? tr("最適化は収束しています。")
-                                           : QString()));
+    bannerText->setText(
+        failed ? tr("%1。詳細は「概要」のメッセージとログで確認してください。").arg(data.status)
+               : tr("実行中・中断・途中までのログの可能性があります。%1実行中なら「再読込」で"
+                    "更新します。")
+                     .arg(resultOptimizationConverged(data).value_or(false) ? tr("最適化は収束しています。")
+                                                                            : QString()));
 }
 void ResultsPanel::showContext() {
     const int i = presentation.frame(), mode = presentation.mode();
@@ -2658,89 +2645,59 @@ void ResultsPanel::showEnergies() {
                   .arg(reference + 1));
 }
 void ResultsPanel::showPath() {
+    using Role = ResultPathPoint::Role;
     const QSignalBlocker guard(path);
     path->setRowCount(0);
-    const auto scan = data.properties.value("scan").toArray();
-    const auto irc = data.properties.value("irc").toObject();
-    const auto neb = data.properties.value("neb").toObject();
-    struct Point {
-        QString label, coordinate;
-        double x, energy;
-        int frame;
-        double y = qQNaN(); // The second coordinate of a two-dimensional scan.
-    };
-    QVector<Point> points;
+    shownPath = resultPath(data);
+    const auto &points = shownPath.points;
+    const auto kind = shownPath.kind;
+    const bool plane = shownPath.plane;
+    const auto neb = data.properties.value("neb").toObject(); // The state of the NEB, for the note.
     QString xLabel, yLabel;
-    double reference = INFINITY;
-    const bool plane = !scan.isEmpty() && scan[0].toObject().contains("value2");
-    if (!scan.isEmpty()) {
-        const auto first = scan[0].toObject();
+    if (kind == ResultPathKind::Scan) {
         const auto axis = [](const QString &coordinate) {
             return coordinateText(coordinate) + (coordinate.startsWith("bond") ? " / Å" : " / °");
         };
-        xLabel = plane                                               ? axis(first["coordinate"].toString())
-                 : first["coordinate"].toString().startsWith("bond") ? tr("距離 / Å")
-                                                                     : tr("角度 / °");
-        yLabel = plane ? axis(first["coordinate2"].toString()) : QString();
-        for (const auto &value : scan) {
-            const auto p = value.toObject();
-            Point point{QString::number(p["point"].toInt()), coordinateText(p["coordinate"].toString()),
-                        p["value"].toDouble(), p["energy"].toDouble(), p["frame"].toInt(-1)};
-            if (plane) {
-                point.coordinate =
-                    tr("%1 = %2、%3 = %4")
-                        .arg(coordinateText(p["coordinate"].toString()), fixed(p["value"].toDouble(), 4),
-                             coordinateText(p["coordinate2"].toString()), fixed(p["value2"].toDouble(), 4));
-                point.y = p["value2"].toDouble();
-            }
-            points << point;
-            reference = std::min(reference, p["energy"].toDouble());
-        }
-    } else if (!neb.isEmpty()) {
-        const auto list = neb["points"].toArray();
-        const bool lengths = !list.isEmpty() && list[0].toObject().contains("distance");
-        xLabel = lengths ? tr("経路の長さ / Å") : tr("像");
-        for (int i = 0; i < list.size(); ++i) {
-            const auto p = list[i].toObject();
-            points << Point{QString::number(p["bead"].toInt()),
-                            i == 0                 ? tr("始点")
-                            : i + 1 == list.size() ? tr("終点")
-                                                   : QString(),
-                            lengths ? p["distance"].toDouble() : p["bead"].toDouble(), p["energy"].toDouble(),
-                            p["frame"].toInt(-1)};
-        }
-        if (!points.isEmpty())
-            reference = points.first().energy;
-    } else if (!irc.isEmpty()) {
+        const auto &first = points.first();
+        xLabel = plane                                 ? axis(first.coordinate)
+                 : first.coordinate.startsWith("bond") ? tr("距離 / Å")
+                                                       : tr("角度 / °");
+        yLabel = plane ? axis(first.coordinate2) : QString();
+    } else if (kind == ResultPathKind::Neb)
+        xLabel = shownPath.lengths ? tr("経路の長さ / Å") : tr("像");
+    else if (kind == ResultPathKind::Irc)
         xLabel = tr("反応座標 s / amu½·Bohr");
-        QVector<Point> backward, forward;
-        for (const auto &value : irc["points"].toArray()) {
-            const auto p = value.toObject();
-            const bool ahead = p["direction"] == "forward";
-            (ahead ? forward : backward)
-                << Point{(ahead ? tr("前進 %1") : tr("後退 %1")).arg(p["point"].toInt()),
-                         ahead ? tr("前進") : tr("後退"), (ahead ? 1 : -1) * p["s"].toDouble(),
-                         p["energy"].toDouble(), p["frame"].toInt(-1)};
-        }
-        std::reverse(backward.begin(), backward.end());
-        points = backward;
-        if (irc.contains("ts_energy")) {
-            reference = irc["ts_energy"].toDouble();
-            points << Point{"TS", tr("遷移状態"), 0, reference, irc["ts_frame"].toInt(-1)};
-        }
-        points += forward;
-        if (!std::isfinite(reference) && !points.isEmpty())
-            reference = points.first().energy;
-    }
+    // The first two columns: the point in the words of its path.
+    const auto name = [&](const ResultPathPoint &p) {
+        return p.role == Role::Forward           ? tr("前進 %1").arg(p.number)
+               : p.role == Role::Backward        ? tr("後退 %1").arg(p.number)
+               : p.role == Role::TransitionState ? QString("TS")
+                                                 : QString::number(p.number);
+    };
+    const auto place = [&](const ResultPathPoint &p) {
+        if (kind == ResultPathKind::Scan)
+            return plane ? tr("%1 = %2、%3 = %4")
+                               .arg(coordinateText(p.coordinate), fixed(p.x, 4),
+                                    coordinateText(p.coordinate2), fixed(p.y, 4))
+                         : coordinateText(p.coordinate);
+        return p.role == Role::Start             ? tr("始点")
+               : p.role == Role::End             ? tr("終点")
+               : p.role == Role::Forward         ? tr("前進")
+               : p.role == Role::Backward        ? tr("後退")
+               : p.role == Role::TransitionState ? tr("遷移状態")
+                                                 : QString();
+    };
     path->setRowCount(points.size());
     QVector<QPointF> curve;
     QVector<ScanMap::Point> map;
     for (int i = 0; i < points.size(); ++i) {
         const auto &p = points[i];
-        const double relative = (p.energy - reference) * HartreeToKcal;
+        const double relative = shownPath.relative(i) * HartreeToKcal;
         row(path, i,
-            {p.label, p.coordinate, plane ? fixed(p.x, 4) + ", " + fixed(p.y, 4) : fixed(p.x, 4),
+            {name(p), place(p), plane ? fixed(p.x, 4) + ", " + fixed(p.y, 4) : fixed(p.x, 4),
              fixed(p.energy, 8), fixed(relative, 3)});
+        // For readers of the table from outside (the widget snapshots of MCP): the panel itself takes
+        // frames and energies from shownPath.
         path->item(i, 0)->setData(Qt::UserRole, p.frame);
         path->item(i, 3)->setData(Qt::UserRole, p.energy);
         curve << QPointF(p.x, relative);
@@ -2755,9 +2712,9 @@ void ResultsPanel::showPath() {
     if (curve.isEmpty())
         pathChart->clear();
     else
-        pathChart->setChart(!scan.isEmpty()  ? tr("座標スキャン（最小値基準）")
-                            : !neb.isEmpty() ? tr("NEB（始点基準）")
-                                             : tr("IRC（遷移状態基準）"),
+        pathChart->setChart(kind == ResultPathKind::Scan  ? tr("座標スキャン（最小値基準）")
+                            : kind == ResultPathKind::Neb ? tr("NEB（始点基準）")
+                                                          : tr("IRC（遷移状態基準）"),
                             xLabel, "ΔE / kcal mol⁻¹", {{tr("エネルギー"), curve, ChartTone::Accent}});
     QString note;
     if (!neb.isEmpty()) {
@@ -2829,12 +2786,9 @@ void ResultsPanel::showProperties() {
         couplingTitle->setText(tr("J結合（スピン–スピン結合定数、%n 組）", nullptr, int(list.size())));
     }
     auto text = resultPropertyLines(data);
-    if (data.properties.contains("dipole")) {
-        const auto d = data.properties.value("dipole").toObject();
+    if (const auto d = resultDipole(data))
         text += tr("双極子モーメント: %1 D（x %2 / y %3 / z %4 a.u.）\n")
-                    .arg(fixed(d["debye"].toDouble(), 4), real(d["x"].toDouble()), real(d["y"].toDouble()),
-                         real(d["z"].toDouble()));
-    }
+                    .arg(fixed(d->debye, 4), real(d->au.x()), real(d->au.y()), real(d->au.z()));
     if (data.properties.contains("polarizability")) {
         const auto t = data.properties.value("polarizability").toObject()["tensor"].toArray();
         QStringList rows;
@@ -2974,7 +2928,7 @@ void ResultsPanel::exportMode(bool images) {
     const auto name = QString("mode%1_%2cm").arg(n + 1).arg(qRound(data.modes[n].frequency));
     if (images) {
         AnimationOptions options;
-        if (!animationOptionsDialog(this, view->size(), options, 24, false))
+        if (!animationOptionsDialog(this, uiContext, view->size(), options, 24, false))
             return;
         const auto target = animationTarget(this, options, name, folder);
         if (target.isEmpty())
@@ -3020,7 +2974,7 @@ void ResultsPanel::exportImage() {
     if (loading() || data.frames.isEmpty())
         fail(tr("表示する構造がありません。"));
     ImageOptions options;
-    if (!imageOptionsDialog(this, view->size(), options))
+    if (!imageOptionsDialog(this, uiContext, view->size(), options))
         return;
     auto path = QFileDialog::getSaveFileName(this, tr("3D表示を画像で保存"),
                                              QDir(folder).filePath("result.png"), "PNG (*.png)");
@@ -3038,17 +2992,16 @@ void ResultsPanel::exportFrames() {
         fail(tr("構造列がありません。"));
     // The points of a path in its order (IRC: backward end, transition state, forward end).
     QVector<int> list;
-    for (int row = 0; row < path->rowCount(); ++row)
-        if (const int index = path->item(row, 0)->data(Qt::UserRole).toInt();
-            index >= 0 && index < data.frames.size())
-            list << index;
+    for (const auto &point : shownPath.points)
+        if (point.frame >= 0 && point.frame < data.frames.size())
+            list << point.frame;
     if (list.size() < 2) {
         list.clear();
         for (int i = 0; i < data.frames.size(); ++i)
             list << i;
     }
     AnimationOptions options;
-    if (!animationOptionsDialog(this, view->size(), options, 4, false))
+    if (!animationOptionsDialog(this, uiContext, view->size(), options, 4, false))
         return;
     const auto target = animationTarget(this, options, "path", folder);
     if (target.isEmpty())

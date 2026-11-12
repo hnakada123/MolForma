@@ -17,7 +17,6 @@
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
-#include "results/results.h"
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
@@ -1058,18 +1057,11 @@ void McpServer::registerTools() {
              const SiteCutOptions cut{args["fixCuts"].toBool(true), args["hydrogens"].toBool(true),
                                       args["pointCharges"].toBool(),
                                       args.contains("chargeRadius") ? args["chargeRadius"].toDouble() : 15};
-             const auto charges = source.pointCharges.size();
-             cutOutSite(source, siteAtoms(source, center, site), cut);
-             if (path.isEmpty()) {
-                 next = source;
-             } else {
-                 replaceCoordinateStructure(next, source);
-                 next.charge = source.charge;
-                 if (cut.charges)
-                     next.pointCharges = source.pointCharges;
-             }
-             if (source.pointCharges.size() > charges)
-                 setNwchemSetting(next, "include_point_charges", true);
+             const auto kept = siteAtoms(source, center, site);
+             if (path.isEmpty())
+                 cutOutNwchemSite(next, kept, cut);
+             else
+                 replaceWithNwchemSite(next, source, kept, cut);
          });
     add({.name = "export_document",
          .title = "Export document",
@@ -1286,20 +1278,7 @@ void McpServer::registerTools() {
              else {
                  const auto path = args["path"].toString();
                  policy.checkPath(path);
-                 const QFileInfo info(path);
-                 if (!info.isFile() || info.size() > 128 * 1024 * 1024)
-                     fail("Expected a regular file no larger than 128 MiB.");
-                 const auto suffix = info.suffix().toLower();
-                 if (suffix == "out" || suffix == "log" || suffix == "nwo") {
-                     const auto result = readResult(path);
-                     if (result.frames.isEmpty())
-                         fail("The log holds no structure.");
-                     end = result.frames.last().molecule;
-                 } else if (suffix == "xyz") {
-                     const int frames = int(xyzFrames(QString::fromUtf8(readFile(path))).size());
-                     end = importStructure(path, {}, frames > 1 ? frames - 1 : -1);
-                 } else
-                     end = importStructure(path);
+                 end = nebEndFromFile(path);
              }
              setNwchemSetting(next, "neb_end",
                               nwchemNebEndSetting(next, end, args["superpose"].toBool(true)));

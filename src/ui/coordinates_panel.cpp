@@ -6,6 +6,7 @@
 #include "foundation/structure_file.h"
 #include "io/structure_io.h"
 #include "model/geometry.h"
+#include "model/settings.h"
 #include "nwchem/nwchem_geometry.h"
 #include "ui/editor_chrome.h"
 #include "ui/editor_context.h"
@@ -327,10 +328,10 @@ CoordinatesPanel::CoordinatesPanel(EditorContext &editorServices, UiServices &ui
     attributes->setObjectName("coordinateAttributeColumns");
     attributes->setCheckable(true);
     attributes->setToolTip(tr("形式電荷・不対電子・原子名の列を表示して編集します。"));
-    attributes->setChecked(uiContext.preference("coordinates/attributes", false).toBool());
+    attributes->setChecked(uiContext.preference(Preference::coordinateAttributes, false).toBool());
     tools->addWidget(attributes);
     connect(attributes, &QPushButton::toggled, this, [this](bool on) {
-        uiContext.setPreference("coordinates/attributes", on);
+        uiContext.setPreference(Preference::coordinateAttributes, on);
         for (const int column : {ChargeColumn, RadicalColumn, NameColumn})
             table->setColumnHidden(column, !on);
     });
@@ -1024,7 +1025,7 @@ void CoordinatesPanel::pasteXyz() {
 void CoordinatesPanel::importFile() {
     const auto base = editorContext.revision();
     QString path = QFileDialog::getOpenFileName(
-        this, tr("構造を読み込んで置換候補を作成"), uiContext.preference("directory").toString(),
+        this, tr("構造を読み込んで置換候補を作成"), uiContext.preference(Preference::directory).toString(),
         tr("分子構造 (*.xyz *.mol *.sdf *.pdb *.ent *.cif *.mmcif *.gz)"));
     if (path.isEmpty())
         return;
@@ -1043,7 +1044,7 @@ void CoordinatesPanel::importPath(const QString &path) {
     if (base != editorContext.revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
     previewStructure(importStructure(path, options->selection, options->frame, options->crystal));
-    uiContext.setPreference("directory", QFileInfo(path).absolutePath());
+    uiContext.setPreference(Preference::directory, QFileInfo(path).absolutePath());
 }
 void CoordinatesPanel::dragEnterEvent(QDragEnterEvent *event) {
     // Structure files become a replacement candidate here; other files (results, projects) go on to

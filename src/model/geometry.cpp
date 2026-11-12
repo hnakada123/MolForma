@@ -492,4 +492,16 @@ double symmetrize(Document &d, const PointGroup &group) {
         d.atoms[i].position = next[i];
     return moved;
 }
+double symmetrizeToPointGroup(Document &d, double tolerance) {
+    double moved = 0;
+    auto current = pointGroup(d, tolerance);
+    for (int pass = 0; pass < 5 && !current.name.isEmpty(); ++pass) {
+        moved = std::max(moved, symmetrize(d, current));
+        const auto next = pointGroup(d, tolerance);
+        if (next.name != current.name || next.deviation < 1e-10)
+            break;
+        current = next;
+    }
+    return moved;
+}
 } // namespace mf

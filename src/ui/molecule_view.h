@@ -7,16 +7,24 @@
 #include <QHash>
 #include <QPointF>
 #include <QTimer>
+#include <QVariant>
 #include <QWidget>
 #include <optional>
 class QLabel;
 class QPainter;
 namespace mf {
 class VtkMoleculeRenderer;
+// How a 3D view is to draw: with VTK where this computer can (OpenGL 3.2, a windowed platform), or
+// always with QPainter. The user's choice is a preference ("view/renderer") that whoever makes a view
+// passes on; the view reads none itself.
+enum class RendererChoice { Automatic, Painter };
+// The choice a stored preference stands for ("painter"; anything else is automatic).
+RendererChoice rendererChoice(const QVariant &stored);
 class MoleculeView : public QWidget {
     Q_OBJECT
   public:
-    explicit MoleculeView(QWidget *parent = nullptr);
+    // MOLFORMA_RENDERER=painter in the environment forces QPainter whatever the choice.
+    explicit MoleculeView(RendererChoice choice = RendererChoice::Automatic, QWidget *parent = nullptr);
     static void configureDefaultSurfaceFormat();
     QString rendererName() const;
     void setDocument(const Document &d);

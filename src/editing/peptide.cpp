@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/peptide.h"
+#include "editing/coordinates.h"
 #include "foundation/i18n.h"
 #include <QRegularExpression>
 #include <cmath>
@@ -479,6 +480,27 @@ void buildPeptide(Document &d, const QStringList &codes, const QString &n, const
         if (c == "NME")
             addCap(d, prev, "NME");
     });
+}
+Ids buildSequence(Document &d, const QStringList &codes, const QString &n, const QString &c,
+                  const QString &chirality, const QString &state, bool replace) {
+    if (replace) // Keep calculation/execution settings and the project envelope.
+        replaceCoordinateStructure(d, Document());
+    QSet<QString> before;
+    double shift = 0;
+    for (const auto &a : d.atoms) {
+        before.insert(a.id);
+        shift = std::max(shift, a.position.x() + 6);
+    }
+    buildPeptide(d, codes, n, c, chirality, state);
+    Ids added;
+    for (const auto &a : d.atoms)
+        if (!before.contains(a.id))
+            added << a.id;
+    if (!before.isEmpty())
+        transform(d, added, Mat::Identity(), Vec(shift, 0, 0));
+    if (replace)
+        d.charge = d.formalCharge();
+    return added;
 }
 void setChainTerminals(Document &d, const QString &rid, const QString &n, const QString &c) {
     const auto chain = d.chains.value(residue(d, rid).chain);

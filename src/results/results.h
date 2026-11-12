@@ -82,17 +82,50 @@ struct ResultData {
     QVector<ResultMode> modes;
     QVector<ResultExcitation> excitations;
     QVector<ResultStep> steps; // Steps of the last optimization in the log.
-    // Log summaries: "neb" {points [{bead, energy, frame, distance}] of the last path read (distance:
-    // the length of the path up to the bead, Å), iteration, steps of "@neb", thresholds, converged},
-    // "thermochemistry" (one object per temperature), "dipole" {x, y, z, debye} in
-    // a.u./Debye, "thresholds" {gmax, grms, xmax, xrms} of the DRIVER, "optimization" state. Of the
-    // Mulliken analysis: "mulliken" (charges), "valency" and "free_electrons" per atom, and
-    // "bond_indices" [{a, b, value}] with atom numbers a < b from 1: every pair, or with
-    // "bond_indices_omitted" (their number) without the pairs below NotableBondIndex of a molecule
-    // with more than maxBondIndices pairs. "tddft" {alpha_electrons, beta_electrons} of the excited
-    // states' reference. "spinspin" [{a, b, isotope_a, isotope_b, hz}]: the isotropic NMR spin–spin
-    // couplings (atom numbers from 1, isotopes as "13-C"). "scan" points name a second coordinate
-    // ("coordinate2", "value2") in a two-dimensional scan.
+    // What the readers summarize, by key. Every key a reader writes is listed here; a fact that more
+    // than one file reads has a typed reader (result_properties.h, result_path.h for the paths).
+    // Energies are in Hartree and atom numbers count from 1 unless said otherwise.
+    // The calculation and its optimization:
+    //   "final_energy" {hartree, method, source: final|frequency_reference|bsse_corrected}: the energy
+    //     of the calculation (NwchemEnergySummary::energy); absent without one.
+    //   "bsse" {error, supermolecular, corrected, nwchem_error?, interaction?,
+    //     interaction_uncorrected?}: the last counterpoise correction (NwchemEnergySummary::bsse).
+    //   "optimization" "converged" | "not_converged": the last DRIVER optimization; absent without one.
+    //   "thresholds" {gmax, grms, xmax, xrms} of that DRIVER.
+    //   "thermochemistry" [{temperature, zpe_kcal, energy_kcal, enthalpy_kcal, entropy_cal, cv_cal,
+    //     entropy_translational_cal, entropy_rotational_cal, entropy_vibrational_cal,
+    //     nwchem_frequency_scale, symmetry_number}]: one object per temperature (K; kcal/mol and
+    //     cal/(mol K)), each with the fields the log printed.
+    //   "solvation" {gas, solution} of COSMO, {smd_dg, smd_total} of SMD.
+    //   "spin_multiplicity" of the wavefunction, as last printed.
+    // Paths (read them through result_path.h):
+    //   "scan" [{point, points, coordinate, value, coordinate2?, value2?, energy, frame?}]: the points
+    //     with an energy; a two-dimensional scan names its second coordinate.
+    //   "neb" {points [{bead, energy, frame?, distance?}] of the last path read (distance: the length
+    //     of the path up to the bead, Å; neither without the structures), iteration, steps of "@neb",
+    //     thresholds, converged?}.
+    //   "irc" {points [{direction: forward|backward, point, energy, s, frame}], directions [those
+    //     traced], complete (each of them printed its convergence), ts_energy?, ts_frame}.
+    // Properties:
+    //   "dipole" {x, y, z, debye, geometry?, origin} in a.u./Debye, with the structure it belongs to
+    //     as XYZ.
+    //   "polarizability" {isotropic, anisotropy, frequency?, tensor [9, by rows], geometry?} in a.u.
+    //   Of the Mulliken analysis: "mulliken" (charges), "valency" and "free_electrons" per atom, and
+    //     "bond_indices" [{a, b, value}] with a < b: every pair, or with "bond_indices_omitted" (their
+    //     number) without the pairs below NotableBondIndex of a molecule with more than
+    //     maxBondIndices pairs.
+    //   "esp" and "resp": the charges of the ESP module per atom ("resp" only when restrained).
+    //   "shielding" [{atom, element, isotropic, anisotropy?}]: the NMR shieldings of the last
+    //     calculation, ppm.
+    //   "spinspin" [{a, b, isotope_a, isotope_b, hz}]: the isotropic NMR spin–spin couplings (isotopes
+    //     as "13-C").
+    //   "epr_gshift_ppt" [9]: the g-shift tensor; "epr_hyperfine" [{atom, element, tensor_mhz [9]}].
+    //   "tddft" {alpha_electrons, beta_electrons} of the excited states' reference.
+    //   "ecd" [{root, spin, ev, strength, unit, gauge, excitation}]: the rotatory strengths of the
+    //     excited states (excitation: the index in excitations).
+    //   "ord" [{frequency_au, wavelength_nm, isotropic, tensor [9], unit, gauge}]: optical rotation.
+    //   "raman" [{raman_index, frequency, activity, mode?}] (mode: the index in modes), from a log or a
+    //     Raman plot file, which also gives "raman_wavelength_nm".
     QJsonObject properties;
     Document vibrationGeometry;
     QVector<SurfaceTriangle> surface;
@@ -157,10 +190,6 @@ class NwchemLog {
     const NwchemEnergySummary &summary() const {
         return energySummary;
     }
-    // The tasks of an input in their order, in words ("構造最適化", "振動数"), and the most steps
-    // its DRIVER takes (maxiter; 0 without a DRIVER block).
-    static QStringList tasks(const QString &input);
-    static int driverSteps(const QString &input);
     int started = 0; // Tasks begun; the current one is started - 1.
     const NwchemOptimization &optimization() const {
         return driver;

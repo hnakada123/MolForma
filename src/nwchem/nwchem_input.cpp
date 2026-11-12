@@ -175,41 +175,11 @@ void extraInput(NwchemInputBuilder &out, const QString &text, const QString &key
     out.block("additional", body.result, key, {}, {SettingTarget::Calculation},
               text.trimmed().section('\n', 0, 0));
 }
-// Takes a block and its lines out of a generated input; the lines after it move up.
-void removeBlock(NwchemGeneratedInput &input, int index) {
-    const auto block = input.outline.blocks[index];
-    auto lines = input.text.split('\n');
-    int first = block.line, count = block.lines;
-    // With the block goes one of the empty lines around it, when it stood between two.
-    if (first > 0 && lines.value(first - 1).isEmpty() && lines.value(first + count).isEmpty()) {
-        --first;
-        ++count;
-    }
-    lines.remove(first, count);
-    input.text = lines.join('\n');
-    input.outline.blocks.remove(index);
-    for (auto &other : input.outline.blocks)
-        if (other.line >= first + count)
-            other.line -= count;
-    const auto shifted = [&](const QSet<int> &set) {
-        QSet<int> result;
-        for (const int line : set)
-            if (line < first)
-                result.insert(line);
-            else if (line >= first + count)
-                result.insert(line - count);
-        return result;
-    };
-    input.outline.advanced = shifted(input.outline.advanced);
-    input.outline.extra = shifted(input.outline.extra);
-    for (auto &set : input.outline.settings)
-        set = shifted(set);
-}
 // The orbitals of each fragment computed alone, then the whole molecule's initial orbitals from them.
 // The DFT/SCF settings written before stay; each fragment's charge and multiplicity replace the
 // molecule's, which come back for the tasks after it.
-void fragmentGuess(NwchemInputBuilder &out, const Document &d, const QJsonObject &s,
-                   const NwchemValidation &check, const NwchemTaskPlan &plan) {
+void fragmentGuess(NwchemInputBuilder &out, NwchemTaskCursor &tasks, const Document &d, const QJsonObject &s,
+                   const NwchemValidation &check) {
     const auto fragments = nwchemFragments(d);
     if (fragments.isEmpty())
         return;
@@ -234,7 +204,7 @@ void fragmentGuess(NwchemInputBuilder &out, const Document &d, const QJsonObject
                   "fragment_guess");
         out.block(dft ? "dft" : "scf", block(fragments[k].multiplicity, "input atomic output " + file),
                   "fragment_guess");
-        out.block("task", plan.fragments[k] + '\n', "fragment_guess");
+        out.task(tasks, NwchemTaskPhase::Fragments, "fragment_guess");
     }
     const auto output = nwchemAdvanced(d)["vectors_output"].toString();
     out.block("set", "\nset geometry geometry\ncharge " + QString::number(d.charge) + '\n', "fragment_guess");
@@ -254,7 +224,9 @@ static NwchemGeneratedInput generation(const Document &d) {
     if (!check.errors.isEmpty())
         throw ValidationFailure(check);
     const auto s = nwchemSettings(d), advanced = nwchemAdvanced(d);
-    const auto plan = nwchemTaskPlan(d);
+    // Every task below is the plan's next one (NwchemInputBuilder::task): the plan says which tasks there
+    // are, and which of them a continued restart leaves out.
+    NwchemTaskCursor tasks(nwchemTaskPlan(d));
     auto str = [&](const char *key) { return s[key].toString(); };
     auto integer = [&](const char *key) { return QString::number(s[key].toInt()); };
     const auto method = str("method");
@@ -438,9 +410,8 @@ static NwchemGeneratedInput generation(const Document &d) {
     }
     extraInput(out, str("extra_input"), "extra_input");
     if (!restart.active())
-        fragmentGuess(out, d, s, check, plan);
+        fragmentGuess(out, tasks, d, s, check);
     out.append("\n");
-    auto taskLine = [&](const QString &value) { out.block("task", value, "task"); };
     if (scan) {
         // A grid of the second coordinate's points for each point of the first, named in the order
         // they are computed.
@@ -473,18 +444,12 @@ static NwchemGeneratedInput generation(const Document &d) {
                     "scan_steps");
                 geometryBlocks(out, scanGeometry(d, s, step, step2), unit, options, false);
                 out.block("set", "set geometry " + options.name + '\n', "scan_steps");
-                taskLine(plan.main[point - 1] + '\n');
+                out.task(tasks, NwchemTaskPhase::Main, "task");
             }
-    } else {
-        for (int i = 0; i < plan.main.size(); ++i) {
-            if (i == plan.frequency) {
-                NwchemInputBuilder body;
-                body.sourced(plan.main[i] + '\n', {"numerical_frequencies"});
-                out.block("task", body.result, "task");
-            } else
-                taskLine(plan.main[i] + '\n');
-        }
-    }
+    } else
+        for (int i = 0; tasks.at(NwchemTaskPhase::Main); ++i)
+            out.task(tasks, NwchemTaskPhase::Main, "task",
+                     i == tasks.plan.frequency ? QStringList{"numerical_frequencies"} : QStringList());
     Document last = d;
     auto lastCheck = check;
     if (s["followup"].toBool()) {
@@ -508,29 +473,26 @@ static NwchemGeneratedInput generation(const Document &d) {
                 block.setting = "followup_method";
         }
         out.append(next.result);
-        out.block("task", "\n" + plan.followup.first() + '\n', "followup");
+        out.append("\n");
+        out.task(tasks, NwchemTaskPhase::Followup, "followup");
     }
-    {
-        if (s["prop_mulliken"].toBool() || s["prop_nmr"].toBool() || s["prop_polarizability"].toBool() ||
-            s["prop_epr"].toBool()) {
-            QString text = "\nproperty\n";
-            if (s["prop_mulliken"].toBool())
-                text += "  mulliken\n";
-            if (s["prop_nmr"].toBool())
-                text += "  shielding\n";
-            if (s["prop_epr"].toBool())
-                text += "  gshift\n  hyperfine\n";
-            if (s["prop_polarizability"].toBool())
-                text += "  aoresponse 1 0.0\n";
-            out.block("property", text + "end\n", "prop_mulliken");
-            out.block("task", plan.properties.first() + '\n', "prop_mulliken");
-        }
-        if (s["prop_esp"].toBool()) {
-            out.block("esp", "\nesp\n  restrain\nend\n", "prop_esp");
-            out.block("task", plan.esp.first() + '\n', "prop_esp");
-        }
+    if (tasks.at(NwchemTaskPhase::Properties)) { // The plan knows the properties that share this block.
+        QString text = "\nproperty\n";
+        if (s["prop_mulliken"].toBool())
+            text += "  mulliken\n";
+        if (s["prop_nmr"].toBool())
+            text += "  shielding\n";
+        if (s["prop_epr"].toBool())
+            text += "  gshift\n  hyperfine\n";
+        if (s["prop_polarizability"].toBool())
+            text += "  aoresponse 1 0.0\n";
+        out.block("property", text + "end\n", "prop_mulliken");
+        out.task(tasks, NwchemTaskPhase::Properties, "prop_mulliken");
     }
-    int gridTask = 0;
+    if (s["prop_esp"].toBool()) {
+        out.block("esp", "\nesp\n  restrain\nend\n", "prop_esp");
+        out.task(tasks, NwchemTaskPhase::Esp, "prop_esp");
+    }
     for (const auto &kind : {QString("esp"), QString("efield")})
         if (s["prop_" + kind + "_grid"].toBool()) {
             out.block("unset", "\nunset prop:*\n", "prop_" + kind + "_grid");
@@ -540,16 +502,16 @@ static NwchemGeneratedInput generation(const Document &d) {
                           integer("property_grid_points") + " output " + str("start") + "_" + kind +
                           "_grid.cube\nend\n",
                       "prop_" + kind + "_grid");
-            out.block("task", plan.grids[gridTask++] + '\n', "prop_" + kind + "_grid");
+            out.task(tasks, NwchemTaskPhase::Grids, "prop_" + kind + "_grid");
         }
-    out.append(nwchemOutputLines(last, lastCheck));
+    nwchemOutputLines(out, tasks, last, lastCheck);
     if (s["prop_raman"].toBool()) {
         const double frequency = 45.5633525316 / s["raman_wavelength_nm"].toDouble(); // hc/Eh in nm.
         out.block("unset", "\nunset prop:*\n", "prop_raman");
         out.block("property", "property\n  response 1 " + QString::number(frequency, 'g', 14) + "\nend\n",
                   "raman_wavelength_nm");
         out.block("raman", "raman\n  normal\n  lorentzian\nend\n", "prop_raman");
-        out.block("task", plan.raman.first() + '\n', "prop_raman");
+        out.task(tasks, NwchemTaskPhase::Raman, "prop_raman");
     }
     if (s["prop_ord"].toBool()) {
         const int points = s["ord_points"].toInt();
@@ -562,7 +524,7 @@ static NwchemGeneratedInput generation(const Document &d) {
                       "property\n  response 1 " + QString::number(45.5633525316 / wavelength, 'g', 14) +
                           "\n  giao\nend\n",
                       "prop_ord");
-            out.block("task", plan.ord[i] + '\n', "prop_ord");
+            out.task(tasks, NwchemTaskPhase::Ord, "prop_ord");
         }
     }
     // NMR spin–spin couplings last: NWChem computes them for UKS only, which the DFT block keeps for the
@@ -585,18 +547,12 @@ static NwchemGeneratedInput generation(const Document &d) {
         }
         body.append("property\n" + line + "\nend\n");
         out.block("property", body.result, "prop_spinspin");
-        out.block("task", plan.spinspin.first() + '\n', "prop_spinspin");
+        out.task(tasks, NwchemTaskPhase::SpinSpin, "prop_spinspin");
     }
     extraInput(out, str("extra_tasks"), "extra_tasks");
-    // A continued job starts at the task the other job did not finish (validateNwchem checked the match).
-    // The plan says how many of the generated tasks that leaves out: the tasks of the additional input are
-    // the user's text and no blocks of their own.
-    for (qsizetype done = 0, i = 0; done < plan.finished && i < out.result.outline.blocks.size();)
-        if (out.result.outline.blocks[i].keyword == "task") {
-            removeBlock(out.result, int(i));
-            ++done;
-        } else
-            ++i;
+    // Every generated task of the plan stands above or, in a continued job, was left out as the plan says:
+    // such a job starts at the task the other job did not finish (validateNwchem checked the match).
+    tasks.finish();
     return out.result;
 }
 QString nwchemInput(const Document &d) {

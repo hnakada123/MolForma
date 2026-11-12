@@ -2,6 +2,7 @@
 #include "nwchem/run_diagnostics.h"
 #include "foundation/i18n.h"
 #include "model/setting_target.h"
+#include "nwchem/run_record.h"
 #include <QJsonObject>
 #include <QRegularExpression>
 
@@ -24,6 +25,15 @@ QString runDiagnosisText(const QString &code) {
         return tr(
             "プログラムを起動できませんでした。実行ファイル・MPIランチャーと実行権限を確認してください。");
     return tr("プロセスが正常終了しませんでした。標準出力と標準エラーを確認してください。");
+}
+QStringList runDiagnosisLines(const QJsonObject &record) {
+    QStringList lines;
+    for (const auto &item : RunRecord(record).diagnostics()) {
+        lines << runDiagnosisText(item.code);
+        if (!item.evidence.isEmpty())
+            lines << item.evidence;
+    }
+    return lines;
 }
 QJsonArray diagnoseRun(RunState state, const QString &output, const QString &errors,
                        const QString &launchError) {

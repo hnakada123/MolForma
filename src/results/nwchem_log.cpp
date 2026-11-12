@@ -1187,51 +1187,5 @@ void NwchemLog::finish() {
     }
     r.warnings.removeDuplicates();
 }
-int NwchemLog::driverSteps(const QString &input) {
-    bool driver = false;
-    for (const auto &line : input.split('\n')) {
-        if (!line.isEmpty() && !line[0].isSpace())
-            driver = line == "driver";
-        else if (driver && line.trimmed().startsWith("maxiter "))
-            return line.trimmed().section(' ', 1, 1).toInt();
-    }
-    return 0;
-}
-QStringList NwchemLog::tasks(const QString &input) {
-    static const QHash<QString, const char *> names{{"energy", QT_TR_NOOP("一点エネルギー")},
-                                                    {"gradient", QT_TR_NOOP("勾配")},
-                                                    {"optimize", QT_TR_NOOP("構造最適化")},
-                                                    {"saddle", QT_TR_NOOP("遷移状態探索")},
-                                                    {"frequencies", QT_TR_NOOP("振動数")},
-                                                    {"freq", QT_TR_NOOP("振動数")},
-                                                    {"mepgs", "IRC"},
-                                                    {"neb", "NEB"},
-                                                    {"property", QT_TR_NOOP("物性")},
-                                                    {"dplot", QT_TR_NOOP("CUBE出力")}};
-    // An operation without a name stays as written in the input.
-    const auto name = [](const QString &operation) {
-        const char *text = names.value(operation);
-        return text ? tr(text) : operation;
-    };
-    QStringList result;
-    for (const auto &line : input.split('\n')) {
-        if (!line.startsWith("task "))
-            continue;
-        const auto words = line.split(' ', Qt::SkipEmptyParts);
-        // "task dft optimize", "task esp", "task dplot", "task tddft energy".
-        const auto theory = words.value(1).toLower(), operation = words.value(2).toLower();
-        if (theory == "tddft" && operation == "optimize")
-            result << tr("励起状態の構造最適化（TDDFT）");
-        else if (theory == "tddft")
-            result << tr("励起状態（TDDFT）");
-        else if (theory == "esp")
-            result << tr("ESP電荷");
-        else if (theory == "dplot")
-            result << name("dplot");
-        else
-            result << name(operation.isEmpty() ? "energy" : operation);
-    }
-    return result;
-}
 
 } // namespace mf

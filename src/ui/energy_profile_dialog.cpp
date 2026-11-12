@@ -4,6 +4,7 @@
 #include "foundation/i18n.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
+#include "nwchem/run_record.h"
 #include "results/energy_profile.h"
 #include "ui/editor_context.h"
 #include "ui/figure_export.h"
@@ -259,11 +260,11 @@ void EnergyProfileDialog::addJob(const QString &directory) {
     if (loader.active() || records.size() >= 200)
         fail(tr("読込の終了を待ってください。比較の上限は200件です。"));
     uiContext.checkMcpPath(directory);
-    for (const auto *name : {"run.json", "project.molforma.json", "input.nw", "output.out"})
-        uiContext.checkMcpPath(QDir(directory).filePath(name));
+    for (const auto *name : {JobFile::record, JobFile::project, JobFile::input, JobFile::output})
+        uiContext.checkMcpPath(jobFile(directory, name));
     pending = historyDocument(directory);
     pendingSettings = nwchemFinalSettings(pending);
-    loader.start({.path = QDir(directory).filePath("output.out")});
+    loader.start({.path = jobFile(directory, JobFile::output)});
     message->setText(tr("計算結果を読み込んでいます…"));
 }
 void EnergyProfileDialog::rebuildSources() {

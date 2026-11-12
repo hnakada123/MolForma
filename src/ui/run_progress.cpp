@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/run_progress.h"
+#include "nwchem/nwchem_plan.h"
+#include "nwchem/run_record.h"
 #include "results/result_summary.h"
 #include "ui/editor_chrome.h"
 #include <QtWidgets>
@@ -143,14 +145,14 @@ void RunProgress::read(const QString &path) {
         directory = path;
         offset = 0;
         rest.clear();
-        QFile input(QDir(path).filePath("input.nw"));
+        QFile input(jobFile(path, JobFile::input));
         const auto text = input.open(QIODevice::ReadOnly) ? QString::fromUtf8(input.readAll()) : QString();
-        tasks = NwchemLog::tasks(text);
-        maxSteps = NwchemLog::driverSteps(text);
+        tasks = nwchemInputStages(text);
+        maxSteps = nwchemInputDriverSteps(text);
     }
     if (path.isEmpty())
         return;
-    QFile file(QDir(path).filePath("output.out"));
+    QFile file(jobFile(path, JobFile::output));
     if (!file.open(QIODevice::ReadOnly) || file.size() == offset)
         return;
     if (file.size() < offset) { // A rewritten log: read it again.

@@ -81,6 +81,7 @@ add_library(molforma_results STATIC
     src/results/result_files.cpp
     src/results/result_loader.cpp
     src/results/result_presentation.cpp
+    src/results/result_properties.cpp
     src/results/result_summary.cpp
     src/results/spectrum.cpp
     src/results/cube_reader.cpp
@@ -89,6 +90,7 @@ add_library(molforma_results STATIC
     src/results/result_cache.cpp
     src/results/result_codec.cpp
     src/results/result_parsing.cpp
+    src/results/result_path.cpp
     src/results/result_surface.cpp
     src/results/result_worker.cpp
     src/results/xyz_reader.cpp
@@ -97,6 +99,7 @@ target_link_libraries(molforma_results PUBLIC molforma_model PRIVATE Threads::Th
 
 add_library(molforma_nwchem STATIC
     src/nwchem/conformer_set.cpp
+    src/nwchem/execution_environment.cpp
     src/nwchem/result_files.cpp
     src/nwchem/history.cpp
     src/nwchem/history_import.cpp
@@ -115,6 +118,7 @@ add_library(molforma_nwchem STATIC
     src/nwchem/nwchem_restart.cpp
     src/nwchem/remote_execution.cpp
     src/nwchem/run_diagnostics.cpp
+    src/nwchem/run_record.cpp
     src/nwchem/run_session.cpp
     src/nwchem/run_state.cpp)
 target_link_libraries(molforma_nwchem PUBLIC molforma_model PRIVATE molforma_editing molforma_results ${MOLFORMA_OPENBABEL})
@@ -124,7 +128,7 @@ endif()
 
 add_library(molforma_io STATIC src/io/document_storage.cpp src/io/structure_io.cpp
     src/io/file_download.cpp src/io/pdb_download.cpp src/io/pubchem.cpp)
-target_link_libraries(molforma_io PUBLIC molforma_model PRIVATE molforma_nwchem molforma_editing Qt6::Network)
+target_link_libraries(molforma_io PUBLIC molforma_model PRIVATE molforma_nwchem molforma_editing molforma_results Qt6::Network)
 
 # Preserve the convenient aggregate for applications/tests without hiding the internal graph.
 add_library(molforma_core INTERFACE)

@@ -4,59 +4,25 @@
 #include "foundation/i18n.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_execution.h"
+#include "nwchem/run_record.h"
 #include "results/results.h"
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
-#include <QJsonDocument>
 #include <QRegularExpression>
-#include <QSaveFile>
 #include <cmath>
 
 namespace mf {
 namespace {
 constexpr qint64 textLimit = 128 * 1024, projectLimit = 8 * 1024 * 1024;
-QByteArray bytes(const QString &directory, const QString &name, qint64 limit, bool tail = false) {
-    const auto path = QDir(directory).filePath(name);
-    const QFileInfo info(path);
-    if (info.isSymLink() || !info.isFile())
-        fail(tr("通常のファイルを指定してください: %1").arg(name));
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly))
-        fail(name + ": " + f.errorString());
-    if (!tail && f.size() > limit)
-        fail(tr("%1: 読込上限を超えています。").arg(name));
-    const bool truncated = tail && f.size() > limit;
-    if (truncated && !f.seek(f.size() - limit))
-        fail(tr("%1: 読込位置を設定できません。").arg(name));
-    auto data = f.read(limit + (tail ? 0 : 1));
-    if (f.error() != QFile::NoError)
-        fail(name + ": " + f.errorString());
-    if (!tail && data.size() > limit)
-        fail(tr("%1: 読込上限を超えています。").arg(name));
-    if (truncated)
-        data = tr("…末尾128 KiBを表示しています。\n").toUtf8() + data.mid(data.indexOf('\n') + 1);
-    return data;
-}
 QString digest(const QByteArray &b) {
     return QString::fromLatin1(QCryptographicHash::hash(b, QCryptographicHash::Sha256).toHex());
 }
+// The record of a job as the history takes it: checked whole.
 QJsonObject manifest(const QString &directory) {
-    auto m = parseJson(bytes(directory, "run.json", 256 * 1024));
-    if (m["format"] != "molforma-nwchem-run" || m["version"].toDouble() != 1)
-        fail(tr("未対応の実行記録です（MolForma NWChem version 1が必要です）。"));
-    const auto state = runStateFromKey(m["status"].toString());
-    if (state == RunState::Invalid)
-        fail(tr("実行状態が不明です。"));
-    if (state == RunState::Finished && (!m["exit_code"].isDouble() || m["exit_code"].toDouble() != 0))
-        fail(tr("終了状態と終了コードが一致しません。"));
-    for (auto pair : {qMakePair("input", "input.nw"), qMakePair("project", "project.molforma.json"),
-                      qMakePair("stdout", "output.out"), qMakePair("stderr", "stderr.err")})
-        if (m[pair.first] != pair.second)
-            fail(tr("実行記録のファイル名が未対応です。"));
-    return m;
+    return readRunRecord(directory, RecordCheck::Complete);
 }
 // error: why the file does not match its recorded digest.
 void checkDigest(const QByteArray &data, const QJsonObject &m, const QString &key, const QString &error) {
@@ -112,7 +78,7 @@ HistoryEntry readHistoryEntry(const QString &directory) {
     e.name = QFileInfo(e.directory).fileName();
     try {
         e.manifest = manifest(e.directory);
-        e.status = runStateFromKey(e.manifest["status"].toString());
+        e.status = RunRecord(e.manifest).state();
         e.created = QDateTime::fromString(e.manifest["created_at"].toString(), Qt::ISODateWithMs);
         if (!e.created.isValid())
             e.warnings << tr("作成日時を読めません。");
@@ -123,7 +89,7 @@ HistoryEntry readHistoryEntry(const QString &directory) {
         e.orphaned = runStateActive(e.status) && executionRunGone(e.manifest);
         auto calculation = e.manifest["calculation"].toObject();
         if (calculation.isEmpty()) {
-            const auto project = parseJson(bytes(e.directory, "project.molforma.json", projectLimit));
+            const auto project = parseJson(readJobFile(e.directory, JobFile::project, projectLimit));
             calculation = project["document"].toObject()["nwchem"].toObject();
             auto defaults = nwchemDefaults();
             for (auto i = calculation.begin(); i != calculation.end(); ++i)
@@ -147,7 +113,7 @@ HistoryEntry readHistoryEntry(const QString &directory) {
         e.formula = e.manifest["formula"].toString();
         if (e.formula.isEmpty())
             e.formula =
-                Document::fromProject(parseJson(bytes(e.directory, "project.molforma.json", projectLimit)))
+                Document::fromProject(parseJson(readJobFile(e.directory, JobFile::project, projectLimit)))
                     .formula();
     } catch (const std::exception &error) {
         e.warnings << QString::fromUtf8(error.what());
@@ -157,13 +123,13 @@ HistoryEntry readHistoryEntry(const QString &directory) {
     } catch (const std::exception &error) {
         e.warnings << QString::fromUtf8(error.what());
     }
-    if (const auto summary = e.manifest["summary"].toObject(); summary["energy"].isDouble()) {
-        e.energy = summary["energy"].toDouble();
-        e.energyMethod = summary["energy_method"].toString();
-    } else if (QFileInfo::exists(QDir(e.directory).filePath("output.out"))) {
+    if (const auto summary = RunRecord(e.manifest).summary(); summary.energy) {
+        e.energy = summary.energy;
+        e.energyMethod = summary.energyMethod;
+    } else if (QFileInfo::exists(jobFile(e.directory, JobFile::output))) {
         // Older records and unfinished runs: the last energy in the end of the log (whole lines only).
         try {
-            auto lines = bytes(e.directory, "output.out", textLimit, true).split('\n');
+            auto lines = readJobFile(e.directory, JobFile::output, textLimit, true).split('\n');
             lines.removeLast();
             NwchemLog log;
             for (const auto &line : std::as_const(lines))
@@ -211,38 +177,29 @@ QJsonObject nwchemLogSummary(const QString &path) {
 }
 void repairHistoryEntry(const QString &directory) {
     auto m = manifest(directory);
-    if (!runStateActive(runStateFromKey(m["status"].toString())) || !executionRunGone(m))
+    if (!runStateActive(RunRecord(m).state()) || !executionRunGone(m))
         fail(
             tr("実行中の可能性がある記録は修復できません（このPCで記録され、プロセスが終了したものだけ）。"));
-    m["status"] = runStateKey(RunState::Interrupted);
     m["repaired_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    RunEnd end{.state = RunState::Interrupted, .diagnose = false};
     // Stored in Japanese whatever the language; the history shows it through translated().
-    if (m["error"].toString().isEmpty())
-        m["error"] = QT_TR_NOOP("記録の更新前にMolFormaが終了し、計算のプロセスもありませんでした。");
-    try {
-        m["summary"] = nwchemLogSummary(QDir(directory).filePath("output.out"));
-    } catch (const std::exception &) {
-        m.remove("summary");
-    }
-    const auto path = QDir(directory).filePath("run.json");
-    if (QFileInfo(path).isSymLink())
-        fail(tr("実行記録がシンボリックリンクです。"));
-    QSaveFile file(path);
-    const auto bytes = QJsonDocument(m).toJson();
-    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
-        fail(tr("実行記録を保存できません: %1").arg(file.errorString()));
+    if (RunRecord(m).error().isEmpty())
+        end.error = QT_TR_NOOP("記録の更新前にMolFormaが終了し、計算のプロセスもありませんでした。");
+    // No one saw this run end: neither its time nor what its log says of a failure is recorded.
+    recordRunEnd(m, directory, end);
+    writeRunRecord(directory, m);
 }
 QString historyMemo(const QString &directory) {
-    if (!QFileInfo::exists(QDir(directory).filePath("memo.txt")))
+    if (!QFileInfo::exists(jobFile(directory, JobFile::memo)))
         return {};
-    return QString::fromUtf8(bytes(directory, "memo.txt", 4096)).trimmed();
+    return QString::fromUtf8(readJobFile(directory, JobFile::memo, 4096)).trimmed();
 }
 void setHistoryMemo(const QString &directory, const QString &text) {
     if (text.size() > 1000)
         fail(tr("メモは1000文字以内で入力してください。"));
     const auto m = manifest(directory); // Only MolForma job folders.
     Q_UNUSED(m);
-    const auto path = QDir(directory).filePath("memo.txt");
+    const auto path = jobFile(directory, JobFile::memo);
     if (QFileInfo(path).isSymLink())
         fail(tr("メモのファイルがシンボリックリンクです。"));
     if (text.trimmed().isEmpty()) {
@@ -252,7 +209,7 @@ void setHistoryMemo(const QString &directory, const QString &text) {
     writeFile(path, text.trimmed().toUtf8() + '\n');
 }
 HistoryMolecule historyMolecule(const QString &directory) {
-    const auto d = Document::fromProject(parseJson(bytes(directory, "project.molforma.json", projectLimit)));
+    const auto d = Document::fromProject(parseJson(readJobFile(directory, JobFile::project, projectLimit)));
     return {int(d.atoms.size()), d.charge, d.multiplicity};
 }
 QString historyIncomparable(const HistoryEntry &e, const HistoryEntry &reference) {
@@ -272,21 +229,22 @@ int historyJobCount(const QString &root, int limit) {
     QDirIterator it(root, QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
     int count = 0, examined = 0;
     while (it.hasNext() && count < limit && examined++ < 20000)
-        count += QFileInfo::exists(QDir(it.next()).filePath("run.json"));
+        count += QFileInfo::exists(jobFile(it.next(), JobFile::record));
     return count;
 }
 QString historyText(const QString &directory, const QString &name, bool tail) {
-    if (!QStringList{"input.nw", "output.out", "stderr.err", "run.json"}.contains(name))
+    if (!QStringList{JobFile::input, JobFile::output, JobFile::errors, JobFile::record}.contains(name))
         fail(tr("履歴で表示できないファイルです。"));
-    return QString::fromUtf8(bytes(directory, name, tail ? textLimit : projectLimit, tail));
+    return QString::fromUtf8(readJobFile(directory, name, tail ? textLimit : projectLimit, tail));
 }
 QString historyIntegrity(const HistoryEntry &e) {
     try {
         const auto m = manifest(e.directory);
-        checkDigest(bytes(e.directory, "input.nw", projectLimit), m, "input_sha256", inputMismatch());
+        checkDigest(readJobFile(e.directory, JobFile::input, projectLimit), m, "input_sha256",
+                    inputMismatch());
         if (!m.contains("project_sha256"))
             return tr("入力SHA-256一致。旧記録のためプロジェクトの照合情報なし。");
-        checkDigest(bytes(e.directory, "project.molforma.json", projectLimit), m, "project_sha256",
+        checkDigest(readJobFile(e.directory, JobFile::project, projectLimit), m, "project_sha256",
                     projectMismatch());
         return tr("入力・プロジェクトのSHA-256一致。");
     } catch (const std::exception &error) {
@@ -295,8 +253,8 @@ QString historyIntegrity(const HistoryEntry &e) {
 }
 Document historyDocument(const QString &directory) {
     const auto m = manifest(directory);
-    const auto input = bytes(directory, "input.nw", projectLimit);
-    const auto project = bytes(directory, "project.molforma.json", projectLimit);
+    const auto input = readJobFile(directory, JobFile::input, projectLimit);
+    const auto project = readJobFile(directory, JobFile::project, projectLimit);
     checkDigest(input, m, "input_sha256", inputMismatch());
     checkDigest(project, m, "project_sha256", projectMismatch());
     auto d = Document::fromProject(parseJson(project));
@@ -335,7 +293,7 @@ void trashHistoryEntry(const QString &directory, const QString &root, const QStr
         QFileInfo(info.absolutePath()).canonicalFilePath() != QFileInfo(root).canonicalFilePath())
         fail(tr("このジョブフォルダーはごみ箱へ移動できません。"));
     const auto m = manifest(directory);
-    if (runStateActive(runStateFromKey(m["status"].toString())) && !executionProcessGone(m))
+    if (runStateActive(RunRecord(m).state()) && !executionProcessGone(m))
         fail(tr("稼働未確認・実行中のジョブは移動できません。"));
     if (!QFile::moveToTrash(directory))
         fail(tr("ごみ箱へ移動できません。保存先を確認してください。"));
@@ -399,8 +357,8 @@ void HistoryScan::cancel() {
 // the same while they stay as they are.
 static QString entryStamp(const QString &directory) {
     QString stamp;
-    for (const auto *name : {"run.json", "memo.txt", "output.out", "project.molforma.json"}) {
-        const QFileInfo f(QDir(directory).filePath(name));
+    for (const auto *name : {JobFile::record, JobFile::memo, JobFile::output, JobFile::project}) {
+        const QFileInfo f(jobFile(directory, name));
         stamp += f.exists() ? QString("%1 %2 %3;")
                                   .arg(f.size())
                                   .arg(f.lastModified().toMSecsSinceEpoch())
@@ -430,7 +388,7 @@ void HistoryScan::step() {
         }
         const auto directory = iterator->next();
         ++examined;
-        if (!QFileInfo::exists(QDir(directory).filePath("run.json")))
+        if (!QFileInfo::exists(jobFile(directory, JobFile::record)))
             continue;
         // A job that has ended and whose files are unchanged since the last scan is not read again;
         // an active one is, since whether its process still runs can change.

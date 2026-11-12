@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/remote_hosts_dialog.h"
+#include "nwchem/execution_environment.h"
 #include "ui/editor_chrome.h"
 #include <QtWidgets>
 
@@ -205,7 +206,8 @@ RemoteHostsDialog::RemoteHostsDialog(const QString &program, const QString &mpiL
         probeResult->setProperty("good", false);
         repolish(probeResult);
         probeResult->setText(tr("%1 に接続しています…").arg(hosts[current].host));
-        prober.start(hosts[current], executable, launcher);
+        // As a job script prepares NWChem there: with the preparation lines saved in Preferences.
+        prober.start(hosts[current], executionJobPrelude(), executable, launcher);
     });
     connect(&prober, &RemoteProbe::finished, this, [this](bool ok, const QString &report) {
         probe->setEnabled(current >= 0);

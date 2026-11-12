@@ -107,6 +107,9 @@ struct NwchemSettingSpec {
     NwchemScope scope = NwchemScope::Always;
     // Structural settings (charge, multiplicity) are fields of the Document, not of its NWChem settings.
     bool structural = false, allowDisable = false, validateUnused = true, preset = true;
+    // The value holds atom IDs. The project adapter keeps such a setting when atoms are removed or
+    // renamed (project/atom_references.h, which lists the same settings: nwchemAtomReferenceKeys).
+    bool atomReferences = false;
     QVector<NwchemChoice> choices{}; // Source-language labels, translated only at the UI boundary.
 };
 const QVector<NwchemSettingSpec> &nwchemSettingSpecs();
@@ -117,6 +120,23 @@ bool nwchemSettingEditable(const NwchemSettingSpec &spec, const QJsonObject &set
 QJsonValue nwchemSettingValue(const Document &document, const QJsonObject &settings, const QString &key);
 // These edit only the named field; unknown fields and the project envelope are preserved.
 void setNwchemSetting(Document &document, const QString &key, const QJsonValue &value);
+// A site cut out as the model of a calculation (cutOutSite, editing/site.h): the calculation includes the
+// point charges that the cut leaves, so "include_point_charges" goes on when it added some. Returns the
+// hydrogens added at the cuts.
+struct SiteCutOptions;
+Ids cutOutNwchemSite(Document &document, const Ids &kept, const SiteCutOptions &options);
+// The same with a site of another structure (a file too large to open as a document): the site cut out of
+// `structure` replaces the structure of the document, whose calculation settings stay. The total charge is
+// the site's, and so are the point charges when the options ask for them.
+void replaceWithNwchemSite(Document &document, Document structure, const Ids &kept,
+                           const SiteCutOptions &options);
+// The longest name of a calculation ("start", the prefix of NWChem's files).
+inline constexpr int MaximumNwchemNameLength = 64;
+// Makes the document a calculation derived from the one it describes (a transition-state search from a
+// point of its path, a step of a chain): another task under its name with a suffix ("_ts", "_irc"). A
+// name too long for the suffix is cut at MaximumNwchemNameLength, or with keepLongName stays as it was.
+void deriveNwchemCalculation(Document &document, const QString &task, const QString &suffix,
+                             bool keepLongName = false);
 struct NwchemValidation : ValidationReport {
     int electrons = 0, alpha = 0, beta = 0, ecpElectrons = 0, frozenOrbitals = 0;
     QString reference;
@@ -207,10 +227,22 @@ QJsonObject nwchemNebEndSetting(const Document &document, const Document &end, b
 // The beads of NEB's first path (NWChem interpolates the start and the end linearly in Cartesian
 // coordinates), with both ends.
 QVector<Document> nwchemNebInitialPath(const Document &start, const Document &end, int beads);
-// Why a section of "2 計算条件" takes no part in the current calculation ("最適化のみ"), or empty
-// when it does. Sections: "path" (IRC・座標スキャン・NEB), "constraints", "optimization" (最適化・振動数),
-// "followup", "bsse" and "excited" (TDDFT); the others always take part.
-QString nwchemSectionUnused(const Document &document, const QString &section);
+// The sections of "2 計算条件" that take part only in some calculations; the others always take part.
+// The calculation panel names the cards of these sections by nwchemSectionKey: "path"
+// (IRC・座標スキャン・NEB), "constraints", "optimization" (最適化・振動数), "followup", "bsse" and
+// "excited" (TDDFT).
+enum class NwchemSection { Path, Constraints, Optimization, Followup, Bsse, Excited };
+QString nwchemSectionKey(NwchemSection section);
+// The section of a key; nothing for a key of none of them (a section that always takes part).
+std::optional<NwchemSection> nwchemSectionFromKey(const QString &key);
+// Whether a section takes part in the current calculation and, when it does not, what it is for
+// where that says more than that it is not used ("最適化のみ", translated; empty otherwise).
+struct NwchemSectionUse {
+    bool used = true;
+    QString reason;
+    bool operator==(const NwchemSectionUse &) const = default;
+};
+NwchemSectionUse nwchemSectionUse(const Document &document, NwchemSection section);
 QString nwchemInput(const Document &document);
 // A top-level directive or block of a generated input, and where it is set.
 struct NwchemInputBlock {

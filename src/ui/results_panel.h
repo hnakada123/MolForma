@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "results/result_loader.h"
+#include "results/result_path.h"
 #include "results/result_presentation.h"
 #include "results/result_summary.h"
 #include "ui/editor_context.h"
@@ -145,6 +146,7 @@ class ResultsPanel : public QWidget {
     QTableWidget *energy, *orbitals, *modes, *steps, *excitations, *path, *atomProperties;
     QPushButton *pathHighest, *pathSaddle; // Under the path: its highest point, and a saddle search there.
     QLabel *pathNote;
+    ResultPath shownPath; // The path listed in the table `path`, a row for each of its points.
     // The orbital pairs of the chosen excited state, and the bond indices of a Mulliken analysis.
     QTableWidget *contributions, *bondIndices, *couplings;
     QWidget *contributionsBlock, *bondBlock, *couplingBlock;

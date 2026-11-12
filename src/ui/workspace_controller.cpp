@@ -5,6 +5,7 @@
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_restart.h"
 #include "nwchem/result_files.h"
+#include "nwchem/run_record.h"
 #include "ui/execution_panel.h"
 #include "ui/history_panel.h"
 #include "ui/main_window.h"
@@ -53,8 +54,8 @@ void WorkspaceController::reuse(const QString &directory) {
 }
 void WorkspaceController::restart(const QString &directory, const QString &mode) {
     window.checkMcpPath(directory);
-    for (const auto *file : {"run.json", "project.molforma.json", "input.nw", "output.out"})
-        window.checkMcpPath(QDir(directory).filePath(file));
+    for (const auto *file : {JobFile::record, JobFile::project, JobFile::input, JobFile::output})
+        window.checkMcpPath(jobFile(directory, file));
     if (window.hasCandidate() || window.chemistryRunning())
         fail(tr("候補を確定・取消し、整形の終了後に準備してください。"));
     const auto next = mode == "orbitals" ? orbitalReuseDocument(directory) : restartDocument(directory, mode);
@@ -101,15 +102,12 @@ void WorkspaceController::prepareRecalculation(const QString &directory, const D
     if (window.hasCandidate() || window.chemistryRunning() || execution.running())
         fail(tr("候補・分子処理・実行中の計算を終了してから再計算を準備してください。"));
     window.checkMcpPath(directory);
-    for (const auto *file : {"run.json", "project.molforma.json", "input.nw"})
-        window.checkMcpPath(QDir(directory).filePath(file));
+    for (const auto *file : {JobFile::record, JobFile::project, JobFile::input})
+        window.checkMcpPath(jobFile(directory, file));
     auto original = historyDocument(directory);
-    if (!task.isEmpty()) {
-        // Another calculation from a point of the path: the task, under a name of its own.
-        setNwchemSetting(original, "task", task);
-        if (const auto name = nwchemSettings(original)["start"].toString() + "_ts"; name.size() <= 64)
-            setNwchemSetting(original, "start", name);
-    }
+    // Another calculation from a point of the path: the task, under a name of its own where that fits.
+    if (!task.isEmpty())
+        deriveNwchemCalculation(original, task, "_ts", true);
     auto candidate = original;
     applyResultGeometry(candidate, geometry); // Check atom order and fixed atoms before replacing anything.
     if (!window.replaceUnsavedDocument(original))

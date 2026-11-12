@@ -180,10 +180,11 @@ void validateNwchemOutput(const Document &d, NwchemValidation &v) {
                     tr("CUBE・MOLDENと出力movecsには別のファイル名を指定してください。"));
     v.errors.removeDuplicates();
 }
-NwchemGeneratedInput nwchemOutputLines(const Document &d, const NwchemValidation &v) {
+void nwchemOutputLines(NwchemInputBuilder &out, NwchemTaskCursor &tasks, const Document &d,
+                       const NwchemValidation &v) {
     const auto a = nwchemAdvanced(d), s = nwchemSettings(d);
     if (!a["cube_output"].toBool() && !a["molden_output"].toBool())
-        return {};
+        return;
     const NwchemCalculation calculation(s);
     const auto theory = calculation.dft() ? QString("dft") : QString("scf");
     // DPLOT resolves the same vector path repeatedly for orbital views. Explicit ./ or absolute
@@ -191,15 +192,12 @@ NwchemGeneratedInput nwchemOutputLines(const Document &d, const NwchemValidation
     auto vectors = nwchemPermanentFile(d, a["vectors_output"].toString(s["start"].toString() + ".movecs"));
     if (!QDir::isAbsolutePath(vectors))
         vectors.prepend("./");
-    NwchemInputBuilder out;
-    const auto tasks = nwchemOutputTasks(d);
-    int task = 0;
     out.append("\n# Visualization of the " + theory + " reference orbitals\n");
     if (calculation.frequencies())
-        out.advancedBlock("task", tasks[task++] + '\n', {"molden_output", "cube_output"}, "visualization");
-    const bool properties = s["prop_mulliken"].toBool() || s["prop_nmr"].toBool() ||
-                            s["prop_polarizability"].toBool() || s["prop_epr"].toBool() ||
-                            s["prop_esp_grid"].toBool() || s["prop_efield_grid"].toBool();
+        out.advancedTask(tasks, NwchemTaskPhase::Output, {"molden_output", "cube_output"}, "visualization");
+    // The property blocks of the tasks before these: MOLDEN output clears their requests first.
+    const bool properties = !tasks.plan.commands(NwchemTaskPhase::Properties).isEmpty() ||
+                            !tasks.plan.commands(NwchemTaskPhase::Grids).isEmpty();
     if (a["molden_output"].toBool()) {
         if (properties)
             out.advancedBlock("unset", "\nunset prop:*\n", {"molden_output"}, "visualization");
@@ -211,7 +209,7 @@ NwchemGeneratedInput nwchemOutputLines(const Document &d, const NwchemValidation
                      {"molden_output", "molden_norm"}, true);
         body.sourced("end\n", {"molden_output"}, true);
         out.block("property", body.result, {}, "visualization");
-        out.advancedBlock("task", tasks[task++] + '\n', {"molden_output"}, "visualization");
+        out.advancedTask(tasks, NwchemTaskPhase::Output, {"molden_output"}, "visualization");
     }
     if (a["cube_output"].toBool()) {
         NwchemInputBuilder body;
@@ -260,8 +258,7 @@ NwchemGeneratedInput nwchemOutputLines(const Document &d, const NwchemValidation
         body.sourced("  gaussian\n  output " + cubeName(d, v) + "\nend\n", {"cube_output", "cube_filename"},
                      true);
         out.block("dplot", body.result, {}, "visualization");
-        out.advancedBlock("task", tasks[task++] + '\n', {"cube_output"}, "visualization");
+        out.advancedTask(tasks, NwchemTaskPhase::Output, {"cube_output"}, "visualization");
     }
-    return out.result;
 }
 } // namespace mf

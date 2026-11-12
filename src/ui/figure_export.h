@@ -6,6 +6,7 @@
 #include <functional>
 class QWidget;
 namespace mf {
+class UiServices;
 // The background of a picture of the 3D view: as on the screen, white, or transparent (PNG, GIF).
 enum class ImageBackground { Screen, White, Transparent };
 // A picture of the 3D view: the size of the view times `scale` (whole numbers, so that VTK can render
@@ -14,8 +15,9 @@ struct ImageOptions {
     int scale = 2;
     ImageBackground background = ImageBackground::Screen;
 };
-// Asks for the options of a picture of a view of this size (remembered in the application's settings).
-bool imageOptionsDialog(QWidget *parent, const QSize &view, ImageOptions &options);
+// Asks for the options of a picture of a view of this size. The scale and background chosen last come
+// from the preferences of `services` and go back there when the dialog is accepted.
+bool imageOptionsDialog(QWidget *parent, UiServices &services, const QSize &view, ImageOptions &options);
 // A series of pictures: "gif" (an animated GIF, written by MolForma), "mp4" (H.264 through the ffmpeg
 // program found in PATH) or "png" (numbered PNG files in a folder). bounce plays the frames forward and
 // back, so that a path or a vibration loops without a jump.
@@ -28,8 +30,10 @@ struct AnimationOptions {
 };
 // The ffmpeg program in PATH, or empty.
 QString ffmpegExecutable();
-bool animationOptionsDialog(QWidget *parent, const QSize &view, AnimationOptions &options, double fps,
-                            bool bounce);
+// The format, scale and background are remembered like those of a picture; fps and bounce are the
+// caller's.
+bool animationOptionsDialog(QWidget *parent, UiServices &services, const QSize &view,
+                            AnimationOptions &options, double fps, bool bounce);
 // Writes `count` frames (frame(i) gives the picture of frame i) to `target`: the file of a GIF or MP4,
 // or the folder of PNG files (named prefix_0001.png, ...). Shows its progress and can be cancelled;
 // returns false then. Fails with the reason.

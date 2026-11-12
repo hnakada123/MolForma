@@ -4,6 +4,8 @@
 #include <array>
 
 namespace mf {
+class NwchemInputBuilder;
+class NwchemTaskCursor;
 struct NwchemCubeGrid {
     std::array<double, 3> minimum{}, maximum{};
     std::array<int, 3> divisions{};
@@ -22,5 +24,7 @@ QString nwchemPermanentFile(const Document &document, const QString &name);
 NwchemCubeGrid nwchemCubeGrid(const Document &document);
 void validateNwchemOutput(const Document &document, NwchemValidation &validation);
 QStringList nwchemOutputFiles(const Document &document, const NwchemValidation &validation);
-NwchemGeneratedInput nwchemOutputLines(const Document &document, const NwchemValidation &validation);
+// Writes the blocks of the CUBE/MOLDEN output with their tasks, the plan's next ones (phase Output).
+void nwchemOutputLines(NwchemInputBuilder &out, NwchemTaskCursor &tasks, const Document &document,
+                       const NwchemValidation &validation);
 } // namespace mf

@@ -3,11 +3,9 @@
 #include "editing/peptide.h"
 #include "foundation/i18n.h"
 #include "model/geometry.h"
-#include "model/settings.h"
 #include "ui/bond_style.h"
 #include "ui/theme.h"
 #include <Eigen/Geometry>
-#include <QSettings>
 #include <limits>
 #include <openbabel/elements.h>
 #ifdef MOLFORMA_HAS_VTK
@@ -58,7 +56,10 @@ void MoleculeView::configureDefaultSurfaceFormat() {
     QSurfaceFormat::setDefaultFormat(format);
 #endif
 }
-MoleculeView::MoleculeView(QWidget *parent) : QWidget(parent) {
+RendererChoice rendererChoice(const QVariant &stored) {
+    return stored.toString() == "painter" ? RendererChoice::Painter : RendererChoice::Automatic;
+}
+MoleculeView::MoleculeView([[maybe_unused]] RendererChoice choice, QWidget *parent) : QWidget(parent) {
     setObjectName("moleculeView");
     setFocusPolicy(Qt::StrongFocus);
     setAcceptDrops(true);
@@ -68,10 +69,7 @@ MoleculeView::MoleculeView(QWidget *parent) : QWidget(parent) {
 #ifdef MOLFORMA_HAS_VTK
     const auto platform = QApplication::platformName();
     if (qEnvironmentVariable("MOLFORMA_RENDERER").toLower() != "painter" &&
-        QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
-                .value("view/renderer")
-                .toString() != "painter" &&
-        platform != "offscreen" && platform != "minimal") {
+        choice != RendererChoice::Painter && platform != "offscreen" && platform != "minimal") {
         // Probe before adding an OpenGL widget to the top-level window's composition path.
         QOpenGLContext context;
         context.setFormat(QVTKOpenGLNativeWidget::defaultFormat());

@@ -10,4 +10,9 @@ namespace mf::project {
 // needs to duplicate this traversal. No dependency on Document or an execution engine.
 void removeAtomReferences(QJsonObject &data, const QStringList &removed);
 void renameAtomReferences(QJsonObject &data, const QHash<QString, QString> &renamed);
+// The settings of "nwchem" that the two functions adapt, in their order here: every setting that holds
+// atom IDs. A setting that is not listed keeps the IDs of removed and renamed atoms, so the
+// specifications of the settings mark the same ones (NwchemSettingSpec::atomReferences; a test
+// compares the two, since this layer knows no calculation code).
+QStringList nwchemAtomReferenceKeys();
 } // namespace mf::project

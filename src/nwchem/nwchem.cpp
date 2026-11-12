@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "nwchem/nwchem.h"
+#include "editing/coordinates.h"
+#include "editing/site.h"
 #include "foundation/i18n.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_catalog.h"
@@ -73,27 +75,53 @@ QString nwchemScfThreshold(const QJsonObject &s) {
            : convergence == "tight"  ? "1e-7"
                                      : "1e-9";
 }
-QString nwchemSectionUnused(const Document &d, const QString &section) {
+QString nwchemSectionKey(NwchemSection section) {
+    switch (section) {
+    case NwchemSection::Path:
+        return "path";
+    case NwchemSection::Constraints:
+        return "constraints";
+    case NwchemSection::Optimization:
+        return "optimization";
+    case NwchemSection::Followup:
+        return "followup";
+    case NwchemSection::Bsse:
+        return "bsse";
+    case NwchemSection::Excited:
+        return "excited";
+    }
+    return {};
+}
+std::optional<NwchemSection> nwchemSectionFromKey(const QString &key) {
+    for (const auto section : {NwchemSection::Path, NwchemSection::Constraints, NwchemSection::Optimization,
+                               NwchemSection::Followup, NwchemSection::Bsse, NwchemSection::Excited})
+        if (nwchemSectionKey(section) == key)
+            return section;
+    return std::nullopt;
+}
+NwchemSectionUse nwchemSectionUse(const Document &d, NwchemSection section) {
     // As the scopes of the section's settings: a section takes part when one of them does.
     const auto s = nwchemSettings(d);
     const auto applies = [&](NwchemScope scope) { return nwchemScopeApplies(scope, s, &d); };
-    if (section == "path")
-        return applies(NwchemScope::Irc) || applies(NwchemScope::Scan) || applies(NwchemScope::Neb)
-                   ? QString()
-                   : tr("使わない");
-    if (section == "constraints")
-        return applies(NwchemScope::Driver) ? QString() : tr("最適化のみ");
-    if (section == "optimization")
-        return applies(NwchemScope::DriverOrIrc) || applies(NwchemScope::Frequency) ? QString()
-                                                                                    : tr("使わない");
-    if (section == "followup")
-        return applies(NwchemScope::Optimization) ? QString() : tr("最適化のみ");
-    if (section == "bsse")
-        return bsseMonomers(d).size() >= 2 ? QString() : tr("単量体なし");
-    if (section == "excited")
-        return !NwchemCalculation(s).dft()            ? tr("DFTのみ")
-               : !applies(NwchemScope::ExcitedToggle) ? tr("一点・最適化")
-                                                      : QString();
+    // Used, or not used for a reason (none: there is no more to say).
+    const auto use = [](bool used, const QString &reason = {}) {
+        return NwchemSectionUse{used, used ? QString() : reason};
+    };
+    switch (section) {
+    case NwchemSection::Path:
+        return use(applies(NwchemScope::Irc) || applies(NwchemScope::Scan) || applies(NwchemScope::Neb));
+    case NwchemSection::Constraints:
+        return use(applies(NwchemScope::Driver), tr("最適化のみ"));
+    case NwchemSection::Optimization:
+        return use(applies(NwchemScope::DriverOrIrc) || applies(NwchemScope::Frequency));
+    case NwchemSection::Followup:
+        return use(applies(NwchemScope::Optimization), tr("最適化のみ"));
+    case NwchemSection::Bsse:
+        return use(bsseMonomers(d).size() >= 2, tr("単量体なし"));
+    case NwchemSection::Excited:
+        return !NwchemCalculation(s).dft() ? use(false, tr("DFTのみ"))
+                                           : use(applies(NwchemScope::ExcitedToggle), tr("一点・最適化"));
+    }
     return {};
 }
 QJsonObject nwchemDefaults() {
@@ -202,6 +230,12 @@ const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
         spec.preset = false;
         return spec;
     };
+    // Atom IDs: the settings that the project adapter follows through removals and renamings.
+    const auto atoms = [](NwchemSettingSpec spec) {
+        spec.atomReferences = true;
+        spec.preset = false;
+        return spec;
+    };
     // Ranges of path settings are checked when the path is used; type checks always apply.
     const auto whenUsed = [](NwchemSettingSpec spec) {
         spec.validateUnused = false;
@@ -246,22 +280,22 @@ const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
             {"dielectric", Kind::Real, 78.4, 1, 1000, 4, Scope::Dielectric},
             {"include_point_charges", Kind::Flag, false},
             // Atom IDs, charge and multiplicity of each fragment of an initial guess.
-            project({"fragment_guess", Kind::Array, QJsonArray()}),
+            atoms({"fragment_guess", Kind::Array, QJsonArray()}),
             disableable({"tddft", Kind::Flag, false, 0, 0, 0, Scope::ExcitedToggle}),
             {"tddft_roots", Kind::Integer, 10, 1, 100, 0, Scope::Excited},
             {"tddft_triplets", Kind::Flag, false, 0, 0, 0, Scope::Excited},
             {"tddft_tda", Kind::Flag, false, 0, 0, 0, Scope::Excited},
             {"tddft_cdspectrum", Kind::Flag, false, 0, 0, 0, Scope::Excited},
             {"tddft_root", Kind::Integer, 1, 1, 100, 0, Scope::ExcitedOptimization},
-            project({"constraints", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Driver}),
-            project({"scan_atoms", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Scan}),
+            atoms({"constraints", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Driver}),
+            atoms({"scan_atoms", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Scan}),
             whenUsed(project({"scan_start", Kind::Real, 1.0, -180, 180, 4, Scope::Scan})),
             whenUsed(project({"scan_end", Kind::Real, 2.0, -180, 180, 4, Scope::Scan})),
             // Checked only for scans: a range of points that other tasks do not use.
             whenUsed({"scan_steps", Kind::Integer, 6, 2, 50, 0, Scope::Scan}),
             {"scan_relaxed", Kind::Flag, true, 0, 0, 0, Scope::Scan},
             // The second coordinate of a two-dimensional scan (none: one-dimensional).
-            project({"scan2_atoms", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Scan}),
+            atoms({"scan2_atoms", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Scan}),
             whenUsed(project({"scan2_start", Kind::Real, 1.0, -180, 180, 4, Scope::Scan2})),
             whenUsed(project({"scan2_end", Kind::Real, 2.0, -180, 180, 4, Scope::Scan2})),
             whenUsed({"scan2_steps", Kind::Integer, 6, 2, 50, 0, Scope::Scan2}),
@@ -273,7 +307,7 @@ const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
             {"neb_maxiter", Kind::Integer, 50, 1, 10000, 0, Scope::Neb},
             whenUsed({"neb_stepsize", Kind::Real, .1, .001, 10, 3, Scope::Neb}),
             // The end of the path: atom positions by atom ID, kept with the atoms of the project.
-            whenUsed(project({"neb_end", Kind::Object, QJsonObject(), 0, 0, 0, Scope::Neb})),
+            whenUsed(atoms({"neb_end", Kind::Object, QJsonObject(), 0, 0, 0, Scope::Neb})),
             {"bsse", Kind::Flag, false},
             disableable({"followup", Kind::Flag, false, 0, 0, 0, Scope::Optimization}),
             {"followup_method", Kind::Choice, "dft", 0, 0, 0, Scope::Followup},
@@ -433,6 +467,32 @@ void setNwchemSetting(Document &d, const QString &key, const QJsonValue &value) 
         settings[key] = value;
         d.data["nwchem"] = settings;
     }
+}
+// The point charges an edit added (the charged groups around a site) belong to the calculation.
+static void includeAddedPointCharges(Document &d, qsizetype before, qsizetype after) {
+    if (after > before)
+        setNwchemSetting(d, "include_point_charges", true);
+}
+Ids cutOutNwchemSite(Document &d, const Ids &kept, const SiteCutOptions &options) {
+    const auto before = d.pointCharges.size();
+    const auto added = cutOutSite(d, kept, options);
+    includeAddedPointCharges(d, before, d.pointCharges.size());
+    return added;
+}
+void replaceWithNwchemSite(Document &d, Document structure, const Ids &kept, const SiteCutOptions &options) {
+    const auto before = structure.pointCharges.size();
+    cutOutSite(structure, kept, options);
+    replaceCoordinateStructure(d, structure);
+    d.charge = structure.charge;
+    if (options.charges)
+        d.pointCharges = structure.pointCharges;
+    includeAddedPointCharges(d, before, structure.pointCharges.size());
+}
+void deriveNwchemCalculation(Document &d, const QString &task, const QString &suffix, bool keepLongName) {
+    setNwchemSetting(d, "task", task);
+    const auto name = nwchemSettings(d)["start"].toString() + suffix;
+    if (!keepLongName || name.size() <= MaximumNwchemNameLength)
+        setNwchemSetting(d, "start", name.left(MaximumNwchemNameLength));
 }
 QVector<NwchemChoice> nwchemChoices(const QString &key) {
     QVector<NwchemChoice> result;

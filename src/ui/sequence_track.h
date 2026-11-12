@@ -4,10 +4,10 @@
 #include <QFrame>
 #include <QSet>
 class QLabel;
-class QSettings;
 class QToolButton;
 namespace mf {
 class ElidedLabel;
+class UiServices;
 
 // One entry of the sequence row: a residue (amino acids and nucleotides as their one-letter code,
 // other residues as a tag with their name), the waters of a chain as one tag, a gap where the
@@ -103,11 +103,12 @@ class SequenceStrip : public QWidget {
 };
 
 // "配列" between the options of the tool and the 3D view: the chain in sight (a menu of the chains),
-// the strip, the choice of one- or three-letter codes and folding it into a line with the counts.
+// the strip, the choice of one- or three-letter codes and folding it into a line with the counts
+// (remembered in the preferences).
 class SequenceTrack : public QFrame {
     Q_OBJECT
   public:
-    SequenceTrack(QSettings &settings, QWidget *parent = nullptr);
+    SequenceTrack(UiServices &uiContext, QWidget *parent = nullptr);
     // Shown while the document has residues.
     void setDocument(const Document &document);
     void setSelection(const Ids &atoms);
@@ -122,7 +123,7 @@ class SequenceTrack : public QFrame {
     void selectionRequested(mf::Ids atoms);
 
   private:
-    QSettings &settings;
+    UiServices &uiContext;
     SequenceStrip *sequence = nullptr;
     QToolButton *chainButton = nullptr, *lettersButton = nullptr, *collapseButton = nullptr;
     ElidedLabel *summary = nullptr;

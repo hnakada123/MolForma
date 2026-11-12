@@ -3,6 +3,7 @@
 #include "foundation/i18n.h"
 #include "model/geometry.h"
 #include "model/units.h"
+#include "results/result_properties.h"
 #include "results/result_summary.h"
 #include <QUuid>
 #include <algorithm>
@@ -91,19 +92,20 @@ double eyringRate(double barrier, double temperature) {
     return BoltzmannConstant * temperature / PlanckConstant * boltzmannFactor(barrier, temperature);
 }
 QJsonObject energyRecord(const ResultData &r, const Document &original, const QJsonObject &settings) {
-    const auto final = r.properties["final_energy"].toObject();
-    const double energy = number(final, "hartree");
+    const auto final = resultFinalEnergy(r).value_or(ResultFinalEnergy());
+    const double energy = number(final.stored, "hartree");
     QJsonObject composition;
     for (const auto &a : original.atoms) {
         if (a.ghost)
             fail(tr("ゴースト中心を含む計算は反応エネルギー比較に登録できません。"));
         composition[a.element] = composition[a.element].toInt() + 1;
     }
-    const auto geometry = (final["source"] == "frequency_reference" || r.properties.contains("raman")) &&
-                                  !r.vibrationGeometry.atoms.isEmpty()
-                              ? r.vibrationGeometry
-                          : r.frames.isEmpty() ? original
-                                               : r.frames.last().molecule;
+    const auto geometry =
+        (final.source == ResultEnergySource::FrequencyReference || r.properties.contains("raman")) &&
+                !r.vibrationGeometry.atoms.isEmpty()
+            ? r.vibrationGeometry
+        : r.frames.isEmpty() ? original
+                             : r.frames.last().molecule;
     // What NWChem's thermochemistry sums over (vib_wrtfreq.F): its scale factor (vib:scalefreq) times
     // every projected frequency, if above 0.1 cm⁻¹. That leaves out imaginary modes and the
     // translations and rotations, which are left out here by their kind too.
@@ -119,7 +121,7 @@ QJsonObject energyRecord(const ResultData &r, const Document &original, const QJ
         {"name", settings["start"]},
         {"source", r.source},
         {"energy_hartree", energy},
-        {"energy_source", final},
+        {"energy_source", final.stored},
         {"settings", settings},
         {"composition", composition},
         {"charge", original.charge},

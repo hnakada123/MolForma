@@ -3,6 +3,7 @@
 #include "foundation/i18n.h"
 #include "model/document.h"
 #include "model/settings.h"
+#include "ui/editor_context.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
@@ -20,7 +21,6 @@
 #include <QProcess>
 #include <QProgressDialog>
 #include <QPushButton>
-#include <QSettings>
 #include <QSpinBox>
 #include <QStandardItemModel>
 #include <QStandardPaths>
@@ -34,9 +34,6 @@
 
 namespace mf {
 namespace {
-QSettings preferences() {
-    return QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma");
-}
 ImageBackground backgroundOf(const QString &key) {
     return key == "white"         ? ImageBackground::White
            : key == "transparent" ? ImageBackground::Transparent
@@ -68,17 +65,17 @@ QSpinBox *scaleChoice(const QSize &view, int chosen, int most) {
     return spin;
 }
 } // namespace
-bool imageOptionsDialog(QWidget *parent, const QSize &view, ImageOptions &options) {
-    auto settings = preferences();
+bool imageOptionsDialog(QWidget *parent, UiServices &services, const QSize &view, ImageOptions &options) {
     QDialog dialog(parent);
     dialog.setObjectName("imageOptionsDialog");
     dialog.setWindowTitle(tr("3D画面の画像"));
     auto *layout = new QVBoxLayout(&dialog);
     auto *form = new QFormLayout;
     layout->addLayout(form);
-    auto *scale = scaleChoice(view, settings.value("export/image_scale", 2).toInt(), 8);
+    auto *scale = scaleChoice(view, services.preference(Preference::imageScale, 2).toInt(), 8);
     form->addRow(tr("倍率（画面の大きさに対して）"), scale);
-    auto *background = backgroundChoice(backgroundOf(settings.value("export/image_background").toString()));
+    auto *background =
+        backgroundChoice(backgroundOf(services.preference(Preference::imageBackground).toString()));
     form->addRow(tr("背景"), background);
     auto *size = new QLabel;
     size->setObjectName("figureSize");
@@ -103,16 +100,15 @@ bool imageOptionsDialog(QWidget *parent, const QSize &view, ImageOptions &option
         return false;
     options.scale = scale->value();
     options.background = backgroundOf(background->currentData().toString());
-    settings.setValue("export/image_scale", options.scale);
-    settings.setValue("export/image_background", backgroundKey(options.background));
+    services.setPreference(Preference::imageScale, options.scale);
+    services.setPreference(Preference::imageBackground, backgroundKey(options.background));
     return true;
 }
 QString ffmpegExecutable() {
     return QStandardPaths::findExecutable("ffmpeg");
 }
-bool animationOptionsDialog(QWidget *parent, const QSize &view, AnimationOptions &options, double fps,
-                            bool bounce) {
-    auto settings = preferences();
+bool animationOptionsDialog(QWidget *parent, UiServices &services, const QSize &view,
+                            AnimationOptions &options, double fps, bool bounce) {
     QDialog dialog(parent);
     dialog.setObjectName("animationOptionsDialog");
     dialog.setWindowTitle(tr("動画・連番画像"));
@@ -128,14 +124,14 @@ bool animationOptionsDialog(QWidget *parent, const QSize &view, AnimationOptions
     if (auto *items = qobject_cast<QStandardItemModel *>(format->model()); items && !ffmpeg)
         items->item(1)->setEnabled(false);
     format->setCurrentIndex(
-        std::max(0, format->findData(settings.value("export/animation_format", "gif").toString())));
+        std::max(0, format->findData(services.preference(Preference::animationFormat, "gif").toString())));
     if (!ffmpeg && format->currentData() == "mp4")
         format->setCurrentIndex(0);
     form->addRow(tr("形式"), format);
-    auto *scale = scaleChoice(view, settings.value("export/animation_scale", 1).toInt(), 4);
+    auto *scale = scaleChoice(view, services.preference(Preference::animationScale, 1).toInt(), 4);
     form->addRow(tr("倍率（画面の大きさに対して）"), scale);
     auto *background =
-        backgroundChoice(backgroundOf(settings.value("export/animation_background").toString()));
+        backgroundChoice(backgroundOf(services.preference(Preference::animationBackground).toString()));
     form->addRow(tr("背景"), background);
     auto *rate = new QDoubleSpinBox;
     rate->setObjectName("animationFps");
@@ -180,9 +176,9 @@ bool animationOptionsDialog(QWidget *parent, const QSize &view, AnimationOptions
     options.background = backgroundOf(background->currentData().toString());
     options.fps = rate->value();
     options.bounce = back->isChecked();
-    settings.setValue("export/animation_format", options.format);
-    settings.setValue("export/animation_scale", options.scale);
-    settings.setValue("export/animation_background", backgroundKey(options.background));
+    services.setPreference(Preference::animationFormat, options.format);
+    services.setPreference(Preference::animationScale, options.scale);
+    services.setPreference(Preference::animationBackground, backgroundKey(options.background));
     return true;
 }
 bool writeAnimation(QWidget *parent, const QString &target, const QString &prefix,

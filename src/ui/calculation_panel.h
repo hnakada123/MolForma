@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
+#include "nwchem/nwchem.h"
 #include "nwchem/nwchem_advanced.h"
 #include "results/result_loader.h"
 #include "ui/editor_context.h"
@@ -83,6 +84,8 @@ class CalculationPanel : public QWidget {
         QStringList keys;
         QLabel *note;
         QPushButton *reset;
+        // Set for a section that takes part only in some calculations (nwchemSectionUse).
+        std::optional<NwchemSection> conditional;
     };
     // A detailed option: its row in the details of a section (name and keyword, editor, state, reset).
     struct Detail {
@@ -159,6 +162,8 @@ class CalculationPanel : public QWidget {
     QString appliedExtra[2]; // Stored additional input last shown, so typing is not overwritten.
     QJsonArray userPresets;
     QFormLayout *group(const QString &key, const QString &title);
+    // A section that takes part only in some calculations, under the key the core gives it.
+    QFormLayout *group(NwchemSection section, const QString &title);
     void addRow(QFormLayout *form, const QString &key, const QString &label, QWidget *field);
     void choice(QFormLayout *form, const QString &label, const QString &key);
     // Segments (or chips) for a choice with few items; the combo box holds the value.

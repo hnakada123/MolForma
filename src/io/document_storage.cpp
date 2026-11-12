@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "io/document_storage.h"
 #include "foundation/files.h"
+#include "model/settings.h"
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -27,7 +28,7 @@ void DocumentStorage::save(const Document &document, const QString &path) {
     removeAutosave();
 }
 QStringList DocumentStorage::recentFiles() const {
-    return settings.value("recentFiles").toStringList();
+    return settings.value(Preference::recentFiles).toStringList();
 }
 void DocumentStorage::remember(const QString &path) {
     const auto absolute = QFileInfo(path).absoluteFilePath();
@@ -36,7 +37,7 @@ void DocumentStorage::remember(const QString &path) {
     files.prepend(absolute);
     while (files.size() > 10)
         files.removeLast();
-    settings.setValue("recentFiles", files);
+    settings.setValue(Preference::recentFiles, files);
 }
 QString DocumentStorage::autosaveDirectory() {
 #if defined(Q_OS_WIN) || defined(Q_OS_MACOS)

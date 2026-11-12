@@ -4,6 +4,7 @@
 #include "model/units.h"
 #include "nwchem/remote_execution.h"
 #include "nwchem/run_diagnostics.h"
+#include "nwchem/run_record.h"
 #include "results/energy_profile.h"
 #include "results/result_summary.h"
 #include "results/spectrum.h"
@@ -211,36 +212,29 @@ QJsonObject calculationJson(const NwchemRun &run, const QString &savedBundle, co
     if (queue)
         result["queue"] = queue->json();
     QJsonArray diagnostics;
-    for (const auto &value : run.plan().manifest["diagnostics"].toArray()) {
-        auto item = value.toObject();
+    const RunRecord record(run.plan().manifest);
+    for (const auto &diagnostic : record.diagnostics()) {
+        auto item = diagnostic.stored;
         // Preserve the legacy MCP response field; these are protocol compatibility values,
         // not positions used by the current UI or stored in new job records.
-        if (const auto target = settingTargetFromKey(item["target"].toString())) {
-            switch (*target) {
-            case SettingTarget::Molecule:
-                item["tab"] = 0;
-                break;
-            case SettingTarget::Calculation:
-                item["tab"] = 1;
-                break;
-            case SettingTarget::Execution:
-                item["tab"] = 2;
-                break;
-            }
-        }
-        item["message"] = runDiagnosisText(item["code"].toString());
+        if (diagnostic.target)
+            item["tab"] = legacySettingTab(*diagnostic.target);
+        item["message"] = runDiagnosisText(diagnostic.code);
         diagnostics.append(item);
     }
     result["diagnostics"] = diagnostics;
     // A run on a remote destination: where, its job there and how it stands.
-    if (const auto manifest = run.plan().manifest; remoteRun(manifest)) {
-        const auto remote = manifest["remote"].toObject();
-        result["remote"] = QJsonObject{{"destination", remote["host"].toObject()["name"]},
-                                       {"scheduler", remote["host"].toObject()["scheduler"]},
-                                       {"job", remote["job"]},
-                                       {"phase", remote["phase"]},
-                                       {"state", remote["state"]},
-                                       {"text", remoteRunText(manifest)}};
+    if (const auto remote = record.remote()) {
+        // What the record does not say (the job before it is submitted) is left out.
+        const auto said = [](const QString &value) {
+            return value.isEmpty() ? QJsonValue(QJsonValue::Undefined) : QJsonValue(value);
+        };
+        result["remote"] = QJsonObject{{"destination", said(remote->destination)},
+                                       {"scheduler", said(remote->scheduler)},
+                                       {"job", said(remote->job)},
+                                       {"phase", said(remote->phase)},
+                                       {"state", said(remote->state)},
+                                       {"text", remoteRunText(record.json())}};
     }
     return result;
 }
@@ -455,7 +449,7 @@ std::optional<QJsonObject> runtimeResource(const QString &uri, const QJsonObject
         text = json(state);
         mimeType = "application/json";
     } else if (uri == "molforma://calculation/output" || uri == "molforma://calculation/stderr") {
-        const auto file = uri.endsWith("stderr") ? QString("stderr.err") : QString("output.out");
+        const auto file = QString(uri.endsWith("stderr") ? JobFile::errors : JobFile::output);
         if (run.directory.isEmpty())
             text = "No calculation has been started in this MolForma process.";
         else if (!QFile::exists(QDir(run.directory).filePath(file)))
