@@ -103,6 +103,45 @@ class CalculationTest : public QObject {
             QCOMPARE(nwchemTaskLines(generateNwchemInput(d).text), expected);
         }
     }
+    // A continued restart leaves out the generated tasks the other job finished. The tasks of the additional
+    // input are among those it finished, but they are the user's text: they stay, and count for no
+    // generated task.
+    void continuedRestartKeepsUnfinishedTasks() {
+        const auto continued = [](Document d, const QStringList &done) {
+            set(d, "restart",
+                QJsonObject{{"mode", "continue"},
+                            {"job", "/job"},
+                            {"done", QJsonArray::fromStringList(done)},
+                            {"geometry", nwchemRestartDigest(d, true)}});
+            return d;
+        };
+        const auto tasks = [](const Document &d) {
+            const auto report = validateNwchem(d);
+            return report.errors.isEmpty() ? nwchemTaskLines(generateNwchemInput(d).text) : report.errors;
+        };
+        auto d = water();
+        set(d, "task", "optimize_frequencies");
+        set(d, "prop_mulliken", true);
+        auto next = continued(d, {"task scf optimize"});
+        QCOMPARE(nwchemTaskPlan(next).finished, 1);
+        QCOMPARE(tasks(next), QStringList({"task scf frequencies", "task scf property"}));
+        // A task before the generated ones, indented and in upper case as NWChem also reads it.
+        set(d, "extra_input", "set scf:maxiter 60\n  TASK scf energy");
+        QCOMPARE(nwchemTaskPlan(d).before, QStringList{"TASK scf energy"});
+        next = continued(d, {"TASK scf energy"}); // The optimization was under way.
+        QCOMPARE(nwchemTaskPlan(next).finished, 0);
+        QCOMPARE(tasks(next), QStringList({"TASK scf energy", "task scf optimize", "task scf frequencies",
+                                           "task scf property"}));
+        next = continued(d, {"TASK scf energy", "task scf optimize"}); // The frequencies were under way.
+        QCOMPARE(nwchemTaskPlan(next).finished, 1);
+        QCOMPARE(tasks(next), QStringList({"TASK scf energy", "task scf frequencies", "task scf property"}));
+        // Tasks after the generated ones: those of them that ended run again with the others.
+        set(d, "extra_tasks", "task scf gradient\ntask scf energy");
+        next = continued(d, {"TASK scf energy", "task scf optimize", "task scf frequencies",
+                             "task scf property", "task scf gradient"});
+        QCOMPARE(nwchemTaskPlan(next).finished, 3);
+        QCOMPARE(tasks(next), QStringList({"TASK scf energy", "task scf gradient", "task scf energy"}));
+    }
     void diagnosticIdentityDoesNotDependOnLanguage() {
         auto d = water();
         set(d, "method", "dft");

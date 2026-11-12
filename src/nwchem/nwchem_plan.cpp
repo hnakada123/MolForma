@@ -2,6 +2,7 @@
 #include "nwchem/nwchem_plan.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_output.h"
+#include <algorithm>
 
 namespace mf {
 namespace nwchem_detail {
@@ -114,6 +115,11 @@ NwchemTaskPlan nwchemTaskPlan(const Document &d) {
     if (s["prop_spinspin"].toBool())
         p.spinspin << "task dft property";
     p.after = nwchemTaskLines(s["extra_tasks"].toString());
+    if (const auto restart = nwchemRestart(s); restart.mode == "continue") {
+        // The tasks the other job finished begin with those of its additional input, which are not generated.
+        const auto generated = p.commands().size() - p.before.size() - p.after.size();
+        p.finished = int(std::clamp<qsizetype>(restart.done.size() - p.before.size(), 0, generated));
+    }
     return p;
 }
 } // namespace mf

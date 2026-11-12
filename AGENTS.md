@@ -13,6 +13,8 @@ by responsibility, with paired headers and implementations in the same directory
   the molecular model delegates this schema traversal to it.
 - `src/model/`: `document.*` owns the stable-ID document and the `.molforma.json`
   project serialization (format `molforma-project`, version 1); `geometry.*` owns double-precision geometry.
+  Atom references kept in a part's metadata (the eta groups of a ligand, `Part::hapto`) go through typed
+  accessors, and `Document::remove`/`renameIds`/`validate` keep them like any other reference.
   `setting_target.h` defines semantic owners (molecule, calculation, execution), independent of
   workspace tabs. `diagnostic.h` defines diagnostics with stable codes, setting targets and typed fixes, and
   `ValidationFailure`, which throws a refused report whole. `units.h` owns coordinate units and
@@ -40,7 +42,8 @@ by responsibility, with paired headers and implementations in the same directory
   constraints, scans, fragments and NEB endpoints. `nwchem_validation.*` validates primitive settings
   and chemical combinations. `nwchem_plan.*` produces the ordered task plan shared by restart
   validation and `nwchem_input.cpp`, which generates the complete input. Validation must not generate
-  input to discover its tasks. `input_builder.h` records source lines as input is generated; do not infer them
+  input to discover its tasks. The plan also says how many generated tasks a continued restart leaves
+  out (`finished`); `task` lines of the additional input are the user's text, counted but never removed. `input_builder.h` records source lines as input is generated; do not infer them
   by diffing or parsing generated text. `nwchem_advanced.*` defines typed overrides and applicability.
   `nwchem_geometry.*` generates geometry fragments and fixed-atom constraints.
   `nwchem_output.*` validates visualization settings and generates CUBE/MOLDEN output

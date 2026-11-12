@@ -128,7 +128,7 @@ int ligandSites(const QJsonObject &t) {
     return int(t["connections"].toArray().size() + t["hapto"].toArray().size());
 }
 int ligandSites(const Part &p) {
-    return int(p.connections.size() + p.metadata["hapto"].toArray().size());
+    return int(p.connections.size() + p.hapto().size());
 }
 // A ligand that knows where its metal sits (its "center"), or binds through eta groups or three donors or
 // more: the directions from the metal to its donors and to the centroids of its eta groups are turned onto
@@ -251,15 +251,14 @@ static PlacedPart bindFitted(Document &d, const QString &id, const QList<int> &i
     meta["sites"] = selected;
     meta["twist"] = twist;
     meta["fitted"] = true;
-    QJsonArray haptoIds;
+    QVector<Ids> eta;
     for (const auto &g : groups) {
-        QJsonArray ids;
+        Ids ids;
         for (const auto &m : g.toArray())
-            ids.append(p.mapping[m.toInt()]);
-        haptoIds.append(ids);
+            ids << p.mapping[m.toInt()];
+        eta << ids;
     }
-    if (!haptoIds.isEmpty())
-        meta["hapto"] = haptoIds;
+    d.parts.last().setHapto(eta);
     for (int k = 0; k < anchors.size(); ++k) {
         auto &site = c.sites[indices[order[k]]];
         site.part = p.id;
@@ -267,10 +266,10 @@ static PlacedPart bindFitted(Document &d, const QString &id, const QList<int> &i
             site.donor = p.mapping[connections[k].toInt()];
             d.setBond(site.donor, id, "dative");
         } else {
-            const auto members = haptoIds[k - connections.size()].toArray();
-            site.donor = members.first().toString();
+            const auto &members = eta[k - connections.size()];
+            site.donor = members.first();
             for (const auto &m : members)
-                d.setBond(m.toString(), id, "dative");
+                d.setBond(m, id, "dative");
         }
     }
     updateCenter(d, c);
@@ -444,10 +443,11 @@ static void refitCenter(Document &d, const QString &id) {
         t["connections"] = connections;
         // A fitted ligand keeps its shape about the metal where it is now, and its eta groups.
         QJsonArray groups;
-        for (const auto &g : p.metadata["hapto"].toArray()) {
+        const auto eta = p.hapto();
+        for (const auto &g : eta) {
             QJsonArray members;
-            for (const auto &m : g.toArray())
-                members.append(oldIds.indexOf(m.toString()));
+            for (const auto &m : g)
+                members.append(oldIds.indexOf(m));
             groups.append(members);
         }
         if (!groups.isEmpty())
@@ -469,9 +469,7 @@ static void refitCenter(Document &d, const QString &id) {
         for (int k = 0; k < idx.size(); ++k) {
             // A site of an eta group names its first atom.
             c.sites[idx[k]].donor =
-                k < p.connections.size()
-                    ? p.connections[k]
-                    : p.metadata["hapto"].toArray()[k - p.connections.size()].toArray().first().toString();
+                k < p.connections.size() ? p.connections[k] : eta[k - p.connections.size()].first();
             c.sites[idx[k]].part = p.id;
         }
         updateCenter(d, c);

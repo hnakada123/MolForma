@@ -173,6 +173,21 @@ Part Part::fromJson(const QJsonObject &o) {
     p.extra = unknownFields(o, {"id", "template", "atoms", "connections", "metadata"});
     return p;
 }
+QVector<Ids> Part::hapto() const {
+    QVector<Ids> groups;
+    for (const auto &group : metadata["hapto"].toArray())
+        groups << idsFromJson(group);
+    return groups;
+}
+void Part::setHapto(const QVector<Ids> &groups) {
+    QJsonArray rows;
+    for (const auto &group : groups)
+        rows.append(idsToJson(group));
+    if (rows.isEmpty())
+        metadata.remove("hapto");
+    else
+        metadata["hapto"] = rows;
+}
 QJsonObject Center::toJson() const {
     auto o = extra;
     QJsonArray rows;
@@ -373,9 +388,58 @@ void Document::remove(const Ids &removed) {
     const auto isGone = [&](const QString &id) { return gone.contains(id); };
     atoms.removeIf([&](const Atom &a) { return isGone(a.id); });
     bonds.removeIf([&](const Bond &b) { return isGone(b.a) || isGone(b.b); });
+    // What a ligand that lost atoms still holds at its center: its sites in the order of its metadata (one
+    // per donor, then one per eta group) and the atom each site names (of an eta group the first).
+    struct Ligand {
+        QString part, center;
+        QJsonArray sites;
+        Ids donors;
+    };
+    QVector<Ligand> ligands;
     for (auto &p : parts) {
+        if (std::none_of(p.atoms.begin(), p.atoms.end(), isGone))
+            continue;
+        const auto groups = p.hapto();
+        const auto sites = p.metadata.value("sites").toArray();
+        const bool placed = !p.center().isEmpty() && sites.size() == p.connections.size() + groups.size();
+        Ids donors;
+        QVector<Ids> eta;
+        QJsonArray donorSites, etaSites;
+        for (qsizetype k = 0; k < p.connections.size(); ++k)
+            if (!isGone(p.connections[k])) {
+                donors << p.connections[k];
+                donorSites.append(sites.at(k));
+            }
+        for (qsizetype g = 0; g < groups.size(); ++g) {
+            auto members = groups[g];
+            members.removeIf(isGone);
+            const auto site = sites.at(p.connections.size() + g);
+            // An eta group has two atoms or more: one that is left alone binds as a donor of its own.
+            if (members.size() == 1) {
+                donors << members.first();
+                donorSites.append(site);
+            } else if (members.size() > 1) {
+                eta << members;
+                etaSites.append(site);
+            }
+        }
         p.atoms.removeIf(isGone);
-        p.connections.removeIf(isGone);
+        p.connections = donors;
+        p.setHapto(eta);
+        if (!placed)
+            continue;
+        Ligand ligand{p.id, p.center(), donorSites, donors};
+        for (qsizetype g = 0; g < eta.size(); ++g) {
+            ligand.sites.append(etaSites.at(g));
+            ligand.donors << eta[g].first();
+        }
+        // A ligand that binds with nothing any more is no longer placed at its center.
+        if (ligand.sites.isEmpty()) {
+            p.metadata.remove("coordination_center");
+            p.metadata.remove("sites");
+        } else
+            p.metadata["sites"] = ligand.sites;
+        ligands << ligand;
     }
     parts.removeIf([](const Part &p) { return p.atoms.isEmpty(); });
     for (auto &r : residues)
@@ -389,10 +453,24 @@ void Document::remove(const Ids &removed) {
         sequence.removeIf([&](const QString &id) { return !residueIds.contains(id); });
     chains.removeIf([](const auto &it) { return it.value().isEmpty(); });
     centers.removeIf([&](const Center &c) { return isGone(c.atom); });
-    for (auto &c : centers)
+    for (auto &c : centers) {
         for (auto &site : c.sites)
             if (isGone(site.donor))
                 site.donor = site.part = QString();
+        // The sites of the ligands that lost atoms: those they still hold, named by atoms that are left.
+        for (const auto &ligand : ligands) {
+            if (ligand.center != c.atom)
+                continue;
+            for (auto &site : c.sites)
+                if (site.part == ligand.part)
+                    site.donor = site.part = QString();
+            for (qsizetype k = 0; k < ligand.sites.size(); ++k)
+                if (const int i = ligand.sites.at(k).toInt(-1); i >= 0 && i < c.sites.size()) {
+                    c.sites[i].donor = ligand.donors[k];
+                    c.sites[i].part = ligand.part;
+                }
+        }
+    }
     // A ligand whose center is gone is no longer placed at its sites.
     for (auto &p : parts)
         if (isGone(p.center())) {
@@ -429,6 +507,11 @@ void Document::renameIds(const QHash<QString, QString> &renamed) {
         name(p.id);
         names(p.atoms);
         names(p.connections);
+        if (auto groups = p.hapto(); !groups.isEmpty()) {
+            for (auto &group : groups)
+                names(group);
+            p.setHapto(groups);
+        }
         if (const auto center = p.center(); renamed.contains(center))
             p.metadata["coordination_center"] = renamed[center];
     }
@@ -489,12 +572,17 @@ QStringList validateStructure(const Document &d) {
         for (const auto &id : part.atoms)
             if (!seen.contains(id))
                 errors << tr("部品の原子参照が不正です。");
-        if (part.connections.isEmpty())
+        const auto groups = part.hapto();
+        if (part.connections.isEmpty() && groups.isEmpty())
             continue;
         const QSet<QString> members(part.atoms.begin(), part.atoms.end());
         for (const auto &id : part.connections)
             if (!members.contains(id))
                 errors << tr("部品の接続点が不正です。");
+        for (const auto &group : groups)
+            if (group.size() < 2 || std::any_of(group.begin(), group.end(),
+                                                [&](const QString &id) { return !members.contains(id); }))
+                errors << tr("部品のη配位の原子群が不正です。");
     }
     for (const auto &r : residues)
         for (const auto &id : r.atoms)

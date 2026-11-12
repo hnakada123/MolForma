@@ -9,6 +9,10 @@ struct NwchemTaskPlan {
     QStringList before, fragments, main, followup, properties, esp, grids, output, raman, ord, spinspin,
         after;
     int frequency = -1; // The main task sourced to numerical_frequencies.
+    // A continued restart: how many of the generated tasks (those after `before`) the other job finished,
+    // which the input leaves out. The tasks of the additional input (`before`, `after`) are the user's
+    // text: they stay in the input and run again.
+    int finished = 0;
     QStringList commands() const;
 };
 // Requires valid setting types/ranges; callers validate before generating or comparing a plan.

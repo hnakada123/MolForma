@@ -12,6 +12,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QRegularExpression>
 
 namespace mf {
 namespace {
@@ -165,7 +166,7 @@ Document restartDocument(const QString &job, const QString &mode) {
     auto s = d.data["nwchem"].toObject();
     QJsonArray done;
     // A restart goes on from the database's orbitals: the calculations of an initial guess from fragments,
-    // the first tasks of the job, are not done again.
+    // the first generated tasks of the job, are not done again.
     const int fragments = int(s["fragment_guess"].toArray().size());
     s.remove("fragment_guess");
     if (mode == "continue") {
@@ -174,8 +175,11 @@ Document restartDocument(const QString &job, const QString &mode) {
         const int finished = log.ended ? int(tasks.size()) : std::max(0, log.started - 1);
         if (finished >= tasks.size())
             fail(tr("この計算に残っているタスクはありません。"));
-        for (const auto &line : tasks.mid(fragments, std::max(0, finished - fragments)))
-            done << line;
+        // The tasks of the fragments follow those of the additional input ("extra_input").
+        const int before = int(nwchemTaskLines(s.value("extra_input").toString()).size());
+        for (int i = 0; i < finished; ++i)
+            if (i < before || i >= before + fragments)
+                done << tasks[i];
     } else {
         // Another calculation at the structure of the Hessian: only what the Hessian is for.
         s["task"] = mode == "hessian" ? "saddle" : "frequencies";
@@ -285,9 +289,11 @@ QString nwchemRestartDigest(const Document &d, bool masses) {
     return QString::fromLatin1(hash.result().toHex());
 }
 QStringList nwchemTaskLines(const QString &input) {
+    // NWChem reads a directive after any indentation and in any case, as the additional input may write it.
+    static const QRegularExpression task("^\\s*task\\s", QRegularExpression::CaseInsensitiveOption);
     QStringList lines;
     for (const auto &line : input.split('\n'))
-        if (line.startsWith("task "))
+        if (task.match(line).hasMatch())
             lines << line.simplified();
     return lines;
 }

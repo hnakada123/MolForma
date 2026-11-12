@@ -2115,6 +2115,132 @@ class CoreTest : public QObject {
         withIron << fe;
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, makePart(d, withIron, "tacn and iron", "ligand"));
     }
+    // The atoms a ligand binds with are references like any other: a copy names its own atoms, and a
+    // deletion leaves the ligand on the sites it still holds, so that its center can be fitted again.
+    void ligandAnchorsFollowCopiesAndDeletions() {
+        const auto complex = [](const char *geometry, const char *ligand, const QList<int> &sites) {
+            Document d;
+            const auto metal = addCenter(d, "Pt", geometry, Vec::Zero(), 2.0, 2);
+            placeLigand(d, metal, sites, findTemplate(ligand));
+            return std::pair{d, metal};
+        };
+        // The sites of a center as a string: "x" where a ligand binds.
+        const auto occupied = [](const Document &d, const QString &metal) {
+            QString text;
+            for (const auto &site : d.findCenter(metal)->sites)
+                text += site.donor.isEmpty() ? '-' : 'x';
+            return text;
+        };
+        const auto consistent = [](const Document &d) {
+            for (const auto &p : d.parts) {
+                for (const auto &group : p.hapto())
+                    for (const auto &id : group)
+                        if (!p.atoms.contains(id))
+                            return false;
+                for (const auto &c : d.centers)
+                    for (const auto &site : c.sites)
+                        if (site.part == p.id && !p.atoms.contains(site.donor))
+                            return false;
+            }
+            return d.validate().isEmpty();
+        };
+        {
+            // A copy of an eta6 complex: the eta group of the copy holds the copied atoms.
+            auto [d, metal] = complex("square_planar", "ligand:benzene", {0});
+            const auto original = d.parts.first().hapto();
+            const auto added = duplicate(d, d.ids(), Vec(8, 0, 0));
+            QCOMPARE(d.parts.size(), 2);
+            QCOMPARE(d.parts.first().hapto(), original);
+            const auto copied = d.parts.last().hapto();
+            QCOMPARE(copied.size(), 1);
+            QCOMPARE(copied.first().size(), 6);
+            for (const auto &id : copied.first()) {
+                QVERIFY(added.contains(id));
+                QVERIFY(!original.first().contains(id));
+            }
+            QVERIFY(consistent(d));
+            Ids metals;
+            for (const auto &c : d.centers)
+                metals << c.atom;
+            QCOMPARE(metals.size(), 2);
+            for (const auto &id : metals)
+                adjustCenter(d, id, "square_planar", 2.2, 2);
+            QVERIFY(consistent(d));
+        }
+        {
+            // An atom of an eta group deleted: the group goes on with the others, on the same site.
+            for (const int member : {0, 2}) {
+                auto [d, metal] = complex("square_planar", "ligand:benzene", {0});
+                const auto group = d.parts.first().hapto().first();
+                d.remove({group[member]});
+                auto left = group;
+                left.removeAt(member);
+                QCOMPARE(d.parts.first().hapto(), QVector<Ids>{left});
+                QCOMPARE(occupied(d, metal), QString("x---"));
+                QCOMPARE(d.findCenter(metal)->sites[0].donor, left.first());
+                QVERIFY(consistent(d));
+                adjustCenter(d, metal, "square_planar", 2.2, 2);
+                QVERIFY(consistent(d));
+            }
+        }
+        {
+            // An eta group needs two atoms: the one that is left binds as a donor, on the same site.
+            auto [d, metal] = complex("square_planar", "ligand:ethylene", {1});
+            const auto group = d.parts.first().hapto().first();
+            d.remove({group[0]});
+            QVERIFY(d.parts.first().hapto().isEmpty());
+            QCOMPARE(d.parts.first().connections, Ids{group[1]});
+            QCOMPARE(d.parts.first().metadata.value("sites").toArray(), QJsonArray{1});
+            QCOMPARE(occupied(d, metal), QString("-x--"));
+            QVERIFY(consistent(d));
+            adjustCenter(d, metal, "square_planar", 2.2, 2);
+            QVERIFY(consistent(d));
+        }
+        {
+            // A donor of a chelate deleted: the ligand keeps the site of its other donor.
+            auto [d, metal] = complex("octahedral", "ligand:en", {0, 1});
+            const auto donors = d.parts.first().connections;
+            d.remove({donors[0]});
+            QCOMPARE(d.parts.first().connections, Ids{donors[1]});
+            QCOMPARE(d.parts.first().metadata.value("sites").toArray(), QJsonArray{1});
+            QCOMPARE(occupied(d, metal), QString("-x----"));
+            QVERIFY(consistent(d));
+            adjustCenter(d, metal, "octahedral", 2.2, 2);
+            QVERIFY(consistent(d));
+        }
+        {
+            // The only donor deleted: what is left of the ligand is no longer placed at the center.
+            auto [d, metal] = complex("octahedral", "ligand:pyridine", {0});
+            d.remove({d.parts.first().connections.first()});
+            QCOMPARE(d.parts.size(), 1);
+            QVERIFY(d.parts.first().center().isEmpty());
+            QVERIFY(!d.parts.first().metadata.contains("sites"));
+            QCOMPARE(occupied(d, metal), QString("------"));
+            QVERIFY(consistent(d));
+            adjustCenter(d, metal, "octahedral", 2.2, 2);
+            QVERIFY(consistent(d));
+        }
+        {
+            // A part that is no ligand keeps its metadata as it was.
+            Document d;
+            placeTemplate(d, findTemplate("skeleton:water"), Vec::Zero());
+            const auto metadata = d.parts.first().metadata;
+            d.remove({d.parts.first().atoms.last()});
+            QCOMPARE(d.parts.size(), 1);
+            QCOMPARE(d.parts.first().metadata, metadata);
+        }
+        {
+            // An eta group that names atoms outside its part, or fewer than two, is reported.
+            auto [d, metal] = complex("square_planar", "ligand:benzene", {0});
+            auto &part = d.parts.first();
+            auto groups = part.hapto();
+            groups.first().first() = metal;
+            part.setHapto(groups);
+            QVERIFY(d.validate().contains(tr("部品のη配位の原子群が不正です。")));
+            part.setHapto(QVector<Ids>{Ids{part.atoms.first()}});
+            QVERIFY(d.validate().contains(tr("部品のη配位の原子群が不正です。")));
+        }
+    }
     void charges() {
         Document d;
         placeTemplate(d, findTemplate("skeleton:water"), Vec::Zero());

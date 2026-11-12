@@ -189,7 +189,8 @@ NwchemRestart nwchemRestart(const QJsonObject &settings);
 // What a restart cannot change, as a digest: the atoms (elements, ghosts, positions, fixed flags and,
 // except for "reuse", masses) and the internal-coordinate constraints.
 QString nwchemRestartDigest(const Document &document, bool masses);
-// The task lines of an NWChem input in their order ("task dft optimize").
+// The task lines of an NWChem input in their order ("task dft optimize"), also those the additional input
+// writes indented or in upper case.
 QStringList nwchemTaskLines(const QString &input);
 // The end of the path of an NEB calculation ("neb_end": atom positions in Å by atom ID): the document
 // with every atom moved there, or nothing while the setting does not hold every atom (incomplete,

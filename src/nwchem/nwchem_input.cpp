@@ -589,7 +589,9 @@ static NwchemGeneratedInput generation(const Document &d) {
     }
     extraInput(out, str("extra_tasks"), "extra_tasks");
     // A continued job starts at the task the other job did not finish (validateNwchem checked the match).
-    for (qsizetype done = 0, i = 0; done < restart.done.size() && i < out.result.outline.blocks.size();)
+    // The plan says how many of the generated tasks that leaves out: the tasks of the additional input are
+    // the user's text and no blocks of their own.
+    for (qsizetype done = 0, i = 0; done < plan.finished && i < out.result.outline.blocks.size();)
         if (out.result.outline.blocks[i].keyword == "task") {
             removeBlock(out.result, int(i));
             ++done;

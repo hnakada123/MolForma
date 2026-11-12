@@ -1842,6 +1842,54 @@ class ExecutionTest : public QObject {
                                    {"db"});
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, restartDocument(whole, "continue"));
     }
+    // Tasks the user wrote in the additional input are tasks of the job like the generated ones: the log
+    // counts them, and a continued job still runs every generated task that did not end.
+    void restartCountsTasksOfAdditionalInput() {
+        auto d = configured();
+        setNwchemSetting(d, "task", "optimize_frequencies");
+        setNwchemSetting(d, "extra_input", "set scf:maxiter 60\n  TASK scf energy");
+        // The user's task and the optimization ended; the frequencies were under way.
+        auto job = leftJob(
+            d, "fail", logTask({}) + logTask(logGeometry(0) + logGeometry(0.05)) + logTask(logGeometry(0.05)),
+            {"db", "movecs", "fdrst"});
+        QVERIFY(!job.isEmpty());
+        auto next = restartDocument(job, "continue");
+        QCOMPARE(nwchemRestart(nwchemSettings(next)).done,
+                 QStringList({"TASK scf energy", "task scf optimize"}));
+        auto check = validateNwchem(next);
+        QVERIFY2(check.errors.isEmpty(), qPrintable(check.errors.join('\n')));
+        // The user's text stays as it is and runs again; the frequencies are not left out with it.
+        QCOMPARE(nwchemTaskLines(nwchemInput(next)),
+                 QStringList({"TASK scf energy", "task scf frequencies"}));
+        // With an initial guess from fragments, whose tasks follow those of the additional input and are
+        // not done again.
+        auto dimer = configured();
+        const auto two = Document::fromXyz("6\ndimer\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n"
+                                           "O 0 0 3\nH 0.758 0 3.504\nH -0.758 0 3.504\n");
+        dimer.atoms = two.atoms;
+        dimer.bonds = two.bonds;
+        const auto ids = dimer.ids();
+        QJsonArray fragments;
+        for (const auto &atoms : {ids.mid(0, 3), ids.mid(3)})
+            fragments << QJsonObject{{"atoms", idsToJson(atoms)}, {"charge", 0}, {"multiplicity", 1}};
+        setNwchemSetting(dimer, "fragment_guess", fragments);
+        setNwchemSetting(dimer, "task", "optimize_frequencies");
+        setNwchemSetting(dimer, "extra_input", "task scf energy");
+        QCOMPARE(nwchemTaskLines(nwchemInput(dimer)),
+                 QStringList({"task scf energy", "task scf energy", "task scf energy", "task scf optimize",
+                              "task scf frequencies"}));
+        // The user's task, both fragments and the optimization ended.
+        job = leftJob(dimer, "fail", logTask({}) + logTask({}) + logTask({}) + logTask({}) + logTask({}),
+                      {"db", "movecs", "fdrst"});
+        QVERIFY(!job.isEmpty());
+        next = restartDocument(job, "continue");
+        QCOMPARE(nwchemRestart(nwchemSettings(next)).done,
+                 QStringList({"task scf energy", "task scf optimize"}));
+        check = validateNwchem(next);
+        QVERIFY2(check.errors.isEmpty(), qPrintable(check.errors.join('\n')));
+        QCOMPARE(nwchemTaskLines(nwchemInput(next)),
+                 QStringList({"task scf energy", "task scf frequencies"}));
+    }
     void restartFromAHessian() {
         auto d = configured();
         setNwchemSetting(d, "task", "optimize_frequencies");

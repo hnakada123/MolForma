@@ -55,11 +55,16 @@ struct Part {
     QString id = newId(), templateId;
     Ids atoms, connections;
     // The template's names and category, a user part's template_data, and for a ligand at a
-    // coordination center its atom (coordination_center), sites and twist.
+    // coordination center its atom (coordination_center), sites, twist and eta groups (hapto).
     QJsonObject metadata, extra;
     QString center() const {
         return metadata["coordination_center"].toString();
     }
+    // The eta groups of a ligand ("hapto" of the metadata): the atoms of each group, which bind to the
+    // center together on one site. They are atom references like `connections`: Document::remove and
+    // renameIds keep them.
+    QVector<Ids> hapto() const;
+    void setHapto(const QVector<Ids> &groups);
     QJsonObject toJson() const;
     static Part fromJson(const QJsonObject &o);
     bool operator==(const Part &) const = default;
