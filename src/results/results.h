@@ -57,6 +57,15 @@ struct ResultExcitation {
 struct ResultStep {
     int step = 0;
     double energy = 0, deltaE = 0, gmax = 0, grms = 0, xrms = 0, xmax = 0, seconds = 0;
+    bool operator==(const ResultStep &) const = default;
+};
+// The last DRIVER optimization as one unit. Later energy/property/frequency tasks keep it;
+// starting another optimization replaces its steps, thresholds and convergence together.
+struct NwchemOptimization {
+    int task = -1;
+    bool present = false, converged = false;
+    QVector<ResultStep> steps;
+    QJsonObject thresholds;
 };
 enum class ResultOutcome { NotApplicable, Incomplete, Normal, Error };
 // A bond index of this size or more (in magnitude) is listed as a bond; the reader keeps at most
@@ -152,11 +161,10 @@ class NwchemLog {
     // its DRIVER takes (maxiter; 0 without a DRIVER block).
     static QStringList tasks(const QString &input);
     static int driverSteps(const QString &input);
-    int started = 0;   // Tasks begun; the current one is started - 1.
-    int stepTask = -1; // The task of the steps, and the task whose optimization converged.
-    int convergedTask = -1;
-    QVector<ResultStep> steps;                                // Of the latest optimization.
-    QJsonObject thresholds;                                   // {gmax, grms, xmax, xrms} of the DRIVER.
+    int started = 0; // Tasks begun; the current one is started - 1.
+    const NwchemOptimization &optimization() const {
+        return driver;
+    }
     double energy = std::numeric_limits<double>::quiet_NaN(); // The last total energy / Hartree,
     QString energyMethod;                                     // and its method ("SCF", "MP2").
     bool ended = false;                                       // NWChem's closing timing line.
@@ -164,6 +172,7 @@ class NwchemLog {
   private:
     ResultData *result;
     NwchemEnergySummary energySummary;
+    NwchemOptimization driver;
     int lineNumber = 0;
     bool busy = false; // The current task has printed something since its input banner.
     bool recognized = false, fatal = false;
@@ -191,7 +200,11 @@ class NwchemLog {
     // once the log ends.
     QVector<std::function<bool(const QString *line)>> sections;
     void read(const QString &line);
+    void readCoordinates(const QString &line);
+    void readModes(const QString &line);
+    void readExcitations(const QString &line);
     void progress(const QString &line);
+    void beginOptimization();
 };
 // Parsing/meshing is bounded and runs in a cancellable native process in the UI. With a cache folder
 // (the result loader's, for its session), a CUBE or MOLDEN file read before is not parsed again for

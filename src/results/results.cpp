@@ -1081,13 +1081,21 @@ void NwchemLog::addBytes(QByteArrayView line) {
         return false;
     };
     if (!result && !line.startsWith('@') && !line.contains("threshold") &&
-        !line.contains("Optimization converged") && !line.contains("NWChem Input Module") &&
-        !line.contains("Total times") && !line.contains("Frequency Analysis") &&
-        !line.contains("number of monomers") && !line.contains("BSSE error") && !energy()) {
+        !line.contains("Optimization converged") && !line.contains("NWChem Geometry Optimization") &&
+        !line.contains("NWChem Input Module") && !line.contains("Total times") &&
+        !line.contains("Frequency Analysis") && !line.contains("number of monomers") &&
+        !line.contains("BSSE error") && !energy()) {
         ++lineNumber;
         return;
     }
     add(QString::fromUtf8(line));
+}
+void NwchemLog::beginOptimization() {
+    if (!driver.present || driver.task != started - 1) {
+        driver = {};
+        driver.task = started - 1;
+        driver.present = true;
+    }
 }
 void NwchemLog::progress(const QString &line) {
     if (line.contains(u"NWChem Input Module")) {
@@ -1097,25 +1105,34 @@ void NwchemLog::progress(const QString &line) {
         busy = false;
     } else if (line.contains(u"Total times  cpu:"))
         ended = true;
-    else if (const auto m = line.startsWith('@') ? stepLine().match(line) : QRegularExpressionMatch();
-             m.hasMatch()) {
+    else if (line.contains(u"NWChem Geometry Optimization")) {
+        driver = {};
+        beginOptimization();
+        busy = true;
+    } else if (const auto m = line.startsWith('@') ? stepLine().match(line) : QRegularExpressionMatch();
+               m.hasMatch()) {
         const auto s = resultStep(m);
-        // The converged step is printed twice; a new step 0 starts another optimization.
-        if (s.step == 0 || stepTask != started - 1)
-            steps.clear();
-        while (!steps.isEmpty() && steps.last().step >= s.step)
-            steps.removeLast();
-        if (std::isfinite(s.energy) && steps.size() < 20000)
-            steps << s;
-        stepTask = started - 1;
+        beginOptimization();
+        // NWChem repeats the converged step, including step zero of an already stationary structure.
+        const bool repeated = !driver.steps.isEmpty() && driver.steps.last() == s;
+        if (s.step == 0 && !repeated) {
+            driver.steps.clear();
+            driver.converged = false;
+        }
+        while (!driver.steps.isEmpty() && driver.steps.last().step >= s.step)
+            driver.steps.removeLast();
+        if (std::isfinite(s.energy) && driver.steps.size() < 20000)
+            driver.steps << s;
         busy = true;
     } else if (const auto t =
                    line.contains(u"threshold") ? thresholdLine().match(line) : QRegularExpressionMatch();
                t.hasMatch()) {
-        thresholds[t.captured(1)] = logNumber(t.captured(2));
+        beginOptimization();
+        driver.thresholds[t.captured(1)] = logNumber(t.captured(2));
         busy = true;
     } else if (line.contains(u"Optimization converged")) {
-        convergedTask = started - 1;
+        beginOptimization();
+        driver.converged = true;
         busy = true;
     } else if (const auto e = totalEnergy(line)) {
         if (const double value = logNumber(e->second); std::isfinite(value)) {
@@ -1137,15 +1154,6 @@ void NwchemLog::read(const QString &line) {
     // Every message of `error` contains one of these words.
     static constexpr QStringView errorWords[] = {u"fail", u"error", u"converged", u"mpi_abort"};
     static const QRegularExpression code(R"(\s+-?\d+\s*$)");
-    static const QRegularExpression root(
-        R"(^\s*Root\s+(\d+)\s+(?:(singlet|triplet)\s+)?(\S+)\s+(-?[\d.]+)\s+a\.u\.\s+(-?[\d.]+)\s+eV)");
-    // "Occ.    5  a   ---  Virt.    6  a   -1.00014 X" (or Y; neither for Tamm–Dancoff states), with
-    // "alpha" / "beta" after the numbers of unrestricted states. An irreducible representation of four
-    // characters is not separated from a negative amplitude.
-    static const QRegularExpression amplitude(
-        R"(^\s*Occ\.\s*(\d+)\s+(?:(alpha|beta)\s+)?\S{0,4}\s*---\s*Virt\.\s*(\d+)\s+(?:(alpha|beta)\s+)?)"
-        R"(\S{0,4}?\s*(-?\d*\.\d+)(?:\s+([XY]))?\s*$)");
-    static const QRegularExpression electrons(R"(^\s*(Alpha|Beta) electrons\s*:\s*(\d+)\s*$)");
     static const QRegularExpression orbitalHeader(R"(Final (Alpha |Beta )?Molecular Orbital Analysis)");
     static const QRegularExpression vector(
         R"(^\s*Vector\s+(\d+)\s+Occ=\s*(\S+)\s+E=\s*(\S+)(?:\s+Symmetry=\s*(\S+))?)");
@@ -1574,6 +1582,198 @@ void NwchemLog::read(const QString &line) {
             }
             return false;
         };
+    if (auto m = has(u"Molecular Orbital Analysis") ? orbitalHeader.match(line) : unmatched; m.hasMatch()) {
+        orbitalSpin = m.captured(1).trimmed() == "Beta" ? "Beta" : "Alpha";
+        if (orbitalSpin == "Alpha")
+            orbitals.clear(); // Keep the last analysis (after optimization steps etc.).
+    }
+    if (auto m = has(u"Vector") ? vector.match(line) : unmatched;
+        m.hasMatch() && !orbitalSpin.isEmpty() && orbitals.size() < 20000)
+        orbitals << ResultOrbital{m.captured(4), orbitalSpin, value(m.captured(3)), value(m.captured(2)),
+                                  m.captured(1).toInt()};
+    if (line.contains(u"Multipole analysis of the density"))
+        sections << [&r, value, dipole = QJsonObject(), left = 11](const QString *text) mutable {
+            if (text && --left >= 0) {
+                const auto row = words(*text);
+                if (row.size() >= 5 && row[0] == "1" &&
+                    QStringList{"100", "010", "001"}.contains(row.mid(1, 3).join("")))
+                    dipole[row[1] == "1" ? "x" : row[2] == "1" ? "y" : "z"] = value(row[4]);
+                return true;
+            }
+            if (dipole.size() == 3) {
+                const double au =
+                    std::hypot(dipole["x"].toDouble(), dipole["y"].toDouble(), dipole["z"].toDouble());
+                dipole["debye"] = au * 2.541746473;
+                if (!r.frames.isEmpty())
+                    dipole["geometry"] = r.frames.last().molecule.xyz();
+                dipole["origin"] = "nwchem_multipole_origin";
+                r.properties["dipole"] = dipole;
+            }
+            return false;
+        };
+    if (QStringView(line).trimmed().startsWith(u"Temperature") && line.contains('=') &&
+        QStringView(line).trimmed().endsWith('K'))
+        sections << [this, value,
+                     t = QJsonObject{{"temperature", value(line.section('=', 1).trimmed().chopped(1))}},
+                     left = 15](const QString *text) mutable {
+            if (text && --left >= 0) {
+                const auto field = [&](const char *label, const char *key) {
+                    if (text->contains(label))
+                        t[key] = value(words(text->section('=', 1)).value(0));
+                };
+                field("Zero-Point correction to Energy", "zpe_kcal");     // kcal/mol
+                field("Thermal correction to Energy", "energy_kcal");     // kcal/mol
+                field("Thermal correction to Enthalpy", "enthalpy_kcal"); // kcal/mol
+                field("Total Entropy", "entropy_cal");                    // cal/(mol K)
+                field("Cv (constant volume heat capacity)", "cv_cal");    // cal/(mol K)
+                // NWChem's own scale factor (vib:scalefreq), and the parts of the entropy: the heat
+                // capacity, which follows them, repeats their labels.
+                field("frequency scaling parameter", "nwchem_frequency_scale");
+                if (!t.contains(u"cv_cal")) {
+                    field("- Translational", "entropy_translational_cal");
+                    field("- Rotational", "entropy_rotational_cal");
+                    field("- Vibrational", "entropy_vibrational_cal");
+                }
+                if (text->contains("symmetry #"))
+                    t["symmetry_number"] = value(text->section('=', -1).remove(')').trimmed());
+                return true;
+            }
+            if (t.contains(u"enthalpy_kcal") && t.contains(u"entropy_cal") && thermochemistry.size() < 20)
+                thermochemistry << t;
+            return false;
+        };
+    if (line.contains(u"Optimization converged"))
+        warn(r, tr("最適化の収束メッセージを検出しました。"));
+    if (const auto e = totalEnergy(line)) {
+        if (r.energies.size() >= 20000)
+            fail(tr("エネルギーの記録数が2万件を超えています。"));
+        r.energies << ResultEnergy{e->first, number(e->second), i};
+        if (scanPoint > 0 && scan.contains(scanPoint))
+            scan[scanPoint]["energy"] = r.energies.last().hartree;
+    }
+    readCoordinates(line);
+    readModes(line);
+    readExcitations(line);
+}
+void NwchemLog::readCoordinates(const QString &line) {
+    auto &r = *result;
+    const int i = lineNumber;
+    static const QRegularExpression index("^\\d+$");
+    if (line.contains(u"Output coordinates in ")) {
+        const double scale = line.contains(u"angstroms") ? 1 : line.contains(u"a.u.") ? BohrToAngstrom : 0;
+        if (!scale) {
+            warn(r, tr("未対応の座標単位を読み飛ばしました。"));
+            return;
+        }
+        // The table starts after the dashes under its heading (or nine lines on); a blank line ends
+        // it. Only a terminated table counts, never a partial last row at the end of the log.
+        const auto label =
+            scanPoint > 0 ? tr("スキャン %1・ログ 行 %2").arg(scanPoint).arg(i) : tr("ログ 行 %1").arg(i);
+        sections << [this, scale, label, i, scanAt = scanPoint, heading = 0,
+                     d = Document()](const QString *text) mutable {
+            auto &r = *result;
+            if (text && heading < 10) {
+                if (++heading == 10 || text->contains("----"))
+                    heading = 10;
+                return true;
+            }
+            if (text) {
+                const auto row = words(*text);
+                if (row.size() == 6 && index.match(row[0]).hasMatch() &&
+                    integer(row[0], 1, maxAtoms) == d.atoms.size() + 1) {
+                    try {
+                        d.atoms << atom(row[1], point(row, 3, scale));
+                        return true;
+                    } catch (const std::exception &e) {
+                        warn(r, QString::fromUtf8(e.what()));
+                        d.atoms.clear();
+                    }
+                }
+            }
+            // A complete table of another size is another geometry, such as a monomer of a
+            // counterpoise correction.
+            const bool complete = !d.atoms.isEmpty() && text && text->trimmed().isEmpty();
+            if (complete &&
+                (r.frames.isEmpty() || r.frames.first().molecule.atoms.size() == d.atoms.size())) {
+                addFrame(r, d, label);
+                if (scanAt > 0 && scan.contains(scanAt))
+                    scan[scanAt]["frame"] = r.frames.size() - 1;
+            } else if (!complete)
+                warn(r, tr("行 %1の不完全な座標表を読み飛ばしました。").arg(i));
+            return false;
+        };
+    }
+}
+void NwchemLog::readModes(const QString &line) {
+    auto &r = *result;
+    static const QRegularExpression index("^\\d+$");
+    if (line.contains(u"(Projected Frequencies expressed")) {
+        r.modes.clear();
+        if (!r.frames.isEmpty())
+            r.vibrationGeometry = r.frames.last().molecule;
+    }
+    if (QStringView(line).trimmed().startsWith(u"P.Frequency") && !r.vibrationGeometry.atoms.isEmpty()) {
+        const auto values = words(line).mid(1);
+        // NWChem prints six modes per table and 3N in all: a longer line is not one of its tables.
+        if (values.size() > 6 || r.modes.size() + values.size() > 3 * r.vibrationGeometry.atoms.size()) {
+            warn(r, tr("未完の振動モード表を読み飛ばしました。"));
+            return;
+        }
+        QVector<ResultMode> modes;
+        for (const auto &f : values)
+            modes.append({number(f), std::numeric_limits<double>::quiet_NaN(),
+                          QVector<Vec>(r.vibrationGeometry.atoms.size(), Vec::Zero())});
+        // Blank lines, then one row per Cartesian coordinate.
+        sections << [&r, modes, rows = 0, blank = true](const QString *text) mutable {
+            const int count = 3 * r.vibrationGeometry.atoms.size();
+            if (text && blank && text->trimmed().isEmpty())
+                return true;
+            blank = false;
+            if (text) {
+                const auto row = words(*text);
+                if (row.size() == modes.size() + 1 && row[0] == QString::number(rows + 1)) {
+                    for (int k = 0; k < modes.size(); ++k)
+                        modes[k].displacement[rows / 3][rows % 3] = number(row[k + 1]);
+                    if (++rows < count)
+                        return true;
+                }
+            }
+            if (rows == count)
+                r.modes += modes;
+            else
+                warn(r, tr("未完の振動モード表を読み飛ばしました。"));
+            return false;
+        };
+    }
+    if (line.contains(u"Projected Infra Red Intensities"))
+        sections << [&r, after = 0](const QString *text) mutable {
+            if (!text)
+                return false;
+            ++after;
+            auto row = words(*text);
+            if (row.size() == 7 && row[2] == "||" && index.match(row[0]).hasMatch()) {
+                const int n = integer(row[0], 1, 6000) - 1;
+                if (n < r.modes.size())
+                    r.modes[n].intensity = number(row[5]);
+                return true;
+            }
+            return after <= 3;
+        };
+}
+void NwchemLog::readExcitations(const QString &line) {
+    auto &r = *result;
+    const auto value = [](const QString &text) { return logNumber(text); };
+    const auto has = [&](QStringView word) { return line.contains(word); };
+    const auto unmatched = QRegularExpressionMatch();
+    static const QRegularExpression root(
+        R"(^\s*Root\s+(\d+)\s+(?:(singlet|triplet)\s+)?(\S+)\s+(-?[\d.]+)\s+a\.u\.\s+(-?[\d.]+)\s+eV)");
+    // "Occ.    5  a   ---  Virt.    6  a   -1.00014 X" (or Y; neither for Tamm–Dancoff states), with
+    // "alpha" / "beta" after the numbers of unrestricted states. An irreducible representation of four
+    // characters is not separated from a negative amplitude.
+    static const QRegularExpression amplitude(
+        R"(^\s*Occ\.\s*(\d+)\s+(?:(alpha|beta)\s+)?\S{0,4}\s*---\s*Virt\.\s*(\d+)\s+(?:(alpha|beta)\s+)?)"
+        R"(\S{0,4}?\s*(-?\d*\.\d+)(?:\s+([XY]))?\s*$)");
+    static const QRegularExpression electrons(R"(^\s*(Alpha|Beta) electrons\s*:\s*(\d+)\s*$)");
     // The electrons of each spin, as the DFT and TDDFT modules print them before the excited states.
     if (auto m = has(u"electrons :") ? electrons.match(line) : unmatched; m.hasMatch())
         (m.captured(1) == "Alpha" ? alphaElectrons : betaElectrons) = m.captured(2).toInt();
@@ -1644,173 +1844,6 @@ void NwchemLog::read(const QString &line) {
             return false;
         };
     }
-    if (line.contains(u"Optimization converged"))
-        r.properties["optimization"] = "converged";
-    if (auto m = has(u"Molecular Orbital Analysis") ? orbitalHeader.match(line) : unmatched; m.hasMatch()) {
-        orbitalSpin = m.captured(1).trimmed() == "Beta" ? "Beta" : "Alpha";
-        if (orbitalSpin == "Alpha")
-            orbitals.clear(); // Keep the last analysis (after optimization steps etc.).
-    }
-    if (auto m = has(u"Vector") ? vector.match(line) : unmatched;
-        m.hasMatch() && !orbitalSpin.isEmpty() && orbitals.size() < 20000)
-        orbitals << ResultOrbital{m.captured(4), orbitalSpin, value(m.captured(3)), value(m.captured(2)),
-                                  m.captured(1).toInt()};
-    if (line.contains(u"Multipole analysis of the density"))
-        sections << [&r, value, dipole = QJsonObject(), left = 11](const QString *text) mutable {
-            if (text && --left >= 0) {
-                const auto row = words(*text);
-                if (row.size() >= 5 && row[0] == "1" &&
-                    QStringList{"100", "010", "001"}.contains(row.mid(1, 3).join("")))
-                    dipole[row[1] == "1" ? "x" : row[2] == "1" ? "y" : "z"] = value(row[4]);
-                return true;
-            }
-            if (dipole.size() == 3) {
-                const double au =
-                    std::hypot(dipole["x"].toDouble(), dipole["y"].toDouble(), dipole["z"].toDouble());
-                dipole["debye"] = au * 2.541746473;
-                if (!r.frames.isEmpty())
-                    dipole["geometry"] = r.frames.last().molecule.xyz();
-                dipole["origin"] = "nwchem_multipole_origin";
-                r.properties["dipole"] = dipole;
-            }
-            return false;
-        };
-    if (QStringView(line).trimmed().startsWith(u"Temperature") && line.contains('=') &&
-        QStringView(line).trimmed().endsWith('K'))
-        sections << [this, value,
-                     t = QJsonObject{{"temperature", value(line.section('=', 1).trimmed().chopped(1))}},
-                     left = 15](const QString *text) mutable {
-            if (text && --left >= 0) {
-                const auto field = [&](const char *label, const char *key) {
-                    if (text->contains(label))
-                        t[key] = value(words(text->section('=', 1)).value(0));
-                };
-                field("Zero-Point correction to Energy", "zpe_kcal");     // kcal/mol
-                field("Thermal correction to Energy", "energy_kcal");     // kcal/mol
-                field("Thermal correction to Enthalpy", "enthalpy_kcal"); // kcal/mol
-                field("Total Entropy", "entropy_cal");                    // cal/(mol K)
-                field("Cv (constant volume heat capacity)", "cv_cal");    // cal/(mol K)
-                // NWChem's own scale factor (vib:scalefreq), and the parts of the entropy: the heat
-                // capacity, which follows them, repeats their labels.
-                field("frequency scaling parameter", "nwchem_frequency_scale");
-                if (!t.contains(u"cv_cal")) {
-                    field("- Translational", "entropy_translational_cal");
-                    field("- Rotational", "entropy_rotational_cal");
-                    field("- Vibrational", "entropy_vibrational_cal");
-                }
-                if (text->contains("symmetry #"))
-                    t["symmetry_number"] = value(text->section('=', -1).remove(')').trimmed());
-                return true;
-            }
-            if (t.contains(u"enthalpy_kcal") && t.contains(u"entropy_cal") && thermochemistry.size() < 20)
-                thermochemistry << t;
-            return false;
-        };
-    if (line.contains(u"Optimization converged"))
-        warn(r, tr("最適化の収束メッセージを検出しました。"));
-    if (const auto e = totalEnergy(line)) {
-        if (r.energies.size() >= 20000)
-            fail(tr("エネルギーの記録数が2万件を超えています。"));
-        r.energies << ResultEnergy{e->first, number(e->second), i};
-        if (scanPoint > 0 && scan.contains(scanPoint))
-            scan[scanPoint]["energy"] = r.energies.last().hartree;
-    }
-    if (line.contains(u"Output coordinates in ")) {
-        const double scale = line.contains(u"angstroms") ? 1 : line.contains(u"a.u.") ? BohrToAngstrom : 0;
-        if (!scale) {
-            warn(r, tr("未対応の座標単位を読み飛ばしました。"));
-            return;
-        }
-        // The table starts after the dashes under its heading (or nine lines on); a blank line ends
-        // it. Only a terminated table counts, never a partial last row at the end of the log.
-        const auto label =
-            scanPoint > 0 ? tr("スキャン %1・ログ 行 %2").arg(scanPoint).arg(i) : tr("ログ 行 %1").arg(i);
-        sections << [this, scale, label, i, scanAt = scanPoint, heading = 0,
-                     d = Document()](const QString *text) mutable {
-            auto &r = *result;
-            if (text && heading < 10) {
-                if (++heading == 10 || text->contains("----"))
-                    heading = 10;
-                return true;
-            }
-            if (text) {
-                const auto row = words(*text);
-                if (row.size() == 6 && index.match(row[0]).hasMatch() &&
-                    integer(row[0], 1, maxAtoms) == d.atoms.size() + 1) {
-                    try {
-                        d.atoms << atom(row[1], point(row, 3, scale));
-                        return true;
-                    } catch (const std::exception &e) {
-                        warn(r, QString::fromUtf8(e.what()));
-                        d.atoms.clear();
-                    }
-                }
-            }
-            // A complete table of another size is another geometry, such as a monomer of a
-            // counterpoise correction.
-            const bool complete = !d.atoms.isEmpty() && text && text->trimmed().isEmpty();
-            if (complete &&
-                (r.frames.isEmpty() || r.frames.first().molecule.atoms.size() == d.atoms.size())) {
-                addFrame(r, d, label);
-                if (scanAt > 0 && scan.contains(scanAt))
-                    scan[scanAt]["frame"] = r.frames.size() - 1;
-            } else if (!complete)
-                warn(r, tr("行 %1の不完全な座標表を読み飛ばしました。").arg(i));
-            return false;
-        };
-    }
-    if (line.contains(u"(Projected Frequencies expressed")) {
-        r.modes.clear();
-        if (!r.frames.isEmpty())
-            r.vibrationGeometry = r.frames.last().molecule;
-    }
-    if (QStringView(line).trimmed().startsWith(u"P.Frequency") && !r.vibrationGeometry.atoms.isEmpty()) {
-        const auto values = words(line).mid(1);
-        // NWChem prints six modes per table and 3N in all: a longer line is not one of its tables.
-        if (values.size() > 6 || r.modes.size() + values.size() > 3 * r.vibrationGeometry.atoms.size()) {
-            warn(r, tr("未完の振動モード表を読み飛ばしました。"));
-            return;
-        }
-        QVector<ResultMode> modes;
-        for (const auto &f : values)
-            modes.append({number(f), std::numeric_limits<double>::quiet_NaN(),
-                          QVector<Vec>(r.vibrationGeometry.atoms.size(), Vec::Zero())});
-        // Blank lines, then one row per Cartesian coordinate.
-        sections << [&r, modes, rows = 0, blank = true](const QString *text) mutable {
-            const int count = 3 * r.vibrationGeometry.atoms.size();
-            if (text && blank && text->trimmed().isEmpty())
-                return true;
-            blank = false;
-            if (text) {
-                const auto row = words(*text);
-                if (row.size() == modes.size() + 1 && row[0] == QString::number(rows + 1)) {
-                    for (int k = 0; k < modes.size(); ++k)
-                        modes[k].displacement[rows / 3][rows % 3] = number(row[k + 1]);
-                    if (++rows < count)
-                        return true;
-                }
-            }
-            if (rows == count)
-                r.modes += modes;
-            else
-                warn(r, tr("未完の振動モード表を読み飛ばしました。"));
-            return false;
-        };
-    }
-    if (line.contains(u"Projected Infra Red Intensities"))
-        sections << [&r, after = 0](const QString *text) mutable {
-            if (!text)
-                return false;
-            ++after;
-            auto row = words(*text);
-            if (row.size() == 7 && row[2] == "||" && index.match(row[0]).hasMatch()) {
-                const int n = integer(row[0], 1, 6000) - 1;
-                if (n < r.modes.size())
-                    r.modes[n].intensity = number(row[5]);
-                return true;
-            }
-            return after <= 3;
-        };
 }
 void NwchemLog::finish() {
     for (auto &section : sections)
@@ -1821,13 +1854,19 @@ void NwchemLog::finish() {
     auto &r = *result;
     if (!recognized)
         fail(tr("NWChemの出力ログを認識できません。"));
-    r.steps = steps;
+    r.steps = driver.steps;
+    r.properties.remove("optimization");
+    r.properties.remove("thresholds");
+    if (driver.present)
+        r.properties["optimization"] = driver.converged ? "converged" : "not_converged";
+    if (!driver.converged)
+        r.warnings.removeAll(tr("最適化の収束メッセージを検出しました。"));
     if (r.orbitals.isEmpty())
         r.orbitals = orbitals; // Energies only: shapes need MOLDEN (or a CUBE) for the basis.
     if (!thermochemistry.isEmpty())
         r.properties["thermochemistry"] = thermochemistry;
-    if (!thresholds.isEmpty())
-        r.properties["thresholds"] = thresholds;
+    if (!driver.thresholds.isEmpty())
+        r.properties["thresholds"] = driver.thresholds;
     if (!scan.isEmpty()) {
         QJsonArray points;
         for (const auto &point : std::as_const(scan))
@@ -1918,8 +1957,6 @@ void NwchemLog::finish() {
     }
     if (!solvation.isEmpty())
         r.properties["solvation"] = solvation;
-    if (!r.steps.isEmpty() && !r.properties.contains("optimization"))
-        r.properties["optimization"] = "not_converged";
     r.outcome = fatal ? ResultOutcome::Error : ended ? ResultOutcome::Normal : ResultOutcome::Incomplete;
     if (!abort.isEmpty())
         r.status = tr(ErrorStatus).arg(abort);

@@ -178,24 +178,26 @@ void RunProgress::showRun(const QString &path, RunState state) {
     const ChromeColors c(palette());
     const bool active = runStateActive(state), finished = state == RunState::Finished;
     const int current = std::clamp(progress.started - 1, 0, std::max(0, int(tasks.size()) - 1));
+    const auto &optimization = progress.optimization();
     const auto number = [](double value, int digits) {
         return QString::number(value, 'f', digits).replace('-', "−");
     };
     QStringList stages;
     for (int i = 0; i < tasks.size(); ++i) {
-        const bool done = finished || i < current || (i == current && progress.convergedTask == i && !active);
+        const bool done = finished || i < current ||
+                          (i == current && optimization.converged && optimization.task == i && !active);
         const bool now = active && i == current;
         const QString status = done ? tr("完了") : now ? tr("実行中") : active ? tr("待機") : tr("未完了");
         const QColor color = done ? c.good : now ? c.accentText : c.muted;
         QString detail;
-        if (progress.stepTask == i && !progress.steps.isEmpty()) {
-            const auto &last = progress.steps.last();
+        if (optimization.task == i && !optimization.steps.isEmpty()) {
+            const auto &last = optimization.steps.last();
             detail = tr("ステップ %1%2 · E = %3 Eh · ΔE %4")
                          .arg(last.step)
                          .arg(maxSteps ? tr(" / 最大 %1").arg(maxSteps) : QString())
                          .arg(number(last.energy, 6))
                          .arg(QString::number(last.deltaE, 'e', 1).replace('-', "−"));
-            if (progress.convergedTask == i)
+            if (optimization.converged)
                 detail = tr("%1 · 収束").arg(detail);
         } else if (now && std::isfinite(progress.energy))
             detail = QString("E = %1 Eh").arg(number(progress.energy, 6));
@@ -208,12 +210,12 @@ void RunProgress::showRun(const QString &path, RunState state) {
     }
     setStages(stages);
     // The four DRIVER criteria of the last step against their thresholds.
-    const bool optimizing = progress.stepTask >= 0 && !progress.steps.isEmpty() &&
-                            progress.stepTask == current && !progress.thresholds.isEmpty();
+    const bool optimizing = optimization.task >= 0 && !optimization.steps.isEmpty() &&
+                            optimization.task == current && !optimization.thresholds.isEmpty();
     criteria->setVisible(optimizing);
     if (!optimizing)
         return;
-    const auto criteria = resultCriteria(progress.steps.last(), progress.thresholds);
+    const auto criteria = resultCriteria(optimization.steps.last(), optimization.thresholds);
     for (int i = 0; i < int(criteria.size()); ++i) {
         const auto &criterion = criteria[i];
         const bool met = criterion.met();

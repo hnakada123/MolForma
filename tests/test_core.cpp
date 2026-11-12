@@ -1050,6 +1050,63 @@ class CoreTest : public QObject {
                 QVERIFY((copy.atoms[i].position - d.atoms[i].position).norm() < 1e-12);
         }
     }
+    void residueValidationAtEveryBoundary_data() {
+        QTest::addColumn<QString>("problem");
+        for (const auto *problem : {"empty-id", "duplicate-id", "unknown-residue", "wrong-chain",
+                                    "duplicate-membership", "missing-membership"})
+            QTest::newRow(problem) << QString(problem);
+    }
+    void residueValidationAtEveryBoundary() {
+        QFETCH(QString, problem);
+        auto d = Document::load(QString(FIXTURE_DIR) + "/ala_gly_ser.molforma.json");
+        d.envelope["future_field"] = QJsonObject{{"preserved", true}};
+        QVERIFY(d.validate().isEmpty()); // Populate the memo before changing only residue/chain data.
+        auto invalid = d;
+        if (problem == "empty-id")
+            invalid.residues[0].id.clear();
+        else if (problem == "duplicate-id")
+            invalid.residues[1].id = invalid.residues[0].id;
+        else if (problem == "unknown-residue")
+            invalid.chains.first().append("missing");
+        else if (problem == "wrong-chain")
+            invalid.chains["other"] = invalid.chains.take(invalid.chains.firstKey());
+        else if (problem == "duplicate-membership")
+            invalid.chains.first().append(invalid.chains.first().first());
+        else
+            invalid.chains.first().removeFirst();
+        QVERIFY(!invalid.validate().isEmpty());
+        QVERIFY(d.validate().isEmpty()); // The invalid result must not poison the valid memo entry.
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, Document::fromJson(invalid.toJson()));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, Document::fromProject(invalid.project()));
+        QTemporaryDir tmp;
+        const auto path = tmp.filePath("project.molforma.json");
+        d.save(path);
+        const auto saved = readFile(path);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, invalid.save(path));
+        QCOMPARE(readFile(path), saved);
+        QCOMPARE(Document::load(path).project(), d.project());
+        EditorSession session;
+        session.reset(d);
+        const auto revision = session.revision();
+        for (const bool preview : {false, true})
+            QVERIFY_THROWS_EXCEPTION(
+                std::runtime_error,
+                session.edit("invalid residue", [&](Document &next) { next = invalid; }, preview));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, session.propose("invalid residue", invalid));
+        QCOMPARE(session.revision(), revision);
+        QCOMPARE(session.document().project(), d.project());
+        QVERIFY(!session.candidate());
+        QCOMPARE(session.history().count(), 0);
+        // A coherent chain rename remains an ordinary undoable edit and candidate.
+        QVERIFY(session.edit(
+            "rename chain", [](Document &next) { next.renameIds({{next.chains.firstKey(), "renamed"}}); },
+            true));
+        QVERIFY(session.confirm());
+        QVERIFY(session.document().validate().isEmpty());
+        QCOMPARE(session.document().envelope, d.envelope);
+        session.navigate("undo");
+        QCOMPARE(session.document().project(), d.project());
+    }
     void hostileFilesStayBounded() {
         QTemporaryDir tmp;
         // Open Babel reads only the common formats: other readers are not given files from others.
@@ -1061,7 +1118,7 @@ class CoreTest : public QObject {
         } catch (const std::exception &e) {
             QVERIFY(QString::fromUtf8(e.what()).contains("対応していない形式です"));
         }
-        // A chain listing a residue of another chain is refused when read, not met by an edit.
+        // File input follows the same residue and chain rules as edits and saves.
         auto project = parseJson(readFile(QString(FIXTURE_DIR) + "/ala_gly_ser.molforma.json"));
         auto doc = project["document"].toObject();
         auto residues = doc["residues"].toArray();

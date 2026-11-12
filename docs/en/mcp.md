@@ -189,6 +189,8 @@ Moving fixed atoms, invalid references, duplicate coordinates, invalid arguments
 
 ## Available tools
 
+Numeric calculation settings use the same limits as the interface. Ordinary Raman `raman_wavelength_nm` and ORD `ord_start_nm` / `ord_end_nm` are 100–5000 nm; `property_grid_padding` is 0.5–20 Å. A `set_nwchem` request that introduces an out-of-range or nonnumeric value is refused, preserving the document, candidate and revision.
+
 | Tool | Purpose |
 | --- | --- |
 | `list_documents` / `get_document` | Get document IDs, revision, project and candidate. `include` sets what to return (`[]`: the atom count and the like only). `include: ["residues"]` summarizes the residues of a large document: for each chain the count and number range of its polymer residues (amino acids, nucleotides) and its waters, and every other residue (ligands, ions, sugars) with chain, number and name (as `residues` of `cut_out_site` takes them) |

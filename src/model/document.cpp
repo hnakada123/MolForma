@@ -536,11 +536,12 @@ void Document::renameIds(const QHash<QString, QString> &renamed) {
     }
 }
 namespace {
-// What Document::validate checks: everything but the chains, settings and envelope.
+// The structure checked by Document::validate, independent of settings and the project envelope.
 struct Structure {
     QVector<Atom> atoms;
     QVector<Bond> bonds;
     QVector<Residue> residues;
+    QMap<QString, Ids> chains;
     QVector<Part> parts;
     QVector<Center> centers;
     QVector<PointCharge> pointCharges;
@@ -650,8 +651,8 @@ QStringList residueErrors(const Document &d) {
 QStringList Document::validate() const {
     // Settings edits leave the structure shared, and its checks need not run again.
     thread_local Memo<Structure, QStringList, 2> memo;
-    const Structure structure{atoms, bonds, residues, parts, centers, pointCharges};
-    return memo.get(structure, [&] { return validateStructure(*this); });
+    const Structure structure{atoms, bonds, residues, chains, parts, centers, pointCharges};
+    return memo.get(structure, [&] { return validateStructure(*this) + residueErrors(*this); });
 }
 QString Document::formula() const {
     QMap<QString, int> counts;
@@ -744,7 +745,7 @@ Document Document::fromJson(const QJsonObject &o) {
         d.bonds.append({b["a"].toString(), b["b"].toString(), b["kind"].toString("single"),
                         b["stereo"].toString(), b["source"].toString("explicit")});
     }
-    auto errors = d.validate() + residueErrors(d);
+    auto errors = d.validate();
     if (!errors.isEmpty())
         fail(errors.join('\n'));
     return d;

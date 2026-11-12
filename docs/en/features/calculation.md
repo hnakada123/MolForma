@@ -12,6 +12,8 @@ Changes to the settings are recorded in the shared undo/redo history (“Undo”
 
 ## Supported calculations
 
+Numeric settings use the same validation limits whether supplied through the interface, a project or MCP. The excitation wavelength for ordinary Raman and the ORD wavelengths are 100–5000 nm; the property grid padding is 0.5–20 Å. Projects with out-of-range or nonnumeric settings can be opened for correction, but input generation refuses them. An MCP change that introduces an invalid value leaves the document and candidate unchanged.
+
 | Item | Coverage |
 | --- | --- |
 | Method | HF, DFT, MP2, CCSD, CCSD(T) |

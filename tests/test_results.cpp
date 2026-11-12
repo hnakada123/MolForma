@@ -142,13 +142,13 @@ class ResultsTest : public QObject {
     }
     static QJsonObject progressDigest(const NwchemLog &progress) {
         QJsonArray steps;
-        for (const auto &s : progress.steps)
+        for (const auto &s : progress.optimization().steps)
             steps << QJsonArray{s.step, s.energy};
         return {{"started", progress.started},
-                {"step_task", progress.stepTask},
-                {"converged_task", progress.convergedTask},
+                {"step_task", progress.optimization().steps.isEmpty() ? -1 : progress.optimization().task},
+                {"converged_task", (progress.optimization().converged ? progress.optimization().task : -1)},
                 {"steps", steps},
-                {"thresholds", progress.thresholds},
+                {"thresholds", progress.optimization().thresholds},
                 {"energy", progress.energy},
                 {"ended", progress.ended}};
     }
@@ -505,6 +505,58 @@ class ResultsTest : public QObject {
         QVERIFY_THROWS_EXCEPTION(
             std::runtime_error,
             readResult(save("unknown.molden", "[Molden Format]\n[Atoms] Angs\nUue 1 119 0 0 0\n")));
+    }
+    void optimizationStateFollowsItsTask_data() {
+        QTest::addColumn<QString>("next");
+        QTest::addColumn<bool>("converged");
+        QTest::addColumn<int>("steps");
+        QTest::addColumn<double>("energy");
+        QTest::addColumn<int>("thresholds");
+        const QString step = "@ 0 -75.0 0.0 0.06 0.02 0.0 0.0 0.3\n";
+        QTest::newRow("another-optimization")
+            << "NWChem Input Module\nNWChem Geometry Optimization\n" + step << false << 1 << -75.0 << 0;
+        QTest::newRow("without-optimizer-banner")
+            << "NWChem Input Module\n" + step << false << 1 << -75.0 << 0;
+        QTest::newRow("cut-before-first-step")
+            << QString("NWChem Input Module\nNWChem Geometry Optimization\n") << false << 0 << 0.0 << 0;
+        QTest::newRow("new-thresholds")
+            << "NWChem Input Module\nmaximum gradient threshold (gmax) = 0.001\n" + step << false << 1
+            << -75.0 << 1;
+        QTest::newRow("new-step-zero-without-input-banner") << step << false << 1 << -75.0 << 2;
+        QTest::newRow("later-frequencies")
+            << QString("NWChem Input Module\nFrequency Analysis\nTotal DFT energy = -75.5\n") << true << 1
+            << -76.0 << 2;
+        QTest::newRow("repeated-converged-step-zero")
+            << QString("@ 0 -76.0 0.0 0.001 0.001 0.0 0.0 0.3\n") << true << 1 << -76.0 << 2;
+    }
+    void optimizationStateFollowsItsTask() {
+        QFETCH(QString, next);
+        QFETCH(bool, converged);
+        QFETCH(int, steps);
+        QFETCH(double, energy);
+        QFETCH(int, thresholds);
+        const QString text = "NWChem Input Module\nNWChem Geometry Optimization\n" + geometry() +
+                             "maximum gradient threshold (gmax) = 0.00045\n"
+                             "rms gradient threshold (grms) = 0.0003\n"
+                             "@ 0 -76.0 0.0 0.001 0.001 0.0 0.0 0.3\n"
+                             "Optimization converged\n" +
+                             next;
+        const auto result = readResult(save("successive-optimizations.out", text));
+        NwchemLog live;
+        for (const auto &line : text.toUtf8().split('\n'))
+            live.addBytes(line);
+        QCOMPARE(live.optimization().converged, converged);
+        QCOMPARE(live.optimization().steps.size(), steps);
+        QCOMPARE(result.steps, live.optimization().steps);
+        QCOMPARE(result.properties["thresholds"].toObject(), live.optimization().thresholds);
+        QCOMPARE(live.optimization().thresholds.size(), thresholds);
+        QCOMPARE(result.properties["optimization"].toString(),
+                 converged ? QString("converged") : QString("not_converged"));
+        QCOMPARE(result.warnings.contains("最適化の収束メッセージを検出しました。"), converged);
+        QVERIFY(
+            resultBriefSummary(result).contains(converged ? "最適化: 収束" : "最適化: 収束メッセージなし"));
+        if (steps)
+            QCOMPARE(result.steps.last().energy, energy);
     }
     void logSummaries() {
         // Excerpts in the layout NWChem 7.3.1 prints (TDDFT, DRIVER, vib, multipole and MO analysis).
@@ -2442,6 +2494,75 @@ class ResultsTest : public QObject {
         QCOMPARE(nwchemSettings(w.document())["task"].toString(), QString("saddle_frequencies"));
         QCOMPARE(nwchemSettings(w.document())["start"].toString(), QString("molforma_ts"));
         QVERIFY((w.displayDocument().atoms[2].position - shown.atoms[2].position).norm() < 1e-12);
+    }
+    void spectrumSelectionUsesDisplayedGeometry_data() {
+        QTest::addColumn<bool>("playing");
+        QTest::newRow("mode-reference") << false;
+        QTest::newRow("mode-playing") << true;
+    }
+    void spectrumSelectionUsesDisplayedGeometry() {
+        QFETCH(bool, playing);
+        // The vibrational reference and the last structure differ, as in a multi-task log.
+        QString text =
+            "NWChem\n" + geometry() + " (Projected Frequencies expressed in cm-1)\n\n P.Frequency 1600\n\n";
+        for (int i = 0; i < 9; ++i)
+            text += QString(" %1 %2\n").arg(i + 1).arg(i == 4 ? .5 : 0);
+        text += "\nProjected Infra Red Intensities\n 1 1600 || 1 1 10 1\n\n";
+        auto last = geometry();
+        last.replace("0.758", "1.25");
+        text += '\n' + last +
+                "Chemical Shielding Tensors (GIAO, in ppm)\n"
+                "Atom: 2 H\nisotropic = 29.0\nanisotropy = 1\n";
+        MainWindow w;
+        const auto original = Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");
+        w.loadDocument(original);
+        auto *panel = w.resultsPanel();
+        QSignalSpy done(panel, &ResultsPanel::loaded);
+        panel->openFile(save("mode-and-nmr.out", text));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
+        auto *spectra = widget<SpectroscopyView>(w, "resultsSpectroscopy");
+        spectra->setParameters({{"kind", "nmr"}, {"nucleus", "1H"}, {"reference_ppm", 31.0}, {"width", .05}});
+        auto *peaks = widget<QTableWidget>(w, "spectrumPeaks");
+        QCOMPARE(peaks->rowCount(), 1);
+        auto *view = widget<MoleculeView>(w, "resultsView");
+        panel->selectMode(0, .4, playing);
+        QCOMPARE(panel->displayedGeometry().atoms[1].position.x(), .758);
+        if (playing)
+            QTRY_VERIFY(view->documentRef().atoms[1].position != original.atoms[1].position);
+        peaks->setCurrentCell(0, 0);
+        QCOMPARE(panel->viewerState().animation, ResultAnimation::None);
+        QCOMPARE(view->documentRef().atoms[1].position.x(), 1.25);
+        QCOMPARE(panel->displayedGeometry().atoms, view->documentRef().atoms);
+        const auto xyz = files.filePath("selected-result.xyz");
+        panel->saveGeometry(xyz);
+        QCOMPARE(Document::fromXyz(QString::fromUtf8(readFile(xyz))).atoms[1].position.x(), 1.25);
+        panel->applyStructure();
+        QVERIFY(w.hasCandidate());
+        QCOMPARE(w.candidate()->atoms[1].position.x(), 1.25);
+        w.cancelCandidate();
+        // A direct frame control also interrupts playback, even when it returns to the same frame.
+        panel->selectMode(0, {}, true);
+        panel->selectFrame(1);
+        QCOMPARE(panel->viewerState().animation, ResultAnimation::None);
+        QCOMPARE(panel->displayedGeometry().atoms, view->documentRef().atoms);
+        // Stopping a mode brings the picture to the same reference that XYZ export uses.
+        panel->selectMode(0, {}, true);
+        QTRY_VERIFY(view->documentRef().atoms[1].position != original.atoms[1].position);
+        panel->stopAnimation();
+        QCOMPARE(panel->displayedGeometry().atoms, view->documentRef().atoms);
+        QCOMPARE(panel->displayedGeometry().atoms[1].position.x(), .758);
+        // The pause button and the public stop operation return to the same reference structure.
+        auto *play = widget<QPushButton>(w, "resultsPlayMode");
+        play->click();
+        QCOMPARE(panel->viewerState().animation, ResultAnimation::Mode);
+        play->click();
+        QCOMPARE(panel->viewerState().animation, ResultAnimation::None);
+        QCOMPARE(panel->displayedGeometry().atoms[1].position.x(), .758);
+        QCOMPARE(panel->displayedGeometry().atoms, view->documentRef().atoms);
+        // Selecting a frame keeps the remembered mode; clicking that same IR stick must show it again.
+        panel->selectFrame(1);
+        emit widget<ChartView>(w, "resultsIrSpectrum")->stickClicked(1, 0);
+        QCOMPARE(panel->displayedGeometry().atoms[1].position.x(), .758);
     }
     void viewerPathsPropertiesAndMeasurement() {
         MainWindow w;

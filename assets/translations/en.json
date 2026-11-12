@@ -1,4 +1,5 @@
 {
+    "%1 は %2〜%3 の有限の数値で指定してください。": "Specify %1 as a finite number between %2 and %3.",
     "再生には2つ以上の構造が必要です。": "At least two structures are required for playback.",
     "このモードには変位データがありません。": "This mode has no displacement data.",
     "結果ファイルが開かれていません。": "No result file is open.",

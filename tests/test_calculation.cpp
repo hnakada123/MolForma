@@ -14,6 +14,8 @@
 #include <QtTest>
 #include <QtWidgets>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 using namespace mf;
 
 class CalculationTest : public QObject {
@@ -63,6 +65,8 @@ class CalculationTest : public QObject {
   private slots:
     void initTestCase() {
         QVERIFY(settingsDir.isValid());
+        qputenv("XDG_CONFIG_HOME", settingsDir.path().toUtf8());
+        qputenv("XDG_DATA_HOME", settingsDir.path().toUtf8());
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
@@ -135,6 +139,82 @@ class CalculationTest : public QObject {
         setEnglish(false);
         QCOMPARE(japanese[0].value, english[0].value);
         QVERIFY(japanese[0].label != english[0].label);
+    }
+    void realSettingLimits_data() {
+        QTest::addColumn<QString>("key");
+        QTest::addColumn<double>("minimum");
+        QTest::addColumn<double>("maximum");
+        QTest::addColumn<QString>("task");
+        QTest::newRow("raman") << QString("raman_wavelength_nm") << 100. << 5000. << QString("energy");
+        QTest::newRow("grid") << QString("property_grid_padding") << .5 << 20. << QString("energy");
+        QTest::newRow("ord-start") << QString("ord_start_nm") << 100. << 5000. << QString("energy");
+        QTest::newRow("ord-end") << QString("ord_end_nm") << 100. << 5000. << QString("energy");
+        QTest::newRow("dielectric") << QString("dielectric") << 1. << 1000. << QString("energy");
+        QTest::newRow("irc") << QString("irc_stride") << .01 << 1. << QString("irc");
+        QTest::newRow("neb-spring") << QString("neb_spring") << .001 << 100. << QString("neb");
+        QTest::newRow("neb-step") << QString("neb_stepsize") << .001 << 10. << QString("neb");
+        for (const auto *key : {"scan_start", "scan_end", "scan2_start", "scan2_end"})
+            QTest::newRow(key) << QString(key) << -180. << 180. << QString("scan");
+    }
+    void realSettingLimits() {
+        QFETCH(QString, key);
+        QFETCH(double, minimum);
+        QFETCH(double, maximum);
+        QFETCH(QString, task);
+        auto d = water();
+        set(d, "task", task);
+        if (key.startsWith("scan2_"))
+            set(d, "scan2_atoms", idsToJson({d.atoms[0].id, d.atoms[1].id}));
+        const auto rangeError = [&](const Document &document) {
+            const auto check = validateNwchem(document);
+            return std::any_of(check.diagnostics.begin(), check.diagnostics.end(), [&](const auto &item) {
+                return item.setting == key && (item.code == "settings.real" || item.code == "settings.type" ||
+                                               item.code == "dielectric.range" || item.code == "irc.stride" ||
+                                               item.code == "neb.spring" || item.code == "neb.stepsize");
+            });
+        };
+        for (const double valid : {minimum, maximum, (minimum + maximum) / 2}) {
+            set(d, key, valid);
+            QVERIFY2(!rangeError(d), qPrintable(key));
+        }
+        for (const QJsonValue &invalid :
+             {QJsonValue(std::nextafter(minimum, -INFINITY)), QJsonValue(std::nextafter(maximum, INFINITY)),
+              QJsonValue("1.0"), QJsonValue(), QJsonValue(std::numeric_limits<double>::quiet_NaN()),
+              QJsonValue(INFINITY)}) {
+            set(d, key, invalid);
+            QVERIFY2(rangeError(d), qPrintable(key));
+            // Loading a project preserves settings for correction, but generating input refuses them.
+            const auto loaded = Document::fromProject(d.project());
+            QVERIFY(rangeError(loaded));
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(loaded));
+        }
+        if (task == "scan" || task == "neb") {
+            set(d, "task", "energy");
+            set(d, key, maximum + 1);
+            QVERIFY(!rangeError(d)); // Inactive path parameters keep their former applicability.
+        }
+    }
+    void propertyNumbersAreValidatedBeforeInputGeneration() {
+        auto raman = water();
+        set(raman, "method", "dft");
+        set(raman, "task", "frequencies");
+        set(raman, "prop_raman", true);
+        QVERIFY(validateNwchem(raman).errors.isEmpty());
+        QVERIFY(nwchemInput(raman).contains("response 1 "));
+        set(raman, "raman_wavelength_nm", 0);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(raman));
+        auto grid = water();
+        set(grid, "prop_esp_grid", true);
+        QVERIFY(validateNwchem(grid).errors.isEmpty());
+        QVERIFY(!nwchemInput(grid).isEmpty());
+        set(grid, "property_grid_padding", -1);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(grid));
+        auto ord = water();
+        set(ord, "prop_ord", true);
+        QVERIFY(validateNwchem(ord).errors.isEmpty());
+        QVERIFY(!nwchemInput(ord).isEmpty());
+        set(ord, "ord_start_nm", 0);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(ord));
     }
     void completeHfInput() {
         const auto d = water();

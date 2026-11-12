@@ -185,6 +185,9 @@ class McpTest : public QObject {
         QCOMPARE(server.document().project(), carbon.project());
     }
     void initTestCase() {
+        QVERIFY(settingsHome.isValid());
+        qputenv("XDG_CONFIG_HOME", settingsHome.path().toUtf8());
+        qputenv("XDG_DATA_HOME", settingsHome.path().toUtf8());
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsHome.path());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
@@ -1273,6 +1276,29 @@ class McpTest : public QObject {
             server, "cut_out_site",
             {{"path", pdb}, {"residues", QJsonArray{QJsonObject{{"code", "TRP"}}}}, {"preview", false}})));
         QVERIFY(failed(change(server, "cut_out_site", {{"preview", false}})));
+    }
+    void invalidPropertyNumbersDoNotChangeTheDocument() {
+        McpServer server;
+        QVERIFY(!failed(change(
+            server, "place_template",
+            {{"templateId", "skeleton:water"}, {"position", QJsonArray{0, 0, 0}}, {"preview", false}})));
+        QVERIFY(!failed(change(
+            server, "set_nwchem",
+            {{"settings", QJsonObject{{"method", "dft"}, {"task", "frequencies"}, {"prop_raman", true}}},
+             {"preview", false}})));
+        const auto before = server.snapshot();
+        for (const bool preview : {false, true})
+            for (const auto *key :
+                 {"raman_wavelength_nm", "property_grid_padding", "ord_start_nm", "ord_end_nm"}) {
+                const auto response =
+                    change(server, "set_nwchem", {{"settings", QJsonObject{{key, 0}}}, {"preview", preview}});
+                QVERIFY2(failed(response), qPrintable(QString::fromUtf8(QJsonDocument(response).toJson())));
+                QCOMPARE(server.snapshot(), before); // Includes revision and candidate state.
+            }
+        const auto input = call(server, "export_document", scoped(server, {{"format", "nwchem"}}));
+        QVERIFY(!failed(input));
+        QVERIFY(data(input)["text"].toString().contains("response 1 "));
+        QVERIFY(!data(input)["text"].toString().contains(" inf"));
     }
     void filesResourcesAndNwchem() {
         McpServer server;

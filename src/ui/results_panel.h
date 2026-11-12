@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "results/result_loader.h"
+#include "results/result_presentation.h"
 #include "results/result_summary.h"
 #include <QCache>
 #include <QTimer>
@@ -33,7 +34,6 @@ class FrameTimeline;
 class MainWindow;
 class MoleculeView;
 class OrbitalLevels;
-enum class ResultAnimation { None, Frames, Mode };
 struct ResultViewerState {
     QString pendingPath;
     ResultAnimation animation = ResultAnimation::None;
@@ -89,9 +89,7 @@ class ResultsPanel : public QWidget {
     ResultData data;
     ResultLoader loader;
     QTimer animation;
-    ResultAnimation animationKind = ResultAnimation::None;
-    double phase = 0;
-    bool modeDisplayed = false;
+    ResultPresentation presentation;
     QString folder;
     // An orbital of a log (spin, number) to show once the job's MOLDEN file has loaded.
     struct PendingOrbital {
@@ -193,8 +191,8 @@ class ResultsPanel : public QWidget {
     void showOverview();
     void setOverview(QWidget *page);
     void showOutcome();
-    void showFrame();
-    void showMode();
+    void showPresentation();
+    void showGeometry();
     void showSpectrum();
     void showContributions();
     // An orbital of a pair listed for the chosen state: its shape from the job's MOLDEN file, else

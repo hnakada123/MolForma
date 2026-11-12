@@ -72,6 +72,7 @@ add_library(molforma_results STATIC
     src/results/energy_profile.cpp
     src/results/molden_orbitals.cpp
     src/results/result_loader.cpp
+    src/results/result_presentation.cpp
     src/results/result_summary.cpp
     src/results/spectrum.cpp
     src/results/results.cpp)
@@ -81,6 +82,7 @@ add_library(molforma_nwchem STATIC
     src/nwchem/history.cpp
     src/nwchem/history_import.cpp
     src/nwchem/nwchem.cpp
+    src/nwchem/nwchem_validation.cpp
     src/nwchem/nwchem_advanced.cpp
     src/nwchem/nwchem_execution.cpp
     src/nwchem/nwchem_geometry.cpp

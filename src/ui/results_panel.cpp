@@ -13,6 +13,7 @@
 #include "ui/result_charts.h"
 #include "ui/spectroscopy_view.h"
 #include "ui/theme.h"
+#include <QScopeGuard>
 #include <QtWidgets>
 #include <algorithm>
 #include <cmath>
@@ -893,12 +894,12 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     connect(irWidth, &QDoubleSpinBox::valueChanged, this, &ResultsPanel::showIrSpectrum);
     connect(irSpectrum, &ChartView::stickClicked, this, [this](int series, int index) {
         if (series == 1 && index >= 0 && index < irModes.size())
-            modes->setCurrentCell(irModes[index], 0);
+            selectMode(irModes[index]);
     });
     connect(arrows, &QCheckBox::toggled, this, &ResultsPanel::showArrows);
-    connect(amplitude, &QDoubleSpinBox::valueChanged, this, [this] {
-        showArrows();
-        showContext();
+    connect(amplitude, &QDoubleSpinBox::valueChanged, this, [this](double value) {
+        presentation.setAmplitude(value);
+        showPresentation();
     });
     connect(saveModeImages, &QAction::triggered, this,
             [this] { window->safe([this] { exportMode(true); }); });
@@ -1056,11 +1057,8 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         if (row < 0 || !path->item(row, 0))
             return;
         const int index = path->item(row, 0)->data(Qt::UserRole).toInt();
-        if (index >= 0 && index < data.frames.size()) {
-            stopAnimation();
-            frame->setValue(index + 1);
-            showFrame();
-        }
+        if (index >= 0 && index < data.frames.size())
+            selectFrame(index);
     });
     auto *propertyPage = new QWidget;
     auto *ppl = new QVBoxLayout(propertyPage);
@@ -1107,10 +1105,8 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         const auto pair = item->data(Qt::UserRole).toPoint();
         if (pair.x() < 0 || pair.y() >= data.frames.last().molecule.atoms.size())
             return;
-        stopAnimation();
         picked = {pair.x(), pair.y()};
-        frame->setValue(data.frames.size());
-        showFrame();
+        selectFrame(data.frames.size() - 1);
     });
     // NMR spin–spin couplings: only for a log with them.
     couplingBlock = new QWidget;
@@ -1137,10 +1133,8 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
         const auto pair = item->data(Qt::UserRole).toPoint();
         if (pair.x() < 0 || pair.y() >= data.frames.last().molecule.atoms.size())
             return;
-        stopAnimation();
         picked = {pair.x(), pair.y()};
-        frame->setValue(data.frames.size());
-        showFrame();
+        selectFrame(data.frames.size() - 1);
     });
     tabs->addTab(propertyPage, tr("物性"));
     auto *surfaces = new QWidget;
@@ -1206,9 +1200,8 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     connect(spectroscopy, &SpectroscopyView::atomSelected, this, [this](int index) {
         if (index < 0 || data.frames.isEmpty() || index >= data.frames.last().molecule.atoms.size())
             return;
-        frame->setValue(data.frames.size());
         picked = {index};
-        setViewDocument(data.frames.last().molecule);
+        selectFrame(data.frames.size() - 1);
     });
     connect(spectroscopy, &SpectroscopyView::modeSelected, this, [this](int index) { selectMode(index); });
     connect(spectroscopy, &SpectroscopyView::excitationSelected, this, [this](int index) {
@@ -1246,82 +1239,37 @@ ResultsPanel::ResultsPanel(MainWindow *owner) : QWidget(owner), window(owner) {
     });
     connect(reload, &QPushButton::clicked, this, &ResultsPanel::reloadResult);
     connect(cancel, &QPushButton::clicked, this, &ResultsPanel::cancelLoad);
-    connect(frame, &QSpinBox::valueChanged, this, [this] {
-        if (!animation.isActive())
-            showFrame();
+    connect(frame, &QSpinBox::valueChanged, this, [this](int value) {
+        if (value > 0)
+            selectFrame(value - 1);
     });
-    const auto goToFrame = [this](int index) {
-        stopAnimation();
-        const QSignalBlocker guard(frame);
-        frame->setValue(index + 1);
-        showFrame();
-    };
-    connect(timeline, &FrameTimeline::frameSelected, this, goToFrame);
-    connect(firstFrame, &QPushButton::clicked, this, [goToFrame] { goToFrame(0); });
-    connect(lastFrame, &QPushButton::clicked, this, [this, goToFrame] { goToFrame(data.frames.size() - 1); });
-    const auto setPlaying = [this](QPushButton *button, const QString &tip) {
-        button->setIcon(lineIcon("pause", ChromeColors(palette()).onAccent));
-        button->setToolTip(tip);
-        button->setAccessibleName(tip);
-    };
-    connect(playFrames, &QPushButton::clicked, this, [this, setPlaying] {
-        if (animation.isActive()) {
+    connect(timeline, &FrameTimeline::frameSelected, this, &ResultsPanel::selectFrame);
+    connect(firstFrame, &QPushButton::clicked, this, [this] { selectFrame(0); });
+    connect(lastFrame, &QPushButton::clicked, this, [this] { selectFrame(data.frames.size() - 1); });
+    connect(playFrames, &QPushButton::clicked, this, [this] {
+        if (presentation.animation() == ResultAnimation::Frames)
             stopAnimation();
-            showFrame();
-        } else {
-            phase = 0;
-            animationKind = ResultAnimation::Frames;
-            animation.setInterval(180);
-            animation.start();
-            setPlaying(playFrames, tr("再生を停止"));
-        }
+        else
+            playTrajectory();
     });
-    connect(playMode, &QPushButton::clicked, this, [this, setPlaying] {
-        if (animation.isActive()) {
+    connect(playMode, &QPushButton::clicked, this, [this] {
+        if (presentation.animation() == ResultAnimation::Mode)
             stopAnimation();
-            showFrame();
-        } else {
-            phase = 0;
-            animationKind = ResultAnimation::Mode;
-            animation.setInterval(40);
-            animation.start();
-            setPlaying(playMode, tr("再生を停止"));
-            view->setArrows({}); // Arrows belong to the reference structure, not the moving one.
-            showMode();
-        }
+        else
+            selectMode(presentation.mode(), {}, true);
     });
     connect(closeMode, &QPushButton::clicked, this, [this] {
-        stopAnimation();
-        {
-            const QSignalBlocker guard(modes);
-            modes->clearSelection();
-            modes->setCurrentCell(-1, -1);
-        }
-        irSpectrum->setSelectedStick(-1, -1);
-        showFrame();
-        updateActions();
+        presentation.selectMode(data, -1);
+        showPresentation();
     });
-    connect(modes, &QTableWidget::currentCellChanged, this, [this] {
-        stopAnimation();
-        updateActions();
-        irSpectrum->setSelectedStick(1, irModes.indexOf(modes->currentRow()));
-        if (modes->currentRow() >= 0 && modes->currentRow() < data.modes.size() &&
-            !data.modes[modes->currentRow()].displacement.isEmpty()) {
-            modeDisplayed = true;
-            setViewDocument(data.vibrationGeometry);
-            view->setSurface({});
-        }
-        showArrows();
-        showContext();
+    connect(modes, &QTableWidget::currentCellChanged, this, [this](int row) {
+        presentation.selectMode(data, row);
+        showPresentation();
     });
+    connect(modes, &QTableWidget::cellClicked, this, [this](int row) { selectMode(row); });
     connect(&animation, &QTimer::timeout, this, [this] {
-        if (animationKind == ResultAnimation::Frames) {
-            frame->setValue(frame->value() % data.frames.size() + 1);
-            showFrame();
-        } else {
-            phase += .18;
-            showMode();
-        }
+        presentation.advance(data);
+        showGeometry();
     });
     connect(applyIso, &QPushButton::clicked, this, [this] {
         bool ok;
@@ -1410,31 +1358,24 @@ void ResultsPanel::applyChromeStyle() {
     jobIcon->setPixmap(lineIcon("folder", ChromeColors(pal).muted).pixmap(QSize(16, 16)));
     // Icons drawn in fixed colors follow the palette here.
     const ChromeColors c(pal);
-    for (auto *b : {playFrames, playMode})
-        b->setIcon(lineIcon(animation.isActive() && b->toolTip() == tr("再生を停止") ? "pause" : "play",
-                            c.onAccent));
+    playFrames->setIcon(
+        lineIcon(presentation.animation() == ResultAnimation::Frames ? "pause" : "play", c.onAccent));
+    playMode->setIcon(
+        lineIcon(presentation.animation() == ResultAnimation::Mode ? "pause" : "play", c.onAccent));
     showOutcome();
     showOptimization();
 }
 void ResultsPanel::stopAnimation() {
-    animationKind = ResultAnimation::None;
-    animation.stop();
-    const auto onAccent = ChromeColors(palette()).onAccent;
-    playFrames->setIcon(lineIcon("play", onAccent));
-    playFrames->setToolTip(tr("構造列を再生"));
-    playFrames->setAccessibleName(tr("構造列を再生"));
-    playMode->setIcon(lineIcon("play", onAccent));
-    playMode->setToolTip(tr("選択したモードを再生"));
-    playMode->setAccessibleName(tr("選択したモードを再生"));
-    showContext();
+    presentation.stop();
+    showPresentation();
 }
 void ResultsPanel::error(const QString &message) {
     status->setPlainText(tr("読込・表示エラー: %1\n前の結果は保持しています。").arg(message));
     emit loadFailed(message);
 }
 ResultViewerState ResultsPanel::viewerState() const {
-    return {loader.pendingPath(), animation.isActive() ? animationKind : ResultAnimation::None,
-            frame->value() - 1, modes->currentRow(), amplitude->value()};
+    return {loader.pendingPath(), presentation.animation(), presentation.frame(), presentation.mode(),
+            presentation.amplitude()};
 }
 namespace {
 void requireResultIndex(int index, qsizetype size) {
@@ -1451,10 +1392,8 @@ void ResultsPanel::reloadResult() {
 void ResultsPanel::selectFrame(int index) {
     if (loading())
         fail(tr("読込完了後に操作してください。"));
-    requireResultIndex(index, data.frames.size());
-    stopAnimation();
-    frame->setValue(index + 1);
-    showFrame();
+    presentation.selectFrame(data, index);
+    showPresentation();
 }
 void ResultsPanel::selectMode(int index, std::optional<double> value, bool play) {
     if (loading())
@@ -1462,17 +1401,13 @@ void ResultsPanel::selectMode(int index, std::optional<double> value, bool play)
     requireResultIndex(index, data.modes.size());
     if (play && data.modes[index].displacement.isEmpty())
         fail(tr("このモードには変位データがありません。"));
-    stopAnimation();
-    modes->setCurrentCell(index, 0);
-    details->setCurrentWidget(modes->parentWidget());
+    presentation.selectMode(data, index);
     if (value)
-        amplitude->setValue(*value);
-    if (!data.modes[index].displacement.isEmpty()) {
-        phase = 0;
-        showMode();
-    }
+        presentation.setAmplitude(*value);
     if (play)
-        playMode->click();
+        presentation.playMode(data);
+    details->setCurrentWidget(modes->parentWidget());
+    showPresentation();
 }
 void ResultsPanel::selectOrbital(int index) {
     if (loading())
@@ -1487,10 +1422,8 @@ void ResultsPanel::selectOrbital(int index) {
 void ResultsPanel::playTrajectory() {
     if (loading())
         fail(tr("読込完了後に操作してください。"));
-    if (data.frames.size() < 2)
-        fail(tr("再生には2つ以上の構造が必要です。"));
-    stopAnimation();
-    playFrames->click();
+    presentation.playFrames(data);
+    showPresentation();
 }
 void ResultsPanel::cancelLoad() {
     if (!loader.cancel())
@@ -1874,7 +1807,7 @@ void ResultsPanel::updateActions() {
     playFrames->setEnabled(ready && data.frames.size() > 1);
     firstFrame->setEnabled(playFrames->isEnabled());
     lastFrame->setEnabled(playFrames->isEnabled());
-    const int mode = modes->currentRow();
+    const int mode = presentation.mode();
     playMode->setEnabled(ready && mode >= 0 && mode < data.modes.size() &&
                          !data.modes[mode].displacement.isEmpty());
     saveModeImages->setEnabled(playMode->isEnabled());
@@ -1920,6 +1853,11 @@ void ResultsPanel::updateActions() {
             : tr("このファイルには表示可能な分子軌道がありません。"));
 }
 void ResultsPanel::display(bool orbitalOnly) {
+    if (orbitalOnly && !data.frames.isEmpty())
+        presentation.selectFrame(data,
+                                 data.selectedOrbital >= 0 ? data.orbitalFrame : data.frames.size() - 1);
+    else
+        presentation.reset(data);
     summary = resultMessage(data);
     status->clear(); // The outcome is in "概要": no message left from loading.
     if (!orbitalOnly && !data.source.isEmpty()) {
@@ -2127,7 +2065,7 @@ void ResultsPanel::display(bool orbitalOnly) {
     {
         const QSignalBlocker guard(frame);
         frame->setRange(data.frames.isEmpty() ? 0 : 1, data.frames.size());
-        frame->setValue(data.selectedOrbital >= 0 ? data.orbitalFrame + 1 : data.frames.size());
+        frame->setValue(presentation.frame() + 1);
         frame->setSuffix(QString(" / %1").arg(data.frames.size()));
     }
     dataset->clear();
@@ -2138,8 +2076,7 @@ void ResultsPanel::display(bool orbitalOnly) {
     updateTabs();
     showOverview();
     showOutcome();
-    showFrame();
-    updateActions();
+    showPresentation();
 }
 void ResultsPanel::updateTabs() {
     const auto p = data.properties;
@@ -2478,15 +2415,16 @@ void ResultsPanel::showOutcome() {
                                            : QString()));
 }
 void ResultsPanel::showContext() {
-    const int i = frame->value() - 1, mode = modes->currentRow();
+    const int i = presentation.frame(), mode = presentation.mode();
     int page = 0;
     QString title, detail;
-    if (modeDisplayed && mode >= 0 && mode < data.modes.size()) {
+    if (presentation.showingMode() && mode >= 0 && mode < data.modes.size()) {
         page = 2;
         const auto &m = data.modes[mode];
         title = tr("モード %1 · %2 cm⁻¹").arg(mode + 1).arg(fixed(m.frequency, 1));
-        detail = animation.isActive() ? tr("再生中 · 振幅 %1 Å").arg(fixed(amplitude->value(), 2))
-                                      : tr("基準構造");
+        detail = presentation.animation() == ResultAnimation::Mode
+                     ? tr("再生中 · 振幅 %1 Å").arg(fixed(presentation.amplitude(), 2))
+                     : tr("基準構造");
         if (modeKinds.value(mode) == ResultModeKind::Rigid)
             detail += tr(" · 並進・回転");
         else if (imaginaryMode(modeKinds.value(mode)))
@@ -2938,7 +2876,7 @@ void ResultsPanel::showIrSpectrum() {
     irSpectrum->setChart(
         tr("IRスペクトル（表示用）"), tr("波数 / cm⁻¹"), tr("IR強度 / km mol⁻¹"),
         {{tr("広がり"), curve, ChartTone::Muted}, {tr("各モード"), sticks, ChartTone::Text, true}});
-    irSpectrum->setSelectedStick(1, irModes.indexOf(modes->currentRow()));
+    irSpectrum->setSelectedStick(1, irModes.indexOf(presentation.mode()));
 }
 void ResultsPanel::showOptimization() {
     const ChromeColors c(static_cast<QWidget *>(window)->palette());
@@ -3014,10 +2952,11 @@ void ResultsPanel::showOptimization() {
                             levels);
 }
 void ResultsPanel::showArrows() {
-    const int n = modes->currentRow();
+    const int n = presentation.mode();
     // Only over the reference structure the displacements belong to.
-    if (!arrows->isChecked() || !modeDisplayed || n < 0 || n >= data.modes.size() ||
-        data.modes[n].displacement.size() != data.vibrationGeometry.atoms.size() || animation.isActive()) {
+    if (!arrows->isChecked() || !presentation.showingMode() || n < 0 || n >= data.modes.size() ||
+        data.modes[n].displacement.size() != data.vibrationGeometry.atoms.size() ||
+        presentation.animation() != ResultAnimation::None || presentation.displaced()) {
         view->setArrows({});
         return;
     }
@@ -3028,11 +2967,11 @@ void ResultsPanel::showArrows() {
     QVector<std::pair<Vec, Vec>> list;
     for (int i = 0; i < data.vibrationGeometry.atoms.size() && longest > 0; ++i)
         list.append({data.vibrationGeometry.atoms[i].position,
-                     data.modes[n].displacement.value(i) / longest * 3 * amplitude->value()});
+                     data.modes[n].displacement.value(i) / longest * 3 * presentation.amplitude()});
     view->setArrows(list);
 }
 void ResultsPanel::exportMode(bool images) {
-    const int n = modes->currentRow();
+    const int n = presentation.mode();
     if (loading() || n < 0 || n >= data.modes.size() || data.modes[n].displacement.isEmpty())
         fail(tr("振動モードを選択してください。"));
     stopAnimation();
@@ -3046,14 +2985,18 @@ void ResultsPanel::exportMode(bool images) {
         if (target.isEmpty())
             return;
         window->checkMcpPath(target);
-        modeDisplayed = true;
-        view->setSurface({});
+        const auto saved = presentation;
+        const auto restore = qScopeGuard([&] {
+            presentation = saved;
+            showPresentation();
+        });
+        presentation.selectMode(data, n);
         const bool written = writeAnimation(this, target, name, options, steps, [&](int k) {
-            setViewDocument(resultModeGeometry(data, n, 2 * M_PI * k / steps, amplitude->value()));
+            presentation.setPhase(2 * M_PI * k / steps);
+            showPresentation();
             view->renderNow();
             return view->renderImage(options.scale, options.background);
         });
-        setViewDocument(data.vibrationGeometry);
         if (written)
             window->statusBar()->showMessage(
                 tr("振動の%n枚の画像を書き出しました: %1", nullptr, steps).arg(target), 8000);
@@ -3067,7 +3010,7 @@ void ResultsPanel::exportMode(bool images) {
     window->checkMcpPath(file);
     QString text;
     for (int k = 0; k < steps; ++k) {
-        auto frameText = resultModeGeometry(data, n, 2 * M_PI * k / steps, amplitude->value()).xyz();
+        auto frameText = resultModeGeometry(data, n, 2 * M_PI * k / steps, presentation.amplitude()).xyz();
         // Keep the atom count line and name the frame by its phase.
         auto lines = frameText.split('\n');
         if (lines.size() > 1)
@@ -3117,15 +3060,16 @@ void ResultsPanel::exportFrames() {
         return;
     window->checkMcpPath(target);
     stopAnimation();
-    const int shown = frame->value();
+    const auto saved = presentation;
+    const auto restore = qScopeGuard([&] {
+        presentation = saved;
+        showPresentation();
+    });
     const bool written = writeAnimation(this, target, "path", options, int(list.size()), [&](int k) {
-        frame->setValue(list[k] + 1);
-        showFrame();
+        selectFrame(list[k]);
         view->renderNow();
         return view->renderImage(options.scale, options.background);
     });
-    frame->setValue(shown);
-    showFrame();
     if (written)
         window->statusBar()->showMessage(
             tr("%n構造を書き出しました: %1", nullptr, int(list.size())).arg(target), 8000);
@@ -3181,38 +3125,59 @@ void ResultsPanel::pickAtom(const QString &id) {
     }
     setViewDocument(Document(d));
 }
-void ResultsPanel::showFrame() {
-    modeDisplayed = false;
-    view->setArrows({});
-    const int i = frame->value() - 1;
-    setViewDocument(i >= 0 && i < data.frames.size() ? data.frames[i].molecule : Document());
-    view->setSurface(data.format != "MOLDEN" || i == data.orbitalFrame ? data.surface
-                                                                       : QVector<SurfaceTriangle>{});
+void ResultsPanel::showPresentation() {
+    const auto playing = presentation.animation();
+    if (playing == ResultAnimation::None)
+        animation.stop();
+    else {
+        const int interval = playing == ResultAnimation::Frames ? 180 : 40;
+        if (!animation.isActive() || animation.interval() != interval)
+            animation.start(interval);
+    }
+    const auto onAccent = ChromeColors(palette()).onAccent;
+    const auto button = [&](QPushButton *b, ResultAnimation kind, const QString &idle) {
+        const bool active = playing == kind;
+        const auto tip = active ? tr("再生を停止") : idle;
+        b->setIcon(lineIcon(active ? "pause" : "play", onAccent));
+        b->setToolTip(tip);
+        b->setAccessibleName(tip);
+    };
+    button(playFrames, ResultAnimation::Frames, tr("構造列を再生"));
+    button(playMode, ResultAnimation::Mode, tr("選択したモードを再生"));
+    {
+        const QSignalBlocker modeGuard(modes), amplitudeGuard(amplitude);
+        if (modes->currentRow() != presentation.mode()) {
+            if (presentation.mode() < 0)
+                modes->clearSelection();
+            modes->setCurrentCell(presentation.mode(), presentation.mode() < 0 ? -1 : 0);
+        }
+        amplitude->setValue(presentation.amplitude());
+    }
+    showGeometry();
+    updateActions();
+}
+void ResultsPanel::showGeometry() {
+    const int i = presentation.frame();
+    {
+        const QSignalBlocker guard(frame);
+        frame->setValue(i + 1);
+    }
+    setViewDocument(presentation.visibleGeometry(data));
+    view->setSurface(!presentation.showingMode() && (data.format != "MOLDEN" || i == data.orbitalFrame)
+                         ? data.surface
+                         : QVector<SurfaceTriangle>{});
     timeline->setCurrent(i);
+    irSpectrum->setSelectedStick(1, irModes.indexOf(presentation.mode()));
     frameEnergy->setText(std::isfinite(frameEnergies.value(i, NAN))
                              ? QString("ΔE %1 kcal/mol").arg(fixed(frameEnergies[i], 2))
                              : QString("ΔE —"));
-    showContext();
-}
-void ResultsPanel::showMode() {
-    modeDisplayed = true;
-    const int n = modes->currentRow();
-    if (n < 0 || n >= data.modes.size() || data.modes[n].displacement.isEmpty()) {
-        stopAnimation();
-        return;
-    }
-    view->setSurface({});
-    setViewDocument(resultModeGeometry(data, n, phase, amplitude->value()));
+    showArrows();
     showContext();
 }
 const Document &ResultsPanel::displayedGeometry() const {
     if (loading())
         fail(tr("読込完了後に操作してください。"));
-    const int i = frame->value() - 1;
-    if (i < 0 || i >= data.frames.size())
-        fail(tr("表示する構造がありません。"));
-    // During a vibration the reference structure, not a displaced snapshot.
-    return modeDisplayed && modes->currentRow() >= 0 ? data.vibrationGeometry : data.frames[i].molecule;
+    return presentation.referenceGeometry(data);
 }
 void ResultsPanel::saveGeometry(const QString &path) const {
     writeFile(path, displayedGeometry().xyz().toUtf8());

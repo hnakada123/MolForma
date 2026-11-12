@@ -28,7 +28,8 @@ by responsibility, with paired headers and implementations in the same directory
   autosave/recovery copies. Recovery choices and file dialogs stay in the UI.
 - `src/nwchem/`: `nwchem.*` validates computational settings and generates complete
   NWChem input. Its setting specifications share defaults, types, ranges, choices and applicability
-  with the UI. `input_builder.h` records source lines as input is generated; do not infer them
+  with the UI; `nwchem_validation.*` validates basic values from these specifications, independently
+  of the chemical combinations. `input_builder.h` records source lines as input is generated; do not infer them
   by diffing or parsing generated text. `nwchem_advanced.*` defines typed overrides and applicability.
   `nwchem_geometry.*` generates geometry fragments and fixed-atom constraints.
   `nwchem_output.*` validates visualization settings and generates CUBE/MOLDEN output
@@ -44,7 +45,10 @@ by responsibility, with paired headers and implementations in the same directory
   copies its files into the new job. `history.*` scans saved bundles and validates snapshots;
   `history_import.cpp` registers runs made outside MolForma.
 - `src/results/`: `results.*` reads NWChem logs, XYZ, CUBE and MOLDEN and generates
-  bounded isosurfaces; `molden_orbitals.*` evaluates normalized Gaussian MOs with
+  bounded isosurfaces; `NwchemLog` shares one optimization state (task, steps, thresholds and
+  convergence) between live progress and loaded results. `result_presentation.*` owns frame/mode
+  selection, playback and the reference/visible geometry used by the result viewer and its exports.
+  `molden_orbitals.*` evaluates normalized Gaussian MOs with
   Cartesian/spherical s–g bases. `result_loader.*` owns cancellable reader processes and source
   freshness checks shared by GUI and headless MCP.
 - `src/ui/`: `main_window.*` owns the application window, project lifecycle and shared editor context.

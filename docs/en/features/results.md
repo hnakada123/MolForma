@@ -56,6 +56,10 @@ Clicking atoms in the result 3D view (2–4 atoms) shows the distance, angle or 
 
 Parsing logs of arbitrary formats is not supported. Orbital shapes can be checked with MOLDEN files or molecular orbital CUBE files written by NWChem. The vibration sections of a MOLDEN file are shown when you open a file that contains that data. It is not assumed that `MOLDENFILE` alone also writes vibration sections.
 
+Choosing a structure number, a path point or an NMR peak stops playback and switches to that structure. Stopping a vibration returns to its reference structure. XYZ export and “Apply as candidate” use the same geometry: the undisplaced reference while showing a vibration, and the displayed frame otherwise.
+
+Optimization convergence, steps and thresholds come from the same optimization. A following frequency calculation retains the preceding optimization result; a new optimization replaces it. An earlier convergence message does not mark a later optimization as converged.
+
 ## Showing molecular orbitals from MOLDEN
 
 The “Orbitals” tab for an NWChem log shows only orbital energies, numbered with NWChem's orbital numbers (the same numbers as in MOLDEN even if the log lists only some orbitals). If the same job folder has a MOLDEN file, “Show shape” or double-clicking an orbital row opens that MOLDEN file and shows the same orbital (the orbital with the same spin and NWChem number; the Alpha HOMO if none is selected). MOLDEN files are written with “Write MOLDEN file” under “Orbitals and output files” in “2 Calculation”. Opening a MOLDEN file with `[Atoms]`, `[GTO]` and `[MO]` shows the Alpha HOMO automatically and moves to the “Orbitals” tab. Without occupied Alpha orbitals Beta is chosen, and without occupied orbitals the first orbital. The HOMO is the highest-energy orbital with positive occupation and the LUMO the lowest-energy unoccupied orbital, determined per spin. Degenerate and arbitrary orbitals can also be chosen from the list.

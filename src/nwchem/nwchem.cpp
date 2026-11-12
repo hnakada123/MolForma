@@ -9,6 +9,7 @@
 #include "nwchem/nwchem_geometry.h"
 #include "nwchem/nwchem_import.h"
 #include "nwchem/nwchem_output.h"
+#include "nwchem/nwchem_validation.h"
 #include <QCryptographicHash>
 #include <QFileInfo>
 #include <QHash>
@@ -806,6 +807,11 @@ const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
         spec.preset = false;
         return spec;
     };
+    // Ranges of path settings are checked when the path is used; type checks always apply.
+    const auto whenUsed = [](NwchemSettingSpec spec) {
+        spec.validateUnused = false;
+        return spec;
+    };
     // Can still be switched off when the calculation does not use it.
     const auto disableable = [](NwchemSettingSpec spec) {
         spec.allowDisable = true;
@@ -854,35 +860,25 @@ const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
             {"tddft_root", Kind::Integer, 1, 1, 100, 0, Scope::ExcitedOptimization},
             project({"constraints", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Driver}),
             project({"scan_atoms", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Scan}),
-            project({"scan_start", Kind::Real, 1.0, -180, 180, 4, Scope::Scan}),
-            project({"scan_end", Kind::Real, 2.0, -180, 180, 4, Scope::Scan}),
+            whenUsed(project({"scan_start", Kind::Real, 1.0, -180, 180, 4, Scope::Scan})),
+            whenUsed(project({"scan_end", Kind::Real, 2.0, -180, 180, 4, Scope::Scan})),
             // Checked only for scans: a range of points that other tasks do not use.
-            [](NwchemSettingSpec spec) {
-                spec.validateUnused = false;
-                return spec;
-            }({"scan_steps", Kind::Integer, 6, 2, 50, 0, Scope::Scan}),
+            whenUsed({"scan_steps", Kind::Integer, 6, 2, 50, 0, Scope::Scan}),
             {"scan_relaxed", Kind::Flag, true, 0, 0, 0, Scope::Scan},
             // The second coordinate of a two-dimensional scan (none: one-dimensional).
             project({"scan2_atoms", Kind::Array, QJsonArray(), 0, 0, 0, Scope::Scan}),
-            project({"scan2_start", Kind::Real, 1.0, -180, 180, 4, Scope::Scan2}),
-            project({"scan2_end", Kind::Real, 2.0, -180, 180, 4, Scope::Scan2}),
-            [](NwchemSettingSpec spec) {
-                spec.validateUnused = false;
-                return spec;
-            }({"scan2_steps", Kind::Integer, 6, 2, 50, 0, Scope::Scan2}),
+            whenUsed(project({"scan2_start", Kind::Real, 1.0, -180, 180, 4, Scope::Scan2})),
+            whenUsed(project({"scan2_end", Kind::Real, 2.0, -180, 180, 4, Scope::Scan2})),
+            whenUsed({"scan2_steps", Kind::Integer, 6, 2, 50, 0, Scope::Scan2}),
             {"irc_points", Kind::Integer, 30, 1, 500, 0, Scope::Irc},
             {"irc_stride", Kind::Real, 0.1, .01, 1, 3, Scope::Irc},
             {"irc_direction", Kind::Choice, "both", 0, 0, 0, Scope::Irc},
             {"neb_beads", Kind::Integer, 10, 3, 100, 0, Scope::Neb},
-            {"neb_spring", Kind::Real, 1.0, .001, 100, 3, Scope::Neb},
+            whenUsed({"neb_spring", Kind::Real, 1.0, .001, 100, 3, Scope::Neb}),
             {"neb_maxiter", Kind::Integer, 50, 1, 10000, 0, Scope::Neb},
-            {"neb_stepsize", Kind::Real, .1, .001, 10, 3, Scope::Neb},
+            whenUsed({"neb_stepsize", Kind::Real, .1, .001, 10, 3, Scope::Neb}),
             // The end of the path: atom positions by atom ID, kept with the atoms of the project.
-            [](NwchemSettingSpec spec) {
-                spec.preset = false;
-                spec.validateUnused = false;
-                return spec;
-            }({"neb_end", Kind::Object, QJsonObject(), 0, 0, 0, Scope::Neb}),
+            whenUsed(project({"neb_end", Kind::Object, QJsonObject(), 0, 0, 0, Scope::Neb})),
             {"bsse", Kind::Flag, false},
             disableable({"followup", Kind::Flag, false, 0, 0, 0, Scope::Optimization}),
             {"followup_method", Kind::Choice, "dft", 0, 0, 0, Scope::Followup},
@@ -1130,6 +1126,263 @@ bool nwchemNumericalFrequencies(const Document &d) {
         }
     return false;
 }
+namespace {
+void validatePropertySettings(const Document &d, const QJsonObject &s, int ghosts, NwchemValidation &result) {
+    const NwchemCalculation calc(s);
+    const int mult = d.multiplicity;
+    const auto str = [&](const char *key) { return s[key].toString(); };
+    // Molecular properties after the last calculation (the follow-up one if present).
+    if (anyProperty(s)) {
+        const auto level = s["followup"].toBool() ? s["followup_method"].toString() : str("method");
+        if (level != "hf" && level != "dft")
+            result.error("properties.method", "prop_mulliken",
+                         tr("物性計算は最後の計算レベルがHFまたはDFTのときに使用してください。"));
+        if (calc.path())
+            result.error("properties.path", "prop_mulliken",
+                         tr("物性計算はスキャン・IRC・NEBと併用できません。"));
+        if (ghosts && s["prop_esp"].toBool())
+            result.error("esp.ghosts", "prop_esp", tr("ESP電荷はゴースト中心を含む構造に対応しません。"));
+        if ((s["prop_nmr"].toBool() || s["prop_polarizability"].toBool()) && result.reference == "rohf")
+            result.error("properties.rohf", "reference",
+                         tr("NMR・分極率はROHFに対応しません。自動（UHF）またはDFTを選んでください。"));
+        if (s["prop_nmr"].toBool())
+            result.warning(
+                "nmr.reference", "prop_nmr",
+                tr("NMR遮蔽定数（GIAO）を計算します。化学シフトには同じ条件の基準物質（TMS等）の値との差を"
+                   "使ってください。"));
+    }
+    // NMR spin–spin couplings: a DFT response of each nucleus; NWChem computes them for UKS only.
+    if (s["prop_spinspin"].toBool()) {
+        const auto level = s["followup"].toBool() ? s["followup_method"].toString() : str("method");
+        if (level != "dft")
+            result.error(
+                "spinspin.method", "prop_spinspin",
+                tr("J結合（スピン–スピン結合定数）は最後の計算レベルがDFTのときに使用してください。"));
+        if (ghosts)
+            result.error("spinspin.ghosts", "prop_spinspin",
+                         tr("J結合はゴースト中心を含む構造に対応しません。"));
+        const int pairs = nwchemSpinSpinPairs(d).size();
+        if (str("spinspin_pairs") == "hfp" && pairs == 0)
+            result.error("spinspin.nuclei", "spinspin_pairs",
+                         tr("H・F・Pの原子が2個以上必要です。「すべての原子の組」も選べます。"));
+        if (pairs > 2000)
+            result.error("spinspin.pairs", "spinspin_pairs",
+                         tr("J結合の原子の組は2000組までです（今 %1 組）。").arg(pairs));
+        if (pairs > 0 && pairs <= 2000)
+            result.warning("spinspin.notice", "prop_spinspin",
+                           tr("J結合（FC・SD・PSO・DSO項、Hz）を %n 組について計算します。核ごとに応答計算を"
+                              "行うため時間がかかります。閉殻でもUKS（odft）で計算します。",
+                              nullptr, pairs));
+    }
+    if ((s["prop_esp_grid"].toBool() || s["prop_efield_grid"].toBool()) && (ghosts || s["bsse"].toBool()))
+        result.error("property_grid.geometry", "prop_esp_grid",
+                     tr("ESP・電場の格子出力はゴースト中心・BSSEと併用できません。"));
+    if (s["prop_ord"].toBool() &&
+        ((!calc.dft() && calc.method != NwchemMethod::Hf) || mult != 1 || result.reference != "rhf" ||
+         s["followup"].toBool() || s["bsse"].toBool() || calc.path() || ghosts ||
+         s["ord_start_nm"].toDouble() >= s["ord_end_nm"].toDouble()))
+        result.error("ord.method", "prop_ord",
+                     tr("ORDは閉殻HF・DFTで、開始波長を終了波長より小さくしてください。後続計算・BSSE・スキャ"
+                        "ン・IRC・NEB・ゴースト中心には対応しません。"));
+    if (s["prop_epr"].toBool() && (!calc.dft() || mult != 2 || result.reference != "uhf" ||
+                                   s["relativistic"] != "zora" || s["followup"].toBool() || ghosts))
+        result.error("epr.method", "prop_epr",
+                     tr("ESR物性は二重項の非制限DFT・ZORAで使用してください。後続計算・ゴースト中心との併用に"
+                        "は対応しません。"));
+    if (s["prop_raman"].toBool() &&
+        (!calc.dft() || !calc.frequencies() || calc.saddle() || s["followup"].toBool() ||
+         s["tddft"].toBool() || s["bsse"].toBool() || mult != 1 || result.reference == "uhf" || ghosts))
+        result.error("raman.method", "prop_raman",
+                     tr("通常ラマンは閉殻DFTの振動数または最適化＋振動数で使用してください。後続計算・TDDFT・"
+                        "BSSE・ゴースト中心との併用には対応しません。"));
+}
+void validatePathSettings(const Document &d, const QJsonObject &s, const QJsonObject &advanced, int realAtoms,
+                          int fixed, int ghosts, NwchemValidation &result) {
+    const NwchemCalculation calc(s);
+    const auto str = [&](const char *key) { return s[key].toString(); };
+    const auto &errors = result.errors;
+    // Internal-coordinate constraints (ZCOORD), scans and reaction paths.
+    const auto constraints = s["constraints"].toArray();
+    if (constraints.size() > 50)
+        result.error("constraints.count", "constraints", tr("内部座標の拘束・追加は50個までです。"));
+    for (int i = 0; i < constraints.size(); ++i) {
+        const auto c = constraints[i].toObject();
+        const auto ids = idsFromJson(c["atoms"]);
+        // An added coordinate has no value: only its atoms are checked.
+        const auto error = c["free"].toBool()      ? coordinateError(d, ids,
+                                                                     ids.size() == 2   ? 1.0
+                                                                     : ids.size() == 3 ? 90.0
+                                                                                       : 0.0)
+                           : c["value"].isDouble() ? coordinateError(d, ids, c["value"].toDouble())
+                                                   : tr("値を数値で指定してください。");
+        if (!error.isEmpty())
+            result.error("constraints.coordinate", "constraints",
+                         tr("内部座標%1: %2").arg(QString::number(i + 1), error));
+    }
+    if (!constraints.isEmpty()) {
+        if (!calc.optimization() && !(calc.task == NwchemTask::Scan && s["scan_relaxed"].toBool()))
+            result.error(
+                "constraints.task", "constraints",
+                tr("内部座標の拘束・追加は構造最適化・遷移状態探索・緩和スキャンで使用してください。"));
+        if (fixed || ghosts)
+            result.error(
+                "constraints.fixed", "constraints",
+                tr("内部座標の拘束・追加は固定原子・ゴーストと併用できません（NWChemはCartesianの固定と"
+                   "内部座標を同時に扱えません）。固定を解除してください。"));
+        result.warning("constraints.autoz", "constraints",
+                       constrained(s)
+                           ? tr("拘束付き最適化は内部座標（autoz）で行います。NWChemが内部座標を生成できない"
+                                "構造では拘束を適用できません。")
+                           : tr("追加した内部座標は、NWChemが自動で作る内部座標（autoz）に加えて最適化に"
+                                "使います。"));
+        if (calc.frequencies() && constrained(s))
+            result.warning(
+                "constraints.frequencies", "constraints",
+                tr("拘束した構造は停留点ではないため、振動数には虚振動や大きな誤差が出ることがあります。"));
+    }
+    const bool scan = calc.task == NwchemTask::Scan;
+    if (scan) {
+        const auto ids = idsFromJson(s["scan_atoms"]);
+        if (ids.isEmpty())
+            result.error("scan.selection", "scan_atoms",
+                         tr("スキャンする座標を「1 分子」で2〜4原子選択して指定してください。"));
+        else
+            for (const char *key : {"scan_start", "scan_end"}) {
+                const auto error = coordinateError(d, ids, s[key].toDouble());
+                if (!error.isEmpty())
+                    result.error(
+                        "scan.range", QString::fromLatin1(key),
+                        (key == QString("scan_start") ? tr("スキャン開始値: %1") : tr("スキャン終了値: %1"))
+                            .arg(error));
+            }
+        // The second coordinate of a two-dimensional scan.
+        const auto second = idsFromJson(s["scan2_atoms"]);
+        const bool plane = !second.isEmpty();
+        if (plane) {
+            for (const char *key : {"scan2_start", "scan2_end"}) {
+                const auto error = coordinateError(d, second, s[key].toDouble());
+                if (!error.isEmpty())
+                    result.error("scan.range", QString::fromLatin1(key),
+                                 (key == QString("scan2_start") ? tr("スキャン座標2の開始値: %1")
+                                                                : tr("スキャン座標2の終了値: %1"))
+                                     .arg(error));
+            }
+            auto reversed = second;
+            std::reverse(reversed.begin(), reversed.end());
+            if (second == ids || reversed == ids)
+                result.error("scan.same", "scan2_atoms", tr("スキャン座標1と2に別の座標を選んでください。"));
+            const int points = s["scan_steps"].toInt() * s["scan2_steps"].toInt();
+            if (points > 400)
+                result.error("scan.points", "scan2_steps",
+                             tr("2次元スキャンの点は400点までです（今 %1 点）。点の数を減らしてください。")
+                                 .arg(points));
+        }
+        if (errors.isEmpty()) {
+            try {
+                for (int step = 0; step < s["scan_steps"].toInt(); ++step)
+                    for (int step2 = 0; step2 < (plane ? s["scan2_steps"].toInt() : 1); ++step2) {
+                        const auto point = scanGeometry(d, s, step, step2);
+                        if (plane && (coordinateDeviation(point, ids, scanValue(s, step)) > 1e-3 ||
+                                      coordinateDeviation(point, second, scanValue(s, step2, 2)) > 1e-3))
+                            fail(tr("座標1と2が同じ原子を動かすため、両方の値にできない点があります（点 %1, "
+                                    "%2）。"
+                                    "互いに動かし合わない座標を選んでください。")
+                                     .arg(step + 1)
+                                     .arg(step2 + 1));
+                    }
+            } catch (const std::exception &e) {
+                result.error("scan.geometry", "scan_atoms",
+                             tr("スキャン: %1").arg(QString::fromUtf8(e.what())));
+            }
+        }
+        if (plane)
+            result.warning("scan.plane", "scan2_atoms",
+                           tr("2次元スキャン: %1 × %2 = %3 点を計算します。")
+                               .arg(s["scan_steps"].toInt())
+                               .arg(s["scan2_steps"].toInt())
+                               .arg(s["scan_steps"].toInt() * s["scan2_steps"].toInt()));
+        if (s["scan_relaxed"].toBool() && (fixed || ghosts))
+            result.error(
+                "scan.fixed", "scan_relaxed",
+                tr("緩和スキャンは固定原子・ゴーストと併用できません。固定を解除するか、固定スキャンにして"
+                   "ください。"));
+        if (s["scan_relaxed"].toBool())
+            result.warning(
+                "scan.relaxed", "scan_relaxed",
+                tr("緩和スキャンでは各点でスキャン座標を固定して最適化します（内部座標・autoz）。"));
+        else
+            result.warning(
+                "scan.rigid", "scan_relaxed",
+                tr("固定スキャンでは、後に選択した原子の側を動かした構造で一点エネルギーを計算します。"));
+    }
+    if (calc.task == NwchemTask::Irc) {
+        if (fixed || ghosts)
+            result.error("irc.fixed", "task", tr("IRCは固定原子・ゴーストを含む構造に対応しません。"));
+        if (realAtoms < 3)
+            result.error("irc.atoms", "task", tr("IRCには3個以上の実原子が必要です。"));
+        result.warning(
+            "irc.initial", "irc_direction",
+            (str("irc_direction") == "both"
+                 ? tr("IRCは遷移状態の構造から始めてください（遷移状態探索と振動数で虚振動が1つである"
+                      "ことを確認）。"
+                      "初めに遷移状態のHessianを計算し、両方向へ経路を追跡します。")
+                 : tr("IRCは遷移状態の構造から始めてください（遷移状態探索と振動数で虚振動が1つである"
+                      "ことを確認）。"
+                      "初めに遷移状態のHessianを計算し、指定した方向だけ経路を追跡します。")));
+    }
+    if (calc.task == NwchemTask::Neb) {
+        if (fixed || ghosts)
+            result.error("neb.fixed", "task", tr("NEBは固定原子・ゴーストを含む構造に対応しません。"));
+        if (realAtoms < 2)
+            result.error("neb.atoms", "task", tr("NEBには2個以上の実原子が必要です。"));
+        if (advanced["cube_output"].toBool() || advanced["molden_output"].toBool())
+            result.error("neb.output", "task",
+                         tr("NEBの計算ではCUBE・MOLDENを出力できません。経路の最高点などの構造で別に計算して"
+                            "ください。"));
+        if (const auto end = nwchemNebEnd(d); !end.document)
+            result.error("neb.end", "neb_end", end.problem);
+        else {
+            double largest = 0;
+            for (int i = 0; i < d.atoms.size(); ++i)
+                largest = std::max(largest, (end.document->atoms[i].position - d.atoms[i].position).norm());
+            if (largest < .01)
+                result.error(
+                    "neb.same", "neb_end",
+                    tr("NEBの終点が始点（「1 分子」の構造）と同じです。終点を設定し直してください。"));
+            else if (d.atoms.size() <= 300) {
+                // NWChem starts from the straight line between the ends: atoms that meet on it.
+                const auto path = nwchemNebInitialPath(d, *end.document, s["neb_beads"].toInt());
+                double closest = INFINITY;
+                int bead = 0, first = 0, second = 0;
+                for (int k = 1; k + 1 < path.size(); ++k)
+                    for (int i = 0; i < d.atoms.size(); ++i)
+                        for (int j = i + 1; j < d.atoms.size(); ++j)
+                            if (const double r =
+                                    (path[k].atoms[i].position - path[k].atoms[j].position).norm();
+                                r < closest) {
+                                closest = r;
+                                bead = k;
+                                first = i;
+                                second = j;
+                            }
+                if (closest < .5)
+                    result.warning("neb.contact", "neb_end",
+                                   tr("最初の経路（始点と終点を直線で結んだ像）の像 %1 で、原子 %2 と %3 が "
+                                      "%4 Å まで近づきます。終点の原子の順番と向きを確かめてください。")
+                                       .arg(bead + 1)
+                                       .arg(first + 1)
+                                       .arg(second + 1)
+                                       .arg(closest, 0, 'f', 2));
+            }
+        }
+        result.warning("neb.notice", "task",
+                       tr("NEBは始点（「1 分子」の構造）と終点を固定し、その間の像を最適化します。経路の"
+                          "最高点の構造から遷移状態探索へ進めます。"));
+    }
+    if (s["tddft"].toBool() && calc.path())
+        result.error("tddft.path", "tddft", tr("TDDFTはスキャン・IRC・NEBと併用できません。"));
+}
+} // namespace
 static NwchemValidation validation(const Document &d);
 NwchemValidation validateNwchem(const Document &d) {
     thread_local Memo<Document, NwchemValidation, 8> memo;
@@ -1143,43 +1396,13 @@ static NwchemValidation validation(const Document &d) {
     const auto s = nwchemSettings(d);
     const auto advanced = nwchemAdvanced(d);
     auto str = [&](const char *key) { return s[key].toString(); };
-    if (d.data.contains("nwchem") && !d.data["nwchem"].isObject())
-        result.error("settings.object", "nwchem", tr("NWChem設定はオブジェクトである必要があります。"));
-    for (const auto &spec : nwchemSettingSpecs()) {
-        const auto value = nwchemSettingValue(d, s, spec.key);
-        if (value.type() != spec.initial.type())
-            result.error("settings.type", spec.key, tr("設定 %1 の型が不正です。").arg(spec.key));
-        if (!spec.choices.isEmpty() &&
-            std::none_of(spec.choices.begin(), spec.choices.end(),
-                         [&](const auto &c) { return value.toString() == c.value; }))
-            result.error("settings.choice", spec.key,
-                         tr("設定 %1 の値「%2」は未対応です。").arg(spec.key, value.toString()));
-        if (spec.kind == NwchemSettingKind::Integer &&
-            (spec.validateUnused || nwchemSettingApplies(spec, s))) {
-            const double n = value.toDouble();
-            if (!value.isDouble() || !std::isfinite(n) || n < spec.minimum || n > spec.maximum ||
-                std::floor(n) != n)
-                result.error("settings.integer", spec.key,
-                             tr("%1 は %2〜%3 の整数で指定してください。")
-                                 .arg(spec.key)
-                                 .arg(spec.minimum)
-                                 .arg(spec.maximum));
-        }
-    }
-    const auto outsideRange = [&](const QString &key) {
-        const auto &spec = nwchemSettingSpec(key);
-        const auto value = s[key];
-        const double n = value.toDouble();
-        return !value.isDouble() || !std::isfinite(n) || n < spec.minimum || n > spec.maximum;
-    };
+    validateNwchemSettingValues(d, s, result);
     if (!QRegularExpression("^[A-Za-z][A-Za-z0-9_-]{0,63}$").match(str("start")).hasMatch())
         result.error("start.syntax", "start",
                      tr("計算名は英字で始まる英数字・_・- の64文字以内で指定してください。"));
     if (str("title").size() > 120 || str("title").contains(QRegularExpression("[\\x00-\\x1f\\x7f\"\\\\;#]")))
         result.error("title.syntax", "title",
                      tr("タイトルは120文字以内で、改行・引用符・\\・;・#を含めず指定してください。"));
-    if (outsideRange("dielectric"))
-        result.error("dielectric.range", "dielectric", tr("誘電率は1〜1000で指定してください。"));
     const auto basis = str("basis");
     const NwchemCalculation calc(s);
     const int mult = d.multiplicity;
@@ -1411,192 +1634,7 @@ static NwchemValidation validation(const Document &d) {
                        tr("RI-J（weigend coulomb fitting）でCoulomb項を近似します。全エネルギーは通常の計算と"
                           "わずかに異なります。"));
     }
-    // Internal-coordinate constraints (ZCOORD), scans and reaction paths.
-    const auto constraints = s["constraints"].toArray();
-    if (constraints.size() > 50)
-        result.error("constraints.count", "constraints", tr("内部座標の拘束・追加は50個までです。"));
-    for (int i = 0; i < constraints.size(); ++i) {
-        const auto c = constraints[i].toObject();
-        const auto ids = idsFromJson(c["atoms"]);
-        // An added coordinate has no value: only its atoms are checked.
-        const auto error = c["free"].toBool()      ? coordinateError(d, ids,
-                                                                     ids.size() == 2   ? 1.0
-                                                                     : ids.size() == 3 ? 90.0
-                                                                                       : 0.0)
-                           : c["value"].isDouble() ? coordinateError(d, ids, c["value"].toDouble())
-                                                   : tr("値を数値で指定してください。");
-        if (!error.isEmpty())
-            result.error("constraints.coordinate", "constraints",
-                         tr("内部座標%1: %2").arg(QString::number(i + 1), error));
-    }
-    if (!constraints.isEmpty()) {
-        if (!calc.optimization() && !(calc.task == NwchemTask::Scan && s["scan_relaxed"].toBool()))
-            result.error(
-                "constraints.task", "constraints",
-                tr("内部座標の拘束・追加は構造最適化・遷移状態探索・緩和スキャンで使用してください。"));
-        if (fixed || ghosts)
-            result.error(
-                "constraints.fixed", "constraints",
-                tr("内部座標の拘束・追加は固定原子・ゴーストと併用できません（NWChemはCartesianの固定と"
-                   "内部座標を同時に扱えません）。固定を解除してください。"));
-        result.warning("constraints.autoz", "constraints",
-                       constrained(s)
-                           ? tr("拘束付き最適化は内部座標（autoz）で行います。NWChemが内部座標を生成できない"
-                                "構造では拘束を適用できません。")
-                           : tr("追加した内部座標は、NWChemが自動で作る内部座標（autoz）に加えて最適化に"
-                                "使います。"));
-        if (calc.frequencies() && constrained(s))
-            result.warning(
-                "constraints.frequencies", "constraints",
-                tr("拘束した構造は停留点ではないため、振動数には虚振動や大きな誤差が出ることがあります。"));
-    }
-    const bool scan = calc.task == NwchemTask::Scan;
-    if (scan) {
-        const auto ids = idsFromJson(s["scan_atoms"]);
-        if (ids.isEmpty())
-            result.error("scan.selection", "scan_atoms",
-                         tr("スキャンする座標を「1 分子」で2〜4原子選択して指定してください。"));
-        else
-            for (const char *key : {"scan_start", "scan_end"}) {
-                const auto error = coordinateError(d, ids, s[key].toDouble());
-                if (!error.isEmpty())
-                    result.error(
-                        "scan.range", QString::fromLatin1(key),
-                        (key == QString("scan_start") ? tr("スキャン開始値: %1") : tr("スキャン終了値: %1"))
-                            .arg(error));
-            }
-        // The second coordinate of a two-dimensional scan.
-        const auto second = idsFromJson(s["scan2_atoms"]);
-        const bool plane = !second.isEmpty();
-        if (plane) {
-            for (const char *key : {"scan2_start", "scan2_end"}) {
-                const auto error = coordinateError(d, second, s[key].toDouble());
-                if (!error.isEmpty())
-                    result.error("scan.range", QString::fromLatin1(key),
-                                 (key == QString("scan2_start") ? tr("スキャン座標2の開始値: %1")
-                                                                : tr("スキャン座標2の終了値: %1"))
-                                     .arg(error));
-            }
-            auto reversed = second;
-            std::reverse(reversed.begin(), reversed.end());
-            if (second == ids || reversed == ids)
-                result.error("scan.same", "scan2_atoms", tr("スキャン座標1と2に別の座標を選んでください。"));
-            const int points = s["scan_steps"].toInt() * s["scan2_steps"].toInt();
-            if (points > 400)
-                result.error("scan.points", "scan2_steps",
-                             tr("2次元スキャンの点は400点までです（今 %1 点）。点の数を減らしてください。")
-                                 .arg(points));
-        }
-        if (errors.isEmpty()) {
-            try {
-                for (int step = 0; step < s["scan_steps"].toInt(); ++step)
-                    for (int step2 = 0; step2 < (plane ? s["scan2_steps"].toInt() : 1); ++step2) {
-                        const auto point = scanGeometry(d, s, step, step2);
-                        if (plane && (coordinateDeviation(point, ids, scanValue(s, step)) > 1e-3 ||
-                                      coordinateDeviation(point, second, scanValue(s, step2, 2)) > 1e-3))
-                            fail(tr("座標1と2が同じ原子を動かすため、両方の値にできない点があります（点 %1, "
-                                    "%2）。"
-                                    "互いに動かし合わない座標を選んでください。")
-                                     .arg(step + 1)
-                                     .arg(step2 + 1));
-                    }
-            } catch (const std::exception &e) {
-                result.error("scan.geometry", "scan_atoms",
-                             tr("スキャン: %1").arg(QString::fromUtf8(e.what())));
-            }
-        }
-        if (plane)
-            result.warning("scan.plane", "scan2_atoms",
-                           tr("2次元スキャン: %1 × %2 = %3 点を計算します。")
-                               .arg(s["scan_steps"].toInt())
-                               .arg(s["scan2_steps"].toInt())
-                               .arg(s["scan_steps"].toInt() * s["scan2_steps"].toInt()));
-        if (s["scan_relaxed"].toBool() && (fixed || ghosts))
-            result.error(
-                "scan.fixed", "scan_relaxed",
-                tr("緩和スキャンは固定原子・ゴーストと併用できません。固定を解除するか、固定スキャンにして"
-                   "ください。"));
-        if (s["scan_relaxed"].toBool())
-            result.warning(
-                "scan.relaxed", "scan_relaxed",
-                tr("緩和スキャンでは各点でスキャン座標を固定して最適化します（内部座標・autoz）。"));
-        else
-            result.warning(
-                "scan.rigid", "scan_relaxed",
-                tr("固定スキャンでは、後に選択した原子の側を動かした構造で一点エネルギーを計算します。"));
-    }
-    if (calc.task == NwchemTask::Irc) {
-        if (fixed || ghosts)
-            result.error("irc.fixed", "task", tr("IRCは固定原子・ゴーストを含む構造に対応しません。"));
-        if (realAtoms < 3)
-            result.error("irc.atoms", "task", tr("IRCには3個以上の実原子が必要です。"));
-        result.warning(
-            "irc.initial", "irc_direction",
-            (str("irc_direction") == "both"
-                 ? tr("IRCは遷移状態の構造から始めてください（遷移状態探索と振動数で虚振動が1つである"
-                      "ことを確認）。"
-                      "初めに遷移状態のHessianを計算し、両方向へ経路を追跡します。")
-                 : tr("IRCは遷移状態の構造から始めてください（遷移状態探索と振動数で虚振動が1つである"
-                      "ことを確認）。"
-                      "初めに遷移状態のHessianを計算し、指定した方向だけ経路を追跡します。")));
-    }
-    if (calc.task == NwchemTask::Neb) {
-        if (fixed || ghosts)
-            result.error("neb.fixed", "task", tr("NEBは固定原子・ゴーストを含む構造に対応しません。"));
-        if (realAtoms < 2)
-            result.error("neb.atoms", "task", tr("NEBには2個以上の実原子が必要です。"));
-        if (outsideRange("neb_spring"))
-            result.error("neb.spring", "neb_spring", tr("NEBのばね定数は0.001〜100で指定してください。"));
-        if (outsideRange("neb_stepsize"))
-            result.error("neb.stepsize", "neb_stepsize", tr("NEBの刻み幅は0.001〜10で指定してください。"));
-        if (advanced["cube_output"].toBool() || advanced["molden_output"].toBool())
-            result.error("neb.output", "task",
-                         tr("NEBの計算ではCUBE・MOLDENを出力できません。経路の最高点などの構造で別に計算して"
-                            "ください。"));
-        if (const auto end = nwchemNebEnd(d); !end.document)
-            result.error("neb.end", "neb_end", end.problem);
-        else {
-            double largest = 0;
-            for (int i = 0; i < d.atoms.size(); ++i)
-                largest = std::max(largest, (end.document->atoms[i].position - d.atoms[i].position).norm());
-            if (largest < .01)
-                result.error(
-                    "neb.same", "neb_end",
-                    tr("NEBの終点が始点（「1 分子」の構造）と同じです。終点を設定し直してください。"));
-            else if (d.atoms.size() <= 300) {
-                // NWChem starts from the straight line between the ends: atoms that meet on it.
-                const auto path = nwchemNebInitialPath(d, *end.document, s["neb_beads"].toInt());
-                double closest = INFINITY;
-                int bead = 0, first = 0, second = 0;
-                for (int k = 1; k + 1 < path.size(); ++k)
-                    for (int i = 0; i < d.atoms.size(); ++i)
-                        for (int j = i + 1; j < d.atoms.size(); ++j)
-                            if (const double r =
-                                    (path[k].atoms[i].position - path[k].atoms[j].position).norm();
-                                r < closest) {
-                                closest = r;
-                                bead = k;
-                                first = i;
-                                second = j;
-                            }
-                if (closest < .5)
-                    result.warning("neb.contact", "neb_end",
-                                   tr("最初の経路（始点と終点を直線で結んだ像）の像 %1 で、原子 %2 と %3 が "
-                                      "%4 Å まで近づきます。終点の原子の順番と向きを確かめてください。")
-                                       .arg(bead + 1)
-                                       .arg(first + 1)
-                                       .arg(second + 1)
-                                       .arg(closest, 0, 'f', 2));
-            }
-        }
-        result.warning("neb.notice", "task",
-                       tr("NEBは始点（「1 分子」の構造）と終点を固定し、その間の像を最適化します。経路の"
-                          "最高点の構造から遷移状態探索へ進めます。"));
-    }
-    if (outsideRange("irc_stride"))
-        result.error("irc.stride", "irc_stride", tr("IRCの刻み幅は0.01〜1で指定してください。"));
-    if (s["tddft"].toBool() && calc.path())
-        result.error("tddft.path", "tddft", tr("TDDFTはスキャン・IRC・NEBと併用できません。"));
+    validatePathSettings(d, s, advanced, realAtoms, fixed, ghosts, result);
     // Counterpoise correction of the bonded molecules as monomers.
     if (s["bsse"].toBool()) {
         const auto monomers = bsseMonomers(d);
@@ -1650,49 +1688,6 @@ static NwchemValidation validation(const Document &d) {
                            tr("BSSE補正（counterpoise）: 単量体 %n 個。単量体ごとに相手の基底をゴーストとして"
                               "計算します。",
                               nullptr, int(monomers.size())));
-    }
-    // Molecular properties after the last calculation (the follow-up one if present).
-    if (anyProperty(s)) {
-        const auto level = s["followup"].toBool() ? s["followup_method"].toString() : str("method");
-        if (level != "hf" && level != "dft")
-            result.error("properties.method", "prop_mulliken",
-                         tr("物性計算は最後の計算レベルがHFまたはDFTのときに使用してください。"));
-        if (calc.path())
-            result.error("properties.path", "prop_mulliken",
-                         tr("物性計算はスキャン・IRC・NEBと併用できません。"));
-        if (ghosts && s["prop_esp"].toBool())
-            result.error("esp.ghosts", "prop_esp", tr("ESP電荷はゴースト中心を含む構造に対応しません。"));
-        if ((s["prop_nmr"].toBool() || s["prop_polarizability"].toBool()) && result.reference == "rohf")
-            result.error("properties.rohf", "reference",
-                         tr("NMR・分極率はROHFに対応しません。自動（UHF）またはDFTを選んでください。"));
-        if (s["prop_nmr"].toBool())
-            result.warning(
-                "nmr.reference", "prop_nmr",
-                tr("NMR遮蔽定数（GIAO）を計算します。化学シフトには同じ条件の基準物質（TMS等）の値との差を"
-                   "使ってください。"));
-    }
-    // NMR spin–spin couplings: a DFT response of each nucleus; NWChem computes them for UKS only.
-    if (s["prop_spinspin"].toBool()) {
-        const auto level = s["followup"].toBool() ? s["followup_method"].toString() : str("method");
-        if (level != "dft")
-            result.error(
-                "spinspin.method", "prop_spinspin",
-                tr("J結合（スピン–スピン結合定数）は最後の計算レベルがDFTのときに使用してください。"));
-        if (ghosts)
-            result.error("spinspin.ghosts", "prop_spinspin",
-                         tr("J結合はゴースト中心を含む構造に対応しません。"));
-        const int pairs = nwchemSpinSpinPairs(d).size();
-        if (str("spinspin_pairs") == "hfp" && pairs == 0)
-            result.error("spinspin.nuclei", "spinspin_pairs",
-                         tr("H・F・Pの原子が2個以上必要です。「すべての原子の組」も選べます。"));
-        if (pairs > 2000)
-            result.error("spinspin.pairs", "spinspin_pairs",
-                         tr("J結合の原子の組は2000組までです（今 %1 組）。").arg(pairs));
-        if (pairs > 0 && pairs <= 2000)
-            result.warning("spinspin.notice", "prop_spinspin",
-                           tr("J結合（FC・SD・PSO・DSO項、Hz）を %n 組について計算します。核ごとに応答計算を"
-                              "行うため時間がかかります。閉殻でもUKS（odft）で計算します。",
-                              nullptr, pairs));
     }
     // Initial orbitals from the orbitals of fragments, computed first (vectors input fragment).
     if (const auto list = s["fragment_guess"].toArray(); !list.isEmpty()) {
@@ -1792,27 +1787,7 @@ static NwchemValidation validation(const Document &d) {
                    "fragment）。",
                    nullptr, int(fragments.size())));
     }
-    if ((s["prop_esp_grid"].toBool() || s["prop_efield_grid"].toBool()) && (ghosts || s["bsse"].toBool()))
-        result.error("property_grid.geometry", "prop_esp_grid",
-                     tr("ESP・電場の格子出力はゴースト中心・BSSEと併用できません。"));
-    if (s["prop_ord"].toBool() &&
-        ((!calc.dft() && calc.method != NwchemMethod::Hf) || mult != 1 || result.reference != "rhf" ||
-         s["followup"].toBool() || s["bsse"].toBool() || calc.path() || ghosts ||
-         s["ord_start_nm"].toDouble() >= s["ord_end_nm"].toDouble()))
-        result.error("ord.method", "prop_ord",
-                     tr("ORDは閉殻HF・DFTで、開始波長を終了波長より小さくしてください。後続計算・BSSE・スキャ"
-                        "ン・IRC・NEB・ゴースト中心には対応しません。"));
-    if (s["prop_epr"].toBool() && (!calc.dft() || mult != 2 || result.reference != "uhf" ||
-                                   s["relativistic"] != "zora" || s["followup"].toBool() || ghosts))
-        result.error("epr.method", "prop_epr",
-                     tr("ESR物性は二重項の非制限DFT・ZORAで使用してください。後続計算・ゴースト中心との併用に"
-                        "は対応しません。"));
-    if (s["prop_raman"].toBool() &&
-        (!calc.dft() || !calc.frequencies() || calc.saddle() || s["followup"].toBool() ||
-         s["tddft"].toBool() || s["bsse"].toBool() || mult != 1 || result.reference == "uhf" || ghosts))
-        result.error("raman.method", "prop_raman",
-                     tr("通常ラマンは閉殻DFTの振動数または最適化＋振動数で使用してください。後続計算・TDDFT・"
-                        "BSSE・ゴースト中心との併用には対応しません。"));
+    validatePropertySettings(d, s, ghosts, result);
     if (s["followup"].toBool()) {
         if (!calc.optimization())
             result.error("followup.task", "followup",

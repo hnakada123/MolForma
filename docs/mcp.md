@@ -189,6 +189,8 @@ GUIでも候補は通常の「確定」「取消」で扱えます。`preview: f
 
 ## 公開ツール
 
+計算設定の数値には画面と同じ範囲を適用します。通常ラマンの `raman_wavelength_nm` とORDの `ord_start_nm` / `ord_end_nm` は100〜5000 nm、`property_grid_padding` は0.5〜20 Åです。範囲外や非数値を新たに指定した `set_nwchem` は拒否し、文書・候補・版を保持します。
+
 | ツール | 用途 |
 | --- | --- |
 | `list_documents` / `get_document` | 文書ID、版、プロジェクト、候補の取得。`include` で取得範囲を指定（`[]` で原子数などだけ）。`include: ["residues"]` は大きな文書向けの残基の要約で、鎖ごとのポリマー（アミノ酸・ヌクレオチド）の残基数・番号の範囲と水の数、そのほかの残基（配位子・イオン・糖鎖）の鎖・番号・名前を返す（`cut_out_site` の `residues` と同じ指定） |

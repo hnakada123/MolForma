@@ -777,12 +777,12 @@ class ExecutionTest : public QObject {
                          "      Optimization converged"})
             progress.add(line);
         QCOMPARE(progress.started, 1); // A repeated banner starts no task.
-        QCOMPARE(progress.steps.size(), 2);
-        QCOMPARE(progress.steps.last().gmax, 0.0004);
-        QCOMPARE(progress.thresholds["gmax"].toDouble(), 0.00045);
-        QCOMPARE(progress.thresholds["xrms"].toDouble(), 0.0012);
-        QCOMPARE(progress.stepTask, 0);
-        QCOMPARE(progress.convergedTask, 0);
+        QCOMPARE(progress.optimization().steps.size(), 2);
+        QCOMPARE(progress.optimization().steps.last().gmax, 0.0004);
+        QCOMPARE(progress.optimization().thresholds["gmax"].toDouble(), 0.00045);
+        QCOMPARE(progress.optimization().thresholds["xrms"].toDouble(), 0.0012);
+        QCOMPARE(progress.optimization().task, 0);
+        QCOMPARE((progress.optimization().converged ? progress.optimization().task : -1), 0);
         QCOMPARE(progress.energy, -76.026587203);
         progress.add(" NWChem Input Module");
         progress.add(" Total times  cpu: 1.0s");
@@ -1496,7 +1496,8 @@ class ExecutionTest : public QObject {
 
         // Stopped while it runs: scancel, and the folder still comes back.
         run.start(remoteDocument("cluster", "slow"), files.path());
-        QTRY_VERIFY_WITH_TIMEOUT(run.plan().manifest["remote"].toObject()["phase"].toString() == "submitted", 30000);
+        QTRY_VERIFY_WITH_TIMEOUT(run.plan().manifest["remote"].toObject()["phase"].toString() == "submitted",
+                                 30000);
         QTRY_VERIFY_WITH_TIMEOUT(
             readFile(run.plan().directory + "/output.out").contains("fake NWChem started"), 30000);
         run.stop();
@@ -1532,7 +1533,8 @@ class ExecutionTest : public QObject {
             NwchemRun run;
             run.setSupervisor(supervisor());
             run.start(remoteDocument("workstation", "slow"), files.path());
-            QTRY_VERIFY_WITH_TIMEOUT(run.plan().manifest["remote"].toObject()["phase"].toString() == "submitted", 30000);
+            QTRY_VERIFY_WITH_TIMEOUT(
+                run.plan().manifest["remote"].toObject()["phase"].toString() == "submitted", 30000);
             job = run.plan().directory;
             run.release();
         }
