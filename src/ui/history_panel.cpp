@@ -2,7 +2,6 @@
 #include "ui/history_panel.h"
 #include "foundation/files.h"
 #include "foundation/i18n.h"
-#include "mcp/policy.h"
 #include "model/settings.h"
 #include "model/units.h"
 #include "nwchem/nwchem_execution.h"
@@ -509,10 +508,9 @@ QVariant HistoryModel::data(const QModelIndex &index, int role) const {
     }
 }
 
-HistoryPanel::HistoryPanel(EditorContext &editorServices, UiServices &uiServices,
-                           ExecutionAccess &executionServices, const NwchemRun &activeRun, QWidget *parent)
-    : QWidget(parent), editorContext(editorServices), uiContext(uiServices),
-      executionAccess(executionServices), run(activeRun), scan(this) {
+HistoryPanel::HistoryPanel(EditorContext &editorServices, UiServices &uiServices, const NwchemRun &activeRun,
+                           QWidget *parent)
+    : QWidget(parent), editorContext(editorServices), uiContext(uiServices), run(activeRun), scan(this) {
     setObjectName("historyTab");
     setAttribute(Qt::WA_StyledBackground);
     auto *outer = new QVBoxLayout(this);
@@ -1684,15 +1682,9 @@ void HistoryPanel::showDetails() {
     facts->setText(line.join(" · "));
     showEnergy(*e, owned);
     showFacts(*e, owned);
-    // Over MCP with --mcp-allow-dir, memos are written only inside the allowed folders.
-    bool outside = false;
-    if (executionAccess.accessPolicy() && executionAccess.accessPolicy()->restricted())
-        try {
-            executionAccess.accessPolicy()->checkPath(e->directory);
-        } catch (const std::exception &) {
-            outside = true;
-        }
-    memo->setProperty("mcpPath", outside);
+    // Over MCP with --mcp-allow-dir, memos are written only inside the allowed folders. The mark is
+    // set as the entry is shown, between requests: it says where the folder is, not who asks.
+    memo->setProperty("mcpPath", uiContext.outsideMcpFolders(e->directory));
     if (memoDirectory != e->directory || !memo->hasFocus()) {
         loadingMemo = true;
         memo->setPlainText(e->memo);

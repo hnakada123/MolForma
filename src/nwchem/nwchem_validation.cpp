@@ -30,14 +30,13 @@ void realRangeError(const NwchemSettingSpec &spec, ValidationReport &report) {
         {"neb_stepsize", "neb.stepsize", QT_TR_NOOP("NEBの刻み幅は0.001〜10で指定してください。")}};
     for (const auto &message : messages)
         if (spec.key == message.key) {
-            report.error(message.code, spec.key, translated(message.text));
+            report.error(message.code, spec.key, translated(message.text), {}, spec.target);
             return;
         }
-    report.error("settings.real", spec.key,
-                 tr("%1 は %2〜%3 の有限の数値で指定してください。")
-                     .arg(spec.key)
-                     .arg(spec.minimum)
-                     .arg(spec.maximum));
+    report.error(
+        "settings.real", spec.key,
+        tr("%1 は %2〜%3 の有限の数値で指定してください。").arg(spec.key).arg(spec.minimum).arg(spec.maximum),
+        {}, spec.target);
 }
 } // namespace
 void validateNwchemSettingValues(const Document &document, const QJsonObject &settings,
@@ -46,13 +45,16 @@ void validateNwchemSettingValues(const Document &document, const QJsonObject &se
         report.error("settings.object", "nwchem", tr("NWChem設定はオブジェクトである必要があります。"));
     for (const auto &spec : nwchemSettingSpecs()) {
         const auto value = nwchemSettingValue(document, settings, spec.key);
+        // Each error names the owner of its setting (the memory is the execution's).
         if (value.type() != spec.initial.type())
-            report.error("settings.type", spec.key, tr("設定 %1 の型が不正です。").arg(spec.key));
+            report.error("settings.type", spec.key, tr("設定 %1 の型が不正です。").arg(spec.key), {},
+                         spec.target);
         if (!spec.choices.isEmpty() &&
             std::none_of(spec.choices.begin(), spec.choices.end(),
                          [&](const auto &c) { return value.toString() == c.value; }))
             report.error("settings.choice", spec.key,
-                         tr("設定 %1 の値「%2」は未対応です。").arg(spec.key, value.toString()));
+                         tr("設定 %1 の値「%2」は未対応です。").arg(spec.key, value.toString()), {},
+                         spec.target);
         const bool integer = spec.kind == NwchemSettingKind::Integer;
         if ((!integer && spec.kind != NwchemSettingKind::Real) ||
             (!spec.validateUnused && !nwchemSettingApplies(spec, settings)))
@@ -66,7 +68,8 @@ void validateNwchemSettingValues(const Document &document, const QJsonObject &se
                          tr("%1 は %2〜%3 の整数で指定してください。")
                              .arg(spec.key)
                              .arg(spec.minimum)
-                             .arg(spec.maximum));
+                             .arg(spec.maximum),
+                         {}, spec.target);
         else
             realRangeError(spec, report);
     }

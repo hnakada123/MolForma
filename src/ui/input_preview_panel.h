@@ -3,6 +3,7 @@
 #include "nwchem/nwchem.h"
 #include "ui/editor_context.h"
 #include <QWidget>
+#include <functional>
 class QComboBox;
 class QFrame;
 class QLabel;
@@ -24,8 +25,11 @@ class StatusCard;
 class InputPreviewPanel : public QWidget {
     Q_OBJECT
   public:
+    // The title of the section of "2 計算条件" that holds a setting ("基本設定"; empty for none), as
+    // the panel of that tab names it: the links to a block's settings say where they lead.
+    using SectionTitle = std::function<QString(const QString &setting)>;
     InputPreviewPanel(EditorContext &editorContext, UiServices &uiContext, WorkspaceActions &workspace,
-                      QWidget *parent = nullptr);
+                      SectionTitle sectionTitle, QWidget *parent = nullptr);
     void refresh();
     // Only the tab's error color and tool tip, while the tab is hidden and not refreshed.
     void refreshBadge();
@@ -35,11 +39,18 @@ class InputPreviewPanel : public QWidget {
     // Shows this tab with the cursor on a line (from 0) of the input.
     void showLine(int line);
     void applyChromeStyle();
+  signals:
+    // Whether the input cannot be generated, and the state in a line: for the mark and the tool tip of
+    // this panel's tab and of its step in the header.
+    void badgeChanged(bool failed, QString tip);
+    // Before the input is copied or saved: what is being typed in the settings is to be taken in first.
+    void settingsCommitRequested();
 
   private:
     EditorContext &editorContext;
     UiServices &uiContext;
     WorkspaceActions &workspace;
+    SectionTitle sectionTitle;
     QComboBox *mode;
     ChoiceButtons *modes;
     QLineEdit *search;
@@ -57,13 +68,10 @@ class InputPreviewPanel : public QWidget {
     NwchemInputOutline outline;
     QString prepareExport();
     void findText(bool backwards);
-    void navigate(int tab);
-    // The tab that sets part of the input: by its number (1 分子 … 3 実行設定), at a setting or at a
-    // group of the details of "2 計算条件".
-    void openSource(int tab, const QString &setting, const QString &group);
-    // Where a block is set, one entry per link: tab, setting and group (the details: tab 2).
+    // Where a block is set, one entry per link: the owner whose tab sets it, at a setting or at a
+    // group of the details (the calculation's).
     struct Source {
-        int tab;
+        SettingTarget target;
         QString setting, group;
     };
     static QList<Source> sources(const NwchemInputBlock &block);

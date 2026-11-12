@@ -246,11 +246,16 @@ const QVector<NwchemSettingSpec> &nwchemSettingSpecs() {
         spec.allowDisable = true;
         return spec;
     };
+    // Set with the resources of a run, not with the calculation.
+    const auto execution = [](NwchemSettingSpec spec) {
+        spec.target = SettingTarget::Execution;
+        return spec;
+    };
     static const QVector<NwchemSettingSpec> specs = [=] {
         QVector<NwchemSettingSpec> list{
             project({"start", Kind::String, "molforma"}),
             project({"title", Kind::String, "MolForma calculation"}),
-            project({"memory_mb", Kind::Integer, 1024, 64, 1048576}),
+            execution(project({"memory_mb", Kind::Integer, 1024, 64, 1048576})),
             structural({"charge", Kind::Integer, 0, -1000, 1000}),
             structural({"multiplicity", Kind::Integer, 1, 1, 1000}),
             {"method", Kind::Choice, "hf"},
@@ -346,6 +351,12 @@ const NwchemSettingSpec &nwchemSettingSpec(const QString &key) {
         if (spec.key == key)
             return spec;
     fail(tr("不明なNWChem設定: %1").arg(key));
+}
+SettingTarget nwchemSettingTarget(const QString &key) {
+    for (const auto &spec : nwchemSettingSpecs())
+        if (spec.key == key)
+            return spec.target;
+    return SettingTarget::Calculation;
 }
 bool nwchemScopeApplies(NwchemScope scope, const QJsonObject &s, const Document *d) {
     const NwchemCalculation c(s);

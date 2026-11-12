@@ -111,9 +111,15 @@ struct NwchemSettingSpec {
     // renamed (project/atom_references.h, which lists the same settings: nwchemAtomReferenceKeys).
     bool atomReferences = false;
     QVector<NwchemChoice> choices{}; // Source-language labels, translated only at the UI boundary.
+    // Who sets it. The memory of a process is a resource of the run, set with the processes it is
+    // multiplied by: the execution's, although the document keeps it among the NWChem settings.
+    SettingTarget target = SettingTarget::Calculation;
 };
 const QVector<NwchemSettingSpec> &nwchemSettingSpecs();
 const NwchemSettingSpec &nwchemSettingSpec(const QString &key);
+// The owner of a setting by its key alone (NwchemSettingSpec::target), for a caller that has no
+// diagnostic to say it; the calculation for a key the specifications do not list ("advanced:<key>").
+SettingTarget nwchemSettingTarget(const QString &key);
 bool nwchemSettingApplies(const NwchemSettingSpec &spec, const QJsonObject &settings);
 bool nwchemSettingEditable(const NwchemSettingSpec &spec, const QJsonObject &settings);
 // The value of a setting: from `settings` (nwchemSettings), or from the document for structural ones.

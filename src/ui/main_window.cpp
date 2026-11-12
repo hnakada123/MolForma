@@ -27,6 +27,7 @@
 #include "ui/pubchem.h"
 #include "ui/remote_hosts_dialog.h"
 #include "ui/results_panel.h"
+#include "ui/setting_navigation.h"
 #include "ui/structure_import.h"
 #include "ui/theme.h"
 #include "ui/workspace_controller.h"
@@ -98,9 +99,6 @@ void MainWindow::showMessage(const QString &message, int timeout) {
 void MainWindow::addStatusWidget(QWidget *widget) {
     statusBar()->addPermanentWidget(widget);
 }
-void MainWindow::fitMoleculeView() {
-    view->keepInView();
-}
 void MainWindow::safe(const std::function<void()> &operation) {
     try {
         operation();
@@ -142,6 +140,24 @@ QStringList MainWindow::untrustedExecution() const {
 void MainWindow::checkMcpPath(const QString &path) const {
     if (mcp.policy && mcp.depth > 0)
         mcp.policy->checkPath(path);
+}
+bool MainWindow::outsideMcpFolders(const QString &path) const {
+    if (!mcp.policy || !mcp.policy->restricted())
+        return false;
+    try {
+        mcp.policy->checkPath(path);
+    } catch (const std::exception &) {
+        return true;
+    }
+    return false;
+}
+RunSession::Check MainWindow::runCheck() const {
+    if (!mcp.policy || mcp.depth == 0)
+        return {};
+    // A copy: a queued calculation is checked again at its turn, after the request.
+    return [policy = *mcp.policy](const Document &document, const QString &base) {
+        policy.checkRun(document, base);
+    };
 }
 void MainWindow::loadDocument(const Document &d) {
     cancelWorker();
@@ -232,9 +248,6 @@ const Ids &MainWindow::selection() const {
 void MainWindow::setSelection(const Ids &ids) {
     moleculePage->setSelection(ids);
 }
-void MainWindow::sortAtoms(const QString &mode) {
-    moleculePage->sortAtoms(mode);
-}
 void MainWindow::showCoordinateTable() {
     moleculePage->showCoordinateTable();
 }
@@ -242,28 +255,17 @@ void MainWindow::showPanel(QWidget *panel) {
     execution->showWorkspace();
     workspaceTabs->setCurrentWidget(panel);
 }
-void MainWindow::showPanel(int index) {
-    if (index >= 0 && index < workspaceTabs->count()) {
-        execution->showWorkspace();
-        workspaceTabs->setCurrentIndex(index);
-    }
-}
-void MainWindow::showSetting(int tab, const QString &setting, const QString &group) {
-    if (setting == "memory_mb")
-        tab = 2;
-    else if (!group.isEmpty())
-        tab = 1;
-    showPanel(tab);
-    if (tab == 1) {
+void MainWindow::showSetting(SettingTarget target, const QString &setting, const QString &group) {
+    if (!group.isEmpty())
+        target = SettingTarget::Calculation;
+    showPanel(workspaceTabs->widget(workspaceTab(target)));
+    if (target == SettingTarget::Calculation) {
         if (!group.isEmpty())
             calculation->showDetailGroup(group);
         else if (!setting.isEmpty())
             calculation->showField(setting);
-    } else if (tab == 2 && !setting.isEmpty())
+    } else if (target == SettingTarget::Execution && !setting.isEmpty())
         execution->showField(setting);
-}
-QString MainWindow::settingSectionTitle(const QString &setting) const {
-    return calculation->sectionTitle(setting);
 }
 void MainWindow::showInputLine(int line) {
     showPanel(inputPreview);
@@ -280,9 +282,6 @@ QWidget *MainWindow::currentPanel() const {
 }
 int MainWindow::currentPanelIndex() const {
     return workspaceTabs->currentIndex();
-}
-QString MainWindow::moleculeLayoutMode() const {
-    return moleculePage ? moleculePage->layoutMode() : QString("view");
 }
 void MainWindow::setPanelDiagnostics(QWidget *panel, bool error, const QString &tip) {
     const int index = workspaceTabs->indexOf(panel);
@@ -320,7 +319,7 @@ void MainWindow::buildUi() {
     workspaceSplit->setHandleWidth(6);
     workspaceSplit->addWidget(workspaceTabs);
     outer->addWidget(workspaceSplit, 1);
-    moleculePage = new MoleculePanel(*this, *this, *this, *this, session, this);
+    moleculePage = new MoleculePanel(*this, *this, *this, this);
     view = moleculePage->canvas();
     coordinates = moleculePage->coordinatePanel();
     workspaceTabs->addTab(moleculePage, tr("1 分子"));
@@ -330,16 +329,25 @@ void MainWindow::buildUi() {
     calculation = new CalculationPanel(*this, *this, *this, this);
     workspaceTabs->addTab(calculation, tr("2 計算条件"));
     execution = new ExecutionPanel(*this, *this, *this, *this, runs, this);
+    // The header and the menu follow the run and its panel.
+    connect(execution, &ExecutionPanel::runDisplayChanged, this, &MainWindow::showRun);
+    connect(execution, &ExecutionPanel::runPanelToggled, this, &MainWindow::setRunPanelShown);
     workspaceTabs->addTab(execution, tr("3 実行設定"));
     execution->dockRunPanel(workspaceSplit);
     connect(workspaceTabs, &QTabWidget::currentChanged, execution, &ExecutionPanel::showWorkspace);
-    inputPreview = new InputPreviewPanel(*this, *this, *this, this);
+    inputPreview = new InputPreviewPanel(
+        *this, *this, *this, [this](const QString &setting) { return calculation->sectionTitle(setting); },
+        this);
+    connect(inputPreview, &InputPreviewPanel::badgeChanged, this,
+            [this](bool failed, const QString &tip) { setPanelDiagnostics(inputPreview, failed, tip); });
+    connect(inputPreview, &InputPreviewPanel::settingsCommitRequested, this,
+            &MainWindow::commitPendingSettings);
     workspaceTabs->addTab(inputPreview, tr("4 入力プレビュー"));
     results = new ResultsPanel(*this, *this, *this, this);
     workspaceTabs->addTab(results, tr("結果ビューア"));
-    calculationHistory = new HistoryPanel(*this, *this, *this, runs.run(), this);
+    calculationHistory = new HistoryPanel(*this, *this, runs.run(), this);
     workspaceTabs->addTab(calculationHistory, tr("履歴"));
-    new WorkspaceController(*this, *execution, *calculationHistory, *results);
+    new WorkspaceController(*this, *calculation, *execution, *calculationHistory, *results);
     connect(workspaceTabs, &QTabWidget::currentChanged, this, [this](int index) {
         auto *page = workspaceTabs->widget(index);
         if (page == inputPreview) {
@@ -433,7 +441,7 @@ void MainWindow::buildHeader() {
         b->setCheckable(true);
         steps->addWidget(b);
         stepGroup->addButton(b, i);
-        connect(b, &QToolButton::clicked, this, [this, i] { showPanel(i); });
+        connect(b, &QToolButton::clicked, this, [this, i] { showPanel(workspaceTabs->widget(i)); });
     }
     connect(workspaceTabs, &QTabWidget::currentChanged, this, [this](int index) {
         if (auto *b = stepGroup->button(index))
@@ -1120,11 +1128,6 @@ void MainWindow::exportFile() {
 void MainWindow::runWorker(const QString &mode, const QString &smiles, const Ids &moving, int count) {
     chemistry.start({mode, smiles, moving, count, mcp.depth > 0});
     statusBar()->showMessage(tr("構造を生成・整形しています…"));
-}
-Document MainWindow::resultStructure() const {
-    if (results->result().source.isEmpty() || results->result().frames.isEmpty())
-        fail(tr("「結果ビューア」で終点にする構造を開いてください。"));
-    return results->displayedGeometry();
 }
 void MainWindow::runXtb(const XtbOptions &options) {
     ChemistryRequest request{"xtb", {}, options.moving, 10, mcp.depth > 0};

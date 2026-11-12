@@ -70,6 +70,15 @@ class MainWindow : public QMainWindow,
     bool hasCandidate() const override {
         return session.candidate().has_value();
     }
+    QString candidateName() const override {
+        return session.candidateName();
+    }
+    int candidateSerial() const override {
+        return session.candidateSerial();
+    }
+    bool ownsCandidate() const override {
+        return session.candidate() && (!session.candidateRemote() || mcp.depth > 0);
+    }
     void edit(const QString &name, const std::function<void(Document &)> &operation,
               bool preview = false) override;
     void confirmCandidate() override;
@@ -100,7 +109,6 @@ class MainWindow : public QMainWindow,
     void safe(const std::function<void()> &operation) override;
     void showMessage(const QString &message, int timeout = 0) override;
     void addStatusWidget(QWidget *widget) override;
-    void fitMoleculeView() override;
     // Interactive sessions: periodic autosave of unsaved work, and recovery after a crash.
     // The copies go to <AppLocalDataLocation>/autosave, on Windows and macOS too under XDG_DATA_HOME when it
     // is set.
@@ -114,7 +122,7 @@ class MainWindow : public QMainWindow,
     // Brings tabs that were hidden during edits up to date (McpGui calls it before using the GUI).
     void refreshStalePanels();
     // Shows the table of the coordinates under the 3D view of "1 分子" (or in its place).
-    void showCoordinateTable() override;
+    void showCoordinateTable();
     // A practice file of the recipes, embedded with the manual: a part (.molforma-part.json) joins
     // "マイ部品"; a molecule is saved as a copy (asked where when target is empty) and opened. Returns
     // whether it was used.
@@ -156,29 +164,27 @@ class MainWindow : public QMainWindow,
         return calculationHistory;
     }
     void showPanel(QWidget *panel) override;
-    void showPanel(int index) override;
-    // Routes a setting to its owning panel. Tab indices are zero-based, as in showPanel().
-    // Memory belongs to execution; detailed groups belong to calculation settings.
-    void showSetting(int tab, const QString &setting = {}, const QString &group = {}) override;
-    QString settingSectionTitle(const QString &setting) const override;
+    // Routes a setting to the panel of its owner, whose tab is the one of ui/setting_navigation.h
+    // (workspaceTab). The groups of the details are the calculation's, whatever owner is named.
+    void showSetting(SettingTarget target, const QString &setting = {}, const QString &group = {}) override;
     void showInputLine(int line = -1) override;
-    void commitPendingSettings() override;
     QWidget *currentPanel() const;
+    // The number of the tab shown (from 0): what MCP's get_app_state reports as "tab".
     int currentPanelIndex() const;
-    QString moleculeLayoutMode() const override;
-    void setPanelDiagnostics(QWidget *panel, bool error, const QString &tip) override;
-    void setRunPanelShown(bool shown) override;
-    const McpPolicy *accessPolicy() const override {
-        return mcp.policy;
-    }
+    // The access policy of the MCP session and the requests applied for it (McpGui): panels see
+    // neither, only the checks below and those of UiServices.
     void setAccessPolicy(const McpPolicy *policy) {
         mcp.policy = policy;
     }
-    bool remoteRequest() const override {
-        return mcp.depth > 0;
-    }
     QScopedValueRollback<int> remoteScope() {
         return QScopedValueRollback<int>(mcp.depth, mcp.depth + 1);
+    }
+    RunSession::Check runCheck() const override;
+    bool mayChooseExecutionSettings() const override {
+        return mcp.policy && mcp.policy->allowExecutionSettings;
+    }
+    bool mayConfirmExecution() const override {
+        return mcp.depth == 0;
     }
     // Keys of protectedExecution() whose current values the user has neither entered in MolForma,
     // confirmed before a run, nor saved in Preferences: runs with them need a confirmation.
@@ -187,13 +193,10 @@ class MainWindow : public QMainWindow,
 
     // Paths reached by an MCP-driven GUI action obey --mcp-allow-dir like the semantic tools.
     void checkMcpPath(const QString &path) const override;
-    // Sorts the atoms: "element", "residue" or "selected" (the selection first).
-    void sortAtoms(const QString &mode) override;
+    bool outsideMcpFolders(const QString &path) const override;
     bool confirmDiscard();
     bool resolveCandidate() override;
     void refreshPanel(QWidget *panel, bool always = false) override;
-    // The header while a run is active: the elapsed time, and stop instead of run.
-    void showRun(bool active, const QString &text, bool stoppable) override;
     void cancelWorker() override;
     // mode: smiles, fragment, refine, regenerate or conformers (count: conformers to keep).
     void runWorker(const QString &mode, const QString &smiles = {}, const Ids &moving = {},
@@ -202,8 +205,6 @@ class MainWindow : public QMainWindow,
     // result becomes a candidate. MCP cannot choose the program.
     void runXtb(const XtbOptions &options);
     void xtbDialog();
-    // The structure the result viewer shows; fails while it shows none.
-    Document resultStructure() const override;
   signals:
     void panelChanged();
 
@@ -257,6 +258,15 @@ class MainWindow : public QMainWindow,
     void buildUi();
     void buildHeader();
     void buildMenus();
+    // What the panels ask of the window by their signals (connected in buildUi).
+    // The header while a run is active: the elapsed time, and stop instead of run.
+    void showRun(bool active, const QString &text, bool stoppable);
+    // "計算 → 実行状況とログ" follows the run panel.
+    void setRunPanelShown(bool shown);
+    // The error color and tool tip of a panel's tab and of its step in the header.
+    void setPanelDiagnostics(QWidget *panel, bool error, const QString &tip);
+    // Takes in what is being typed in the settings, before the input is exported.
+    void commitPendingSettings();
     void applyChromeStyle();
     void syncWorkflowSteps();
     void refresh();

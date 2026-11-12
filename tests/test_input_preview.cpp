@@ -2,6 +2,7 @@
 #include "foundation/files.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
+#include "ui/diagnostics_list.h"
 #include "ui/input_preview_panel.h"
 #include "ui/main_window.h"
 #include <QtTest>
@@ -202,7 +203,7 @@ class InputPreviewTest : public QObject {
                  QString("エネルギー収束閾値 / Hartree"));
         openPreview(w);
         QVERIFY(QMetaObject::invokeMethod(widget<QLabel>(w, "inputPreviewPaths"), "linkActivated",
-                                          Q_ARG(QString, "tab:2")));
+                                          Q_ARG(QString, "target:execution")));
         QCOMPARE(widget<QTabWidget>(w, "workspaceTabs")->currentIndex(), 2);
         w.edit("apply DFT", [](Document &next) { set(next, "method", "dft"); });
         QVERIFY(text(w)->toPlainText().contains("convergence energy 1e-09"));
@@ -435,6 +436,84 @@ class InputPreviewTest : public QObject {
                 return;
             }
         QFAIL("Missing memory input block");
+    }
+    void settingsOpenByOwner() {
+        // Navigation names the owner of a setting; the window alone knows which tab that is.
+        auto d = water();
+        auto invalid = nwchemSettings(d);
+        invalid["memory_mb"] = 1; // Below the least memory: an error of the settings.
+        d.data["nwchem"] = invalid;
+        MainWindow w;
+        w.loadDocument(d);
+        w.show();
+        w.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&w));
+        auto *tabs = widget<QTabWidget>(w, "workspaceTabs");
+        auto *memory = widget<QSpinBox>(w, "execution_memory");
+        WorkspaceActions &workspace = w;
+        openPreview(w);
+        workspace.showSetting(SettingTarget::Molecule);
+        QCOMPARE(tabs->currentIndex(), 0);
+        workspace.showSetting(SettingTarget::Calculation);
+        QCOMPARE(tabs->currentIndex(), 1);
+        workspace.showSetting(SettingTarget::Execution);
+        QCOMPARE(tabs->currentIndex(), 2);
+        workspace.showSetting(SettingTarget::Calculation, "scf_maxiter");
+        QCOMPARE(tabs->currentIndex(), 1);
+        QTRY_VERIFY(widget<QSpinBox>(w, "nwchem_scf_maxiter")->hasFocus());
+        workspace.showSetting(SettingTarget::Execution, "omp_threads");
+        QCOMPARE(tabs->currentIndex(), 2);
+        QTRY_VERIFY(widget<QSpinBox>(w, "execution_omp_threads")->hasFocus());
+        tabs->setCurrentIndex(0);
+        workspace.showSetting(SettingTarget::Execution, "memory_mb");
+        QCOMPARE(tabs->currentIndex(), 2);
+        QTRY_VERIFY(memory->hasFocus());
+        // The groups of the details are the calculation's, whatever owner is named with them.
+        workspace.showSetting(SettingTarget::Execution, {}, "dft");
+        QCOMPARE(tabs->currentIndex(), 1);
+        QVERIFY(widget<QLabel>(w, "calculationDetailGroup_dft")->isVisibleTo(&w));
+        // By its key alone, only the memory is the execution's; its errors say so themselves.
+        QVERIFY(nwchemSettingTarget("memory_mb") == SettingTarget::Execution);
+        for (const auto *key : {"scf_maxiter", "charge", "extra_input", "advanced:dft_energy", "no such key"})
+            QVERIFY2(nwchemSettingTarget(key) == SettingTarget::Calculation, key);
+        const auto report = validateNwchem(w.document());
+        int found = 0;
+        for (const auto &diagnostic : report.diagnostics)
+            if (diagnostic.setting == "memory_mb") {
+                QCOMPARE(diagnostic.code, QString("settings.integer"));
+                QVERIFY(diagnostic.target == SettingTarget::Execution);
+                ++found;
+            }
+        QCOMPARE(found, 1);
+        // So the check of "2 計算条件" and the one of the preview both lead to the memory's control.
+        auto *list = widget<QListWidget>(w, "calculationValidation");
+        QListWidgetItem *row = nullptr;
+        for (int i = 0; i < list->count(); ++i)
+            if (list->item(i)->data(DiagnosticsList::SettingRole) == "memory_mb")
+                row = list->item(i);
+        QVERIFY(row);
+        QCOMPARE(row->data(DiagnosticsList::TargetRole).toString(), QString("execution"));
+        tabs->setCurrentIndex(1);
+        emit list->itemClicked(row);
+        QCOMPARE(tabs->currentIndex(), 2);
+        QTRY_VERIFY(memory->hasFocus());
+        openPreview(w);
+        auto *checks = widget<QTextBrowser>(w, "inputPreviewDiagnostics");
+        QVERIFY2(checks->toHtml().contains("execution:memory_mb"), qPrintable(checks->toHtml()));
+        QVERIFY(QMetaObject::invokeMethod(checks, "anchorClicked", Q_ARG(QUrl, QUrl("execution:memory_mb"))));
+        QCOMPARE(tabs->currentIndex(), 2);
+        QTRY_VERIFY(memory->hasFocus());
+        // A check of the molecule leads to its tab.
+        w.loadDocument(Document());
+        openPreview(w);
+        QVERIFY2(checks->toHtml().contains("target:molecule"), qPrintable(checks->toHtml()));
+        QVERIFY(QMetaObject::invokeMethod(checks, "anchorClicked", Q_ARG(QUrl, QUrl("target:molecule"))));
+        QCOMPARE(tabs->currentIndex(), 0);
+        for (const auto *link : {"target:calculation", "target:execution"}) {
+            openPreview(w);
+            QVERIFY(QMetaObject::invokeMethod(checks, "anchorClicked", Q_ARG(QUrl, QUrl(link))));
+            QCOMPARE(tabs->currentIndex(), QByteArray(link).endsWith("execution") ? 2 : 1);
+        }
     }
     void focusedSettingAndSaveDialog() {
         MainWindow w;

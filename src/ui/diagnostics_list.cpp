@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/diagnostics_list.h"
 #include "foundation/i18n.h"
-#include "ui/setting_navigation.h"
 #include <QResizeEvent>
 #include <QStyle>
 
@@ -13,7 +12,9 @@ DiagnosticsList::DiagnosticsList(QWidget *parent) : QListWidget(parent) {
     setSelectionMode(QAbstractItemView::SingleSelection);
     connect(this, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
         if (!item->data(MessageRole).toString().isEmpty())
-            emit diagnosticClicked(item->data(SettingRole).toString(), item->data(TabRole).toInt());
+            emit diagnosticClicked(
+                item->data(SettingRole).toString(),
+                settingTargetFromKey(item->data(TargetRole).toString()).value_or(SettingTarget::Calculation));
     });
     connect(this, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *item) {
         if (!item->data(FixRole).toString().isEmpty())
@@ -34,7 +35,7 @@ void DiagnosticsList::setDiagnostics(const QVector<Diagnostic> &diagnostics) {
             item->setData(MessageRole, d.message);
             item->setData(CodeRole, d.code);
             item->setData(SettingRole, d.setting);
-            item->setData(TabRole, workspaceTab(d.target));
+            item->setData(TargetRole, settingTargetKey(d.target));
             if (d.fix) {
                 item->setData(FixRole, d.fix->label);
                 item->setText(tr("%1\n　→ ダブルクリックで修正: %2").arg(text, d.fix->label));

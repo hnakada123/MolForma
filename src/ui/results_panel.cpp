@@ -3136,7 +3136,7 @@ void ResultsPanel::applyStructure() {
         tr("計算結果の構造を適用"), [&](Document &d) { moved = applyResultGeometry(d, result); }, true);
     if (!editorContext.hasCandidate())
         fail(tr("編集中の分子と結果の座標は同じです。"));
-    workspace.showPanel(0);
+    workspace.showSetting(SettingTarget::Molecule);
     uiContext.showMessage(tr("結果の構造を候補にしました（RMSD %1 Å、最大変位 %2 Å）。「変更を確定」"
                              "で適用します。")
                               .arg(moved.first, 0, 'f', 4)

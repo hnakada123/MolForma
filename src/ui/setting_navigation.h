@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "model/setting_target.h"
-#include "nwchem/run_record.h"
 namespace mf {
-// Only the UI translates semantic owners into the current workspace order (zero-based).
+// Only the UI translates semantic owners into the current workspace order (zero-based): the window
+// for the tab it shows (MainWindow::showSetting), a panel for the number it writes beside a link
+// ("2 計算条件"). No tab number crosses WorkspaceActions; callers name the owner.
 inline int workspaceTab(SettingTarget target) {
     switch (target) {
     case SettingTarget::Molecule:
@@ -14,10 +15,5 @@ inline int workspaceTab(SettingTarget target) {
         return 2;
     }
     return 1;
-}
-// Version-1 job records written before semantic targets name the owner by its legacy number
-// (RunDiagnostic::owner).
-inline int runDiagnosticTab(const RunDiagnostic &diagnostic) {
-    return workspaceTab(diagnostic.owner());
 }
 } // namespace mf

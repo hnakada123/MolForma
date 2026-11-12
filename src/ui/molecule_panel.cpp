@@ -94,10 +94,8 @@ static QString atomName(const Document &d, const QString &id) {
 }
 
 MoleculePanel::MoleculePanel(EditorContext &editorServices, UiServices &uiServices,
-                             WorkspaceActions &workspaceActions, ExecutionAccess &executionServices,
-                             const EditorSession &editor, QWidget *parent)
-    : QWidget(parent), editorContext(editorServices), uiContext(uiServices), workspace(workspaceActions),
-      executionAccess(executionServices), session(editor) {
+                             WorkspaceActions &workspaceActions, QWidget *parent)
+    : QWidget(parent), editorContext(editorServices), uiContext(uiServices), workspace(workspaceActions) {
     customParts = uiContext.preference(Preference::customParts).toJsonArray();
     auto *root = this;
     auto *page = new QHBoxLayout(root);
@@ -462,6 +460,10 @@ MoleculePanel::MoleculePanel(EditorContext &editorServices, UiServices &uiServic
     viewArea->setMinimumHeight(120);
     moleculeSplit->addWidget(viewArea);
     coordinates = new CoordinatesPanel(editorContext, uiContext, workspace, this);
+    // What the table asks of the workspace it is part of.
+    connect(coordinates, &CoordinatesPanel::sortRequested, this, &MoleculePanel::sortAtoms);
+    connect(coordinates, &CoordinatesPanel::tableRequested, this, &MoleculePanel::showCoordinateTable);
+    connect(coordinates, &CoordinatesPanel::fitRequested, this, [this] { view->keepInView(); });
     moleculeSplit->addWidget(coordinates);
     // 3D:表 = 6:4 until the border is dragged (applyMoleculeLayout() restores the drag). Without
     // stretch factors the sizes are shares, kept as the window is resized.
@@ -679,9 +681,9 @@ MoleculePanel::MoleculePanel(EditorContext &editorServices, UiServices &uiServic
                 if (indices.size() == needed) {
                     // The next site continues the placement: the ligand placed before is confirmed. A
                     // person's click never confirms an MCP candidate, but MCP may continue its own.
-                    const bool chained = session.candidate() &&
-                                         session.candidateSerial() == ligandCandidate &&
-                                         (!session.candidateRemote() || executionAccess.remoteRequest());
+                    const bool chained = hasCandidate() &&
+                                         editorContext.candidateSerial() == ligandCandidate &&
+                                         editorContext.ownsCandidate();
                     if (chained)
                         confirmCandidate();
                     proposeLigand(c, indices, t);
@@ -736,7 +738,7 @@ MoleculePanel::MoleculePanel(EditorContext &editorServices, UiServices &uiServic
     connect(view, &MoleculeView::shortcut, this, [this](int key) {
         safe([this, key] {
             if (key == Qt::Key_Escape) {
-                if (session.candidate())
+                if (hasCandidate())
                     cancelCandidate();
                 else
                     setSelection({});
@@ -978,19 +980,19 @@ void MoleculePanel::refresh() {
     });
     view->setMonitors(monitors);
     // Candidate changes: atoms removed (shown where they were), added and moved.
-    const auto changes = session.candidate() ? atomChanges(document(), *session.candidate()) : AtomChanges{};
+    const auto changes = hasCandidate() ? atomChanges(document(), d) : AtomChanges{};
     const auto &addedAtoms = changes.added, &movedAtoms = changes.moved;
     QVector<std::pair<Vec, QString>> removedAtoms;
     for (const auto &a : changes.removed)
         removedAtoms.append({a.position, a.element});
     view->setChanges(removedAtoms, addedAtoms, movedAtoms);
-    banner->refresh(session.candidateName(), changes);
+    banner->refresh(editorContext.candidateName(), changes);
     const auto marker = [](const char *color, const QString &mark) {
         return QString("<span style=\"color:%1\"><b>%2</b></span>").arg(color, mark);
     };
     // The same changes listed atom by atom in the "編集" tab, beside the selection.
-    candidateCard->setVisible(session.candidate().has_value());
-    if (session.candidate()) {
+    candidateCard->setVisible(hasCandidate());
+    if (hasCandidate()) {
         // The first 8 changes are described; the rest are only counted.
         QStringList lines;
         const int total = changes.removed.size() + addedAtoms.size() + (movedAtoms.isEmpty() ? 0 : 1);
@@ -1007,12 +1009,12 @@ void MoleculePanel::refresh() {
             line("#d23c3c", "×", atomName(document(), a.id),
                  place.isEmpty() ? tr("削除", "change") : tr("%1　削除").arg(place));
         }
-        for (const auto &a : session.candidate()->atoms) {
+        for (const auto &a : d.atoms) {
             if (full())
                 break;
             if (addedAtoms.contains(a.id)) {
                 QString partner;
-                for (const auto &n : session.candidate()->neighbors(a.id))
+                for (const auto &n : d.neighbors(a.id))
                     if (document().contains(n)) {
                         partner = atomName(document(), n);
                         break;
@@ -1027,7 +1029,7 @@ void MoleculePanel::refresh() {
             lines << tr("ほか %n 件", nullptr, total - int(lines.size()));
         candidateChanges->setText(lines.join("<br>"));
     }
-    topRow->setCurrentIndex(session.candidate() ? 1 : 0);
+    topRow->setCurrentIndex(hasCandidate() ? 1 : 0);
     residueList->clear();
     // N → C by chain and number: caps added after the chain was built (ACE 0, NME n+1) take their place.
     auto residues = d.residues;
@@ -1340,7 +1342,7 @@ void MoleculePanel::paletteChosen() {
         showProperties(tr("配位"));
     } else if (entry.kind == PaletteKind::Amino) {
         showProperties(tr("残基"));
-        if (growth->isChecked() && !growthResidue.isEmpty() && !session.candidate())
+        if (growth->isChecked() && !growthResidue.isEmpty() && !hasCandidate())
             addAmino(growthResidue, growthN);
     }
     // The replace tool keeps working with whatever is chosen: it replaces atoms with that part.
@@ -1560,6 +1562,8 @@ void MoleculePanel::place(const QString &id, const Vec &position) {
 
 void MoleculePanel::applyMoleculeLayout() {
     const auto layout = moleculeLayout->currentData().toString();
+    // Before the table is shown and refreshed: it measures the selection once the view is hidden.
+    coordinates->setViewHidden(layout == "table");
     moleculeSplit->widget(0)->setVisible(layout != "table");
     coordinates->setVisible(layout != "view");
     // Both shown: the border where it was dragged, else 3D:表 = 6:4 (the table keeps four rows).
@@ -1698,11 +1702,11 @@ void MoleculePanel::addFragmentFromFile() {
     if (p.isEmpty())
         return;
     checkMcpPath(p);
-    const auto base = session.revision();
+    const auto base = editorContext.revision();
     const auto options = chooseStructureImport(this, p);
     if (!options)
         return;
-    if (base != session.revision())
+    if (base != editorContext.revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
     const auto fragment = importStructure(p, options->selection, options->frame, options->crystal);
     edit(tr("ファイルから断片を追加"), [&](Document &d) { insertFragment(d, fragment); }, true);
@@ -1732,7 +1736,7 @@ void MoleculePanel::deleteAtoms(const Ids &chosen) {
 void MoleculePanel::proposeLigand(const QString &center, const QList<int> &sites, const QJsonObject &t,
                                   double twist) {
     edit(tr("配位子を配置"), [=](Document &d) { placeLigand(d, center, sites, t, twist); }, true);
-    ligandCandidate = session.candidateSerial();
+    ligandCandidate = editorContext.candidateSerial();
 }
 
 void MoleculePanel::bondAtoms(const QString &a, const QString &b, const QString &kind) {
@@ -1978,11 +1982,11 @@ void MoleculePanel::compareDialog() {
     if (p.isEmpty())
         return;
     checkMcpPath(p);
-    const auto base = session.revision();
+    const auto base = editorContext.revision();
     const auto options = chooseStructureImport(this, p);
     if (!options)
         return;
-    if (base != session.revision())
+    if (base != editorContext.revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
     const auto reference = importStructure(p, options->selection, options->frame, options->crystal);
     const auto fit = superpose(document(), reference);
@@ -2135,7 +2139,7 @@ void MoleculePanel::symmetryDialog() {
                     .arg(group.name.contains("∞") ? QString("∞") : QString::number(group.operations.size()))
                     .arg(group.deviation, 0, 'f', 4));
         apply->setEnabled(!group.name.isEmpty() && group.name != "C1" && group.name != "Kh" &&
-                          !session.candidate() && !chemistryRunning());
+                          !hasCandidate() && !chemistryRunning());
     };
     evaluate();
     connect(tolerance, &QDoubleSpinBox::valueChanged, &dialog, evaluate);
@@ -2152,7 +2156,7 @@ void MoleculePanel::symmetryDialog() {
                 15000);
 }
 void MoleculePanel::solvationDialog() {
-    if (session.candidate() || chemistryRunning())
+    if (hasCandidate() || chemistryRunning())
         fail(tr("候補を確定・取消し、整形の終了後に実行してください。"));
     if (document().atoms.isEmpty())
         fail(tr("分子が空です。"));
@@ -2365,9 +2369,6 @@ void MoleculePanel::savePreferences() {
 void MoleculePanel::setWorkerRunning(bool running) {
     cancelWorkerButton->setVisible(running);
 }
-QString MoleculePanel::layoutMode() const {
-    return moleculeLayout->currentData().toString();
-}
 void MoleculePanel::edit(const QString &name, const std::function<void(Document &)> &operation,
                          bool preview) {
     editorContext.edit(name, operation, preview);
@@ -2399,8 +2400,8 @@ bool MoleculePanel::resolveCandidate() {
 void MoleculePanel::checkMcpPath(const QString &path) const {
     uiContext.checkMcpPath(path);
 }
-void MoleculePanel::showSetting(int tab, const QString &setting) {
-    workspace.showSetting(tab, setting);
+void MoleculePanel::showSetting(SettingTarget target, const QString &setting) {
+    workspace.showSetting(target, setting);
 }
 void MoleculePanel::showInputLine() {
     workspace.showInputLine();

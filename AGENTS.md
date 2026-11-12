@@ -129,9 +129,25 @@ by responsibility, with paired headers and implementations in the same directory
   it, not from `ResultData::properties` or from table cells.
 - `src/ui/`: `main_window.*` owns the application window, project lifecycle, shared editor context and
   the session's `RunSession` (supervising, restoring and ending its runs; `main.cpp` asks the window).
-  It implements the capabilities in `editor_context.h`: editor operations, UI services, workspace
-  actions and execution access. Panels/dialogs receive the capabilities they use and a separate widget
-  parent; only composition/adapters (`main_window`, `workspace_controller`, `mcp_gui`) include MainWindow.
+  It implements the four capabilities of `editor_context.h`, which panels/dialogs receive (only those
+  they use) with a separate widget parent; only composition/adapters (`main_window`,
+  `workspace_controller`, `mcp_gui`) include MainWindow. `EditorContext` is the document: reading it and
+  its candidate (`document`, `displayDocument`, `revision`, `hasCandidate`, `candidateName`,
+  `candidateSerial`, `ownsCandidate`: whether the one acting now may confirm the candidate in passing,
+  which a person never does to a candidate of MCP), the selection, and asking for edits, candidates and
+  chemistry jobs; never the `EditorSession` or its undo stack. `UiServices` is what every widget needs of
+  the window: `safe`, preferences, messages, the status bar, and MCP's folders as two checks
+  (`checkMcpPath` refuses a path during a request of MCP; `outsideMcpFolders` says whether a path is
+  outside them whoever acts, for the `mcpPath` mark of a widget shown between requests).
+  `WorkspaceActions` is navigation only: `showPanel(QWidget *)`, `showSetting(SettingTarget, setting,
+  group)`, `showInputLine`, `refreshPanel`. A place is named by its panel or by the owner of a setting,
+  never by a tab number; a caller that has only the key of a setting asks `nwchemSettingTarget`
+  (`nwchem/nwchem.h`: the memory is the execution's), and diagnostics carry their target.
+  `ExecutionAccess` is the gate of a calculation as checks (`runCheck`: MCP's folders for a request of
+  MCP, else none; `mayChooseExecutionSettings`; `mayConfirmExecution`: the user can be asked, a request
+  of MCP is refused; `untrustedExecution`, `trustCurrentExecution`); no panel sees the `McpPolicy`.
+  Anything else one panel needs of another is a signal of the panel that asks, connected where the two
+  are composed: do not add a method to these interfaces for one caller.
   The window holds the preferences store (`userPreferences()`, also handed to `DocumentStorage` for
   the recent files); widgets reach preferences only through `UiServices::preference`/`setPreference`
   with the keys of `model/settings.h`, never through a `QSettings` of their own: what a dialog remembers
@@ -139,12 +155,19 @@ by responsibility, with paired headers and implementations in the same directory
   constructor (`RendererChoice`, from Preferences `view/renderer`) by the panel that makes it.
   `translations.*` reads the language before there is a window.
   `molecule_panel.*` and `molecule_properties.cpp` own the molecular workspace, selection, palette,
-  tools and property pages; document transactions still go through `EditorSession`.
+  tools and property pages; document transactions go through the `EditorContext` (the window's
+  `EditorSession` behind it).
   `candidate_controls.*` shares the candidate controls across workspace tabs.
   `structure_import.*` shares the interactive XYZ frame and PDB MODEL/ALTLOC choices.
-  `workspace_controller.*` coordinates history reuse, navigation and loading completed runs;
-  panels emit requests instead of directly accessing sibling panels. The molecular workspace
-  composes its coordinate table. `molecule_view.*` owns camera/input, Qt annotations and
+  `workspace_controller.*` coordinates history reuse, navigation, loading completed runs and the
+  structure the result viewer shows as the end of an NEB path (`CalculationPanel::resultStructureRequested`,
+  answered with `setNebEndFromResultStructure` or a failure); panels emit requests instead of directly
+  accessing sibling panels. The window itself connects what its header and menus show of a panel: the
+  run (`ExecutionPanel::runDisplayChanged`, `runPanelToggled`) and the state of the input
+  (`InputPreviewPanel::badgeChanged`, `settingsCommitRequested`; the panel gets the section titles of
+  "2 計算条件" as a callback). The molecular workspace composes its coordinate table and connects the
+  table's requests itself (`CoordinatesPanel::sortRequested`, `tableRequested`, `fitRequested`), telling
+  it when it stands in place of the 3D view (`setViewHidden`). `molecule_view.*` owns camera/input, Qt annotations and
   the QPainter fallback; `vtk_molecule_renderer.*` provides optional retained
   native VTK/OpenGL rendering; both draw bonds and isosurfaces by `bond_style.h`. `editor_chrome.*` holds the window header, tool rail,
   wrapping option bar layout, 3D-view overlays and palette-derived chrome colors.
@@ -159,8 +182,9 @@ by responsibility, with paired headers and implementations in the same directory
   `run_progress.*` and log), opened from the header run pill; its form (`execution_form.*`) is
   also that of Preferences. The panel shows the window's `RunSession` and asks it for calculations once
   its gate has let them pass (no candidate, programs the user confirmed, MCP's folders for a request over
-  MCP); it owns neither the run nor the queue. `setting_navigation.h` maps semantic setting targets to today's UI tabs, also
-  for old job diagnostics (`RunDiagnostic::owner`). `run_progress.*` also holds the state labels of runs and their colors. `input_preview_panel.*`
+  MCP: all asked of `ExecutionAccess`); it owns neither the run nor the queue. `setting_navigation.h` maps semantic setting targets to today's UI tabs
+  (`workspaceTab`): the window uses it to show the tab of an owner, a panel only for the number it writes
+  beside a link; the owner of an old job diagnostic is `RunDiagnostic::owner`. `run_progress.*` also holds the state labels of runs and their colors. `input_preview_panel.*`
   provides the read-only "4 入力プレビュー" tab using the shared NWChem input
   generator and execution plan.
   `results_panel.*` provides the independent result viewer with cancellable native

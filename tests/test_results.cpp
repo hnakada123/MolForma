@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "editing/coordinates.h"
 #include "foundation/files.h"
+#include "model/geometry.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/result_files.h"
@@ -46,6 +47,9 @@ class TestUiServices : public UiServices {
     }
     void checkMcpPath(const QString &path) const override {
         checkedPaths << path;
+    }
+    bool outsideMcpFolders(const QString &) const override {
+        return false;
     }
     void showMessage(const QString &, int = 0) override {}
     void addStatusWidget(QWidget *) override {}
@@ -2718,6 +2722,29 @@ class ResultsTest : public QObject {
         MainWindow w;
         w.loadDocument(original);
         auto *panel = widget<ResultsPanel>(w, "resultsTab");
+        // While the viewer shows no structure, the end from it is refused: as the failure of the
+        // request, which the button shows in a message box and in the status bar.
+        auto *calculation = w.findChild<CalculationPanel *>();
+        QVERIFY(calculation);
+        const QString missing = "「結果ビューア」で終点にする構造を開いてください。";
+        try {
+            calculation->setNebEndFromResult();
+            QFAIL("The end of an NEB was taken from an empty result viewer");
+        } catch (const std::exception &e) {
+            QCOMPARE(QString::fromUtf8(e.what()), missing);
+        }
+        QString boxed;
+        QTimer::singleShot(0, &w, [&] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                boxed = box->text();
+                box->accept();
+            }
+        });
+        widget<QPushButton>(w, "calculationNebEndResult")->click();
+        QCOMPARE(boxed, missing);
+        QCOMPARE(w.statusBar()->currentMessage(), missing);
+        QVERIFY(!nwchemNebEnd(w.document()).document);
+        QCOMPARE(w.history()->count(), 0);
         QSignalSpy done(panel, &ResultsPanel::loaded);
         panel->openFile(bundle.directory + "/output.out");
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 10000);
@@ -2729,11 +2756,15 @@ class ResultsTest : public QObject {
         QVERIFY(widget<QLabel>(w, "resultsPathNote")->text().contains("未収束"));
         // The end of an NEB from the shown structure: the last image, fitted onto the molecule.
         path->setCurrentCell(4, 0);
-        auto *calculation = w.findChild<CalculationPanel *>();
-        QVERIFY(calculation);
+        // The panel asks for the structure, and whoever composes the panels answers.
+        QSignalSpy asked(calculation, &CalculationPanel::resultStructureRequested);
         calculation->setNebEndFromResult();
+        QCOMPARE(asked.count(), 1);
         QCOMPARE(nwchemSettings(w.document())["task"].toString(), QString("neb"));
         QVERIFY(nwchemNebEnd(w.document()).document);
+        QCOMPARE(w.history()->undoText(), QString("NEBの終点を結果の構造から設定"));
+        // The end is the structure shown (the last image), fitted onto the molecule.
+        QVERIFY(superpose(*nwchemNebEnd(w.document()).document, panel->displayedGeometry()).rmsd < 1e-6);
         QVERIFY(!w.findChild<QLabel *>("calculationNebEnd")->text().contains("未設定"));
         w.history()->undo();
         widget<QPushButton>(w, "resultsPathHighest")->click();

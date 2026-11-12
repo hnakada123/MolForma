@@ -596,7 +596,8 @@ CalculationPanel::CalculationPanel(EditorContext &editorServices, UiServices &ui
     memoryState = new QLabel;
     memoryState->setObjectName("calculationMemoryState");
     auto *memoryLink = linkButton(tr("3 実行設定で変更"), "calculationMemoryLink");
-    connect(memoryLink, &QPushButton::clicked, this, [this] { workspace.showSetting(2, "memory_mb"); });
+    connect(memoryLink, &QPushButton::clicked, this,
+            [this] { workspace.showSetting(SettingTarget::Execution, "memory_mb"); });
     auto *memoryRow = readOnlyRow(memoryState, memoryLink);
     output->addRow(tr("メモリ"), memoryRow);
     rows["memory_mb"] = memoryRow;
@@ -665,7 +666,7 @@ CalculationPanel::CalculationPanel(EditorContext &editorServices, UiServices &ui
     body->addWidget(railScroll);
     summaryCard = new CalculationSummary("calculation", tr("この計算"), [this](const QString &link) {
         if (link == "memory")
-            workspace.showSetting(2, "memory_mb");
+            workspace.showSetting(SettingTarget::Execution, "memory_mb");
     });
     railLayout->addWidget(summaryCard);
 
@@ -684,7 +685,7 @@ CalculationPanel::CalculationPanel(EditorContext &editorServices, UiServices &ui
     validation->setFitContents(220);
     checkLayout->addWidget(validation);
     connect(validation, &DiagnosticsList::diagnosticClicked, this,
-            [this](const QString &setting, int tab) { workspace.showSetting(tab, setting); });
+            [this](const QString &setting, SettingTarget target) { workspace.showSetting(target, setting); });
     connect(validation, &DiagnosticsList::fixRequested, this, &CalculationPanel::applyFix);
     railLayout->addWidget(validationCard);
 
@@ -791,7 +792,8 @@ CalculationPanel::CalculationPanel(EditorContext &editorServices, UiServices &ui
     changes->setColumnWidth(2, 30);
     changeCard->body()->addWidget(changes, 1);
     connect(changes, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *item) {
-        workspace.showSetting(1, item->data(0, Qt::UserRole).toString());
+        const auto key = item->data(0, Qt::UserRole).toString();
+        workspace.showSetting(nwchemSettingTarget(key), key);
     });
     noChanges = new QLabel(tr("なし（HF / STO-3G・一点エネルギー）"));
     noChanges->setObjectName("calculationNoChanges");
@@ -911,7 +913,7 @@ void CalculationPanel::searchSettings(const QString &text) {
     if (!detailed)
         for (auto it = labels.begin(); it != labels.end(); ++it)
             if (it.value().contains(query, Qt::CaseInsensitive)) {
-                workspace.showSetting(1, it.key());
+                workspace.showSetting(nwchemSettingTarget(it.key()), it.key());
                 return;
             }
     // A detailed option by its name, then by its NWChem keyword or key.
@@ -1224,7 +1226,10 @@ void CalculationPanel::nebLoadFailed(const QString &message) {
     emit nebEndLoadFailed(message);
 }
 void CalculationPanel::setNebEndFromResult() {
-    setNebEnd(workspace.resultStructure(), true, tr("NEBの終点を結果の構造から設定"));
+    emit resultStructureRequested();
+}
+void CalculationPanel::setNebEndFromResultStructure(const Document &structure) {
+    setNebEnd(structure, true, tr("NEBの終点を結果の構造から設定"));
 }
 void CalculationPanel::setNebEndFromCurrent() {
     setNebEnd(editorContext.document(), false, tr("今の構造をNEBの終点に設定"));

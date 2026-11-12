@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
-#include "editing/editor_session.h"
 #include "ui/editor_context.h"
 #include "ui/editor_tool.h"
 #include "ui/molecule_view.h"
@@ -35,12 +34,13 @@ class CoordinatesPanel;
 class SequenceTrack;
 
 // Owns the molecular workspace: palette, tools, selection, view, coordinate layout and properties.
-// Document transactions stay in the application session; this panel only observes it.
+// Document transactions stay in the application session, which this panel does not see: it reads the
+// document and its candidate through the editor context and asks that for edits.
 class MoleculePanel : public QWidget {
     Q_OBJECT
   public:
     MoleculePanel(EditorContext &editorContext, UiServices &uiContext, WorkspaceActions &workspace,
-                  ExecutionAccess &executionAccess, const EditorSession &session, QWidget *parent = nullptr);
+                  QWidget *parent = nullptr);
     MoleculeView *canvas() const {
         return view;
     }
@@ -59,10 +59,11 @@ class MoleculePanel : public QWidget {
     void refresh();
     void applyChromeStyle();
     void setWorkerRunning(bool running);
-    QString layoutMode() const;
     void addEditActions(QMenu *menu);
     void addViewActions(QMenu *menu);
+    // Shows "1 分子" with the table of the coordinates (under the 3D view, unless it is shown already).
     void showCoordinateTable();
+    // Sorts the atoms: "element", "residue" or "selected" (the selection first).
     void sortAtoms(const QString &mode);
     void importSmiles(const QString &initial = {});
     void addFragmentFromSmiles(const QString &initial = {});
@@ -81,8 +82,6 @@ class MoleculePanel : public QWidget {
     EditorContext &editorContext;
     UiServices &uiContext;
     WorkspaceActions &workspace;
-    ExecutionAccess &executionAccess;
-    const EditorSession &session;
     Ids selected;
     QVector<Ids> monitors;
     bool refreshing = false;
@@ -217,10 +216,13 @@ class MoleculePanel : public QWidget {
     void addAmino(const QString &rid, bool n);
 
     const Document &document() const {
-        return session.document();
+        return editorContext.document();
     }
     const Document &displayDocument() const {
-        return session.displayDocument();
+        return editorContext.displayDocument();
+    }
+    bool hasCandidate() const {
+        return editorContext.hasCandidate();
     }
     void edit(const QString &name, const std::function<void(Document &)> &operation, bool preview = false);
     void safe(const std::function<void()> &operation);
@@ -232,7 +234,7 @@ class MoleculePanel : public QWidget {
     void cancelCandidate();
     bool resolveCandidate();
     void checkMcpPath(const QString &path) const;
-    void showSetting(int tab, const QString &setting = {});
+    void showSetting(SettingTarget target, const QString &setting = {});
     void showInputLine();
 };
 } // namespace mf

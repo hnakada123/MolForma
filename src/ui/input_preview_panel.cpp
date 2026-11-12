@@ -27,15 +27,30 @@ QLabel *caption(const QString &text) {
     label->setWordWrap(true);
     return label;
 }
-// A diagnostic as a link to where it is set: "tab:<index>", or "field:<key>" of "2 計算条件".
+// A diagnostic as a link to where it is set: "target:<owner>" (the tab of the molecule, the
+// calculation or the execution, by the key of its SettingTarget), "field:<key>" (a setting of the
+// calculation by its key alone) or "execution:<key>" (a setting of "3 実行設定").
 QString sourceLink(const QString &target, const QString &text) {
     return QString("<a href=\"%1\">%2</a>").arg(target.toHtmlEscaped(), text.toHtmlEscaped());
 }
-// The titles of the tabs that set a block, by number (from 1).
-QString tabName(int tab) {
-    static const char *const names[]{QT_TR_NOOP("1 分子"), QT_TR_NOOP("2 計算条件"),
-                                     QT_TR_NOOP("3 実行設定")};
-    return tab >= 1 && tab <= 3 ? tr(names[tab - 1]) : QString();
+QString targetLink(SettingTarget target) {
+    return "target:" + settingTargetKey(target);
+}
+// The number of an owner's tab as its title and the steps of the header show it (from 1).
+int tabNumber(SettingTarget target) {
+    return workspaceTab(target) + 1;
+}
+// The titles of the tabs that set a block.
+QString tabName(SettingTarget target) {
+    switch (target) {
+    case SettingTarget::Molecule:
+        return tr("1 分子");
+    case SettingTarget::Calculation:
+        return tr("2 計算条件");
+    case SettingTarget::Execution:
+        return tr("3 実行設定");
+    }
+    return {};
 }
 } // namespace
 
@@ -137,8 +152,9 @@ class InputEditor : public QPlainTextEdit {
 };
 
 InputPreviewPanel::InputPreviewPanel(EditorContext &editorServices, UiServices &uiServices,
-                                     WorkspaceActions &workspaceActions, QWidget *parent)
-    : QWidget(parent), editorContext(editorServices), uiContext(uiServices), workspace(workspaceActions) {
+                                     WorkspaceActions &workspaceActions, SectionTitle title, QWidget *parent)
+    : QWidget(parent), editorContext(editorServices), uiContext(uiServices), workspace(workspaceActions),
+      sectionTitle(std::move(title)) {
     setObjectName("inputPreviewTab");
     setAttribute(Qt::WA_StyledBackground);
     auto *outer = new QVBoxLayout(this);
@@ -323,7 +339,7 @@ InputPreviewPanel::InputPreviewPanel(EditorContext &editorServices, UiServices &
     body->addWidget(railScroll);
     summaryCard = new CalculationSummary("inputPreview", tr("この入力"), [this](const QString &link) {
         if (link == "memory")
-            workspace.showSetting(2, "memory_mb");
+            workspace.showSetting(SettingTarget::Execution, "memory_mb");
     });
     railLayout->addWidget(summaryCard);
     checkCard = new StatusCard;
@@ -356,14 +372,13 @@ InputPreviewPanel::InputPreviewPanel(EditorContext &editorServices, UiServices &
     railLayout->addStretch();
     const auto openLink = [this](const QString &link) {
         const QUrl url(link);
-        bool ok = false;
-        const int tab = url.path().toInt(&ok);
-        if (url.scheme() == "tab" && ok)
-            navigate(tab);
-        else if (url.scheme() == "field")
-            workspace.showSetting(1, url.path());
+        if (url.scheme() == "target") {
+            if (const auto target = settingTargetFromKey(url.path()))
+                workspace.showSetting(*target);
+        } else if (url.scheme() == "field") // By its key alone: the memory is the execution's.
+            workspace.showSetting(nwchemSettingTarget(url.path()), url.path());
         else if (url.scheme() == "execution")
-            workspace.showSetting(2, url.path());
+            workspace.showSetting(SettingTarget::Execution, url.path());
     };
     connect(paths, &QLabel::linkActivated, this, openLink);
     connect(diagnostics, &QTextBrowser::anchorClicked, this,
@@ -391,21 +406,14 @@ void InputPreviewPanel::showLine(int line) {
     input->centerCursor();
     input->setFocus();
 }
-void InputPreviewPanel::navigate(int tab) {
-    workspace.showPanel(tab);
-}
-void InputPreviewPanel::openSource(int tab, const QString &setting, const QString &group) {
-    workspace.showSetting(tab - 1, setting, group);
-}
 QList<InputPreviewPanel::Source> InputPreviewPanel::sources(const NwchemInputBlock &b) {
     QList<Source> result;
-    for (const auto owner : b.targets) {
-        const int tab = workspaceTab(owner) + 1;
-        if (tab != 2 || !b.setting.isEmpty() || b.group.isEmpty()) // Not when only the details set it.
-            result << Source{tab, tab == 1 ? QString() : b.setting, {}};
-    }
+    for (const auto owner : b.targets)
+        // Not when only the details set it.
+        if (owner != SettingTarget::Calculation || !b.setting.isEmpty() || b.group.isEmpty())
+            result << Source{owner, owner == SettingTarget::Molecule ? QString() : b.setting, {}};
     if (!b.group.isEmpty())
-        result << Source{2, {}, b.group};
+        result << Source{SettingTarget::Calculation, {}, b.group};
     return result;
 }
 void InputPreviewPanel::rebuildOutline() {
@@ -435,14 +443,14 @@ void InputPreviewPanel::rebuildOutline() {
             auto *badge = new QToolButton;
             badge->setObjectName(QString("inputPreviewSource%1_%2%3")
                                      .arg(b.line + 1)
-                                     .arg(source.tab)
+                                     .arg(tabNumber(source.target))
                                      .arg(details ? "_details" : ""));
-            badge->setText(details ? tr("詳") : QString::number(source.tab));
+            badge->setText(details ? tr("詳") : QString::number(tabNumber(source.target)));
             badge->setProperty(
                 "source", details                                                                ? "advanced"
                           : (source.setting == "extra_input" || source.setting == "extra_tasks") ? "extra"
                                                                                                  : "tab");
-            const auto where = tabName(source.tab);
+            const auto where = tabName(source.target);
             badge->setToolTip(details ? tr("「%1」の詳細設定で編集").arg(where)
                                       : tr("「%1」で編集").arg(where));
             badge->setAccessibleName(details ? tr("%1の詳細設定で編集").arg(where)
@@ -450,7 +458,7 @@ void InputPreviewPanel::rebuildOutline() {
             badge->setFixedSize(22, 22);
             layout->addWidget(badge);
             connect(badge, &QToolButton::clicked, this,
-                    [this, source] { openSource(source.tab, source.setting, source.group); });
+                    [this, source] { workspace.showSetting(source.target, source.setting, source.group); });
         }
         item->setSizeHint(QSize(0, row->sizeHint().height()));
         outlineList->setItemWidget(item, row);
@@ -482,7 +490,7 @@ void InputPreviewPanel::followCursor() {
         delete item;
     }
     for (const auto &source : sources(b)) {
-        QString text = tabName(source.tab);
+        QString text = tabName(source.target);
         if (!source.group.isEmpty()) {
             for (const auto &g : nwchemAdvancedGroups())
                 if (g.value == source.group)
@@ -490,15 +498,15 @@ void InputPreviewPanel::followCursor() {
                                .arg(text, g.value == "visualization" ? QString("CUBE / MOLDEN") : g.label);
         } else if ((source.setting == "extra_input" || source.setting == "extra_tasks"))
             text = tr("%1 › 追加入力").arg(text);
-        else if (source.tab == 2 && !source.setting.isEmpty())
-            if (const auto section = workspace.settingSectionTitle(source.setting); !section.isEmpty())
+        else if (source.target == SettingTarget::Calculation && !source.setting.isEmpty())
+            if (const auto section = sectionTitle(source.setting); !section.isEmpty())
                 text += " › " + section;
         auto *link = new QPushButton(text);
         link->setProperty("link", true);
         link->setCursor(Qt::PointingHandCursor);
         sourceLinks->layout()->addWidget(link);
         connect(link, &QPushButton::clicked, this,
-                [this, source] { openSource(source.tab, source.setting, source.group); });
+                [this, source] { workspace.showSetting(source.target, source.setting, source.group); });
     }
     sourceChip->setVisible(!b.targets.isEmpty());
     sourceChip->adjustSize();
@@ -510,12 +518,11 @@ void InputPreviewPanel::refresh() {
     modes->sync();
     QStringList errors = report.errors;
     QString html;
-    // The setting a message is about in "2 計算条件" or "3 実行設定", else its tab.
+    // The setting a message is about in "2 計算条件" or "3 実行設定", else the tab of its owner.
     const auto target = [](const Diagnostic &d) {
-        const int tab = workspaceTab(d.target);
-        if (d.setting.isEmpty() || (tab != 1 && tab != 2))
-            return QString("tab:%1").arg(tab);
-        return (tab == 1 ? "field:" : "execution:") + d.setting;
+        if (d.setting.isEmpty() || d.target == SettingTarget::Molecule)
+            return targetLink(d.target);
+        return (d.target == SettingTarget::Calculation ? "field:" : "execution:") + d.setting;
     };
     auto append = [&](const QString &label, const QString &message, const QString &link,
                       const QColor &color) {
@@ -550,7 +557,7 @@ void InputPreviewPanel::refresh() {
             }
     } catch (const std::exception &e) {
         errors << QString::fromUtf8(e.what());
-        append(tr("エラー:"), errors.last(), "tab:2", c.bad);
+        append(tr("エラー:"), errors.last(), targetLink(SettingTarget::Execution), c.bad);
     }
     for (const auto &diagnostic : report.diagnostics) {
         if (diagnostic.severity != DiagnosticSeverity::Warning)
@@ -581,9 +588,9 @@ void InputPreviewPanel::refresh() {
                         : tr("相対パスは変更せず出力します。外部で実行するときは、"
                              "NWChemの作業ディレクトリを基準に必要なファイル・保存先を用意してください。")) +
                    tr("<br><br>実行ファイル・MPI・基底ライブラリ・参照ファイルの存在と書込み権限は "
-                      "<a href=\"tab:2\" style=\"color:%1\">「3 実行設定」</a>"
+                      "<a href=\"%2\" style=\"color:%1\">「3 実行設定」</a>"
                       " で確認してください。ここではNWChemを起動しません。")
-                       .arg(c.accentText.name()));
+                       .arg(c.accentText.name(), targetLink(SettingTarget::Execution)));
     summaryCard->update(d);
     const bool pending = editorContext.hasCandidate() || editorContext.chemistryRunning();
     hint->setText(editorContext.hasCandidate()
@@ -636,10 +643,10 @@ void InputPreviewPanel::refreshBadge() {
                               : tr("入力を生成できません（エラー %n 件）", nullptr, int(errors.size())));
 }
 void InputPreviewPanel::setBadge(bool failed, const QString &tip) {
-    workspace.setPanelDiagnostics(this, failed, tip);
+    emit badgeChanged(failed, tip);
 }
 QString InputPreviewPanel::prepareExport() {
-    workspace.commitPendingSettings();
+    emit settingsCommitRequested();
     if (editorContext.hasCandidate() || editorContext.chemistryRunning())
         fail(tr("分子候補の確定・取消、または整形の終了後に出力してください。"));
     refresh();

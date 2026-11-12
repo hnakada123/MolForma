@@ -6,6 +6,7 @@
 #include "nwchem/nwchem_restart.h"
 #include "nwchem/result_files.h"
 #include "nwchem/run_record.h"
+#include "ui/calculation_panel.h"
 #include "ui/execution_panel.h"
 #include "ui/history_panel.h"
 #include "ui/main_window.h"
@@ -14,8 +15,11 @@
 #include <QFileInfo>
 #include <QStatusBar>
 namespace mf {
-WorkspaceController::WorkspaceController(MainWindow &w, ExecutionPanel &e, HistoryPanel &h, ResultsPanel &r)
-    : QObject(&w), window(w), execution(e), history(h), results(r) {
+WorkspaceController::WorkspaceController(MainWindow &w, CalculationPanel &c, ExecutionPanel &e,
+                                         HistoryPanel &h, ResultsPanel &r)
+    : QObject(&w), window(w), calculation(c), execution(e), history(h), results(r) {
+    connect(&calculation, &CalculationPanel::resultStructureRequested, this,
+            &WorkspaceController::nebEndFromResult);
     connect(&execution, &ExecutionPanel::bundleChanged, &history, &HistoryPanel::notifyJob);
     connect(&history, &HistoryPanel::reuseRequested, this, &WorkspaceController::reuse);
     connect(&history, &HistoryPanel::restartRequested, this, &WorkspaceController::restart);
@@ -47,7 +51,7 @@ void WorkspaceController::reuse(const QString &directory) {
     const auto next = historyDocument(directory);
     if (!window.replaceUnsavedDocument(next))
         return;
-    window.showSetting(1);
+    window.showSetting(SettingTarget::Calculation);
     window.statusBar()->showMessage(
         tr("履歴から新しい未保存プロジェクトを作成しました。実行前に条件・参照ファイルを確認してください。"),
         15000);
@@ -61,7 +65,7 @@ void WorkspaceController::restart(const QString &directory, const QString &mode)
     const auto next = mode == "orbitals" ? orbitalReuseDocument(directory) : restartDocument(directory, mode);
     if (!window.replaceUnsavedDocument(next))
         return;
-    window.showSetting(1);
+    window.showSetting(SettingTarget::Calculation);
     window.statusBar()->showMessage(
         mode == "orbitals" ? tr("分子軌道を引き継ぐ新しい未保存プロジェクトを作成しました。同じ原子順・基底で"
                                 "実行してください。")
@@ -97,6 +101,11 @@ void WorkspaceController::resultLoaded() {
     if (window.currentPanel() == &results)
         execution.resultsShown();
 }
+void WorkspaceController::nebEndFromResult() {
+    if (results.result().source.isEmpty() || results.result().frames.isEmpty())
+        fail(tr("「結果ビューア」で終点にする構造を開いてください。"));
+    calculation.setNebEndFromResultStructure(results.displayedGeometry());
+}
 void WorkspaceController::prepareRecalculation(const QString &directory, const Document &geometry,
                                                const QString &task) {
     if (window.hasCandidate() || window.chemistryRunning() || execution.running())
@@ -113,7 +122,7 @@ void WorkspaceController::prepareRecalculation(const QString &directory, const D
     if (!window.replaceUnsavedDocument(original))
         return;
     window.edit(tr("計算結果の構造を適用"), [&](Document &d) { applyResultGeometry(d, geometry); }, true);
-    window.showPanel(0);
+    window.showSetting(SettingTarget::Molecule);
     window.statusBar()->showMessage(
         task.isEmpty()
             ? tr("保存した条件で再計算を準備しました。構造と条件を確認して新しいジョブを実行してください。")

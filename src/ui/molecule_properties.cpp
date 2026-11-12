@@ -881,7 +881,8 @@ void MoleculePanel::buildChargePanel() {
     chargeState = new QLabel;
     chargeState->setObjectName("moleculeChargeState");
     auto *chargeLink = linkButton(tr("2 計算条件で変更"), "moleculeChargeLink");
-    connect(chargeLink, &QPushButton::clicked, this, [this] { showSetting(1, "charge"); });
+    connect(chargeLink, &QPushButton::clicked, this,
+            [this] { showSetting(SettingTarget::Calculation, "charge"); });
     // The value and the link wrap: the link goes under the value where the column is narrow.
     auto *chargeRow = new QWidget;
     auto *chargeRowLayout = new FlowLayout(chargeRow, 10, 4);
@@ -913,7 +914,8 @@ void MoleculePanel::buildChargePanel() {
     pointChargeState->setObjectName("moleculePointChargeState");
     auto *pointLink = linkButton(tr("2 計算条件で設定"), "moleculePointChargeLink");
     pointLink->setToolTip(tr("点電荷をNWChem入力に含めるかは「2 計算条件」の「周囲の環境」で設定します。"));
-    connect(pointLink, &QPushButton::clicked, this, [this] { showSetting(1, "include_point_charges"); });
+    connect(pointLink, &QPushButton::clicked, this,
+            [this] { showSetting(SettingTarget::Calculation, "include_point_charges"); });
     auto *pointRow = new QWidget;
     auto *pointRowLayout = new FlowLayout(pointRow, 10, 4);
     pointRowLayout->setContentsMargins(0, 0, 0, 0);
@@ -1023,7 +1025,7 @@ void MoleculePanel::refreshChargePanel() {
     pointChargeState->setText(nwchemSettings(d)["include_point_charges"].toBool()
                                   ? tr("NWChem入力に含める")
                                   : tr("NWChem入力に含めない"));
-    chargeEditor->setEnabled(!session.candidate() && !chemistryRunning());
+    chargeEditor->setEnabled(!hasCandidate() && !chemistryRunning());
     if (auto *apply = findChild<QPushButton *>("applyMoleculeFormalCharge"))
         apply->setText(d.hasCenters()
                            ? tr("酸化数と形式電荷の合計（%1）を全電荷に適用").arg(d.expectedCharge())
@@ -1039,7 +1041,7 @@ void MoleculePanel::refreshChargePanel() {
         text << tr("エラー: %1").arg(error);
     for (const auto &warning : check.warnings)
         text << tr("確認: %1").arg(warning);
-    if (session.candidate())
+    if (hasCandidate())
         text.prepend(tr("未確定候補です。確定・取消後に設定を変更できます。"));
     else if (chemistryRunning())
         text.prepend(tr("分子の整形中です。終了後に設定を変更できます。"));
@@ -1055,7 +1057,7 @@ void MoleculePanel::refreshChargePanel() {
     }
 }
 void MoleculePanel::pdbPreparation() {
-    if (session.candidate())
+    if (hasCandidate())
         fail(tr("先に候補を確定または取消してください。"));
     if (document().atoms.isEmpty())
         fail(tr("PDBファイルを開いてから診断してください。"));

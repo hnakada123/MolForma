@@ -25,6 +25,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QProcess>
 #include <QPushButton>
 #include <QSpinBox>
@@ -2147,6 +2148,21 @@ class McpTest : public QObject {
         for (const auto &target : {"historyTrash", "historyReuse", "historyFolder"})
             QVERIFY2(refusedOverMcp(target), target);
         QVERIFY(QFileInfo(bundle).isDir());
+        // The memo of a job is written into its folder as it is typed: the field is marked while it
+        // shows a job outside the limit (as the job is shown, not during a request), and MCP may not
+        // type there.
+        auto *memo = w.findChild<QPlainTextEdit *>("historyMemo");
+        QVERIFY(memo);
+        QVERIFY(memo->property("mcpPath").toBool());
+        const auto typed = change(s, "ui_set_value", {{"target", "historyMemo"}, {"value", "note"}});
+        QVERIFY(failed(typed));
+        QVERIFY2(text(typed).contains("--mcp-allow-dir"), qPrintable(text(typed)));
+        QVERIFY(!QFileInfo::exists(bundle + "/memo.txt"));
+        setExecutionSetting(job, "job_root", allowed.filePath("jobs"));
+        const auto within = saveExecutionBundle(job, allowed.path()).directory;
+        history->selectDirectory(within);
+        QTRY_COMPARE(history->selectedDirectory(), within);
+        QVERIFY(!memo->property("mcpPath").toBool());
     }
     void tasksCancelQueuedGuiCommand() {
         MainWindow w;

@@ -59,7 +59,10 @@ class CalculationPanel : public QWidget {
     // comes from elsewhere. Swapping exchanges the molecule's positions with the end's, so that the end
     // can be seen and edited in "1 分子". Undoable edits of the document.
     void setNebEndFromFile(const QString &path);
+    // Asks for the structure the result viewer shows (resultStructureRequested), which is answered with
+    // setNebEndFromResultStructure before this returns, or with the failure of a viewer that shows none.
     void setNebEndFromResult();
+    void setNebEndFromResultStructure(const Document &structure);
     void setNebEndFromCurrent();
     void swapNebEnds();
     bool loadingNebEnd() const {
@@ -70,6 +73,9 @@ class CalculationPanel : public QWidget {
   signals:
     void nebEndLoaded();
     void nebEndLoadFailed(QString message);
+    // "結果ビューアの構造": the panel does not see the result viewer; whoever composes the two
+    // (WorkspaceController) answers with setNebEndFromResultStructure, or fails.
+    void resultStructureRequested();
 
   protected:
     void resizeEvent(QResizeEvent *event) override;

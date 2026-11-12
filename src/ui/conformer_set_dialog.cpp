@@ -191,7 +191,7 @@ void ConformerSetDialog::applySelected() {
     checkMolecule();
     const auto d = model.geometry(table->currentRow());
     editorContext.edit(tr("配座を適用"), [&](Document &next) { applyResultGeometry(next, d); }, true);
-    workspace.showPanel(0);
+    workspace.showSetting(SettingTarget::Molecule);
 }
 void ConformerSetDialog::queueSelected() {
     checkMolecule();

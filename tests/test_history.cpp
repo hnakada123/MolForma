@@ -537,6 +537,8 @@ class HistoryTest : public QObject {
         QVERIFY(!widget<QPushButton>(w, "historyCompare")->isChecked());
         // A memo kept in the job folder, shown in the list and written to CSV.
         table->setCurrentIndex(row(w, first.directory)->index);
+        // No MCP session limits the folders: the memo of any job can be written.
+        QVERIFY(!widget<QPlainTextEdit>(w, "historyMemo")->property("mcpPath").toBool());
         widget<QPlainTextEdit>(w, "historyMemo")->setPlainText("基準構造");
         QTRY_VERIFY(QFileInfo::exists(first.directory + "/memo.txt")); // Saved shortly after typing.
         QCOMPARE(readFile(first.directory + "/memo.txt").trimmed(), QByteArray("基準構造"));

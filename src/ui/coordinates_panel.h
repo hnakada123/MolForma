@@ -79,6 +79,11 @@ class CoordinatesPanel : public QWidget {
                      QWidget *parent = nullptr);
     void refresh();
     void refreshSelection();
+    // The table stands in place of the 3D view (the layout "表" of "1 分子"): it then shows the
+    // measurement of the selection itself. Set by the molecular workspace before it lays the two out.
+    void setViewHidden(bool hidden) {
+        viewHidden = hidden;
+    }
     // Shows the columns of the atom attributes (formal charge, unpaired electrons, atom name).
     void showAttributes();
     void previewStructure(const Document &structure);
@@ -87,6 +92,14 @@ class CoordinatesPanel : public QWidget {
     void applyChromeStyle();
     // At least the height the bars need as wrapped at the current width, over a table of four rows.
     QSize minimumSizeHint() const override;
+  signals:
+    // What the table asks of the molecular workspace that composes it (MoleculePanel connects them).
+    // "原子を並べ替え": "element", "residue" or "selected" (the selection first).
+    void sortRequested(QString mode);
+    // The table is to be seen: under the 3D view, unless it is shown already.
+    void tableRequested();
+    // The 3D view is to keep the structure in view (an atom was added).
+    void fitRequested();
 
   protected:
     void dragEnterEvent(QDragEnterEvent *event) override;
@@ -112,7 +125,7 @@ class CoordinatesPanel : public QWidget {
     QToolButton *showAll, *showChanged;
     QList<QWidget *> editControls;
     QList<QAction *> editActions;
-    bool busy = false;
+    bool busy = false, viewHidden = false;
     QPushButton *button(QLayout *layout, const QString &text, const QString &name, const QString &icon,
                         const std::function<void()> &action, bool editing = false);
     CoordinateUnit tableUnit() const;

@@ -299,7 +299,7 @@ CoordinatesPanel::CoordinatesPanel(EditorContext &editorServices, UiServices &ui
         auto *a = sortMenu->addAction(text);
         a->setObjectName(QString("coordinateSort_") + mode);
         connect(a, &QAction::triggered, this,
-                [this, mode = QString(mode)] { attempt([this, mode] { workspace.sortAtoms(mode); }); });
+                [this, mode = QString(mode)] { attempt([this, mode] { emit sortRequested(mode); }); });
         editActions << a;
     }
     connect(sortMenu, &QMenu::aboutToShow, this, [this] {
@@ -610,7 +610,7 @@ QPushButton *CoordinatesPanel::button(QLayout *layout, const QString &text, cons
     return b;
 }
 void CoordinatesPanel::showAttributes() {
-    workspace.showCoordinateTable();
+    emit tableRequested();
     attributes->setChecked(true);
     table->scrollTo(model->index(std::max(0, table->currentIndex().row()), ChargeColumn));
 }
@@ -806,7 +806,7 @@ void CoordinatesPanel::refreshSelectionBar() {
         }
         measurement->setText(measured);
         // The measurement panel of the 3D view shows it, unless the table is shown in its place.
-        measurement->setVisible(!measured.isEmpty() && workspace.moleculeLayoutMode() == "table");
+        measurement->setVisible(!measured.isEmpty() && viewHidden);
     }
     refreshCount();
 }
@@ -1003,7 +1003,7 @@ void CoordinatesPanel::addAtom() {
     editorContext.edit(tr("座標から原子を追加"), [&](Document &d) { d.atoms << *atom; });
     editorContext.setSelection({atom->id});
     table->scrollTo(model->index(model->rowCount() - 1, 0));
-    workspace.fitMoleculeView();
+    emit fitRequested();
 }
 void CoordinatesPanel::previewStructure(const Document &structure) {
     editorContext.edit(

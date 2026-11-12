@@ -85,6 +85,11 @@ class ExecutionPanel : public QWidget {
     void restartRequested(QString directory, QString mode);
     void resultsRequested(QString directory);
     void runFinished(QString directory, bool openResults);
+    // What the window shows of the run outside this panel (its header and menus): whether a run is
+    // active, the text of the run pill ("実行中 0:42") and whether the run can be stopped now.
+    void runDisplayChanged(bool active, QString text, bool stoppable);
+    // The run panel was opened or closed.
+    void runPanelToggled(bool shown);
 
   protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -95,8 +100,6 @@ class ExecutionPanel : public QWidget {
     // The gate of a calculation: MCP's folders for its request, and programs the user has confirmed.
     // False when the user gave up.
     bool authorizeCalculation();
-    // The check of a calculation's paths for a request over MCP (--mcp-allow-dir); none for the user's own.
-    RunSession::Check runCheck() const;
     EditorContext &editorContext;
     UiServices &uiContext;
     WorkspaceActions &workspace;

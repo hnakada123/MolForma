@@ -36,8 +36,8 @@ class ToolbarFit;
 class HistoryPanel : public QWidget {
     Q_OBJECT
   public:
-    HistoryPanel(EditorContext &editorContext, UiServices &uiContext, ExecutionAccess &executionAccess,
-                 const NwchemRun &run, QWidget *parent = nullptr);
+    HistoryPanel(EditorContext &editorContext, UiServices &uiContext, const NwchemRun &run,
+                 QWidget *parent = nullptr);
     void refresh();
     void setRoot(const QString &path, bool remember = true);
     QString rootDirectory() const {
@@ -98,7 +98,6 @@ class HistoryPanel : public QWidget {
     };
     EditorContext &editorContext;
     UiServices &uiContext;
-    ExecutionAccess &executionAccess;
     const NwchemRun &run;
     HistoryScan scan;
     QTimer timer, memoTimer;

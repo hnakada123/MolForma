@@ -228,7 +228,7 @@
     "<b>%1</b>　<span style=\"color:%2\">%3</span><br><span style=\"font-family:monospace\">%4</span><br><span style=\"color:%5\">目標 %6</span>": "<b>%1</b>&emsp;<span style=\"color:%2\">%3</span><br><span style=\"font-family:monospace\">%4</span><br><span style=\"color:%5\">Target %6</span>",
     "<b>%1　%2</b>　<span style=\"color:%3\">%4</span>%5": "<b>%1&ensp;%2</b>&emsp;<span style=\"color:%3\">%4</span>%5",
     "<b>変更候補: %1</b>　%2": "<b>Candidate: %1</b>   %2",
-    "<br><br>実行ファイル・MPI・基底ライブラリ・参照ファイルの存在と書込み権限は <a href=\"tab:2\" style=\"color:%1\">「3 実行設定」</a> で確認してください。ここではNWChemを起動しません。": "<br><br>Check that the executables, MPI, basis library and referenced files exist and are writable in <a href=\"tab:2\" style=\"color:%1\">“3 Run settings”</a>. NWChem is not started here.",
+    "<br><br>実行ファイル・MPI・基底ライブラリ・参照ファイルの存在と書込み権限は <a href=\"%2\" style=\"color:%1\">「3 実行設定」</a> で確認してください。ここではNWChemを起動しません。": "<br><br>Check that the executables, MPI, basis library and referenced files exist and are writable in <a href=\"%2\" style=\"color:%1\">“3 Run settings”</a>. NWChem is not started here.",
     "<p style=\"color:%1\">分子・計算条件・詳細設定の検証を通過しました。</p>": "<p style=\"color:%1\">The molecule, calculation and advanced settings passed validation.</p>",
     "Alpha電子密度": "Alpha density",
     "B3LYP-D3(BJ) / def2-SVP・最適化＋振動数": "B3LYP-D3(BJ) / def2-SVP, optimization + frequencies",

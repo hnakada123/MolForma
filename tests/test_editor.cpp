@@ -77,6 +77,9 @@ class TestUiServices : public UiServices {
         preferences[key] = value;
     }
     void checkMcpPath(const QString &) const override {}
+    bool outsideMcpFolders(const QString &) const override {
+        return false;
+    }
     void showMessage(const QString &, int = 0) override {}
     void addStatusWidget(QWidget *) override {}
 };
@@ -1763,6 +1766,34 @@ class EditorTest : public QObject {
         QVERIFY(!QApplication::activeModalWidget());
         QCOMPARE(w.document().formula(), QString("H3NZn")); // The first ligand is confirmed.
         QCOMPARE(w.displayDocument().formula(), QString("H6N2Zn"));
+        // A ligand that MCP placed is its candidate: a person's click on the next site does not
+        // confirm it in passing (the click is refused, the candidate stays to be looked at)…
+        w.confirmCandidate();
+        {
+            const auto scope = w.remoteScope();
+            emit w.canvas()->siteClicked(zinc, 2);
+        }
+        QVERIFY(w.hasCandidate());
+        QCOMPARE(w.displayDocument().formula(), QString("H9N3Zn"));
+        QString refused;
+        QTimer::singleShot(0, &w, [&] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                refused = box->text();
+                box->accept();
+            }
+        });
+        emit w.canvas()->siteClicked(zinc, 3);
+        QCOMPARE(refused, QString("先に変更候補を確定するか、取消してください。"));
+        QCOMPARE(w.document().formula(), QString("H6N2Zn"));
+        QCOMPARE(w.displayDocument().formula(), QString("H9N3Zn"));
+        // …while MCP goes on from its own.
+        {
+            const auto scope = w.remoteScope();
+            emit w.canvas()->siteClicked(zinc, 3);
+        }
+        QVERIFY(!QApplication::activeModalWidget());
+        QCOMPARE(w.document().formula(), QString("H9N3Zn"));
+        QCOMPARE(w.displayDocument().formula(), QString("H12N4Zn"));
     }
     void editsKeepTheCamera() {
         // Edits leave the camera alone while the molecule stays in view, and a candidate does not

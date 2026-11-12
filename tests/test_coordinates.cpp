@@ -829,7 +829,10 @@ class CoordinatesTest : public QObject {
             QVERIFY(dialog->findChild<QLabel *>("coordinateAtomNearest")->text().contains("H2、1.449 Å"));
             buttons->button(QDialogButtonBox::Ok)->click();
         });
+        // The table asks the workspace to keep the new atom in view.
+        QSignalSpy fit(w.findChild<CoordinatesPanel *>(), &CoordinatesPanel::fitRequested);
         button(w, "coordinateAdd")->click();
+        QCOMPARE(fit.count(), 1);
         QCOMPARE(w.document().atoms.size(), 4);
         QCOMPARE(w.document().atoms.last().element, QString("He"));
         QCOMPARE(w.document().atoms.last().position.x(), 4 * BohrToAngstrom);
@@ -846,6 +849,70 @@ class CoordinatesTest : public QObject {
         QVERIFY(!button(w, "coordinateExport")->isEnabled());
         w.history()->undo();
         QCOMPARE(w.document().atoms.size(), 3);
+    }
+    void tableAsksItsWorkspace() {
+        // The table is part of "1 分子": what it cannot do itself it asks of the workspace that
+        // composes it, by signals (no detour over the window).
+        MainWindow w;
+        w.resize(1300, 900);
+        w.show();
+        const auto d = water();
+        w.loadDocument(d);
+        auto *panel = w.findChild<CoordinatesPanel *>();
+        QVERIFY(panel);
+        auto *tabs = w.findChild<QTabWidget *>("workspaceTabs");
+        auto *layout = w.findChild<QComboBox *>("moleculeLayout");
+        // The layout and the attribute columns are preferences: left as found for the tests that
+        // follow, also when this one fails.
+        auto *columns = button(w, "coordinateAttributeColumns");
+        QVERIFY(!columns->isChecked());
+        const auto restore = qScopeGuard([&, layoutAtFirst = layout->currentIndex()] {
+            if (columns->isChecked())
+                columns->click();
+            layout->setCurrentIndex(layoutAtFirst);
+        });
+        // Showing its attribute columns shows the table: "1 分子", with the table under the 3D view.
+        button(w, "moleculeLayout_view")->click();
+        tabs->setCurrentIndex(1);
+        QVERIFY(!panel->isVisibleTo(&w));
+        QSignalSpy shown(panel, &CoordinatesPanel::tableRequested);
+        panel->showAttributes();
+        QCOMPARE(shown.count(), 1);
+        QCOMPARE(tabs->currentIndex(), 0);
+        QCOMPARE(layout->currentData().toString(), QString("both"));
+        QVERIFY(panel->isVisibleTo(&w));
+        QVERIFY(!table(w)->isColumnHidden(9));
+        // A layout chosen already stays.
+        button(w, "moleculeLayout_table")->click();
+        panel->showAttributes();
+        QCOMPARE(layout->currentData().toString(), QString("table"));
+        button(w, "moleculeLayout_both")->click();
+        // Sorting is the workspace's edit, with its selection; one step of the history.
+        QSignalSpy sorted(panel, &CoordinatesPanel::sortRequested);
+        w.setSelection({d.atoms[2].id});
+        action(w, "coordinateSort_selected")->trigger();
+        QCOMPARE(sorted.count(), 1);
+        QCOMPARE(sorted.first().first().toString(), QString("selected"));
+        QCOMPARE(w.document().atoms.first().id, d.atoms[2].id);
+        QCOMPARE(w.history()->undoText(), QString("原子を並べ替え"));
+        w.history()->undo();
+        action(w, "coordinateSort_element")->trigger();
+        QCOMPARE(w.document().atoms.first().element, QString("H"));
+        w.history()->undo();
+        QCOMPARE(w.document().toJson(), d.toJson());
+        // A refusal of the workspace comes back to the table, which shows it like one of its own.
+        QVERIFY_THROWS_EXCEPTION(std::exception, emit panel->sortRequested("mass"));
+        QCOMPARE(w.document().toJson(), d.toJson());
+        // Keeping the structure in view: an atom outside the picture is brought back into it.
+        auto *view = w.canvas();
+        QTest::qWait(40);
+        const auto far = d.atoms[1].id;
+        w.edit("far", [&](Document &x) { x.atom(far).position = Vec(400, 0, 0); });
+        QTest::qWait(40);
+        QVERIFY(!QRectF(view->rect()).contains(view->atomScreenPosition(far)));
+        emit panel->fitRequested();
+        QTest::qWait(40);
+        QVERIFY(QRectF(view->rect()).contains(view->atomScreenPosition(far)));
     }
     void candidateChangesByOrder() {
         const auto before = water();

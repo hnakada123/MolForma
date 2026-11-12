@@ -53,7 +53,14 @@ Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#inc
   view with the `coordinates_panel.*` table under it or in its place), "2 計算条件" (`calculation_panel.*`; each
   section opens its advanced overrides as "詳細設定"), "3 実行設定" (`execution_panel.*`, settings only, with the form `execution_form.*` that Preferences shares; the run
   state and log are its run panel below the tabs, a `QSplitter` with them so that it covers nothing, opened from the header run pill) and "4 入力プレビュー"
-  (`input_preview_panel.*`); result viewer and history are panels too.
+  (`input_preview_panel.*`); result viewer and history are panels too. Panels never see `MainWindow`: they get
+  the capabilities of `ui/editor_context.h` that it implements — `EditorContext` (the document, its candidate
+  and edits; not the `EditorSession`), `UiServices` (`safe`, preferences, messages, MCP's folders),
+  `WorkspaceActions` (navigation only: `showPanel(QWidget *)`, `showSetting(SettingTarget, …)`, `showInputLine`,
+  `refreshPanel`; no tab numbers, `workspaceTab` of `ui/setting_navigation.h` is the window's) and
+  `ExecutionAccess` (the gate of a run as checks, not the `McpPolicy`). What one panel needs of another is a
+  signal of the asking panel, connected by whoever composes the two (`MainWindow`, `WorkspaceController`,
+  `MoleculePanel` for its coordinate table); `cmake/CheckLayers.cmake` forbids the includes that would bypass this.
 - `molforma_mcp` — `src/mcp`, links core only. A JSON-RPC MCP server over stdio (protocols 2026-07-28 and legacy
   2025-11-25); see `docs/mcp.md`. `headless.*` adds NWChem runs and result loading to `--mcp`, `tools.*` holds
   definitions/result views shared with `McpGui`, and `policy.*` holds the command-line access policy.
@@ -84,7 +91,9 @@ Key cross-cutting designs:
   runs started over MCP must match them. `--mcp-allow-dir` confines MCP file paths, including paths reached through GUI actions
   (`MainWindow::checkMcpPath`). Widgets with `mcpExecutionSetting` or `mcpProtected` are refused by
   `McpGui`; `mcpPath` widgets only while `--mcp-allow-dir` is set. Edits made or confirmed over MCP
-  never make execution settings trusted, even on undo/redo.
+  never make execution settings trusted, even on undo/redo. Panels do not hold the policy: they ask
+  `ExecutionAccess` (`runCheck`, `mayChooseExecutionSettings`, `mayConfirmExecution`, `untrustedExecution`)
+  and `UiServices` (`checkMcpPath` during a request, `outsideMcpFolders` for a widget's `mcpPath` mark).
 - **Out-of-process work**: long chemistry operations (Open Babel refinement, SMILES → 3D) and heavy result reading
   re-launch the same executable with `--worker` / `--result-worker` via `QProcess`, exchanging JSON through temp
   files, so they are cancellable. Results returning after the document changed must be rejected as stale

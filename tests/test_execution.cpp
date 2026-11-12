@@ -12,6 +12,7 @@
 #include "nwchem/nwchem_restart.h"
 #include "nwchem/remote_execution.h"
 #include "nwchem/run_diagnostics.h"
+#include "nwchem/run_record.h"
 #include "results/results.h"
 #include "ui/execution_panel.h"
 #include "ui/main_window.h"
@@ -91,7 +92,7 @@ class ExecutionTest : public QObject {
         // The tab of a diagnostic as a record holds it.
         const auto tab = [](const QJsonObject &diagnostic) {
             const RunRecord record(QJsonObject{{"diagnostics", QJsonArray{diagnostic}}});
-            return runDiagnosticTab(record.diagnostics().first());
+            return workspaceTab(record.diagnostics().first().owner());
         };
         QCOMPARE(tab(scf[0].toObject()), 1);
         QCOMPARE(tab(QJsonObject{{"tab", 1}}), 1); // Older saved records.
@@ -891,13 +892,21 @@ class ExecutionTest : public QObject {
         QVERIFY(pill->text().startsWith("実行中"));
         QVERIFY(!w.findChild<QToolButton *>("runButton")->isVisibleTo(&w));
         QVERIFY(w.findChild<QToolButton *>("headerStop")->isVisibleTo(&w));
+        QVERIFY(w.findChild<QToolButton *>("headerStop")->isEnabled());
         QVERIFY(panel->isVisibleTo(&w));
         QVERIFY(w.findChild<QWidget *>("executionRunCard")->isVisibleTo(&w));
+        // The menu follows too: stopping is offered, and "実行状況とログ" is checked with the panel.
+        auto *stopAction = w.findChild<QAction *>("stopCalculationAction");
+        auto *panelAction = w.findChild<QAction *>("runPanelAction");
+        QVERIFY(stopAction->isEnabled());
+        QVERIFY(panelAction->isChecked());
         w.findChild<QToolButton *>("runPanelClose")->click();
         QVERIFY(!panel->isVisibleTo(&w));
+        QVERIFY(!panelAction->isChecked());
         tabs->setCurrentIndex(0);
         pill->click(); // From any tab.
         QVERIFY(panel->isVisibleTo(&w));
+        QVERIFY(panelAction->isChecked());
         // The tasks of the input, the current one with its last step, and the four criteria.
         QTRY_VERIFY(w.findChild<QLabel *>("executionStage0") &&
                     w.findChild<QLabel *>("executionStage0")->text().contains("ステップ 1 / 最大 100"));
@@ -919,6 +928,8 @@ class ExecutionTest : public QObject {
         QTRY_VERIFY_WITH_TIMEOUT(!run->active(), 10000);
         QVERIFY(!stop->isVisibleTo(&w));
         QVERIFY(!pill->isVisibleTo(&w));
+        QVERIFY(!w.findChild<QToolButton *>("headerStop")->isVisibleTo(&w));
+        QVERIFY(!stopAction->isEnabled());
         QVERIFY(w.findChild<QToolButton *>("runButton")->isVisibleTo(&w));
         QVERIFY(w.findChild<QLabel *>("executionStage0")->text().contains("未完了"));
         QVERIFY(w.findChild<QLabel *>("executionStatePill")->text().contains("停止"));

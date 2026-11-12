@@ -15,7 +15,6 @@
 #include "ui/execution_form.h"
 #include "ui/remote_hosts_dialog.h"
 #include "ui/run_progress.h"
-#include "ui/setting_navigation.h"
 #include "ui/theme.h"
 #include <QtWidgets>
 
@@ -443,7 +442,7 @@ void ExecutionPanel::buildRunPanel() {
     connect(diagnosisSetting, &QPushButton::clicked, this, [this] {
         for (const auto &item : RunRecord(run.plan().manifest).diagnostics())
             if (!item.setting.isEmpty()) {
-                workspace.showSetting(runDiagnosticTab(item), item.setting);
+                workspace.showSetting(item.owner(), item.setting);
                 break;
             }
     });
@@ -541,7 +540,7 @@ void ExecutionPanel::showRunPanel(bool show) {
         runPanel->hide();
         dock->widget(0)->show();
     }
-    workspace.setRunPanelShown(show);
+    emit runPanelToggled(show);
 }
 bool ExecutionPanel::runPanelShown() const {
     return !runPanel->isHidden();
@@ -612,7 +611,7 @@ void ExecutionPanel::saveBundle() {
     if (editorContext.hasCandidate() || editorContext.chemistryRunning() || run.active())
         fail(tr("候補・整形・実行中は入力一式を保存できません。"));
     commitPendingEdits();
-    if (const auto check = runCheck())
+    if (const auto check = executionAccess.runCheck())
         check(editorContext.document(), baseDirectory());
     saved = session.saveBundle(editorContext.document(), baseDirectory());
     updateRun();
@@ -628,23 +627,13 @@ void ExecutionPanel::startCalculation() {
     run.start(editorContext.document(), baseDirectory());
     showRunPanel();
 }
-RunSession::Check ExecutionPanel::runCheck() const {
-    const auto *policy = executionAccess.accessPolicy();
-    if (!policy || !executionAccess.remoteRequest())
-        return {};
-    return [policy = *policy](const Document &document, const QString &base) {
-        policy.checkRun(document, base);
-    };
-}
 bool ExecutionPanel::authorizeCalculation() {
-    const auto *policy = executionAccess.accessPolicy();
-    const bool remote = executionAccess.remoteRequest();
-    if (const auto check = runCheck())
+    if (const auto check = executionAccess.runCheck())
         check(editorContext.document(), baseDirectory());
     // The executable, launcher, environment and additional input choose what runs: values that came
     // from a file, the history, an autosave copy or MCP run only once the user confirmed them.
-    if ((!policy || !policy->allowExecutionSettings) && !executionAccess.untrustedExecution().isEmpty()) {
-        if (remote)
+    if (!executionAccess.mayChooseExecutionSettings() && !executionAccess.untrustedExecution().isEmpty()) {
+        if (!executionAccess.mayConfirmExecution())
             fail(tr("実行先・NWChem実行ファイル・MPIランチャー・追加の環境変数・NWChemの追加入力に、利用者が"
                     "MolFormaで入力・確認していない値があります（MCP経由の変更や、プロジェクト・履歴・"
                     "自動保存の読込による）。MCPからはこの設定で実行できません。"
@@ -661,7 +650,7 @@ QString ExecutionPanel::enqueueCalculation(const QueueChain &chain) {
     commitPendingEdits();
     if (!authorizeCalculation())
         return {};
-    return session.enqueue(editorContext.document(), baseDirectory(), runCheck(), chain);
+    return session.enqueue(editorContext.document(), baseDirectory(), executionAccess.runCheck(), chain);
 }
 QStringList ExecutionPanel::enqueueChain(const QString &from, const QString &structure,
                                          const QStringList &steps, bool endFrequencies) {
@@ -673,7 +662,7 @@ QStringList ExecutionPanel::enqueueChain(const QString &from, const QString &str
     if (!authorizeCalculation())
         return {};
     return session.enqueueChain(editorContext.document(), baseDirectory(), from, structure, steps,
-                                endFrequencies, runCheck());
+                                endFrequencies, executionAccess.runCheck());
 }
 void ExecutionPanel::showChainDialog() {
     if (auto *existing = findChild<QDialog *>("calculationChainDialog")) {
@@ -899,7 +888,7 @@ QStringList ExecutionPanel::enqueueGeometries(const QVector<Document> &geometrie
     if (!authorizeCalculation())
         return {};
     const auto directories = session.enqueueGeometries(editorContext.document(), baseDirectory(), geometries,
-                                                       frequencies, runCheck());
+                                                       frequencies, executionAccess.runCheck());
     showQueue();
     return directories;
 }
@@ -1197,7 +1186,7 @@ void ExecutionPanel::updateRun() {
         startable = false;
         prepare->setEnabled(false);
     }
-    workspace.showRun(run.active(), tr("実行中 %1").arg(elapsedClock(seconds)), stoppable);
+    emit runDisplayChanged(run.active(), tr("実行中 %1").arg(elapsedClock(seconds)), stoppable);
     // Always visible in the status bar, whatever the tab.
     if (!run.plan().directory.isEmpty()) {
         runStatus->setText(
