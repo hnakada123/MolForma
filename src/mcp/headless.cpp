@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "mcp/headless.h"
 #include "mcp/tools.h"
-#include "model/settings.h"
 #include "nwchem/result_files.h"
 #include "results/result_summary.h"
 #include <QCoreApplication>
@@ -9,31 +8,19 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
-#include <QSettings>
 
 namespace mf {
 McpHeadless::McpHeadless(McpPolicy p, QJsonObject trustedExecution, QObject *parent)
-    : QObject(parent), policy(std::move(p)), queue(run), trusted(std::move(trustedExecution)) {
+    : QObject(parent), policy(std::move(p)), trusted(std::move(trustedExecution)) {
     connect(&run, &NwchemRun::changed, this, [this] {
         if (!run.active() && !runWork.isEmpty() && !finished.contains(runWork))
             finish(runWork, "calculation", "start", "calculation");
-        // The next session looks for a run this one leaves to its supervisor.
-        if (policy.keepRuns)
-            QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
-                .setValue("execution/running", run.active() ? run.plan().directory : QString());
     });
+    // The calculation goes on when the session ends, and the next one finds what the last left running
+    // (within MCP's folders).
     if (policy.keepRuns) {
-        run.setSupervisor(runSupervisorProgram());
-        const auto last = QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma")
-                              .value("execution/running")
-                              .toString();
-        if (!last.isEmpty()) {
-            try {
-                policy.checkPath(last);
-                run.attach(last);
-            } catch (const std::exception &) {
-            }
-        }
+        session.supervise(runSupervisorProgram());
+        session.restore(false, [this](const QString &path) { policy.checkPath(path); });
     }
     connect(&loader, &ResultLoader::loaded, this, [this](ResultData next, const QString &) {
         data = std::move(next);
@@ -47,11 +34,7 @@ McpHeadless::McpHeadless(McpPolicy p, QJsonObject trustedExecution, QObject *par
 }
 McpHeadless::~McpHeadless() {
     cancelLoad({});
-    queue.shutdown();
-    if (policy.keepRuns)
-        run.release();
-    else
-        run.shutdown();
+    session.shutdown(policy.keepRuns);
 }
 void McpHeadless::attach(const McpServer &owner) {
     server = &owner;
@@ -109,7 +92,7 @@ QJsonArray McpHeadless::tools() const {
 }
 QJsonObject McpHeadless::state() const {
     return {{"candidate", server && server->candidate().has_value()},
-            {"calculation", calculationJson(run, saved.directory, &queue)},
+            {"calculation", calculationJson(run, session.saved().directory, &queue)},
             {"results", QJsonObject{{"loading", loader.active()},
                                     {"source", data.source},
                                     {"pendingPath", loader.pendingPath()},
@@ -126,8 +109,9 @@ QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
             return {{"tool", name}, {"action", action}, {"calculation", state()["calculation"]}};
         if (action == "stop") {
             run.stop();
-            return {
-                {"tool", name}, {"action", action}, {"calculation", calculationJson(run, saved.directory)}};
+            return {{"tool", name},
+                    {"action", action},
+                    {"calculation", calculationJson(run, session.saved().directory)}};
         }
         const auto d = server->document();
         const auto base = QDir::currentPath();
@@ -135,9 +119,10 @@ QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
             fail("Confirm or cancel the candidate before running or saving a calculation.");
         policy.checkRun(d, base);
         if (action == "save_bundle") {
-            saved = saveExecutionBundle(d, base);
-            return {
-                {"tool", name}, {"action", action}, {"calculation", calculationJson(run, saved.directory)}};
+            session.saveBundle(d, base);
+            return {{"tool", name},
+                    {"action", action},
+                    {"calculation", calculationJson(run, session.saved().directory)}};
         }
         if (run.active() && action != "enqueue")
             fail("A calculation is already running.");
@@ -148,20 +133,21 @@ QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
                  "clients cannot choose them; restart the server with --mcp-allow-execution-settings to "
                  "permit it.");
         if (action == "enqueue") {
-            const auto access = [policy = policy, base](const Document &next) -> std::function<void()> {
-                return [policy, next, base] { policy.checkRun(next, base); };
+            // Every request is MCP's: the folders are checked again when an entry's turn comes.
+            const RunSession::Check check = [policy = policy](const Document &next, const QString &folder) {
+                policy.checkRun(next, folder);
             };
             QStringList ids;
             if (args.contains("chainFrom")) {
                 QStringList steps;
                 for (const auto &step : args["chainSteps"].toArray())
                     steps << step.toString();
-                ids = queue.enqueueChain(d, base, args["chainFrom"].toString(),
-                                         args["chainStructure"].toString("final"),
-                                         steps.isEmpty() ? QStringList{"current"} : steps,
-                                         args["endFrequencies"].toBool(true), access);
+                ids = session.enqueueChain(d, base, args["chainFrom"].toString(),
+                                           args["chainStructure"].toString("final"),
+                                           steps.isEmpty() ? QStringList{"current"} : steps,
+                                           args["endFrequencies"].toBool(true), check);
             } else
-                ids << queue.enqueue(d, base, access(d));
+                ids << session.enqueue(d, base, check);
             return {{"tool", name},
                     {"action", action},
                     {"queueId", ids.last()},
@@ -173,7 +159,7 @@ QJsonObject McpHeadless::call(const QString &name, const QJsonObject &args) {
         return {{"tool", name},
                 {"action", action},
                 {"workId", runWork},
-                {"calculation", calculationJson(run, saved.directory)}};
+                {"calculation", calculationJson(run, session.saved().directory)}};
     }
     if (action == "combine_cubes") {
         const auto output = args["path"].toString();

@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
-#include "nwchem/nwchem_execution.h"
-#include "nwchem/nwchem_queue.h"
+#include "nwchem/run_session.h"
 #include "results/results.h"
 #include "ui/editor_context.h"
-#include <QLockFile>
 #include <QStringDecoder>
 #include <QWidget>
-#include <memory>
 class QCheckBox;
 class QComboBox;
 class QFrame;
@@ -28,25 +25,16 @@ class StatusCard;
 // "3 実行設定": the settings of a run at the left (programs and folders, resources, environment),
 // and at the right the checks before a run and the command. The run itself, its progress (tasks,
 // DRIVER steps against their thresholds) and its log are in the run panel below the tabs.
+// The run and the queue are the session's (RunSession, which the window owns and outlives this tab's
+// view of them): the panel shows them, and asks for calculations once the user's gate has let them pass
+// (no candidate, trusted programs, MCP's folders).
 class ExecutionPanel : public QWidget {
     Q_OBJECT
   public:
     ExecutionPanel(EditorContext &editorContext, UiServices &uiContext, WorkspaceActions &workspace,
-                   ExecutionAccess &executionAccess, QWidget *parent = nullptr);
+                   ExecutionAccess &executionAccess, RunSession &runs, QWidget *parent = nullptr);
     void refresh();
     void stopEditing();
-    // Ends the session: stops the run, or with keepRunning leaves a supervised run to go on
-    // (the waiting queue entries are kept for the next session either way, where they are stored).
-    void shutdown(bool keepRunning = false);
-    // Interactive sessions: runs get a supervisor of their own (this executable) and go on when the
-    // window closes, and the queue is kept in a file of the application's data folder.
-    void superviseRuns(const QString &program);
-    bool runsSupervised() const {
-        return run.supervised();
-    }
-    // Takes up what an earlier session left running or waiting. Returns what to tell the user about it
-    // (empty when there was nothing).
-    QString restoreRuns(bool withQueue = true);
     void commitPendingEdits();
     void showField(const QString &key); // Focuses this panel's own setting control.
     bool running() const {
@@ -66,9 +54,6 @@ class ExecutionPanel : public QWidget {
     void showChainDialog();
     QStringList enqueueGeometries(const QVector<Document> &geometries, bool frequencies);
     void showQueue();
-    NwchemQueue &calculationQueue() {
-        return queue;
-    }
     // "計算を実行" (header, menu, F5): starts when "3 実行設定" allows it, otherwise shows that tab
     // and why.
     void startFromMenu();
@@ -84,9 +69,6 @@ class ExecutionPanel : public QWidget {
     // Asks before stopping the running NWChem (the stop buttons and "計算 → 停止").
     void confirmStop();
     void saveBundle();
-    const NwchemRun &currentRun() const {
-        return run;
-    }
     void stopCalculation() {
         run.stop();
     }
@@ -110,14 +92,18 @@ class ExecutionPanel : public QWidget {
   private:
     // Asks the user whether to run with execution settings they have not entered or confirmed.
     bool confirmExecution();
+    // The gate of a calculation: MCP's folders for its request, and programs the user has confirmed.
+    // False when the user gave up.
     bool authorizeCalculation();
+    // The check of a calculation's paths for a request over MCP (--mcp-allow-dir); none for the user's own.
+    RunSession::Check runCheck() const;
     EditorContext &editorContext;
     UiServices &uiContext;
     WorkspaceActions &workspace;
     ExecutionAccess &executionAccess;
-    NwchemRun run;
-    NwchemQueue queue;
-    std::unique_ptr<QLockFile> queueLock; // One session at a time keeps the stored queue.
+    RunSession &session;
+    NwchemRun &run;
+    NwchemQueue &queue;
     bool busy = false, startable = false;
     QWidget *form, *cpuMeter;
     ExecutionForm *settingsForm; // Programs and folders, resources and environment.

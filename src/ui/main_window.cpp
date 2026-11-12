@@ -9,6 +9,7 @@
 #include "foundation/structure_file.h"
 #include "io/structure_io.h"
 #include "model/settings.h"
+#include "nwchem/history.h"
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_import.h"
@@ -41,7 +42,7 @@ static void initManualResources() {
 namespace mf {
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), settings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma"),
-      storage(settings), chemistry(session) {
+      storage(settings), chemistry(session), runs(this) {
     setObjectName("mainWindow");
     setAcceptDrops(true);
     resize(1380, 900);
@@ -89,7 +90,7 @@ MainWindow::~MainWindow() {
     moleculePage->stopEditing();
     calculation->stopEditing();
     execution->stopEditing();
-    execution->shutdown();
+    runs.shutdown();
     cancelWorker();
     session.disconnect(this);
     undo.disconnect(this); // ~QUndoStack signals while clearing, after later members are gone.
@@ -331,7 +332,7 @@ void MainWindow::buildUi() {
             [this] { safe([this] { downloadPdb(); }); });
     calculation = new CalculationPanel(*this, *this, *this, this);
     workspaceTabs->addTab(calculation, tr("2 計算条件"));
-    execution = new ExecutionPanel(*this, *this, *this, *this, this);
+    execution = new ExecutionPanel(*this, *this, *this, *this, runs, this);
     workspaceTabs->addTab(execution, tr("3 実行設定"));
     execution->dockRunPanel(workspaceSplit);
     connect(workspaceTabs, &QTabWidget::currentChanged, execution, &ExecutionPanel::showWorkspace);
@@ -339,7 +340,7 @@ void MainWindow::buildUi() {
     workspaceTabs->addTab(inputPreview, tr("4 入力プレビュー"));
     results = new ResultsPanel(*this, *this, *this, this);
     workspaceTabs->addTab(results, tr("結果ビューア"));
-    calculationHistory = new HistoryPanel(*this, *this, *this, execution->currentRun(), this);
+    calculationHistory = new HistoryPanel(*this, *this, *this, runs.run(), this);
     workspaceTabs->addTab(calculationHistory, tr("履歴"));
     new WorkspaceController(*this, *execution, *calculationHistory, *results);
     connect(workspaceTabs, &QTabWidget::currentChanged, this, [this](int index) {
@@ -1598,9 +1599,9 @@ void MainWindow::showManual() {
 }
 void MainWindow::closeEvent(QCloseEvent *e) {
     bool keepRunning = false;
-    if (execution->runsSupervised() && execution->running()) {
+    if (runs.run().supervised() && runs.run().active()) {
         // The calculation has a supervisor of its own: it need not end with the window.
-        const int waiting = execution->calculationQueue().pending();
+        const int waiting = runs.queue().pending();
         QMessageBox box(QMessageBox::Question, tr("NWChemを実行中"),
                         tr("実行中の計算があります。計算を続けたままウィンドウを閉じますか？"),
                         QMessageBox::NoButton, this);
@@ -1623,10 +1624,10 @@ void MainWindow::closeEvent(QCloseEvent *e) {
         }
         keepRunning = box.clickedButton() == keep;
     } else {
-        if (execution->calculationQueue().pending() &&
+        if (runs.queue().pending() &&
             QMessageBox::question(
                 this, tr("計算キュー"),
-                execution->runsSupervised()
+                runs.run().supervised()
                     ? tr("待機中の計算があります。終了しますか？次の起動時にキューを復元しますが、"
                          "自動では開始しません。")
                     : tr("待機中の計算があります。入力一式を履歴に残して終了しますか？"
@@ -1635,7 +1636,7 @@ void MainWindow::closeEvent(QCloseEvent *e) {
             e->ignore();
             return;
         }
-        if (execution->running() &&
+        if (runs.run().active() &&
             QMessageBox::question(
                 this, tr("NWChemを実行中"),
                 tr("実行中の計算を停止してウィンドウを閉じますか？ログは保存先に残ります。"),
@@ -1649,12 +1650,40 @@ void MainWindow::closeEvent(QCloseEvent *e) {
         return;
     }
     cancelWorker();
-    execution->shutdown(keepRunning);
+    runs.shutdown(keepRunning);
     settings.setValue("geometry", saveGeometry());
     moleculePage->savePreferences();
     removeAutosave();
     storage.close();
     e->accept();
+}
+void MainWindow::superviseRuns(const QString &program) {
+    runs.supervise(program);
+    // The queue waits beside the autosave copies, in the application's data folder.
+    runs.keepQueue(QFileInfo(autosaveDirectory()).absolutePath());
+}
+QString MainWindow::restoreRuns(bool withQueue) {
+    const auto restored = runs.restore(withQueue, [this](const QString &path) {
+        if (mcp.policy)
+            mcp.policy->checkPath(path);
+    });
+    QStringList notes;
+    if (restored.waiting)
+        notes << tr(
+            "前回のキューの待機中 %n 件を復元しました（「計算キュー」の「キューを開始・再開」で続けます）。",
+            nullptr, restored.waiting);
+    if (!restored.ended.isEmpty())
+        try {
+            const auto entry = readHistoryEntry(restored.ended);
+            if (entry.valid)
+                notes << tr("前回実行していた計算「%1」は%2の状態です（履歴で確認できます）。")
+                             .arg(entry.name, runStateName(entry.status));
+        } catch (const std::exception &) {
+        }
+    if (restored.following)
+        notes << tr("実行中の計算「%1」の監視を再開しました。")
+                     .arg(QFileInfo(runs.run().plan().directory).fileName());
+    return notes.join(' ');
 }
 void MainWindow::preferences() {
     QDialog dialog(this);

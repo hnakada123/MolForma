@@ -5,6 +5,7 @@
 #include "editing/xtb.h"
 #include "io/document_storage.h"
 #include "mcp/policy.h"
+#include "nwchem/run_session.h"
 #include "ui/editor_context.h"
 #include "ui/molecule_view.h"
 #include <QHash>
@@ -137,6 +138,17 @@ class MainWindow : public QMainWindow,
     ExecutionPanel *executionPanel() const {
         return execution;
     }
+    // The calculations of this session (the run and the queue), which the panels show and which the
+    // window ends with itself or leaves running.
+    RunSession &runSession() {
+        return runs;
+    }
+    // Interactive sessions: runs get a supervisor of their own (this executable) and go on when the
+    // window closes, and the queue is kept in a file of the application's data folder.
+    void superviseRuns(const QString &program);
+    // Takes up what an earlier session left running or waiting. Returns what to tell the user about it
+    // (empty when there was nothing). Over MCP a job outside its folders (--mcp-allow-dir) is left alone.
+    QString restoreRuns(bool withQueue = true);
     ResultsPanel *resultsPanel() const {
         return results;
     }
@@ -218,6 +230,7 @@ class MainWindow : public QMainWindow,
     QSettings settings;
     DocumentStorage storage;
     ChemistryJob chemistry;
+    RunSession runs;
     ConformerSetDialog *conformerSet = nullptr;
     ConformerSetDialog *conformerSetDialog();
     bool refreshing = false;

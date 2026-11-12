@@ -100,6 +100,10 @@ Key cross-cutting designs:
   that supervisor owns NWChem, writes every state to `run.json` and stops on `stop.request` in the job folder,
   so a run goes on when the window closes and another session can `attach` to it. `NwchemQueue` keeps waiting
   entries in `queue.json` of the data folder (restored paused; a job whose `run.json` changed is dropped).
+  `RunSession` (`nwchem/run_session.*`, no widgets) holds the run and the queue of one session with what it
+  leaves for the next (the supervisor, the stored queue and its lock, Preferences `execution/running`);
+  `MainWindow` and `McpHeadless` each own one and check requests at their own gate, and the execution panel
+  only shows the window's.
   A chained entry (`QueueChain`, `enqueueChain`) keeps its document until an earlier entry's job has finished,
   then takes that job's structure (`chainedDocument`: final, path maximum, IRC ends) and only then saves its bundle.
 - **NEB**: `task` "neb" writes `geometry` + `geometry endgeom`, a `neb` block with `print_shift 1` and

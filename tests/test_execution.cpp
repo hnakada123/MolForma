@@ -121,7 +121,7 @@ class ExecutionTest : public QObject {
         invalid.atoms[1].element = "He";
         QVERIFY_THROWS_EXCEPTION(std::runtime_error,
                                  w.executionPanel()->enqueueGeometries({d, invalid}, false));
-        QCOMPARE(w.executionPanel()->calculationQueue().pending(), 2);
+        QCOMPARE(w.runSession().queue().pending(), 2);
     }
     void queueSnapshotsAndOrder() {
         NwchemRun run;
@@ -229,7 +229,7 @@ class ExecutionTest : public QObject {
         w.loadDocument(configured());
         w.trustCurrentExecution();
         auto *panel = w.executionPanel();
-        panel->calculationQueue().pause();
+        w.runSession().queue().pause();
         panel->enqueueCalculation();
         panel->showChainDialog();
         auto *dialog = w.findChild<QDialog *>("calculationChainDialog");
@@ -240,7 +240,7 @@ class ExecutionTest : public QObject {
                  "final");
         dialog->findChild<QCheckBox *>("calculationChainEnds")->setChecked(false);
         dialog->findChild<QPushButton *>("calculationChainAdd")->click();
-        const auto &entries = panel->calculationQueue().entries();
+        const auto &entries = w.runSession().queue().entries();
         QCOMPARE(entries.size(), 3);
         QCOMPARE(entries[1].chain.from, entries[0].id);
         QCOMPARE(entries[2].chain.from, entries[1].id);
@@ -1646,14 +1646,14 @@ class ExecutionTest : public QObject {
         QString job;
         {
             MainWindow w;
-            w.executionPanel()->superviseRuns(supervisor());
-            QVERIFY(w.executionPanel()->runsSupervised());
+            w.superviseRuns(supervisor());
+            QVERIFY(w.runSession().run().supervised());
             w.loadDocument(configured("slow"));
             w.trustCurrentExecution();
             w.show();
             w.executionPanel()->startCalculation();
-            QTRY_COMPARE_WITH_TIMEOUT(w.executionPanel()->currentRun().state(), RunState::Running, 15000);
-            job = w.executionPanel()->currentRun().plan().directory;
+            QTRY_COMPARE_WITH_TIMEOUT(w.runSession().run().state(), RunState::Running, 15000);
+            job = w.runSession().run().plan().directory;
             QCOMPARE(w.preference("execution/running").toString(), job);
             // Cancel keeps the window; "計算を続けて閉じる" leaves the calculation running.
             const auto answer = [&](const char *button) {
@@ -1677,11 +1677,11 @@ class ExecutionTest : public QObject {
         QCOMPARE(readHistoryEntry(job).status, RunState::Running);
         // The next session follows it again, and stops it with the window on request.
         MainWindow w;
-        w.executionPanel()->superviseRuns(supervisor());
-        const auto note = w.executionPanel()->restoreRuns();
+        w.superviseRuns(supervisor());
+        const auto note = w.restoreRuns();
         QVERIFY2(note.contains(QFileInfo(job).fileName()), qPrintable(note));
         QVERIFY(w.executionPanel()->running());
-        QCOMPARE(w.executionPanel()->currentRun().plan().directory, job);
+        QCOMPARE(w.runSession().run().plan().directory, job);
         w.show();
         QTimer::singleShot(50, &w, [] {
             if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()))
@@ -1689,11 +1689,25 @@ class ExecutionTest : public QObject {
         });
         QVERIFY(w.close());
         QCOMPARE(readHistoryEntry(job).status, RunState::Cancelled);
-        // A run that ended while no session followed it is told once.
+        // Over MCP a job outside its folders (--mcp-allow-dir) is not looked at: it stays for a session
+        // that may, as in the headless server.
         w.setPreference("execution/running", job);
+        {
+            QTemporaryDir allowed;
+            McpPolicy policy;
+            policy.allowDirectory(allowed.path());
+            MainWindow confined;
+            confined.setAccessPolicy(&policy);
+            confined.superviseRuns(supervisor());
+            QVERIFY(confined.restoreRuns(false).isEmpty());
+            QVERIFY(!confined.executionPanel()->running());
+            QCOMPARE(confined.preference("execution/running").toString(), job);
+            confined.setAccessPolicy(nullptr);
+        }
+        // A run that ended while no session followed it is told once.
         MainWindow third;
-        third.executionPanel()->superviseRuns(supervisor());
-        QVERIFY(third.executionPanel()->restoreRuns().contains(runStateName(RunState::Cancelled)));
+        third.superviseRuns(supervisor());
+        QVERIFY(third.restoreRuns().contains(runStateName(RunState::Cancelled)));
         QVERIFY(!third.executionPanel()->running());
         QVERIFY(third.preference("execution/running").toString().isEmpty());
     }

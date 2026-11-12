@@ -115,6 +115,7 @@ add_library(molforma_nwchem STATIC
     src/nwchem/nwchem_restart.cpp
     src/nwchem/remote_execution.cpp
     src/nwchem/run_diagnostics.cpp
+    src/nwchem/run_session.cpp
     src/nwchem/run_state.cpp)
 target_link_libraries(molforma_nwchem PUBLIC molforma_model PRIVATE molforma_editing molforma_results ${MOLFORMA_OPENBABEL})
 if(MSVC)

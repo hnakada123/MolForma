@@ -7,7 +7,6 @@
 #include "model/settings.h"
 #include "nwchem/nwchem_execution.h"
 #include "results/results.h"
-#include "ui/execution_panel.h"
 #include "ui/main_window.h"
 #include "ui/mcp_gui.h"
 #include "ui/translations.h"
@@ -220,7 +219,7 @@ int main(int argc, char **argv) {
             window.startAutosave();
             // Calculations get a supervisor of their own, and go on when the window closes. From an
             // AppImage that is the image itself, which stays mounted for as long as it runs.
-            window.executionPanel()->superviseRuns(mf::runSupervisorProgram());
+            window.superviseRuns(mf::runSupervisorProgram());
             // A person decides about recovered work and about what the last session left running or
             // waiting. An MCP session starts without the question and the queue; with --mcp-keep-runs
             // it finds the calculation the last one left running.
@@ -228,7 +227,7 @@ int main(int argc, char **argv) {
             if (!guiMcp || keepRuns)
                 QTimer::singleShot(0, &window, [&window, guiMcp] {
                     window.safe([&] {
-                        if (const auto note = window.executionPanel()->restoreRuns(!guiMcp); !note.isEmpty())
+                        if (const auto note = window.restoreRuns(!guiMcp); !note.isEmpty())
                             window.statusBar()->showMessage(note, 20000);
                         if (!guiMcp)
                             window.offerRecovery();
@@ -246,7 +245,7 @@ int main(int argc, char **argv) {
                              [&window, keep = policy.keepRuns](int code) {
                                  // The session ends: its calculation ends with it unless it is to go on.
                                  if (keep)
-                                     window.executionPanel()->shutdown(true);
+                                     window.runSession().shutdown(true);
                                  QCoreApplication::exit(code);
                              });
             transport->start();

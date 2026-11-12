@@ -4,8 +4,10 @@
 #include "io/document_storage.h"
 #include "io/pdb_download.h"
 #include "io/pubchem.h"
+#include "model/settings.h"
 #include "nwchem/conformer_set.h"
 #include "nwchem/nwchem_execution.h"
+#include "nwchem/run_session.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -160,6 +162,84 @@ class ServicesTest : public QObject {
         QCoreApplication::processEvents();
         QCOMPARE(set.specification(), last);
         QVERIFY(!set.loading());
+    }
+    // The calculations of a session, what it leaves for the next one and the checks of who asked, with
+    // no window: the queue starts paused, so nothing runs here.
+    void runSessionWithoutWidgets() {
+        QTemporaryDir jobs;
+        auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n");
+        setExecutionSetting(d, "mode", "direct");
+        setExecutionSetting(d, "executable", QCoreApplication::applicationFilePath());
+        setExecutionSetting(d, "job_root", jobs.filePath("jobs"));
+        RunSession session;
+        QStringList changed;
+        connect(&session, &RunSession::bundleChanged, this,
+                [&](const QString &directory) { changed << directory; });
+        const auto plan = session.saveBundle(d, jobs.path());
+        QVERIFY(QFileInfo::exists(plan.directory + "/input.nw"));
+        QCOMPARE(session.saved().directory, plan.directory);
+        QCOMPARE(changed, QStringList{plan.directory});
+        // A queued calculation keeps the check of the one who asked for it: now, and when its turn comes.
+        int checks = 0;
+        const RunSession::Check check = [&](const Document &, const QString &) { ++checks; };
+        session.enqueue(d, jobs.path(), check);
+        QCOMPARE(checks, 1);
+        QCOMPARE(session.queue().pending(), 1);
+        QCOMPARE(changed.size(), 2);
+        QCOMPARE(changed.last(), session.queue().entries().last().plan.directory);
+        QVERIFY(session.queue().entries().last().checkAccess);
+        // One calculation per structure, under the name of the calculation.
+        auto moved = d;
+        moved.atoms[1].position.x() += .2;
+        const auto folders = session.enqueueGeometries(d, jobs.path(), {d, moved}, true, check);
+        QCOMPARE(folders.size(), 2);
+        QCOMPARE(checks, 3);
+        QCOMPARE(changed.mid(2), folders);
+        {
+            const auto &entries = session.queue().entries();
+            QCOMPARE(entries.size(), 3);
+            QCOMPARE(entries[1].name, QString("molforma_conf1"));
+            QCOMPARE(entries[2].name, QString("molforma_conf2"));
+            QCOMPARE(nwchemSettings(entries[2].document)["task"].toString(), QString("optimize_frequencies"));
+            QVERIFY((entries[2].document.atoms[1].position - moved.atoms[1].position).norm() < 1e-9);
+        }
+        // Other atoms in one structure refuse the whole batch; so does an empty one.
+        auto other = moved;
+        other.atoms[1].element = "He";
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 session.enqueueGeometries(d, jobs.path(), {d, other}, false));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, session.enqueueGeometries(d, jobs.path(), {}, false));
+        QCOMPARE(session.queue().pending(), 3);
+        // A chained calculation saves its bundle only when its turn comes.
+        const auto chained = session.enqueueChain(d, jobs.path(), session.queue().entries().first().id,
+                                                  "final", {"current"}, true, check);
+        QCOMPARE(chained.size(), 1);
+        QCOMPARE(changed.size(), 4);
+        QVERIFY(session.queue().entries().last().plan.directory.isEmpty());
+        QVERIFY(session.queue().entries().last().checkAccess);
+        // What the last session left running: a job this one may not look at stays for one that may.
+        QSettings preferences(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma");
+        preferences.setValue("execution/running", plan.directory);
+        auto restored = session.restore(false, [](const QString &) { fail("Outside the allowed folders."); });
+        QVERIFY(!restored.following);
+        QVERIFY(restored.ended.isEmpty());
+        QCOMPARE(restored.waiting, 4);
+        QCOMPARE(preferences.value("execution/running").toString(), plan.directory);
+        // One that no longer runs is told once and forgotten.
+        QString asked;
+        restored = session.restore(false, [&](const QString &path) { asked = path; });
+        QCOMPARE(asked, plan.directory);
+        QCOMPARE(restored.ended, plan.directory);
+        QVERIFY(!restored.following);
+        QVERIFY(preferences.value("execution/running").toString().isEmpty());
+        QVERIFY(session.restore(false).ended.isEmpty());
+        // One session at a time keeps the stored queue.
+        QVERIFY(session.keepQueue(jobs.filePath("data")));
+        QVERIFY(QFileInfo::exists(jobs.filePath("data/queue.lock")));
+        RunSession second;
+        QVERIFY(!second.keepQueue(jobs.filePath("data")));
+        session.shutdown();
+        QVERIFY(session.queue().paused());
     }
     void downloadsWithoutWidgets() {
         QTemporaryDir source, cache;

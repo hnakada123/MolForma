@@ -182,7 +182,7 @@ McpEditor McpGui::editor() {
     e.additionalResources = [] { return runtimeResources(); };
     e.readResource = [this](const QString &uri) {
         return runtimeResource(uri, state(), window.resultsPanel()->result(),
-                               window.executionPanel()->currentRun().plan());
+                               window.runSession().run().plan());
     };
     e.pendingPrompt = [this] { return prompt(); };
     e.answerPrompt = [this](const QString &key, const QString &choice) { answer(key, choice); };
@@ -512,7 +512,7 @@ QJsonObject McpGui::describe(QObject *o) {
     return item;
 }
 QJsonObject McpGui::state() const {
-    const auto &run = window.executionPanel()->currentRun();
+    const auto &run = window.runSession().run();
     const auto *r = window.resultsPanel();
     const auto viewer = r->viewerState();
     return {{"selection", idsToJson(window.selection())},
@@ -522,8 +522,8 @@ QJsonObject McpGui::state() const {
             {"tab", window.currentPanelIndex()},
             {"chemistryRunning", window.chemistryRunning()},
             {"status", window.statusBar()->currentMessage()},
-            {"calculation", calculationJson(run, window.executionPanel()->savedDirectory(),
-                                            &window.executionPanel()->calculationQueue())},
+            {"calculation",
+             calculationJson(run, window.executionPanel()->savedDirectory(), &window.runSession().queue())},
             {"results",
              QJsonObject{{"loading", r->loading()},
                          {"source", r->result().source},
@@ -1160,7 +1160,7 @@ QJsonObject McpGui::execute(const QString &name, const QJsonObject &args) {
         }
     } else if (name == "calculation") {
         const auto action = args["action"].toString();
-        if (calculationQueueAction(window.executionPanel()->calculationQueue(), args)) {
+        if (calculationQueueAction(window.runSession().queue(), args)) {
             // Queue changes are synchronous; its runs are followed through get_app_state.
         } else if (action == "enqueue" && args.contains("chainFrom")) {
             QStringList steps;

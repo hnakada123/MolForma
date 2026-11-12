@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/execution_panel.h"
-#include "editing/coordinates.h"
 #include "foundation/i18n.h"
-#include "io/document_storage.h"
 #include "mcp/policy.h"
 #include "nwchem/history.h"
 #include "nwchem/nwchem.h"
@@ -121,12 +119,11 @@ QString endedMessage(RunState state) {
 
 ExecutionPanel::ExecutionPanel(EditorContext &editorServices, UiServices &uiServices,
                                WorkspaceActions &workspaceActions, ExecutionAccess &executionServices,
-                               QWidget *parent)
+                               RunSession &runs, QWidget *parent)
     : QWidget(parent), editorContext(editorServices), uiContext(uiServices), workspace(workspaceActions),
-      executionAccess(executionServices), run(this), queue(run, this) {
+      executionAccess(executionServices), session(runs), run(runs.run()), queue(runs.queue()) {
     setObjectName("executionTab");
     setAttribute(Qt::WA_StyledBackground);
-    run.setObjectName("nwchemRun");
     auto *outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
     outer->setSpacing(0);
@@ -182,7 +179,7 @@ ExecutionPanel::ExecutionPanel(EditorContext &editorServices, UiServices &uiServ
     connect(queueButton, &QPushButton::clicked, this, &ExecutionPanel::showQueue);
     connect(&queue, &NwchemQueue::changed, this,
             [this] { queueButton->setText(tr("計算キュー（待機 %n 件）", nullptr, queue.pending())); });
-    connect(&queue, &NwchemQueue::bundleSaved, this, &ExecutionPanel::bundleChanged);
+    connect(&session, &RunSession::bundleChanged, this, &ExecutionPanel::bundleChanged);
     auto *split = new QSplitter;
     split->setChildrenCollapsible(false);
     outer->addWidget(split, 1);
@@ -338,11 +335,7 @@ ExecutionPanel::ExecutionPanel(EditorContext &editorServices, UiServices &uiServ
         if (run.state() != previousRunState) {
             const bool ended = runStateActive(previousRunState) && !run.active();
             previousRunState = run.state();
-            // The next session looks for a run this one may leave to its supervisor.
-            if (run.supervised())
-                uiContext.setPreference("execution/running", run.active() ? run.plan().directory : QString());
             refresh();
-            emit bundleChanged(run.plan().directory);
             if (ended)
                 runEnded();
         } else
@@ -619,11 +612,10 @@ void ExecutionPanel::saveBundle() {
     if (editorContext.hasCandidate() || editorContext.chemistryRunning() || run.active())
         fail(tr("候補・整形・実行中は入力一式を保存できません。"));
     commitPendingEdits();
-    if (executionAccess.accessPolicy() && executionAccess.remoteRequest())
-        executionAccess.accessPolicy()->checkRun(editorContext.document(), baseDirectory());
-    saved = saveExecutionBundle(editorContext.document(), baseDirectory());
+    if (const auto check = runCheck())
+        check(editorContext.document(), baseDirectory());
+    saved = session.saveBundle(editorContext.document(), baseDirectory());
     updateRun();
-    emit bundleChanged(saved.directory);
 }
 void ExecutionPanel::startCalculation() {
     if (editorContext.hasCandidate() || editorContext.chemistryRunning() || run.active())
@@ -636,11 +628,19 @@ void ExecutionPanel::startCalculation() {
     run.start(editorContext.document(), baseDirectory());
     showRunPanel();
 }
+RunSession::Check ExecutionPanel::runCheck() const {
+    const auto *policy = executionAccess.accessPolicy();
+    if (!policy || !executionAccess.remoteRequest())
+        return {};
+    return [policy = *policy](const Document &document, const QString &base) {
+        policy.checkRun(document, base);
+    };
+}
 bool ExecutionPanel::authorizeCalculation() {
     const auto *policy = executionAccess.accessPolicy();
     const bool remote = executionAccess.remoteRequest();
-    if (policy && remote)
-        policy->checkRun(editorContext.document(), baseDirectory());
+    if (const auto check = runCheck())
+        check(editorContext.document(), baseDirectory());
     // The executable, launcher, environment and additional input choose what runs: values that came
     // from a file, the history, an autosave copy or MCP run only once the user confirmed them.
     if ((!policy || !policy->allowExecutionSettings) && !executionAccess.untrustedExecution().isEmpty()) {
@@ -661,15 +661,7 @@ QString ExecutionPanel::enqueueCalculation(const QueueChain &chain) {
     commitPendingEdits();
     if (!authorizeCalculation())
         return {};
-    const auto document = editorContext.document();
-    const auto base = baseDirectory();
-    std::function<void()> check;
-    if (const auto *policy = executionAccess.accessPolicy(); policy && executionAccess.remoteRequest())
-        check = [policy = *policy, document, base] { policy.checkRun(document, base); };
-    const auto id = queue.enqueue(document, base, check, chain);
-    if (!chain.active())
-        emit bundleChanged(queue.entries().last().plan.directory);
-    return id;
+    return session.enqueue(editorContext.document(), baseDirectory(), runCheck(), chain);
 }
 QStringList ExecutionPanel::enqueueChain(const QString &from, const QString &structure,
                                          const QStringList &steps, bool endFrequencies) {
@@ -680,15 +672,8 @@ QStringList ExecutionPanel::enqueueChain(const QString &from, const QString &str
     commitPendingEdits();
     if (!authorizeCalculation())
         return {};
-    const auto base = baseDirectory();
-    const auto *policy = executionAccess.accessPolicy();
-    const bool remote = policy && executionAccess.remoteRequest();
-    return queue.enqueueChain(editorContext.document(), base, from, structure, steps, endFrequencies,
-                              [policy, remote, base](const Document &d) -> std::function<void()> {
-                                  if (!remote)
-                                      return {};
-                                  return [policy = *policy, d, base] { policy.checkRun(d, base); };
-                              });
+    return session.enqueueChain(editorContext.document(), baseDirectory(), from, structure, steps,
+                                endFrequencies, runCheck());
 }
 void ExecutionPanel::showChainDialog() {
     if (auto *existing = findChild<QDialog *>("calculationChainDialog")) {
@@ -910,30 +895,11 @@ void ExecutionPanel::showQueue() {
 QStringList ExecutionPanel::enqueueGeometries(const QVector<Document> &geometries, bool frequencies) {
     if (editorContext.hasCandidate() || editorContext.chemistryRunning())
         fail(tr("候補を確定・取消し、整形の終了後に実行できます。"));
-    if (geometries.isEmpty() || geometries.size() + queue.entries().size() > 1000)
-        fail(tr("キューにはこのセッションで1000件まで登録できます。"));
     commitPendingEdits();
     if (!authorizeCalculation())
         return {};
-    QVector<Document> documents;
-    const auto base = baseDirectory();
-    for (int i = 0; i < geometries.size(); ++i) {
-        auto d = editorContext.document();
-        applyResultGeometry(d, geometries[i]);
-        setNwchemSetting(d, "task", frequencies ? "optimize_frequencies" : "optimize");
-        setNwchemSetting(d, "start", nwchemSettings(d)["start"].toString() + QString("_conf%1").arg(i + 1));
-        executionPlan(d, base, {}, true); // Validate the entire batch before writing any bundle.
-        documents.append(d);
-    }
-    QStringList directories;
-    for (const auto &d : documents) {
-        std::function<void()> check;
-        if (const auto *policy = executionAccess.accessPolicy(); policy && executionAccess.remoteRequest())
-            check = [policy = *policy, d, base] { policy.checkRun(d, base); };
-        queue.enqueue(d, base, check);
-        directories << queue.entries().last().plan.directory;
-        emit bundleChanged(directories.last());
-    }
+    const auto directories = session.enqueueGeometries(editorContext.document(), baseDirectory(), geometries,
+                                                       frequencies, runCheck());
     showQueue();
     return directories;
 }
@@ -1341,53 +1307,8 @@ void ExecutionPanel::setResultSummary(const QString &directory, const QString &s
 void ExecutionPanel::stopEditing() {
     busy = true;
     run.disconnect(this);
-}
-void ExecutionPanel::shutdown(bool keepRunning) {
-    queue.shutdown();
-    if (keepRunning && run.supervised())
-        run.release();
-    else
-        run.shutdown();
-}
-void ExecutionPanel::superviseRuns(const QString &program) {
-    run.setSupervisor(program);
-    // Beside the autosave copies, in the application's data folder.
-    const auto folder = QFileInfo(DocumentStorage::autosaveDirectory()).absolutePath();
-    if (folder.isEmpty() || !QDir().mkpath(folder))
-        return;
-    // A second window on the same account keeps its queue to itself, as before.
-    queueLock = std::make_unique<QLockFile>(QDir(folder).filePath("queue.lock"));
-    queueLock->setStaleLockTime(0);
-    if (queueLock->tryLock(0))
-        queue.setStore(QDir(folder).filePath("queue.json"));
-    else
-        queueLock.reset();
-}
-QString ExecutionPanel::restoreRuns(bool withQueue) {
-    QStringList notes;
-    if (withQueue && queueLock)
-        queue.restore();
-    const int waiting = queue.pending();
-    if (waiting)
-        notes << tr(
-            "前回のキューの待機中 %n 件を復元しました（「計算キュー」の「キューを開始・再開」で続けます）。",
-            nullptr, waiting);
-    // The run of the last session, if the queue has not taken it up already.
-    const auto last = uiContext.preference("execution/running").toString();
-    if (!last.isEmpty() && !run.active() && !run.attach(last)) {
-        uiContext.setPreference("execution/running", {});
-        try {
-            const auto entry = readHistoryEntry(last);
-            if (entry.valid)
-                notes << tr("前回実行していた計算「%1」は%2の状態です（履歴で確認できます）。")
-                             .arg(entry.name, runStateName(entry.status));
-        } catch (const std::exception &) {
-        }
-    }
-    if (run.active())
-        notes
-            << tr("実行中の計算「%1」の監視を再開しました。").arg(QFileInfo(run.plan().directory).fileName());
-    return notes.join(' ');
+    queue.disconnect(this);
+    session.disconnect(this);
 }
 void ExecutionPanel::applyChromeStyle() {
     const auto pal = palette();

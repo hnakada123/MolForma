@@ -2,13 +2,13 @@
 #pragma once
 #include "mcp/policy.h"
 #include "mcp/server.h"
-#include "nwchem/nwchem_execution.h"
-#include "nwchem/nwchem_queue.h"
+#include "nwchem/run_session.h"
 #include "results/result_loader.h"
 
 namespace mf {
-// NWChem runs and result reading for the headless MCP server, using the same core execution
-// and cancellable --result-worker process as the GUI. Work stops when the process exits.
+// NWChem runs and result reading for the headless MCP server, using the same run session (RunSession)
+// and cancellable --result-worker process as the GUI. Work stops when the process exits, unless
+// --mcp-keep-runs leaves the calculation to its supervisor.
 class McpHeadless : public QObject {
   public:
     // trustedExecution: the executable, launcher and environment MCP runs may use (by default the
@@ -23,9 +23,9 @@ class McpHeadless : public QObject {
   private:
     McpPolicy policy;
     const McpServer *server = nullptr;
-    NwchemRun run;
-    NwchemQueue queue;
-    ExecutionPlan saved;
+    RunSession session;
+    NwchemRun &run = session.run();
+    NwchemQueue &queue = session.queue();
     // Without a GUI only the user's saved defaults are trusted: MCP cannot pick another program.
     QJsonObject trusted;
     ResultData data;

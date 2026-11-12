@@ -53,7 +53,12 @@ by responsibility, with paired headers and implementations in the same directory
   mode) that outlives the window and is followed and stopped through `run.json` and `stop.request`.
   `nwchem_queue.*` runs saved bundles in sequence and keeps the waiting ones in a file between
   sessions; a chained entry (`QueueChain`) takes the structure of an earlier entry's job
-  (`chainedDocument`) when that has finished and saves its bundle only then. NEB (`task` "neb") keeps
+  (`chainedDocument`) when that has finished and saves its bundle only then. `run_session.*` owns the
+  calculations of one session: the run, the queue over it, the bundle saved last, the conformer batch and
+  what the session leaves for the next one (the supervisor, the stored queue with its lock, the running
+  job in Preferences `execution/running`). It has no widgets and no say in who may run what: the window
+  and the headless MCP server each hold one and check a request at their own gate before asking it.
+  NEB (`task` "neb") keeps
   its end in the setting `neb_end` (positions by atom ID, kept through `Document::remove`/`renameIds` and the project adapter). `nwchem_restart.*` prepares documents that go on from a job's NWChem database
   (settings `restart`: the input says `restart`, has no geometry and skips finished tasks) and
   copies its files into the new job. `history.*` scans saved bundles and validates snapshots;
@@ -73,7 +78,8 @@ by responsibility, with paired headers and implementations in the same directory
   reference/visible geometry used by the result viewer and its exports. `molden_orbitals.*` evaluates
   normalized Gaussian MOs with Cartesian/spherical s–g bases. `result_loader.*` owns cancellable
   reader processes and source freshness checks shared by GUI and headless MCP.
-- `src/ui/`: `main_window.*` owns the application window, project lifecycle and shared editor context.
+- `src/ui/`: `main_window.*` owns the application window, project lifecycle, shared editor context and
+  the session's `RunSession` (supervising, restoring and ending its runs; `main.cpp` asks the window).
   It implements the capabilities in `editor_context.h`: editor operations, UI services, workspace
   actions and execution access. Panels/dialogs receive the capabilities they use and a separate widget
   parent; only composition/adapters (`main_window`, `workspace_controller`, `mcp_gui`) include MainWindow.
@@ -96,7 +102,9 @@ by responsibility, with paired headers and implementations in the same directory
   `ResultLoader`, with cancellation and a revision check before applying them. `execution_panel.*`
   provides the settings of "3 実行設定" and the run panel below the tabs (state,
   `run_progress.*` and log), opened from the header run pill; its form (`execution_form.*`) is
-  also that of Preferences. `setting_navigation.h` maps semantic setting targets to UI tabs and reads
+  also that of Preferences. The panel shows the window's `RunSession` and asks it for calculations once
+  its gate has let them pass (no candidate, programs the user confirmed, MCP's folders for a request over
+  MCP); it owns neither the run nor the queue. `setting_navigation.h` maps semantic setting targets to UI tabs and reads
   legacy tab numbers from old job diagnostics. `run_progress.*` also holds the state labels of runs and their colors. `input_preview_panel.*`
   provides the read-only "4 入力プレビュー" tab using the shared NWChem input
   generator and execution plan.
@@ -111,7 +119,7 @@ by responsibility, with paired headers and implementations in the same directory
 - `src/mcp/`: `server.*` implements the MCP JSON-RPC server (protocols 2026-07-28
   and legacy 2025-11-25) with document tools, candidates and undo; editor hooks
   let it operate a GUI document, otherwise it owns a headless one. `headless.*`
-  adds NWChem runs and result loading to `--mcp`; `tools.*` holds tool
+  adds NWChem runs (a `RunSession` of its own) and result loading to `--mcp`; `tools.*` holds tool
   definitions and result views shared with `mcp_gui.*`; `policy.*` holds the
   command-line access policy (protected execution settings, allowed directories).
   `stdio_transport.*` provides newline-delimited stdio transport. See `docs/mcp.md`.

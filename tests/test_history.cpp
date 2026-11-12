@@ -299,7 +299,7 @@ class HistoryTest : public QObject {
         w.trustCurrentExecution(); // As if the user confirmed the test engine before the first run.
         auto *execution = widget<ExecutionPanel>(w, "executionTab");
         execution->startCalculation();
-        const auto directory = execution->currentRun().plan().directory;
+        const auto directory = w.runSession().run().plan().directory;
         QTRY_VERIFY(!execution->running());
         const auto m = parseJson(readFile(directory + "/run.json"));
         QCOMPARE(m["host"].toString(), QSysInfo::machineHostName());
@@ -619,7 +619,7 @@ class HistoryTest : public QObject {
         auto *history = widget<HistoryPanel>(w, "historyTab");
         auto *execution = widget<ExecutionPanel>(w, "executionTab");
         execution->startCalculation();
-        const auto directory = execution->currentRun().plan().directory;
+        const auto directory = w.runSession().run().plan().directory;
         history->selectDirectory(directory);
         QTRY_VERIFY(!history->scanning());
         QTRY_VERIFY(widget<QPushButton>(w, "historyStop")->isEnabled());
@@ -782,7 +782,7 @@ class HistoryTest : public QObject {
         auto *history = widget<HistoryPanel>(w, "historyTab");
         auto *execution = widget<ExecutionPanel>(w, "executionTab");
         execution->startCalculation();
-        const auto directory = execution->currentRun().plan().directory;
+        const auto directory = w.runSession().run().plan().directory;
         history->selectDirectory(directory);
         QTRY_VERIFY(!history->scanning());
         QTRY_VERIFY(widget<QPushButton>(w, "historyStop")->isEnabled());
@@ -825,7 +825,7 @@ class HistoryTest : public QObject {
         // Going on runs as a new job with the database of the old one.
         w.trustCurrentExecution();
         execution->startCalculation();
-        const auto second = execution->currentRun().plan().directory;
+        const auto second = w.runSession().run().plan().directory;
         QVERIFY(second != directory);
         QCOMPARE(readFile(second + "/molforma.db"), QByteArray("database"));
         QCOMPARE(readFile(second + "/molforma.movecs"), QByteArray("orbitals"));
