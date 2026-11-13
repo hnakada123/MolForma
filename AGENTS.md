@@ -196,9 +196,22 @@ by responsibility, with paired headers and implementations in the same directory
   (`figure_export.*`) goes the same way, and the renderer of a `MoleculeView` is passed to its
   constructor (`RendererChoice`, from Preferences `view/renderer`) by the panel that makes it.
   `translations.*` reads the language before there is a window.
-  `molecule_panel.*` and `molecule_properties.cpp` own the molecular workspace, selection, palette,
-  tools and property pages; document transactions go through the `EditorContext` (the window's
-  `EditorSession` behind it).
+  `molecule_panel.*` owns the molecular workspace as the composer of its parts: the 3D view with its
+  tools and overlays, the selection, the layouts with the coordinate table and, in
+  `molecule_properties.cpp`, the property pages that hold the options of its tools ("編集", "配位",
+  "残基": the element, the bond kind, the fields the ligand and amino-acid tools read). Its other parts
+  are widgets and functions of their own files, which get the capabilities they use (`EditorContext`,
+  `UiServices`) and never include a panel (`cmake/CheckLayers.cmake`): `part_palette.*` (`PartPalette`: the palette with
+  its search, categories and element buttons, and the store of the user's parts "マイ部品" — saved
+  from the selection, read from part files, kept in Preferences; it places nothing and says what was
+  chosen with `chosen`, `choiceChanged`, `refreshed`, `showRequested`), `property_page.*`
+  (`PropertyPage`: what a page is made of — cards of forms, rows of buttons run through
+  `UiServices::safe`, controls enabled by the selection, `selection_controls.*`), the pages that need
+  only the editor context and the selection (`transform_page.*`, `attributes_page.*`,
+  `charge_page.*`), and `molecule_dialogs.*` (the dialogs of the tools as functions answered with the
+  choice: SMILES, structure report, comparison, Z-matrix, point group, solvation shell, PDB
+  diagnostics; the panel decides when one opens and makes the edit). Document transactions go through
+  the `EditorContext` (the window's `EditorSession` behind it).
   `candidate_controls.*` shares the candidate controls across workspace tabs.
   `structure_import.*` shares the interactive XYZ frame and PDB MODEL/ALTLOC choices.
   `workspace_controller.*` coordinates history reuse, navigation, loading completed runs and the
@@ -242,7 +255,21 @@ by responsibility, with paired headers and implementations in the same directory
   provides the read-only "4 入力プレビュー" tab using the shared NWChem input
   generator and execution plan.
   `results_panel.*` provides the independent result viewer with cancellable native
-  readers. UV/IR curves use `results/spectrum.*`; the panel owns axis limits and units.
+  readers, as the composer of its parts: it opens files and job folders, loads them with
+  `ResultLoader`, keeps the result with what is chosen of it (datasets, the structure, mode or
+  orbital and the playback of `results/result_presentation.*`), and owns the 3D view, the exports and
+  the tabs bound to those (概要, 軌道, 振動, CUBE / 等値面, 元ファイル), each built by a named
+  function. The tabs that only show the loaded `ResultData` are views of their own files with a
+  `setResult` entry, and what they ask of the viewer is a signal: `result_energies_view.*`,
+  `result_optimization_view.*`, `result_excitations_view.*` (`orbitalRequested`; the job's MOLDEN
+  file is a callback), `result_path_view.*` (`frameRequested`, `saddleSearchRequested`; the path is
+  that of `results/result_path.*`), `result_properties_view.*` (`atomPairSelected`), beside
+  `property_geometry_view.*` and `spectroscopy_view.*`. `result_measurement.*` is the measurement
+  over the 3D view (picked and kept atoms by number; every structure goes into the view through
+  it), `cube_combine_dialog.*` asks for the terms and the output of a sum of CUBE files, and
+  `result_detail.h` declares what these files share (tables, number texts, summary cards, the figure
+  export of a chart). UV/IR curves use `results/spectrum.*`; the panel (IR) and the view of the
+  excited states (UV) own their axis limits and units.
   `figure_export.*` writes pictures of the 3D view (`MoleculeView::renderImage`: scale and
   background, VTK in tiles), animations (its own GIF encoder, MP4 through `ffmpeg` from PATH, PNG
   files) and figures of charts (PNG, PDF, and SVG with the optional Qt SVG). `history_panel.*` provides calculation history (its list a `HistoryModel`), log

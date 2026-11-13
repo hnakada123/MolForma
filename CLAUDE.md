@@ -55,7 +55,9 @@ Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#inc
   editing's undo stack only.
 - `molforma_ui` — `src/ui`, links core and mcp (McpGui reuses the shared tool definitions and policy).
   `main_window.*` hosts the editor, with `molecule_panel.*` + `molecule_properties.cpp` as its molecular
-  workspace; its dialogs are files of their own (`preferences_dialog.*`, `xtb_dialog.*`, and `help_dialogs.*` for
+  workspace (the composer of the palette `part_palette.*`, the property pages on `property_page.*` —
+  `transform_page.*`, `attributes_page.*`, `charge_page.*` — and the tool dialogs `molecule_dialogs.*`); the
+  window's own dialogs are files of their own (`preferences_dialog.*`, `xtb_dialog.*`, and `help_dialogs.*` for
   the manual viewer and the shortcuts window), opened by thin members of the window. `editor_chrome.*` holds the
   header (workflow steps that switch the hidden tab bar), tool rail and 3D-view overlays; the rest of the chrome is
   one file per responsibility, included by what uses it: `theme.*` (every color and the style rules),
@@ -64,7 +66,9 @@ Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#inc
   view with the `coordinates_panel.*` table under it or in its place), "2 計算条件" (`calculation_panel.*`; each
   section opens its advanced overrides as "詳細設定"), "3 実行設定" (`execution_panel.*`, settings only, with the form `execution_form.*` that Preferences shares; the run
   state and log are its run panel below the tabs, a `QSplitter` with them so that it covers nothing, opened from the header run pill) and "4 入力プレビュー"
-  (`input_preview_panel.*`); result viewer and history are panels too. Panels never see `MainWindow`: they get
+  (`input_preview_panel.*`); result viewer and history are panels too (`results_panel.*` composes the
+  tabs that only show a `ResultData`, `result_*_view.*`, with `result_measurement.*` and
+  `cube_combine_dialog.*`). Panels never see `MainWindow`: they get
   the capabilities of `ui/editor_context.h` that it implements — `EditorContext` (the document, its candidate
   and edits; not the `EditorSession`), `UiServices` (`safe`, preferences, messages, MCP's folders),
   `WorkspaceActions` (navigation only: `showPanel(QWidget *)`, `showSetting(SettingTarget, …)`, `showInputLine`,
@@ -72,6 +76,8 @@ Libraries (all in namespace `mf`; include headers relative to `src/`, e.g. `#inc
   `ExecutionAccess` (the gate of a run as checks, not the `McpPolicy`). What one panel needs of another is a
   signal of the asking panel, connected by whoever composes the two (`MainWindow`, `WorkspaceController`,
   `MoleculePanel` for its coordinate table); `cmake/CheckLayers.cmake` forbids the includes that would bypass this.
+  The parts of a panel (views, pages, palette, dialogs of their own files) get the same capabilities and their
+  data, ask their panel with signals and never include a panel.
 - `molforma_mcp` — `src/mcp`, links core only. A JSON-RPC MCP server over stdio (protocols 2026-07-28 and legacy
   2025-11-25); see `docs/mcp.md`. `server.cpp` holds the protocol, tasks, resources and dispatch of `McpServer`,
   `document_adapter.cpp` the document behind its tools and `document_tools.cpp` the tools themselves

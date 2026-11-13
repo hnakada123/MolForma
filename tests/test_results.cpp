@@ -21,6 +21,12 @@
 #include "ui/molecule_view.h"
 #include "ui/property_geometry_view.h"
 #include "ui/result_charts.h"
+#include "ui/result_energies_view.h"
+#include "ui/result_excitations_view.h"
+#include "ui/result_measurement.h"
+#include "ui/result_optimization_view.h"
+#include "ui/result_path_view.h"
+#include "ui/result_properties_view.h"
 #include "ui/results_panel.h"
 #include "ui/run_progress.h"
 #include "ui/spectroscopy_view.h"
@@ -1143,6 +1149,185 @@ class ResultsTest : public QObject {
         QCOMPARE(w.history()->count(), history);
         // Destruction cancels an in-flight reader and stops animation.
         panel->openFile(a);
+    }
+    void pathViewAsksForTheFrameOfAPoint() {
+        // The tab of the paths without its viewer: fed a result with a scan it lists the points, and
+        // asks whoever composes it for the structure of the one chosen. "最高点を選択" chooses the
+        // highest point between the ends.
+        const auto data = readResult(QString(FIXTURE_DIR) + "/nwchem/butane_scan.out");
+        const auto path = resultPath(data);
+        QCOMPARE(path.kind, ResultPathKind::Scan);
+        TestUiServices services;
+        ResultPathView view(services);
+        QSignalSpy frames(&view, &ResultPathView::frameRequested),
+            saddle(&view, &ResultPathView::saddleSearchRequested);
+        view.setResult(data);
+        QCOMPARE(frames.count(), 0); // Showing a result chooses no point.
+        auto *table = view.findChild<QTableWidget *>("resultsPath");
+        QCOMPARE(table->rowCount(), int(path.points.size()));
+        QCOMPARE(view.shown().points.size(), path.points.size());
+        const int highest = path.highest(PathEnds::Excluded);
+        QVERIFY(highest > 0 && highest < path.points.size() - 1);
+        auto *choose = view.findChild<QPushButton *>("resultsPathHighest");
+        QVERIFY(choose->isEnabled());
+        choose->click();
+        QCOMPARE(table->currentRow(), highest);
+        QCOMPARE(frames.count(), 1);
+        QCOMPARE(frames[0][0].toInt(), path.points[highest].frame);
+        // A row is a point too; one whose structure the result does not hold asks for nothing.
+        table->setCurrentCell(0, 0);
+        QCOMPARE(frames.count(), 2);
+        QCOMPARE(frames[1][0].toInt(), path.points[0].frame);
+        auto fewer = data;
+        fewer.frames.resize(path.points[highest].frame);
+        view.setResult(fewer);
+        view.findChild<QPushButton *>("resultsPathHighest")->click();
+        QCOMPARE(table->currentRow(), highest);
+        QCOMPARE(frames.count(), 2);
+        // The saddle search is the viewer's: the view only asks for it, while it may.
+        auto *search = view.findChild<QPushButton *>("resultsPathSaddle");
+        view.setSaddleEnabled(false);
+        QVERIFY(!search->isEnabled());
+        view.setSaddleEnabled(true);
+        search->click();
+        QCOMPARE(saddle.count(), 1);
+        // Without a path there is nothing to choose.
+        view.setResult(ResultData{});
+        QCOMPARE(table->rowCount(), 0);
+        QVERIFY(view.shown().points.isEmpty());
+        QVERIFY(!choose->isEnabled());
+    }
+    void resultViewsOnTheirOwn() {
+        // The other tabs that only show a result, each without the viewer.
+        const QString root = QString(FIXTURE_DIR) + "/nwchem/";
+        TestUiServices services;
+        {
+            // The differences refer to the last energy until a row is made the reference.
+            const auto data = readResult(root + "water_optfreq.out");
+            QVERIFY(data.energies.size() > 2);
+            ResultEnergiesView view;
+            view.setResult(data);
+            auto *table = view.findChild<QTableWidget *>("resultsEnergy");
+            const int last = data.energies.size() - 1;
+            QCOMPARE(table->rowCount(), last + 1);
+            QCOMPARE(table->item(last, 2)->text(), QString("0.000"));
+            QVERIFY(table->item(last, 0)->font().bold() && !table->item(0, 0)->font().bold());
+            auto *reference = view.findChild<QPushButton *>("resultsEnergyReference");
+            view.setReferenceEnabled(false);
+            QVERIFY(!reference->isEnabled());
+            view.setReferenceEnabled(true);
+            table->setCurrentCell(0, 0);
+            reference->click();
+            QCOMPARE(table->item(0, 2)->text(), QString("0.000"));
+            QVERIFY(table->item(0, 0)->font().bold() && !table->item(last, 0)->font().bold());
+            auto *unit = view.findChild<QComboBox *>("resultsEnergyUnit");
+            unit->setCurrentIndex(unit->findData("hartree"));
+            QCOMPARE(table->horizontalHeaderItem(2)->text(), QString("ΔE / Hartree"));
+            QCOMPARE(table->item(last, 2)->text(),
+                     QString::number(data.energies[last].hartree - data.energies[0].hartree, 'f', 8));
+            view.setResult(data); // Another result: its last energy again.
+            QCOMPARE(table->item(last, 2)->text(), QString::number(0., 'f', 8));
+        }
+        {
+            // The steps of the optimization, with the criteria of the last one as cards.
+            const auto data = readResult(root + "water_optfreq.out");
+            QVERIFY(!data.steps.isEmpty());
+            ResultOptimizationView view(services);
+            view.setResult(data, view.palette());
+            QCOMPARE(view.findChild<QTableWidget *>("resultsSteps")->rowCount(), int(data.steps.size()));
+            QVERIFY(!view.findChild<QWidget *>("resultsCriteria")->isHidden());
+            QVERIFY(view.findChild<QWidget *>("resultsCriterionGmax"));
+            QCOMPARE(view.findChild<ChartView *>("resultsEnergyChart")->seriesData().size(), 1);
+            view.setResult(ResultData{}, view.palette());
+            QVERIFY(view.findChild<QWidget *>("resultsCriteria")->isHidden());
+            QVERIFY(view.findChild<ChartView *>("resultsEnergyChart")->seriesData().isEmpty());
+        }
+        {
+            // A bond index names its two atoms, for the viewer to show them in the last structure.
+            const auto data = readResult(root + "ethanol_mulliken.out");
+            ResultPropertiesView view;
+            QSignalSpy pairs(&view, &ResultPropertiesView::atomPairSelected);
+            view.setResult(data);
+            QCOMPARE(pairs.count(), 0);
+            auto *bonds = view.findChild<QTableWidget *>("resultsBondIndices");
+            QVERIFY(bonds->rowCount() > 0 && !bonds->parentWidget()->isHidden());
+            QVERIFY(view.findChild<QWidget *>("resultsCouplings")->parentWidget()->isHidden());
+            const auto pair = bonds->item(0, 0)->data(Qt::UserRole).toPoint();
+            bonds->setCurrentCell(0, 0);
+            QCOMPARE(pairs.count(), 1);
+            QCOMPARE(pairs[0][0].toInt(), pair.x());
+            QCOMPARE(pairs[0][1].toInt(), pair.y());
+            QVERIFY(pair.x() >= 0 && pair.y() > pair.x());
+            const int notable = bonds->rowCount();
+            view.findChild<QCheckBox *>("resultsBondIndicesAll")->setChecked(true);
+            QVERIFY(bonds->rowCount() > notable);
+            QVERIFY(view.findChild<QLabel *>("resultsPropertySummary")->text().contains("双極子モーメント"));
+            // The lines "概要" shares with this tab: none of this log, the correction of another.
+            QVERIFY(resultPropertyLines(data).isEmpty());
+            QVERIFY(resultPropertyLines(readResult(root + "water_dimer_bsse.out")).contains("BSSE"));
+        }
+        {
+            // The orbital pairs of the chosen state; one of them names its orbital for the viewer, and
+            // the note names the MOLDEN file the viewer knows of.
+            const auto data = readResult(root + "formaldehyde_tda.out");
+            QVERIFY(data.excitations.size() > 1);
+            QString molden = "job.molden";
+            ResultExcitationsView view(services, [&] { return molden; });
+            QSignalSpy orbitals(&view, &ResultExcitationsView::orbitalRequested);
+            view.setResult(data);
+            auto *states = view.findChild<QTableWidget *>("resultsExcitations");
+            auto *listed = view.findChild<QTableWidget *>("resultsContributions");
+            auto *title = view.findChild<QLabel *>("resultsContributionsTitle");
+            QCOMPARE(states->rowCount(), int(data.excitations.size()));
+            QCOMPARE(states->currentRow(), 0);
+            const auto first = resultTransitions(data.excitations[0]);
+            QVERIFY(!first.isEmpty());
+            QCOMPARE(listed->rowCount(), int(first.size()));
+            QVERIFY(title->text().contains("job.molden"));
+            emit listed->cellDoubleClicked(0, 1);
+            QCOMPARE(orbitals.count(), 1);
+            QCOMPARE(orbitals[0][0].toString(), QString(first[0].spin == "beta" ? "Beta" : "Alpha"));
+            QCOMPARE(orbitals[0][1].toInt(), first[0].to);
+            emit listed->cellDoubleClicked(0, 0);
+            QCOMPARE(orbitals[1][1].toInt(), first[0].from);
+            molden.clear();
+            view.selectState(1);
+            QCOMPARE(states->currentRow(), 1);
+            QCOMPARE(listed->rowCount(), int(resultTransitions(data.excitations[1]).size()));
+            QVERIFY(!title->text().contains("job.molden"));
+            view.selectState(int(data.excitations.size())); // Out of range: the state stays.
+            QCOMPARE(states->currentRow(), 1);
+            QCOMPARE(view.findChild<ChartView *>("resultsSpectrum")->seriesData().size(), 2);
+        }
+        {
+            // The measurement keeps atoms by number: a kept one follows the next structure.
+            auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n");
+            MoleculeView molecule;
+            ResultMeasurement card(&molecule, services);
+            QSignalSpy clicked(&card, &ResultMeasurement::atomClicked);
+            card.setDocument(d);
+            QVERIFY(card.isHidden());
+            auto *label = card.findChild<QLabel *>("resultsMeasurement");
+            emit molecule.atomClicked(d.atoms[0].id, Qt::NoModifier);
+            emit molecule.atomClicked(d.atoms[2].id, Qt::NoModifier);
+            QCOMPARE(clicked.count(), 2);
+            QCOMPARE(clicked[1][0].toInt(), 2);
+            QVERIFY(!card.isHidden());
+            QVERIFY(label->text().contains("O1 → H3") && label->text().contains("0.9103"));
+            QCOMPARE(molecule.selection(), (Ids{d.atoms[0].id, d.atoms[2].id}));
+            card.findChild<QPushButton *>("resultsPinMeasurement")->click();
+            QVERIFY(molecule.selection().isEmpty());
+            QVERIFY(label->text().contains("1件"));
+            // Another structure with other atom IDs: the picked numbers select its atoms.
+            auto next = Document::fromXyz("3\nwater\nO 0 0 0\nH 0.9 0 0.5\nH -0.9 0 0.5\n");
+            card.setPicked({0, 1});
+            card.setDocument(next);
+            QCOMPARE(molecule.selection(), (Ids{next.atoms[0].id, next.atoms[1].id}));
+            card.clear();
+            card.setDocument(next);
+            QVERIFY(card.isHidden() && molecule.selection().isEmpty());
+            QCOMPARE(card.controls().size(), 2);
+        }
     }
     void hiddenViewerFitsWhenShown() {
         // A result that loads while another tab is shown (a finished run) fills the view once opened.

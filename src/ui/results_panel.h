@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "results/result_loader.h"
-#include "results/result_path.h"
 #include "results/result_presentation.h"
 #include "results/result_summary.h"
 #include "ui/editor_context.h"
@@ -26,9 +25,14 @@ class QTabWidget;
 class QToolButton;
 namespace mf {
 class ChartView;
-class ScanMap;
 class SpectroscopyView;
 class PropertyGeometryView;
+class ResultEnergiesView;
+class ResultOptimizationView;
+class ResultExcitationsView;
+class ResultPathView;
+class ResultPropertiesView;
+class ResultMeasurement;
 class ElidedLabel;
 class ViewControls;
 class ToolbarFit;
@@ -41,6 +45,13 @@ struct ResultViewerState {
     int frame = -1, mode = -1;
     double amplitude = 0;
 };
+// The independent result viewer, the composer of its parts: it opens files and job folders, reads them
+// with the cancellable ResultLoader, keeps the result with what is chosen of it (the structure, mode
+// or orbital and the playback: results/result_presentation.h), owns the 3D view, the exports and the
+// tabs bound to them (概要, 軌道, 振動, CUBE / 等値面, 元ファイル), and connects the tabs that only
+// show the result: ResultEnergiesView, ResultOptimizationView, ResultExcitationsView,
+// ResultPathView, ResultPropertiesView, PropertyGeometryView and SpectroscopyView. The measurement
+// over the 3D view is ResultMeasurement, through which every structure goes into the view.
 class ResultsPanel : public QWidget {
     Q_OBJECT
   public:
@@ -119,12 +130,13 @@ class ResultsPanel : public QWidget {
     QAction *saveXyz, *savePng, *saveFrames;
     // The 3D view with its overlays: what is shown, the view controls and the measurement.
     MoleculeView *view;
-    QFrame *contextChip, *measureCard;
+    QFrame *contextChip;
+    ResultMeasurement *measurement;
     ViewControls *viewControlsFrame;
     QFrame *dockFrame; // Under the view: the structures, orbital or mode, and the hint.
     QString summary;   // How the loaded file ended, for message().
     ToolbarFit *barFit;
-    QLabel *contextTitle, *contextDetail, *measurementLabel;
+    QLabel *contextTitle, *contextDetail;
     QList<QWidget *> viewControls; // Camera, labels and measuring: only with a structure shown.
     // Under the view, for what it shows: the structure list, the orbitals or the vibration.
     QStackedWidget *dock;
@@ -143,29 +155,23 @@ class ResultsPanel : public QWidget {
     QTabWidget *details;
     QScrollArea *overviewScroll;
     QPlainTextEdit *status, *log;
-    QTableWidget *energy, *orbitals, *modes, *steps, *excitations, *path, *atomProperties;
-    QPushButton *pathHighest, *pathSaddle; // Under the path: its highest point, and a saddle search there.
-    QLabel *pathNote;
-    ResultPath shownPath; // The path listed in the table `path`, a row for each of its points.
-    // The orbital pairs of the chosen excited state, and the bond indices of a Mulliken analysis.
-    QTableWidget *contributions, *bondIndices, *couplings;
-    QWidget *contributionsBlock, *bondBlock, *couplingBlock;
-    QLabel *contributionsTitle, *bondTitle, *couplingTitle;
-    QCheckBox *allBondIndices; // Also the pairs below NotableBondIndex.
-    ChartView *energyChart, *gradientChart, *spectrum, *pathChart, *irSpectrum;
-    ScanMap *pathMap; // A two-dimensional scan, instead of the path chart.
+    QTableWidget *orbitals, *modes;
+    ChartView *irSpectrum;
+    // The tabs that show the loaded result and ask for what they need with signals.
+    ResultEnergiesView *energiesView;
+    ResultOptimizationView *optimizationView;
+    ResultExcitationsView *excitationsView;
+    ResultPathView *pathView;
+    ResultPropertiesView *propertiesView;
     SpectroscopyView *spectroscopy;
     PropertyGeometryView *propertyGeometry;
     OrbitalLevels *levels;
-    QComboBox *spectrumAxis, *energyUnit;
-    QDoubleSpinBox *broadening, *irWidth;
-    QLabel *propertySummary, *energyNote, *orbitalStatus, *orbitalSource, *modeSummary;
-    QFrame *criteria;
+    QDoubleSpinBox *irWidth;
+    QLabel *orbitalStatus, *orbitalSource, *modeSummary;
     QWidget *orbitalOptions; // Isovalue, grid and normalization: only for a MOLDEN file.
     QLineEdit *isovalue, *orbitalIso;
     QPushButton *openMolden; // A log's orbitals: their shapes from the MOLDEN file of the same job.
-    QPushButton *energyReference, *applyIso, *combineCube;
-    int referenceEnergy = -1;          // Row of data.energies that ΔE refers to (-1: the last energy).
+    QPushButton *applyIso, *combineCube;
     int orbitalLoad = -1;              // Orbital of the shown file being read (-1: another load).
     QVector<ResultModeKind> modeKinds; // Of data.modes: vibrations, translations and rotations.
     QVector<int> irModes;              // The mode of each stick of the IR spectrum.
@@ -176,14 +182,22 @@ class ResultsPanel : public QWidget {
     // list shows one entry per mode; choosing it loads the steps joined into one trajectory.
     QMap<QString, QStringList> animationFrames; // "animation:<name>:<mode>" → step files
     bool animationSource = false;
+    // The parts of the window, built once by the constructor in this order.
+    QWidget *buildBar();
+    QWidget *buildViewCard();
+    QWidget *buildDock();
+    QWidget *buildDetails();
+    void buildTabs();
+    QWidget *buildOrbitalTab();
+    QWidget *buildVibrationTab();
+    QWidget *buildSurfaceTab();
+    QWidget *buildLogTab();
+    void connectActions();
     void fillFiles(const QString &selected);
     void openEntry(const QString &entry);
     // The MOLDEN file of the job a log belongs to, as an entry of the file list (empty if none).
     QString jobMolden() const;
     void openOrbitalShape(int logOrbital);
-    // Measurement by atom number, so it follows frames and vibration snapshots (new atom IDs).
-    QVector<int> picked;
-    QVector<QVector<int>> pinned;
     void startLoad(const QString &path, double iso, int channel, int orbital = -1,
                    const QString &normalization = "auto", int divisions = 40, bool reuseOrbital = false,
                    bool animation = false, bool reread = false, const QVector<CubeTerm> &combine = {});
@@ -198,17 +212,10 @@ class ResultsPanel : public QWidget {
     void showOutcome();
     void showPresentation();
     void showGeometry();
-    void showSpectrum();
-    void showContributions();
-    // An orbital of a pair listed for the chosen state: its shape from the job's MOLDEN file, else
-    // its row in "軌道".
-    void openTransitionOrbital(int row, int column);
-    void showEnergies();
-    void showPath();
-    void showProperties();
-    void showBondIndices();
+    // An orbital of a pair listed for the chosen excited state (its spin and NWChem's number): its
+    // shape from the job's MOLDEN file, else its row in "軌道".
+    void openTransitionOrbital(const QString &spin, int number);
     void showIrSpectrum();
-    void showOptimization();
     void showArrows();
     // The overlay naming what the view shows and the page of the controls under it.
     void showContext();
@@ -217,8 +224,6 @@ class ResultsPanel : public QWidget {
     // its order, else every structure) or a vibration as a GIF, MP4 or numbered PNG files.
     void exportImage();
     void exportFrames();
-    void setViewDocument(const Document &document);
-    void pickAtom(const QString &id);
     void updateActions();
     void error(const QString &message);
 };

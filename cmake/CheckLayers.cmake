@@ -34,6 +34,13 @@ foreach(layer IN LISTS layers)
                     endif()
                 endif()
             endif()
+            # The parts of a panel (its views, pages, palette and dialogs) see neither the panel that
+            # composes them nor another: what they ask of it is a signal of theirs.
+            if(layer STREQUAL "ui"
+               AND filename MATCHES "^(result_[a-z_]+|cube_combine_dialog|part_palette|property_page|[a-z]+_page|molecule_dialogs|selection_controls)$"
+               AND include MATCHES "ui/[a-z_]+_panel\\.h")
+                message(FATAL_ERROR "A part of a panel must not include a panel: ${source}: ${include}")
+            endif()
             if(include MATCHES "include[ \t]+\"([a-z]+)/")
                 set(dependency "${CMAKE_MATCH_1}")
                 if(dependency IN_LIST layers AND NOT dependency IN_LIST ${layer}_dependencies)

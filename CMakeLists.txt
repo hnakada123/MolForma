@@ -172,6 +172,13 @@ add_library(molforma_ui STATIC
     src/ui/editor_tool.cpp
     src/ui/molecule_panel.cpp
     src/ui/molecule_properties.cpp
+    src/ui/molecule_dialogs.cpp
+    src/ui/part_palette.cpp
+    src/ui/selection_controls.cpp
+    src/ui/property_page.cpp
+    src/ui/transform_page.cpp
+    src/ui/attributes_page.cpp
+    src/ui/charge_page.cpp
     src/ui/candidate_controls.cpp
     src/ui/execution_form.cpp
     src/ui/execution_panel.cpp
@@ -187,6 +194,14 @@ add_library(molforma_ui STATIC
     src/ui/periodic_table.cpp
     src/ui/preferences_dialog.cpp
     src/ui/result_charts.cpp
+    src/ui/result_detail.cpp
+    src/ui/result_energies_view.cpp
+    src/ui/result_excitations_view.cpp
+    src/ui/result_measurement.cpp
+    src/ui/result_optimization_view.cpp
+    src/ui/result_path_view.cpp
+    src/ui/result_properties_view.cpp
+    src/ui/cube_combine_dialog.cpp
     src/ui/property_geometry_view.cpp
     src/ui/pubchem.cpp
     src/ui/remote_hosts_dialog.cpp

@@ -3,18 +3,24 @@
 #include "editing/library.h"
 #include "editing/operations.h"
 #include "editing/peptide.h"
+#include "editing/solvation.h"
 #include "foundation/files.h"
 #include "io/document_storage.h"
 #include "model/geometry.h"
 #include "model/settings.h"
 #include "nwchem/nwchem.h"
+#include "ui/attributes_page.h"
+#include "ui/charge_page.h"
 #include "ui/editor_chrome.h"
 #include "ui/editor_tool.h"
 #include "ui/main_window.h"
+#include "ui/molecule_dialogs.h"
+#include "ui/part_palette.h"
 #include "ui/periodic_table.h"
 #include "ui/sequence_track.h"
 #include "ui/template_delegate.h"
 #include "ui/theme.h"
+#include "ui/transform_page.h"
 #include "ui/translations.h"
 #include <QAbstractTextDocumentLayout>
 #include <QApplication>
@@ -28,6 +34,7 @@
 #include <QDropEvent>
 #include <QFileDialog>
 #include <QGridLayout>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -471,6 +478,205 @@ class EditorTest : public QObject {
         QVERIFY(refused.contains("候補を確定"));
         w.confirmCandidate();
         QCOMPARE(w.document().atoms.size(), 2 + 6 * 3);
+    }
+    void toolDialogsAnswerWithTheChoice() {
+        // The dialogs of the tools without the workspace: each answers with what was chosen and edits
+        // nothing itself (the Z-matrix apart, whose values are edits).
+        MainWindow w;
+        Document d;
+        placeTemplate(d, findTemplate("skeleton:water"), Vec::Zero());
+        w.loadDocument(d);
+        TestUiServices services;
+        QWidget parent;
+        QTimer::singleShot(0, &parent, [&] {
+            auto *dialog = parent.findChild<QDialog *>("solvationDialog");
+            dialog->findChild<QSpinBox *>("solvationCount")->setValue(3);
+            dialog->accept();
+        });
+        const auto solvation = askSolvation(&parent, services, 2);
+        QVERIFY(solvation && solvation->aroundSelection);
+        QCOMPARE(solvation->count, 3);
+        QVERIFY(solventTemplates().contains(solvation->solvent));
+        QCOMPARE(services.preferences[Preference::solvationCount].toInt(), 3); // Remembered once accepted.
+        QTimer::singleShot(0, &parent, [&] {
+            auto *dialog = parent.findChild<QDialog *>("solvationDialog");
+            QCOMPARE(dialog->findChild<QSpinBox *>("solvationCount")->value(), 3);
+            QVERIFY(!dialog->findChild<QCheckBox *>("solvationAroundSelection")->isEnabled());
+            dialog->findChild<QSpinBox *>("solvationCount")->setValue(9);
+            dialog->reject();
+        });
+        QVERIFY(!askSolvation(&parent, services, 0));
+        QCOMPARE(services.preferences[Preference::solvationCount].toInt(), 3);
+        // The point group of what the editor shows, within the tolerance of the dialog.
+        QTimer::singleShot(0, &parent, [&] {
+            auto *dialog = parent.findChild<QDialog *>("symmetryDialog");
+            dialog->findChild<QDoubleSpinBox *>("symmetryTolerance")->setValue(.1);
+            dialog->findChild<QPushButton *>("symmetryApply")->click();
+        });
+        const auto symmetry = askSymmetrization(&parent, w, services);
+        QVERIFY(symmetry);
+        QCOMPARE(symmetry->group, QString("C2v"));
+        QCOMPARE(symmetry->tolerance, .1);
+        QVERIFY(!w.hasCandidate()); // The edit is the caller's.
+        QTimer::singleShot(0, &parent, [&] { parent.findChild<QDialog *>("symmetryDialog")->reject(); });
+        QVERIFY(!askSymmetrization(&parent, w, services));
+        QTimer::singleShot(0, &parent, [&] {
+            auto *dialog = parent.findChild<QInputDialog *>("smilesDialog");
+            dialog->setTextValue(" CCO ");
+            dialog->accept();
+        });
+        QCOMPARE(askSmiles(&parent, "SMILES", "SMILES", "C"), QString("CCO"));
+        // A value of the Z-matrix is an edit of the editor's document.
+        QTimer::singleShot(0, &parent, [&] {
+            auto *dialog = parent.findChild<QDialog *>("zMatrixDialog");
+            dialog->findChild<QTableWidget *>("zMatrixTable")->item(1, 2)->setText("1.1");
+            dialog->reject();
+        });
+        editZMatrix(&parent, w, w);
+        const auto &edited = w.document();
+        QVERIFY(std::abs(measure(edited, {edited.atoms[0].id, edited.atoms[1].id}) - 1.1) < 1e-9);
+    }
+    void partPaletteKeepsTheUsersParts() {
+        // The palette without the workspace: the user's parts come from the preferences, are listed under
+        // "マイ部品" and go back there; what is chosen is said, and nothing is placed.
+        MainWindow w; // The editor context: its document and selection, for a part saved from them.
+        Document d;
+        placeTemplate(d, findTemplate("skeleton:water"), Vec::Zero());
+        w.loadDocument(d);
+        const auto part = makePart(w.document(), w.document().ids(), "試しの骨格", "skeleton");
+        TestUiServices services;
+        services.preferences[Preference::customParts] = QJsonArray{part};
+        PartPalette palette(w, services);
+        QList<PaletteEntry> chosen;
+        connect(&palette, &PartPalette::chosen, this, [&](const PaletteEntry &entry) { chosen << entry; });
+        QSignalSpy refreshed(&palette, &PartPalette::refreshed), shown(&palette, &PartPalette::showRequested);
+        auto *list = palette.findChild<QListWidget *>("templatePalette");
+        QCOMPARE(list->count(), 0); // Listed when the workspace is ready for what the list says.
+        palette.setCategory("my");
+        QCOMPARE(palette.category(), QString("my"));
+        QCOMPARE(refreshed.count(), 1);
+        QCOMPARE(list->count(), 1);
+        QCOMPARE(list->item(0)->data(Qt::UserRole).toString(), QString("my:試しの骨格"));
+        QVERIFY(palette.hasChoice());
+        QCOMPARE(palette.choiceText(), QString("試しの骨格"));
+        QCOMPARE(palette.currentTemplate(), part);
+        QVERIFY(palette.choice().part());
+        QVERIFY(palette.findChild<QWidget *>("myPartsEmpty")->isHidden());
+        QVERIFY(!palette.findChild<QWidget *>("myPartsBar")->isHidden());
+        emit list->itemClicked(list->item(0));
+        QCOMPARE(chosen.size(), 1);
+        QCOMPARE(chosen[0].kind, PaletteKind::Part);
+        QVERIFY(!w.hasCandidate()); // Chosen, not placed.
+        // The save button needs atoms selected in the editor.
+        auto *save = palette.findChild<QPushButton *>("savePart");
+        palette.refreshSelection();
+        QVERIFY(!save->isEnabled());
+        w.setSelection(w.document().ids());
+        palette.refreshSelection();
+        QVERIFY(save->isEnabled());
+        // The search finds the part among all; another category does not list it.
+        palette.setCategory("all");
+        palette.findChild<QLineEdit *>("paletteSearch")->setText("試し");
+        QCOMPARE(list->count(), 1);
+        QCOMPARE(palette.choiceText(), QString("試しの骨格"));
+        palette.findChild<QLineEdit *>("paletteSearch")->clear();
+        palette.setCategory("ligand");
+        for (int i = 0; i < list->count(); ++i)
+            QVERIFY(!list->item(i)->data(Qt::UserRole).toString().startsWith("my:"));
+        // An element is chosen by its key; a part that does not exist is refused.
+        palette.select(paletteKey(PaletteKind::Atom, "N"));
+        QCOMPARE(palette.category(), QString("all")); // The whole palette, which lists it.
+        palette.choose();
+        QCOMPARE(chosen.size(), 2);
+        QCOMPARE(chosen[1].kind, PaletteKind::Atom);
+        QCOMPARE(chosen[1].value, QString("N"));
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, palette.select("skeleton:no-such-part"));
+        // Taken off the list, the part leaves the preferences; read from its file, it is back and shown.
+        palette.setCategory("my");
+        palette.findChild<QPushButton *>("removePart")->click();
+        QCOMPARE(list->count(), 0);
+        QVERIFY(!palette.findChild<QWidget *>("myPartsEmpty")->isHidden());
+        QVERIFY(services.preferences[Preference::customParts].toJsonArray().isEmpty());
+        QTemporaryDir dir;
+        const auto file = dir.filePath("trial.molforma-part.json");
+        writeFile(file, QJsonDocument(part).toJson());
+        palette.setCategory("atom");
+        QCOMPARE(shown.count(), 0);
+        palette.loadPartFile(file);
+        QCOMPARE(shown.count(), 1);
+        QCOMPARE(palette.category(), QString("my"));
+        QCOMPARE(list->count(), 1);
+        QCOMPARE(services.preferences[Preference::customParts].toJsonArray().size(), 1);
+        // "アミノ酸の連続追加" is offered with the amino acids only.
+        auto *growth = palette.findChild<QCheckBox *>();
+        palette.setCategory("amino");
+        QVERIFY(!growth->isHidden() && !palette.growing());
+        growth->setChecked(true);
+        QVERIFY(palette.growing());
+        palette.setCategory("my");
+        QVERIFY(growth->isHidden() && !palette.growing());
+    }
+    void propertyPagesOnTheirOwn() {
+        // The pages that need only the editor context and the selection, each beside a window that is
+        // their context: their buttons are edits of its document.
+        MainWindow w;
+        w.loadDocument(Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n"));
+        const auto ids = w.document().ids();
+        {
+            TransformPage page(w, w);
+            QSignalSpy moved(&page, &TransformPage::moved);
+            auto *translate = page.findChild<QPushButton *>("translateSelection");
+            page.refreshSelectionControls();
+            QVERIFY(!translate->isEnabled());
+            QVERIFY(translate->toolTip().contains("原子を選択すると使えます"));
+            w.setSelection({ids[1]});
+            page.refreshSelectionControls();
+            QVERIFY(translate->isEnabled() && translate->toolTip().isEmpty());
+            page.findChild<QDoubleSpinBox *>("translateX")->setValue(1.5);
+            translate->click();
+            QCOMPARE(w.document().atoms[1].position.x(), 0.758 + 1.5);
+            QCOMPARE(moved.count(), 0);
+            // Laid at the origin, the molecule may have left the view: the page says so.
+            page.findChild<QPushButton *>("orientSelection")->click();
+            QVERIFY(w.document().atoms[1].position.norm() < 1e-9);
+            QCOMPARE(moved.count(), 1);
+            page.findChild<QDoubleSpinBox *>("rotationAngle")->setValue(30);
+            QCOMPARE(page.twist(), 30.);
+        }
+        {
+            AttributesPage page(w, w);
+            auto *formal = page.findChild<QSpinBox *>("atomFormalCharge");
+            w.setSelection({ids[0]});
+            page.showSelection();
+            QCOMPARE(formal->value(), 0);
+            formal->setValue(-1);
+            page.findChild<QPushButton *>("applyAtomAttributes")->click();
+            QCOMPARE(w.document().atoms[0].charge, -1);
+            page.fixAtoms({ids[0]}, true);
+            QVERIFY(w.document().atoms[0].fixed);
+            page.findChild<QPushButton *>("unfixSelectedAtoms")->click();
+            QVERIFY(!w.document().atoms[0].fixed);
+            // Several atoms: nothing of one of them is left in the fields.
+            w.setSelection({ids[0], ids[1]});
+            page.showSelection();
+            QCOMPARE(formal->text(), QString("変更なし"));
+        }
+        {
+            ChargePage page(w, w, w);
+            page.refresh();
+            auto *list = page.findChild<QListWidget *>("pointChargeList");
+            QVERIFY(list->isHidden() && !page.findChild<QWidget *>("pointChargeEmpty")->isHidden());
+            QVERIFY(page.findChild<QLabel *>("moleculeChargeState")->text().contains("多重度 1"));
+            page.findChild<QDoubleSpinBox *>("pointChargeZ")->setValue(3);
+            page.valueField()->setValue(-.8);
+            page.findChild<QPushButton *>("addPointCharge")->click();
+            QCOMPARE(w.document().pointCharges.size(), 1);
+            QCOMPARE(w.document().pointCharges[0].charge, -.8);
+            QCOMPARE(w.document().pointCharges[0].position.z(), 3.);
+            page.refresh();
+            QCOMPARE(list->count(), 1);
+            QVERIFY(!list->isHidden() && page.findChild<QWidget *>("pointChargeEmpty")->isHidden());
+        }
     }
     void viewStylesMonitorsAndHydrogenBonds() {
         MainWindow w;
