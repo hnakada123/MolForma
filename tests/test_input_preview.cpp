@@ -3,6 +3,7 @@
 #include "io/document_storage.h"
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
+#include "nwchem_support.h"
 #include "ui/diagnostics_list.h"
 #include "ui/input_preview_panel.h"
 #include "ui/main_window.h"
@@ -13,14 +14,6 @@ using namespace mf;
 class InputPreviewTest : public QObject {
     Q_OBJECT
     QTemporaryDir settings, files;
-    static Document water() {
-        return Document::fromXyz("3\nwater\nO 0 0 0\nH 0.758 0 0.504\nH -0.758 0 0.504\n");
-    }
-    static void set(Document &d, const QString &key, const QJsonValue &value) {
-        auto s = d.data["nwchem"].toObject();
-        s[key] = value;
-        d.data["nwchem"] = s;
-    }
     template <typename T> static T *widget(MainWindow &w, const char *name) {
         auto *result = w.findChild<T *>(name);
         Q_ASSERT(result);
@@ -242,126 +235,6 @@ class InputPreviewTest : public QObject {
         QVERIFY(text(w)->textCursor().block().text().startsWith("geometry"));
         QCOMPARE(widget<QLabel>(w, "inputPreviewPosition")->text(),
                  QString("行 %1 / 列 1").arg(text(w)->textCursor().blockNumber() + 1));
-    }
-    void outlineMarksAdvancedAndExtraLines() {
-        auto d = water();
-        set(d, "method", "dft");
-        set(d, "task", "optimize");
-        set(d, "extra_input", "set cphf:maxiter 50");
-        setNwchemAdvanced(d, "dft_grid_nodisk", true);
-        setNwchemAdvanced(d, "driver_trust", 0.2);
-        setNwchemAdvanced(d, "scratch_dir", "scratch");
-        setNwchemAdvanced(d, "freq_animate", true); // Kept for frequency tasks: no line.
-        const auto generated = generateNwchemInput(d);
-        const auto lines = generated.text.split('\n');
-        const auto outline = generated.outline;
-        // The lines that the details and the additional input add or change.
-        QStringList advanced, extra;
-        for (const int line : outline.advanced)
-            advanced << lines[line].trimmed();
-        for (const int line : outline.extra)
-            extra << lines[line].trimmed();
-        advanced.sort();
-        extra.sort();
-        QCOMPARE(advanced, (QStringList{"grid fine nodisk", "scratch_dir scratch", "trust 0.2"}));
-        QCOMPARE(extra, (QStringList{"# Additional input (not checked by MolForma)", "set cphf:maxiter 50"}));
-        QHash<QString, NwchemInputBlock> blocks;
-        for (const auto &b : outline.blocks)
-            blocks.insert(b.keyword, b);
-        QCOMPARE(blocks["geometry"].title, QString("geometry（3 原子）"));
-        QCOMPARE(blocks["geometry"].targets, QList<SettingTarget>{SettingTarget::Molecule});
-        QCOMPARE(blocks["geometry"].lines, 5);
-        QCOMPARE(blocks["basis"].title, QString("basis \"sto-3g\""));
-        QCOMPARE(blocks["dft"].targets, QList<SettingTarget>{SettingTarget::Calculation});
-        QCOMPARE(blocks["dft"].setting, QString("method"));
-        QCOMPARE(blocks["dft"].group, QString("dft"));
-        QCOMPARE(lines[blocks["dft"].line + blocks["dft"].lines - 1], QString("end"));
-        QCOMPARE(blocks["driver"].group, QString("driver"));
-        QCOMPARE(blocks["additional"].targets, QList<SettingTarget>{SettingTarget::Calculation});
-        QCOMPARE(blocks["additional"].setting, QString("extra_input"));
-        QCOMPARE(blocks["task"].targets, QList<SettingTarget>{SettingTarget::Calculation});
-        QCOMPARE(lines[blocks["task"].line], QString("task dft optimize"));
-        // A block that only the details write belongs to them alone.
-        setNwchemAdvanced(d, "molden_output", true);
-        const auto withMolden = generateNwchemInput(d).outline;
-        const auto property = std::find_if(withMolden.blocks.begin(), withMolden.blocks.end(),
-                                           [](const auto &b) { return b.keyword == "property"; });
-        QVERIFY(property != withMolden.blocks.end());
-        QCOMPARE(property->targets, QList<SettingTarget>{SettingTarget::Calculation});
-        QCOMPARE(property->setting, QString());
-        QCOMPARE(property->group, QString("visualization"));
-        // Without such settings nothing is marked; an empty input has no outline.
-        const auto plain = water();
-        const auto none = generateNwchemInput(plain).outline;
-        QVERIFY(none.advanced.isEmpty() && none.extra.isEmpty() && !none.blocks.isEmpty());
-        QVERIFY(NwchemGeneratedInput{}.outline.blocks.isEmpty());
-    }
-    void generatedProvenanceKeepsRepeatedLinesSeparate() {
-        auto d = water();
-        d.atoms[0].isotope = 18;
-        set(d, "method", "mp2");
-        set(d, "extra_input", "mp2\n  freeze 0\nend");
-        set(d, "extra_tasks", "task mp2 energy");
-        setNwchemAdvanced(d, "corr_freeze", 0); // Same text as the default, but explicitly set.
-        const auto generated = generateNwchemInput(d);
-        const auto lines = generated.text.split('\n');
-        const auto own = generated.outline.settings.value("corr_freeze");
-        QCOMPARE(own.size(), 1);
-        const int freeze = *own.begin();
-        QCOMPARE(lines[freeze], QString("  freeze 0"));
-        QVERIFY(generated.outline.advanced.contains(freeze));
-        QVERIFY(!generated.outline.extra.contains(freeze));
-        QCOMPARE(generated.outline.settings.value("extra_input").size(), 4);
-        QCOMPARE(generated.outline.settings.value("extra_tasks").size(), 2);
-        for (const auto &block : generated.outline.blocks) {
-            QVERIFY(block.line >= 0 && block.line + block.lines <= lines.size());
-            if (block.keyword == "geometry") {
-                QCOMPARE(block.title, QString("geometry（3 原子）"));
-                QCOMPARE(block.lines, 5); // Isotope mass does not confuse atom counting.
-            }
-        }
-        setNwchemAdvanced(d, "vectors_guess", "file");
-        setNwchemAdvanced(d, "vectors_input", "input.movecs");
-        setNwchemAdvanced(d, "vectors_output", "new.movecs");
-        const auto plan = executionPlan(d, files.path(), files.filePath("job"), false);
-        const auto resolvedLines = plan.input.split('\n');
-        const auto vectors = plan.inputOutline.settings.value("vectors_input");
-        QCOMPARE(vectors.size(), 1);
-        const int vectorLine = *vectors.begin();
-        QVERIFY(resolvedLines[vectorLine].contains(files.filePath("input.movecs")));
-        QVERIFY(plan.inputOutline.advanced.contains(vectorLine));
-    }
-    void followupBlocksKeepTheirOwnSettingsAndSharedDetails() {
-        auto d = water();
-        set(d, "method", "dft");
-        set(d, "task", "optimize");
-        set(d, "followup", true);
-        setNwchemAdvanced(d, "dft_grid_nodisk", true);
-        const auto generated = generateNwchemInput(d);
-        QStringList methods, bases;
-        for (const auto &block : generated.outline.blocks) {
-            if (block.keyword == "dft") {
-                methods << block.setting;
-                QCOMPARE(block.group, QString("dft"));
-            }
-            if (block.keyword == "basis")
-                bases << block.setting;
-        }
-        QCOMPARE(methods, (QStringList{"method", "followup_method"}));
-        QCOMPARE(bases, (QStringList{"basis", "followup_basis"}));
-        QCOMPARE(generated.outline.settings.value("dft_grid_nodisk").size(), 2);
-    }
-    void cubeAxesKeepExplicitAndAutomaticSourcesSeparate() {
-        auto d = water();
-        setNwchemAdvanced(d, "cube_output", true);
-        setNwchemAdvanced(d, "cube_x", QJsonArray{-3, 3, 20});
-        const auto generated = generateNwchemInput(d);
-        const auto x = generated.outline.settings.value("cube_x");
-        const auto automatic = generated.outline.settings.value("cube_padding");
-        QCOMPARE(x.size(), 1);
-        QCOMPARE(automatic.size(), 2);
-        QVERIFY(!automatic.contains(*x.begin()));
-        QCOMPARE(generated.outline.settings.value("cube_divisions"), automatic);
     }
     void blockSourcesLeadToTheirTabs() {
         auto d = water();

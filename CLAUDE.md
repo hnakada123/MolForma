@@ -24,12 +24,27 @@ QT_QPA_PLATFORM=offscreen ./build/test_editor someTestFunction   # one Qt Test s
 - Alternate trees exist locally: `build-no-vtk` (`-DMOLFORMA_ENABLE_VTK=OFF`) and `build-asan`
   (`-DCMAKE_CXX_FLAGS='-fsanitize=address -fno-omit-frame-pointer'`). Check rendering changes against the
   QPainter path too.
-- Each `tests/test_*.cpp` is its own executable/CTest test (`core`, `editor`, `coordinates`, `calculation`,
-  `advanced`, `execution`, `input_preview`, `results`, `history`, `output`, `molden`, `rendering`, `translations`, `mcp`).
+- Each `tests/test_*.cpp` is its own executable/CTest test, laid out by layer. Tests that need no widget are in
+  executables that link `molforma_core` alone (`test_mcp_server`: with `molforma_mcp`) and include no `ui/` header
+  (`cmake/CheckLayers.cmake` checks their sources), so a check of the core builds nothing of the UI
+  (`cmake --build build --target test_nwchem`): `core` (model, editing, coordinates, file formats), `services`
+  (storage, downloads, chemistry jobs, run sessions), `nwchem` (settings and their checks, task plan, generated
+  input and its outline, advanced options, CUBE/MOLDEN tasks, input read back), `runs` (launch settings, plans and
+  bundles, runs, queue, restarts, history scans), `result_readers` (NWChem logs, paths, spectra, energy profiles,
+  XYZ/CUBE/MOLDEN files and orbitals) and `mcp_server` (protocol, tools, policy and the headless runtime, in the
+  test's own process). The tests of a screen link `molforma_ui` and hold what constructs a window, panel, dialog or
+  view or needs another `ui/` header: `editor`, `coordinates`, `calculation`, `advanced`, `input_preview`, `output`,
+  `execution`, `history`, `results`, `molden`, `rendering`, `translations`, `mcp`.
+  A new test goes where its layer is. Tests that start the built `molforma` binary stay with the UI ones, so that
+  the core ones need it neither linked nor built: `test_mcp` launches it (`--mcp`, `--mcp-gui`, `--screenshot`),
+  `test_execution` uses it as the supervisor of runs. Helpers that several executables use are in
+  `tests/*_support.h` (`test_support.h`, and by area `nwchem_support.h`, `run_support.h`, `result_support.h`,
+  `mcp_support.h`), not copied.
   All run with `QT_QPA_PLATFORM=offscreen` and need no network, credentials or NWChem install:
-  `tests/fake_nwchem.cpp` builds a stand-in NWChem used by execution/history/output/mcp tests, and
+  `tests/fake_nwchem.cpp` builds a stand-in NWChem used by runs/mcp_server/execution/history/output/mcp tests,
+  `tests/fake_ssh.cpp` a stand-in ssh and scp for the remote runs of `test_execution`, and
   `tests/fake_xtb.cpp` a stand-in xtb used by services/editor tests.
-  `test_mcp` launches the built `molforma` binary; `test_execution` uses it as the supervisor of runs. Fixtures live in `tests/fixtures/` (`FIXTURE_DIR` in `test_core`).
+  Fixtures live in `tests/fixtures/` (`FIXTURE_DIR` in `test_core`).
   Tests must not touch the user's files: MolForma's settings use `mf::SettingsFormat` (`model/settings.h`: NativeFormat,
   an INI file on Windows and macOS; `mf::userPreferences()` there is the one factory of the store), so redirect
   `QSettings::setPath` for both NativeFormat and IniFormat and set

@@ -210,9 +210,10 @@ With optional real files, you can verify agreement with CUBE files written by NW
 QT_QPA_PLATFORM=offscreen MOLFORMA_MOLDEN_REAL=/path/to/benzene.molden \
   MOLFORMA_MOLDEN_CUBE=/path/to/benzene_homo.cube \
   MOLFORMA_MOLDEN_BASELINE=/path/to/baseline \
-  MOLFORMA_MOLDEN_REFERENCES=/path/to/references \
   MOLFORMA_MOLDEN_ARTIFACTS=/tmp/molforma-molden \
-  ./build/test_molden realBenzeneArtifacts realAngularReferences
+  ./build/test_molden realBenzeneArtifacts
+QT_QPA_PLATFORM=offscreen MOLFORMA_MOLDEN_REFERENCES=/path/to/references \
+  ./build/test_result_readers realAngularReferences
 ```
 
 - `MOLFORMA_MOLDEN_REAL`: MOLDEN file for benzene/6-31G (66 orbitals, the HOMO is Alpha 21). Shows the HOMO and LUMO and saves screenshots in `MOLFORMA_MOLDEN_ARTIFACTS`.

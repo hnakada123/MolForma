@@ -50,3 +50,19 @@ foreach(layer IN LISTS layers)
         endforeach()
     endforeach()
 endforeach()
+# The tests are laid out by layer too: the executables that link the core alone (CMakeLists.txt), and
+# the helpers they share, include nothing of the UI, and of MCP only the test of its server does.
+get_filename_component(tests "${MOLFORMA_SOURCE_DIR}/../tests" ABSOLUTE)
+foreach(name IN ITEMS test_core.cpp test_services.cpp test_nwchem.cpp test_runs.cpp test_result_readers.cpp
+        test_mcp_server.cpp test_support.h nwchem_support.h run_support.h result_support.h mcp_support.h)
+    if(NOT EXISTS "${tests}/${name}")
+        continue()
+    endif()
+    file(STRINGS "${tests}/${name}" includes REGEX "^[ \t]*#[ \t]*include[ \t]+\"")
+    foreach(include IN LISTS includes)
+        if(include MATCHES "\"ui/" OR (include MATCHES "\"mcp/"
+           AND NOT name MATCHES "^(test_mcp_server\\.cpp|mcp_support\\.h)$"))
+            message(FATAL_ERROR "A test of the core must not include this layer: ${tests}/${name}: ${include}")
+        endif()
+    endforeach()
+endforeach()

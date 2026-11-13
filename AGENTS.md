@@ -291,7 +291,7 @@ by responsibility, with paired headers and implementations in the same directory
   preference read): the values a run may use without asking are those the user entered in MolForma or
   confirmed before a run, and those saved in Preferences, which the caller hands it; values of loads,
   undo/redo and MCP count only once confirmed. The window keeps one for its session; `McpHeadless`,
-  where nothing is entered or confirmed, asks one that stays empty (`test_mcp
+  where nothing is entered or confirmed, asks one that stays empty (`test_mcp_server
   executionTrustCountsWhatTheUserEnteredOrConfirmed`).
   `stdio_transport.*` provides newline-delimited stdio transport. See `docs/mcp.md`.
 
@@ -322,8 +322,28 @@ ctest --test-dir build --output-on-failure
 
 Dependencies: Qt6 Widgets/Network/Test, Eigen3, zlib, Open Babel 3, CMake >= 3.21. Optional: RDKit,
 Qt6-built VTK and Qt SVG (`MOLFORMA_HAS_QTSVG`); code must build and pass tests without them.
-`tests/fake_nwchem.cpp` and `tests/fake_xtb.cpp` stand in for NWChem and xtb.
+`tests/fake_nwchem.cpp`, `tests/fake_ssh.cpp` and `tests/fake_xtb.cpp` stand in for NWChem, ssh/scp and xtb.
 CTest uses `QT_QPA_PLATFORM=offscreen`. Tests require no credentials or network.
+
+Each `tests/test_*.cpp` is one executable and one CTest test, and the tests are laid out by layer.
+Tests that need no widget are in executables that link `molforma_core` alone, include no `ui/` header
+(`cmake/CheckLayers.cmake` checks their sources and the helpers they share) and build without the UI
+(`cmake --build build --target test_runs`): `test_core` (model, editing, coordinates, file formats),
+`test_services` (storage, downloads, chemistry jobs, run sessions), `test_nwchem` (settings and their
+checks, task plan, generated input and its outline, advanced options, CUBE/MOLDEN tasks, input read
+back), `test_runs` (launch settings, plans and bundles, runs of the stand-in NWChem, queue, restarts,
+history scans), `test_result_readers` (NWChem logs, paths, spectra, energy profiles, XYZ/CUBE/MOLDEN
+files and orbitals) and `test_mcp_server` (the MCP server and the headless runtime in the test's own
+process; it links `molforma_mcp` too). The executables of the screens link `molforma_ui` and hold the
+tests that construct a window, panel, dialog or view or need another `ui/` header: `test_editor`,
+`test_coordinates`, `test_calculation`, `test_advanced`, `test_input_preview`, `test_output`,
+`test_execution`, `test_history`, `test_results`, `test_molden`, `test_rendering`,
+`test_translations` and `test_mcp`.
+Tests that start the built `molforma` (`test_mcp`: `--mcp`, `--mcp-gui`, `--screenshot`;
+`test_execution`: the supervisor of runs) stay with those, so that the core executables need it
+neither linked nor built. Put a new test where its layer is, and a helper that several executables
+need into `tests/*_support.h` (`test_support.h`, `nwchem_support.h`, `run_support.h`,
+`result_support.h`, `mcp_support.h`) instead of copying it.
 Format with `rg --files src tests -g '*.h' -g '*.cpp' -0 | xargs -0 clang-format -i`.
 
 ## Conventions

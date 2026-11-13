@@ -1,32 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-#include "editing/coordinates.h"
 #include "foundation/files.h"
+#include "result_support.h"
 #include "results/molden_orbitals.h"
 #include "ui/main_window.h"
 #include "ui/results_panel.h"
-#include <Eigen/Geometry>
 #include <QtTest>
 #include <QtWidgets>
-#include <numbers>
 using namespace mf;
 
-class MoldenTest : public QObject {
+class MoldenTest : public QObject, ResultFiles {
     Q_OBJECT
-    QTemporaryDir files, settings;
-    static Document hydrogen() {
-        return Document::fromXyz("1\nH\nH 0 0 0\n");
-    }
-    QString save(const QString &name, const QString &text) {
-        const auto path = files.filePath(name);
-        writeFile(path, text.toUtf8());
-        return path;
-    }
-    static QString sample() {
-        return "[Molden Format]\n[Atoms] AU\nH 1 1 0 0 0\n[GTO]\n1 0\nsp 1 0\n1 1 1\n"
-               "[MO]\nSym= a\nEne= -0.5\nSpin= Alpha\nOccup= 1\n1 1\n"
-               "Sym= b\nEne= 0.2\nSpin= Alpha\nOccup= 0\n2 1\n"
-               "Sym= c\nEne= -0.4\nSpin= Beta\nOccup= 1\n3 1\n";
-    }
+    QTemporaryDir settings;
     template <typename T> static T *widget(MainWindow &w, const char *name) {
         auto *p = w.findChild<T *>(name);
         Q_ASSERT(p);
@@ -39,213 +23,6 @@ class MoldenTest : public QObject {
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settings.path());
         QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
                            settings.path()); // MolForma uses NativeFormat.
-    }
-    void analyticOrbitalsAndNormalization() {
-        const Vec point = Vec(.3, .5, .7);
-        const double exponential = std::exp(-point.squaredNorm());
-        for (int l = 0; l <= 4; ++l) {
-            QMap<QString, QStringList> blocks{{"GTO", {"1 0", QString("%1 1 0").arg("spdfg"[l]), "1 1"}}};
-            double df = 1;
-            for (int n = 2 * l - 1; n > 1; n -= 2)
-                df *= n;
-            const double radial = std::pow(2 / std::numbers::pi, .75) * std::sqrt(std::pow(4., l) / df);
-            for (bool spherical : {false, true}) {
-                if (spherical) {
-                    blocks["5D"] = {};
-                    blocks["9G"] = {};
-                }
-                const int n = spherical && l >= 2 ? 2 * l + 1 : (l + 1) * (l + 2) / 2;
-                QVector<QVector<double>> coefficients;
-                for (int i = 0; i < n; ++i) {
-                    QVector<double> c(n);
-                    c[i] = 1;
-                    coefficients << c;
-                }
-                const auto w = moldenWavefunction(blocks, hydrogen(), coefficients);
-                QCOMPARE(w.normalization, "standard");
-                double sum = 0;
-                for (int i = 0; i < n; ++i) {
-                    const double v = w.value(i, point * BohrToAngstrom);
-                    sum += v * v;
-                }
-                if (spherical && l >= 2)
-                    QVERIFY(std::abs(sum - radial * radial * exponential * exponential *
-                                               std::pow(point.squaredNorm(), l)) < 1e-12);
-                double polynomial = std::pow(point.x(), l);
-                if (spherical && l == 2)
-                    polynomial = (3 * point.z() * point.z() - point.squaredNorm()) / 2;
-                if (spherical && l == 3)
-                    polynomial = (5 * std::pow(point.z(), 3) - 3 * point.z() * point.squaredNorm()) / 2;
-                if (spherical && l == 4)
-                    polynomial =
-                        (35 * std::pow(point.z(), 4) - 30 * point.z() * point.z() * point.squaredNorm() +
-                         3 * std::pow(point.squaredNorm(), 2)) /
-                        8;
-                QVERIFY(std::abs(w.value(0, point * BohrToAngstrom) - radial * exponential * polynomial) <
-                        1e-12);
-                auto embedded = blocks;
-                embedded["GTO"][2] = "1 " + QString::number(radial, 'g', 17);
-                const auto nw = moldenWavefunction(embedded, hydrogen(), coefficients);
-                QCOMPARE(nw.normalization, "nwchem");
-                for (int i = 0; i < n; ++i)
-                    QVERIFY(std::abs(nw.value(i, point * BohrToAngstrom) -
-                                     w.value(i, point * BohrToAngstrom)) < 1e-12);
-            }
-        }
-        // Cartesian xy has a different primitive normalization from xx.
-        QMap<QString, QStringList> blocks{{"GTO", {"1", "d 1", "1 1"}}};
-        auto w = moldenWavefunction(blocks, hydrogen(), {{0, 0, 0, 1, 0, 0}});
-        const double norm = std::pow(2 / std::numbers::pi, .75) * 4;
-        QVERIFY(std::abs(w.value(0, point * BohrToAngstrom) - norm * point.x() * point.y() * exponential) <
-                1e-12);
-    }
-    void contractedBasisAndBounds() {
-        QMap<QString, QStringList> b{{"GTO", {"1 0", "s 2 1", "2 .5", ".5 .6"}}};
-        // Valid standard coefficients need not describe a normalized contraction. Do not
-        // silently guess when the file cannot distinguish standard from embedded factors.
-        const auto standard = moldenWavefunction(b, hydrogen(), {{1}}, "standard");
-        const QMap<QString, QStringList> unnormalized{{"GTO", {"1 0", "s 2 1", "2 1", ".5 1.2"}}};
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, moldenWavefunction(unnormalized, hydrogen(), {{1}}));
-        const auto explicitStandard = moldenWavefunction(unnormalized, hydrogen(), {{1}}, "standard");
-        QVERIFY(std::abs(explicitStandard.value(0, Vec(.2, .3, .4)) - standard.value(0, Vec(.2, .3, .4))) <
-                1e-12);
-        auto embedded = b;
-        for (int i = 0; i < 2; ++i) {
-            const auto p = standard.shells[0].primitives[i];
-            embedded["GTO"][i + 2] =
-                QString::number(p.exponent, 'g', 17) + ' ' + QString::number(p.coefficient, 'g', 17);
-        }
-        const auto nw = moldenWavefunction(embedded, hydrogen(), {{1}});
-        QCOMPARE(nw.normalization, "nwchem");
-        for (double x : {0., .2, 1., 3.})
-            QVERIFY(std::abs(nw.value(0, Vec(x, 0, 0)) - standard.value(0, Vec(x, 0, 0))) < 1e-12);
-        for (const auto &bad : {QStringList{"1 0", "h 1 0", "1 1"}, QStringList{"1 0", "s 2 0", "1 1"},
-                                QStringList{"1 0", "s 1 0", "-1 1"}, QStringList{"1 0", "s 1 0", "nan 1"},
-                                QStringList{"2 0", "s 1 0", "1 1"}, QStringList{"1 0", "s 1 0", "1 0"}}) {
-            b["GTO"] = bad;
-            QVERIFY_THROWS_EXCEPTION(std::runtime_error, moldenWavefunction(b, hydrogen(), {{1}}));
-        }
-        b["GTO"] = {"1 0", "p 1 0", "1 1"};
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, moldenWavefunction(b, hydrogen(), {{0, 0, 0, 1}}));
-        b["GTO"] = {"1 0", "d 1 0", "1 1"};
-        b["5D7F9G"] = {};
-        QCOMPARE(moldenWavefunction(b, hydrogen(), {{1, 0, 0, 0, 0}}).shells[0].functions.size(), 5);
-        b["6D"] = {};
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, moldenWavefunction(b, hydrogen(), {{1}}));
-        b.remove("5D7F9G");
-        QVector<QVector<double>> sparse(20000, QVector<double>{1});
-        b["GTO"] = {"1 0"};
-        for (int i = 0; i < 100; ++i)
-            b["GTO"] << "g 1 0" << "1 1";
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, moldenWavefunction(b, hydrogen(), sparse));
-    }
-    void separableGridMatchesPointEvaluation() {
-        auto atoms = Document::fromXyz("2\noff-center\nH .23 -.41 .37\nH -.71 .53 -.29\n");
-        for (bool spherical : {false, true}) {
-            QMap<QString, QStringList> blocks{{"GTO",
-                                               {"1 0", "sp 2 0", ".7 .3 -.4", "2.1 .8 .9", "2 0", "d 2 0",
-                                                ".9 .6", "3.2 -.2", "f 1 0", "1.3 1", "g 1 0", "1.7 1"}}};
-            if (spherical)
-                blocks["5D7F9G"] = {};
-            const int basis = spherical ? 25 : 35;
-            QVector<double> coefficients(basis);
-            for (int i = 0; i < basis; ++i)
-                coefficients[i] = std::sin(i + .4);
-            const auto w =
-                moldenWavefunction(blocks, atoms, {coefficients, QVector<double>(basis)}, "standard");
-            const Vec origin(-1.21, -.83, -.47), step(.31, .27, .19);
-            const std::array<int, 3> grid{7, 6, 5};
-            const auto values = moldenOrbitalGrid(w, 0, origin, step, grid);
-            QCOMPARE(values.size(), 7 * 6 * 5);
-            int index = 0;
-            for (int x = 0; x < grid[0]; ++x)
-                for (int y = 0; y < grid[1]; ++y)
-                    for (int z = 0; z < grid[2]; ++z) {
-                        const auto expected = w.value(0, origin + step.cwiseProduct(Vec(x, y, z)));
-                        QVERIFY(std::abs(values[index++] - expected) < 1e-12);
-                    }
-            for (double v : moldenOrbitalGrid(w, 1, origin, step, grid))
-                QCOMPARE(v, 0.);
-            const auto edge = moldenOrbitalGrid(w, 0, origin, step, {101, 2, 3});
-            QVERIFY(std::abs(edge.last() - w.value(0, origin + step.cwiseProduct(Vec(100, 1, 2)))) < 1e-12);
-            QVERIFY_THROWS_EXCEPTION(std::runtime_error, moldenOrbitalGrid(w, 2, origin, step, grid));
-            QVERIFY_THROWS_EXCEPTION(std::runtime_error, moldenOrbitalGrid(w, 0, origin, step, {102, 2, 3}));
-        }
-    }
-    void isosurfaceNormals() {
-        // exp(-r²) around the origin (Bohr): a sphere whose normals point straight outward.
-        QString text = "gaussian\nlobe\n    1 -2.0 -2.0 -2.0\n";
-        for (int axis = 0; axis < 3; ++axis)
-            text += QString("   21 %1 %2 %3\n")
-                        .arg(axis == 0 ? .2 : 0.)
-                        .arg(axis == 1 ? .2 : 0.)
-                        .arg(axis == 2 ? .2 : 0.);
-        text += "    1 0.0 0.0 0.0 0.0\n";
-        for (int x = 0; x < 21; ++x)
-            for (int y = 0; y < 21; ++y)
-                for (int z = 0; z < 21; ++z) {
-                    const Vec p = Vec(x, y, z) * .2 - Vec::Constant(2);
-                    text += QString::number(std::exp(-p.squaredNorm()), 'e', 8) + (z % 6 == 5 ? "\n" : " ");
-                }
-        const auto r = readResult(save("lobe.cube", text + "\n"));
-        QVERIFY(!r.surface.isEmpty());
-        // A closed surface: triangles share exact vertices, every edge belongs to two of them, and
-        // the winding agrees with the outward normals.
-        QMap<std::pair<std::array<double, 3>, std::array<double, 3>>, int> edges;
-        const auto key = [](const Vec &v) { return std::array<double, 3>{v.x(), v.y(), v.z()}; };
-        for (const auto &t : r.surface) {
-            QVERIFY(t.positive);
-            for (const auto &[point, normal] : {std::pair{t.a, t.na}, {t.b, t.nb}, {t.c, t.nc}}) {
-                QVERIFY(std::abs(normal.norm() - 1) < 1e-9);
-                QVERIFY(normal.dot(point.normalized()) > .98);
-            }
-            QVERIFY((t.b - t.a).cross(t.c - t.a).dot(t.na + t.nb + t.nc) > 0);
-            for (const auto &[p, q] : {std::pair{t.a, t.b}, {t.b, t.c}, {t.c, t.a}})
-                ++edges[std::minmax(key(p), key(q))];
-        }
-        QVERIFY(std::all_of(edges.cbegin(), edges.cend(), [](int n) { return n == 2; }));
-        // The worker hands the normals over with the triangles.
-        const auto bin = files.filePath("lobe.bin");
-        saveResultData(bin, r);
-        const auto loaded = loadResultData(bin);
-        QCOMPARE(loaded.surface.size(), r.surface.size());
-        QVERIFY((loaded.surface.first().nb - r.surface.first().nb).norm() < 1e-6);
-    }
-    void metadataSelectionAndTransfer() {
-        const auto path = save("orbitals.molden", sample());
-        const auto r = readResult(path);
-        QCOMPARE(r.selectedOrbital, 0);
-        QCOMPARE(r.orbitals.size(), 3);
-        QVERIFY(r.orbitalError.isEmpty());
-        QVERIFY(!r.surface.isEmpty());
-        QCOMPARE(r.orbitalNormalization, "standard");
-        QCOMPARE(frontierOrbital(r.orbitals, "Alpha", true), 1);
-        QCOMPARE(frontierOrbital(r.orbitals, "Beta"), 2);
-        QCOMPARE(frontierOrbital(r.orbitals, "Beta", true), -1);
-        const auto p = readResult(path, .03, 0, 1);
-        bool positive = false, negative = false;
-        for (const auto &t : p.surface) {
-            positive |= t.positive;
-            negative |= !t.positive;
-            QVERIFY(t.positive ? t.a.x() > 0 : t.a.x() < 0);
-        }
-        QVERIFY(positive && negative);
-        const auto bin = files.filePath("result.bin");
-        saveResultData(bin, p);
-        const auto loaded = loadResultData(bin);
-        QCOMPARE(loaded.selectedOrbital, 1);
-        QCOMPARE(loaded.orbitalFrame, 0);
-        QCOMPARE(loaded.orbitalNormalization, p.orbitalNormalization);
-        QCOMPARE(loaded.surface.size(), p.surface.size());
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readResult(path, .03, 0, 100));
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readResult(path, .03, 0, 0, "auto", 1000));
-        auto incomplete = sample();
-        incomplete.replace("sp 1 0", "s 1 0").replace("1 1 1", "1 1");
-        const auto bad = save("incomplete.molden", incomplete);
-        QVERIFY(!readResult(bad).orbitalError.isEmpty());
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readResult(bad, .03, 0, 0));
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
-                                 readResult(save("duplicate.molden", sample() + "3 1\n")));
     }
     void nativeSelectionAndCancellation() {
         MainWindow w;
@@ -620,29 +397,6 @@ class MoldenTest : public QObject {
                     }
                 }
             }
-    }
-    void realAngularReferences() {
-        const auto root = qEnvironmentVariable("MOLFORMA_MOLDEN_REFERENCES");
-        if (root.isEmpty())
-            return;
-        for (const auto &name : {"spherical", "cartesian", "g_spherical"}) {
-            for (int orbital : {5, 20, 40}) {
-                const auto prefix = root + '/' + name;
-                const auto r = readResult(prefix + ".molden", .03, 0, orbital - 1);
-                const auto cube = readResult(prefix + '_' + QString::number(orbital) + ".cube");
-                QCOMPARE(r.orbitalNormalization, "nwchem");
-                QCOMPARE(r.selectedOrbital, orbital - 1);
-                QVERIFY2(std::abs(r.minimum - cube.minimum) < 2e-5, qPrintable(prefix));
-                QVERIFY2(std::abs(r.maximum - cube.maximum) < 2e-5, qPrintable(prefix));
-                QCOMPARE(r.surface.size(), cube.surface.size());
-                for (int i = 0; i < r.surface.size(); ++i) {
-                    QCOMPARE(r.surface[i].positive, cube.surface[i].positive);
-                    QVERIFY((r.surface[i].a - cube.surface[i].a).norm() < .001);
-                    QVERIFY((r.surface[i].b - cube.surface[i].b).norm() < .001);
-                    QVERIFY((r.surface[i].c - cube.surface[i].c).norm() < .001);
-                }
-            }
-        }
     }
 };
 int main(int argc, char **argv) {

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+#include "editing/atom_properties.h"
 #include "editing/chemistry.h"
 #include "editing/coordinates.h"
 #include "editing/coordination.h"
@@ -21,6 +22,7 @@
 #include "nwchem/nwchem_import.h"
 #include "project/atom_references.h"
 #include "results/results.h"
+#include "test_support.h"
 #include <QJsonDocument>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -2647,6 +2649,99 @@ class CoreTest : public QObject {
         auto copy = importStructure(tmp.filePath("ethanol.sdf"));
         QCOMPARE(copy.formula(), d.formula());
         QCOMPARE(copy.bonds.size(), d.bonds.size());
+    }
+    void gaussianAndXyzFrames() {
+        const auto g =
+            gaussianStructure("%chk=water.chk\n%mem=1GB\n#p B3LYP/6-31G(d) opt ! route\n\nwater\n\n"
+                              "-1 2\nO 0 0 0\nH(Fragment=1) 0.758 0 0.504\n1 0 -0.758 0 0.504\n\n");
+        QCOMPARE(g.atoms.size(), 3);
+        QCOMPARE(g.atoms[2].element, QString("H"));
+        QCOMPARE(g.atoms[2].position.x(), -0.758);
+        QCOMPARE(g.charge, -1);
+        QCOMPARE(g.multiplicity, 2);
+        QVERIFY_THROWS_EXCEPTION(std::exception, gaussianStructure("#p hf\n\nzmat\n\n0 1\nO\nH 1 0.96\n\n"));
+        // ONIOM rows: freeze code, coordinates, then the layer.
+        const auto oniom = gaussianStructure("#p oniom(b3lyp/6-31g*:uff)\n\nlayers\n\n0 1\n"
+                                             "O 0 0.0 0.0 0.0 H\nH -1 0.758 0.0 0.504 L\nH 0 0 0 1 H\n\n");
+        QCOMPARE(oniom.atoms[1].position, Vec(0.758, 0, 0.504));
+        QCOMPARE(oniom.atoms[2].position, Vec(0, 0, 1));
+        QTemporaryDir dir;
+        const auto path = dir.filePath("trajectory.xyz");
+        writeFile(path, "1\nfirst\nHe 0 0 0\n\n1\nsecond\nHe 0 0 1\n");
+        QCOMPARE(xyzFrames(QString::fromUtf8(readFile(path))).size(), 2);
+        QVERIFY_THROWS_EXCEPTION(std::exception, importStructure(path));
+        QCOMPARE(importStructure(path, {}, 1).atoms[0].position.z(), 1.0);
+        const auto nw = dir.filePath("input.nw");
+        writeFile(nw, "geometry\n Ne 0 0 0\nend\ncharge 0\ntask scf energy\n");
+        QCOMPARE(importStructure(nw).atoms[0].element, QString("Ne"));
+    }
+    void atomPropertiesAreAtomicAcrossSelection() {
+        auto d = Document::fromXyz("2\nmixed\nH 0 0 0\nC 1.5 0 0\n");
+        const auto before = d.project();
+        AtomProperties properties;
+        properties.isotope = 2; // Valid for H, invalid for C.
+        properties.charge = 1;
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, setAtomProperties(d, d.ids(), properties));
+        QCOMPARE(d.project(), before);
+        QVERIFY_THROWS_EXCEPTION(
+            std::runtime_error,
+            setCoordinateCell(d, d.atoms[1].id, CoordinateColumn::Mass, "400", CoordinateUnit::Angstrom));
+        QCOMPARE(d.project(), before);
+        properties = atomMassInput("13.0");
+        setAtomProperties(d, {d.atoms[1].id}, properties);
+        QCOMPARE(d.atoms[1].mass, 13.0);
+        QCOMPARE(d.atoms[1].isotope, 0);
+    }
+    void nativeAtomInput() {
+        auto a = coordinateAtom("D", {"1D0", "-2e-1", "0"}, "", CoordinateUnit::Bohr);
+        QCOMPARE(a.element, QString("H"));
+        QCOMPARE(a.isotope, 2);
+        QCOMPARE(a.position.x(), BohrToAngstrom);
+        QCOMPARE(a.position.y(), -0.2 * BohrToAngstrom);
+        auto b = coordinateAtom("@cl", {"1", "2", "3"}, "35", CoordinateUnit::Angstrom);
+        QCOMPARE(b.element, QString("Cl"));
+        QVERIFY(b.ghost);
+        QCOMPARE(b.isotope, 35);
+        b = coordinateAtom("C", {"1", "2", "3"}, "13.0", CoordinateUnit::Angstrom);
+        QCOMPARE(b.mass, 13.0);
+        QCOMPARE(b.isotope, 0);
+        QCOMPARE(coordinateText(b, CoordinateColumn::Mass, CoordinateUnit::Angstrom), QString("13.0"));
+        for (const auto &bad : {"nan", "inf", "1,2", "1e999", ""})
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                     coordinateAtom("C", {bad, "0", "0"}, "", CoordinateUnit::Angstrom));
+        for (const auto &bad : {"0", "-1", "nan", "999", "1e999"})
+            QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                     coordinateAtom("C", {"0", "0", "0"}, bad, CoordinateUnit::Angstrom));
+    }
+    void candidateChangesByOrder() {
+        const auto before = water();
+        // Read again from a file: new IDs, the same atoms in the same order, one appended.
+        auto after = Document::fromXyz("4\nagain\nO 0.0004 0 0\nH 0.758 0 0.504\nH -0.758 0 0.6\nHe 3 0 0\n");
+        auto changes = atomChanges(before, after);
+        QVERIFY(changes.byOrder);
+        QCOMPARE(changes.added, QSet<QString>{after.atoms[3].id});
+        QCOMPARE(changes.moved, QSet<QString>{after.atoms[2].id}); // 0.0004 Å counts as the same place.
+        QVERIFY(changes.removed.isEmpty());
+        // Fewer atoms: the rest of the original goes.
+        after.atoms.remove(1, 3);
+        changes = atomChanges(before, after);
+        QVERIFY(changes.byOrder && changes.added.isEmpty() && changes.moved.isEmpty());
+        QCOMPARE(changes.removed.size(), 2);
+        QCOMPARE(changes.removed[0].id, before.atoms[1].id);
+        // Elements in another order make another structure: all removed and added.
+        after = Document::fromXyz("3\nother\nH 0.758 0 0.504\nO 0 0 0\nH -0.758 0 0.504\n");
+        changes = atomChanges(before, after);
+        QVERIFY(!changes.byOrder);
+        QCOMPARE(changes.added.size(), 3);
+        QCOMPARE(changes.removed.size(), 3);
+        // Atoms that keep their IDs are matched by ID, also in another order.
+        after = before;
+        std::reverse(after.atoms.begin(), after.atoms.end());
+        after.atoms[0].position.x() += 0.01;
+        changes = atomChanges(before, after);
+        QVERIFY(!changes.byOrder);
+        QCOMPARE(changes.moved, QSet<QString>{before.atoms[2].id});
+        QVERIFY(changes.added.isEmpty() && changes.removed.isEmpty());
     }
 };
 QTEST_APPLESS_MAIN(CoreTest)

@@ -6,6 +6,7 @@
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_output.h"
 #include "nwchem/result_files.h"
+#include "nwchem_support.h"
 #include "results/molden_orbitals.h"
 #include "results/result_files.h"
 #include "results/result_loader.h"
@@ -17,28 +18,10 @@
 #include <QtTest>
 #include <QtWidgets>
 using namespace mf;
-// Executables carry .exe on Windows.
-#ifdef Q_OS_WIN
-#define EXE ".exe"
-#else
-#define EXE ""
-#endif
 
 class OutputTest : public QObject {
     Q_OBJECT
     QTemporaryDir settings;
-    static Document water() {
-        return Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");
-    }
-    static void base(Document &d, const QString &key, const QJsonValue &value) {
-        auto s = d.data["nwchem"].toObject();
-        s[key] = value;
-        d.data["nwchem"] = s;
-    }
-    static void both(Document &d) {
-        setNwchemAdvanced(d, "cube_output", true);
-        setNwchemAdvanced(d, "molden_output", true);
-    }
     template <typename T> static T *widget(MainWindow &w, const QString &name) {
         auto *p = w.findChild<T *>(name);
         Q_ASSERT(p);
@@ -179,145 +162,6 @@ class OutputTest : public QObject {
         qputenv("XDG_CONFIG_HOME", settings.path().toUtf8());
         qputenv("XDG_DATA_HOME", settings.path().toUtf8());
     }
-    void defaultsAndTasks() {
-        auto d = water();
-        const auto before = d.project();
-        QVERIFY(!nwchemInput(d).contains("dplot"));
-        QVERIFY(!nwchemInput(d).contains("property"));
-        QVERIFY(nwchemOutputFiles(d, validateNwchem(d)).isEmpty());
-        QCOMPARE(d.project(), before);
-        both(d);
-        const auto input = nwchemInput(d);
-        QVERIFY(input.contains("task scf energy\n\n# Visualization"));
-        QVERIFY(input.contains("property\n  vectors \"./molforma.movecs\"\n  moldenfile\n  molden_norm "
-                               "nwchem\nend\ntask scf property"));
-        QVERIFY(input.contains("spin total\n  gaussian\n  output molforma_density.cube\nend\ntask dplot"));
-        QVERIFY(input.indexOf("task scf energy") < input.indexOf("task scf property"));
-        QVERIFY(input.indexOf("task scf property") < input.indexOf("task dplot"));
-        // 40 intervals along the longest side (X: 7.516 Å), the same spacing on Y and Z.
-        auto grid = nwchemCubeGrid(d);
-        QCOMPARE(grid.divisions, (std::array<int, 3>{40, 32, 35}));
-        QCOMPARE(grid.points(), 41LL * 33 * 36);
-        QCOMPARE(grid.minimum[0], -3.758);
-        for (int axis = 0; axis < 3; ++axis)
-            QVERIFY(std::abs((grid.maximum[axis] - grid.minimum[axis]) / grid.divisions[axis] - 7.516 / 40) <
-                    1e-12);
-        QVERIFY(grid.minimum[2] < -3 && grid.maximum[2] > 3.504);
-        QVERIFY(std::abs(grid.minimum[2] + grid.maximum[2] - .504) < 1e-12); // Centered on the atoms.
-        base(d, "geometry_units", "bohr");
-        QVERIFY(nwchemInput(d).contains("limitxyz units angstrom"));
-        QCOMPARE(nwchemCubeGrid(d).minimum, grid.minimum);
-        base(d, "method", "dft");
-        QVERIFY(nwchemInput(d).contains("task dft property"));
-        base(d, "method", "mp2");
-        QVERIFY(nwchemInput(d).contains("task mp2 energy"));
-        QVERIFY(nwchemInput(d).contains("task scf property"));
-        QVERIFY(validateNwchem(d).warnings.join('\n').contains("参照HF"));
-        base(d, "method", "hf");
-        base(d, "task", "optimize_frequencies");
-        base(d, "numerical_frequencies", true);
-        const auto frequency = nwchemInput(d);
-        QVERIFY(frequency.indexOf("task scf optimize") < frequency.indexOf("task scf frequencies numerical"));
-        QVERIFY(frequency.indexOf("task scf frequencies numerical") <
-                frequency.lastIndexOf("task scf energy"));
-        QVERIFY(frequency.lastIndexOf("task scf energy") < frequency.indexOf("task scf property"));
-    }
-    void orbitalsAndSpin() {
-        auto d = water();
-        both(d);
-        setNwchemAdvanced(d, "cube_type", "orbital");
-        QVERIFY(nwchemInput(d).contains("spin alpha\n  orbitals view; 1; 5"));
-        QVERIFY(nwchemInput(d).contains("output molforma_alpha_mo5.cube"));
-        setNwchemAdvanced(d, "cube_orbital", "lumo");
-        QVERIFY(nwchemInput(d).contains("orbitals view; 1; 6"));
-        setNwchemAdvanced(d, "cube_spin", "beta");
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
-        base(d, "reference", "uhf");
-        d.charge = 1;
-        d.multiplicity = 2;
-        setNwchemAdvanced(d, "cube_orbital", "homo");
-        QVERIFY(nwchemInput(d).contains("spin beta\n  orbitals view; 1; 4"));
-        setNwchemAdvanced(d, "cube_orbital", "index");
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
-        setNwchemAdvanced(d, "cube_index", 7);
-        QVERIFY(nwchemInput(d).contains("orbitals view; 1; 7"));
-        setNwchemAdvanced(d, "cube_type", "density");
-        setNwchemAdvanced(d, "cube_index", "bad but inactive");
-        QVERIFY(!nwchemInput(d).contains("orbitals view"));
-        const QMap<QString, QString> types{{"density", "total"},
-                                           {"alpha_density", "alpha"},
-                                           {"beta_density", "beta"},
-                                           {"spin_density", "spindens"}};
-        for (auto it = types.begin(); it != types.end(); ++it) {
-            setNwchemAdvanced(d, "cube_type", it.key());
-            QVERIFY(nwchemInput(d).contains("spin " + it.value()));
-        }
-        auto h = Document::fromXyz("1\nH\nH 0 0 0\n");
-        h.multiplicity = 2;
-        base(h, "reference", "uhf");
-        both(h);
-        setNwchemAdvanced(h, "cube_type", "orbital");
-        setNwchemAdvanced(h, "cube_spin", "beta");
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(h));
-        setNwchemAdvanced(h, "cube_orbital", "lumo");
-        QVERIFY(nwchemInput(h).contains("orbitals view; 1; 1"));
-    }
-    // CUBEs of an excited state of TDDFT: its transition density from the CI vectors, its density and
-    // the difference from the ground state from the density matrices of a TDDFT gradient.
-    void excitedStateDensities() {
-        auto d = water();
-        base(d, "method", "dft");
-        setNwchemAdvanced(d, "cube_output", true);
-        setNwchemAdvanced(d, "cube_type", "transition_density");
-        QVERIFY(validateNwchem(d).errors.join('\n').contains(tr("励起状態（TDDFT）が必要")));
-        base(d, "tddft", true);
-        base(d, "tddft_roots", 3);
-        auto input = nwchemInput(d);
-        QVERIFY2(input.contains("tddft\n  nroots 3\n  notriplet\n  civecs\nend\n"), qPrintable(input));
-        QVERIFY(input.contains("task tddft energy"));
-        QVERIFY(input.contains("dplot\n  vectors \"./molforma.movecs\"\n"));
-        QVERIFY(input.contains("  civecs \"./molforma.civecs_singlet\"\n  root 1\n"));
-        QVERIFY(input.contains(
-            "spin total\n  gaussian\n  output molforma_transition_root1.cube\nend\ntask dplot"));
-        QVERIFY(input.indexOf("task tddft energy") < input.indexOf("task dplot"));
-        setNwchemAdvanced(d, "cube_root", 4);
-        QVERIFY(validateNwchem(d).errors.join('\n').contains("（3）"));
-        setNwchemAdvanced(d, "cube_root", 2);
-        QVERIFY(nwchemOutputFiles(d, validateNwchem(d)).contains("molforma_transition_root2.cube"));
-        // The density of the state and its difference from the ground state need its gradient.
-        setNwchemAdvanced(d, "cube_type", "excited_density");
-        input = nwchemInput(d);
-        QVERIFY2(input.contains("  civecs\n  target 2\n  grad\n    root 2\n  end\nend\n"), qPrintable(input));
-        QVERIFY(input.contains("task tddft gradient") && !input.contains("task tddft energy"));
-        QVERIFY(input.contains("dplot\n  limitxyz") && input.contains("  densmat \"./molforma.dmat\"\n"));
-        QVERIFY(input.contains("output molforma_excited_root2.cube"));
-        QVERIFY(validateNwchem(d).warnings.join('\n').contains("task tddft gradient"));
-        setNwchemAdvanced(d, "cube_type", "difference_density");
-        input = nwchemInput(d);
-        QVERIFY(input.contains("  densmat \"./molforma.diffdmat\"\n") &&
-                input.contains("output molforma_difference_root2.cube"));
-        // A permanent folder holds what NWChem writes there.
-        setNwchemAdvanced(d, "permanent_dir", "perm");
-        QVERIFY(nwchemInput(d).contains("  densmat \"./perm/molforma.diffdmat\"\n"));
-        setNwchemAdvanced(d, "permanent_dir", QJsonValue(QJsonValue::Undefined));
-        // Triplets beside the singlets: a gradient would not know which state; the transition density is
-        // that of a singlet.
-        base(d, "tddft_triplets", true);
-        QVERIFY(validateNwchem(d).errors.join('\n').contains(tr("三重項")));
-        setNwchemAdvanced(d, "cube_type", "transition_density");
-        QVERIFY(validateNwchem(d).errors.isEmpty());
-        QVERIFY(validateNwchem(d).warnings.join('\n').contains(tr("一重項")));
-        // An open shell writes one file of CI vectors.
-        base(d, "tddft_triplets", false);
-        d.charge = 1;
-        d.multiplicity = 2;
-        QVERIFY2(nwchemInput(d).contains("  civecs \"./molforma.civecs\"\n  root 2\n"),
-                 qPrintable(nwchemInput(d)));
-        // Without the CUBE, TDDFT is written as before.
-        setNwchemAdvanced(d, "cube_output", false);
-        input = nwchemInput(d);
-        QVERIFY(!input.contains("civecs") && input.contains("task tddft energy"));
-    }
     // A difference density: CUBE files of one grid added with factors, read by the viewer's reader.
     void combinedCubes() {
         QTemporaryDir dir;
@@ -374,45 +218,6 @@ class OutputTest : public QObject {
         QTRY_VERIFY_WITH_TIMEOUT(!panel->loading(), 30000);
         QCOMPARE(QFileInfo(panel->result().source).fileName(), QString("ui.cube"));
         QCOMPARE(panel->result().values[11], 11.0);
-    }
-    void validationAndPreservation() {
-        auto d = water();
-        both(d);
-        d.envelope["future"] = "keep";
-        for (const auto &bad : {QJsonValue(QJsonArray{-3, 3}), QJsonValue(QJsonArray{3, -3, 20}),
-                                QJsonValue(QJsonArray{-3, 3, 1.5}), QJsonValue("NaN")}) {
-            setNwchemAdvanced(d, "cube_x", bad);
-            QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
-        }
-        setNwchemAdvanced(d, "cube_x", QJsonArray{-3, 3, 30});
-        setNwchemAdvanced(d, "cube_divisions", 1000);
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
-        setNwchemAdvanced(d, "cube_divisions", 20);
-        QCOMPARE(nwchemCubeGrid(d).points(), 31LL * 17 * 19); // Y and Z keep the automatic spacing.
-        for (const auto &name :
-             {"../bad.cube", "input.nw", "bad name.cube", "bad;task.cube", "bad\n.cube", "/abs.cube"}) {
-            setNwchemAdvanced(d, "cube_filename", name);
-            QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
-        }
-        setNwchemAdvanced(d, "cube_filename", "orbitals.CUBE");
-        setNwchemAdvanced(d, "vectors_output", "orbitals.CUBE");
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(d));
-        setNwchemAdvanced(d, "vectors_output", "orbitals.movecs");
-        const auto saved = d.project();
-        auto next = Document::fromProject(saved);
-        QCOMPARE(nwchemAdvanced(next), nwchemAdvanced(d));
-        QCOMPARE(next.envelope["future"].toString(), "keep");
-        applyNwchemPreset(next, nwchemPresets().first().settings);
-        QCOMPARE(nwchemAdvanced(next), nwchemAdvanced(d)); // Output choices are not numerical presets.
-        setNwchemAdvanced(next, "cube_output", QJsonValue::Undefined);
-        setNwchemAdvanced(next, "cube_filename", "invalid while disabled");
-        QVERIFY(!nwchemInput(next).contains("dplot"));
-        QVERIFY(nwchemInput(next).contains("moldenfile"));
-        setNwchemAdvanced(next, "cube_output", true);
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, nwchemInput(next));
-        resetNwchemAdvanced(next, "visualization");
-        QVERIFY(!nwchemInput(next).contains("property"));
-        QCOMPARE(nwchemAdvanced(next)["vectors_output"].toString(), "orbitals.movecs");
     }
     void bundlePathsCollisionsAndViewer() {
         QTemporaryDir tmp;

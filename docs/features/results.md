@@ -210,9 +210,10 @@ ESRではNWChemのΔg（ppt）をg = ge I + 0.001 Δgに変換し、A（MHz）�
 QT_QPA_PLATFORM=offscreen MOLFORMA_MOLDEN_REAL=/path/to/benzene.molden \
   MOLFORMA_MOLDEN_CUBE=/path/to/benzene_homo.cube \
   MOLFORMA_MOLDEN_BASELINE=/path/to/baseline \
-  MOLFORMA_MOLDEN_REFERENCES=/path/to/references \
   MOLFORMA_MOLDEN_ARTIFACTS=/tmp/molforma-molden \
-  ./build/test_molden realBenzeneArtifacts realAngularReferences
+  ./build/test_molden realBenzeneArtifacts
+QT_QPA_PLATFORM=offscreen MOLFORMA_MOLDEN_REFERENCES=/path/to/references \
+  ./build/test_result_readers realAngularReferences
 ```
 
 - `MOLFORMA_MOLDEN_REAL`: ベンゼン/6-31GのMOLDEN（66軌道、HOMOはAlpha 21番）。HOMO・LUMOを表示し、`MOLFORMA_MOLDEN_ARTIFACTS` に画面画像を保存します。

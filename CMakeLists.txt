@@ -309,6 +309,21 @@ if(BUILD_TESTING)
     target_compile_definitions(test_core PRIVATE FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
                                                  RECIPES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/docs/recipes/samples")
     add_test(NAME core COMMAND test_core)
+    # Like test_core and test_services, these link no widget: what they test of NWChem input, of runs and
+    # their history, of the result readers and of the MCP server builds and runs without molforma_ui.
+    add_executable(test_nwchem tests/test_nwchem.cpp)
+    target_link_libraries(test_nwchem PRIVATE molforma_core Qt6::Test)
+    add_test(NAME nwchem COMMAND test_nwchem)
+    add_executable(test_runs tests/test_runs.cpp)
+    target_link_libraries(test_runs PRIVATE molforma_core Qt6::Test)
+    add_test(NAME runs COMMAND test_runs)
+    add_executable(test_result_readers tests/test_result_readers.cpp)
+    target_link_libraries(test_result_readers PRIVATE molforma_core Qt6::Test)
+    target_compile_definitions(test_result_readers PRIVATE FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+    add_test(NAME result_readers COMMAND test_result_readers)
+    add_executable(test_mcp_server tests/test_mcp_server.cpp)
+    target_link_libraries(test_mcp_server PRIVATE molforma_mcp Qt6::Test)
+    add_test(NAME mcp_server COMMAND test_mcp_server)
     add_executable(test_editor tests/test_editor.cpp)
     target_link_libraries(test_editor PRIVATE molforma_ui Qt6::Test)
     add_dependencies(test_editor fake_xtb)
@@ -332,6 +347,8 @@ if(BUILD_TESTING)
     add_executable(fake_nwchem tests/fake_nwchem.cpp)
     target_link_libraries(fake_nwchem PRIVATE Qt6::Core)
     add_dependencies(test_mcp fake_nwchem)
+    add_dependencies(test_mcp_server fake_nwchem)
+    add_dependencies(test_runs fake_nwchem)
     # A stand-in for ssh and scp (test_execution: runs on a remote destination).
     add_executable(fake_ssh tests/fake_ssh.cpp)
     target_link_libraries(fake_ssh PRIVATE Qt6::Core)
@@ -362,17 +379,19 @@ if(BUILD_TESTING)
     add_executable(test_molden tests/test_molden.cpp)
     target_link_libraries(test_molden PRIVATE molforma_ui Qt6::Test)
     add_test(NAME molden COMMAND test_molden)
-    set_tests_properties(core services editor coordinates calculation advanced execution input_preview results history output molden translations PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    set_tests_properties(core services nwchem runs result_readers mcp_server editor coordinates calculation advanced execution
+        input_preview results history output molden translations PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     if(WIN32)
         # The offscreen platform finds no fonts on Windows by itself; without them every text is a box.
         file(TO_CMAKE_PATH "$ENV{WINDIR}/Fonts" windows_fonts)
-        set_tests_properties(mcp core services editor rendering coordinates calculation advanced execution input_preview results
-            history output molden translations PROPERTIES
+        set_tests_properties(mcp core services nwchem runs result_readers mcp_server editor rendering coordinates calculation
+            advanced execution input_preview results history output molden translations PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_FONTDIR=${windows_fonts}"
-            # The copy of fake_nwchem in a temporary folder (test_execution) has no Qt beside it.
+            # The copy of fake_nwchem in a temporary folder (test_runs, test_execution) has no Qt beside it.
             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT6_INSTALL_PREFIX}/bin")
     endif()
-    set_tests_properties(core services editor coordinates calculation advanced execution input_preview results history output molden translations PROPERTIES TIMEOUT 120)
+    set_tests_properties(core services nwchem runs result_readers mcp_server editor coordinates calculation advanced execution
+        input_preview results history output molden translations PROPERTIES TIMEOUT 120)
     # Remote runs wait for the looks of their supervisors (every 10 seconds at the least).
     set_tests_properties(execution PROPERTIES TIMEOUT 240)
 endif()
@@ -470,9 +489,9 @@ if(MSVC)
     # loads (Qt's as well), Open Babel's plugins and a qt.conf beside it.
     set(runtime_targets molforma)
     if(BUILD_TESTING)
-        list(APPEND runtime_targets fake_nwchem fake_ssh fake_xtb test_mcp test_core test_services test_editor test_rendering test_coordinates
-            test_calculation test_advanced test_execution test_input_preview test_results test_history test_output
-            test_translations test_molden)
+        list(APPEND runtime_targets fake_nwchem fake_ssh fake_xtb test_mcp test_core test_services test_nwchem test_runs
+            test_result_readers test_mcp_server test_editor test_rendering test_coordinates test_calculation test_advanced
+            test_execution test_input_preview test_results test_history test_output test_translations test_molden)
     endif()
     foreach(target IN LISTS runtime_targets)
         add_custom_command(TARGET ${target} POST_BUILD

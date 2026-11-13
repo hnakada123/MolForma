@@ -2,9 +2,9 @@
 #include "foundation/files.h"
 #include "model/settings.h"
 #include "nwchem/nwchem.h"
-#include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_execution.h"
 #include "nwchem/nwchem_restart.h"
+#include "run_support.h"
 #include "ui/execution_panel.h"
 #include "ui/history_panel.h"
 #include "ui/main_window.h"
@@ -12,32 +12,10 @@
 #include <QtTest>
 #include <QtWidgets>
 using namespace mf;
-// Executables carry .exe on Windows.
-#ifdef Q_OS_WIN
-#define EXE ".exe"
-#else
-#define EXE ""
-#endif
 
 class HistoryTest : public QObject {
     Q_OBJECT
     QTemporaryDir settings;
-    static Document water(const QString &root) {
-        auto d = Document::fromXyz("3\nwater\nO 0 0 0\nH .758 0 .504\nH -.758 0 .504\n");
-        d.atoms[0].fixed = true;
-        d.envelope["future"] = QJsonObject{{"preserve", 12}};
-        setExecutionSetting(d, "job_root", root);
-        setExecutionSetting(d, "mode", "direct");
-        setExecutionSetting(d, "executable", QCoreApplication::applicationDirPath() + "/fake_nwchem" EXE);
-        return d;
-    }
-    static void manifest(ExecutionPlan &p, const QString &state, int seconds = 0) {
-        p.manifest["status"] = state;
-        p.manifest["elapsed_seconds"] = seconds;
-        if (state == "finished")
-            p.manifest["exit_code"] = 0;
-        writeFile(p.directory + "/run.json", QJsonDocument(p.manifest).toJson());
-    }
     template <typename T> static T *widget(MainWindow &w, const char *name) {
         auto *p = w.findChild<T *>(name);
         Q_ASSERT(p);
@@ -103,191 +81,6 @@ class HistoryTest : public QObject {
     }
     void init() {
         QSettings(SettingsFormat, QSettings::UserScope, "MolForma", "MolForma").clear();
-    }
-    void snapshotsLegacyAndMovedDirectories() {
-        QTemporaryDir tmp;
-        auto d = water(tmp.filePath("jobs"));
-        auto p = saveExecutionBundle(d, tmp.path());
-        auto entry = readHistoryEntry(p.directory);
-        QVERIFY(entry.valid);
-        QCOMPARE(entry.status, RunState::Prepared);
-        QCOMPARE(entry.method, "Hartree–Fock");
-        QCOMPARE(entry.basis, "STO-3G");
-        QCOMPARE(entry.name, QString("molforma"));
-        QVERIFY(historyIntegrity(entry).contains("入力・プロジェクトのSHA-256一致"));
-        // Under the default calculation name, the job is listed by the user's title; a chosen name wins.
-        {
-            auto titled = d;
-            auto s = nwchemSettings(titled);
-            s["title"] = "water HF";
-            titled.data["nwchem"] = s;
-            QCOMPARE(readHistoryEntry(saveExecutionBundle(titled, tmp.path()).directory).name,
-                     QString("water HF"));
-            s["start"] = "water_hf";
-            titled.data["nwchem"] = s;
-            QCOMPARE(readHistoryEntry(saveExecutionBundle(titled, tmp.path()).directory).name,
-                     QString("water_hf"));
-        }
-        const auto molecule = historyMolecule(p.directory);
-        QCOMPARE(molecule.atoms, 3);
-        QCOMPARE(molecule.charge, 0);
-        QCOMPARE(molecule.multiplicity, 1);
-        QCOMPARE(historyJobCount(tmp.filePath("jobs")), 3);
-        QCOMPARE(historyJobCount(tmp.filePath("missing")), -1);
-        const auto before = readFile(p.directory + "/project.molforma.json");
-        auto next = historyDocument(p.directory);
-        QCOMPARE(next.atoms[0].id, d.atoms[0].id);
-        QVERIFY(next.atoms[0].fixed);
-        QCOMPARE(next.envelope["future"], d.envelope["future"]);
-        QCOMPARE(nwchemSettings(next), nwchemSettings(d));
-        QCOMPARE(executionSettings(next)["reference_directory"].toString(), tmp.path());
-        QCOMPARE(readFile(p.directory + "/project.molforma.json"), before);
-        p.manifest.remove("calculation");
-        p.manifest.remove("project_sha256");
-        p.manifest.remove("project_directory");
-        manifest(p, "finished", 9);
-        entry = readHistoryEntry(p.directory);
-        QVERIFY(entry.valid);
-        QCOMPARE(entry.seconds, 9);
-        QCOMPARE(entry.basis, "STO-3G");
-        QVERIFY(historyIntegrity(entry).contains("旧記録"));
-        const auto moved = tmp.filePath("moved job");
-        QVERIFY(QDir().rename(p.directory, moved));
-        next = historyDocument(moved);
-        QCOMPARE(executionSettings(next)["job_root"].toString(), tmp.path());
-        QCOMPARE(readHistoryEntry(moved).directory, moved); // Never follow the original manifest directory.
-        QCOMPARE(readFile(moved + "/project.molforma.json"), before);
-    }
-    void hashesBoundsMissingAndMalformed() {
-        QTemporaryDir tmp;
-        auto p = saveExecutionBundle(water(tmp.path()), tmp.path());
-        const auto input = readFile(p.directory + "/input.nw");
-        writeFile(p.directory + "/input.nw", input + "# manually changed\n");
-        QVERIFY(historyIntegrity(readHistoryEntry(p.directory)).contains("一致しません"));
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, historyDocument(p.directory));
-        writeFile(p.directory + "/input.nw", input);
-        const auto project = readFile(p.directory + "/project.molforma.json");
-        writeFile(p.directory + "/project.molforma.json", project + " ");
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, historyDocument(p.directory));
-        writeFile(p.directory + "/project.molforma.json", project);
-        p.manifest["input"] = "../outside.nw";
-        manifest(p, "prepared");
-        QVERIFY(!readHistoryEntry(p.directory).valid);
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, historyDocument(p.directory));
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, historyText(p.directory, "../input.nw"));
-        writeFile(p.directory + "/run.json", "{");
-        QCOMPARE(readHistoryEntry(p.directory).status, RunState::Invalid);
-        writeFile(p.directory + "/run.json", QByteArray(256 * 1024 + 1, ' '));
-        QVERIFY(!readHistoryEntry(p.directory).valid);
-        QVERIFY(!readHistoryEntry(tmp.filePath("missing")).valid);
-        writeFile(p.directory + "/input.nw", QByteArray(8 * 1024 * 1024 + 1, 'a'));
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, historyText(p.directory, "input.nw"));
-#ifdef Q_OS_UNIX
-        QVERIFY(QFile::remove(p.directory + "/input.nw"));
-        QVERIFY(QFile::link(p.directory + "/project.molforma.json", p.directory + "/input.nw"));
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, historyText(p.directory, "input.nw"));
-#endif
-    }
-    void relativePathsAndExternalReferences() {
-        QTemporaryDir tmp;
-        auto d = water(tmp.filePath("jobs"));
-        setExecutionSetting(d, "reference_directory", "orbitals");
-        setExecutionSetting(d, "executable", "bin/nwchem");
-        setNwchemAdvanced(d, "vectors_guess", "file");
-        setNwchemAdvanced(d, "vectors_input", "guess.movecs");
-        setNwchemAdvanced(d, "vectors_output", "new.movecs");
-        auto p = saveExecutionBundle(d, tmp.path());
-        auto next = historyDocument(p.directory);
-        QCOMPARE(executionSettings(next)["executable"].toString(), tmp.filePath("bin/nwchem"));
-        QCOMPARE(executionSettings(next)["reference_directory"].toString(), tmp.filePath("orbitals"));
-        const auto preview = executionPreviewPlan(next, tmp.filePath("elsewhere"));
-        QVERIFY(preview.input.contains(tmp.filePath("orbitals/guess.movecs")));
-        p.manifest.remove("project_directory");
-        p.manifest["program"] = "bin/nwchem";
-        manifest(p, "prepared");
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, historyDocument(p.directory));
-        p.manifest["program"] = tmp.filePath("bin/nwchem");
-        manifest(p, "finished");
-        next = historyDocument(p.directory);
-        QCOMPARE(executionSettings(next)["executable"].toString(), tmp.filePath("bin/nwchem"));
-    }
-    void logEnergiesAndCsv() {
-        QTemporaryDir tmp;
-        auto p = saveExecutionBundle(water(tmp.path()), tmp.path());
-        writeFile(
-            p.directory + "/output.out",
-            QByteArray(150 * 1024, 'x') +
-                "\n Total SCF energy = -7.5D+01\n Total MP2 energy -75.1\n Total CCSD(T) energy: -75.2\n"
-                " Total DFT energy = -999"); // Partial final line must not become an energy.
-        auto e = readHistoryEntry(p.directory);
-        QVERIFY(e.energy.has_value());
-        QCOMPARE(*e.energy, -75.2);
-        QCOMPARE(e.energyMethod, "CCSD(T)");
-        auto log = historyText(p.directory, "output.out", true);
-        QVERIFY(log.size() < 132000);
-        QVERIFY(log.contains("末尾128"));
-        e.name = "=cmd,\"name\"\nline";
-        e.seconds = 12;
-        auto csv = historyCsv({e});
-        QVERIFY(csv.contains("\"'=cmd,\"\"name\"\"\nline\""));
-        QVERIFY(csv.contains("\"-75.2\""));
-        QVERIFY(historyStatus(RunState::Running).contains("稼働未確認"));
-        QCOMPARE(historyStatus(RunState::Running, true), "実行中");
-        QVERIFY(!historyStatus(RunState::Finished).contains("成功"));
-        // run.json records the states by their keys.
-        for (auto state : {RunState::Prepared, RunState::Starting, RunState::Running, RunState::Stopping,
-                           RunState::Finished, RunState::Failed, RunState::Cancelled, RunState::TimedOut,
-                           RunState::Interrupted})
-            QCOMPARE(runStateFromKey(runStateKey(state)), state);
-        QCOMPARE(runStateKey(RunState::TimedOut), "timed_out");
-        QCOMPARE(runStateFromKey("idle"), RunState::Invalid);
-        QCOMPARE(runStateFromKey("done"), RunState::Invalid);
-    }
-    void comparableEnergies() {
-        HistoryEntry a;
-        a.formula = "H2O";
-        a.method = "Hartree–Fock";
-        a.basis = "STO-3G";
-        a.energyMethod = "SCF";
-        auto b = a;
-        QVERIFY(historyIncomparable(a, b).isEmpty());
-        b.formula = "H4O2";
-        QVERIFY(historyIncomparable(a, b).contains("組成"));
-        b = a;
-        b.method = "DFT / B3LYP";
-        QVERIFY(historyIncomparable(a, b).contains("手法"));
-        b = a;
-        b.basis = "6-31G*";
-        QVERIFY(historyIncomparable(a, b).contains("基底"));
-        b = a;
-        b.energyMethod = "SCF・BSSE補正"; // A counterpoise-corrected energy is another quantity.
-        QVERIFY(historyIncomparable(a, b).contains("エネルギーの種類"));
-        b = a;
-        a.formula.clear();
-        b.formula.clear();
-        QVERIFY(historyIncomparable(a, b).contains("組成")); // Unknown compositions never compare.
-    }
-    void logSummaryOfTasks() {
-        QTemporaryDir tmp;
-        const auto log = tmp.filePath("output.out");
-        // The last task's last energy; correlated methods print theirs after the SCF.
-        writeFile(log, " NWChem Input Module\n Total SCF energy = -75.0\n NWChem Input Module\n"
-                       " Total SCF energy = -75.5\n Total MP2 energy = -75.7\n NWChem Input Module\n");
-        auto s = nwchemLogSummary(log);
-        QCOMPARE(s["energy"].toDouble(), -75.7);
-        QCOMPARE(s["energy_method"].toString(), "MP2");
-        QCOMPARE(s["energy_source"].toString(), "final");
-        QVERIFY(!s["normal_termination"].toBool());
-        // Counterpoise: the corrected energy, not the last monomer's.
-        writeFile(log, " NWChem Input Module\n Total SCF energy = -149.9277\n Total SCF energy = -74.9644\n"
-                       "  Supermolecular energy =    -149.9277\n       Corrected energy =    -149.9276\n"
-                       " Total times  cpu: 1.0s\n");
-        s = nwchemLogSummary(log);
-        QCOMPARE(s["energy"].toDouble(), -149.9276);
-        QCOMPARE(s["energy_source"].toString(), "bsse_corrected");
-        QVERIFY(s["normal_termination"].toBool());
-        writeFile(log, "no energies\n");
-        QVERIFY(!nwchemLogSummary(log).contains("energy"));
     }
     void runSummaryAndProcessRecord() {
         QTemporaryDir tmp;
@@ -402,63 +195,6 @@ class HistoryTest : public QObject {
         QCOMPARE(rows(w).first()->text(0), "中断");
         QVERIFY(historyStatus(RunState::Interrupted).contains("中断"));
 #endif
-    }
-    void scanningCancellationAndInvalidRows() {
-        QTemporaryDir tmp;
-        const auto p = saveExecutionBundle(water(tmp.path()), tmp.path());
-        QVERIFY(QDir().mkpath(tmp.filePath("bad")));
-        writeFile(tmp.filePath("bad/run.json"), "not JSON");
-        QVERIFY(QDir().mkpath(tmp.filePath("unrelated/nested")));
-        writeFile(tmp.filePath("unrelated/nested/run.json"), QJsonDocument(p.manifest).toJson());
-#ifdef Q_OS_UNIX
-        QVERIFY(QFile::link(p.directory, tmp.filePath("symlink")));
-#endif
-        HistoryScan scan;
-        QSignalSpy done(&scan, &HistoryScan::finished);
-        scan.start(tmp.path());
-        scan.cancel();
-        QTest::qWait(30);
-        QCOMPARE(done.count(), 0);
-        scan.start(tmp.path());
-        QTRY_COMPARE(done.count(), 1);
-        QCOMPARE(scan.entries.size(), 2);
-        QVERIFY(std::any_of(scan.entries.cbegin(), scan.entries.cend(),
-                            [](const auto &e) { return e.status == RunState::Invalid; }));
-        scan.start(tmp.filePath("missing"));
-        QCOMPARE(done.count(), 2);
-        QVERIFY(scan.entries.isEmpty());
-        QVERIFY(!scan.message.isEmpty());
-        scan.start(tmp.path());
-        scan.start(tmp.filePath("bad"));
-        QTRY_COMPARE(done.count(), 3);
-        QVERIFY(scan.entries.isEmpty()); // No stale rows from the superseded root.
-    }
-    void rescansReadOnlyChangedJobs() {
-        // A scan keeps the readings of ended jobs whose files are unchanged; a note or a rewritten
-        // record is read again.
-        QTemporaryDir tmp;
-        auto p = saveExecutionBundle(water(tmp.path()), tmp.path());
-        manifest(p, "finished", 3);
-        HistoryScan scan;
-        QSignalSpy done(&scan, &HistoryScan::finished);
-        scan.start(tmp.path());
-        QTRY_COMPARE(done.count(), 1);
-        QCOMPARE(scan.entries.size(), 1);
-        QCOMPARE(scan.entries[0].seconds, 3);
-        scan.start(tmp.path());
-        QTRY_COMPARE(done.count(), 2);
-        QCOMPARE(scan.entries[0].seconds, 3);
-        QTest::qWait(5);
-        setHistoryMemo(p.directory, "second look");
-        scan.start(tmp.path());
-        QTRY_COMPARE(done.count(), 3);
-        QCOMPARE(scan.entries[0].memo, QString("second look"));
-        QTest::qWait(5);
-        manifest(p, "finished", 7);
-        scan.start(tmp.path());
-        QTRY_COMPARE(done.count(), 4);
-        QCOMPARE(scan.entries[0].seconds, 7);
-        QCOMPARE(scan.entries[0].memo, QString("second look"));
     }
     void listFiltersSortingSelectionAndReuse() {
         QTemporaryDir tmp;
@@ -994,31 +730,6 @@ class HistoryTest : public QObject {
         QCOMPARE(log->toPlainText(), "original\n");
         widget<QCheckBox>(w, "historyFollow")->setChecked(true);
         QTRY_COMPARE(log->toPlainText(), "later\n");
-    }
-    void trashCompletedBundle() {
-#ifdef Q_OS_LINUX
-        QTemporaryDir tmp;
-        const auto saved = qgetenv("XDG_DATA_HOME");
-        struct Restore {
-            QByteArray value;
-            ~Restore() {
-                if (value.isNull())
-                    qunsetenv("XDG_DATA_HOME");
-                else
-                    qputenv("XDG_DATA_HOME", value);
-            }
-        } restore{saved};
-        const auto data = tmp.filePath("data");
-        QVERIFY(QDir().mkpath(data));
-        qputenv("XDG_DATA_HOME", data.toUtf8());
-        QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation), data);
-        const auto p = saveExecutionBundle(water(tmp.filePath("jobs")), tmp.path());
-        trashHistoryEntry(p.directory, tmp.filePath("jobs"), {});
-        QVERIFY(!QFileInfo::exists(p.directory));
-        const auto files = QDir(data + "/Trash/files").entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-        QCOMPARE(files.size(), 1);
-        QCOMPARE(readFile(data + "/Trash/files/" + files.first() + "/input.nw"), p.input.toUtf8());
-#endif
     }
 };
 int main(int argc, char **argv) {

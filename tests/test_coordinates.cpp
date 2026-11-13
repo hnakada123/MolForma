@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-#include "editing/atom_properties.h"
 #include "editing/chemistry.h"
 #include "editing/peptide.h"
 #include "foundation/files.h"
@@ -462,44 +461,6 @@ class CoordinatesTest : public QObject {
         }
         QVERIFY(prompted);
     }
-    void atomPropertiesAreAtomicAcrossSelection() {
-        auto d = Document::fromXyz("2\nmixed\nH 0 0 0\nC 1.5 0 0\n");
-        const auto before = d.project();
-        AtomProperties properties;
-        properties.isotope = 2; // Valid for H, invalid for C.
-        properties.charge = 1;
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, setAtomProperties(d, d.ids(), properties));
-        QCOMPARE(d.project(), before);
-        QVERIFY_THROWS_EXCEPTION(
-            std::runtime_error,
-            setCoordinateCell(d, d.atoms[1].id, CoordinateColumn::Mass, "400", CoordinateUnit::Angstrom));
-        QCOMPARE(d.project(), before);
-        properties = atomMassInput("13.0");
-        setAtomProperties(d, {d.atoms[1].id}, properties);
-        QCOMPARE(d.atoms[1].mass, 13.0);
-        QCOMPARE(d.atoms[1].isotope, 0);
-    }
-    void nativeAtomInput() {
-        auto a = coordinateAtom("D", {"1D0", "-2e-1", "0"}, "", CoordinateUnit::Bohr);
-        QCOMPARE(a.element, QString("H"));
-        QCOMPARE(a.isotope, 2);
-        QCOMPARE(a.position.x(), BohrToAngstrom);
-        QCOMPARE(a.position.y(), -0.2 * BohrToAngstrom);
-        auto b = coordinateAtom("@cl", {"1", "2", "3"}, "35", CoordinateUnit::Angstrom);
-        QCOMPARE(b.element, QString("Cl"));
-        QVERIFY(b.ghost);
-        QCOMPARE(b.isotope, 35);
-        b = coordinateAtom("C", {"1", "2", "3"}, "13.0", CoordinateUnit::Angstrom);
-        QCOMPARE(b.mass, 13.0);
-        QCOMPARE(b.isotope, 0);
-        QCOMPARE(coordinateText(b, CoordinateColumn::Mass, CoordinateUnit::Angstrom), QString("13.0"));
-        for (const auto &bad : {"nan", "inf", "1,2", "1e999", ""})
-            QVERIFY_THROWS_EXCEPTION(std::runtime_error,
-                                     coordinateAtom("C", {bad, "0", "0"}, "", CoordinateUnit::Angstrom));
-        for (const auto &bad : {"0", "-1", "nan", "999", "1e999"})
-            QVERIFY_THROWS_EXCEPTION(std::runtime_error,
-                                     coordinateAtom("C", {"0", "0", "0"}, bad, CoordinateUnit::Angstrom));
-    }
     void refreshUpdatesCellsInPlace() {
         // A refresh updates the cells of the rows there are; only another number of atoms resets them.
         MainWindow w;
@@ -914,36 +875,6 @@ class CoordinatesTest : public QObject {
         emit panel->fitRequested();
         QTest::qWait(40);
         QVERIFY(QRectF(view->rect()).contains(view->atomScreenPosition(far)));
-    }
-    void candidateChangesByOrder() {
-        const auto before = water();
-        // Read again from a file: new IDs, the same atoms in the same order, one appended.
-        auto after = Document::fromXyz("4\nagain\nO 0.0004 0 0\nH 0.758 0 0.504\nH -0.758 0 0.6\nHe 3 0 0\n");
-        auto changes = atomChanges(before, after);
-        QVERIFY(changes.byOrder);
-        QCOMPARE(changes.added, QSet<QString>{after.atoms[3].id});
-        QCOMPARE(changes.moved, QSet<QString>{after.atoms[2].id}); // 0.0004 Å counts as the same place.
-        QVERIFY(changes.removed.isEmpty());
-        // Fewer atoms: the rest of the original goes.
-        after.atoms.remove(1, 3);
-        changes = atomChanges(before, after);
-        QVERIFY(changes.byOrder && changes.added.isEmpty() && changes.moved.isEmpty());
-        QCOMPARE(changes.removed.size(), 2);
-        QCOMPARE(changes.removed[0].id, before.atoms[1].id);
-        // Elements in another order make another structure: all removed and added.
-        after = Document::fromXyz("3\nother\nH 0.758 0 0.504\nO 0 0 0\nH -0.758 0 0.504\n");
-        changes = atomChanges(before, after);
-        QVERIFY(!changes.byOrder);
-        QCOMPARE(changes.added.size(), 3);
-        QCOMPARE(changes.removed.size(), 3);
-        // Atoms that keep their IDs are matched by ID, also in another order.
-        after = before;
-        std::reverse(after.atoms.begin(), after.atoms.end());
-        after.atoms[0].position.x() += 0.01;
-        changes = atomChanges(before, after);
-        QVERIFY(!changes.byOrder);
-        QCOMPARE(changes.moved, QSet<QString>{before.atoms[2].id});
-        QVERIFY(changes.added.isEmpty() && changes.removed.isEmpty());
     }
     void labelsFilterAndSelectionBar() {
         MainWindow w;
