@@ -3,8 +3,8 @@
 #include "foundation/i18n.h"
 #include "model/setting_target.h"
 #include "nwchem/run_record.h"
+#include "results/nwchem_log.h"
 #include <QJsonObject>
-#include <QRegularExpression>
 
 namespace mf {
 QString runDiagnosisText(const QString &code) {
@@ -50,33 +50,26 @@ QJsonArray diagnoseRun(RunState state, const QString &output, const QString &err
         add("time_limit", "timeout_seconds", SettingTarget::Execution, "run", {});
     if (state == RunState::Failed && !launchError.isEmpty())
         add("launch", "executable", SettingTarget::Execution, "run", launchError);
-    struct Pattern {
-        const char *code, *setting, *expression;
+    // What NWChem's messages say went wrong (the wording is the log reader's), with the setting each
+    // failure points at: the last line that reports it, of the output first.
+    struct Advice {
+        NwchemFailure failure;
+        const char *code, *setting;
         SettingTarget target;
     };
-    const Pattern patterns[]{
-        {"scf_convergence", "scf_maxiter",
-         "(?:scf|dft).*?(?:failed to converge|convergence failure|not converged)|dft energy failed",
-         SettingTarget::Calculation},
-        {"optimization_limit", "opt_maxiter",
-         "maximum number of (?:optimization )?steps exceeded|failed to converge in.*steps|driver:.*too many "
-         "steps",
-         SettingTarget::Calculation},
-        {"memory", "memory_mb",
-         "out of memory|insufficient memory|not enough memory|ma_alloc.*fail|failed to allocate",
-         SettingTarget::Execution},
-        {"basis", "basis", "failed opening basis file|error in the specified basis set",
-         SettingTarget::Calculation}};
-    for (const auto &pattern : patterns) {
-        const QRegularExpression expression(QString::fromLatin1(pattern.expression),
-                                            QRegularExpression::CaseInsensitiveOption);
+    const Advice advices[]{
+        {NwchemFailure::ScfConvergence, "scf_convergence", "scf_maxiter", SettingTarget::Calculation},
+        {NwchemFailure::OptimizationLimit, "optimization_limit", "opt_maxiter", SettingTarget::Calculation},
+        {NwchemFailure::Memory, "memory", "memory_mb", SettingTarget::Execution},
+        {NwchemFailure::Basis, "basis", "basis", SettingTarget::Calculation}};
+    const std::pair<QString, QStringList> sources[]{{"stdout", output.split('\n')},
+                                                    {"stderr", errors.split('\n')}};
+    for (const auto &advice : advices) {
         bool found = false;
-        for (const auto &source :
-             {qMakePair(QString("stdout"), output), qMakePair(QString("stderr"), errors)}) {
-            const auto lines = source.second.split('\n');
+        for (const auto &[source, lines] : sources) {
             for (auto line = lines.crbegin(); line != lines.crend(); ++line)
-                if (expression.match(*line).hasMatch()) {
-                    add(pattern.code, pattern.setting, pattern.target, source.first, line->trimmed());
+                if (nwchemLineReports(*line, advice.failure)) {
+                    add(advice.code, advice.setting, advice.target, source, line->trimmed());
                     found = true;
                     break;
                 }

@@ -4,8 +4,19 @@
 namespace mf {
 QStringList parseSequence(const QString &text);
 Residue residue(const Document &d, const QString &id);
-// A residue of a polymer chain: an amino acid (N, CA, C) or a nucleotide (C1').
+// An amino acid residue: one with the backbone atoms N, CA and C.
+bool aminoResidue(const Residue &r);
+// A residue of a polymer chain: an amino acid or a nucleotide (C1').
 bool polymerResidue(const Residue &r);
+// The trace of a backbone display: each chain's polymer residues through their Cα (P of nucleotides,
+// else C4'), between residues close enough to follow each other, so that gaps in a structure stay open.
+struct BackboneTrace {
+    QVector<std::pair<int, int>>
+        segments;          // The pieces of the line, by the indices of the atoms at their ends.
+    QVector<bool> nodes;   // By atom index: the atoms the line runs through.
+    QSet<QString> covered; // The other atoms of the polymer residues: the line stands for them.
+};
+BackboneTrace backboneTrace(const Document &d);
 // Whether a residue name is one of water (HOH, WAT, TIP3, …).
 bool waterResidue(const QString &code);
 QString residueForAtom(const Document &d, const QString &atom);

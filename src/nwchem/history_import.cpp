@@ -6,7 +6,7 @@
 #include "nwchem/nwchem.h"
 #include "nwchem/nwchem_import.h"
 #include "nwchem/run_record.h"
-#include "results/results.h"
+#include "results/nwchem_log.h"
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFileInfo>
@@ -48,14 +48,16 @@ void copyFolder(const QString &from, const QString &to, int &count) {
 // summary, the wall time NWChem printed and the known failures.
 void recordLog(const QString &directory, QJsonObject &manifest) {
     const auto log = jobFile(directory, JobFile::output);
-    const auto summary = nwchemLogSummary(log);
+    std::optional<double> wall;
+    const auto summary = nwchemLogSummary(log, &wall);
     const bool normal = summary["normal_termination"].toBool();
     manifest["external"] = true;
     RunEnd end{.state = normal ? RunState::Finished : RunState::Interrupted,
                .finished = QFileInfo(log).lastModified(),
                .summary = summary,
-               .wallTime = true,
                .needsLog = true};
+    if (wall)
+        end.elapsedSeconds = qint64(*wall);
     if (normal)
         end.exitCode = 0;
     else
@@ -84,10 +86,7 @@ QString completeSavedJob(const QString &directory) {
 }
 bool nwchemLog(const QString &path) {
     QFile file(path);
-    if (!file.open(QIODevice::ReadOnly))
-        return false;
-    const auto head = file.read(64 * 1024);
-    return head.contains("Northwest Computational Chemistry Package") || head.contains("NWChem Input Module");
+    return file.open(QIODevice::ReadOnly) && nwchemOutputStart(file.read(64 * 1024));
 }
 // The first structure of a log, for a job without an input MolForma can read.
 Document firstStructure(const QString &path) {

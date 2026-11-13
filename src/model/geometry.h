@@ -20,6 +20,10 @@ struct UniformGrid {
 UniformGrid uniformGrid(const Vec &low, const Vec &high, int divisions);
 // Geometric center (unweighted mean position) of the atoms.
 Vec centroid(const Document &d, const Ids &ids);
+// Hydrogen bonds X–H···Y (X, Y = N, O, F) by geometry: the hydrogen has X as its only bond (dative bonds
+// aside), Y is 1.5–2.6 Å from it and the angle X–H···Y is at least 120°. Ghosts take no part. The
+// (hydrogen, acceptor) atom IDs in the order of the hydrogens; none for more than 5000 atoms.
+QVector<std::pair<QString, QString>> hydrogenBonds(const Document &d);
 double measure(const Document &d, const Ids &ids);
 double measure(const QVector<Vec> &positions); // Distance, angle or dihedral of 2–4 points.
 void setDimension(Document &d, const Ids &ids, double value);

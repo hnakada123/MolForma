@@ -13,9 +13,18 @@ set(nwchem_dependencies foundation nwchem model editing results)
 set(io_dependencies foundation io model editing nwchem results)
 set(mcp_dependencies foundation mcp model editing results nwchem io)
 set(ui_dependencies ${layers})
+# Open Babel is called by the layers that link it (CMakeLists.txt): what the others need of an element or
+# a structure, they ask of those.
+set(openbabel_layers editing nwchem io)
 foreach(layer IN LISTS layers)
     file(GLOB files "${MOLFORMA_SOURCE_DIR}/${layer}/*.cpp" "${MOLFORMA_SOURCE_DIR}/${layer}/*.h")
     foreach(source IN LISTS files)
+        if(NOT layer IN_LIST openbabel_layers)
+            file(STRINGS "${source}" babel REGEX "^[ \t]*#[ \t]*include[ \t]+<openbabel/")
+            if(babel)
+                message(FATAL_ERROR "Open Babel is not called from this layer: ${source}: ${babel}")
+            endif()
+        endif()
         file(STRINGS "${source}" includes REGEX "^[ \t]*#[ \t]*include[ \t]+\"")
         foreach(include IN LISTS includes)
             # Workspace panels communicate through requests wired by WorkspaceController.

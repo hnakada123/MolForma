@@ -245,6 +245,15 @@ class CoreTest : public QObject {
         }
         QCOMPARE(element("U").number, 92);
         QCOMPARE(element("Nh").number, 113);
+        // The van der Waals radii of the spacefill style, and the one test of what a metal is.
+        QCOMPARE(element("H").vdw, 1.1);
+        QCOMPARE(element("C").vdw, 1.7);
+        for (const auto &e : elements())
+            QVERIFY2(e.vdw >= 1 && e.vdw < 4, qPrintable(e.symbol));
+        for (const auto *symbol : {"Li", "Na", "Al", "Fe", "Zn", "Sn", "Bi", "U", "Rf"})
+            QVERIFY2(element(symbol).metal(), symbol);
+        for (const auto *symbol : {"H", "B", "C", "Si", "Ge", "As", "Sb", "Te", "Po", "I", "At", "Rn"})
+            QVERIFY2(!element(symbol).metal(), symbol);
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, element("Uue"));
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, element("Ubn"));
     }
@@ -648,6 +657,41 @@ class CoreTest : public QObject {
         }
     }
     // The same of an mmCIF file, from its entities; without them, from the records and the water names.
+    void alternateLocations() {
+        // One choice for PDB and mmCIF files: in each residue the location with the highest total
+        // occupancy, the first by name among equals; or the one location asked for.
+        AltlocChoice best({});
+        best.add("A 12", "A", .3);
+        best.add("A 12", "B", .7);
+        best.add("A 12", "A", .3);
+        best.add("A 12", {}, 1);
+        best.add("A 13", "B", .5);
+        best.add("A 13", "A", .5);
+        QVERIFY(best.keeps("A 12", {}) && best.keeps("A 12", "B") && !best.keeps("A 12", "A"));
+        QVERIFY(best.keeps("A 13", "A") && !best.keeps("A 13", "B"));
+        QVERIFY(best.keeps("A 14", {}) && !best.keeps("A 14", "A"));
+        AltlocChoice second("B");
+        second.add("A 12", "A", .9);
+        second.add("A 12", "B", .1);
+        QVERIFY(second.keeps("A 12", {}) && second.keeps("A 12", "B") && !second.keeps("A 12", "A"));
+        // And one count of what an entry holds, from the atoms of either format.
+        MacromoleculeContents contents;
+        MacromoleculeCount count(contents);
+        count.add("GLY A 1", "A", "GLY", ResidueKind::Polymer);
+        count.add("GLY A 1", "A", "GLY", ResidueKind::Polymer, "LYSOZYME");
+        count.add("ALA A 2", "A", "ALA", ResidueKind::Polymer, "LYSOZYME");
+        count.add("ZN A 101", "A", "ZN", ResidueKind::Ligand);
+        count.add("ZN A 102", "A", "ZN", ResidueKind::Ligand);
+        count.add("HOH B 201", "B", "HOH", ResidueKind::Water);
+        QCOMPARE(contents.chains.size(), 2);
+        QCOMPARE(contents.chains[0].description, QString("LYSOZYME"));
+        QCOMPARE(contents.chains[0].residues, 2);
+        QCOMPARE(contents.chains[0].groups, QStringList{"ZN"});
+        QCOMPARE(contents.chains[1].groups, QStringList{"HOH"});
+        QCOMPARE(contents.polymers, 2);
+        QCOMPARE(contents.ligands, 2);
+        QCOMPARE(contents.waters, 1);
+    }
     void mmcifChainsAndComponents() {
         const QByteArray atoms =
             "loop_\n_atom_site.group_PDB\n_atom_site.id\n_atom_site.type_symbol\n"
@@ -1548,6 +1592,86 @@ class CoreTest : public QObject {
         QVERIFY(std::none_of(benzene.bonds.begin(), benzene.bonds.end(), [&](const Bond &b) {
             return b.kind == "single" && benzene.atom(b.a).element == "C" && benzene.atom(b.b).element == "C";
         }));
+        // The same bonds for atoms that are there already (a crystal, an NWChem input), without writing
+        // them as XYZ: the atoms stay as they are, with what the text would not carry.
+        Document ethene;
+        for (const auto &[symbol, position] : {std::pair{"C", Vec(0, 0, .6695)},
+                                               {"C", Vec(0, 0, -.6695)},
+                                               {"H", Vec(0, .9289, 1.2321)},
+                                               {"H", Vec(0, -.9289, 1.2321)},
+                                               {"H", Vec(0, .9289, -1.2321)},
+                                               {"H", Vec(0, -.9289, -1.2321)}}) {
+            Atom a;
+            a.element = symbol;
+            a.position = position;
+            ethene.atoms << a;
+        }
+        ethene.atoms[0].fixed = true;
+        ethene.atoms[2].name = "H1";
+        ethene.bonds.append({ethene.atoms[2].id, ethene.atoms[3].id, "single", {}, {}});
+        const auto ids = ethene.ids();
+        perceiveBonds(ethene);
+        QCOMPARE(ethene.ids(), ids);
+        QVERIFY(ethene.atoms[0].fixed);
+        QCOMPARE(ethene.atoms[2].name, QString("H1"));
+        QCOMPARE(ethene.bonds.size(), 5);
+        QCOMPARE(ethene.bond(ids[0], ids[1])->kind, QString("double"));
+        QVERIFY(!ethene.bond(ids[2], ids[3]));
+        const auto text = xyzStructure(ethene.xyz());
+        for (int i = 0; i < text.bonds.size(); ++i)
+            QCOMPARE(text.bonds[i].kind, ethene.bonds[i].kind);
+        // Bonds to a metal stay single, whatever the distances suggest.
+        auto carbonyl = Document::fromXyz("3\nNiCO\nNi 0 0 0\nC 0 0 1.82\nO 0 0 2.95\n");
+        perceiveBonds(carbonyl);
+        QCOMPARE(carbonyl.bonds.size(), 2);
+        QCOMPARE(carbonyl.bond(carbonyl.atoms[0].id, carbonyl.atoms[1].id)->kind, QString("single"));
+        // The distance that makes a bond is one rule (bondDistance), with the covalent radii.
+        const double c = element("C").radius, h = element("H").radius;
+        QVERIFY(bondDistance(1.09, c, h) && bondDistance(1.30, c, h) && !bondDistance(1.31, c, h));
+        QVERIFY(!bondDistance(.2, c, c) && bondDistance(1.85, c, c) && !bondDistance(1.86, c, c));
+        QCOMPARE(Document::fromXyz("2\nCH\nC 0 0 0\nH 0 0 1.30\n").bonds.size(), 1);
+        QCOMPARE(Document::fromXyz("2\nCH\nC 0 0 0\nH 0 0 1.31\n").bonds.size(), 0);
+    }
+    void hydrogenBondsAndBackbone() {
+        // Hydrogen bonds by geometry, as the 3D view marks them: O–H···O of a water dimer, from the
+        // hydrogen to the acceptor.
+        const QString dimer = "6\ndimer\nO 0 0 0\nH 0.96 0 0\nH -0.24 0.93 0\nO %1 %2 0\nH 3.2 0.9 0\n"
+                              "H 3.2 -0.9 0\n";
+        auto d = Document::fromXyz(dimer.arg("2.90", "0"));
+        auto found = hydrogenBonds(d);
+        QCOMPARE(found.size(), 1);
+        QCOMPARE(found[0], std::make_pair(d.atoms[1].id, d.atoms[3].id));
+        // Not farther than 2.6 Å, not at less than 120°, and not to a ghost.
+        d.atoms[3].position = Vec(3.60, 0, 0);
+        QVERIFY(hydrogenBonds(d).isEmpty());
+        d.atoms[3].position = Vec(.96, 1.9, 0);
+        QVERIFY(hydrogenBonds(d).isEmpty());
+        d.atoms[3].position = Vec(2.90, 0, 0);
+        d.atoms[3].ghost = true;
+        QVERIFY(hydrogenBonds(d).isEmpty());
+        // A hydrogen on carbon gives none, nor one bonded twice.
+        auto methane = Document::fromXyz("3\nC-H and O\nC 0 0 0\nH 1.09 0 0\nO 3.0 0 0\n");
+        QVERIFY(hydrogenBonds(methane).isEmpty());
+        d = Document::fromXyz(dimer.arg("2.90", "0"));
+        d.setBond(d.atoms[1].id, d.atoms[2].id, "single");
+        QVERIFY(hydrogenBonds(d).isEmpty());
+        // The line of the backbone style: through the Cα of the residues that follow each other.
+        Document peptide;
+        buildPeptide(peptide, {"GLY", "ALA", "GLY"}, "charged", "charged");
+        auto trace = backboneTrace(peptide);
+        QCOMPARE(trace.segments.size(), 2);
+        QCOMPARE(trace.nodes.size(), peptide.atoms.size());
+        QCOMPARE(trace.nodes.count(true), 3);
+        for (const auto &r : std::as_const(peptide.residues)) {
+            QVERIFY(trace.nodes[peptide.index(r.atoms["CA"])]);
+            QVERIFY(!trace.covered.contains(r.atoms["CA"]) && trace.covered.contains(r.atoms["N"]));
+        }
+        for (const auto &id : std::as_const(peptide.residues[2].atoms))
+            peptide.atom(id).position += Vec(10, 0, 0);
+        trace = backboneTrace(peptide); // A gap stays open, and a residue on its own is not on the line.
+        QCOMPARE(trace.segments.size(), 1);
+        QCOMPARE(trace.nodes.count(true), 2);
+        QVERIFY(backboneTrace(methane).segments.isEmpty());
     }
     void fragmentsAndSkeletonParts() {
         // A second molecule lands 3 Å beyond the first along +X; the first does not move.
@@ -2659,7 +2783,17 @@ class CoreTest : public QObject {
         QCOMPARE(g.atoms[2].position.x(), -0.758);
         QCOMPARE(g.charge, -1);
         QCOMPARE(g.multiplicity, 2);
+        QCOMPARE(g.bonds.size(), 2); // By distance, as for XYZ.
         QVERIFY_THROWS_EXCEPTION(std::exception, gaussianStructure("#p hf\n\nzmat\n\n0 1\nO\nH 1 0.96\n\n"));
+        // Double bonds come from the geometry, deuterium is a hydrogen, and what is no atom is refused.
+        const auto ethene = gaussianStructure("#p hf\n\nethene\n\n0 1\nC 0 0 0.6695\nC 0 0 -0.6695\n"
+                                              "D 0 0.9289 1.2321\nH 0 -0.9289 1.2321\nH 0 0.9289 -1.2321\n"
+                                              "H 0 -0.9289 -1.2321\n\n");
+        QCOMPARE(ethene.bond(ethene.atoms[0].id, ethene.atoms[1].id)->kind, QString("double"));
+        QCOMPARE(ethene.atoms[2].element, QString("H"));
+        QCOMPARE(ethene.atoms[2].isotope, 2);
+        QVERIFY_THROWS_EXCEPTION(std::exception, gaussianStructure("#p hf\n\nx\n\n0 1\nXx 0 0 0\n\n"));
+        QVERIFY_THROWS_EXCEPTION(std::exception, gaussianStructure("#p hf\n\nx\n\n0 1\nO 0 0 inf\n\n"));
         // ONIOM rows: freeze code, coordinates, then the layer.
         const auto oniom = gaussianStructure("#p oniom(b3lyp/6-31g*:uff)\n\nlayers\n\n0 1\n"
                                              "O 0 0.0 0.0 0.0 H\nH -1 0.758 0.0 0.504 L\nH 0 0 0 1 H\n\n");

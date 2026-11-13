@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
-#include "io/pdb.h"
+#include "io/macromolecule.h"
 #include "model/document.h"
 
 namespace mf {
@@ -22,7 +22,7 @@ struct MmcifEntry {
 // The first data block.
 MmcifEntry readMmcif(const QByteArray &text);
 MacromoleculeContents mmcifContents(const MmcifEntry &entry);
-// The selected atoms, as preparePdb() selects them from a PDB file.
+// The selected atoms: one model at one alternate location, of the chosen chains and kinds.
 QVector<MmcifAtom> selectMmcif(const QVector<MmcifAtom> &atoms, const MacromoleculeSelection &selection);
 
 // The first data block of any CIF file: its items and tables by their tags in lower case. Values keep their

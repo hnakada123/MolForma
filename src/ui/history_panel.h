@@ -90,12 +90,6 @@ class HistoryPanel : public QWidget {
     bool eventFilter(QObject *watched, QEvent *event) override;
 
   private:
-    struct Row {
-        const HistoryEntry *entry;
-        bool owned;                  // The run of this window.
-        std::optional<double> delta; // ΔE / Hartree against the reference.
-        QString note;                // Why there is no ΔE.
-    };
     EditorContext &editorContext;
     UiServices &uiContext;
     const NwchemRun &run;

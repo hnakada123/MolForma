@@ -12,7 +12,6 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
-#include <QRegularExpression>
 #include <QSaveFile>
 
 namespace mf {
@@ -175,7 +174,7 @@ void recordRunEnd(QJsonObject &record, const QString &directory, const RunEnd &e
         } catch (const std::exception &) {
             record.remove("summary");
         }
-    if (!end.diagnose && !end.wallTime && !end.needsLog)
+    if (!end.diagnose && !end.needsLog)
         return;
     QString output, errors;
     try {
@@ -183,11 +182,6 @@ void recordRunEnd(QJsonObject &record, const QString &directory, const RunEnd &e
     } catch (const std::exception &) {
         if (end.needsLog)
             throw;
-    }
-    if (end.wallTime) {
-        static const QRegularExpression times("Total times\\s+cpu:\\s*[0-9.]+s\\s+wall:\\s*([0-9.]+)s");
-        if (const auto match = times.match(output); match.hasMatch())
-            record["elapsed_seconds"] = qint64(match.captured(1).toDouble());
     }
     if (!end.diagnose)
         return;

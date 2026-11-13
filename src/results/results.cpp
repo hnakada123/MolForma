@@ -2,6 +2,7 @@
 #include "results/results.h"
 #include "foundation/i18n.h"
 #include "model/numbers.h"
+#include "results/nwchem_log.h"
 #include "results/result_cache.h"
 #include "results/result_fields.h"
 #include "results/result_parsing.h"

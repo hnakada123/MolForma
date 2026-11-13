@@ -37,7 +37,7 @@ class Tokens {
             do {
                 p = static_cast<const char *>(std::memchr(p, '\n', end - p));
                 if (!p)
-                    fail(tr("mmCIFの%1行目から始まるテキストが閉じていません。").arg(token.line));
+                    fail(tr("CIFの%1行目から始まるテキストが閉じていません。").arg(token.line));
                 ++line;
             } while (++p == end || *p != ';');
             token.text = QByteArrayView(start + 1, p - 1 - (start + 1));
@@ -50,7 +50,7 @@ class Tokens {
             const char quote = *p++;
             while (!(p < end && *p == quote && (p + 1 == end || space(p[1])))) {
                 if (p == end || *p == '\n')
-                    fail(tr("mmCIFの%1行目の引用符が閉じていません。").arg(token.line));
+                    fail(tr("CIFの%1行目の引用符が閉じていません。").arg(token.line));
                 ++p;
             }
             token.text = QByteArrayView(start + 1, p - (start + 1));
@@ -89,6 +89,59 @@ bool reserved(const Token &t) {
 // The unquoted . (inapplicable) and ? (unknown) are no value.
 QByteArrayView value(const Token &t) {
     return !t.quoted && (t.text == "." || t.text == "?") ? QByteArrayView() : t.text;
+}
+// The first data block of a CIF file (the whole entry in PDB files), read once: its items and tables go
+// to the reader, which has
+//   void block(QByteArrayView name)                     the block's name, after data_;
+//   void item(const QByteArray &tag, QByteArrayView value, int line)   a tag (in lower case) and its value;
+//   bool table(const QList<QByteArray> &tags)           whether it reads the rows of a loop_ with these tags;
+//   void row(const QVector<QByteArrayView> &values, int line)          a row of the table it reads.
+template <class Reader> void readBlock(const QByteArray &text, Reader &reader) {
+    Tokens tokens(text);
+    Token token;
+    bool started = false, more = tokens.next(token);
+    while (more) {
+        if (isTag(token)) {
+            const auto tag = lower(token.text);
+            const int line = token.line;
+            if (!(more = tokens.next(token)) || isTag(token) || reserved(token))
+                fail(tr("CIFの%1行目の %2 に値がありません。").arg(line).arg(QString::fromUtf8(tag)));
+            reader.item(tag, value(token), line);
+            more = tokens.next(token);
+        } else if (!reserved(token)) {
+            fail(tr("CIFの%1行目の値に項目名がありません。").arg(token.line));
+        } else if (lower(token.text).startsWith("loop_")) {
+            const int line = token.line;
+            QList<QByteArray> tags;
+            while ((more = tokens.next(token)) && isTag(token))
+                tags << lower(token.text);
+            if (tags.isEmpty())
+                fail(tr("CIFの%1行目の loop_ に項目名がありません。").arg(line));
+            const bool read = reader.table(tags);
+            QVector<QByteArrayView> row;
+            int rowLine = 0;
+            qsizetype count = 0;
+            for (; more && !isTag(token) && !reserved(token); more = tokens.next(token), ++count)
+                if (read) {
+                    rowLine = row.isEmpty() ? token.line : rowLine;
+                    row << value(token);
+                    if (row.size() < tags.size())
+                        continue;
+                    reader.row(row, rowLine);
+                    row.clear();
+                }
+            if (count % tags.size())
+                fail(tr("CIFの%1行目の loop_ の値の数が項目の数と合いません。").arg(line));
+        } else {
+            if (lower(token.text).startsWith("data_")) {
+                if (started)
+                    break;
+                started = true;
+                reader.block(token.text.mid(5));
+            }
+            more = tokens.next(token);
+        }
+    }
 }
 // The columns of the _atom_site table; -1 where one is missing.
 struct Columns {
@@ -178,83 +231,58 @@ struct Entity {
         : id(values.value("_entity.id")), type(values.value("_entity.type")),
           description(values.value("_entity.pdbx_description")) {}
 };
-} // namespace
-MmcifEntry readMmcif(const QByteArray &text) {
-    Tokens tokens(text);
-    Token token;
+// The _atom_site and _entity tables of an entry; the other tables are passed over without their values.
+struct MmcifReader {
     QVector<MmcifAtom> atoms;
     QList<QByteArray> itemTags; // _atom_site items outside a loop: a table of one atom.
     QVector<QByteArrayView> itemValues;
     int itemLine = 0;
     QVector<Entity> entities;
     QHash<QByteArray, QString> entityItems; // _entity items outside a loop: a table of one entity.
-    bool block = false, more = tokens.next(token);
-    while (more) {
-        if (isTag(token)) {
-            const auto tag = lower(token.text);
-            const int line = token.line;
-            if (!(more = tokens.next(token)) || isTag(token) || reserved(token))
-                fail(tr("mmCIFの%1行目の %2 に値がありません。").arg(line).arg(QString::fromUtf8(tag)));
-            if (tag.startsWith("_atom_site.")) {
-                itemLine = itemLine ? itemLine : line;
-                itemTags << tag;
-                itemValues << value(token);
-            }
-            if (tag.startsWith("_entity."))
-                entityItems[tag] = QString::fromUtf8(value(token));
-            more = tokens.next(token);
-        } else if (!reserved(token)) {
-            fail(tr("mmCIFの%1行目の値に項目名がありません。").arg(token.line));
-        } else if (lower(token.text).startsWith("loop_")) {
-            const int line = token.line;
-            QList<QByteArray> tags;
-            while ((more = tokens.next(token)) && isTag(token))
-                tags << lower(token.text);
-            if (tags.isEmpty())
-                fail(tr("mmCIFの%1行目の loop_ に項目名がありません。").arg(line));
-            std::optional<Columns> columns;
-            if (tags.first().startsWith("_atom_site."))
-                columns.emplace(tags);
-            const bool entity = tags.first().startsWith("_entity.");
-            QVector<QByteArrayView> row;
-            int rowLine = 0;
-            qsizetype count = 0;
-            for (; more && !isTag(token) && !reserved(token); more = tokens.next(token), ++count)
-                if (columns || entity) {
-                    rowLine = row.isEmpty() ? token.line : rowLine;
-                    row << value(token);
-                    if (row.size() < tags.size())
-                        continue;
-                    if (columns) {
-                        atoms << atom(*columns, row, rowLine);
-                    } else {
-                        QHash<QByteArray, QString> values;
-                        for (int i = 0; i < tags.size(); ++i)
-                            values[tags[i]] = QString::fromUtf8(row[i]);
-                        entities << Entity(values);
-                    }
-                    row.clear();
-                }
-            if (count % tags.size())
-                fail(tr("mmCIFの%1行目の loop_ の値の数が項目の数と合いません。").arg(line));
-        } else {
-            if (lower(token.text).startsWith("data_")) {
-                if (block)
-                    break; // Only the first data block, which is the whole entry in PDB files.
-                block = true;
-            }
-            more = tokens.next(token);
+    std::optional<Columns> columns;         // Of the table being read, when it is _atom_site.
+    QList<QByteArray> tags;
+    void block(QByteArrayView) {}
+    void item(const QByteArray &tag, QByteArrayView value, int line) {
+        if (tag.startsWith("_atom_site.")) {
+            itemLine = itemLine ? itemLine : line;
+            itemTags << tag;
+            itemValues << value;
         }
+        if (tag.startsWith("_entity."))
+            entityItems[tag] = QString::fromUtf8(value);
     }
-    if (!itemTags.isEmpty())
-        atoms << atom(Columns(itemTags), itemValues, itemLine);
+    bool table(const QList<QByteArray> &names) {
+        columns.reset();
+        tags = names;
+        if (names.first().startsWith("_atom_site."))
+            columns.emplace(names);
+        return columns || names.first().startsWith("_entity.");
+    }
+    void row(const QVector<QByteArrayView> &values, int line) {
+        if (columns) {
+            atoms << atom(*columns, values, line);
+            return;
+        }
+        QHash<QByteArray, QString> named;
+        for (int i = 0; i < tags.size(); ++i)
+            named[tags[i]] = QString::fromUtf8(values[i]);
+        entities << Entity(named);
+    }
+};
+} // namespace
+MmcifEntry readMmcif(const QByteArray &text) {
+    MmcifReader reader;
+    readBlock(text, reader);
+    auto &atoms = reader.atoms;
+    if (!reader.itemTags.isEmpty())
+        atoms << atom(Columns(reader.itemTags), reader.itemValues, reader.itemLine);
     if (atoms.isEmpty())
         fail(tr("mmCIFに原子の表（_atom_site）がありません。"));
-    if (!entityItems.isEmpty())
-        entities << Entity(entityItems);
+    if (!reader.entityItems.isEmpty())
+        reader.entities << Entity(reader.entityItems);
     MmcifEntry entry;
     QHash<QString, QString> types;
-    for (const auto &e : entities) {
+    for (const auto &e : std::as_const(reader.entities)) {
         types[e.id] = e.type;
         entry.descriptions[e.id] = e.description;
     }
@@ -289,49 +317,27 @@ const CifBlock::Table *CifBlock::table(const QByteArray &tag) const {
     return nullptr;
 }
 CifBlock readCifBlock(const QByteArray &text) {
-    Tokens tokens(text);
-    Token token;
-    CifBlock block;
-    bool started = false, more = tokens.next(token);
-    while (more) {
-        if (isTag(token)) {
-            const auto tag = lower(token.text);
-            const int line = token.line;
-            if (!(more = tokens.next(token)) || isTag(token) || reserved(token))
-                fail(tr("CIFの%1行目の %2 に値がありません。").arg(line).arg(QString::fromUtf8(tag)));
-            block.items[tag] = QString::fromUtf8(value(token));
-            more = tokens.next(token);
-        } else if (!reserved(token)) {
-            fail(tr("CIFの%1行目の値に項目名がありません。").arg(token.line));
-        } else if (lower(token.text).startsWith("loop_")) {
-            const int line = token.line;
-            CifBlock::Table table;
-            while ((more = tokens.next(token)) && isTag(token))
-                table.tags << lower(token.text);
-            if (table.tags.isEmpty())
-                fail(tr("CIFの%1行目の loop_ に項目名がありません。").arg(line));
-            QStringList row;
-            for (; more && !isTag(token) && !reserved(token); more = tokens.next(token)) {
-                row << QString::fromUtf8(value(token));
-                if (row.size() == table.tags.size()) {
-                    table.rows << row;
-                    row.clear();
-                }
-            }
-            if (!row.isEmpty())
-                fail(tr("CIFの%1行目の loop_ の値の数が項目の数と合いません。").arg(line));
-            block.tables << table;
-        } else {
-            if (lower(token.text).startsWith("data_")) {
-                if (started)
-                    break; // The first data block only.
-                started = true;
-                block.name = QString::fromUtf8(token.text.mid(5));
-            }
-            more = tokens.next(token);
+    struct Reader {
+        CifBlock read;
+        void block(QByteArrayView name) {
+            read.name = QString::fromUtf8(name);
         }
-    }
-    return block;
+        void item(const QByteArray &tag, QByteArrayView value, int) {
+            read.items[tag] = QString::fromUtf8(value);
+        }
+        bool table(const QList<QByteArray> &tags) {
+            read.tables << CifBlock::Table{tags, {}};
+            return true;
+        }
+        void row(const QVector<QByteArrayView> &values, int) {
+            QStringList row;
+            for (const auto &value : values)
+                row << QString::fromUtf8(value);
+            read.tables.last().rows << row;
+        }
+    } reader;
+    readBlock(text, reader);
+    return reader.read;
 }
 bool crystalCif(const QByteArray &text) {
     // The tags of small-molecule CIF use underscores where PDBx/mmCIF has a category and a dot.
@@ -349,35 +355,12 @@ MacromoleculeContents mmcifContents(const MmcifEntry &entry) {
         }
     }
     const int first = contents.models.first().toInt();
-    QSet<QString> residues;
-    QHash<QString, int> chains;
-    for (const auto &a : entry.atoms) {
-        const auto residue = QString("%1\n%2\n%3\n%4").arg(a.chain).arg(a.number).arg(a.insertion, a.residue);
-        if (a.model != first || residues.contains(residue))
-            continue;
-        residues.insert(residue);
-        auto it = chains.find(a.chain);
-        if (it == chains.end()) {
-            it = chains.insert(a.chain, contents.chains.size());
-            contents.chains.append({a.chain, {}, 0, {}});
-        }
-        auto &chain = contents.chains[*it];
-        if (a.kind != ResidueKind::Polymer && !chain.groups.contains(a.residue))
-            chain.groups << a.residue;
-        switch (a.kind) {
-        case ResidueKind::Polymer:
-            ++contents.polymers;
-            ++chain.residues;
-            if (chain.description.isEmpty())
-                chain.description = entry.descriptions.value(a.entity);
-            break;
-        case ResidueKind::Ligand:
-            ++contents.ligands;
-            break;
-        case ResidueKind::Water:
-            ++contents.waters;
-        }
-    }
+    MacromoleculeCount count(contents);
+    for (const auto &a : entry.atoms)
+        if (a.model == first)
+            count.add(QString("%1\n%2\n%3\n%4").arg(a.chain).arg(a.number).arg(a.insertion, a.residue),
+                      a.chain, a.residue, a.kind,
+                      a.kind == ResidueKind::Polymer ? entry.descriptions.value(a.entity) : QString());
     return contents;
 }
 QVector<MmcifAtom> selectMmcif(const QVector<MmcifAtom> &atoms, const MacromoleculeSelection &selection) {
@@ -385,28 +368,18 @@ QVector<MmcifAtom> selectMmcif(const QVector<MmcifAtom> &atoms, const Macromolec
     const auto residue = [](const MmcifAtom &a) {
         return QString("%1\n%2\n%3").arg(a.chain).arg(a.number).arg(a.insertion);
     };
-    QHash<QString, QMap<QString, double>> occupancies;
+    AltlocChoice locations(selection.altloc);
     int inModel = 0;
     for (const auto &a : atoms)
         if (a.model == model) {
             ++inModel;
-            if (!a.altloc.isEmpty() && selection.keeps(a.chain, a.kind))
-                occupancies[residue(a)][a.altloc] += a.occupancy;
+            if (selection.keeps(a.chain, a.kind))
+                locations.add(residue(a), a.altloc, a.occupancy);
         }
-    QHash<QString, QString> preferred;
-    for (auto it = occupancies.begin(); it != occupancies.end(); ++it) {
-        double best = -1;
-        for (auto a = it.value().begin(); a != it.value().end(); ++a)
-            if (a.value() > best) {
-                best = a.value();
-                preferred[it.key()] = a.key();
-            }
-    }
     QVector<MmcifAtom> chosen;
-    const auto &altloc = selection.altloc;
     for (auto a : atoms) {
         if (a.model != model || !selection.keeps(a.chain, a.kind) ||
-            (!a.altloc.isEmpty() && a.altloc != (altloc.isEmpty() ? preferred[residue(a)] : altloc)))
+            (!a.altloc.isEmpty() && !locations.keeps(residue(a), a.altloc)))
             continue;
         a.altloc.clear();
         chosen << a;

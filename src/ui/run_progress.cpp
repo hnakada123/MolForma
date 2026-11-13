@@ -179,7 +179,7 @@ void RunProgress::showRun(const QString &path, RunState state) {
     read(path);
     const ChromeColors c(palette());
     const bool active = runStateActive(state), finished = state == RunState::Finished;
-    const int current = std::clamp(progress.started - 1, 0, std::max(0, int(tasks.size()) - 1));
+    const int current = std::clamp(progress.started() - 1, 0, std::max(0, int(tasks.size()) - 1));
     const auto &optimization = progress.optimization();
     const auto number = [](double value, int digits) {
         return QString::number(value, 'f', digits).replace('-', "−");
@@ -201,8 +201,8 @@ void RunProgress::showRun(const QString &path, RunState state) {
                          .arg(QString::number(last.deltaE, 'e', 1).replace('-', "−"));
             if (optimization.converged)
                 detail = tr("%1 · 収束").arg(detail);
-        } else if (now && std::isfinite(progress.energy))
-            detail = QString("E = %1 Eh").arg(number(progress.energy, 6));
+        } else if (now && std::isfinite(progress.energy()))
+            detail = QString("E = %1 Eh").arg(number(progress.energy(), 6));
         stages << tr("<b>%1　%2</b>　<span style=\"color:%3\">%4</span>%5")
                       .arg(i + 1)
                       .arg(tasks[i].toHtmlEscaped(), color.name(), status)

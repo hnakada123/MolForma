@@ -8,9 +8,7 @@
 namespace mf {
 namespace {
 bool metal(const QString &symbol) {
-    static const QSet<QString> nonmetals{"H",  "He", "B",  "C",  "N",  "O",  "F",  "Ne", "Si", "P",  "S",
-                                         "Cl", "Ar", "As", "Se", "Br", "Kr", "Te", "I",  "Xe", "At", "Rn"};
-    return !nonmetals.contains(symbol);
+    return element(symbol).metal();
 }
 // The ions of the PDB's chemical component dictionary, by their names, with their charges.
 const QHash<QString, int> &ions() {
@@ -23,9 +21,6 @@ const QHash<QString, int> &ions() {
 }
 bool ion(const Residue &r) {
     return r.atoms.size() == 1 && ions().contains(r.code);
-}
-bool amino(const Residue &r) {
-    return r.atoms.contains("N") && r.atoms.contains("CA") && r.atoms.contains("C");
 }
 // The charged groups of amino acids at pH 7, their charge spread over the atoms that share it.
 QVector<std::pair<QString, double>> groupCharges(const QString &code) {
@@ -82,10 +77,10 @@ QVector<PointCharge> surroundings(const Document &d, const Topology &topology, c
             registered.insert(id);
         if (ion(r)) {
             add(r.atoms.first(), ions()[r.code]);
-        } else if (amino(r) || r.code == "SO4") {
+        } else if (aminoResidue(r) || r.code == "SO4") {
             for (const auto &[name, charge] : groupCharges(r.code))
                 add(r.atoms.value(name), charge);
-            if (!amino(r))
+            if (!aminoResidue(r))
                 continue;
             if (chainEnd(d, topology, r, r.atoms["N"]))
                 add(r.atoms["N"], 1);
@@ -305,7 +300,7 @@ void protonate(Document &d) {
                 }
                 continue;
             }
-            if (!amino(r))
+            if (!aminoResidue(r))
                 continue;
             charge("N", chainEnd(d, topology, r, r.atoms["N"]) ? 1 : 0);
             if (r.atoms.contains("OXT"))

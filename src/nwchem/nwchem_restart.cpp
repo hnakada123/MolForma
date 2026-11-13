@@ -7,7 +7,7 @@
 #include "nwchem/nwchem_advanced.h"
 #include "nwchem/nwchem_output.h"
 #include "nwchem/run_record.h"
-#include "results/results.h"
+#include "results/nwchem_log.h"
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
@@ -75,7 +75,7 @@ LogEnd readLog(const QString &job) {
     }
     if (file.error() != QFile::NoError)
         fail(QString(JobFile::output) + ": " + file.errorString());
-    LogEnd end{log.started, log.ended, {}};
+    LogEnd end{log.started(), log.ended(), {}};
     if (!result.frames.isEmpty())
         end.geometry = result.frames.last().molecule;
     return end;

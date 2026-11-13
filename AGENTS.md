@@ -16,10 +16,13 @@ by responsibility, with paired headers and implementations in the same directory
 - `src/model/`: `document.*` owns the stable-ID document and the `.molforma.json`
   project serialization (format `molforma-project`, version 1) as JSON (`project`, `fromProject`); it
   reads and writes no file (`saveProject`/`loadProject` of `io/document_storage.*` do).
-  `elements.*` owns the element table (`Element`, `elements()`, `element()`), whose colors are plain
+  `elements.*` owns the element table (`Element`, `elements()`, `element()`), with the covalent and van
+  der Waals radii and the one test of what a metal is (`Element::metal`), and whose colors are plain
   channels (`Rgb`): the model uses Qt Core only, and the UI makes a `QColor` of one (`toColor` in
   `ui/theme.h`). `xyz.cpp` holds the XYZ dialect (`Document::xyz`, `fromXyz`) and `bond_inference.cpp`
-  the bonds by distance (`Document::inferBonds`). `geometry.*` owns double-precision geometry,
+  the bonds by distance (`Document::inferBonds`), by the one rule of the distance that bonds two atoms
+  (`bondDistance`), which the crystal reader uses for its molecules too. `geometry.*` owns
+  double-precision geometry, the hydrogen bonds of a structure (`hydrogenBonds`),
   point groups and the passes that symmetrize a structure onto one.
   Atom references kept in a part's metadata (the eta groups of a ligand, `Part::hapto`) go through typed
   accessors, and `Document::remove`/`renameIds`/`validate` keep them like any other reference.
@@ -41,11 +44,13 @@ by responsibility, with paired headers and implementations in the same directory
   call these; a widget holds no such rule of its own. `editor_session.*` owns document edits, candidates and undo for both GUI and MCP,
   and the revision that stale checks and the MCP `revision` compare (never serialize documents for that).
   `atom_properties.*` shares atom-property edits and validation across panels and MCP.
-  `chemistry.*` uses the Open Babel C++ API (bond orders of XYZ structures, SMILES, refinement,
-  conformers); `babel_molecule.h` declares its conversion between a document and an Open Babel
+  `chemistry.*` uses the Open Babel C++ API (the bonds of atoms that come with none, `perceiveBonds`:
+  by distance with their orders from the geometry, for XYZ text, crystals and NWChem inputs; SMILES,
+  refinement, conformers); `babel_molecule.h` declares its conversion between a document and an Open Babel
   molecule (`toOB`, `fromOB`) for `io/babel_io.cpp`, the only other file that includes it. Editing reads
-  no structure file: the format readers are in `src/io/`, and what editing needs of a residue's name
-  is in `peptide.*` (`polymerResidue`, `waterResidue`). `chemistry_job.*` owns cancellable chemistry
+  no structure file: the format readers are in `src/io/`, and what editing needs of a residue
+  is in `peptide.*` (`aminoResidue`, `polymerResidue`, `waterResidue`, and `backboneTrace`: the line of
+  the backbone display). `chemistry_job.*` owns cancellable chemistry
   processes, stale-result checks and candidate application, including runs of the external `xtb`
   (`xtb.*`: its input, `$fix` of fixed atoms and reading `xtbopt.xyz`; the program comes from
   Preferences `xtb/executable`, never from MCP).
@@ -53,9 +58,12 @@ by responsibility, with paired headers and implementations in the same directory
   `coordinates.*` implements coordinate edits, structure replacement and Z-matrices.
 - `src/io/`: `structure_io.*` routes project, XYZ, NWChem, Gaussian and native Open Babel
   import/export (`babel_io.*`: the formats read and written through the Open Babel API, mmCIF atoms
-  made a molecule the same way, and the SMILES of a MOL/SDF file; `pdb.*`: what a PDB entry holds and
-  the records of a selection, `MacromoleculeSelection`; `mmcif.*`: PDBx/mmCIF entries and the blocks of
-  any CIF file; `crystal.*`: small-molecule crystal structures of CIF files and their molecules), with
+  made a molecule the same way, and the SMILES of a MOL/SDF file; `macromolecule.*`: what a PDB or
+  PDBx/mmCIF entry holds and the part of it to read, the same for both formats (`MacromoleculeSelection`,
+  the count of chains and residues `MacromoleculeCount`, the alternate location of each residue
+  `AltlocChoice`); `pdb.*`: the records of a PDB file; `mmcif.*`: PDBx/mmCIF entries and the blocks of
+  any CIF file, read by one walk of the CIF grammar; `crystal.*`: small-molecule crystal structures of
+  CIF files and their molecules), with
   the notes of what an NWChem input holds that was not imported
   (`importStructureWithNotes`), and the file an NEB end is read from (`nebEndFromFile`: which files are
   logs, the last structure of a structure file, the 128 MiB limit; the GUI reads logs through its
@@ -137,14 +145,21 @@ by responsibility, with paired headers and implementations in the same directory
   what the end of a run records (`recordRunEnd`), the plan a record was saved from (`runRecordPlan`) and
   the typed view `RunRecord` (state, times, exit code, summary, diagnostics, remote part). UI and MCP read
   records only through it; do not name a file of a job folder or parse `run.json` elsewhere.
-  `history.*` scans saved bundles and validates snapshots;
+  `history.*` scans saved bundles and validates snapshots; `history_list.cpp` gives the history as a
+  list shows it (`historyList`: the jobs that match a search and a state, in an order, with ΔE against a
+  reference job; the state of a job in a word, `historyStateName`; what keeps two energies from being
+  compared, `historyDifference`), so that the history tab only shows it;
   `history_import.cpp` registers runs made outside MolForma. `result_files.*` interprets
   job manifests and supplies the result-file list, including visualization outputs and excluding
   intermediate NEB paths, to the generic result readers.
   `conformer_set.*` owns version-1 conformer-set persistence, job associations, cancellable result
   loading and population/spectrum-member preparation; its UI only supplies settings and actions.
-- `src/results/`: `results.*` holds result data and routes readers; `nwchem_log.cpp`,
-  `xyz_reader.cpp`, `cube_reader.cpp` and `molden_reader.cpp` parse their formats. `result_parsing.*`
+- `src/results/`: `results.*` holds result data and routes readers; `nwchem_log.*`,
+  `xyz_reader.cpp`, `cube_reader.cpp` and `molden_reader.cpp` parse their formats. `nwchem_log.h`
+  declares the log reader (`NwchemLog`, whose state is in the .cpp, and `NwchemEnergySummary`); the
+  wording of NWChem's output is known in `nwchem_log.cpp` alone: other layers ask it what a line says
+  (`nwchemLineReports` for the failures the run diagnostics tell apart, `nwchemOutputStart`, the closing
+  line and its wall time) and do not match log text themselves. `result_parsing.*`
   shares lexical readers and bounds, `result_surface.cpp` generates bounded isosurfaces,
   `result_cache.*` keeps parsed data and orbital grids, and `result_codec.*` owns the versioned binary
   worker/cache payload. `result_worker.cpp` owns the worker entry points. `result_files.*` only
@@ -224,7 +239,10 @@ by responsibility, with paired headers and implementations in the same directory
   table's requests itself (`CoordinatesPanel::sortRequested`, `tableRequested`, `fitRequested`), telling
   it when it stands in place of the 3D view (`setViewHidden`). `molecule_view.*` owns camera/input, Qt annotations and
   the QPainter fallback; `vtk_molecule_renderer.*` provides optional retained
-  native VTK/OpenGL rendering; both draw bonds and isosurfaces by `bond_style.h`.
+  native VTK/OpenGL rendering; both draw by `molecule_style.h`: what is drawn (which atoms as spheres,
+  which bonds), the sizes of atoms, bonds and the backbone line, the background and the colors of bonds
+  and isosurfaces. A rule of the picture goes there, not into one of the two; the handles to click
+  (`MoleculeView::markerList`) are computed from the document and the camera, not kept from painting.
   `editor_chrome.*` holds the window chrome proper: the header (`HeaderBar`), the
   buttons of the tool rail (`ToolRailButton`) and the overlays of a 3D view (`OverlayHost`). What the
   panels share besides is one file per responsibility, and a file includes those it uses (no header

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "ui/vtk_molecule_renderer.h"
-#include "ui/bond_style.h"
+#include "ui/molecule_style.h"
 #include <Eigen/Geometry>
 #include <QOpenGLContext>
 #include <QSurfaceFormat>
@@ -8,7 +8,6 @@
 #include <array>
 #include <cmath>
 #include <cstring>
-#include <openbabel/elements.h>
 #include <unordered_map>
 #include <vtkActor.h>
 #include <vtkCamera.h>
@@ -66,9 +65,8 @@ struct VtkMoleculeRenderer::Scene {
         const BondStyle *style;
     };
     QVector<DrawnBond> drawnBonds; // The bonds shown, between shown atoms.
-    // Per shown atom: 0 heavy, 1 hydrogen, 2 without a bond (wireframe), 3 on the backbone trace; and the van
-    // der Waals radius.
-    QVector<char> radiusKind;
+    // Per shown atom: what it is for its size, and the van der Waals radius.
+    QVector<AtomSize> sizes;
     QVector<double> vdw;
     QVector<int> visibleAtoms;
     QVector<QColor> colors;
@@ -107,8 +105,9 @@ VtkMoleculeRenderer::VtkMoleculeRenderer(QWidget *parent)
     s.window->SetAlphaBitPlanes(1);
     s.window->AddRenderer(s.renderer);
     setRenderWindow(s.window);
-    s.renderer->SetBackground(233. / 255, 239. / 255, 244. / 255);
-    s.renderer->SetBackground2(248. / 255, 250. / 255, 252. / 255);
+    const QColor top = viewBackground(true), bottom = viewBackground(false);
+    s.renderer->SetBackground(bottom.redF(), bottom.greenF(), bottom.blueF());
+    s.renderer->SetBackground2(top.redF(), top.greenF(), top.blueF());
     s.renderer->GradientBackgroundOn();
     s.renderer->SetUseDepthPeeling(true);
     s.renderer->SetMaximumNumberOfPeels(16);
@@ -177,7 +176,7 @@ void VtkMoleculeRenderer::setMolecule(const Document &document, const QVector<QC
     s.trace.actor->SetVisibility(style == "backbone");
     s.visibleAtoms.clear();
     s.atomIndices.clear();
-    s.radiusKind.clear();
+    s.sizes.clear();
     s.vdw.clear();
     vtkNew<vtkPoints> points;
     points->SetDataTypeToDouble();
@@ -187,22 +186,13 @@ void VtkMoleculeRenderer::setMolecule(const Document &document, const QVector<QC
         const auto &atom = document.atoms[i];
         s.atomIndices.insert(atom.id, i);
         // Ghosts and hidden-hydrogen handles retain their established 2D notation.
-        if (atom.ghost || (!hydrogens && atom.element == "H") || hidden.contains(atom.id))
+        if (!atomSphere(atom, hydrogens) || hidden.contains(atom.id))
             continue;
         s.visibleAtoms << i;
         points->InsertNextPoint(atom.position.data());
         appendColor(rgb, colors[i]);
-        s.radiusKind << (style == "wireframe" && !s.bonded.contains(atom.id) ? 2
-                         : nodes.contains(i)                                 ? 3
-                         : atom.element == "H"                               ? 1
-                                                                             : 0);
-        double radius = 1.7;
-        if (style == "spacefill")
-            try {
-                radius = OpenBabel::OBElements::GetVdwRad(element(atom.element).number);
-            } catch (const std::exception &) {
-            }
-        s.vdw << radius;
+        s.sizes << atomSize(style, atom, s.bonded.contains(atom.id), nodes.contains(i));
+        s.vdw << element(atom.element).vdw;
     }
     s.drawnBonds.clear();
     for (const auto &bond : document.bonds) {
@@ -210,8 +200,7 @@ void VtkMoleculeRenderer::setMolecule(const Document &document, const QVector<QC
         if (ai < 0 || bi < 0)
             continue;
         const auto &a = document.atoms[ai], &b = document.atoms[bi];
-        if ((!hydrogens && (a.element == "H" || b.element == "H")) || hidden.contains(a.id) ||
-            hidden.contains(b.id))
+        if (!bondShown(a, b, hydrogens) || hidden.contains(a.id) || hidden.contains(b.id))
             continue;
         s.drawnBonds.append({ai, bi, &bondStyle(bond.kind)});
     }
@@ -329,40 +318,28 @@ void VtkMoleculeRenderer::setCamera(const Mat &rotation, const Vec &center, doub
     // most of a frame is their triangles. Up to 2000 atoms, and zoomed in, they keep 24 × 16.
     int segments = 24;
     if (s.visibleAtoms.size() > 2000) {
-        const double pixels = s.style == "spacefill"   ? 2. * scale
-                              : s.style == "stick"     ? std::clamp(scale * .1, 3., 7.)
-                              : s.style == "wireframe" ? std::clamp(scale * .12, 4., 8.)
-                                                       : std::clamp(scale * .20, 8., 20.);
+        // By the largest sphere of the style (a van der Waals radius of about 2 Å).
+        const double pixels =
+            atomRadius(s.style, s.style == "wireframe" ? AtomSize::Unbonded : AtomSize::Heavy, scale, 2.);
         segments = std::clamp(int(std::ceil(2 * M_PI * pixels / 6)), 12, 24);
     }
     if (s.sphere->GetThetaResolution() != segments) {
         s.sphere->SetThetaResolution(segments);
         s.sphere->SetPhiResolution(segments * 2 / 3);
     }
-    // Spacefill radii are fixed in Å; the others are sizes on the screen, by kind of atom.
+    // The spheres in Å, from their sizes on the screen (molecule_style.h): those of spacefill do not
+    // change with the scale, the others do.
     if (scale != s.atomScale && !(s.style == "spacefill" && s.atomScale > 0)) {
-        double radius[4];
-        for (int kind = 0; kind < 4; ++kind) {
-            const bool h = kind == 1;
-            radius[kind] = std::clamp(scale * (h ? .12 : .20), h ? 5. : 8., h ? 11. : 20.) / scale;
-            if (s.style == "stick" || kind == 3)
-                radius[kind] = std::clamp(scale * .1, 3., 7.) / scale;
-            else if (s.style == "wireframe") // Isolated atoms (ions) stay visible as small dots.
-                radius[kind] = kind == 2 ? std::clamp(scale * .12, 4., 8.) / scale : 0;
-        }
         s.radii->SetNumberOfValues(s.visibleAtoms.size());
         for (int i = 0; i < s.visibleAtoms.size(); ++i)
-            s.radii->SetValue(i, s.style == "spacefill" ? s.vdw[i] : radius[int(s.radiusKind[i])]);
+            s.radii->SetValue(i, atomRadius(s.style, s.sizes[i], scale, s.vdw[i]) / scale);
         s.radii->Modified();
         s.atomScale = scale;
     }
     const bool halves = halfBonds(s.style);
-    s.bonds.actor->GetProperty()->SetLineWidth((s.style == "stick"       ? std::clamp(scale * .2, 5., 12.)
-                                                : s.style == "wireframe" ? 2.
-                                                                         : 3.5) *
-                                               devicePixelRatioF());
+    s.bonds.actor->GetProperty()->SetLineWidth(bondWidth(s.style, scale) * devicePixelRatioF());
     s.plain.actor->GetProperty()->SetLineWidth(s.bonds.actor->GetProperty()->GetLineWidth());
-    s.trace.actor->GetProperty()->SetLineWidth(std::clamp(scale * .35, 4., 16.) * devicePixelRatioF());
+    s.trace.actor->GetProperty()->SetLineWidth(traceWidth(scale) * devicePixelRatioF());
     struct Lines {
         vtkNew<vtkPoints> points;
         vtkNew<vtkCellArray> cells;

@@ -3,6 +3,7 @@
 #include "foundation/i18n.h"
 #include <Eigen/Eigenvalues>
 #include <Eigen/SVD>
+#include <QHash>
 #include <cmath>
 #include <numbers>
 #include <numeric>
@@ -73,6 +74,49 @@ Vec centroid(const Document &d, const Ids &ids) {
     for (const auto &id : ids)
         sum += d.atom(id).position;
     return sum / ids.size();
+}
+QVector<std::pair<QString, QString>> hydrogenBonds(const Document &d) {
+    QVector<std::pair<QString, QString>> found;
+    if (d.atoms.size() > 5000)
+        return found;
+    const auto polar = [](const QString &e) { return e == "N" || e == "O" || e == "F"; };
+    QHash<QString, int> indices;
+    QVector<int> acceptors;
+    for (int i = 0; i < d.atoms.size(); ++i) {
+        indices.insert(d.atoms[i].id, i);
+        if (!d.atoms[i].ghost && polar(d.atoms[i].element))
+            acceptors << i;
+    }
+    // The donor of each hydrogen: the other end of its only bond (dative bonds left out).
+    QVector<int> degree(d.atoms.size()), partner(d.atoms.size(), -1);
+    for (const auto &b : d.bonds) {
+        const int ai = indices.value(b.a, -1), bi = indices.value(b.b, -1);
+        if (b.kind == "dative" || ai < 0 || bi < 0)
+            continue;
+        ++degree[ai];
+        ++degree[bi];
+        partner[ai] = bi;
+        partner[bi] = ai;
+    }
+    for (int k = 0; k < d.atoms.size(); ++k) {
+        const auto &h = d.atoms[k];
+        if (h.element != "H" || h.ghost || degree[k] != 1 || !polar(d.atoms[partner[k]].element))
+            continue;
+        const Vec donor = d.atoms[partner[k]].position;
+        for (int i : std::as_const(acceptors)) {
+            const auto &a = d.atoms[i];
+            if (i == partner[k])
+                continue;
+            const double distance = (a.position - h.position).norm();
+            if (distance < 1.5 || distance > 2.6)
+                continue;
+            const double cosine =
+                (donor - h.position).normalized().dot((a.position - h.position).normalized());
+            if (cosine <= std::cos(120 * std::numbers::pi / 180))
+                found.append({h.id, a.id});
+        }
+    }
+    return found;
 }
 double measure(const Document &d, const Ids &ids) {
     QVector<Vec> p;

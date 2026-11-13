@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+#include "editing/coordination.h"
 #include "editing/peptide.h"
 #include "foundation/files.h"
 #include "ui/figure_export.h"
 #include "ui/main_window.h"
+#include "ui/molecule_style.h"
 #include "ui/molecule_view.h"
 #include "ui/result_charts.h"
 #include "ui/theme.h"
@@ -160,6 +162,85 @@ class RenderingTest : public QObject {
         QCOMPARE(view.atomColor(water.atoms[1].id), QColor("#3f6fb5"));
         view.setColorMode("element");
         QCOMPARE(view.atomColor(first), toColor(element("C").color));
+    }
+    // What is drawn, and how large, is one rule for both renderers (molecule_style.h).
+    void styleOfBothRenderers() {
+        QCOMPARE(atomRadius("ball_and_stick", AtomSize::Heavy, 65, 1.7), 13.);
+        QCOMPARE(atomRadius("ball_and_stick", AtomSize::Hydrogen, 65, 1.1), 7.8);
+        QCOMPARE(atomRadius("ball_and_stick", AtomSize::Heavy, 600, 1.7), 20.); // Between two limits.
+        QCOMPARE(atomRadius("stick", AtomSize::Hydrogen, 65, 1.1), 6.5);
+        QCOMPARE(atomRadius("backbone", AtomSize::TraceNode, 65, 1.7), 6.5);
+        QCOMPARE(atomRadius("spacefill", AtomSize::Heavy, 10, 1.7), 17.);
+        // A wireframe shows its atoms by their bonds; an atom without one (an ion) is a small sphere.
+        QCOMPARE(atomRadius("wireframe", AtomSize::Heavy, 65, 1.7), 0.);
+        QCOMPARE(atomRadius("wireframe", AtomSize::Unbonded, 65, 1.7), 7.8);
+        QCOMPARE(bondWidth("stick", 65), 12.);
+        QCOMPARE(bondWidth("wireframe", 65), 2.);
+        QCOMPARE(bondWidth("ball_and_stick", 65), 3.5);
+        QCOMPARE(traceWidth(20), 7.);
+        auto d = Document::fromXyz("4\nwater and an ion\nO 0 0 0\nH 0.76 0.59 0\nH -0.76 0.59 0\nNa 5 0 0\n");
+        d.atoms[1].ghost = true;
+        QVERIFY(atomSize("wireframe", d.atoms[3], false, false) == AtomSize::Unbonded);
+        QVERIFY(atomSize("wireframe", d.atoms[0], true, false) == AtomSize::Heavy);
+        QVERIFY(atomSize("ball_and_stick", d.atoms[3], false, false) == AtomSize::Heavy);
+        QVERIFY(atomSize("backbone", d.atoms[0], true, true) == AtomSize::TraceNode);
+        QVERIFY(atomSize("stick", d.atoms[2], true, false) == AtomSize::Hydrogen);
+        QVERIFY(atomSphere(d.atoms[0], false) && atomSphere(d.atoms[2], true));
+        QVERIFY(!atomSphere(d.atoms[1], true) && !atomSphere(d.atoms[2], false));
+        QVERIFY(bondShown(d.atoms[0], d.atoms[2], true) && !bondShown(d.atoms[0], d.atoms[2], false));
+        QVERIFY(bondShown(d.atoms[0], d.atoms[3], false));
+        // The QPainter view draws the ion of a wireframe as the scene of VTK does, larger than the two
+        // pixels around which the marks of an atom without a sphere go.
+        d.atoms[1].ghost = false;
+        MoleculeView view(RendererChoice::Painter);
+        view.resize(400, 300);
+        view.setLabelMode("none");
+        view.setDocument(d);
+        view.setStyle("wireframe");
+        view.fit();
+        const auto image = view.grab().toImage();
+        const auto ion = view.atomScreenPosition(d.atoms[3].id).toPoint(),
+                   oxygen = view.atomScreenPosition(d.atoms[0].id).toPoint();
+        const auto background = [&](const QPoint &p) { return image.pixelColor(2, p.y()); };
+        QVERIFY(image.pixelColor(ion + QPoint(3, 0)) != background(ion));
+        QCOMPARE(image.pixelColor(ion + QPoint(14, 0)), background(ion));
+        QCOMPARE(image.pixelColor(oxygen + QPoint(0, -6)), background(oxygen + QPoint(0, -6)));
+    }
+    // The handles beside a molecule are where the view shows them now: they need no painting first.
+    void handlesWithoutPainting() {
+        Document d;
+        const auto metal = addCenter(d, "Pt", "square_planar", Vec::Zero(), 2.0, 2);
+        MoleculeView view(RendererChoice::Painter);
+        view.resize(400, 300);
+        view.setDocument(d);
+        view.fit();
+        auto handles = view.markerList();
+        QCOMPARE(handles.size(), 4);
+        for (int i = 0; i < 4; ++i) {
+            QCOMPARE(handles[i].owner, metal);
+            QCOMPARE(handles[i].site, i);
+            QVERIFY(view.rect().contains(handles[i].point.toPoint()));
+        }
+        QSignalSpy clicked(&view, &MoleculeView::siteClicked);
+        QTest::mouseClick(&view, Qt::LeftButton, Qt::NoModifier, handles[2].point.toPoint());
+        QCOMPARE(clicked.size(), 1);
+        QCOMPARE(clicked[0][1].toInt(), 2);
+        // They follow the camera, and a figure neither shows nor changes them.
+        view.setAngles(40, 25, 0);
+        const auto turned = view.markerList();
+        QVERIFY(QLineF(turned[0].point, handles[0].point).length() > 1);
+        QVERIFY(!view.renderImage(1, ImageBackground::White).isNull());
+        QCOMPARE(view.markerList().size(), 4);
+        QCOMPARE(view.markerList()[0].point, turned[0].point);
+        // The termini of residues are handles only while an amino acid is placed.
+        Document peptide;
+        buildPeptide(peptide, {"GLY", "ALA"}, "neutral", "neutral");
+        view.setDocument(peptide);
+        QVERIFY(view.markerList().isEmpty());
+        view.setAminoHandles(true);
+        handles = view.markerList();
+        QCOMPARE(handles.size(), 2);
+        QVERIFY(handles[0].site < 0 && handles[0].n && !handles[1].n);
     }
     void fitsLargeStructures() {
         // As large as a spike protein of a virus (160 Å) and larger: fitting shows every atom.

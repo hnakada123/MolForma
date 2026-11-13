@@ -8,6 +8,7 @@
 #include "result_support.h"
 #include "results/energy_profile.h"
 #include "results/molden_orbitals.h"
+#include "results/nwchem_log.h"
 #include "results/result_files.h"
 #include "results/result_loader.h"
 #include "results/result_path.h"
@@ -114,13 +115,13 @@ class ResultReadersTest : public QObject, ResultFiles {
         QJsonArray steps;
         for (const auto &s : progress.optimization().steps)
             steps << QJsonArray{s.step, s.energy};
-        return {{"started", progress.started},
+        return {{"started", progress.started()},
                 {"step_task", progress.optimization().steps.isEmpty() ? -1 : progress.optimization().task},
                 {"converged_task", (progress.optimization().converged ? progress.optimization().task : -1)},
                 {"steps", steps},
                 {"thresholds", progress.optimization().thresholds},
-                {"energy", progress.energy},
-                {"ended", progress.ended}};
+                {"energy", progress.energy()},
+                {"ended", progress.ended()}};
     }
     // A result as transferred to the window, with the atom IDs of each frame replaced by their numbers
     // (readings of the same file get new IDs).
@@ -218,7 +219,67 @@ class ResultReadersTest : public QObject, ResultFiles {
         NwchemLog log;
         log.addBytes("         Total DFT ENERGY =     -76.4");
         log.addBytes("  iter       energy          gnorm     gmax       time");
-        QCOMPARE(log.energy, -76.4);
+        QCOMPARE(log.energy(), -76.4);
+    }
+    void logLinesAreReadOnce() {
+        // A Raman task after the frequencies keeps the energy of their reference structure, whether the
+        // lines come as text or as bytes (the lines passed over are those the summary does not use).
+        const QByteArray raman = "NWChem Input Module\nTotal DFT energy = -76.0\nNWChem Input Module\n"
+                                 "NWChem Nuclear Hessian and Frequency Analysis\nTotal DFT energy = -75.9\n"
+                                 "Total DFT energy = -75.85\nNWChem Input Module\n      Raman Analysis\n"
+                                 "Total DFT energy = -75.8\n"
+                                 " Total times  cpu:        1.2s     wall:        3.4s\n";
+        NwchemLog text, bytes;
+        for (const auto &line : raman.split('\n')) {
+            text.add(QString::fromUtf8(line));
+            bytes.addBytes(line);
+        }
+        QCOMPARE(text.summary().energy()["hartree"].toDouble(), -75.9);
+        QCOMPARE(text.summary().energy()["source"].toString(), QString("frequency_reference"));
+        QCOMPARE(bytes.summary().energy(), text.summary().energy());
+        QCOMPARE(bytes.energy(), -75.8); // The last one printed, as a running job shows it.
+        // The closing line ends the log, for the progress and the summary alike, and gives the wall time.
+        QVERIFY(bytes.ended() && bytes.summary().normalTermination());
+        QCOMPARE(bytes.summary().wallSeconds(), 3.4);
+        NwchemEnergySummary summary;
+        summary.add(" Total times  cpu: 1.0s");
+        QVERIFY(summary.normalTermination() && !summary.wallSeconds());
+        // A total energy is one in any case of its letters, for all that read it.
+        summary = {};
+        summary.add("         Total DFT ENERGY =     -76.4");
+        QCOMPARE(summary.energy()["hartree"].toDouble(), -76.4);
+        QVERIFY(NwchemEnergySummary::relevant("         Total DFT ENERGY =     -76.4"));
+        QVERIFY(NwchemEnergySummary::relevant("      Raman Analysis"));
+        QVERIFY(!NwchemEnergySummary::relevant("  iter       gnorm     gmax       time"));
+        // And one whose number does not read is none, for the result as for the progress: an odd line
+        // does not reject the log.
+        const QString odd = "NWChem\n" + geometry() +
+                            " Total SCF energy = -75.5\n Total SCF energy = 1.2.3\n Total DFT energy e\n";
+        const auto r = readResult(save("odd-energy.out", odd));
+        QCOMPARE(r.energies.size(), 1);
+        QCOMPARE(r.energies[0].hartree, -75.5);
+        NwchemLog live;
+        for (const auto &line : odd.toUtf8().split('\n'))
+            live.addBytes(line);
+        QCOMPARE(live.energy(), -75.5);
+        QCOMPARE(live.summary().energy()["hartree"].toDouble(), -75.5);
+        // What a file of NWChem begins with, and the failures its messages tell apart.
+        QVERIFY(nwchemOutputStart("          Northwest Computational Chemistry Package (NWChem) 7.3.1\n"));
+        QVERIFY(nwchemOutputStart(" argument  1 = input.nw\n\n                NWChem Input Module\n"));
+        QVERIFY(!nwchemOutputStart("3\nwater\nO 0 0 0\n"));
+        const auto reports = [](const char *line) {
+            QVector<NwchemFailure> found;
+            for (const auto failure : nwchemFailures)
+                if (nwchemLineReports(line, failure))
+                    found << failure;
+            return found;
+        };
+        QCOMPARE(reports(" dft energy failed"), (QVector{NwchemFailure::ScfConvergence}));
+        QCOMPARE(reports("SCF failed to converge in 30 steps"),
+                 (QVector{NwchemFailure::ScfConvergence, NwchemFailure::OptimizationLimit}));
+        QCOMPARE(reports("MA_alloc_get: failed"), (QVector{NwchemFailure::Memory}));
+        QCOMPARE(reports("failed opening basis file"), (QVector{NwchemFailure::Basis}));
+        QVERIFY(reports("SCF converged").isEmpty());
     }
     void realNwchemLogs() {
         // Logs of NWChem 7.3.1 for inputs MolForma generated (tests/fixtures/nwchem/README.md), and what

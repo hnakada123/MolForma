@@ -2,7 +2,6 @@
 #pragma once
 #include "model/document.h"
 #include <array>
-#include <functional>
 #include <limits>
 
 namespace mf {
@@ -59,14 +58,6 @@ struct ResultStep {
     double energy = 0, deltaE = 0, gmax = 0, grms = 0, xrms = 0, xmax = 0, seconds = 0;
     bool operator==(const ResultStep &) const = default;
 };
-// The last DRIVER optimization as one unit. Later energy/property/frequency tasks keep it;
-// starting another optimization replaces its steps, thresholds and convergence together.
-struct NwchemOptimization {
-    int task = -1;
-    bool present = false, converged = false;
-    QVector<ResultStep> steps;
-    QJsonObject thresholds;
-};
 enum class ResultOutcome { NotApplicable, Incomplete, Normal, Error };
 // A bond index of this size or more (in magnitude) is listed as a bond; the reader keeps at most
 // maxBondIndices atom pairs of a log.
@@ -87,7 +78,7 @@ struct ResultData {
     // Energies are in Hartree and atom numbers count from 1 unless said otherwise.
     // The calculation and its optimization:
     //   "final_energy" {hartree, method, source: final|frequency_reference|bsse_corrected}: the energy
-    //     of the calculation (NwchemEnergySummary::energy); absent without one.
+    //     of the calculation (NwchemEnergySummary::energy, results/nwchem_log.h); absent without one.
     //   "bsse" {error, supermolecular, corrected, nwchem_error?, interaction?,
     //     interaction_uncorrected?}: the last counterpoise correction (NwchemEnergySummary::bsse).
     //   "optimization" "converged" | "not_converged": the last DRIVER optimization; absent without one.
@@ -139,101 +130,6 @@ struct ResultData {
     bool orbitalBasis = false;
     int selectedOrbital = -1, orbitalFrame = -1, orbitalDivisions = 40;
     QString orbitalError, orbitalNormalization, normalizationRequest = "auto";
-};
-// The energy of a calculation, fed an NWChem log line by line: that of the last task with one; for
-// a frequency task the reference structure's (numerical Hessians print the energies of displaced
-// structures after it), for BSSE the corrected energy. NWChem reads the input again ("NWChem
-// Input Module") before each task.
-class NwchemEnergySummary {
-  public:
-    // Lines add() may use; others can be skipped without decoding them.
-    static bool relevant(QByteArrayView line);
-    void add(const QString &line);
-    // {"hartree", "method", "source": final|frequency_reference|bsse_corrected}; empty without one.
-    QJsonObject energy() const;
-    // The last counterpoise correction: {"error", "supermolecular", "corrected"} summed over all the
-    // monomers, with "nwchem_error" when NWChem printed another error and, when the monomer energies
-    // were found, "interaction" and "interaction_uncorrected" (Hartree); empty without one.
-    QJsonObject bsse() const;
-    bool normalTermination() const {
-        return ended;
-    }
-
-  private:
-    struct Task {
-        double first = 0, last = 0, corrected = 0, supermolecular = 0, error = 0, nwchemError = 0,
-               monomerSum = qQNaN(); // The monomers in their own bases.
-        QString firstMethod, lastMethod;
-        bool energy = false, frequency = false, bsse = false, raman = false;
-        // The energies since the monomers were listed (or since the last correction), for the sum.
-        int monomers = 0;
-        QVector<QPair<QString, double>> since;
-    };
-    QVector<Task> tasks{Task{}};
-    bool ended = false;
-};
-// One reading of an NWChem log, fed its lines in order: the whole log for the result viewer, a growing
-// log for the run panel, the end of an old one for the history. Sections that span several lines
-// (coordinate and normal-mode tables, excited states, charges, thermochemistry, ...) are read as their
-// lines arrive.
-class NwchemLog {
-  public:
-    // With a result, everything goes into it and finish() completes it; without, only the progress
-    // below and the energy summary are read.
-    explicit NwchemLog(ResultData *result = nullptr);
-    void add(const QString &line);
-    // A line as read from the file (UTF-8). Without a result, the lines that change neither the
-    // progress nor the energy summary are passed over without decoding them.
-    void addBytes(QByteArrayView line);
-    // The log ends: sections still open are incomplete. Completes the result.
-    void finish();
-    const NwchemEnergySummary &summary() const {
-        return energySummary;
-    }
-    int started = 0; // Tasks begun; the current one is started - 1.
-    const NwchemOptimization &optimization() const {
-        return driver;
-    }
-    double energy = std::numeric_limits<double>::quiet_NaN(); // The last total energy / Hartree,
-    QString energyMethod;                                     // and its method ("SCF", "MP2").
-    bool ended = false;                                       // NWChem's closing timing line.
-
-  private:
-    ResultData *result;
-    NwchemEnergySummary energySummary;
-    NwchemOptimization driver;
-    int lineNumber = 0;
-    bool busy = false; // The current task has printed something since its input banner.
-    bool recognized = false, fatal = false;
-    QString abort, orbitalSpin, ircDirection, shieldingElement;
-    QString responseGauge;
-    double responseFrequency = 0;
-    int alphaElectrons = -1, betaElectrons = -1; // As last printed (-1: not yet).
-    int bondAtoms = 0;  // The atoms of the bond-index matrix just read, for the valencies after it.
-    QStringList recent; // The lines before this one, for the message that precedes an error.
-    QVector<ResultOrbital> orbitals;
-    QJsonArray thermochemistry, ircPoints, shielding, spinspin;
-    QStringList spinPairAtoms; // The atoms and isotopes of the spin–spin coupling being read.
-    QJsonObject irc, solvation;
-    QMap<int, QJsonObject> scan;
-    int scanPoint = 0, shieldingAtom = 0, ircConverged = 0;
-    // NEB: the step being computed; the path energies of a step, and the path structures and their
-    // energies of a step (printed with print_shift); the "@neb" steps, the thresholds and whether
-    // NWChem said the path converged (-1: not said).
-    int nebIteration = 0, nebEnergiesIteration = -1, nebPathIteration = -1, nebConverged = -1;
-    QVector<double> nebEnergies, nebPathEnergies;
-    QVector<Document> nebPath;
-    QJsonArray nebSteps;
-    QJsonObject nebThresholds;
-    // The sections being read: each takes the following lines until it returns false, and nullptr
-    // once the log ends.
-    QVector<std::function<bool(const QString *line)>> sections;
-    void read(const QString &line);
-    void readCoordinates(const QString &line);
-    void readModes(const QString &line);
-    void readExcitations(const QString &line);
-    void progress(const QString &line);
-    void beginOptimization();
 };
 // Parsing/meshing is bounded and runs in a cancellable native process in the UI. With a cache folder
 // (the result loader's, for its session), a CUBE or MOLDEN file read before is not parsed again for

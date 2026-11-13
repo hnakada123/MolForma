@@ -107,6 +107,7 @@ add_library(molforma_nwchem STATIC
     src/nwchem/result_files.cpp
     src/nwchem/history.cpp
     src/nwchem/history_import.cpp
+    src/nwchem/history_list.cpp
     src/nwchem/nwchem.cpp
     src/nwchem/nwchem_catalog.cpp
     src/nwchem/nwchem_paths.cpp
@@ -141,6 +142,7 @@ add_library(molforma_io STATIC
     src/io/crystal.cpp
     src/io/document_storage.cpp
     src/io/file_download.cpp
+    src/io/macromolecule.cpp
     src/io/mmcif.cpp
     src/io/pdb.cpp
     src/io/pdb_download.cpp
@@ -219,11 +221,7 @@ add_library(molforma_ui STATIC
     src/ui/xtb_dialog.cpp
     docs/manual.qrc)
 # McpGui shares tool definitions, result views and the access policy with the headless server.
-target_link_libraries(molforma_ui PUBLIC molforma_core molforma_mcp Qt6::Widgets PRIVATE ${MOLFORMA_OPENBABEL})
-if(MSVC)
-    # Both renderers use Open Babel van der Waals radii.
-    target_compile_definitions(molforma_ui PRIVATE USING_DYNAMIC_LIBS)
-endif()
+target_link_libraries(molforma_ui PUBLIC molforma_core molforma_mcp Qt6::Widgets)
 target_compile_options(molforma_ui PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>)
 # Optional: figures of charts in SVG beside PNG and PDF (Qt SVG).
 find_package(Qt6 QUIET COMPONENTS Svg)

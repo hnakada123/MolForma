@@ -1,19 +1,38 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+#include "results/nwchem_log.h"
 #include "foundation/i18n.h"
 #include "model/geometry.h"
 #include "model/numbers.h"
 #include "model/units.h"
 #include "results/result_parsing.h"
-#include "results/results.h"
 #include <QRegularExpression>
 #include <algorithm>
 #include <cmath>
+#include <functional>
 
 namespace mf {
 using namespace result_detail;
+// "Total SCF energy = -76.02" (DFT, MP2, CCSD, CCSD(T)): the method in upper case and the energy / Hartree.
+struct NwchemTotalEnergy {
+    QString method;
+    double hartree = 0;
+};
 namespace {
-// "Total SCF energy = -76.02" (DFT, MP2, CCSD, CCSD(T)): the method and the number as written.
-std::optional<std::pair<QString, QString>> totalEnergy(const QString &line) {
+// Whether a line has the word "energy", in any case of its letters (total energies are found so).
+bool hasEnergyWord(QByteArrayView line) {
+    static constexpr char word[] = "energy";
+    for (qsizetype i = 0; i + 6 <= line.size(); ++i) {
+        qsizetype k = 0;
+        while (k < 6 && (line[i + k] | 0x20) == word[k])
+            ++k;
+        if (k == 6)
+            return true;
+    }
+    return false;
+}
+// The total energy of a line that prints one with a number that reads; a line is matched once, for the
+// energy summary, the progress and the result.
+std::optional<NwchemTotalEnergy> totalEnergy(const QString &line) {
     static const QRegularExpression total(
         R"(\bTotal\s+(SCF|DFT|MP2|CCSD(?:\(T\))?)\s+energy\s*[:=]?\s*([-+0-9.eEdD]+))",
         QRegularExpression::CaseInsensitiveOption);
@@ -22,15 +41,66 @@ std::optional<std::pair<QString, QString>> totalEnergy(const QString &line) {
     const auto m = total.match(line);
     if (!m.hasMatch())
         return std::nullopt;
-    return std::pair{m.captured(1).toUpper(), m.captured(2)};
+    const auto hartree = resultNumber(m.captured(2));
+    if (!hartree)
+        return std::nullopt;
+    return NwchemTotalEnergy{m.captured(1).toUpper(), *hartree};
+}
+// NWChem's last line, with the times of the run: "Total times  cpu:        1.2s     wall:        3.4s".
+bool closingLine(const QString &line) {
+    return line.contains(u"Total times  cpu:");
+}
+std::optional<double> closingWallSeconds(const QString &line) {
+    static const QRegularExpression times(R"(Total times\s+cpu:\s*[0-9.]+s\s+wall:\s*([0-9.]+)s)");
+    const auto m = times.match(line);
+    bool ok = false;
+    const double seconds = m.hasMatch() ? m.captured(1).toDouble(&ok) : 0;
+    return ok ? std::optional(seconds) : std::nullopt;
+}
+// The lines of a DRIVER optimization that the progress reads, besides those of the energy summary: its
+// heading, its steps ("@"), its thresholds and its verdict.
+bool optimizationLine(QByteArrayView line) {
+    return line.startsWith('@') || line.contains("threshold") || line.contains("Optimization converged") ||
+           line.contains("NWChem Geometry Optimization");
 }
 } // namespace
+bool nwchemOutputStart(QByteArrayView head) {
+    return head.contains("Northwest Computational Chemistry Package") || head.contains("NWChem Input Module");
+}
+bool nwchemLineReports(const QString &line, NwchemFailure failure) {
+    static const auto pattern = [](const char *expression) {
+        return QRegularExpression(QString::fromLatin1(expression), QRegularExpression::CaseInsensitiveOption);
+    };
+    static const QRegularExpression scf = pattern("(?:scf|dft).*?(?:failed to converge|convergence failure|"
+                                                  "not converged)|dft energy failed"),
+                                    steps = pattern("maximum number of (?:optimization )?steps exceeded|"
+                                                    "failed to converge in.*steps|driver:.*too many steps"),
+                                    memory = pattern("out of memory|insufficient memory|not enough memory|"
+                                                     "ma_alloc.*fail|failed to allocate"),
+                                    basis =
+                                        pattern("failed opening basis file|error in the specified basis set");
+    switch (failure) {
+    case NwchemFailure::ScfConvergence:
+        return scf.match(line).hasMatch();
+    case NwchemFailure::OptimizationLimit:
+        return steps.match(line).hasMatch();
+    case NwchemFailure::Memory:
+        return memory.match(line).hasMatch();
+    case NwchemFailure::Basis:
+        return basis.match(line).hasMatch();
+    }
+    return false;
+}
 bool NwchemEnergySummary::relevant(QByteArrayView line) {
-    return line.contains("energy") || line.contains("NWChem Input Module") ||
+    return hasEnergyWord(line) || line.contains("NWChem Input Module") ||
            line.contains("Frequency Analysis") || line.contains("Raman Analysis") ||
            line.contains("Total times") || line.contains("number of monomers") || line.contains("BSSE error");
 }
 void NwchemEnergySummary::add(const QString &line) {
+    const auto total = totalEnergy(line);
+    add(line, total ? &*total : nullptr);
+}
+void NwchemEnergySummary::add(const QString &line, const NwchemTotalEnergy *total) {
     static const QRegularExpression corrected(R"(^\s*Corrected energy\s*=\s*([-+0-9.eEdD]+)\s*$)");
     static const QRegularExpression supermolecular(R"(^\s*Supermolecular energy\s*=\s*([-+0-9.eEdD]+)\s*$)");
     static const QRegularExpression bsseError(R"(^\s*BSSE error\s*=\s*([-+0-9.eEdD]+)\s*$)");
@@ -49,28 +119,30 @@ void NwchemEnergySummary::add(const QString &line) {
         task.raman = true;
     } else if (line.contains(u"NWChem Nuclear Hessian and Frequency Analysis"))
         task.frequency = true;
-    else if (line.contains(u"Total times  cpu:"))
+    else if (closingLine(line)) {
         ended = true;
-    else if (const auto n =
-                 line.contains(u"number of monomers") ? monomers.match(line) : QRegularExpressionMatch();
-             n.hasMatch())
+        if (const auto seconds = closingWallSeconds(line))
+            wall = seconds;
+    } else if (const auto n =
+                   line.contains(u"number of monomers") ? monomers.match(line) : QRegularExpressionMatch();
+               n.hasMatch())
         task.monomers = std::min(n.captured(1).toInt(), 1000);
     else if (const auto e = line.contains(u"BSSE error") ? bsseError.match(line) : QRegularExpressionMatch();
              e.hasMatch() && read(e.captured(1), value))
         task.nwchemError = value;
-    else if (!line.contains(u"energy"))
-        return;
-    else if (const auto m = totalEnergy(line); m && read(m->second, value)) {
+    else if (total) {
         if (!task.energy) {
-            task.first = value;
-            task.firstMethod = m->first;
+            task.first = total->hartree;
+            task.firstMethod = total->method;
         }
-        task.last = value;
-        task.lastMethod = m->first;
+        task.last = total->hartree;
+        task.lastMethod = total->method;
         task.energy = true;
         if (task.monomers && task.since.size() < 20000)
-            task.since << qMakePair(task.lastMethod, value);
-    } else if (const auto s = supermolecular.match(line); s.hasMatch() && read(s.captured(1), value))
+            task.since << qMakePair(task.lastMethod, total->hartree);
+    } else if (!line.contains(u"energy"))
+        return;
+    else if (const auto s = supermolecular.match(line); s.hasMatch() && read(s.captured(1), value))
         task.supermolecular = value;
     else if (const auto c = corrected.match(line); c.hasMatch() && read(c.captured(1), value)) {
         task.corrected = value;
@@ -254,14 +326,124 @@ class BondIndexTable {
     int atoms = 0, row = 0, block = 0, columns = 0; // The row and the columns of the last line.
     qint64 pairs = 0;
 };
-} // namespace
-NwchemLog::NwchemLog(ResultData *data) : result(data) {
-    if (result) {
-        result->status = tr(IncompleteStatus);
-        result->outcome = ResultOutcome::Incomplete;
-    }
+// A whole number, as the first column of the tables of a log.
+bool wholeNumber(const QString &text) {
+    static const QRegularExpression index("^\\d+$");
+    return index.match(text).hasMatch();
 }
+} // namespace
+// The state of one reading; NwchemLog only holds it.
+class NwchemLog::Reader {
+  public:
+    explicit Reader(ResultData *data) : result(data) {
+        if (result) {
+            result->status = tr(IncompleteStatus);
+            result->outcome = ResultOutcome::Incomplete;
+        }
+    }
+    void add(const QString &line);
+    void addBytes(QByteArrayView line);
+    void finish();
+    ResultData *result;
+    NwchemEnergySummary energySummary;
+    NwchemOptimization driver;
+    int started = 0;
+    double energy = std::numeric_limits<double>::quiet_NaN();
+    QString energyMethod;
+
+  private:
+    int lineNumber = 0;
+    bool busy = false; // The current task has printed something since its input banner.
+    bool recognized = false, fatal = false;
+    // Which of the warnings is the note of a converged optimization (-1: none), to take it back when
+    // the last optimization of the log did not converge.
+    int convergenceNote = -1;
+    QString abort, orbitalSpin, ircDirection, shieldingElement;
+    QString responseGauge;
+    double responseFrequency = 0;
+    int alphaElectrons = -1, betaElectrons = -1; // As last printed (-1: not yet).
+    int bondAtoms = 0;  // The atoms of the bond-index matrix just read, for the valencies after it.
+    QStringList recent; // The lines before this one, for the message that precedes an error.
+    QVector<ResultOrbital> orbitals;
+    QJsonArray thermochemistry, ircPoints, shielding, spinspin;
+    QStringList spinPairAtoms; // The atoms and isotopes of the spin–spin coupling being read.
+    QJsonObject irc, solvation;
+    QMap<int, QJsonObject> scan;
+    int scanPoint = 0, shieldingAtom = 0, ircConverged = 0;
+    // NEB: the step being computed; the path energies of a step, and the path structures and their
+    // energies of a step (printed with print_shift); the "@neb" steps, the thresholds and whether
+    // NWChem said the path converged (-1: not said).
+    int nebIteration = 0, nebEnergiesIteration = -1, nebPathIteration = -1, nebConverged = -1;
+    QVector<double> nebEnergies, nebPathEnergies;
+    QVector<Document> nebPath;
+    QJsonArray nebSteps;
+    QJsonObject nebThresholds;
+    // The sections being read: each takes the following lines until it returns false, and nullptr
+    // once the log ends.
+    QVector<std::function<bool(const QString *line)>> sections;
+    // What a running job shows: the tasks begun, the DRIVER optimization and the last energy.
+    void progress(const QString &line, const NwchemTotalEnergy *total);
+    void beginOptimization();
+    // What the result holds, one reader for each kind of it; each sees every line.
+    void read(const QString &line, const NwchemTotalEnergy *total);
+    void readErrors(const QString &line);
+    void readScan(const QString &line);
+    void readNeb(const QString &line);
+    void readIrc(const QString &line);
+    void readSolvation(const QString &line);
+    void readCharges(const QString &line);
+    void readEpr(const QString &line);
+    void readNmr(const QString &line);
+    void readResponse(const QString &line);
+    void readOrbitals(const QString &line);
+    void readDipole(const QString &line);
+    void readThermochemistry(const QString &line);
+    void readRaman(const QString &line);
+    void readEnergy(const QString &line, const NwchemTotalEnergy *total);
+    void readCoordinates(const QString &line);
+    void readModes(const QString &line);
+    void readExcitations(const QString &line);
+    // The end of the log: what was gathered goes into the result.
+    void finishOptimization();
+    void finishScan();
+    void finishNeb();
+    void finishIrc();
+    void finishRaman();
+    void finishOutcome();
+    void finishEnergy();
+};
+NwchemLog::NwchemLog(ResultData *data) : reader(std::make_unique<Reader>(data)) {}
+NwchemLog::~NwchemLog() = default;
+NwchemLog::NwchemLog(NwchemLog &&) noexcept = default;
+NwchemLog &NwchemLog::operator=(NwchemLog &&) noexcept = default;
 void NwchemLog::add(const QString &line) {
+    reader->add(line);
+}
+void NwchemLog::addBytes(QByteArrayView line) {
+    reader->addBytes(line);
+}
+void NwchemLog::finish() {
+    reader->finish();
+}
+const NwchemEnergySummary &NwchemLog::summary() const {
+    return reader->energySummary;
+}
+int NwchemLog::started() const {
+    return reader->started;
+}
+const NwchemOptimization &NwchemLog::optimization() const {
+    return reader->driver;
+}
+double NwchemLog::energy() const {
+    return reader->energy;
+}
+QString NwchemLog::energyMethod() const {
+    return reader->energyMethod;
+}
+bool NwchemLog::ended() const {
+    return reader->energySummary.normalTermination();
+}
+void NwchemLog::Reader::add(const QString &line) {
     ++lineNumber;
     // Sections begun by earlier lines see this one first: it may end them.
     for (int i = 0; i < sections.size();)
@@ -269,54 +451,38 @@ void NwchemLog::add(const QString &line) {
             ++i;
         else
             sections.removeAt(i);
-    energySummary.add(line);
-    progress(line);
+    const auto printed = totalEnergy(line);
+    const auto *total = printed ? &*printed : nullptr;
+    energySummary.add(line, total);
+    progress(line, total);
     if (result)
-        read(line);
+        read(line, total);
     recent << line;
     if (recent.size() > 4)
         recent.removeFirst();
 }
-void NwchemLog::addBytes(QByteArrayView line) {
-    // What progress() and the energy summary look for (a DRIVER step begins with '@'; total energies
-    // are found case-insensitively).
-    const auto energy = [&] {
-        static constexpr char word[] = "energy";
-        for (qsizetype i = 0; i + 6 <= line.size(); ++i) {
-            qsizetype k = 0;
-            while (k < 6 && (line[i + k] | 0x20) == word[k])
-                ++k;
-            if (k == 6)
-                return true;
-        }
-        return false;
-    };
-    if (!result && !line.startsWith('@') && !line.contains("threshold") &&
-        !line.contains("Optimization converged") && !line.contains("NWChem Geometry Optimization") &&
-        !line.contains("NWChem Input Module") && !line.contains("Total times") &&
-        !line.contains("Frequency Analysis") && !line.contains("number of monomers") &&
-        !line.contains("BSSE error") && !energy()) {
+void NwchemLog::Reader::addBytes(QByteArrayView line) {
+    // Without a result, only the lines of the energy summary and of the progress are decoded.
+    if (!result && !NwchemEnergySummary::relevant(line) && !optimizationLine(line)) {
         ++lineNumber;
         return;
     }
     add(QString::fromUtf8(line));
 }
-void NwchemLog::beginOptimization() {
+void NwchemLog::Reader::beginOptimization() {
     if (!driver.present || driver.task != started - 1) {
         driver = {};
         driver.task = started - 1;
         driver.present = true;
     }
 }
-void NwchemLog::progress(const QString &line) {
+void NwchemLog::Reader::progress(const QString &line, const NwchemTotalEnergy *total) {
     if (line.contains(u"NWChem Input Module")) {
         // NWChem reads the input again before each task; repeated banners start no new task.
         if (started == 0 || busy)
             ++started;
         busy = false;
-    } else if (line.contains(u"Total times  cpu:"))
-        ended = true;
-    else if (line.contains(u"NWChem Geometry Optimization")) {
+    } else if (line.contains(u"NWChem Geometry Optimization")) {
         driver = {};
         beginOptimization();
         busy = true;
@@ -345,47 +511,36 @@ void NwchemLog::progress(const QString &line) {
         beginOptimization();
         driver.converged = true;
         busy = true;
-    } else if (const auto e = totalEnergy(line)) {
-        if (const double value = logNumber(e->second); std::isfinite(value)) {
-            energy = value;
-            energyMethod = e->first;
-        }
+    } else if (total) {
+        energy = total->hartree;
+        energyMethod = total->method;
         busy = true;
     } else if (line.contains(u"Frequency Analysis"))
         busy = true;
 }
-void NwchemLog::read(const QString &line) {
-    auto &r = *result;
-    static const QRegularExpression error(
-        "failed to converge|convergence failure|not converged|MPI_ABORT|An error occurred|"
-        "error termination|task.*failed|failed.*task|Calculation failed|There is an error in|"
-        "This error has not yet been assigned|This type of error is most commonly associated|"
-        "Received an Error in Communication",
-        QRegularExpression::CaseInsensitiveOption);
-    // Every message of `error` contains one of these words.
-    static constexpr QStringView errorWords[] = {u"fail", u"error", u"converged", u"mpi_abort"};
-    static const QRegularExpression code(R"(\s+-?\d+\s*$)");
-    static const QRegularExpression orbitalHeader(R"(Final (Alpha |Beta )?Molecular Orbital Analysis)");
-    static const QRegularExpression vector(
-        R"(^\s*Vector\s+(\d+)\s+Occ=\s*(\S+)\s+E=\s*(\S+)(?:\s+Symmetry=\s*(\S+))?)");
-    // Markers written by MolForma's scan input ("title" of each point) and IRC point lines.
-    // A point of a two-dimensional scan names both coordinates: "… = 1.5 and torsion 1 2 3 4 = 60".
-    static const QRegularExpression scanMark(
-        R"(MolForma scan (\d+)/(\d+) ([a-z]+(?: \d+)+) = ([-+.0-9eE]+)(?: and ([a-z]+(?: \d+)+) = ([-+.0-9eE]+))?)");
-    static const QRegularExpression spinPair(
-        R"(^\s*Atom\s+(\d+):\s+(\d+-[A-Za-z]+)\s+and\s+Atom\s+(\d+):\s+(\d+-[A-Za-z]+))");
-    static const QRegularExpression ircPoint(R"(^&\s+(\d+)((?:\s+\S+){6})\s*$)");
-    static const QRegularExpression atomRow(R"(^\s*(\d+)\s+([A-Za-z]{1,3}\w*)\s+(\S+)\s+(\S+)\s*$)");
-    static const QRegularExpression index("^\\d+$");
-    // Lenient numbers for the summaries: one odd line must not reject the whole log.
-    const auto value = [](const QString &text) { return logNumber(text); };
-    const int i = lineNumber;
-    // Each expression below matches only lines with a word or first character checked before it.
-    const auto has = [&](QStringView word) { return line.contains(word); };
-    const auto unmatched = QRegularExpressionMatch();
+void NwchemLog::Reader::read(const QString &line, const NwchemTotalEnergy *total) {
     recognized |= line.contains(u"NWChem");
-    if (line.contains(u"Spin multiplicity:"))
-        r.properties["spin_multiplicity"] = value(words(line.section(':', 1)).value(0));
+    readEpr(line);
+    readRaman(line);
+    readErrors(line);
+    readScan(line);
+    readNeb(line);
+    readIrc(line);
+    readSolvation(line);
+    readCharges(line);
+    readNmr(line);
+    readResponse(line);
+    readOrbitals(line);
+    readDipole(line);
+    readThermochemistry(line);
+    readEnergy(line, total);
+    readCoordinates(line);
+    readModes(line);
+    readExcitations(line);
+}
+// The ZORA hyperfine couplings and the g shift of an EPR calculation.
+void NwchemLog::Reader::readEpr(const QString &line) {
+    auto &r = *result;
     if (line.contains(u"ZORA NMR Hyperfine"))
         r.properties["epr_hyperfine"] = QJsonArray();
     if (line.contains(u"Total hyperfine coupling tensor:")) {
@@ -442,6 +597,10 @@ void NwchemLog::read(const QString &line) {
             return false;
         };
     }
+}
+// The Raman activities of the modes ("rminfo").
+void NwchemLog::Reader::readRaman(const QString &line) {
+    auto &r = *result;
     if (line.contains(u"Showing rminfo:"))
         r.properties["raman"] = QJsonArray();
     if (line.trimmed().startsWith(u"rminfo(")) {
@@ -452,11 +611,25 @@ void NwchemLog::read(const QString &line) {
             auto rows = r.properties["raman"].toArray();
             if (rows.size() < 4096)
                 rows.append(QJsonObject{{"raman_index", match.captured(1).toInt()},
-                                        {"frequency", value(match.captured(2))},
-                                        {"activity", value(match.captured(3))}});
+                                        {"frequency", logNumber(match.captured(2))},
+                                        {"activity", logNumber(match.captured(3))}});
             r.properties["raman"] = rows;
         }
     }
+}
+// The messages of a run that failed: what errquit printed, and the lines that tell of an error.
+void NwchemLog::Reader::readErrors(const QString &line) {
+    auto &r = *result;
+    static const QRegularExpression error(
+        "failed to converge|convergence failure|not converged|MPI_ABORT|An error occurred|"
+        "error termination|task.*failed|failed.*task|Calculation failed|There is an error in|"
+        "This error has not yet been assigned|This type of error is most commonly associated|"
+        "Received an Error in Communication",
+        QRegularExpression::CaseInsensitiveOption);
+    // Every message of `error` contains one of these words.
+    static constexpr QStringView errorWords[] = {u"fail", u"error", u"converged", u"mpi_abort"};
+    static const QRegularExpression code(R"(\s+-?\d+\s*$)");
+    const int i = lineNumber;
     // errquit prints its message, framed by dashes, just above "current input line :".
     if (QStringView(line).trimmed().startsWith(u"current input line") && abort.isEmpty())
         for (int j = recent.size() - 1; j >= 0; --j) {
@@ -479,109 +652,122 @@ void NwchemLog::read(const QString &line) {
         if (r.warnings.size() < 30)
             r.warnings << tr("行 %1: %2").arg(i).arg(line.trimmed().left(250));
     }
-    if (auto m = has(u"MolForma scan") ? scanMark.match(line) : unmatched;
+}
+// The points of a scan, by the markers of MolForma's scan input (the "title" of each point). A point of a
+// two-dimensional scan names both coordinates: "… = 1.5 and torsion 1 2 3 4 = 60".
+void NwchemLog::Reader::readScan(const QString &line) {
+    static const QRegularExpression scanMark(
+        R"(MolForma scan (\d+)/(\d+) ([a-z]+(?: \d+)+) = ([-+.0-9eE]+)(?: and ([a-z]+(?: \d+)+) = ([-+.0-9eE]+))?)");
+    if (auto m = line.contains(u"MolForma scan") ? scanMark.match(line) : QRegularExpressionMatch();
         m.hasMatch() && m.captured(1).toInt() > scanPoint) {
         scanPoint = m.captured(1).toInt();
         if (scan.size() < 1000)
             scan[scanPoint] = QJsonObject{{"point", scanPoint},
                                           {"points", m.captured(2).toInt()},
                                           {"coordinate", m.captured(3)},
-                                          {"value", value(m.captured(4))}};
+                                          {"value", logNumber(m.captured(4))}};
         if (scan.contains(scanPoint) && m.hasCaptured(5)) {
             scan[scanPoint]["coordinate2"] = m.captured(5);
-            scan[scanPoint]["value2"] = value(m.captured(6));
+            scan[scanPoint]["value2"] = logNumber(m.captured(6));
         }
     }
-    // NWChem's NEB: the step, the energies of the path after each step, the path itself when the
-    // input asks to print it (print_shift), the "@neb" table and the verdict.
-    if (line.contains(u"neb") || line.contains(u"XYZ FILE for bead_list")) {
-        const auto tokens = words(line);
-        if (tokens.size() == 4 && tokens[0] == "neb:" && tokens[1] == "iteration" && tokens[2] == "#")
-            nebIteration = int(value(tokens[3]));
-        if (line.contains(u"neb: Initial Path Energy") || line.contains(u"neb: Path Energy #")) {
-            const int iteration = line.contains(u"Initial") ? 0 : int(value(tokens.value(4)));
-            sections << [this, iteration, energies = QVector<double>()](const QString *text) mutable {
-                const auto row = text ? words(*text) : QStringList();
-                if (row.size() == 3 && row[0] == "neb:" && row[1] == QString::number(energies.size() + 1)) {
-                    if (const auto e = resultNumber(row[2]); e && energies.size() < 1000) {
-                        energies << *e;
-                        return true;
-                    }
-                } else if (energies.isEmpty() && row.size() == 2 && row[1].startsWith(u"---"))
+}
+// NWChem's NEB: the step, the energies of the path after each step, the path itself when the
+// input asks to print it (print_shift), the "@neb" table and the verdict.
+void NwchemLog::Reader::readNeb(const QString &line) {
+    if (!line.contains(u"neb") && !line.contains(u"XYZ FILE for bead_list"))
+        return;
+    const auto tokens = words(line);
+    if (tokens.size() == 4 && tokens[0] == "neb:" && tokens[1] == "iteration" && tokens[2] == "#")
+        nebIteration = int(logNumber(tokens[3]));
+    if (line.contains(u"neb: Initial Path Energy") || line.contains(u"neb: Path Energy #")) {
+        const int iteration = line.contains(u"Initial") ? 0 : int(logNumber(tokens.value(4)));
+        sections << [this, iteration, energies = QVector<double>()](const QString *text) mutable {
+            const auto row = text ? words(*text) : QStringList();
+            if (row.size() == 3 && row[0] == "neb:" && row[1] == QString::number(energies.size() + 1)) {
+                if (const auto e = resultNumber(row[2]); e && energies.size() < 1000) {
+                    energies << *e;
                     return true;
-                if (!energies.isEmpty()) {
-                    nebEnergies = energies;
-                    nebEnergiesIteration = iteration;
+                }
+            } else if (energies.isEmpty() && row.size() == 2 && row[1].startsWith(u"---"))
+                return true;
+            if (!energies.isEmpty()) {
+                nebEnergies = energies;
+                nebEnergiesIteration = iteration;
+            }
+            return false;
+        };
+    }
+    if (line.contains(u"XYZ FILE for bead_list"))
+        sections << [this, iteration = nebIteration, path = QVector<Document>(), energies = QVector<double>(),
+                     bead = Document(), atoms = -1, energy = qQNaN(),
+                     heading = true](const QString *text) mutable {
+            const auto finish = [&] {
+                if (!path.isEmpty() && path.size() == energies.size()) {
+                    nebPath = path;
+                    nebPathEnergies = energies;
+                    nebPathIteration = iteration;
                 }
                 return false;
             };
-        }
-        if (line.contains(u"XYZ FILE for bead_list"))
-            sections << [this, iteration = nebIteration, path = QVector<Document>(),
-                         energies = QVector<double>(), bead = Document(), atoms = -1, energy = qQNaN(),
-                         heading = true](const QString *text) mutable {
-                const auto finish = [&] {
-                    if (!path.isEmpty() && path.size() == energies.size()) {
-                        nebPath = path;
-                        nebPathEnergies = energies;
-                        nebPathIteration = iteration;
-                    }
-                    return false;
-                };
-                if (!text)
-                    return finish();
-                const auto row = words(*text);
-                if (heading && row.size() == 1 && row[0].startsWith(u"---")) {
-                    heading = false;
-                    return true;
-                }
+            if (!text)
+                return finish();
+            const auto row = words(*text);
+            if (heading && row.size() == 1 && row[0].startsWith(u"---")) {
                 heading = false;
-                try {
-                    if (atoms < 0) { // The number of atoms of the next bead, or the end of the path.
-                        if (row.size() != 1 || path.size() >= 1000)
-                            return finish();
-                        atoms = integer(row[0], 1, maxAtoms);
-                        bead = Document();
-                        energy = qQNaN();
-                    } else if (!std::isfinite(energy)) {
-                        if (!text->trimmed().startsWith(u"energy="))
-                            return finish();
-                        energy = number(text->section('=', 1).trimmed());
-                    } else {
-                        if (row.size() != 4)
-                            return finish();
-                        bead.atoms << atom(row[0], point(row, 1));
-                        if (bead.atoms.size() == atoms) {
-                            if (!path.isEmpty() && path.first().atoms.size() != atoms)
-                                return finish();
-                            path << bead;
-                            energies << energy;
-                            atoms = -1;
-                        }
-                    }
-                } catch (const std::exception &) {
-                    return finish();
-                }
                 return true;
-            };
-        if (line.startsWith(u"@neb")) {
-            static const QRegularExpression step(R"(^@neb\s+(\d+)((?:\s+\S+){9})\s*$)");
-            static const QRegularExpression tolerance(R"(^@neb (Gmax|Grms|Xmax|Xrms) tolerance\s*=\s*(\S+))");
-            if (const auto m = step.match(line); m.hasMatch() && nebSteps.size() < 20000) {
-                const auto columns = words(m.captured(2));
-                nebSteps << QJsonObject{{"step", m.captured(1).toInt()}, {"energy", value(columns[0])},
-                                        {"midpoint", value(columns[1])}, {"minimum", value(columns[2])},
-                                        {"maximum", value(columns[3])},  {"gmax", value(columns[4])},
-                                        {"grms", value(columns[5])},     {"xrms", value(columns[6])},
-                                        {"xmax", value(columns[7])}};
-            } else if (const auto t = tolerance.match(line); t.hasMatch())
-                nebThresholds[t.captured(1).toLower()] = value(t.captured(2));
-            else if (line.contains(u"NEB calculation not converged"))
-                nebConverged = 0;
-            else if (line.contains(u"NEB calculation converged"))
-                nebConverged = 1;
-        }
+            }
+            heading = false;
+            try {
+                if (atoms < 0) { // The number of atoms of the next bead, or the end of the path.
+                    if (row.size() != 1 || path.size() >= 1000)
+                        return finish();
+                    atoms = integer(row[0], 1, maxAtoms);
+                    bead = Document();
+                    energy = qQNaN();
+                } else if (!std::isfinite(energy)) {
+                    if (!text->trimmed().startsWith(u"energy="))
+                        return finish();
+                    energy = number(text->section('=', 1).trimmed());
+                } else {
+                    if (row.size() != 4)
+                        return finish();
+                    bead.atoms << atom(row[0], point(row, 1));
+                    if (bead.atoms.size() == atoms) {
+                        if (!path.isEmpty() && path.first().atoms.size() != atoms)
+                            return finish();
+                        path << bead;
+                        energies << energy;
+                        atoms = -1;
+                    }
+                }
+            } catch (const std::exception &) {
+                return finish();
+            }
+            return true;
+        };
+    if (line.startsWith(u"@neb")) {
+        static const QRegularExpression step(R"(^@neb\s+(\d+)((?:\s+\S+){9})\s*$)");
+        static const QRegularExpression tolerance(R"(^@neb (Gmax|Grms|Xmax|Xrms) tolerance\s*=\s*(\S+))");
+        if (const auto m = step.match(line); m.hasMatch() && nebSteps.size() < 20000) {
+            const auto columns = words(m.captured(2));
+            nebSteps << QJsonObject{{"step", m.captured(1).toInt()},     {"energy", logNumber(columns[0])},
+                                    {"midpoint", logNumber(columns[1])}, {"minimum", logNumber(columns[2])},
+                                    {"maximum", logNumber(columns[3])},  {"gmax", logNumber(columns[4])},
+                                    {"grms", logNumber(columns[5])},     {"xrms", logNumber(columns[6])},
+                                    {"xmax", logNumber(columns[7])}};
+        } else if (const auto t = tolerance.match(line); t.hasMatch())
+            nebThresholds[t.captured(1).toLower()] = logNumber(t.captured(2));
+        else if (line.contains(u"NEB calculation not converged"))
+            nebConverged = 0;
+        else if (line.contains(u"NEB calculation converged"))
+            nebConverged = 1;
     }
+}
+// The points of an IRC path ("&" lines), in the direction being traced.
+void NwchemLog::Reader::readIrc(const QString &line) {
+    auto &r = *result;
+    static const QRegularExpression ircPoint(R"(^&\s+(\d+)((?:\s+\S+){6})\s*$)");
     if (line.contains(u"Forward IRC optimization") || line.contains(u"Backward IRC optimization")) {
         if (ircDirection.isEmpty()) {
             // The transition state: its energy and structure were computed before the path.
@@ -592,17 +778,20 @@ void NwchemLog::read(const QString &line) {
         ircDirection = line.contains(u"Forward") ? "forward" : "backward";
     }
     ircConverged += line.contains(u"IRC Optimization converged");
-    if (auto m = line.startsWith('&') ? ircPoint.match(line) : unmatched;
+    if (auto m = line.startsWith('&') ? ircPoint.match(line) : QRegularExpressionMatch();
         m.hasMatch() && !ircDirection.isEmpty() && ircPoints.size() < 5000) {
         const auto columns = words(m.captured(2));
         ircPoints << QJsonObject{{"direction", ircDirection},
                                  {"point", m.captured(1).toInt()},
-                                 {"energy", value(columns[0])},
-                                 {"s", value(columns[2])},
+                                 {"energy", logNumber(columns[0])},
+                                 {"s", logNumber(columns[2])},
                                  {"frame", r.frames.size() - 1}};
     }
+}
+// The energies of COSMO and SMD.
+void NwchemLog::Reader::readSolvation(const QString &line) {
     const auto field = [&](const char *label) {
-        return value(words(line.section(label, 1).section('=', 1)).value(0));
+        return logNumber(words(line.section(label, 1).section('=', 1)).value(0));
     };
     if (line.contains(u"gas phase energy =") || line.contains(u"sol phase energy ="))
         solvation[line.contains(u"gas phase") ? "gas" : "solution"] = field("energy");
@@ -610,15 +799,20 @@ void NwchemLog::read(const QString &line) {
         solvation["smd_dg"] = field("solvation");
     if (line.contains(u"total free energy in solvent including G(SMD-CDS) ="))
         solvation["smd_total"] = field("G(SMD-CDS)");
+}
+// Charges and bond indices: the Mulliken analysis of the PROPERTY module, and the ESP module.
+void NwchemLog::Reader::readCharges(const QString &line) {
+    auto &r = *result;
+    static const QRegularExpression atomRow(R"(^\s*(\d+)\s+([A-Za-z]{1,3}\w*)\s+(\S+)\s+(\S+)\s*$)");
     // Mulliken charges of the PROPERTY module (nuclear charge minus gross population).
     if (line.contains(u"Total      gross population on atoms"))
-        sections << [&r, value, charges = QJsonArray(), left = 1 + maxAtoms](const QString *row) mutable {
+        sections << [&r, charges = QJsonArray(), left = 1 + maxAtoms](const QString *row) mutable {
             const auto m = row ? atomRow.match(*row) : QRegularExpressionMatch();
             if (row && --left >= 0) {
                 if (row->trimmed().isEmpty() && charges.isEmpty())
                     return true;
                 if (m.hasMatch() && m.captured(1).toInt() == charges.size() + 1) {
-                    charges << value(m.captured(3)) - value(m.captured(4));
+                    charges << logNumber(m.captured(3)) - logNumber(m.captured(4));
                     return true;
                 }
             }
@@ -652,7 +846,7 @@ void NwchemLog::read(const QString &line) {
         sections << [this, valency = QJsonArray(), free = QJsonArray()](const QString *text) mutable {
             // Number, element, valency, free electrons, sum of bond indices, population and spin.
             const auto row = text ? words(*text) : QStringList();
-            if ((row.size() != 6 && row.size() != 7) || !index.match(row[0]).hasMatch() ||
+            if ((row.size() != 6 && row.size() != 7) || !wholeNumber(row[0]) ||
                 row[0].toInt() != valency.size() + 1)
                 return false;
             const auto v = fortranNumber(row[row.size() - 5]), f = fortranNumber(row[row.size() - 4]);
@@ -670,29 +864,33 @@ void NwchemLog::read(const QString &line) {
     if (line.contains(u"Atom") && line.contains(u"Coordinates") && line.contains(u"Charge"))
         // The rows start within seven lines of the heading; a log repeating the heading must not keep
         // thousands of sections waiting for them.
-        sections <<
-            [&r, value, esp = QJsonArray(), resp = QJsonArray(), preamble = 7](const QString *text) mutable {
-                if (text) {
-                    const auto row = words(*text);
-                    if (row.size() < 6 || !index.match(row[0]).hasMatch()) {
-                        if (esp.isEmpty() && --preamble >= 0)
-                            return true;
-                    } else if (row[0].toInt() == esp.size() + 1 && esp.size() < maxAtoms) {
-                        esp << value(row[5]);
-                        if (row.size() >= 7)
-                            resp << value(row[6]);
+        sections << [&r, esp = QJsonArray(), resp = QJsonArray(), preamble = 7](const QString *text) mutable {
+            if (text) {
+                const auto row = words(*text);
+                if (row.size() < 6 || !wholeNumber(row[0])) {
+                    if (esp.isEmpty() && --preamble >= 0)
                         return true;
-                    }
+                } else if (row[0].toInt() == esp.size() + 1 && esp.size() < maxAtoms) {
+                    esp << logNumber(row[5]);
+                    if (row.size() >= 7)
+                        resp << logNumber(row[6]);
+                    return true;
                 }
-                if (!esp.isEmpty()) {
-                    r.properties["esp"] = esp;
-                    if (resp.size() == esp.size())
-                        r.properties["resp"] = resp;
-                    else
-                        r.properties.remove("resp");
-                }
-                return false;
-            };
+            }
+            if (!esp.isEmpty()) {
+                r.properties["esp"] = esp;
+                if (resp.size() == esp.size())
+                    r.properties["resp"] = resp;
+                else
+                    r.properties.remove("resp");
+            }
+            return false;
+        };
+}
+// NMR: the shieldings and the indirect spin–spin couplings of the last calculation.
+void NwchemLog::Reader::readNmr(const QString &line) {
+    static const QRegularExpression spinPair(
+        R"(^\s*Atom\s+(\d+):\s+(\d+-[A-Za-z]+)\s+and\s+Atom\s+(\d+):\s+(\d+-[A-Za-z]+))");
     // GIAO shielding tensors: "Atom:  n  X" followed by "isotropic =" and "anisotropy =".
     if (line.contains(u"Chemical Shielding Tensors")) {
         shielding = {};
@@ -709,11 +907,11 @@ void NwchemLog::read(const QString &line) {
         if (shielding.size() < maxAtoms) // One per atom.
             shielding << QJsonObject{{"atom", shieldingAtom},
                                      {"element", shieldingElement},
-                                     {"isotropic", value(words(line.section('=', 1)).value(0))}};
+                                     {"isotropic", logNumber(words(line.section('=', 1)).value(0))}};
     }
     if (shieldingAtom > 0 && line.contains(u"anisotropy =") && !shielding.isEmpty()) {
         auto last = shielding.last().toObject();
-        last["anisotropy"] = value(words(line.section('=', 1)).value(0));
+        last["anisotropy"] = logNumber(words(line.section('=', 1)).value(0));
         shielding[shielding.size() - 1] = last;
         shieldingAtom = 0;
     }
@@ -732,9 +930,13 @@ void NwchemLog::read(const QString &line) {
                                     {"b", spinPairAtoms[2].toInt()},
                                     {"isotope_a", spinPairAtoms[1]},
                                     {"isotope_b", spinPairAtoms[3]},
-                                    {"hz", value(words(line.section('=', 1)).value(0))}};
+                                    {"hz", logNumber(words(line.section('=', 1)).value(0))}};
         spinPairAtoms = {};
     }
+}
+// Response properties: optical rotation and the polarizability, of the frequency last printed.
+void NwchemLog::Reader::readResponse(const QString &line) {
+    auto &r = *result;
     if (line.contains(u"NWChem Input Module")) {
         responseGauge.clear();
         responseFrequency = 0;
@@ -742,18 +944,18 @@ void NwchemLog::read(const QString &line) {
     if (line.contains(u"Using GIAO formalism for OptRot"))
         responseGauge = "giao";
     if (line.trimmed().startsWith("Frequency  ="))
-        responseFrequency = value(words(line.section('=', 1)).value(0));
+        responseFrequency = logNumber(words(line.section('=', 1)).value(0));
     if (line.contains(u"Optical rotation tensor Beta") && responseGauge == "giao" && responseFrequency > 0)
-        sections << [&r, value, frequency = responseFrequency, tensor = QJsonArray(),
+        sections << [&r, frequency = responseFrequency, tensor = QJsonArray(),
                      left = 15](const QString *text) mutable {
             if (!text || --left < 0)
                 return false;
             const auto row = words(*text);
             if (row.size() == 4 && row[0].toInt() == tensor.size() / 3 + 1)
                 for (int k = 1; k < 4; ++k)
-                    tensor.append(value(row[k]));
+                    tensor.append(logNumber(row[k]));
             if (tensor.size() == 9 && text->trimmed().startsWith("average:")) {
-                const double iso = value(row.value(1)), imaginary = value(row.value(4));
+                const double iso = logNumber(row.value(1)), imaginary = logNumber(row.value(4));
                 if (std::isfinite(iso) && imaginary == 0) {
                     auto rows = r.properties["ord"].toArray();
                     if (rows.size() < 2000)
@@ -770,19 +972,19 @@ void NwchemLog::read(const QString &line) {
             return true;
         };
     if (line.contains(u"Linear Response polarizability / au"))
-        sections << [&r, value, tensor = QJsonArray(), polarizability = QJsonObject(),
+        sections << [&r, tensor = QJsonArray(), polarizability = QJsonObject(),
                      left = 15](const QString *text) mutable {
             if (text && --left >= 0) {
                 const auto row = words(*text);
                 if (row.size() == 4 && QStringList{"X", "Y", "Z"}.contains(row[0]))
                     for (int k = 1; k < 4; ++k)
-                        tensor << value(row[k]);
+                        tensor << logNumber(row[k]);
                 if (text->contains("Isotropic   ="))
-                    polarizability["isotropic"] = value(words(text->section('=', 1)).value(0));
+                    polarizability["isotropic"] = logNumber(words(text->section('=', 1)).value(0));
                 if (text->contains("Anisotropic ="))
-                    polarizability["anisotropy"] = value(words(text->section('=', 1)).value(0));
+                    polarizability["anisotropy"] = logNumber(words(text->section('=', 1)).value(0));
                 if (text->contains("Frequency  ="))
-                    polarizability["frequency"] = value(words(text->section('=', 1)).value(0));
+                    polarizability["frequency"] = logNumber(words(text->section('=', 1)).value(0));
                 return true;
             }
             if (tensor.size() == 9 && polarizability.contains(u"isotropic")) {
@@ -793,22 +995,37 @@ void NwchemLog::read(const QString &line) {
             }
             return false;
         };
-    if (auto m = has(u"Molecular Orbital Analysis") ? orbitalHeader.match(line) : unmatched; m.hasMatch()) {
+}
+// The wavefunction: its spin multiplicity and the orbital energies of the last analysis.
+void NwchemLog::Reader::readOrbitals(const QString &line) {
+    auto &r = *result;
+    static const QRegularExpression orbitalHeader(R"(Final (Alpha |Beta )?Molecular Orbital Analysis)");
+    static const QRegularExpression vector(
+        R"(^\s*Vector\s+(\d+)\s+Occ=\s*(\S+)\s+E=\s*(\S+)(?:\s+Symmetry=\s*(\S+))?)");
+    if (line.contains(u"Spin multiplicity:"))
+        r.properties["spin_multiplicity"] = logNumber(words(line.section(':', 1)).value(0));
+    if (auto m = line.contains(u"Molecular Orbital Analysis") ? orbitalHeader.match(line)
+                                                              : QRegularExpressionMatch();
+        m.hasMatch()) {
         orbitalSpin = m.captured(1).trimmed() == "Beta" ? "Beta" : "Alpha";
         if (orbitalSpin == "Alpha")
             orbitals.clear(); // Keep the last analysis (after optimization steps etc.).
     }
-    if (auto m = has(u"Vector") ? vector.match(line) : unmatched;
+    if (auto m = line.contains(u"Vector") ? vector.match(line) : QRegularExpressionMatch();
         m.hasMatch() && !orbitalSpin.isEmpty() && orbitals.size() < 20000)
-        orbitals << ResultOrbital{m.captured(4), orbitalSpin, value(m.captured(3)), value(m.captured(2)),
-                                  m.captured(1).toInt()};
+        orbitals << ResultOrbital{m.captured(4), orbitalSpin, logNumber(m.captured(3)),
+                                  logNumber(m.captured(2)), m.captured(1).toInt()};
+}
+// The dipole moment of the multipole analysis, with the structure it belongs to.
+void NwchemLog::Reader::readDipole(const QString &line) {
+    auto &r = *result;
     if (line.contains(u"Multipole analysis of the density"))
-        sections << [&r, value, dipole = QJsonObject(), left = 11](const QString *text) mutable {
+        sections << [&r, dipole = QJsonObject(), left = 11](const QString *text) mutable {
             if (text && --left >= 0) {
                 const auto row = words(*text);
                 if (row.size() >= 5 && row[0] == "1" &&
                     QStringList{"100", "010", "001"}.contains(row.mid(1, 3).join("")))
-                    dipole[row[1] == "1" ? "x" : row[2] == "1" ? "y" : "z"] = value(row[4]);
+                    dipole[row[1] == "1" ? "x" : row[2] == "1" ? "y" : "z"] = logNumber(row[4]);
                 return true;
             }
             if (dipole.size() == 3) {
@@ -822,15 +1039,18 @@ void NwchemLog::read(const QString &line) {
             }
             return false;
         };
+}
+// The thermochemistry of a frequency calculation, at each temperature.
+void NwchemLog::Reader::readThermochemistry(const QString &line) {
     if (QStringView(line).trimmed().startsWith(u"Temperature") && line.contains('=') &&
         QStringView(line).trimmed().endsWith('K'))
-        sections << [this, value,
-                     t = QJsonObject{{"temperature", value(line.section('=', 1).trimmed().chopped(1))}},
+        sections << [this,
+                     t = QJsonObject{{"temperature", logNumber(line.section('=', 1).trimmed().chopped(1))}},
                      left = 15](const QString *text) mutable {
             if (text && --left >= 0) {
                 const auto field = [&](const char *label, const char *key) {
                     if (text->contains(label))
-                        t[key] = value(words(text->section('=', 1)).value(0));
+                        t[key] = logNumber(words(text->section('=', 1)).value(0));
                 };
                 field("Zero-Point correction to Energy", "zpe_kcal");     // kcal/mol
                 field("Thermal correction to Energy", "energy_kcal");     // kcal/mol
@@ -846,27 +1066,34 @@ void NwchemLog::read(const QString &line) {
                     field("- Vibrational", "entropy_vibrational_cal");
                 }
                 if (text->contains("symmetry #"))
-                    t["symmetry_number"] = value(text->section('=', -1).remove(')').trimmed());
+                    t["symmetry_number"] = logNumber(text->section('=', -1).remove(')').trimmed());
                 return true;
             }
             if (t.contains(u"enthalpy_kcal") && t.contains(u"entropy_cal") && thermochemistry.size() < 20)
                 thermochemistry << t;
             return false;
         };
-    if (line.contains(u"Optimization converged"))
-        warn(r, tr("最適化の収束メッセージを検出しました。"));
-    if (const auto e = totalEnergy(line)) {
-        if (r.energies.size() >= 20000)
-            fail(tr("エネルギーの記録数が2万件を超えています。"));
-        r.energies << ResultEnergy{e->first, number(e->second), i};
-        if (scanPoint > 0 && scan.contains(scanPoint))
-            scan[scanPoint]["energy"] = r.energies.last().hartree;
-    }
-    readCoordinates(line);
-    readModes(line);
-    readExcitations(line);
 }
-void NwchemLog::readCoordinates(const QString &line) {
+// Every total energy of the log, in its order.
+void NwchemLog::Reader::readEnergy(const QString &line, const NwchemTotalEnergy *total) {
+    auto &r = *result;
+    // An optimization converged: noted where the log says so, and taken back at its end unless that
+    // optimization is the last one (finishOptimization).
+    if (convergenceNote < 0 && line.contains(u"Optimization converged")) {
+        const auto before = r.warnings.size();
+        warn(r, tr("最適化の収束メッセージを検出しました。"));
+        if (r.warnings.size() > before)
+            convergenceNote = int(before);
+    }
+    if (!total)
+        return;
+    if (r.energies.size() >= 20000)
+        fail(tr("エネルギーの記録数が2万件を超えています。"));
+    r.energies << ResultEnergy{total->method, total->hartree, lineNumber};
+    if (scanPoint > 0 && scan.contains(scanPoint))
+        scan[scanPoint]["energy"] = total->hartree;
+}
+void NwchemLog::Reader::readCoordinates(const QString &line) {
     auto &r = *result;
     const int i = lineNumber;
     static const QRegularExpression index("^\\d+$");
@@ -915,7 +1142,7 @@ void NwchemLog::readCoordinates(const QString &line) {
         };
     }
 }
-void NwchemLog::readModes(const QString &line) {
+void NwchemLog::Reader::readModes(const QString &line) {
     auto &r = *result;
     static const QRegularExpression index("^\\d+$");
     if (line.contains(u"(Projected Frequencies expressed")) {
@@ -971,11 +1198,8 @@ void NwchemLog::readModes(const QString &line) {
             return after <= 3;
         };
 }
-void NwchemLog::readExcitations(const QString &line) {
+void NwchemLog::Reader::readExcitations(const QString &line) {
     auto &r = *result;
-    const auto value = [](const QString &text) { return logNumber(text); };
-    const auto has = [&](QStringView word) { return line.contains(word); };
-    const auto unmatched = QRegularExpressionMatch();
     static const QRegularExpression root(
         R"(^\s*Root\s+(\d+)\s+(?:(singlet|triplet)\s+)?(\S+)\s+(-?[\d.]+)\s+a\.u\.\s+(-?[\d.]+)\s+eV)");
     // "Occ.    5  a   ---  Virt.    6  a   -1.00014 X" (or Y; neither for Tamm–Dancoff states), with
@@ -986,10 +1210,12 @@ void NwchemLog::readExcitations(const QString &line) {
         R"(\S{0,4}?\s*(-?\d*\.\d+)(?:\s+([XY]))?\s*$)");
     static const QRegularExpression electrons(R"(^\s*(Alpha|Beta) electrons\s*:\s*(\d+)\s*$)");
     // The electrons of each spin, as the DFT and TDDFT modules print them before the excited states.
-    if (auto m = has(u"electrons :") ? electrons.match(line) : unmatched; m.hasMatch())
+    if (auto m = line.contains(u"electrons :") ? electrons.match(line) : QRegularExpressionMatch();
+        m.hasMatch())
         (m.captured(1) == "Alpha" ? alphaElectrons : betaElectrons) = m.captured(2).toInt();
-    if (auto m = has(u"Root") ? root.match(line) : unmatched; m.hasMatch() && r.excitations.size() < 2000) {
-        ResultExcitation x{m.captured(1).toInt(), m.captured(2), m.captured(3), value(m.captured(5))};
+    if (auto m = line.contains(u"Root") ? root.match(line) : QRegularExpressionMatch();
+        m.hasMatch() && r.excitations.size() < 2000) {
+        ResultExcitation x{m.captured(1).toInt(), m.captured(2), m.captured(3), logNumber(m.captured(5))};
         if (x.root == 1 && std::any_of(r.excitations.begin(), r.excitations.end(),
                                        [&](const auto &e) { return e.root == 1 && e.spin == x.spin; })) {
             r.excitations.clear(); // A later TDDFT task replaces the earlier one.
@@ -1004,14 +1230,14 @@ void NwchemLog::readExcitations(const QString &line) {
         // anywhere (that of a running job even within a line): the block is complete once a line with
         // other text follows it, after blank ones or not.
         enum { Before, Within, Closing, After };
-        sections << [&r, value, x, rotation = qQNaN(), gauge = QString(), left = 80,
+        sections << [&r, x, rotation = qQNaN(), gauge = QString(), left = 80,
                      block = int(Before)](const QString *text) mutable {
             if (const auto m = text && block <= Within && text->contains(u"Virt.")
                                    ? amplitude.match(*text)
                                    : QRegularExpressionMatch();
                 m.hasMatch()) {
                 block = Within;
-                if (const double coefficient = value(m.captured(5)); std::isfinite(coefficient))
+                if (const double coefficient = logNumber(m.captured(5)); std::isfinite(coefficient))
                     x.contributions << ResultContribution{m.captured(1).toInt(), m.captured(3).toInt(),
                                                           m.captured(2), coefficient, m.captured(6) == "Y"};
                 if (x.contributions.size() >= 8 * ResultExcitation::maxContributions)
@@ -1028,11 +1254,11 @@ void NwchemLog::readExcitations(const QString &line) {
                 if (text->contains("Magnetic Transition Dipole (Length)"))
                     gauge = "length";
                 if (text->contains("Rotatory Strength (1E-40 esu**2cm**2):"))
-                    rotation = value(words(*text).last());
+                    rotation = logNumber(words(*text).last());
                 if (text->contains("<S2> ="))
-                    x.s2 = value(words(*text).value(2));
+                    x.s2 = logNumber(words(*text).value(2));
                 if (text->contains("Dipole Oscillator Strength"))
-                    x.oscillator = value(words(*text).last());
+                    x.oscillator = logNumber(words(*text).last());
                 return true;
             }
             if (block == Within || block == Closing)
@@ -1056,7 +1282,7 @@ void NwchemLog::readExcitations(const QString &line) {
         };
     }
 }
-void NwchemLog::finish() {
+void NwchemLog::Reader::finish() {
     for (auto &section : sections)
         section(nullptr);
     sections.clear();
@@ -1065,109 +1291,142 @@ void NwchemLog::finish() {
     auto &r = *result;
     if (!recognized)
         fail(tr("NWChemの出力ログを認識できません。"));
+    finishOptimization();
+    if (r.orbitals.isEmpty())
+        r.orbitals = orbitals; // Energies only: shapes need MOLDEN (or a CUBE) for the basis.
+    if (!thermochemistry.isEmpty())
+        r.properties["thermochemistry"] = thermochemistry;
+    finishScan();
+    finishNeb();
+    finishIrc();
+    if (!shielding.isEmpty())
+        r.properties["shielding"] = shielding;
+    if (!spinspin.isEmpty())
+        r.properties["spinspin"] = spinspin;
+    finishRaman();
+    if (!solvation.isEmpty())
+        r.properties["solvation"] = solvation;
+    finishOutcome();
+    finishEnergy();
+    r.warnings.removeDuplicates();
+}
+// The last DRIVER optimization: its steps, its thresholds and whether it converged.
+void NwchemLog::Reader::finishOptimization() {
+    auto &r = *result;
     r.steps = driver.steps;
     r.properties.remove("optimization");
     r.properties.remove("thresholds");
     if (driver.present)
         r.properties["optimization"] = driver.converged ? "converged" : "not_converged";
-    if (!driver.converged)
-        r.warnings.removeAll(tr("最適化の収束メッセージを検出しました。"));
-    if (r.orbitals.isEmpty())
-        r.orbitals = orbitals; // Energies only: shapes need MOLDEN (or a CUBE) for the basis.
-    if (!thermochemistry.isEmpty())
-        r.properties["thermochemistry"] = thermochemistry;
     if (!driver.thresholds.isEmpty())
         r.properties["thresholds"] = driver.thresholds;
-    if (!scan.isEmpty()) {
-        QJsonArray points;
-        for (const auto &point : std::as_const(scan))
-            if (point.contains("energy"))
-                points << point;
-        r.properties["scan"] = points;
-    }
-    if (!nebPath.isEmpty() || !nebEnergies.isEmpty()) {
-        QJsonObject neb;
-        QJsonArray points;
-        if (!nebPath.isEmpty()) {
-            // The energies of the path's step at full precision where the log printed them.
-            const bool precise =
-                nebEnergiesIteration == nebPathIteration && nebEnergies.size() == nebPath.size();
-            double distance = 0;
-            for (int k = 0; k < nebPath.size(); ++k) {
-                if (k > 0) {
-                    double squares = 0;
-                    for (int i = 0; i < nebPath[k].atoms.size(); ++i)
-                        squares +=
-                            (nebPath[k].atoms[i].position - nebPath[k - 1].atoms[i].position).squaredNorm();
-                    distance += std::sqrt(squares);
-                }
-                addFrame(r, nebPath[k], tr("NEB 像 %1").arg(k + 1));
-                points << QJsonObject{{"bead", k + 1},
-                                      {"energy", precise ? nebEnergies[k] : nebPathEnergies[k]},
-                                      {"frame", r.frames.size() - 1},
-                                      {"distance", distance}};
+    // The note of a converged optimization holds for the last one only.
+    if (!driver.converged && convergenceNote >= 0)
+        r.warnings.removeAt(convergenceNote);
+}
+// The points of a scan that have an energy.
+void NwchemLog::Reader::finishScan() {
+    if (scan.isEmpty())
+        return;
+    auto &r = *result;
+    QJsonArray points;
+    for (const auto &point : std::as_const(scan))
+        if (point.contains("energy"))
+            points << point;
+    r.properties["scan"] = points;
+}
+// The last NEB path printed: its structures become frames, with the length of the path up to each.
+void NwchemLog::Reader::finishNeb() {
+    if (nebPath.isEmpty() && nebEnergies.isEmpty())
+        return;
+    auto &r = *result;
+    QJsonObject neb;
+    QJsonArray points;
+    if (!nebPath.isEmpty()) {
+        // The energies of the path's step at full precision where the log printed them.
+        const bool precise = nebEnergiesIteration == nebPathIteration && nebEnergies.size() == nebPath.size();
+        double distance = 0;
+        for (int k = 0; k < nebPath.size(); ++k) {
+            if (k > 0) {
+                double squares = 0;
+                for (int i = 0; i < nebPath[k].atoms.size(); ++i)
+                    squares +=
+                        (nebPath[k].atoms[i].position - nebPath[k - 1].atoms[i].position).squaredNorm();
+                distance += std::sqrt(squares);
             }
-            neb["iteration"] = nebPathIteration;
-        } else {
-            for (int k = 0; k < nebEnergies.size(); ++k)
-                points << QJsonObject{{"bead", k + 1}, {"energy", nebEnergies[k]}};
-            neb["iteration"] = nebEnergiesIteration;
-            warn(r, tr("NEBの経路の構造はログにありません（入力のnebブロックにprint_shiftを指定すると出力"
-                       "されます）。"));
+            addFrame(r, nebPath[k], tr("NEB 像 %1").arg(k + 1));
+            points << QJsonObject{{"bead", k + 1},
+                                  {"energy", precise ? nebEnergies[k] : nebPathEnergies[k]},
+                                  {"frame", r.frames.size() - 1},
+                                  {"distance", distance}};
         }
-        neb["points"] = points;
-        if (!nebSteps.isEmpty())
-            neb["steps"] = nebSteps;
-        if (!nebThresholds.isEmpty())
-            neb["thresholds"] = nebThresholds;
-        if (nebConverged >= 0)
-            neb["converged"] = nebConverged == 1;
-        if (nebConverged == 0)
-            warn(r, tr("NEBの経路は最大ステップ数までに収束していません。最高点の構造は遷移状態の目安として"
-                       "遷移状態探索に使ってください。"));
-        r.properties["neb"] = neb;
+        neb["iteration"] = nebPathIteration;
+    } else {
+        for (int k = 0; k < nebEnergies.size(); ++k)
+            points << QJsonObject{{"bead", k + 1}, {"energy", nebEnergies[k]}};
+        neb["iteration"] = nebEnergiesIteration;
+        warn(r, tr("NEBの経路の構造はログにありません（入力のnebブロックにprint_shiftを指定すると出力"
+                   "されます）。"));
     }
-    if (!ircPoints.isEmpty()) {
-        irc["points"] = ircPoints;
-        // Complete when each direction traced (both, or the one chosen) printed its convergence.
-        QJsonArray directions;
-        for (const auto *direction : {"forward", "backward"})
-            if (std::any_of(ircPoints.begin(), ircPoints.end(),
-                            [&](const QJsonValue &p) { return p.toObject()["direction"] == direction; }))
-                directions << direction;
-        irc["directions"] = directions;
-        irc["complete"] = ircConverged >= directions.size();
-        r.properties["irc"] = irc;
-    }
-    if (!shielding.isEmpty())
-        r.properties["shielding"] = shielding;
-    if (!spinspin.isEmpty())
-        r.properties["spinspin"] = spinspin;
-    if (r.properties.contains("raman")) {
-        auto rows = r.properties["raman"].toArray();
-        QSet<int> matched;
-        const auto rigid = resultRigidModes(r);
-        for (int i = 0; i < rows.size(); ++i) {
-            auto row = rows[i].toObject();
-            int best = -1;
-            double distance = .02; // Printed Raman/mode frequencies are rounded to 0.01 cm⁻¹.
-            for (int j = 0; j < r.modes.size(); ++j) {
-                const auto delta = std::abs(r.modes[j].frequency - row["frequency"].toDouble());
-                if (!rigid.value(j) && !matched.contains(j) && delta < distance) {
-                    best = j;
-                    distance = delta;
-                }
-            }
-            if (best >= 0) {
-                row["mode"] = best;
-                matched.insert(best);
-                rows[i] = row;
+    neb["points"] = points;
+    if (!nebSteps.isEmpty())
+        neb["steps"] = nebSteps;
+    if (!nebThresholds.isEmpty())
+        neb["thresholds"] = nebThresholds;
+    if (nebConverged >= 0)
+        neb["converged"] = nebConverged == 1;
+    if (nebConverged == 0)
+        warn(r, tr("NEBの経路は最大ステップ数までに収束していません。最高点の構造は遷移状態の目安として"
+                   "遷移状態探索に使ってください。"));
+    r.properties["neb"] = neb;
+}
+// The points of an IRC path, and whether each direction traced reached its end.
+void NwchemLog::Reader::finishIrc() {
+    if (ircPoints.isEmpty())
+        return;
+    auto &r = *result;
+    irc["points"] = ircPoints;
+    // Complete when each direction traced (both, or the one chosen) printed its convergence.
+    QJsonArray directions;
+    for (const auto *direction : {"forward", "backward"})
+        if (std::any_of(ircPoints.begin(), ircPoints.end(),
+                        [&](const QJsonValue &p) { return p.toObject()["direction"] == direction; }))
+            directions << direction;
+    irc["directions"] = directions;
+    irc["complete"] = ircConverged >= directions.size();
+    r.properties["irc"] = irc;
+}
+// Each Raman activity with the vibrational mode of its frequency.
+void NwchemLog::Reader::finishRaman() {
+    auto &r = *result;
+    if (!r.properties.contains("raman"))
+        return;
+    auto rows = r.properties["raman"].toArray();
+    QSet<int> matched;
+    const auto rigid = resultRigidModes(r);
+    for (int i = 0; i < rows.size(); ++i) {
+        auto row = rows[i].toObject();
+        int best = -1;
+        double distance = .02; // Printed Raman/mode frequencies are rounded to 0.01 cm⁻¹.
+        for (int j = 0; j < r.modes.size(); ++j) {
+            const auto delta = std::abs(r.modes[j].frequency - row["frequency"].toDouble());
+            if (!rigid.value(j) && !matched.contains(j) && delta < distance) {
+                best = j;
+                distance = delta;
             }
         }
-        r.properties["raman"] = rows;
+        if (best >= 0) {
+            row["mode"] = best;
+            matched.insert(best);
+            rows[i] = row;
+        }
     }
-    if (!solvation.isEmpty())
-        r.properties["solvation"] = solvation;
+    r.properties["raman"] = rows;
+}
+// How the log ended, and the words for it.
+void NwchemLog::Reader::finishOutcome() {
+    auto &r = *result;
+    const bool ended = energySummary.normalTermination();
     r.outcome = fatal ? ResultOutcome::Error : ended ? ResultOutcome::Normal : ResultOutcome::Incomplete;
     if (!abort.isEmpty())
         r.status = tr(ErrorStatus).arg(abort);
@@ -1175,6 +1434,10 @@ void NwchemLog::finish() {
         r.status = tr(MessageStatus);
     else if (ended)
         r.status = tr(NormalStatus);
+}
+// The energy of the calculation, as the energy summary gives it.
+void NwchemLog::Reader::finishEnergy() {
+    auto &r = *result;
     if (const auto final = energySummary.energy(); !final.isEmpty())
         r.properties["final_energy"] = final;
     if (const auto bsse = energySummary.bsse(); !bsse.isEmpty()) {
@@ -1185,7 +1448,6 @@ void NwchemLog::finish() {
                               .arg(bsse["nwchem_error"].toDouble(), 0, 'f', 9)
                               .arg(bsse["error"].toDouble(), 0, 'f', 9);
     }
-    r.warnings.removeDuplicates();
 }
 
 } // namespace mf

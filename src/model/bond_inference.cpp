@@ -37,7 +37,7 @@ void Document::inferBonds() {
                     for (int j : *cell) {
                         const auto &b = atoms[j];
                         double dist = (a.position - b.position).norm();
-                        if (!a.ghost && !b.ghost && dist > .25 && dist < 1.22 * (radius(i) + radius(j)) &&
+                        if (!a.ghost && !b.ghost && bondDistance(dist, radius(i), radius(j)) &&
                             degree[i] < maximumBonds && degree[j] < maximumBonds) {
                             bonds.append({b.id, a.id, "single", {}, "distance"});
                             ++degree[i];

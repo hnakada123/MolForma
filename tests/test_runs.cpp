@@ -8,6 +8,7 @@
 #include "nwchem/nwchem_plan.h"
 #include "nwchem/nwchem_queue.h"
 #include "nwchem/nwchem_restart.h"
+#include "results/nwchem_log.h"
 #include "results/results.h"
 #include "run_support.h"
 #include <QtTest>
@@ -502,18 +503,18 @@ class RunsTest : public QObject, RunFixture {
                          "@    1     -76.03010450 -3.5D-03  0.00040  0.00020  0.00500  0.00900  0.9",
                          "      Optimization converged"})
             progress.add(line);
-        QCOMPARE(progress.started, 1); // A repeated banner starts no task.
+        QCOMPARE(progress.started(), 1); // A repeated banner starts no task.
         QCOMPARE(progress.optimization().steps.size(), 2);
         QCOMPARE(progress.optimization().steps.last().gmax, 0.0004);
         QCOMPARE(progress.optimization().thresholds["gmax"].toDouble(), 0.00045);
         QCOMPARE(progress.optimization().thresholds["xrms"].toDouble(), 0.0012);
         QCOMPARE(progress.optimization().task, 0);
         QCOMPARE((progress.optimization().converged ? progress.optimization().task : -1), 0);
-        QCOMPARE(progress.energy, -76.026587203);
+        QCOMPARE(progress.energy(), -76.026587203);
         progress.add(" NWChem Input Module");
         progress.add(" Total times  cpu: 1.0s");
-        QCOMPARE(progress.started, 2);
-        QVERIFY(progress.ended);
+        QCOMPARE(progress.started(), 2);
+        QVERIFY(progress.ended());
         const auto input =
             QString("driver\n  maxiter 80\nend\ntask dft optimize\ntask dft frequencies numerical\n"
                     "task tddft energy\ntask dplot\n");
@@ -776,7 +777,16 @@ class RunsTest : public QObject, RunFixture {
         QCOMPARE(entry.status, RunState::Prepared);
         QCOMPARE(entry.method, "Hartree–Fock");
         QCOMPARE(entry.basis, "STO-3G");
+        QCOMPARE(entry.level, QString("HF / STO-3G")); // In short, as lists show it.
         QCOMPARE(entry.name, QString("molforma"));
+        {
+            auto dft = water(tmp.filePath("dft-jobs"));
+            setNwchemSetting(dft, "method", "dft");
+            setNwchemSetting(dft, "functional", "b3lyp");
+            const auto listed = readHistoryEntry(saveExecutionBundle(dft, tmp.path()).directory);
+            QCOMPARE(listed.method, QString("DFT / B3LYP"));
+            QCOMPARE(listed.level, QString("B3LYP / STO-3G")); // The functional names the method.
+        }
         QVERIFY(historyIntegrity(entry).contains("入力・プロジェクトのSHA-256一致"));
         // Under the default calculation name, the job is listed by the user's title; a chosen name wins.
         {
@@ -929,6 +939,94 @@ class RunsTest : public QObject, RunFixture {
         a.formula.clear();
         b.formula.clear();
         QVERIFY(historyIncomparable(a, b).contains("組成")); // Unknown compositions never compare.
+    }
+    void historyLists() {
+        // What the history tab lists, without its widgets: the jobs that match a search and a state, in
+        // an order, with their states in a word and their energies against a reference job.
+        const auto job = [](const QString &name, RunState status, std::optional<double> energy, int day) {
+            HistoryEntry e;
+            e.directory = "/jobs/" + name;
+            e.name = name;
+            e.formula = "H2O";
+            e.method = "Hartree–Fock";
+            e.basis = "STO-3G";
+            e.level = "HF / STO-3G";
+            e.task = "エネルギー";
+            e.energyMethod = "SCF";
+            e.status = status;
+            e.energy = energy;
+            e.created = QDateTime(QDate(2026, 11, day), QTime(12, 0), QTimeZone::UTC);
+            e.valid = true;
+            return e;
+        };
+        QVector<HistoryEntry> entries{
+            job("water", RunState::Finished, -75.0, 1), job("WATER-2", RunState::Finished, -75.2, 2),
+            job("saved", RunState::Prepared, {}, 3),    job("running", RunState::Running, -74.0, 4),
+            job("lost", RunState::Running, -74.5, 5),   job("failed", RunState::Failed, -75.1, 6)};
+        entries[1].basis = "6-31G*";
+        entries[1].level = "HF / 6-31G*";
+        entries[4].orphaned = true;
+        entries[5].memo = "water again";
+        // The states: those of the records, but for a record that says it runs while this session does
+        // not run it.
+        QCOMPARE(historyStateName(entries[0], false), QString("終了"));
+        QCOMPARE(historyStateName(entries[3], true), QString("実行中"));
+        QCOMPARE(historyStateName(entries[3], false), QString("稼働未確認"));
+        QCOMPARE(historyStateName(entries[4], false), QString("プロセスなし"));
+        QVERIFY(historyPresence(entries[3], true) == HistoryPresence::Recorded);
+        QVERIFY(historyPresence(entries[3], false) == HistoryPresence::Unknown);
+        QVERIFY(historyPresence(entries[4], false) == HistoryPresence::Orphaned);
+        QVERIFY(historyPresence(entries[5], false) == HistoryPresence::Recorded);
+        QStringList groups;
+        for (const auto &e : entries)
+            groups << historyStateGroup(e, false);
+        QCOMPARE(groups, (QStringList{"finished", "finished", "prepared", "active", "stopped", "stopped"}));
+        // Every job, the newest first; the counts are those of the search, whatever the state chosen.
+        const auto names = [&](const HistoryList &list) {
+            QStringList out;
+            for (const auto &row : list.rows)
+                out << entries[row.entry].name;
+            return out;
+        };
+        auto list = historyList(entries, {});
+        QCOMPARE(names(list), (QStringList{"failed", "lost", "running", "saved", "WATER-2", "water"}));
+        QCOMPARE(list.counts.value(""), 6);
+        QCOMPARE(list.counts.value("stopped"), 2);
+        QVERIFY(!list.rows[0].delta && list.rows[0].note.isEmpty());
+        list = historyList(entries, {.search = "water", .state = "finished"});
+        QCOMPARE(names(list), (QStringList{"WATER-2", "water"})); // In any case; the memo matches too,
+        QCOMPARE(list.counts.value(""), 3);                       // but is of another state.
+        QCOMPARE(list.counts.value("stopped"), 1);
+        QCOMPARE(names(historyList(entries, {.search = "稼働未確認"})), (QStringList{"running"}));
+        QCOMPARE(names(historyList(entries, {.search = "実行中", .active = "/jobs/running"})),
+                 (QStringList{"running"}));
+        // In order of a column: its values first, either way, then the jobs without one.
+        list = historyList(entries, {.sort = HistorySort::Energy, .ascending = true});
+        QCOMPARE(names(list), (QStringList{"WATER-2", "failed", "water", "lost", "running", "saved"}));
+        list = historyList(entries, {.sort = HistorySort::Energy});
+        QCOMPARE(names(list), (QStringList{"running", "lost", "water", "failed", "WATER-2", "saved"}));
+        list = historyList(entries, {.sort = HistorySort::Level, .ascending = true});
+        QCOMPARE(names(list).first(), QString("WATER-2"));
+        // Against a reference: ΔE for the jobs that compare with it, and why the others have none.
+        QVERIFY(historyReference(entries[0]) && historyReference(entries[5]));
+        QVERIFY(!historyReference(entries[2]) && !historyReference(entries[3]));
+        list =
+            historyList(entries, {.sort = HistorySort::Delta, .ascending = true, .reference = "/jobs/water"});
+        QCOMPARE(names(list), (QStringList{"failed", "water", "lost", "running", "saved", "WATER-2"}));
+        QVERIFY(std::abs(*list.rows[0].delta + .1) < 1e-12);
+        QCOMPARE(*list.rows[1].delta, 0.);
+        QVERIFY(std::abs(list.largest - .1) < 1e-12);
+        QCOMPARE(list.rows[2].note, QString("記録の修復後に表示"));
+        QCOMPARE(list.rows[3].note, QString("終了後に表示"));
+        QCOMPARE(list.rows[4].note, QString("エネルギーの記録なし"));
+        QCOMPARE(list.rows[5].note, QString("基底が基準と異なる"));
+        QCOMPARE(list.rows[5].note, historyComparisonNote(entries[1], entries[0]));
+        QVERIFY(historyDifference(entries[1], entries[0]) == HistoryDifference::Basis);
+        QVERIFY(historyDifference(entries[5], entries[0]) == HistoryDifference::None);
+        // A job that cannot be a reference (it still runs) gives no comparison.
+        list = historyList(entries, {.reference = "/jobs/running"});
+        QVERIFY(std::none_of(list.rows.begin(), list.rows.end(),
+                             [](const HistoryRow &row) { return row.delta || !row.note.isEmpty(); }));
     }
     void logSummaryOfTasks() {
         QTemporaryDir tmp;

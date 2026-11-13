@@ -144,7 +144,17 @@ struct Document {
     // The XYZ dialect (xyz.cpp): reading infers the bonds.
     QString xyz() const;
     static Document fromXyz(const QString &text);
-    // Single bonds by distance and covalent radii (bond_inference.cpp).
+    // Single bonds by distance and covalent radii (bond_inference.cpp): between the atoms that
+    // bondDistance holds for, at most 16 to an atom, none to ghosts.
     void inferBonds();
 };
+// Whether two atoms this far apart (Å) are bonded, where positions are all there is to go by (XYZ files,
+// crystals, the structures of a log): closer than 1.22 times the sum of their covalent radii (bondReach),
+// and not in one place.
+inline double bondReach(double radiusA, double radiusB) {
+    return 1.22 * (radiusA + radiusB);
+}
+inline bool bondDistance(double distance, double radiusA, double radiusB) {
+    return distance > .25 && distance < bondReach(radiusA, radiusB);
+}
 } // namespace mf

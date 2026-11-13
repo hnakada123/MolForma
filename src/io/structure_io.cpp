@@ -55,8 +55,7 @@ Document gaussianStructure(const QString &text) {
               multiplicity = header.value(1).toInt(&multiplicityOk);
     if (!chargeOk || !multiplicityOk || multiplicity < 1)
         fail(tr("Gaussian入力の電荷・多重度の行が不正です。"));
-    QString xyz;
-    int count = 0;
+    Document d;
     for (; i < lines.size() && !lines[i].isEmpty(); ++i) {
         auto row = lines[i].split(separators, Qt::SkipEmptyParts);
         // "C", "C(Fragment=1)", "C-CA-0.1" (ONIOM) or the atomic number; an optional freeze code.
@@ -75,19 +74,26 @@ Document gaussianStructure(const QString &text) {
         if (row.size() >= 5 && code && fourth)
             row.removeAt(1);
         bool x, y, w;
-        row.value(1).toDouble(&x);
-        row.value(2).toDouble(&y);
-        row.value(3).toDouble(&w);
+        const Vec position(row.value(1).toDouble(&x), row.value(2).toDouble(&y), row.value(3).toDouble(&w));
         if (row.size() < 4 || !x || !y || !w)
             fail(tr(
                 "Z-"
                 "matrix形式・変数を使うGaussian入力は取り込めません。Cartesian座標の入力を使ってください。"));
-        xyz += QString("%1 %2 %3 %4\n").arg(tag, row[1], row[2], row[3]);
-        ++count;
+        if (!position.allFinite())
+            fail(tr("Gaussian入力の座標は有限の数値にしてください: %1").arg(lines[i]));
+        Atom a;
+        a.element = tag;
+        if (tag == "D" || tag == "T") { // The isotopes of hydrogen, as in XYZ files.
+            a.isotope = tag == "D" ? 2 : 3;
+            a.element = "H";
+        }
+        element(a.element); // An element MolForma does not know fails here.
+        a.position = position;
+        d.atoms << a;
     }
-    if (!count)
+    if (d.atoms.isEmpty())
         fail(tr("Gaussian入力に原子がありません。"));
-    auto d = xyzStructure(QString("%1\nGaussian input\n").arg(count) + xyz);
+    perceiveBonds(d); // By distance, with their orders from the geometry, as for XYZ.
     d.charge = charge;
     d.multiplicity = multiplicity;
     return d;

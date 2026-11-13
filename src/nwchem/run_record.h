@@ -130,7 +130,6 @@ struct RunEnd {
     bool diagnose = true;       // "diagnostics", from the ends of the output and of the errors.
     QString launchError = {};   // Why the program did not start, for a failed run.
     QString launchSetting = {}; // The setting such a failure points at when not the executable ("remote").
-    bool wallTime = false;      // "elapsed_seconds" from the wall time NWChem printed, when the log has it.
     bool needsLog = false;      // Throws when the end of the output cannot be read.
 };
 // The one place that records the end of a run in its record: the state, the exit code and status, the

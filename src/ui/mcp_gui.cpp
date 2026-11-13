@@ -818,7 +818,6 @@ QJsonObject McpGui::call(const QString &name, const QJsonObject &args) {
         // The 3D views list their atoms with the widget positions ui_input clicks on, plus the
         // coordination-site and terminus markers.
         if (auto *view = qobject_cast<MoleculeView *>(o)) {
-            view->renderNow(); // The markers come from painting.
             const auto &atoms = view->documentRef().atoms;
             out["rows"] = int(atoms.size());
             for (int i = offset; i < std::min(int(atoms.size()), offset + std::min(limit, 1000)); ++i) {

@@ -4,10 +4,14 @@
 namespace mf {
 // Chemistry through the Open Babel C++ API. Reading and writing structure files with it is in
 // io/babel_io.h.
-// Reads XYZ text and assigns bond orders from the geometry; XYZ itself carries none.
+// The bonds of atoms that come with none (XYZ, a crystal, the geometry of an NWChem input), in place of
+// those the document has: by distance (Document::inferBonds), with their orders from the geometry. Bonds
+// to metals and ghosts stay single.
+void perceiveBonds(Document &document);
+// Reads XYZ text, with the bonds of perceiveBonds.
 Document xyzStructure(const QString &text);
 Document fromSmiles(const QString &smiles);
-// Whether the molecule has a metal atom, which fromSmiles and refine() do not build (Open Babel's metals).
+// Whether the molecule has a metal atom (Element::metal), which fromSmiles and refine() do not build.
 bool hasMetal(const Document &document);
 Document refine(const Document &d, bool regenerate = false, const Ids &moving = {});
 struct Conformer {

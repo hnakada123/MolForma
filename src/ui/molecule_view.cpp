@@ -3,11 +3,10 @@
 #include "editing/peptide.h"
 #include "foundation/i18n.h"
 #include "model/geometry.h"
-#include "ui/bond_style.h"
+#include "ui/molecule_style.h"
 #include "ui/theme.h"
 #include <Eigen/Geometry>
 #include <limits>
-#include <openbabel/elements.h>
 #ifdef MOLFORMA_HAS_VTK
 #include "ui/vtk_molecule_renderer.h"
 #include <QOffscreenSurface>
@@ -145,8 +144,6 @@ QImage MoleculeView::renderImage(int factor, ImageBackground background) {
     // view's size times the device pixel ratio) times the factor.
     const QScopedValueRollback keepFigure(figure, true);
     const QScopedValueRollback keepBackground(figureBackground, background);
-    const QScopedValueRollback keepHandles(aminoHandles, false);
-    const auto keepMarkers = markers;
     QImage image;
 #ifdef MOLFORMA_HAS_VTK
     if (renderer) {
@@ -171,7 +168,6 @@ QImage MoleculeView::renderImage(int factor, ImageBackground background) {
         p.scale(ratio, ratio);
         paintContents(p, false);
     }
-    markers = keepMarkers;
     return image;
 }
 void MoleculeView::setStyle(const QString &style) {
@@ -196,101 +192,26 @@ void MoleculeView::setHydrogenBonds(bool on) {
     scheduleOverlay();
 }
 void MoleculeView::findHydrogenBonds() {
-    hbonds.clear();
-    if (!showHydrogenBonds || doc.atoms.size() > 5000)
-        return;
-    const auto polar = [](const QString &e) { return e == "N" || e == "O" || e == "F"; };
-    QVector<int> acceptors;
-    for (int i = 0; i < doc.atoms.size(); ++i)
-        if (!doc.atoms[i].ghost && polar(doc.atoms[i].element))
-            acceptors << i;
-    // The donor of each hydrogen: the other end of its only bond (dative bonds left out).
-    QVector<int> degree(doc.atoms.size()), partner(doc.atoms.size(), -1);
-    for (const auto &b : doc.bonds) {
-        const int ai = atomIndices.value(b.a, -1), bi = atomIndices.value(b.b, -1);
-        if (b.kind == "dative" || ai < 0 || bi < 0)
-            continue;
-        ++degree[ai];
-        ++degree[bi];
-        partner[ai] = bi;
-        partner[bi] = ai;
-    }
-    for (int k = 0; k < doc.atoms.size(); ++k) {
-        const auto &h = doc.atoms[k];
-        if (h.element != "H" || h.ghost || degree[k] != 1 || !polar(doc.atoms[partner[k]].element))
-            continue;
-        const Vec donor = doc.atoms[partner[k]].position;
-        for (int i : acceptors) {
-            const auto &a = doc.atoms[i];
-            if (i == partner[k])
-                continue;
-            const double distance = (a.position - h.position).norm();
-            // H···A 1.5–2.6 Å and D–H···A at least 120°.
-            if (distance < 1.5 || distance > 2.6)
-                continue;
-            const double cosine =
-                (donor - h.position).normalized().dot((a.position - h.position).normalized());
-            if (cosine <= std::cos(120 * M_PI / 180))
-                hbonds.append({h.id, a.id});
-        }
-    }
+    hbonds = showHydrogenBonds ? mf::hydrogenBonds(doc) : QVector<std::pair<QString, QString>>();
 }
+// The size of an atom as the scene draws it (molecule_style.h). The selection ring, the marks of a
+// candidate and the labels go around it: at least two pixels, also where the scene draws no sphere.
 double MoleculeView::atomRadius(int atom) const {
-    const bool hydrogen = doc.atoms[atom].element == "H";
-    if (displayStyle == "spacefill")
-        return std::max(2., vdwRadii.value(atom, 1.7) * scale);
-    if (displayStyle == "stick")
-        return std::clamp(scale * .1, 3., 7.);
-    if (displayStyle == "wireframe")
-        return 2;
-    if (displayStyle == "backbone" && traceNodes.value(atom))
-        return std::clamp(scale * .1, 3., 7.);
-    return std::clamp(scale * (hydrogen ? .12 : .20), hydrogen ? 5. : 8., hydrogen ? 11. : 20.);
+    return std::max(2., sphereRadius(atom));
 }
-// The trace of the backbone style: each chain's polymer residues through their Cα (P of nucleotides, else
-// C4'), between residues close enough to follow each other, so that gaps in a structure stay open.
+double MoleculeView::sphereRadius(int atom) const {
+    const auto size =
+        atomSize(displayStyle, doc.atoms[atom], bondedAtoms.value(atom), traceNodes.value(atom));
+    return mf::atomRadius(displayStyle, size, scale, vdwRadii.value(atom, 1.7));
+}
+// The line of the backbone style (backboneTrace): its pieces, the atoms it runs through, drawn small,
+// and the atoms it stands for, which are not drawn.
 void MoleculeView::indexTrace() {
-    traced.clear();
-    trace.clear();
-    traceNodes.fill(false, doc.atoms.size());
-    if (displayStyle != "backbone")
-        return;
-    const auto node = [&](const Residue &r) {
-        for (const auto *name : {"CA", "P", "C4'"})
-            if (r.atoms.contains(name))
-                return atomIndices.value(r.atoms[name], -1);
-        return -1;
-    };
-    QHash<QString, int> residues;
-    for (int i = 0; i < doc.residues.size(); ++i) {
-        const auto &r = doc.residues[i];
-        residues.insert(r.id, i);
-        if (!polymerResidue(r))
-            continue;
-        const int n = node(r);
-        for (const auto &id : r.atoms)
-            if (atomIndices.value(id, -1) != n)
-                traced.insert(id);
-    }
-    for (const auto &chain : std::as_const(doc.chains)) {
-        int previous = -1;
-        for (const auto &id : chain) {
-            const int r = residues.value(id, -1);
-            if (r < 0 || !polymerResidue(doc.residues[r]))
-                continue;
-            const int n = node(doc.residues[r]);
-            // Cα–Cα 3.8 Å; P–P of nucleic acids about 7 Å.
-            const double reach =
-                n >= 0 && doc.atoms[n].element == "C" && doc.residues[r].atoms.contains("CA") ? 4.3 : 8;
-            if (n >= 0 && previous >= 0 &&
-                (doc.atoms[n].position - doc.atoms[previous].position).norm() < reach)
-                trace.append({previous, n});
-            previous = n;
-        }
-    }
-    // The atoms the line runs through, drawn small; a residue on its own keeps its ball, as the VTK scene.
-    for (const auto &[a, b] : std::as_const(trace))
-        traceNodes[a] = traceNodes[b] = true;
+    auto line = displayStyle == "backbone" ? backboneTrace(doc) : BackboneTrace();
+    traced = line.covered;
+    trace = line.segments;
+    traceNodes = line.nodes;
+    traceNodes.resize(doc.atoms.size());
 }
 void MoleculeView::refreshColors() {
     // By residue: a hue for each residue, the last one that holds the atom. By chain: the polymer residues
@@ -385,14 +306,8 @@ void MoleculeView::indexAtoms() {
                 bondedAtoms[i] = true;
     }
     vdwRadii.clear();
-    for (const auto &a : doc.atoms) {
-        double vdw = 1.7;
-        try {
-            vdw = OpenBabel::OBElements::GetVdwRad(element(a.element).number);
-        } catch (const std::exception &) {
-        }
-        vdwRadii << vdw;
-    }
+    for (const auto &a : doc.atoms)
+        vdwRadii << element(a.element).vdw;
 }
 void MoleculeView::setDocument(const Document &d) {
     // The window refreshes for changes elsewhere too (settings, the project path): the same atoms,
@@ -565,8 +480,7 @@ const Bond *MoleculeView::hitBond(const QPointF &p) const {
         if (ai < 0 || bi < 0)
             continue;
         const auto &a = doc.atoms[ai], &c = doc.atoms[bi];
-        if ((!showHydrogens && (a.element == "H" || c.element == "H")) || !shown(a) || !shown(c) ||
-            displayStyle == "spacefill")
+        if (!bondShown(a, c, showHydrogens) || !shown(a) || !shown(c) || displayStyle == "spacefill")
             continue;
         QPointF from = project(a.position), to = project(c.position), v = to - from;
         double length = QPointF::dotProduct(v, v);
@@ -581,11 +495,39 @@ const Bond *MoleculeView::hitBond(const QPointF &p) const {
     }
     return result;
 }
-int MoleculeView::hitMarker(const QPointF &p) const {
+// The handles beside the molecule, where they are in the view now: the free sites of the coordination
+// centers and, while an amino acid is placed, the termini of the residues that take one.
+QVector<MoleculeView::Marker> MoleculeView::markerList() const {
+    QVector<Marker> markers;
+    for (const auto &c : doc.centers) {
+        const int atom = atomIndices.value(c.atom, -1);
+        if (atom < 0)
+            continue;
+        const Vec origin = doc.atoms[atom].position;
+        for (int i = 0; i < c.sites.size(); ++i)
+            if (c.sites[i].donor.isEmpty())
+                markers << Marker{project(origin + c.sites[i].direction * c.sites[i].distance), c.atom, i,
+                                  false};
+    }
+    if (aminoHandles)
+        for (const auto &res : doc.residues)
+            for (bool n : {true, false}) {
+                const auto &state = n ? res.nTerminal : res.cTerminal;
+                if (state != "neutral" && state != "charged")
+                    continue;
+                const int atom = atomIndices.value(res.atoms.value(n ? "N" : "C"), -1);
+                if (atom >= 0)
+                    markers << Marker{project(doc.atoms[atom].position) + QPointF(n ? -38 : 38, -32), res.id,
+                                      -1, n};
+            }
+    return markers;
+}
+std::optional<MoleculeView::Marker> MoleculeView::hitMarker(const QPointF &p) const {
+    const auto markers = markerList();
     for (int i = markers.size() - 1; i >= 0; --i)
         if (QLineF(p, markers[i].point).length() < (markers[i].site < 0 ? 27 : 15))
-            return i;
-    return -1;
+            return markers[i];
+    return std::nullopt;
 }
 void MoleculeView::paintEvent(QPaintEvent *) {
 #ifdef MOLFORMA_HAS_VTK
@@ -603,8 +545,8 @@ void MoleculeView::paintEvent(QPaintEvent *) {
 void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
     p.setRenderHint(QPainter::Antialiasing);
     QLinearGradient bg(0, 0, 0, height());
-    bg.setColorAt(0, QColor("#f8fafc"));
-    bg.setColorAt(1, QColor("#e9eff4"));
+    bg.setColorAt(0, viewBackground(true));
+    bg.setColorAt(1, viewBackground(false));
     const bool empty = doc.atoms.isEmpty() && surface.isEmpty() && doc.pointCharges.isEmpty();
     // Structures keep the light background in either theme; with nothing to show, a dark theme
     // has its own color here (over the VTK view too), not a bright box.
@@ -613,7 +555,6 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
         p.fillRect(rect(), palette().color(QPalette::Base));
     else if (!overlayOnly && (!figure || figureBackground == ImageBackground::Screen))
         p.fillRect(rect(), bg);
-    markers.clear();
     if (empty) {
         p.setPen(dark ? palette().color(QPalette::PlaceholderText) : QColor("#617487"));
         QFont f = font();
@@ -684,7 +625,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             // A tube in the colors of its two residues.
             const auto [ai, bi] = trace[item.index];
             const QPointF middle = (screen[ai] + screen[bi]) / 2;
-            const double width = std::clamp(scale * .35, 4., 16.);
+            const double width = traceWidth(scale);
             p.setPen(QPen(atomColors[ai], width, Qt::SolidLine, Qt::RoundCap));
             p.drawLine(screen[ai], middle);
             p.setPen(QPen(atomColors[bi], width, Qt::SolidLine, Qt::RoundCap));
@@ -704,7 +645,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             const auto &b = doc.bonds[item.index];
             const auto [ai, bi] = bondEnds[item.index];
             const auto &a = doc.atoms[ai], &c = doc.atoms[bi];
-            if (!showHydrogens && (a.element == "H" || c.element == "H"))
+            if (!bondShown(a, c, showHydrogens))
                 continue;
             QPointF from = screen[ai], to = screen[bi], v = to - from;
             double len = QLineF(from, to).length();
@@ -713,7 +654,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
             QPointF normal(-v.y() / len, v.x() / len);
             if (halfBonds(displayStyle)) {
                 // Half bonds in the atom colors; multiple bonds as one line.
-                const double width = displayStyle == "stick" ? std::clamp(scale * .2, 5., 12.) : 2.;
+                const double width = bondWidth(displayStyle, scale);
                 const QPointF middle = (from + to) / 2;
                 p.setPen(QPen(atomColors[ai], width, Qt::SolidLine, Qt::RoundCap));
                 p.drawLine(from, middle);
@@ -722,7 +663,7 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
                 continue;
             }
             const auto &style = bondStyle(b.kind);
-            p.setPen(QPen(style.color, 3.5, Qt::SolidLine, Qt::RoundCap));
+            p.setPen(QPen(style.color, bondWidth(displayStyle, scale), Qt::SolidLine, Qt::RoundCap));
             for (const double offset : style.offsets)
                 p.drawLine(from + normal * offset, to + normal * offset);
             if (style.dashed) {
@@ -753,8 +694,9 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
                 p.setBrush(QColor(250, 199, 85, 80));
                 p.drawEllipse(pos, radius + 5, radius + 5);
             }
-            if ((!overlayOnly || a.ghost) &&
-                (displayStyle != "wireframe" || a.ghost || !bondedAtoms.value(item.index))) {
+            // The sphere, where the style draws one (the VTK scene has drawn it already), or the dashed
+            // circle of a ghost.
+            if (a.ghost || (!overlayOnly && sphereRadius(item.index) > 0)) {
                 QRadialGradient sphere(pos - QPointF(radius * .35, radius * .4), radius * 1.5);
                 sphere.setColorAt(0, color.lighter(160));
                 sphere.setColorAt(.6, color);
@@ -924,44 +866,26 @@ void MoleculeView::paintContents(QPainter &p, bool overlayOnly) {
         const double r = atomRadius(i) + 4;
         p.drawEllipse(project(a.position), r, r);
     }
-    for (const auto &c : doc.centers) {
-        const auto &id = c.atom;
-        if (figure || !atomIndices.contains(id))
-            continue;
-        Vec origin = doc.atoms[atomIndices[id]].position;
-        for (int i = 0; i < c.sites.size(); ++i) {
-            const auto &s = c.sites[i];
-            if (!s.donor.isEmpty())
-                continue;
-            QPointF pos = project(origin + s.direction * s.distance);
+    // The handles to click: free coordination sites by their numbers, and the termini of residues. A
+    // figure has none.
+    for (const auto &m : figure ? QVector<Marker>() : markerList()) {
+        const QPointF pos = m.point;
+        if (m.site >= 0) {
             p.setPen(QPen(QColor("#9978bd"), 1, Qt::DashLine));
-            p.drawLine(project(origin), pos);
+            p.drawLine(project(doc.atoms[atomIndices[m.owner]].position), pos);
             p.setBrush(QColor("#f1e8fc"));
             p.setPen(QPen(QColor("#9978bd"), 2));
             p.drawEllipse(pos, 12, 12);
             p.drawText(QRectF(pos - QPointF(12, 12), QSizeF(24, 24)), Qt::AlignCenter,
-                       QString::number(i + 1));
-            markers << Marker{pos, id, i, false};
+                       QString::number(m.site + 1));
+        } else {
+            p.setPen(QPen(QColor("#168473"), 1.5));
+            p.setBrush(QColor("#e2f6ee"));
+            p.drawRoundedRect(QRectF(pos - QPointF(27, 12), QSizeF(54, 24)), 8, 8);
+            p.drawText(QRectF(pos - QPointF(27, 12), QSizeF(54, 24)), Qt::AlignCenter,
+                       m.n ? tr("＋ N") : tr("＋ C"));
         }
     }
-    if (aminoHandles)
-        for (const auto &res : doc.residues) {
-            for (bool n : {true, false}) {
-                const auto &state = n ? res.nTerminal : res.cTerminal;
-                if (state != "neutral" && state != "charged")
-                    continue;
-                const int atom = atomIndices.value(res.atoms.value(n ? "N" : "C"), -1);
-                if (atom < 0)
-                    continue;
-                QPointF pos = project(doc.atoms[atom].position) + QPointF(n ? -38 : 38, -32);
-                p.setPen(QPen(QColor("#168473"), 1.5));
-                p.setBrush(QColor("#e2f6ee"));
-                p.drawRoundedRect(QRectF(pos - QPointF(27, 12), QSizeF(54, 24)), 8, 8);
-                p.drawText(QRectF(pos - QPointF(27, 12), QSizeF(54, 24)), Qt::AlignCenter,
-                           n ? tr("＋ N") : tr("＋ C"));
-                markers << Marker{pos, res.id, -1, n};
-            }
-        }
     for (const auto &q : doc.pointCharges) {
         auto pos = project(q.position);
         QColor c = q.charge > 0 ? QColor("#c75162") : QColor("#407fcc");
@@ -1133,13 +1057,11 @@ void MoleculeView::mouseReleaseEvent(QMouseEvent *e) {
     }
     if (button != Qt::LeftButton)
         return;
-    int marker = hitMarker(e->position());
-    if (marker >= 0) {
-        auto m = markers[marker];
-        if (m.site >= 0)
-            emit siteClicked(m.owner, m.site);
+    if (const auto m = hitMarker(e->position())) {
+        if (m->site >= 0)
+            emit siteClicked(m->owner, m->site);
         else
-            emit terminusClicked(m.owner, m.n);
+            emit terminusClicked(m->owner, m->n);
         return;
     }
     auto id = hitAtom(e->position());
@@ -1176,15 +1098,13 @@ void MoleculeView::dropEvent(QDropEvent *e) {
     QString c, res;
     int site = -1;
     bool n = false;
-    int hit = hitMarker(e->position());
-    if (hit >= 0) {
-        auto m = markers[hit];
-        if (m.site >= 0) {
-            c = m.owner;
-            site = m.site;
+    if (const auto m = hitMarker(e->position())) {
+        if (m->site >= 0) {
+            c = m->owner;
+            site = m->site;
         } else {
-            res = m.owner;
-            n = m.n;
+            res = m->owner;
+            n = m->n;
         }
     }
     emit templateDropped(key, hitAtom(e->position()), worldPosition(e->position()), c, site, res, n);

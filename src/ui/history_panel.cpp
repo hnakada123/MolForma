@@ -47,24 +47,40 @@ constexpr EnergyUnit energyUnits[]{{"kcal", "kcal/mol", HartreeToKcal, 2},
                                    {"kj", "kJ/mol", HartreeToKj, 2},
                                    {"ev", "eV", HartreeToEv, 4},
                                    {"hartree", "Eh", 1, 8}};
-// The state of a job in a word, and the kind of label it takes.
+// The state of a job in a word (historyStateName), and the kind of label it takes.
 std::pair<QString, QString> stateLabel(const HistoryEntry &e, bool owned) {
-    if (runStateActive(e.status) && !owned)
-        return e.orphaned
-                   ? std::pair<QString, QString>{remoteRun(e.manifest) ? tr("未接続") : tr("プロセスなし"),
-                                                 "orphan"}
-                   : std::pair<QString, QString>{tr("稼働未確認"), "unknown"};
-    return {runStateName(e.status), runStateKind(e.status)};
+    const auto presence = historyPresence(e, owned);
+    return {historyStateName(e, owned), presence == HistoryPresence::Orphaned  ? QString("orphan")
+                                        : presence == HistoryPresence::Unknown ? QString("unknown")
+                                                                               : runStateKind(e.status)};
 }
-// The names of the state filters, as their keys "", active, finished, stopped and prepared.
+// The names of the state filters, as their keys (historyStateGroup) "", active, finished, stopped and
+// prepared.
 QStringList stateFilterNames() {
     return {tr("すべて"), tr("実行中"), tr("終了", "state"), tr("停止・失敗"), tr("保存のみ", "state")};
 }
-// The state filter a job falls under: active, finished, stopped (also failed and orphaned) or prepared.
-QString stateGroup(const HistoryEntry &e, bool owned) {
-    if (e.status == RunState::Prepared || e.status == RunState::Finished)
-        return runStateKey(e.status);
-    return runStateActive(e.status) && (owned || !e.orphaned) ? "active" : "stopped";
+// The order of the list by the column of its heading.
+HistorySort sortOf(int column) {
+    switch (column) {
+    case StateColumn:
+        return HistorySort::State;
+    case NameColumn:
+        return HistorySort::Name;
+    case LevelColumn:
+        return HistorySort::Level;
+    case TaskColumn:
+        return HistorySort::Task;
+    case CreatedColumn:
+        return HistorySort::Created;
+    case DurationColumn:
+        return HistorySort::Duration;
+    case EnergyColumn:
+        return HistorySort::Energy;
+    case DeltaColumn:
+        return HistorySort::Delta;
+    default:
+        return HistorySort::Memo;
+    }
 }
 void paintPill(QPainter *p, const QRect &cell, const QString &text, const QString &kind, const QFont &font,
                const ChromeColors &c) {
@@ -93,14 +109,9 @@ QString signedNumber(double value, int digits) {
         return text;
     return (value > 0 ? "+" : "−") + text;
 }
-// The method in short (the functional names a DFT method), then the basis.
+// The level of theory in short (HistoryEntry::level).
 QString levelText(const HistoryEntry &e) {
-    if (e.method.isEmpty() && e.basis.isEmpty())
-        return "—";
-    const auto method = e.method.startsWith("DFT / ") ? e.method.mid(6)
-                        : e.method == "Hartree–Fock"  ? QString("HF")
-                                                      : e.method;
-    return method + " / " + e.basis;
+    return e.level.isEmpty() ? QString("—") : e.level;
 }
 // Dates in the language of the interface: "10月25日（日）", or "Sun, Oct 25".
 QLocale dateLocale() {
@@ -139,14 +150,6 @@ QString energySource(const HistoryEntry &e) {
     return source == "frequency_reference" ? tr("振動数の参照構造")
            : source == "bsse_corrected"    ? tr("BSSE補正後")
                                            : tr("最後のtask");
-}
-// Why a job has no ΔE against the reference; empty when it has one.
-QString comparisonNote(const HistoryEntry &e, const HistoryEntry &reference) {
-    if (runStateActive(e.status))
-        return e.orphaned ? tr("記録の修復後に表示") : tr("終了後に表示");
-    if (!e.energy)
-        return tr("エネルギーの記録なし");
-    return historyIncomparable(e, reference);
 }
 QLabel *caption(const QString &text = {}) {
     auto *label = new QLabel(text);
@@ -1111,7 +1114,7 @@ HistoryPanel::HistoryPanel(EditorContext &editorServices, UiServices &uiServices
                     found = true;
                     break;
                 }
-            if (!found && entries.size() < 2000)
+            if (!found && entries.size() < historyJobLimit)
                 entries << readHistoryEntry(path);
         }
         changedJobs.clear();
@@ -1367,105 +1370,35 @@ void HistoryPanel::populate(bool reloadDetails) {
     const auto query = search->text().trimmed();
     const auto state = filter->currentData().toString(), active = activeDirectory();
     const auto *base = entry(reference);
-    if (!base || !base->energy || runStateActive(base->status)) {
+    if (!base || !historyReference(*base)) {
         reference.clear();
         base = nullptr;
     }
     const auto &unit = energyUnits[std::max(0, energyUnit->currentIndex())];
-    // The jobs that match the search, counted by state, and those of the chosen state.
-    QMap<QString, int> counts;
-    QVector<Row> rows;
-    for (const auto &e : std::as_const(entries)) {
-        const bool owned = e.directory == active;
-        const auto words = QStringList{e.name,    e.method, e.basis,     e.task,
-                                       e.formula, e.memo,   e.directory, stateLabel(e, owned).first}
-                               .join(' ');
-        if (!words.contains(query, Qt::CaseInsensitive))
-            continue;
-        const auto group = stateGroup(e, owned);
-        ++counts[group];
-        ++counts[""];
-        if (!state.isEmpty() && group != state)
-            continue;
-        Row row{&e, owned, {}, {}};
-        if (comparing && base) {
-            row.note = comparisonNote(e, *base);
-            if (row.note.isEmpty())
-                row.delta = *e.energy - *base->energy;
-        }
-        rows << row;
-    }
-    // Values first in the chosen order, then the rows without one; the newest first among equals.
-    const auto missing = [&](const Row &r) {
-        const auto &e = *r.entry;
-        switch (sortColumn) {
-        case CreatedColumn:
-            return !e.created.isValid();
-        case DurationColumn:
-            return e.seconds < 0;
-        case EnergyColumn:
-            return !e.energy.has_value();
-        case DeltaColumn:
-            return !r.delta.has_value();
-        case MemoColumn:
-            return e.memo.isEmpty();
-        default:
-            return false;
-        }
-    };
-    const auto compareValues = [&](const Row &a, const Row &b) -> int {
-        const auto &x = *a.entry, &y = *b.entry;
-        const auto order = [](auto u, auto v) { return u < v ? -1 : v < u ? 1 : 0; };
-        switch (sortColumn) {
-        case StateColumn:
-            return QString::localeAwareCompare(stateLabel(x, a.owned).first, stateLabel(y, b.owned).first);
-        case NameColumn:
-            return QString::localeAwareCompare(x.name, y.name);
-        case LevelColumn:
-            return QString::localeAwareCompare(levelText(x), levelText(y));
-        case TaskColumn:
-            return QString::localeAwareCompare(x.task, y.task);
-        case CreatedColumn:
-            return order(x.created.toMSecsSinceEpoch(), y.created.toMSecsSinceEpoch());
-        case DurationColumn:
-            return order(x.seconds, y.seconds);
-        case EnergyColumn:
-            return order(*x.energy, *y.energy);
-        case DeltaColumn:
-            return order(*a.delta, *b.delta);
-        default:
-            return QString::localeAwareCompare(x.memo, y.memo);
-        }
-    };
-    const auto time = [](const HistoryEntry &e) {
-        return e.created.isValid() ? e.created.toMSecsSinceEpoch() : std::numeric_limits<qint64>::min();
-    };
-    std::stable_sort(rows.begin(), rows.end(), [&](const Row &a, const Row &b) {
-        const bool ma = missing(a), mb = missing(b);
-        if (ma != mb)
-            return mb;
-        if (!ma)
-            if (const int c = compareValues(a, b))
-                return sortOrder == Qt::AscendingOrder ? c < 0 : c > 0;
-        return time(*a.entry) > time(*b.entry);
-    });
-    double largest = 0;
-    for (const auto &r : rows)
-        if (r.delta)
-            largest = std::max(largest, std::abs(*r.delta));
+    // The jobs that match the search and the chosen state, in the chosen order (historyList); here they
+    // only get their days.
+    const auto list = historyList(entries, {.search = query,
+                                            .state = state,
+                                            .sort = sortOf(sortColumn),
+                                            .ascending = sortOrder == Qt::AscendingOrder,
+                                            .reference = comparing ? reference : QString(),
+                                            .active = active});
+    const auto &counts = list.counts;
+    const double largest = list.largest;
     const bool byDay = sortColumn == CreatedColumn;
     listed.clear();
     QVector<HistoryModel::Job> jobs;
     QVector<HistoryModel::Day> days;
-    for (const auto &r : std::as_const(rows)) {
+    for (const auto &r : list.rows) {
+        const auto &e = entries[r.entry];
         if (byDay) {
-            const auto date = r.entry->created.isValid() ? r.entry->created.toLocalTime().date() : QDate();
+            const auto date = e.created.isValid() ? e.created.toLocalTime().date() : QDate();
             if (days.isEmpty() || days.last().date != date)
                 days.append({dayTitle(date), {}, date, int(jobs.size()), 0});
             ++days.last().count;
         }
-        jobs.append({*r.entry, r.owned, r.delta, r.note});
-        listed << r.entry->directory;
+        jobs.append({e, r.owned, r.delta, r.note});
+        listed << e.directory;
     }
     for (auto &day : days)
         day.detail = tr("%n 件", "jobs", day.count);
@@ -1481,7 +1414,7 @@ void HistoryPanel::populate(bool reloadDetails) {
         grouped = byDay;
         model->show(jobs, days,
                     {&unit, reference, largest, narrowList,
-                     rows.isEmpty() && !entries.isEmpty()
+                     list.rows.isEmpty() && !entries.isEmpty()
                          ? tr("条件に合うジョブはありません。検索語と状態の絞り込みを見直してください。")
                          : QString()});
         for (int row = 0; row < model->rowCount(); ++row)
@@ -1584,9 +1517,9 @@ void HistoryPanel::showEmptyPage() {
     try { // Over MCP, folders outside --mcp-allow-dir are not counted.
         uiContext.checkMcpPath(other);
         const int n = historyJobCount(other);
-        count = n < 0       ? tr("（見つかりません）")
-                : n >= 2000 ? tr("（2000 件以上）")
-                            : tr("（%n 件）", "jobs", n);
+        count = n < 0                  ? tr("（見つかりません）")
+                : n >= historyJobLimit ? tr("（%1 件以上）").arg(historyJobLimit)
+                                       : tr("（%n 件）", "jobs", n);
     } catch (const std::exception &) {
     }
     emptyExecution->setText(tr("「3 実行設定」の保存先: %1%2").arg(displayPath(other), count));
@@ -1602,7 +1535,7 @@ void HistoryPanel::setComparing(bool on) {
     unitButtons->setVisible(on);
     if (on) {
         const auto *e = selectedEntry();
-        if (reference.isEmpty() && e && e->energy && !runStateActive(e->status))
+        if (reference.isEmpty() && e && historyReference(*e))
             reference = e->directory;
         filesOpenBeforeComparing = filesOpen;
         setFilesOpen(false, false);
@@ -1735,7 +1668,7 @@ void HistoryPanel::showEnergy(const HistoryEntry &e, bool owned) {
         energyCaption->setText(tr("ΔEの基準"));
         energyValue->setText("—");
         energySuffix->clear();
-        energyNote->setText(e.energy && !runStateActive(e.status)
+        energyNote->setText(historyReference(e)
                                 ? tr("「このジョブを基準にする」で、このジョブとの差を一覧に表示します。")
                                 : tr("エネルギーのある終了したジョブを選び、基準にしてください。"));
         return;
@@ -1748,22 +1681,29 @@ void HistoryPanel::showEnergy(const HistoryEntry &e, bool owned) {
         return;
     }
     energyCaption->setText(tr("基準 %1 との差").arg(base->name));
-    auto why = comparisonNote(e, *base);
+    auto why = historyComparisonNote(e, *base);
     if (!why.isEmpty()) {
-        // What differs (as historyIncomparable finds it), this job's then the reference's.
+        // What differs, this job's then the reference's.
         const auto pair = [&](const QString &a, const QString &b) {
             why = tr("%1（%2、基準は %3）").arg(why, a, b);
         };
-        if (!runStateActive(e.status) && e.energy) {
-            if (e.formula.isEmpty() || e.formula != base->formula)
+        if (!runStateActive(e.status) && e.energy)
+            switch (historyDifference(e, *base)) {
+            case HistoryDifference::Formula:
                 pair(e.formula, base->formula);
-            else if (e.method != base->method)
+                break;
+            case HistoryDifference::Method:
                 pair(e.method, base->method);
-            else if (e.basis != base->basis)
+                break;
+            case HistoryDifference::Basis:
                 pair(e.basis, base->basis);
-            else if (e.energyMethod != base->energyMethod)
+                break;
+            case HistoryDifference::EnergyKind:
                 pair(historyEnergyMethod(e.energyMethod), historyEnergyMethod(base->energyMethod));
-        }
+                break;
+            case HistoryDifference::None:
+                break;
+            }
         energyValue->setText("—");
         energySuffix->clear();
         energyNote->setText(tr("%1。差を表示しません。").arg(why));
@@ -1809,7 +1749,7 @@ void HistoryPanel::showFacts(const HistoryEntry &e, bool owned) {
         text("energy", tr("計算のE"), energy(e), true);
         if (base && base != &e) {
             text("referenceEnergy", tr("基準のE"), energy(*base), true);
-            if (e.energy && comparisonNote(e, *base).isEmpty()) {
+            if (e.energy && historyComparisonNote(e, *base).isEmpty()) {
                 const auto mine = energySource(e), theirs = energySource(*base);
                 text("compared", tr("比べた値"),
                      mine == theirs ? tr("どちらも%1の全エネルギー").arg(mine)
@@ -2002,7 +1942,7 @@ void HistoryPanel::updateActions() {
                      : tr("読めない記録のフォルダーは、ファイルマネージャーで確認してください。"));
     trashRow->setVisible(e && !comparing);
     csv->setEnabled(!listed.isEmpty());
-    setReference->setEnabled(e && e->energy && !unfinished && (!comparing || e->directory != reference));
+    setReference->setEnabled(e && historyReference(*e) && (!comparing || e->directory != reference));
 }
 void HistoryPanel::notifyJob(const QString &path) {
     if (!isVisible() || QFileInfo(path).absolutePath() != root)

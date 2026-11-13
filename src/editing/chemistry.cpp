@@ -8,6 +8,7 @@
 #include "model/topology.h"
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <algorithm>
 #include <openbabel/atom.h>
 #include <openbabel/bond.h>
 #include <openbabel/builder.h>
@@ -155,27 +156,29 @@ Document fromOB(OBMol &mol, bool readResidues, const QHash<OBResidue *, QString>
         fail(errors.join('\n'));
     return d;
 }
-Document xyzStructure(const QString &text) {
-    Document d = Document::fromXyz(text);
-    // Bonds come from distances. Let Open Babel assign double/triple/aromatic orders from the
-    // geometry so hydrogen completion does not saturate rings. Metal and ghost bonds stay single.
+namespace {
+// The orders of bonds found by distance: Open Babel assigns double, triple and aromatic ones from the
+// geometry, so that hydrogen completion does not saturate rings. Metal and ghost bonds stay single.
+void perceiveBondOrders(Document &d) {
     if (d.atoms.isEmpty() || d.atoms.size() > 20000)
-        return d;
+        return;
     OBMol mol;
     mol.BeginModify();
-    QHash<QString, int> indices;
+    QHash<QString, int> indices; // Open Babel's number of each atom whose bonds get an order.
     for (const auto &a : d.atoms) {
         if (a.ghost)
             continue;
+        const auto &e = element(a.element);
         auto *o = mol.NewAtom();
-        o->SetAtomicNum(element(a.element).number);
+        o->SetAtomicNum(e.number);
         o->SetVector(a.position.x(), a.position.y(), a.position.z());
-        indices[a.id] = o->GetIdx();
+        if (!e.metal())
+            indices[a.id] = o->GetIdx();
     }
     QVector<int> perceived;
     for (int i = 0; i < d.bonds.size(); ++i) {
         const int x = indices.value(d.bonds[i].a), y = indices.value(d.bonds[i].b);
-        if (!x || !y || mol.GetAtom(x)->IsMetal() || mol.GetAtom(y)->IsMetal())
+        if (!x || !y)
             continue;
         mol.AddBond(x, y, 1);
         perceived << i;
@@ -188,7 +191,7 @@ Document xyzStructure(const QString &text) {
     for (unsigned int k = 1; molecular && k <= mol.NumAtoms(); ++k)
         molecular = mol.GetAtom(k)->GetExplicitDegree() <= 6;
     if (!molecular)
-        return d;
+        return;
     mol.PerceiveBondOrders();
     for (int k = 0; k < perceived.size(); ++k) {
         auto *b = mol.GetBond(k);
@@ -197,17 +200,20 @@ Document xyzStructure(const QString &text) {
                                      : b->GetBondOrder() == 2 ? "double"
                                                               : "single";
     }
+}
+} // namespace
+void perceiveBonds(Document &d) {
+    d.inferBonds();
+    perceiveBondOrders(d);
+}
+Document xyzStructure(const QString &text) {
+    Document d = Document::fromXyz(text); // With its bonds by distance.
+    perceiveBondOrders(d);
     return d;
 }
 bool hasMetal(const Document &d) {
-    for (const auto &a : d.atoms)
-        if (OBElements::GetAtomicNum(a.element.toLatin1().constData()) > 0) {
-            OBAtom atom;
-            atom.SetAtomicNum(OBElements::GetAtomicNum(a.element.toLatin1().constData()));
-            if (atom.IsMetal())
-                return true;
-        }
-    return false;
+    return std::any_of(d.atoms.begin(), d.atoms.end(),
+                       [](const Atom &a) { return element(a.element).metal(); });
 }
 Document fromSmiles(const QString &smiles) {
     if (smiles.trimmed().isEmpty() || smiles.contains('\n'))
@@ -239,11 +245,10 @@ Document refine(const Document &d, bool regenerate, const Ids &moving) {
                 "整えられます。"));
     auto mol = toOB(d);
     // Heavy main-group elements (Br, I, Se, Te, ...) are left to the force-field setup below.
-    for (unsigned int i = 1; i <= mol.NumAtoms(); ++i)
-        if (mol.GetAtom(i)->IsMetal())
-            fail(tr("金属・ゴースト原子を含む分子は力場整形の対象外です。金属錯体は「ツール → "
-                    "xTBで構造を最適化…」で"
-                    "整えられます。"));
+    if (hasMetal(d))
+        fail(tr("金属・ゴースト原子を含む分子は力場整形の対象外です。金属錯体は「ツール → "
+                "xTBで構造を最適化…」で"
+                "整えられます。"));
     OpenBabel::StereoFrom3D(&mol);
     if (regenerate) {
         for (const auto &a : d.atoms)
@@ -315,9 +320,8 @@ QVector<Conformer> searchConformers(const Document &d, int count) {
             fail(tr("固定原子があるため配座探索できません。固定を解除してください。"));
     }
     auto mol = toOB(d);
-    for (unsigned int i = 1; i <= mol.NumAtoms(); ++i)
-        if (mol.GetAtom(i)->IsMetal())
-            fail(tr("金属・ゴースト原子を含む分子は配座探索の対象外です。"));
+    if (hasMetal(d))
+        fail(tr("金属・ゴースト原子を含む分子は配座探索の対象外です。"));
     OBForceField *ff = nullptr;
     for (auto name : {"MMFF94", "UFF"})
         if (auto *candidate = OBForceField::FindForceField(name)) {

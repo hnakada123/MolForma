@@ -148,7 +148,8 @@ Cell buildCell(const Crystal &crystal, const CrystalSelection &selection) {
     }
     if (cell.atoms.isEmpty())
         fail(tr("CIFに読み込める原子がありません。"));
-    // Bonds by distance, as for an XYZ file: the sum of the covalent radii and 0.45 Å.
+    // Bonds by distance, as the document read from the cell gets them (bondDistance): the molecules made
+    // whole here are those it shows.
     const int n = int(cell.atoms.size());
     cell.bonds.resize(n);
     QVector<double> radii;
@@ -156,11 +157,9 @@ Cell buildCell(const Crystal &crystal, const CrystalSelection &selection) {
         radii << element(crystal.atoms[a.source].element).radius;
     for (int i = 0; i < n; ++i)
         for (int j = i + 1; j < n; ++j) {
-            const bool hydrogens = crystal.atoms[cell.atoms[i].source].element == "H" &&
-                                   crystal.atoms[cell.atoms[j].source].element == "H";
-            const double limit = hydrogens ? .8 : radii[i] + radii[j] + .45;
             Eigen::Vector3i shift = Eigen::Vector3i::Zero();
-            if (nearest(cell.atoms[j].fraction - cell.atoms[i].fraction, shift) > limit)
+            if (nearest(cell.atoms[j].fraction - cell.atoms[i].fraction, shift) >=
+                bondReach(radii[i], radii[j]))
                 continue;
             // Every image of j close to i: a small cell may hold more than one.
             for (int x = -1; x <= 1; ++x)
@@ -169,7 +168,7 @@ Cell buildCell(const Crystal &crystal, const CrystalSelection &selection) {
                         const Eigen::Vector3i s = shift + Eigen::Vector3i(x, y, z);
                         const double length =
                             (m * (cell.atoms[j].fraction + s.cast<double>() - cell.atoms[i].fraction)).norm();
-                        if (length <= limit && length > .1) {
+                        if (bondDistance(length, radii[i], radii[j])) {
                             cell.bonds[i] << Bond{j, s};
                             cell.bonds[j] << Bond{i, -s};
                         }
@@ -426,7 +425,7 @@ Document crystalStructure(const Crystal &crystal, const CrystalSelection &select
     const auto chosen = chosenMolecules(crystal, cell, selection);
     // Each molecule whole; the first in the cell, the others in the images nearest to it (or each in the
     // cell, for the whole cell).
-    QVector<std::pair<QString, Vec>> atoms;
+    Document d;
     Vec first = Vec::Zero();
     for (int k = 0; k < chosen.size(); ++k) {
         const auto &molecule = cell.molecules[chosen[k]];
@@ -460,18 +459,14 @@ Document crystalStructure(const Crystal &crystal, const CrystalSelection &select
                    std::pair{cell.atoms[molecule[b]].operation != cell.identity,
                              cell.atoms[molecule[b]].source};
         });
-        for (int o : order)
-            atoms << std::pair{crystal.atoms[cell.atoms[molecule[o]].source].element,
-                               m * (fractions[o] + shift)};
+        for (int o : order) {
+            Atom a;
+            a.element = crystal.atoms[cell.atoms[molecule[o]].source].element;
+            a.position = m * (fractions[o] + shift);
+            d.atoms << a;
+        }
     }
-    QString xyz = QString("%1\n%2\n").arg(atoms.size()).arg(crystal.name.simplified().left(200));
-    for (const auto &[symbol, position] : atoms)
-        xyz += QString("%1 %2 %3 %4\n")
-                   .arg(symbol)
-                   .arg(position.x(), 0, 'f', 6)
-                   .arg(position.y(), 0, 'f', 6)
-                   .arg(position.z(), 0, 'f', 6);
-    auto d = xyzStructure(xyz);
+    perceiveBonds(d);
     auto meta = d.data["metadata"].toObject();
     meta["source_format"] = "cif";
     meta["crystal"] = QJsonObject{{"a", crystal.a},

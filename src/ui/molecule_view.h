@@ -40,8 +40,7 @@ class MoleculeView : public QWidget {
         arrows = list;
         scheduleOverlay();
     }
-    // Renders pending changes at once, so the widget can be grabbed as an image and the markers
-    // match the molecule.
+    // Renders pending changes at once, so the widget can be grabbed as an image.
     void renderNow();
     // A picture of the view `scale` times its size, as a figure: what it shows without the marks of
     // editing (selection, candidate changes, empty coordination sites, terminus handles), on the chosen
@@ -154,17 +153,16 @@ class MoleculeView : public QWidget {
     }
     QPointF atomScreenPosition(const QString &id) const;
     Vec worldPosition(const QPointF &p) const;
-    // Clickable markers from the last paint: coordination sites (site >= 0) and peptide terminus
-    // handles (site < 0, owner = residue ID).
+    // The handles to click beside the molecule, where they are in the view now: the free sites of the
+    // coordination centers (site >= 0, owner = the center's atom ID) and, while an amino acid is placed,
+    // the termini of the residues (site < 0, owner = residue ID).
     struct Marker {
         QPointF point;
         QString owner;
         int site = -1;
         bool n = false;
     };
-    const QVector<Marker> &markerList() const {
-        return markers;
-    }
+    QVector<Marker> markerList() const;
     QSize minimumSizeHint() const override {
         return {280, 240};
     }
@@ -217,7 +215,6 @@ class MoleculeView : public QWidget {
     bool showHydrogens = true, showIndices = true, aminoHandles = false, dragging = false, boxing = false;
     Qt::MouseButton pressedButton = Qt::NoButton;
     Qt::KeyboardModifiers pressModifiers;
-    QVector<Marker> markers;
     QVector<SurfaceTriangle> surface;
     QVector<QColor> surfaceColors;
     QVector<std::pair<Vec, Vec>> overlayLines;
@@ -241,6 +238,7 @@ class MoleculeView : public QWidget {
         return !hidden.contains(a.id) && !traced.contains(a.id);
     }
     double atomRadius(int atom) const;
+    double sphereRadius(int atom) const; // 0: the style draws no sphere for the atom.
     bool positiveSurface = true, negativeSurface = true;
     int surfaceOpacity = 150;
     QString emptyMessage;
@@ -270,7 +268,7 @@ class MoleculeView : public QWidget {
     QPointF project(const Vec &p) const;
     QString hitAtom(const QPointF &p) const;
     const Bond *hitBond(const QPointF &p) const;
-    int hitMarker(const QPointF &p) const;
+    std::optional<Marker> hitMarker(const QPointF &p) const;
 };
 } // namespace mf
 Q_DECLARE_METATYPE(mf::Vec)

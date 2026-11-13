@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <algorithm>
 
 static void initResources() {
     Q_INIT_RESOURCE(resources);
@@ -29,8 +30,9 @@ const QVector<Element> &elements() {
         for (auto v : parseJson(readFile(":/data/elements.json"))["elements"].toArray()) {
             auto o = v.toObject();
             result.append({o["symbol"].toString(), o["z"].toInt(), o["mass"].toDouble(),
-                           o["covalent_radius"].toDouble(), rgbFromText(o["color"].toString()),
-                           o["name_ja"].toString(), o["name_en"].toString()});
+                           o["covalent_radius"].toDouble(), o["vdw_radius"].toDouble(),
+                           rgbFromText(o["color"].toString()), o["name_ja"].toString(),
+                           o["name_en"].toString()});
         }
         return result;
     }();
@@ -38,6 +40,12 @@ const QVector<Element> &elements() {
 }
 QString Element::name() const {
     return english() ? nameEn : nameJa;
+}
+bool Element::metal() const {
+    // The nonmetals and metalloids, by atomic number.
+    static constexpr int others[] = {1,  2,  5,  6,  7,  8,  9,  10, 14, 15, 16, 17, 18,
+                                     32, 33, 34, 35, 36, 51, 52, 53, 54, 84, 85, 86};
+    return std::find(std::begin(others), std::end(others), number) == std::end(others);
 }
 const Element &element(const QString &s) {
     static const auto index = [] {

@@ -656,10 +656,8 @@ NwchemImport importNwchemInput(const QString &text) {
         if (defaults[it.key()] != it.value())
             stored[it.key()] = it.value();
     d.data["nwchem"] = stored;
-    // Bond orders from the geometry, as for XYZ files (ghosts and masses survive the round trip).
-    auto shaped = xyzStructure(d.xyz());
-    d.atoms = shaped.atoms;
-    d.bonds = shaped.bonds;
+    // Bonds and their orders from the geometry, as for XYZ files.
+    perceiveBonds(d);
     for (int n : fixedAtoms)
         if (atomOfCenter.contains(n))
             d.atoms[atomOfCenter[n]].fixed = true;

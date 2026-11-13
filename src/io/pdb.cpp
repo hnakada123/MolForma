@@ -4,16 +4,10 @@
 #include "foundation/i18n.h"
 #include "model/document.h"
 #include <QHash>
-#include <QMap>
 #include <QRegularExpression>
 #include <QSet>
 
 namespace mf {
-bool MacromoleculeSelection::keeps(const QString &chain, ResidueKind kind) const {
-    return (chains.isEmpty() || chains.contains(chain)) && (kind == ResidueKind::Polymer  ? polymer
-                                                            : kind == ResidueKind::Ligand ? ligands
-                                                                                          : water);
-}
 namespace {
 bool atomRecord(const QString &line) {
     return line.startsWith("ATOM  ") || line.startsWith("HETATM");
@@ -73,37 +67,17 @@ MacromoleculeContents pdbContents(const QString &text) {
     }
     const auto sequence = sequences(lines);
     bool first = !text.contains(QRegularExpression("(^|\n)MODEL "));
-    QSet<QString> residues;
-    QHash<QString, int> chains;
+    MacromoleculeCount count(contents);
     for (const auto &line : lines) {
         if (line.startsWith("MODEL "))
             first = line.mid(10, 4).trimmed() == contents.models.first();
         if (!atomRecord(line))
             continue;
         contents.altlocs = contents.altlocs || !line.mid(16, 1).trimmed().isEmpty();
-        if (!first || residues.contains(line.mid(17, 10)))
-            continue;
-        residues.insert(line.mid(17, 10)); // Name, chain, number and insertion code.
-        const auto chain = chainOf(line);
-        auto it = chains.find(chain);
-        if (it == chains.end()) {
-            it = chains.insert(chain, contents.chains.size());
-            contents.chains.append({chain, names.value(chain), 0, {}});
-        }
-        const auto kind = kindOf(line, sequence);
-        if (const auto code = line.mid(17, 3).trimmed();
-            kind != ResidueKind::Polymer && !contents.chains[*it].groups.contains(code))
-            contents.chains[*it].groups << code;
-        switch (kind) {
-        case ResidueKind::Polymer:
-            ++contents.polymers;
-            ++contents.chains[*it].residues;
-            break;
-        case ResidueKind::Ligand:
-            ++contents.ligands;
-            break;
-        case ResidueKind::Water:
-            ++contents.waters;
+        if (first) { // The residue: its name, chain, number and insertion code.
+            const auto chain = chainOf(line);
+            count.add(line.mid(17, 10), chain, line.mid(17, 3).trimmed(), kindOf(line, sequence),
+                      names.value(chain));
         }
     }
     return contents;
@@ -114,7 +88,9 @@ QString preparePdb(const QString &text, const MacromoleculeSelection &selection)
     const bool hasModels = text.contains(QRegularExpression("(^|\n)MODEL "));
     int current = hasModels ? 0 : selection.model, inModel = 0;
     QStringList chosen;
-    QHash<QString, QMap<QString, double>> occupancies;
+    AltlocChoice locations(selection.altloc);
+    const auto residue = [](const QString &line) { return line.mid(21, 6); }; // Chain, number, insertion.
+    const auto altloc = [](const QString &line) { return line.mid(16, 1).trimmed(); };
     for (const auto &l : lines) {
         if (l.startsWith("MODEL "))
             current = l.mid(10, 4).trimmed().toInt();
@@ -126,19 +102,9 @@ QString preparePdb(const QString &text, const MacromoleculeSelection &selection)
             ++inModel;
             if (!selection.keeps(chainOf(l), kindOf(l, sequence)))
                 continue;
-            if (const auto alt = l.mid(16, 1); !alt.trimmed().isEmpty())
-                occupancies[l.mid(21, 6)][alt] += l.mid(54, 6).toDouble();
+            locations.add(residue(l), altloc(l), l.mid(54, 6).toDouble());
         }
         chosen << l;
-    }
-    QHash<QString, QString> preferred;
-    for (auto it = occupancies.begin(); it != occupancies.end(); ++it) {
-        double best = -1;
-        for (auto a = it.value().begin(); a != it.value().end(); ++a)
-            if (a.value() > best) {
-                best = a.value();
-                preferred[it.key()] = a.key();
-            }
     }
     QString out;
     QSet<int> serials;
@@ -147,9 +113,7 @@ QString preparePdb(const QString &text, const MacromoleculeSelection &selection)
         if (l.startsWith("MODEL") || l.startsWith("ENDMDL") || l.trimmed().isEmpty())
             continue;
         if (atomRecord(l)) {
-            const auto alt = l.mid(16, 1),
-                       want = selection.altloc.isEmpty() ? preferred[l.mid(21, 6)] : selection.altloc;
-            if (!alt.trimmed().isEmpty() && alt != want)
+            if (!locations.keeps(residue(l), altloc(l)))
                 continue;
             if (l.size() > 16)
                 l[16] = ' ';

@@ -281,6 +281,14 @@ class CoordinatesTest : public QObject {
         QCOMPARE(d.formula(), QString("ClH4N"));
         QVERIFY((d.atoms.last().position - d.atoms.first().position).norm() < 4);
         QCOMPARE(crystalStructure(c, {.minor = true}).atoms.size(), 7);
+        // The molecules of the cell are those of the document read from it: atoms are bonded at the
+        // distances that bond them there (a C and an H 1.40 Å apart are not, 1.25 Å apart they are).
+        for (const auto &[x, molecules] : {std::pair{"0.640", 2}, {"0.625", 1}}) {
+            c = readCrystal(
+                crystal(cubic, {"x,y,z"}, QString("C1 C 0.5 0.5 0.5 1\nH1 H %1 0.5 0.5 1\n").arg(x)));
+            QCOMPARE(crystalContents(c).cellMolecules, molecules);
+            QCOMPARE(crystalStructure(c).bonds.size(), 2 - molecules);
+        }
         // The files that are not read.
         QVERIFY_THROWS_EXCEPTION(
             std::runtime_error,

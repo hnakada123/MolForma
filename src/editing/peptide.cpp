@@ -37,9 +37,54 @@ Residue residue(const Document &d, const QString &id) {
         return *r;
     fail(tr("残基を選択してください。"));
 }
+bool aminoResidue(const Residue &r) {
+    return r.atoms.contains("N") && r.atoms.contains("CA") && r.atoms.contains("C");
+}
 bool polymerResidue(const Residue &r) {
-    return (r.atoms.contains("N") && r.atoms.contains("CA") && r.atoms.contains("C")) ||
-           r.atoms.contains("C1'");
+    return aminoResidue(r) || r.atoms.contains("C1'");
+}
+BackboneTrace backboneTrace(const Document &d) {
+    BackboneTrace trace;
+    trace.nodes.fill(false, d.atoms.size());
+    QHash<QString, int> atoms;
+    for (int i = 0; i < d.atoms.size(); ++i)
+        atoms.insert(d.atoms[i].id, i);
+    const auto node = [&](const Residue &r) {
+        for (const auto *name : {"CA", "P", "C4'"})
+            if (r.atoms.contains(name))
+                return atoms.value(r.atoms[name], -1);
+        return -1;
+    };
+    QHash<QString, int> residues;
+    for (int i = 0; i < d.residues.size(); ++i) {
+        const auto &r = d.residues[i];
+        residues.insert(r.id, i);
+        if (!polymerResidue(r))
+            continue;
+        const int n = node(r);
+        for (const auto &id : r.atoms)
+            if (atoms.value(id, -1) != n)
+                trace.covered.insert(id);
+    }
+    for (const auto &chain : std::as_const(d.chains)) {
+        int previous = -1;
+        for (const auto &id : chain) {
+            const int r = residues.value(id, -1);
+            if (r < 0 || !polymerResidue(d.residues[r]))
+                continue;
+            const int n = node(d.residues[r]);
+            // Cα–Cα 3.8 Å; P–P of nucleic acids about 7 Å.
+            const double reach =
+                n >= 0 && d.atoms[n].element == "C" && d.residues[r].atoms.contains("CA") ? 4.3 : 8;
+            if (n >= 0 && previous >= 0 && (d.atoms[n].position - d.atoms[previous].position).norm() < reach)
+                trace.segments.append({previous, n});
+            previous = n;
+        }
+    }
+    // A residue on its own is not on the line: it keeps its atom as it is.
+    for (const auto &[a, b] : std::as_const(trace.segments))
+        trace.nodes[a] = trace.nodes[b] = true;
+    return trace;
 }
 bool waterResidue(const QString &code) {
     static const QSet<QString> waters{"HOH", "WAT", "H2O", "DOD", "D2O", "TIP", "TIP3", "TIP4", "SPC", "SOL"};

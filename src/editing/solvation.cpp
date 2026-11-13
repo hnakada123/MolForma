@@ -7,17 +7,11 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <openbabel/atom.h>
 #include <optional>
 
 namespace mf {
 namespace {
 constexpr double gridSize = 3.6; // At least the largest contact distance.
-bool metal(const QString &symbol) {
-    OpenBabel::OBAtom atom;
-    atom.SetAtomicNum(element(symbol).number);
-    return atom.IsMetal();
-}
 // Evenly spread unit vectors (a Fibonacci sphere).
 Vec spread(int i, int n) {
     const double z = 1 - (2 * i + 1.0) / n, r = std::sqrt(std::max(0.0, 1 - z * z));
@@ -153,7 +147,7 @@ int solvate(Document &d, const QJsonObject &t, const SolvationOptions &o) {
         Site s;
         s.position = a.position;
         s.hydrogen = a.element == "H";
-        if (metal(a.element)) {
+        if (element(a.element).metal()) {
             s.contact = element(a.element).radius + donorRadius + .15;
             s.priority = 3;
         } else if (a.charge < 0) {

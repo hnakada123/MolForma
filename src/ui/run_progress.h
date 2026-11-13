@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "nwchem/run_state.h"
-#include "results/results.h"
+#include "results/nwchem_log.h"
 #include <QColor>
 #include <QWidget>
 class QLabel;

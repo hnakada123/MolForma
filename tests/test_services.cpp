@@ -334,9 +334,16 @@ class ServicesTest : public QObject {
         // A log brought from elsewhere: its summary as read, and the wall time NWChem printed.
         writeFile(jobFile(job, JobFile::output), " Total times  cpu:       12.3s     wall:       45.6s\n");
         record = plan.manifest;
+        std::optional<double> wall;
+        QCOMPARE(nwchemLogSummary(jobFile(job, JobFile::output), &wall),
+                 (QJsonObject{{"normal_termination", true}}));
+        QCOMPARE(wall, 45.6);
         const QJsonObject summary{{"normal_termination", true}, {"given", true}};
         recordRunEnd(record, job,
-                     {.state = RunState::Finished, .summary = summary, .wallTime = true, .needsLog = true});
+                     {.state = RunState::Finished,
+                      .elapsedSeconds = qint64(*wall),
+                      .summary = summary,
+                      .needsLog = true});
         QCOMPARE(record["summary"].toObject(), summary);
         QCOMPARE(record["elapsed_seconds"].toInt(), 45);
         QVERIFY(!record.contains("finished_at") && !record.contains("exit_code"));

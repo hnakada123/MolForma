@@ -112,8 +112,9 @@ Key cross-cutting designs:
   coordination centers, fragments, fixed atoms, isotopes, point charges and calculation/execution settings, and
   serializes to the `.molforma.json` project envelope (format `molforma-project`, version 1) as JSON
   (`project`/`fromProject`; the file itself is read and written by `saveProject`/`loadProject` of
-  `io/document_storage.*`). The element table is `model/elements.*`, the XYZ dialect `model/xyz.cpp` and the
-  bonds by distance `model/bond_inference.cpp`. Atom references are
+  `io/document_storage.*`). The element table is `model/elements.*` (radii, colors, `Element::metal`), the XYZ
+  dialect `model/xyz.cpp` and the bonds by distance `model/bond_inference.cpp` (`bondDistance` is the one rule,
+  for crystals too; `perceiveBonds` of `editing/chemistry.*` adds the bond orders). Atom references are
   stored by stable ID and only
   translated to indices at export (NWChem input, XYZ). Coordinates are doubles in Å; camera/view never edits them.
   `Document::atom`/`index`/`neighbors`/`bond` scan the document: loops over many atoms (proteins of 10k+ atoms)
@@ -147,7 +148,9 @@ Key cross-cutting designs:
   `execution_settings.*` checks the launch settings, `execution_plan.*` saves immutable run bundles, `job_script.*`
   writes `job.sh` and `nwchem_run.*` (with `run_process.*` and `run_supervisor.*`) controls NWChem/MPI processes
   (`nwchem_execution.h` includes them all; `remote_execution.h` likewise the `remote_*` files of runs on another
-  computer); `history.*` scans those bundles. The Input preview
+  computer); `history.*` scans those bundles and `history_list.cpp` lists them (search, state, order, ΔE) for
+  the history tab. NWChem's log is read by `results/nwchem_log.*` alone: other code asks it what the output
+  says (`NwchemLog`, `nwchemLineReports`) instead of matching log text. The Input preview
   tab and the MCP tools reuse the same generator and execution plan — don't fork generation logic in the UI.
 - **Execution environment**: what Preferences keep machine-wide about running calculations (the execution settings
   of new documents, remote destinations, the preparation lines and header templates of job scripts) is read and
@@ -182,7 +185,9 @@ Key cross-cutting designs:
   cannot set `restart` directly (it names a folder to copy from). `history_import.cpp` registers runs made
   outside MolForma, and `executionJobScript` writes `job.sh` for running a saved job elsewhere.
 - **Rendering**: `ui/molecule_view.*` owns camera, input and Qt annotations and has a QPainter fallback;
-  `ui/vtk_molecule_renderer.*` is compiled only with VTK. Both draw bonds and isosurfaces by `ui/bond_style.h`. Offscreen/minimal Qt platforms or missing OpenGL 3.2
+  `ui/vtk_molecule_renderer.*` is compiled only with VTK. Both draw by `ui/molecule_style.h` (what is drawn,
+  sizes, widths, background, colors of bonds and isosurfaces): a rule of the picture goes there, not into one
+  renderer. Offscreen/minimal Qt platforms or missing OpenGL 3.2
   automatically fall back to QPainter.
 - Persistence: UI prefs and user presets go to the user's preferences, a `QSettings` that only
   `mf::userPreferences()` (`model/settings.h`: `SettingsFormat`, user scope, "MolForma"/"MolForma") constructs and

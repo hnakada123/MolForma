@@ -6,7 +6,7 @@
 #include "nwchem/nwchem.h"
 #include "nwchem/run_process.h"
 #include "nwchem/run_record.h"
-#include "results/results.h"
+#include "results/nwchem_log.h"
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -105,10 +105,15 @@ HistoryEntry readHistoryEntry(const QString &directory) {
             e.name = title;
         else if (!name.isEmpty())
             e.name = name;
-        e.method = historyChoice("method", calculation["method"].toString());
-        if (calculation["method"] == "dft")
+        const auto method = calculation["method"].toString();
+        e.method = historyChoice("method", method);
+        if (method == "dft")
             e.method += " / " + nwchemFunctionalLabel(calculation);
         e.basis = nwchemBasisLabel(calculation);
+        e.level = (method == "dft"  ? nwchemFunctionalLabel(calculation)
+                   : method == "hf" ? QString("HF")
+                                    : e.method) +
+                  " / " + e.basis;
         e.task = historyChoice("task", calculation["task"].toString());
         // Composition tells jobs with the same calculation name apart (older records: from the project).
         e.formula = e.manifest["formula"].toString();
@@ -135,9 +140,9 @@ HistoryEntry readHistoryEntry(const QString &directory) {
             NwchemLog log;
             for (const auto &line : std::as_const(lines))
                 log.addBytes(line);
-            if (std::isfinite(log.energy)) {
-                e.energy = log.energy;
-                e.energyMethod = log.energyMethod;
+            if (std::isfinite(log.energy())) {
+                e.energy = log.energy();
+                e.energyMethod = log.energyMethod();
             }
         } catch (const std::exception &error) {
             e.warnings << QString::fromUtf8(error.what());
@@ -145,7 +150,7 @@ HistoryEntry readHistoryEntry(const QString &directory) {
     }
     return e;
 }
-QJsonObject nwchemLogSummary(const QString &path) {
+QJsonObject nwchemLogSummary(const QString &path, std::optional<double> *wallSeconds) {
     const QFileInfo info(path);
     if (info.isSymLink() || !info.isFile())
         fail(tr("通常のファイルを指定してください: %1").arg(info.fileName()));
@@ -165,6 +170,8 @@ QJsonObject nwchemLogSummary(const QString &path) {
     }
     if (f.error() != QFile::NoError)
         fail(info.fileName() + ": " + f.errorString());
+    if (wallSeconds)
+        *wallSeconds = energy.wallSeconds();
     QJsonObject summary{{"normal_termination", energy.normalTermination()}};
     if (const auto e = energy.energy(); !e.isEmpty()) {
         summary["energy"] = e["hartree"];
@@ -213,23 +220,12 @@ HistoryMolecule historyMolecule(const QString &directory) {
     const auto d = Document::fromProject(parseJson(readJobFile(directory, JobFile::project, projectLimit)));
     return {int(d.atoms.size()), d.charge, d.multiplicity};
 }
-QString historyIncomparable(const HistoryEntry &e, const HistoryEntry &reference) {
-    if (e.formula.isEmpty() || e.formula != reference.formula)
-        return tr("組成が基準と異なる");
-    if (e.method != reference.method)
-        return tr("手法が基準と異なる");
-    if (e.basis != reference.basis)
-        return tr("基底が基準と異なる");
-    if (e.energyMethod != reference.energyMethod)
-        return tr("エネルギーの種類が基準と異なる");
-    return {};
-}
 int historyJobCount(const QString &root, int limit) {
     if (!QFileInfo(root).isDir() || !QFileInfo(root).isReadable())
         return -1;
     QDirIterator it(root, QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
     int count = 0, examined = 0;
-    while (it.hasNext() && count < limit && examined++ < 20000)
+    while (it.hasNext() && count < limit && examined++ < historyFolderLimit)
         count += QFileInfo::exists(jobFile(it.next(), JobFile::record));
     return count;
 }
@@ -375,8 +371,10 @@ void HistoryScan::step() {
     do {
         if (!iterator)
             return;
-        if (entries.size() >= 2000 || examined >= 20000) {
-            message = tr("走査上限（2000ジョブ / 20000フォルダー）に達しました。保存先を分割してください。");
+        if (entries.size() >= historyJobLimit || examined >= historyFolderLimit) {
+            message = tr("走査上限（%1ジョブ / %2フォルダー）に達しました。保存先を分割してください。")
+                          .arg(historyJobLimit)
+                          .arg(historyFolderLimit);
             cancel();
             emit finished();
             return;
