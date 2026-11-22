@@ -729,6 +729,30 @@ def residue_mutation_figures(g):
     g.snap("residue_mutation/08_recognize_candidate")
 
 
+def ethanol_nmr_figures(g):
+    """Recipe 17; MOLFORMA_ETHANOL_NMR_LOG names a completed ethanol shielding/J log."""
+    log = os.environ.get("MOLFORMA_ETHANOL_NMR_LOG")
+    if not log or not os.path.isfile(log):
+        raise ValueError("Set MOLFORMA_ETHANOL_NMR_LOG to a completed ethanol shielding/J log")
+    g.open_dialog(SAMPLES + "ethanol_nmr.molforma.json")
+    g.tab(1)
+    section(g, "properties")
+    g.snap("ethanol_nmr/01_settings")
+    g.tool("results_action", action="open_file", path=os.path.realpath(log))
+    g.idle()
+    g.tab(4)
+    g.tab_text("resultsDetails", g.T("スペクトル"))
+    g.select("spectrumKind", index=0)
+    g.select("spectrumNucleus", index=0)
+    g.set("spectrumReference", "32.00508333")
+    g.set("spectrumCoupling", True)
+    g.set("spectrumSpectrometer", 90)
+    g.set("spectrumWidth", 0.0133)
+    g.set("spectrumMinimum", "-1")
+    g.set("spectrumMaximum", "5")
+    g.snap("ethanol_nmr/02_spectrum")
+
+
 RECIPES = [atoms_and_bonds, atoms_and_bonds_run, atoms_and_bonds_variations, caffeine_smiles, my_parts, phenoxyl_radical,
            stereochemistry, aromatic_substitution]
 

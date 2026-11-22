@@ -48,3 +48,6 @@
 - page: my_parts
   ja: {title: 自作の部品（マイ部品）, molecule: トリメチルシリルベンゼン, calc: B3LYP/6-31G* 構造最適化}
   en: {title: Your own parts (My parts), molecule: Trimethylsilylbenzene, calc: B3LYP/6-31G* optimization}
+- page: ethanol_nmr
+  ja: {title: NMRの計算と実測比較, molecule: エタノールとTMS、¹H・¹³C NMR, calc: B3LYP/6-311G** 遮蔽定数・J結合}
+  en: {title: Calculating NMR and comparing with experiment, molecule: "Ethanol and TMS, ¹H and ¹³C NMR", calc: B3LYP/6-311G** shieldings and J couplings}

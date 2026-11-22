@@ -2,12 +2,12 @@
 
 These recipes take one molecule each from an empty window (or a structure file, or an earlier result) to an NWChem calculation and its results, using MolForma's interface only. Pick the topic closest to the molecule you want to build; along the way you try the features it needs (atoms and bonds, skeletons and substituents, coordination centers and ligands, peptides from a sequence, stereochemistry, point charges, BSSE correction, transition-state searches, reusing results, isotopes, your own parts and more).
 
-The calculations on these pages were run on 2026-10-26 on a PC with an AMD Ryzen 7 2700X (8 cores, 16 threads) and 32 GB of memory, using NWChem 7.3.1 (Linux, 2–8 MPI processes). The run times on each page were measured on this PC too; they depend strongly on the CPU and its core count, the number of MPI processes and other calculations running at the same time. Another NWChem version or process count may also change the last digits of energies or the number of optimization steps.
+The calculations in recipes 1–16 were run on 2026-10-26 on a PC with an AMD Ryzen 7 2700X (8 cores, 16 threads) and 32 GB of memory, using NWChem 7.3.1 (Linux, 2–8 MPI processes). Their run times were measured on this PC too; they depend strongly on the CPU and its core count, the number of MPI processes and other calculations running at the same time. The NMR results in recipe 17 were calculated on 2026-11-12; that page records the conditions and experimental sources. Another NWChem version or process count may also change the last digits of energies or the number of optimization steps.
 
 ## Using these recipes
 
 - **By feature**: “[Features](features.md)” describes each part of the window and what every button does, one page per screen.
-- **By topic**: the 16 recipes on this page. Each starts from a new molecule (or a structure file or a calculation result) and goes through the calculation settings, the run and the results.
+- **By topic**: the 17 recipes on this page. Each starts from a new molecule (or a structure file or a calculation result) and goes through the calculation settings, the run and the results.
 - **The pages**: “What you build” → steps → calculation settings → run and results → “Troubleshooting”. Names in quotes (“Clean up all”) are as shown in the window.
 - **Practice data**: The finished projects (`.molforma.json`) are linked under “Practice data” in the table of each recipe (`docs/recipes/samples/` of the repository). The web manual downloads them from the links; in the app's “Guide and manual”, clicking a link saves a copy where you choose and opens it (a part file `.molforma-part.json` goes to “My parts”). Use them to start halfway or to compare with your own. They carry no run settings (NWChem executable, job folder and so on), so check “3 Run settings” before running.
 
@@ -37,6 +37,7 @@ The total charge and multiplicity of the calculation are set in “Charge and sp
 | 14 | [From a result to the next calculation](recipes/reuse_result.md) | Optimized p-nitroaniline | History, Result viewer, Apply as candidate, excited states (TDDFT) | CAM-B3LYP/6-31+G* TDDFT |
 | 15 | [Isotopes and atom order](recipes/isotopes.md) | Ethanol-OD | Isotopes and masses, the coordinate table, Sort atoms | B3LYP/6-31G* frequencies |
 | 16 | [Your own parts (My parts)](recipes/my_parts.md) | Benzene with a trimethylsilyl group | Saving selected atoms as a part, part files, placing my parts | B3LYP/6-31G* optimization |
+| 17 | [Calculating NMR and comparing with experiment](recipes/ethanol_nmr.md) | Ethanol and TMS | NMR shieldings, J couplings, TMS reference, ¹H/¹³C spectra, experimental comparison and interpretation | B3LYP/6-311G** shieldings and J couplings |
 
 ## Not in these recipes
 

@@ -10,6 +10,11 @@ figures an `nwchem` and `mpirun` in `PATH`. By default MolForma runs in a user n
 util-linux) whose `/home` holds a home of `user`, so that paths in the screenshots read
 `/home/user/MolForma/jobs` and `~/MolForma/jobs`; this needs unprivileged user namespaces.
 
+For recipe 17, `recipes.py ja|en ethanol_nmr_figures` captures the NMR settings and the ¹H spectrum.
+Set `MOLFORMA_ETHANOL_NMR_LOG` to an absolute path to a completed ethanol shielding/J-coupling log
+calculated with that recipe's settings. The script uses the bundled `ethanol_nmr.molforma.json` and
+does not run NWChem. The experimental comparison is a scientific plot, not a GUI screenshot.
+
 | Script | What it does |
 | --- | --- |
 | `features.py jobs` | Runs ethanol (with MOLDEN output) and dimethyl ether at B3LYP/6-31G*, optimization → frequencies, for the result viewer and history |

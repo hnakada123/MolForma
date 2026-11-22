@@ -458,6 +458,16 @@
   <file>en/recipes/images/stereochemistry/04_butene_e.png</file>
   <file>en/recipes/images/stereochemistry/05_butene_z.png</file>
   <file>en/recipes/images/stereochemistry/06_history_compare.png</file>
+  <file>recipes/ethanol_nmr.md</file>
+  <file>recipes/images/ethanol_nmr/01_settings.png</file>
+  <file>recipes/images/ethanol_nmr/02_spectrum.png</file>
+  <file>recipes/images/ethanol_nmr/03_comparison.png</file>
+  <file>en/recipes/ethanol_nmr.md</file>
+  <file>en/recipes/images/ethanol_nmr/01_settings.png</file>
+  <file>en/recipes/images/ethanol_nmr/02_spectrum.png</file>
+  <file>en/recipes/images/ethanol_nmr/03_comparison.png</file>
+  <file>recipes/samples/ethanol_nmr.molforma.json</file>
+  <file>recipes/samples/tms_nmr.molforma.json</file>
 </qresource><qresource prefix="/icons">
   <file alias="molforma.png">../packaging/molforma-256.png</file>
 </qresource></RCC>

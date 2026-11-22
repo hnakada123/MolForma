@@ -304,7 +304,7 @@ class TranslationsTest : public QObject {
             names << "features/" + page;
         for (const auto &recipe : QDir(":/docs/recipes").entryList({"*.md"}))
             names << "recipes/" + recipe;
-        QCOMPARE(names.size(), 3 + 12 + 16);
+        QCOMPARE(names.size(), 3 + 12 + 17);
         for (const auto &name : std::as_const(names)) {
             QVERIFY2(QFile::exists(":/docs/en/" + name), qPrintable(name));
             const auto japaneseLevels = headingLevels(":/docs/" + name);
@@ -313,6 +313,7 @@ class TranslationsTest : public QObject {
         }
         // Every page links and shows only what is embedded: other pages and the images beside them.
         static const QRegularExpression link(R"(\]\(([^)#]+)(#[^)]*)?\))");
+        static const QRegularExpression inlineCode(R"(`+[^`\n]*`+)");
         for (const auto &language : {QString(":/docs/"), QString(":/docs/en/")})
             for (const auto &name : std::as_const(names)) {
                 QFile file(language + name);
@@ -320,7 +321,10 @@ class TranslationsTest : public QObject {
                 const auto text = QString::fromUtf8(file.readAll());
                 // The pages are also the Jekyll site of GitHub Pages, where these start Liquid tags.
                 QVERIFY2(!text.contains("{{") && !text.contains("{%"), qPrintable(language + name));
-                for (auto it = link.globalMatch(text); it.hasNext();) {
+                // Inline-code SMILES such as C[Si](C)(C)C are not Markdown links.
+                auto linkText = text;
+                linkText.remove(inlineCode);
+                for (auto it = link.globalMatch(linkText); it.hasNext();) {
                     const auto target = it.next().captured(1);
                     if (target.startsWith("http"))
                         continue;

@@ -1,0 +1,264 @@
+{
+  "coordinate_units": "angstrom",
+  "document": {
+    "atoms": [
+      {
+        "auto_hydrogen": false,
+        "element": "C",
+        "fixed": false,
+        "formal_charge": 0,
+        "ghost": false,
+        "id": "e691ea3e86da41fab84b73b05feff0f5",
+        "isotope_mass_number": null,
+        "mass_amu": null,
+        "metadata": {},
+        "name": "",
+        "position": [
+          1.08078803,
+          -0.07388089,
+          0.01253018
+        ],
+        "radical": 0,
+        "stereo": ""
+      },
+      {
+        "auto_hydrogen": false,
+        "element": "C",
+        "fixed": false,
+        "formal_charge": 0,
+        "ghost": false,
+        "id": "bfb0df6caffe408a9608c711bb0e4bd6",
+        "isotope_mass_number": null,
+        "mass_amu": null,
+        "metadata": {},
+        "name": "",
+        "position": [
+          0.60881803,
+          0.54251246,
+          1.32459511
+        ],
+        "radical": 0,
+        "stereo": ""
+      },
+      {
+        "auto_hydrogen": false,
+        "element": "O",
+        "fixed": false,
+        "formal_charge": 0,
+        "ghost": false,
+        "id": "80592a12eb3d4cc5ac1442948c819a48",
+        "isotope_mass_number": null,
+        "mass_amu": null,
+        "metadata": {},
+        "name": "",
+        "position": [
+          1.0298336,
+          1.89554149,
+          1.47883324
+        ],
+        "radical": 0,
+        "stereo": ""
+      },
+      {
+        "auto_hydrogen": false,
+        "element": "H",
+        "fixed": false,
+        "formal_charge": 0,
+        "ghost": false,
+        "id": "16d30bd677404033aec8433e15337aaa",
+        "isotope_mass_number": null,
+        "mass_amu": null,
+        "metadata": {},
+        "name": "",
+        "position": [
+          0.74678051,
+          0.53099949,
+          -0.83381275
+        ],
+        "radical": 0,
+        "stereo": ""
+      },
+      {
+        "auto_hydrogen": false,
+        "element": "H",
+        "fixed": false,
+        "formal_charge": 0,
+        "ghost": false,
+        "id": "4d97f1f67508408981e5b69074a17e1d",
+        "isotope_mass_number": null,
+        "mass_amu": null,
+        "metadata": {},
+        "name": "",
+        "position": [
+          0.69061275,
+          -1.08915184,
+          -0.10881663
+        ],
+        "radical": 0,
+        "stereo": ""
+      },
+      {
+        "auto_hydrogen": false,
+        "element": "H",
+        "fixed": false,
+        "formal_charge": 0,
+        "ghost": false,
+        "id": "48a176c589a54b939c0d7067ebc36758",
+        "isotope_mass_number": null,
+        "mass_amu": null,
+        "metadata": {},
+        "name": "",
+        "position": [
+          2.17408727,
+          -0.13250447,
+          -0.02274801
+        ],
+        "radical": 0,
+        "stereo": ""
+      },
+      {
+        "auto_hydrogen": false,
+        "element": "H",
+        "fixed": false,
+        "formal_charge": 0,
+        "ghost": false,
+        "id": "1f96f7ae443e433d8151927c051c2c75",
+        "isotope_mass_number": null,
+        "mass_amu": null,
+        "metadata": {},
+        "name": "",
+        "position": [
+          -0.48260882,
+          0.57395392,
+          1.35665074
+        ],
+        "radical": 0,
+        "stereo": ""
+      },
+      {
+        "auto_hydrogen": false,
+        "element": "H",
+        "fixed": false,
+        "formal_charge": 0,
+        "ghost": false,
+        "id": "d3c35d18f8f24abcaa8bd86e83331f02",
+        "isotope_mass_number": null,
+        "mass_amu": null,
+        "metadata": {},
+        "name": "",
+        "position": [
+          0.94204333,
+          -0.0712812,
+          2.17394714
+        ],
+        "radical": 0,
+        "stereo": ""
+      },
+      {
+        "auto_hydrogen": false,
+        "element": "H",
+        "fixed": false,
+        "formal_charge": 0,
+        "ghost": false,
+        "id": "3a544b451c6b49498dba82866c13a429",
+        "isotope_mass_number": null,
+        "mass_amu": null,
+        "metadata": {},
+        "name": "",
+        "position": [
+          1.99209119,
+          1.90337865,
+          1.48342326
+        ],
+        "radical": 0,
+        "stereo": ""
+      }
+    ],
+    "bonds": [
+      {
+        "a": "e691ea3e86da41fab84b73b05feff0f5",
+        "b": "bfb0df6caffe408a9608c711bb0e4bd6",
+        "kind": "single",
+        "source": "import",
+        "stereo": ""
+      },
+      {
+        "a": "bfb0df6caffe408a9608c711bb0e4bd6",
+        "b": "80592a12eb3d4cc5ac1442948c819a48",
+        "kind": "single",
+        "source": "import",
+        "stereo": ""
+      },
+      {
+        "a": "e691ea3e86da41fab84b73b05feff0f5",
+        "b": "16d30bd677404033aec8433e15337aaa",
+        "kind": "single",
+        "source": "import",
+        "stereo": ""
+      },
+      {
+        "a": "e691ea3e86da41fab84b73b05feff0f5",
+        "b": "4d97f1f67508408981e5b69074a17e1d",
+        "kind": "single",
+        "source": "import",
+        "stereo": ""
+      },
+      {
+        "a": "e691ea3e86da41fab84b73b05feff0f5",
+        "b": "48a176c589a54b939c0d7067ebc36758",
+        "kind": "single",
+        "source": "import",
+        "stereo": ""
+      },
+      {
+        "a": "bfb0df6caffe408a9608c711bb0e4bd6",
+        "b": "1f96f7ae443e433d8151927c051c2c75",
+        "kind": "single",
+        "source": "import",
+        "stereo": ""
+      },
+      {
+        "a": "bfb0df6caffe408a9608c711bb0e4bd6",
+        "b": "d3c35d18f8f24abcaa8bd86e83331f02",
+        "kind": "single",
+        "source": "import",
+        "stereo": ""
+      },
+      {
+        "a": "80592a12eb3d4cc5ac1442948c819a48",
+        "b": "3a544b451c6b49498dba82866c13a429",
+        "kind": "single",
+        "source": "import",
+        "stereo": ""
+      }
+    ],
+    "centers": [],
+    "chains": {},
+    "charge": 0,
+    "id": "ac9b3d73358f4e59b48ecf0c8007819c",
+    "metadata": {},
+    "multiplicity": 1,
+    "nwchem": {
+      "basis": "6-311g**",
+      "functional": "b3lyp",
+      "grid": "fine",
+      "memory_mb": 2048,
+      "method": "dft",
+      "opt_convergence": "tight",
+      "prop_nmr": true,
+      "prop_spinspin": true,
+      "scf_convergence": "verytight",
+      "spinspin_pairs": "hfp",
+      "start": "ethanol_nmr",
+      "task": "energy",
+      "title": "Ethanol GIAO NMR and J - B3LYP/6-311G** fine grid, xfine optimized geometry",
+      "basis_functions": "spherical"
+    },
+    "parts": [],
+    "point_charges": [],
+    "residues": [],
+    "units": "angstrom"
+  },
+  "format": "molforma-project",
+  "version": 1
+}
