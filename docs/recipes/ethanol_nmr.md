@@ -8,10 +8,38 @@
 | 使う機能 | SMILESから作成、最適化構造の取り込み、NMR遮蔽定数、J結合、基準遮蔽定数、スペクトルの表示・書き出し |
 | 計算 | 気相、B3LYP/6-311G(d,p)、GIAO遮蔽定数、エタノールのH–H J結合 |
 | 実行記録 | 2026-11-12、MolForma MCPからNWChem 7.3.1（Linux）を実行。以下では同じ操作を画面で行う |
-| 計算時間 | J結合は遮蔽定数だけの計算より重い。授業では最適化済み構造から始め、計算時間を確保できない場合はこのページの図と数値で比較する |
+| 計算時間 | J結合は遮蔽定数だけの計算より重い。授業では最適化済み構造から始め、計算時間を確保できない場合は下の計算済みデータを開いて比較する |
 | 練習データ | [エタノールの最適化済み構造とNMR条件](samples/ethanol_nmr.molforma.json)、[TMSの初期構造と最適化・遮蔽計算の条件](samples/tms_nmr.molforma.json) |
 
-練習データは構造と条件です。計算結果のログや実行設定は含めていません。「3 実行設定」でNWChem・MPI・保存先を確認してください。基底名の `6-311G**` は、この実習の `6-311G(d,p)` と同じです。
+上記の練習用プロジェクトは構造と条件です。計算結果のログや実行設定は含めていません。自分で計算する場合は「3 実行設定」でNWChem・MPI・保存先を確認してください。基底名の `6-311G**` は、この実習の `6-311G(d,p)` と同じです。
+
+## 計算済みデータを開く（再計算不要）
+
+**[計算結果一式をダウンロード（ZIP・1.96 MB）](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_results_v1.zip)** · [SHA-256チェックサム](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_results_v1.zip.sha256)
+
+エタノールとTMSのNWChem入力・出力ログ、練習用プロジェクト、計算曲線・ピーク表のCSV、チャートPDF・PNG、日本語・英語の開き方を収録しています。結果を見るためにNWChemを再実行する必要はありません。
+
+| 個別に開くファイル | 確認できるもの |
+| --- | --- |
+| [エタノールのNMRログ（.out）](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr.out) | MolFormaで構造、遮蔽定数、15組のH–H J結合、¹H・¹³Cチャートを表示。正常終了したNMR専用ジョブ |
+| [TMSの基準計算ログ（.out）](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/tms_reference.out) | MolFormaで最適化構造と基準遮蔽定数を確認。正常終了 |
+| [計算スペクトル（PDF）](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_calculated_400MHz.pdf) | ¹H（400 MHz）と¹³Cの計算チャート。PDFビューアで閲覧 |
+| [実測との比較チャート（PDF）](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_comparison_ja.pdf) | このページの比較図。¹Hの計算表示を実測と同じ90 MHzに設定 |
+
+1. ZIPを保存・展開します。ログを個別に保存しても構いません。
+2. MolFormaの「結果ビューア → 開く…」から `logs/ethanol_nmr.out` を開きます。「物性」で遮蔽定数とJ結合を確認できます。
+3. 「スペクトル」でNMRを選び、次の値を入力します。「J結合で分裂させる（一次の多重線）」をオンにしてください。
+
+| 核種 | 基準遮蔽定数 / ppm | 測定周波数（¹H） | 半値全幅 / ppm | 表示範囲（小 → 大） |
+| --- | ---: | --- | ---: | --- |
+| ¹H | 32.00508333 | 90 MHz | 0.0133 | −1 … 5 |
+| ¹³C | 184.45915000 | 90 MHzのまま | 0.10 | −5 … 80 |
+
+基準値はログを開いただけでは自動設定されません。表示条件の保存ファイルは元ログの場所に依存するため同梱していません。手順4にも表示方法を記しています。
+
+ZIP内の `logs/ethanol_geometry_interrupted.out` は最適化・振動数を確かめるための補足ログです。これらの計算が終わった後、続くJ計算中に停止した記録で、正常終了ログではありません。最終NMRチャートには、正常終了した `ethanol_nmr.out` を使います。
+
+配布ログではホスト名とNWChemのビルド元パスのみ伏せ、座標や計算結果の数値は変更していません。閲覧用データで、NWChemの再開用データベースや軌道ファイルは含みません。詳しくは同梱の `README.ja.txt` を参照してください。
 
 ![エタノールの実測ピークと計算NMR。橙が実測、青が計算で、OHと炭素のずれも示す](images/ethanol_nmr/03_comparison.png)
 

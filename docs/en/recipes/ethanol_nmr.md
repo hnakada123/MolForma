@@ -8,10 +8,38 @@ Calculate the ¹H and ¹³C NMR spectra of ethanol and obtain chemical shifts re
 | Features | Build from SMILES, apply an optimized structure, NMR shielding, J couplings, reference shielding, spectrum display and export |
 | Calculation | Gas-phase B3LYP/6-311G(d,p), GIAO shieldings, and H–H J couplings of ethanol |
 | Run record | Run on 2026-11-12 with NWChem 7.3.1 (Linux) through MolForma MCP; the instructions below perform the same operations in the interface |
-| Run time | J couplings cost more than shieldings alone. For a class, start from the optimized structure and allow time for the calculation; use this page's figures and values for comparison if time is limited |
+| Run time | J couplings cost more than shieldings alone. For a class, start from the optimized structure and allow time for the calculation; open the completed results below for comparison if time is limited |
 | Practice files | [Optimized ethanol and its NMR settings](../../recipes/samples/ethanol_nmr.molforma.json), [Initial TMS and its optimization/shielding settings](../../recipes/samples/tms_nmr.molforma.json) |
 
-The practice files contain structures and settings, not calculation logs or execution settings. Check NWChem, MPI and the job folder in “3 Run settings”. The basis name `6-311G**` is equivalent to `6-311G(d,p)` in this recipe.
+The practice projects above contain structures and settings, not calculation logs or execution settings. To run your own calculation, check NWChem, MPI and the job folder in “3 Run settings”. The basis name `6-311G**` is equivalent to `6-311G(d,p)` in this recipe.
+
+## Open the completed results (no recalculation needed)
+
+**[Download all calculation results (ZIP, 1.96 MB)](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_results_v1.zip)** · [SHA-256 checksum](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_results_v1.zip.sha256)
+
+The archive contains NWChem inputs and output logs for ethanol and TMS, practice projects, calculated curves and peak tables as CSV, charts as PDF/PNG, and viewing instructions in English and Japanese. No NWChem rerun is needed to inspect the results.
+
+| Individual file | What you can inspect |
+| --- | --- |
+| [Ethanol NMR log (.out)](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr.out) | Structure, shieldings, 15 H–H J couplings and ¹H/¹³C charts in MolForma. The normally terminated NMR-only job |
+| [TMS reference log (.out)](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/tms_reference.out) | Optimized structure and reference shieldings in MolForma. Normally terminated |
+| [Calculated spectra (PDF)](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_calculated_400MHz.pdf) | Calculated ¹H (400 MHz) and ¹³C charts in an ordinary PDF viewer |
+| [Experimental comparison (PDF)](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_comparison_en.pdf) | This page's comparison figure, with calculated ¹H displayed at the experimental frequency of 90 MHz |
+
+1. Save and extract the ZIP, or save the individual log files.
+2. In MolForma, choose “Result viewer → Open…” and select `logs/ethanol_nmr.out`. The “Properties” tab shows shieldings and J couplings.
+3. Choose NMR on “Spectra”, enter the values below, and enable “Split by J couplings (first-order multiplets)”.
+
+| Nucleus | Reference shielding / ppm | Spectrometer frequency (¹H) | FWHM / ppm | Range (low → high) |
+| --- | ---: | --- | ---: | --- |
+| ¹H | 32.00508333 | 90 MHz | 0.0133 | −1 … 5 |
+| ¹³C | 184.45915000 | Leave at 90 MHz | 0.10 | −5 … 80 |
+
+Opening a log does not set the reference automatically. Saved display-settings files depend on the original log's location, so they are not included. Step 4 below also explains the display controls.
+
+The supplementary `logs/ethanol_geometry_interrupted.out` in the ZIP lets you inspect optimization and frequencies. Those stages finished before the subsequent J calculation was stopped; this is not a normally terminated log. Use the completed `ethanol_nmr.out` for the final NMR charts.
+
+Only the hostname and NWChem build-source path have been redacted in the distributed logs. Coordinates and numerical results are unchanged. This is a viewing dataset; NWChem restart databases and orbital files are not included. See `README.en.txt` in the archive for details.
 
 ![Experimental peaks and calculated NMR of ethanol: experiment in orange, calculation in blue, including the OH and carbon discrepancies](images/ethanol_nmr/03_comparison.png)
 
