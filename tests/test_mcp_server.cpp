@@ -424,6 +424,26 @@ class McpServerTest : public QObject {
         QCOMPARE(curve["items"].toArray().size(), 11);
         QCOMPARE(curve["nextOffset"].toInt(), 18);
         QCOMPARE(curve["xUnit"].toString(), "ppm");
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, resultsJson(r, {{"section", "spectrum"}}, {}));
+        r.properties["shielding"] =
+            QJsonArray{QJsonObject{{"atom", 3}, {"element", "H"}, {"isotropic", 28.}},
+                       QJsonObject{{"atom", 1}, {"element", "C"}, {"isotropic", 180.}}};
+        r.properties["nmr_display"] = QJsonObject{{"references", QJsonObject{{"1H", 31.}, {"13C", 184.}}},
+                                                  {"parameters", p},
+                                                  {"reference_name", "TMS"},
+                                                  {"automatic_width", true}};
+        auto automatic = resultsJson(r, {{"section", "spectrum_peaks"}}, {});
+        QCOMPARE(automatic["items"][0].toObject()["x"].toDouble(), 3.);
+        automatic = resultsJson(
+            r, {{"section", "spectrum_peaks"}, {"parameters", QJsonObject{{"nucleus", "13C"}}}}, {});
+        QCOMPARE(automatic["items"][0].toObject()["x"].toDouble(), 4.);
+        QCOMPARE(automatic["parameters"].toObject()["width"].toDouble(), .1);
+        automatic = resultsJson(r,
+                                {{"section", "spectrum_peaks"},
+                                 {"parameters", QJsonObject{{"reference_ppm", 30.}, {"width", .2}}}},
+                                {});
+        QCOMPARE(automatic["items"][0].toObject()["x"].toDouble(), 2.);
+        QCOMPARE(automatic["parameters"].toObject()["width"].toDouble(), .2);
     }
     void chartKindsAndCorrectedProfile() {
         // The IR and absorption charts of the result viewer are spectrum kinds too.

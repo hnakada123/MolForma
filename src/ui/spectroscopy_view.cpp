@@ -2,6 +2,7 @@
 #include "ui/spectroscopy_view.h"
 #include "foundation/files.h"
 #include "foundation/i18n.h"
+#include "results/result_bundle.h"
 #include "results/result_loader.h"
 #include "ui/editor_context.h"
 #include "ui/figure_export.h"
@@ -67,11 +68,12 @@ SpectroscopyView::SpectroscopyView(UiServices &uiServices, QWidget *parent)
         refresh();
         message->setText(error);
     });
-    connect(referenceLoader, &ResultLoader::loaded, this, [this](const ResultData &r) {
+    connect(referenceLoader, &ResultLoader::loaded, this, [this](const ResultData &r, const QString &stamp) {
         try {
             const auto values = tmsShieldingReference(r);
             references = values;
             referenceSource = r.source;
+            referenceStamp = stamp;
             updateReference();
             refresh();
         } catch (const std::exception &e) {
@@ -202,6 +204,7 @@ SpectroscopyView::SpectroscopyView(UiServices &uiServices, QWidget *parent)
         if (value != references.value(key)) {
             references[key] = value;
             referenceSource.clear();
+            referenceStamp.clear();
         }
         refresh();
     });
@@ -266,6 +269,22 @@ void SpectroscopyView::loadTmsReference(const QString &path) {
     referenceLoader->start({path});
     refresh();
 }
+void SpectroscopyView::saveBundle(const QString &path) const {
+    uiContext.checkMcpPath(path);
+    uiContext.checkMcpPath(result.source);
+    if (!referenceStamp.isEmpty())
+        uiContext.checkMcpPath(referenceSource);
+    ResultBundleRequest request;
+    request.sourceStamp = stamp;
+    request.referencePath = referenceStamp.isEmpty() ? QString() : referenceSource;
+    request.referenceStamp = referenceStamp;
+    request.references = references;
+    request.parameters = parameters();
+    if (request.parameters.contains("reference_ppm"))
+        request.references[nucleus->currentData().toString()] = request.parameters["reference_ppm"];
+    request.automaticWidth = automaticWidth->isChecked();
+    saveResultBundle(path, result, request);
+}
 void SpectroscopyView::updateReference() {
     const auto value = references.value(nucleus->currentData().toString());
     reference->setText(value.isDouble() ? QString::number(value.toDouble(), 'g', 16) : QString());
@@ -315,6 +334,7 @@ void SpectroscopyView::setParameters(const QJsonObject &p) {
     referenceLoader->cancel();
     references = {};
     referenceSource.clear();
+    referenceStamp.clear();
     automaticWidth->setChecked(false); // Saved parameters carry an explicit width.
     kind->setCurrentIndex(kind->findData(p["kind"].toString()));
     nucleus->setCurrentIndex(nucleus->findData(p["nucleus"].toString("1H")));
@@ -347,6 +367,7 @@ void SpectroscopyView::setResult(const ResultData &r) {
         referenceLoader->cancel();
         references = {};
         referenceSource.clear();
+        referenceStamp.clear();
         reference->clear();
         minimum->clear();
         maximum->clear();
@@ -400,6 +421,13 @@ void SpectroscopyView::setResult(const ResultData &r) {
             hydrogen |= value.toObject()["element"] == "H";
         nucleus->setCurrentIndex(hydrogen ? 0 : 1);
         coupling->setChecked(!r.properties["spinspin"].toArray().isEmpty());
+        if (const auto display = resultNmrDisplay(r)) {
+            setParameters(display->parameters);
+            references = display->references;
+            referenceSource = display->referenceName;
+            automaticWidth->setChecked(display->automaticWidth);
+            updateReference();
+        }
     }
     refresh();
 }
@@ -430,9 +458,8 @@ void SpectroscopyView::refresh() {
     width->setEnabled(!nmr || !automaticWidth->isChecked());
     if (nmr && automaticWidth->isChecked()) {
         const QSignalBlocker blockWidth(width);
-        width->setValue(nucleus->currentData() == "13C" ? .1
-                        : coupling->isChecked()         ? std::max(.0005, 1.2 / spectrometer->value())
-                                                        : .05);
+        width->setValue(
+            nmrDisplayWidth(nucleus->currentData().toString(), coupling->isChecked(), spectrometer->value()));
     }
     const bool couplings = nmr && result.properties.contains("spinspin");
     form->setRowVisible(coupling, couplings);

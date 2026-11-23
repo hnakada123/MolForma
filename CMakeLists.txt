@@ -80,6 +80,7 @@ add_library(molforma_results STATIC
     src/results/energy_profile.cpp
     src/results/molden_orbitals.cpp
     src/results/result_files.cpp
+    src/results/result_bundle.cpp
     src/results/result_loader.cpp
     src/results/result_presentation.cpp
     src/results/result_properties.cpp

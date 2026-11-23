@@ -15,9 +15,11 @@
 
 ## 計算済みデータを開く（再計算不要）
 
-**[計算結果一式をダウンロード（ZIP・1.96 MB）](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_results_v1.zip)** · [SHA-256チェックサム](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_results_v1.zip.sha256)
+**[自動表示できる結果ファイルをダウンロード（1.58 MB）](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v2/ethanol_nmr.molforma-result.json)** · [SHA-256](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v2/ethanol_nmr.molforma-result.json.sha256)
 
-エタノールとTMSのNWChem入力・出力ログ、練習用プロジェクト、計算曲線・ピーク表のCSV、チャートPDF・PNG、日本語・英語の開き方を収録しています。結果を見るためにNWChemを再実行する必要はありません。
+[補足ログ・比較図も含む一式（ZIP・2.22 MB）](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v2/ethanol_nmr_results_v2.zip) · [ZIPのSHA-256](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v2/ethanol_nmr_results_v2.zip.sha256)
+
+補足ZIPには、エタノールとTMSのNWChem入力・出力ログ、練習用プロジェクト、計算曲線・ピーク表のCSV、チャートPDF・PNG、日本語・英語の開き方も収録しています。結果を見るためにNWChemを再実行する必要はありません。
 
 | 個別に開くファイル | 確認できるもの |
 | --- | --- |
@@ -26,10 +28,13 @@
 | [計算スペクトル（PDF）](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_calculated_400MHz.pdf) | ¹H（400 MHz）と¹³Cの計算チャート。PDFビューアで閲覧 |
 | [実測との比較チャート（PDF）](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_comparison_ja.pdf) | このページの比較図。¹Hの計算表示を実測と同じ90 MHzに設定 |
 
-1. ZIPを保存・展開します。ログを個別に保存しても構いません。
-2. MolFormaの「結果ビューア → 開く…」から `logs/ethanol_nmr.out` を開きます。「物性」で遮蔽定数とJ結合を確認できます。
-3. 「スペクトル」の「TMSログを開く…」で `logs/tms_reference.out` を選びます。¹H・¹³Cの基準遮蔽定数が自動入力され、チャートが表示されます。新しくNMRログを開くと、水素があれば¹Hを選び、J結合が含まれていれば分裂をオンにします。
-4. 実測と比較する場合は「測定周波数（¹H）」を `90 MHz` にします。線幅は「線幅を自動調整（表示用）」、表示範囲は空欄の自動設定のままで構いません。¹³Cは核種を切り替えるだけで、取り込んだ炭素の基準値に変わります。
+1. 上の `ethanol_nmr.molforma-result.json` を保存します。このファイルだけで開けます。ZIPを使う場合も、展開したフォルダー内の同名ファイルを選びます。
+2. 更新したMolFormaの「結果ビューア → 開く…」で、そのファイルを開きます。**NMRチャートが自動表示されます。TMSログの追加選択や数値の手入力は不要です。**
+3. ¹³Cは核種を切り替えるだけです。構造、エネルギー、軌道エネルギー、遮蔽定数、J結合も各タブで確認できます。
+
+単一結果ファイルには、エタノールのNMR出力と対応するTMSの出力を内蔵しています。基準値は内蔵TMSから計算し、実測比較用の90 MHz、線幅・範囲の自動設定を復元します。元ログの保存場所には依存せず、別のPCへこのファイルだけをコピーできます。含まれない計算結果を推定で補うことはありません。最適化・振動数の補足ログや実測比較図はZIPに別途入っています。
+
+旧版は単一結果ファイルを読めません。アプリを更新するか、生ログ `logs/ethanol_nmr.out` を開いて「TMSログを開く…」から `logs/tms_reference.out` を指定してください。生ログだけを開いた場合は基準値を含まないため、TMSの指定が必要です。
 
 ### パラメータは何から決まるか
 
@@ -48,7 +53,7 @@ TMSログの読込に対応していない旧版や、同じ数値を手入力�
 | ¹H | `32.00508333` | 90 MHz | `0.0133` | 左 `-1`、右 `5` |
 | ¹³C | `184.45915000` | 90 MHzのまま | `0.10` | 左 `-5`、右 `80` |
 
-この基準値を別の計算条件へ流用しないでください。手入力は核種を選んだ後、単位を付けず数値だけを入力してEnterで確定します。旧版では数学用のマイナス `−` が認識されないため、負の数は半角の `-` を使います。表示条件の保存ファイルは元ログの場所に依存するため同梱していません。
+自動表示の結果ファイルを使う場合、以下の手入力は不要です。この基準値を別の計算条件へ流用しないでください。手入力は核種を選んだ後、単位を付けず数値だけを入力してEnterで確定します。旧版では数学用のマイナス `−` が認識されないため、負の数は半角の `-` を使います。「表示条件を保存…」のJSONは元ログの場所に依存します。持ち運ぶ場合は「書き出し → 結果を1ファイルに保存…」を使います。
 
 ZIP内の `logs/ethanol_geometry_interrupted.out` は最適化・振動数を確かめるための補足ログです。これらの計算が終わった後、続くJ計算中に停止した記録で、正常終了ログではありません。最終NMRチャートには、正常終了した `ethanol_nmr.out` を使います。
 
@@ -101,6 +106,8 @@ ZIP内の `logs/ethanol_geometry_interrupted.out` は最適化・振動数を確
 TMSの最適化は収束していますが、今回は振動数による極小確認を省略しました。対象とTMSの遮蔽計算は同じ手法・基底・グリッド・SCF条件です。条件を変えて計算し直す場合は、上表の基準値をそのまま流用せず、TMSも同じ条件で求め直します。
 
 ## 4. ¹H・¹³Cスペクトルを表示する
+
+配布済みの単一結果ファイルでは、この設定は保存済みです。自分で計算した生ログでは次の操作で基準を一度指定し、最後に「書き出し → 結果を1ファイルに保存…」で保存すると、次回からその1ファイルを開くだけで表示できます。
 
 1. 「履歴」から、手順2で完了したエタノールのNMRジョブを「結果ビューアで開く」で開き直します。
 2. 「スペクトル」タブで「TMSログを開く…」を押し、手順3で計算したTMSの出力ログ（配布データの場合は `tms_reference.out`）を選びます。¹H・¹³Cの基準値が取り込まれます。

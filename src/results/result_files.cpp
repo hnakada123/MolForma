@@ -14,9 +14,9 @@ namespace {
 const QRegularExpression animationStep(R"(^(.*)\.m-(\d+)\.s-(\d+)\.xyz$)");
 }
 QStringList resultFiles(const QString &directory) {
-    return QDir(directory).entryList(
-        {"*.out", "*.log", "*.xyz", "*.cube", "*.cub", "*.molden", "*.mld", "*.molde", "*.normal"},
-        QDir::Files | QDir::Readable, QDir::Name);
+    return QDir(directory).entryList({"*.out", "*.log", "*.xyz", "*.cube", "*.cub", "*.molden", "*.mld",
+                                      "*.molde", "*.normal", "*.molforma-result.json"},
+                                     QDir::Files | QDir::Readable, QDir::Name);
 }
 QVector<ResultFileGroup> resultFileGroups(const QStringList &names) {
     QVector<ResultFileGroup> groups;

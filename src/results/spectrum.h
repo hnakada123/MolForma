@@ -22,6 +22,8 @@ SpectrumData calculateSpectrum(const ResultData &result, const QJsonObject &para
 // Mean shieldings of all twelve H and four C atoms of a complete TMS molecule, keyed by 1H/13C.
 // Refuses other structures and incomplete/invalid shielding tables; does not compare calculation levels.
 QJsonObject tmsShieldingReference(const ResultData &result);
+// Display defaults, rounded to the four decimal places of the spectrum controls (not physical linewidths).
+double nmrDisplayWidth(const QString &nucleus, bool coupling, double protonMHz);
 // What a conformer adds to the averaged spectra of its set: the peaks of the kinds ir, raman, uv and
 // ecd its result holds, and "shielding" [{atom, element, isotropic}] of a singlet. Kinds without data
 // are left out.

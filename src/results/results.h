@@ -98,6 +98,9 @@ struct ResultData {
     //   "irc" {points [{direction: forward|backward, point, energy, s, frame}], directions [those
     //     traced], complete (each of them printed its convergence), ts_energy?, ts_frame}.
     // Properties:
+    //   "result_bundle" {name}: original NWChem log embedded in a portable result file.
+    //   "nmr_display" {references, reference_name, parameters, automatic_width}: calibrated NMR
+    //     presentation read through resultNmrDisplay/resultSpectrumParameters (result_bundle.h).
     //   "dipole" {x, y, z, debye, geometry?, origin} in a.u./Debye, with the structure it belongs to
     //     as XYZ.
     //   "polarizability" {isotropic, anisotropy, frequency?, tensor [9, by rows], geometry?} in a.u.

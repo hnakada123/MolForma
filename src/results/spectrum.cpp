@@ -68,6 +68,13 @@ QJsonObject tmsShieldingReference(const ResultData &result) {
         fail(tr("TMSの基準には、水素12個・炭素4個すべての有効な遮蔽定数が必要です。"));
     return {{"1H", sums["H"] / 12}, {"13C", sums["C"] / 4}};
 }
+double nmrDisplayWidth(const QString &nucleus, bool coupling, double protonMHz) {
+    if (!std::isfinite(protonMHz) || protonMHz < 10 || protonMHz > 2000)
+        fail(tr("測定周波数は10〜2000 MHzにしてください。"));
+    return nucleus == "13C" ? .1
+           : coupling       ? std::round(std::max(.0005, 1.2 / protonMHz) * 10000) / 10000
+                            : .05;
+}
 QString eprIsotope(const QString &element) {
     static const QMap<QString, QString> isotopes{{"H", "1H"},    {"C", "13C"},  {"N", "14N"},   {"O", "17O"},
                                                  {"F", "19F"},   {"P", "31P"},  {"Si", "29Si"}, {"S", "33S"},

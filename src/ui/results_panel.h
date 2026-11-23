@@ -127,7 +127,7 @@ class ResultsPanel : public QWidget {
     QComboBox *files, *dataset, *orbitalNorm;
     QPushButton *cancel, *reload, *applyGeometry, *compareGeometry, *recalculate;
     QToolButton *openButton, *exportButton;
-    QAction *saveXyz, *savePng, *saveFrames;
+    QAction *saveXyz, *savePng, *saveFrames, *saveBundle;
     // The 3D view with its overlays: what is shown, the view controls and the measurement.
     MoleculeView *view;
     QFrame *contextChip;

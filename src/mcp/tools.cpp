@@ -6,6 +6,7 @@
 #include "nwchem/run_diagnostics.h"
 #include "nwchem/run_record.h"
 #include "results/energy_profile.h"
+#include "results/result_bundle.h"
 #include "results/result_summary.h"
 #include "results/spectrum.h"
 #include <QDir>
@@ -128,6 +129,8 @@ McpToolSpec resultsTool() {
                    "coupling true with spectrometer_mhz (1H) draws first-order multiplets from the log's "
                    "spin-spin couplings, topologically equivalent nuclei as one peak (atoms, multiplet, "
                    "j_hz). "
+                   "A .molforma-result.json file supplies saved NMR defaults when parameters are omitted; "
+                   "explicit parameters override them, and nucleus selects its saved reference. "
                    "EPR needs microwave_ghz, nuclei [{atom,isotope}], optional derivative."}}},
              {"profile",
               QJsonObject{{"type", "object"},
@@ -302,7 +305,8 @@ QJsonObject resultsJson(const ResultData &r, const QJsonObject &args, QJsonObjec
     QJsonArray rows;
     qsizetype bytes = 0;
     if (section == "spectrum" || section == "spectrum_peaks") {
-        const auto spectrum = calculateSpectrum(r, args["parameters"].toObject());
+        const auto spectrum =
+            calculateSpectrum(r, resultSpectrumParameters(r, args["parameters"].toObject()));
         out["parameters"] = spectrum.parameters;
         out["xUnit"] = spectrum.xUnit;
         out["yUnit"] = spectrum.yUnit;

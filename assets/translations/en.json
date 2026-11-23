@@ -2683,7 +2683,6 @@
     "通常ラマンの出力ファイルを認識できません。": "Unrecognized normal Raman output file.",
     "通常ラマンのピーク表が不正です。": "Invalid normal Raman peak table.",
     "通常ラマンのピーク表がありません。": "No normal Raman peak table found.",
-    "NWChem・可視化 (*.out *.log *.xyz *.cube *.cub *.molden *.mld *.molde *.normal);;すべて (*)": "NWChem / visualization (*.out *.log *.xyz *.cube *.cub *.molden *.mld *.molde *.normal);;All files (*)",
     "通常ラマン（閉殻DFTの振動数計算）": "Normal Raman (closed-shell DFT frequencies)",
     "ラマン励起波長 / nm": "Raman excitation wavelength / nm",
     "ESRには完全なg・Aテンソルが必要です。": "ESR requires complete g and A tensors.",
@@ -3595,5 +3594,18 @@
     "すべての計算ピークが入る範囲を自動で選びます。": "Automatically choose a range containing all calculated peaks.",
     "TMSの遮蔽定数を読み込んでいます…": "Loading TMS shieldings…",
     "基準: %1（¹H: %2、¹³C: %3 ppm）": "Reference: %1 (¹H: %2, ¹³C: %3 ppm)",
-    "「TMSログを開く…」で、対象分子と同じ計算条件のTMSの結果を選んでください。基準値を自動入力します。値がわかっている場合は基準遮蔽定数を直接入力できます。": "Choose “Open TMS log…” and select TMS calculated with the same conditions as the sample to fill the references automatically. You can also enter a known reference shielding directly."
+    "「TMSログを開く…」で、対象分子と同じ計算条件のTMSの結果を選んでください。基準値を自動入力します。値がわかっている場合は基準遮蔽定数を直接入力できます。": "Choose “Open TMS log…” and select TMS calculated with the same conditions as the sample to fill the references automatically. You can also enter a known reference shielding directly.",
+    "MolForma・NWChem・可視化 (*.molforma-result.json *.out *.log *.xyz *.cube *.cub *.molden *.mld *.molde *.normal);;すべて (*)": "MolForma / NWChem / visualization (*.molforma-result.json *.out *.log *.xyz *.cube *.cub *.molden *.mld *.molde *.normal);;All files (*)",
+    "MolForma結果ファイルの形式またはバージョンが不正です。": "Invalid MolForma result-file format or version.",
+    "MolForma結果ファイルのサイズが上限を超えています。": "The MolForma result file exceeds the size limit.",
+    "結果ファイルに埋め込まれたログの名前が不正です。": "An embedded log has an invalid name.",
+    "結果ファイルに有効なNWChemログが含まれていません。": "The result file does not contain a valid NWChem log.",
+    "読込後に結果ファイルが変更されています。再読込してから保存してください。": "A result file has changed since it was loaded. Reload it before saving.",
+    "結果ファイルのNMR表示条件が不正です。": "The result file contains invalid NMR display settings.",
+    "手入力の基準値": "Manually entered references",
+    "NMR結果の保存には、含まれる¹H・¹³Cそれぞれの基準値が必要です。TMSログを読み込んでください。": "Saving NMR results requires references for each of ¹H and ¹³C present in the result. Load a TMS log first.",
+    "1ファイルへの結果保存はNWChemの出力に対応しています。": "Single-file result saving supports NWChem output.",
+    "元のログとは別のファイル名で保存してください。": "Save with a different filename from the original logs.",
+    "結果を1ファイルに保存…": "Save results in one file…",
+    "結果を1ファイルに保存": "Save results in one file"
 }

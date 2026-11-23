@@ -14,6 +14,7 @@ Vibration animation files are also combined in the cancellable reader process. �
 
 | Format | Shown content |
 | --- | --- |
+| MolForma `.molforma-result.json` | A single file embedding NWChem output and NMR reference/display settings. Opening it displays the NMR chart and the original log’s structures, energies and properties |
 | NWChem `.out` / `.log` | Output coordinate tables (Å / a.u.), SCF, DFT, MP2, CCSD and CCSD(T) total energies in output order, optimization convergence messages, termination and error messages (an NWChem errquit box appears in the status as “NWChem error: <message>”), projected frequencies, displacements and IR intensities, optimization “@” steps and convergence thresholds, thermochemistry (ZPE, internal energy and enthalpy corrections per temperature, entropy with its translational, rotational and vibrational parts, Cv, symmetry number, NWChem's frequency scale), dipole moment, orbital energies of the last orbital analysis, TDDFT excited states (energy, oscillator strength, <S²>, and the occupied → virtual orbital contributions to each state), the points of coordinate scans (MolForma's `MolForma scan k/n` markers) and IRC (`&` lines, forward and backward), BSSE correction, COSMO solvation energy and SMD solvation free energy, Mulliken charges, bond indices and valencies from PROPERTY, ESP and RESP charges, NMR shielding constants (isotropic, anisotropy), polarizability tensor, Raman activities, ESR g shifts and hyperfine tensors, ECD rotatory strengths, GIAO optical-rotation β |
 | NWChem `.normal` | Normal Raman frequencies and activities. No geometry or displacement, so this file alone cannot animate vibrations |
 | `.xyz` | Single and multiple structures. Frame selection and playback of structure sequences. Also concatenated NWChem `freq animate` XYZ |
@@ -138,6 +139,14 @@ A “Spectra” tab appears for supported output. It draws sticks and a Lorentzi
 ESR converts NWChem Δg in ppt to g = ge I + 0.001 Δg, then obtains isotropic A in MHz from the trace of A×g/ge. It refuses a spectrum if the largest combined hyperfine splitting exceeds 10% of the microwave energy. Spectra support at most 4096 peaks. MCP `get_results` sections `spectrum` and `spectrum_peaks` use the same numerical implementation.
 
 References: [NWChem Raman](https://nwchemgit.github.io/Properties.html#raman), [NWChem EPR tensor convention](https://nwchemgit.github.io/EPR-pNMR.html). Water normal Raman and methyl-radical EPR were checked with NWChem 7.3.1.
+
+### Save results in one file
+
+Open an NWChem result, select the TMS reference for NMR, and choose “Export → Save results in one file…”. Opening the saved `.molforma-result.json` reads the embedded output into the result tabs and, for NMR, restores the references, frequency, linewidth and range and shows the chart tab. Both ¹H and ¹³C references are retained. The file works on its own even after the original output and TMS log are moved.
+
+This format supports NWChem output. It retains the structures, orbital energies, vibrations and properties in the log; it does not include separate MOLDEN orbital coefficients, CUBE grids or measured experimental traces. Before saving, verify that the TMS method, basis and solvent conditions match the sample. If a source log changed after loading, saving is refused with a request to reload it.
+
+The JSON format has `format: "molforma-result"` and `version: 1`. `result` holds a `name` and the full original log in `text`. Optional `nmr` holds `reference` (a TMS log’s `name`/`text`, or manually entered `shieldings`), `parameters` (spectrum settings), and `automatic_width`. Manual reference keys are `1H` and `13C`. References are recalculated from the embedded TMS; external paths are not followed. The size limit is 128 MiB, as for other result files. Unlike “Save display settings…”, this format does not depend on the original log’s location or timestamp.
 
 ### Display and save a chart
 

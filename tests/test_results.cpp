@@ -7,6 +7,7 @@
 #include "result_support.h"
 #include "results/energy_profile.h"
 #include "results/field_analysis.h"
+#include "results/result_bundle.h"
 #include "results/result_files.h"
 #include "results/result_path.h"
 #include "results/result_summary.h"
@@ -854,10 +855,11 @@ class ResultsTest : public QObject, ResultFiles {
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, view.loadSettings(settingsFile));
     }
     void nmrReferenceWorkflow() {
-        const auto path = save("reference-tms.out", tmsReferenceLog());
+        const auto path =
+            save("reference-tms.out", tmsReferenceLog() +
+                                          "Indirect Spin-Spin Tensors (in Hz)\nAtom 6: 1-H and Atom 7: 1-H\n"
+                                          "Isotropic Spin-Spin Coupling = 5.0 Hz\n");
         auto target = readResult(path);
-        target.properties["spinspin"] = QJsonArray{
-            QJsonObject{{"a", 6}, {"b", 7}, {"isotope_a", "1-H"}, {"isotope_b", "1-H"}, {"hz", 5.0}}};
         TestUiServices services;
         SpectroscopyView view(services);
         view.setResult(target);
@@ -893,6 +895,23 @@ class ResultsTest : public QObject, ResultFiles {
         width->setValue(.02);
         frequency->setValue(200);
         QCOMPARE(width->value(), .02);
+        const auto bundle = files.filePath("automatic-nmr.molforma-result.json");
+        view.saveBundle(bundle);
+        MainWindow w;
+        auto *panel = w.resultsPanel();
+        QVERIFY(panel);
+        QSignalSpy loaded(panel, &ResultsPanel::loaded);
+        panel->openFile(bundle);
+        QTRY_COMPARE_WITH_TIMEOUT(loaded.count(), 1, 10000);
+        auto *spectra = panel->findChild<SpectroscopyView *>();
+        QCOMPARE(panel->findChild<QTabWidget *>("resultsDetails")->currentWidget(), spectra);
+        QVERIFY(!spectra->findChild<ChartView *>("spectrumChart")->seriesData().isEmpty());
+        QVERIFY(std::abs(spectra->parameters()["reference_ppm"].toDouble() - 32.055) < 1e-10);
+        QCOMPARE(spectra->parameters()["spectrometer_mhz"].toDouble(), 200.);
+        QCOMPARE(spectra->parameters()["width"].toDouble(), .02);
+        spectra->findChild<QComboBox *>("spectrumNucleus")->setCurrentIndex(1);
+        QVERIFY(std::abs(spectra->parameters()["reference_ppm"].toDouble() - 180.15) < 1e-10);
+        QVERIFY(!spectra->findChild<ChartView *>("spectrumChart")->seriesData().isEmpty());
         // A failed import keeps the working reference and chart.
         view.loadTmsReference(save("not-tms.out", "NWChem\n" + geometry()));
         QTRY_VERIFY_WITH_TIMEOUT(message->text().contains("Si(CH₃)₄"), 10000);

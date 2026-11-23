@@ -9,6 +9,7 @@
 #include "nwchem/result_files.h"
 #include "nwchem/run_record.h"
 #include "results/molden_orbitals.h"
+#include "results/result_bundle.h"
 #include "results/result_properties.h"
 #include "results/spectrum.h"
 #include "ui/chrome_layouts.h"
@@ -209,6 +210,17 @@ QWidget *ResultsPanel::buildBar() {
     exportButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     exportButton->setPopupMode(QToolButton::InstantPopup);
     auto *exportMenu = new QMenu(exportButton);
+    saveBundle = exportMenu->addAction(lineIcon("export"), tr("結果を1ファイルに保存…"));
+    saveBundle->setObjectName("resultsSaveBundle");
+    connect(saveBundle, &QAction::triggered, this, [this] {
+        uiContext.safe([this] {
+            const auto path =
+                QFileDialog::getSaveFileName(this, tr("結果を1ファイルに保存"), "result.molforma-result.json",
+                                             "MolForma (*.molforma-result.json)");
+            if (!path.isEmpty())
+                spectroscopy->saveBundle(path);
+        });
+    });
     saveXyz = exportMenu->addAction(lineIcon("export"), tr("表示中の構造をXYZで書き出す…"));
     saveXyz->setObjectName("resultsSaveXyz");
     savePng = exportMenu->addAction(lineIcon("image"), tr("3D表示を画像で書き出す…"));
@@ -232,9 +244,10 @@ QWidget *ResultsPanel::buildBar() {
             setIconOnly(b, compact);
     });
     const auto openResultFile = [this] {
-        const auto p = QFileDialog::getOpenFileName(this, tr("結果ファイルを開く"), folder,
-                                                    tr("NWChem・可視化 (*.out *.log *.xyz *.cube *.cub "
-                                                       "*.molden *.mld *.molde *.normal);;すべて (*)"));
+        const auto p = QFileDialog::getOpenFileName(
+            this, tr("結果ファイルを開く"), folder,
+            tr("MolForma・NWChem・可視化 (*.molforma-result.json *.out *.log *.xyz *.cube *.cub "
+               "*.molden *.mld *.molde *.normal);;すべて (*)"));
         if (!p.isEmpty())
             openFile(p);
     };
@@ -1176,7 +1189,9 @@ void ResultsPanel::startLoad(const QString &path, double iso, int channel, int o
                     orbitalCacheSource = stamp;
                     cacheOrbital();
                     display(reuseOrbital && sameSource && !newSource);
-                    if (newSource && data.format == "MOLDEN" && !data.orbitals.isEmpty())
+                    if (newSource && resultNmrDisplay(data))
+                        details->setCurrentWidget(spectroscopy);
+                    else if (newSource && data.format == "MOLDEN" && !data.orbitals.isEmpty())
                         details->setCurrentIndex(2);
                     else if (newSource && data.format == "NWChem" && !data.energies.isEmpty())
                         details->setCurrentIndex(1);
@@ -1248,6 +1263,7 @@ void ResultsPanel::updateActions() {
         w->setVisible(shown);
     cancel->setVisible(loading());
     saveXyz->setEnabled(ready && !data.frames.isEmpty());
+    saveBundle->setEnabled(ready && data.format == "NWChem");
     applyGeometry->setEnabled(ready && !data.frames.isEmpty());
     recalculate->setEnabled(applyGeometry->isEnabled() &&
                             QFileInfo::exists(QFileInfo(data.source).absolutePath() + '/' + JobFile::record));
@@ -1255,7 +1271,7 @@ void ResultsPanel::updateActions() {
     pathView->setSaddleEnabled(recalculate->isEnabled());
     savePng->setEnabled(ready && !data.frames.isEmpty());
     saveFrames->setEnabled(ready && data.frames.size() > 1);
-    exportButton->setEnabled(saveXyz->isEnabled() || savePng->isEnabled());
+    exportButton->setEnabled(saveXyz->isEnabled() || savePng->isEnabled() || saveBundle->isEnabled());
     frame->setEnabled(ready && !data.frames.isEmpty());
     timeline->setEnabled(ready && data.frames.size() > 1);
     playFrames->setEnabled(ready && data.frames.size() > 1);

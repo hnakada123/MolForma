@@ -12,6 +12,22 @@
 
 namespace mf {
 using namespace result_detail;
+void readNwchemResult(ResultData &result, QByteArrayView bytes) {
+    result.format = "NWChem";
+    result.log = QString::fromUtf8(bytes.last(std::min(qsizetype(128 * 1024), bytes.size())));
+    if (bytes.size() > 128 * 1024)
+        result.log.prepend(tr("…末尾128 KiBを表示しています。\n"));
+    NwchemLog log(&result);
+    for (qsizetype begin = 0; begin < bytes.size();) {
+        const auto end = bytes.indexOf('\n', begin);
+        auto line = bytes.sliced(begin, (end < 0 ? bytes.size() : end) - begin);
+        if (line.endsWith('\r'))
+            line = line.chopped(1);
+        log.addBytes(line);
+        begin = end < 0 ? bytes.size() : end + 1;
+    }
+    log.finish();
+}
 // "Total SCF energy = -76.02" (DFT, MP2, CCSD, CCSD(T)): the method in upper case and the energy / Hartree.
 struct NwchemTotalEnergy {
     QString method;

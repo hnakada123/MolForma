@@ -9,6 +9,7 @@
 #include "results/energy_profile.h"
 #include "results/molden_orbitals.h"
 #include "results/nwchem_log.h"
+#include "results/result_bundle.h"
 #include "results/result_files.h"
 #include "results/result_loader.h"
 #include "results/result_path.h"
@@ -156,6 +157,58 @@ class ResultReadersTest : public QObject, ResultFiles {
                            settings.path()); // MolForma uses NativeFormat.
         qputenv("XDG_CONFIG_HOME", settings.path().toUtf8());
         qputenv("XDG_DATA_HOME", settings.filePath("data").toUtf8());
+    }
+    void portableResults() {
+        const auto target = readResult(save(
+            "bundle-water.out", "NWChem\n" + geometry() +
+                                    "Total DFT energy = -76.0\nChemical Shielding Tensors (GIAO, in ppm)\n"
+                                    "Atom: 2 H\nisotropic = 30\nanisotropy = 1\n"
+                                    "Atom: 3 H\nisotropic = 31\nanisotropy = 1\n"));
+        const auto tms = save("bundle-tms.out", tmsReferenceLog());
+        ResultBundleRequest request;
+        request.sourceStamp = resultSourceStamp(target.source);
+        request.referencePath = tms;
+        request.referenceStamp = resultSourceStamp(tms);
+        request.references = tmsShieldingReference(readResult(tms));
+        request.parameters = {{"kind", "nmr"}, {"nucleus", "1H"}, {"width", .05}, {"spectrometer_mhz", 90}};
+        const auto path = files.filePath("water.molforma-result.json");
+        saveResultBundle(path, target, request);
+        QVERIFY(resultFiles(files.path()).contains(QFileInfo(path).fileName()));
+        const auto bytes = readFile(path);
+        QVERIFY(!bytes.contains(tms.toUtf8())); // Portable names, not machine paths.
+        writeFile(tms, (tmsReferenceLog() + "\n").toUtf8());
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, saveResultBundle(path, target, request));
+        QCOMPARE(readFile(path), bytes); // A stale source cannot replace a good result file.
+        QVERIFY(QFile::remove(target.source));
+        QVERIFY(QFile::remove(tms));
+        QVERIFY(QDir(files.path()).mkdir("relocated"));
+        const auto moved = files.filePath("relocated/water.molforma-result.json");
+        QVERIFY(QFile::rename(path, moved));
+        const auto loaded = readResult(moved);
+        QCOMPARE(loaded.frames.last().molecule.xyz(), target.frames.last().molecule.xyz());
+        QCOMPARE(loaded.energies.size(), target.energies.size());
+        QCOMPARE(loaded.energies[0].hartree, -76.0);
+        QCOMPARE(loaded.properties["shielding"], target.properties["shielding"]);
+        QCOMPARE(loaded.log, target.log);
+        const auto spectrum = calculateSpectrum(loaded, resultSpectrumParameters(loaded));
+        QCOMPARE(spectrum.peaks.size(), 2);
+        QVERIFY(std::abs(spectrum.peaks[0].toObject()["x"].toDouble() - 2.055) < 1e-10);
+        QVERIFY(!spectrum.curve.isEmpty());
+        saveResultData(files.filePath("bundle-worker.bin"), loaded);
+        QCOMPARE(loadResultData(files.filePath("bundle-worker.bin")).properties, loaded.properties);
+        // Resaving the portable file also needs neither external source.
+        request.sourceStamp = resultSourceStamp(moved);
+        request.referencePath.clear();
+        saveResultBundle(path, loaded, request);
+        QCOMPARE(readResult(path).properties["nmr_display"], loaded.properties["nmr_display"]);
+        auto invalid = parseJson(bytes);
+        invalid["version"] = 2;
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readResultBundle(QJsonDocument(invalid).toJson(), path));
+        invalid = parseJson(bytes);
+        auto nmr = invalid["nmr"].toObject();
+        nmr["reference"] = QJsonObject{{"path", tms}}; // External references are not a supported format.
+        invalid["nmr"] = nmr;
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, readResultBundle(QJsonDocument(invalid).toJson(), path));
     }
     void tmsReference() {
         const auto r = readResult(save("tms.out", tmsReferenceLog()));

@@ -94,6 +94,8 @@ class NwchemLog {
 // Whether a file that begins with these bytes is an NWChem output: its banner, or the heading it prints
 // as it reads the input.
 bool nwchemOutputStart(QByteArrayView head);
+// Full output, also used for logs embedded in portable result files. Keeps the usual log tail.
+void readNwchemResult(ResultData &result, QByteArrayView bytes);
 // The failures of a run that MolForma tells apart by NWChem's messages, in its output or among its
 // errors: the SCF did not converge, an optimization reached its step limit, memory ran out, a basis
 // set could not be read.

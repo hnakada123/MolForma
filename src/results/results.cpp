@@ -3,6 +3,7 @@
 #include "foundation/i18n.h"
 #include "model/numbers.h"
 #include "results/nwchem_log.h"
+#include "results/result_bundle.h"
 #include "results/result_cache.h"
 #include "results/result_fields.h"
 #include "results/result_parsing.h"
@@ -41,6 +42,11 @@ ResultData readResult(const QString &path, double iso, int dataset, int orbital,
         }
     }
     const auto bytes = boundedRead(path);
+    if (suffix == "json") {
+        if (orbitalDivisions < 16 || orbitalDivisions > 100)
+            fail(tr("MOLDENの格子分割数は16〜100を指定してください。"));
+        return readResultBundle(bytes, QFileInfo(path).absoluteFilePath());
+    }
     const auto text = QString::fromUtf8(bytes);
     ResultData r;
     r.source = QFileInfo(path).absoluteFilePath();
@@ -54,7 +60,8 @@ ResultData readResult(const QString &path, double iso, int dataset, int orbital,
     if (bytes.size() > 128 * 1024)
         r.log.prepend(tr("…末尾128 KiBを表示しています。\n"));
     QStringList lines; // CUBE files are read as a stream of words instead.
-    if (suffix != "cube" && suffix != "cub") {
+    if (suffix == "normal" || suffix == "xyz" ||
+        QStringView(text).trimmed().startsWith(u"[Molden Format]", Qt::CaseInsensitive)) {
         lines = text.split('\n');
         for (auto &line : lines)
             if (line.endsWith('\r'))
@@ -110,11 +117,7 @@ ResultData readResult(const QString &path, double iso, int dataset, int orbital,
         r.format = "XYZ";
         xyz(r, lines);
     } else {
-        r.format = "NWChem";
-        NwchemLog log(&r);
-        for (const auto &line : std::as_const(lines))
-            log.add(line);
-        log.finish();
+        readNwchemResult(r, bytes);
     }
     if (r.format != "NWChem" && r.format != "Raman" && r.frames.isEmpty())
         fail(tr("表示可能な原子座標がありません。"));

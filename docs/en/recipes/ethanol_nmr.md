@@ -15,9 +15,11 @@ The practice projects above contain structures and settings, not calculation log
 
 ## Open the completed results (no recalculation needed)
 
-**[Download all calculation results (ZIP, 1.96 MB)](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_results_v1.zip)** · [SHA-256 checksum](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_results_v1.zip.sha256)
+**[Download the result file with automatic display (1.58 MB)](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v2/ethanol_nmr.molforma-result.json)** · [SHA-256](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v2/ethanol_nmr.molforma-result.json.sha256)
 
-The archive contains NWChem inputs and output logs for ethanol and TMS, practice projects, calculated curves and peak tables as CSV, charts as PDF/PNG, and viewing instructions in English and Japanese. No NWChem rerun is needed to inspect the results.
+[Full set including supplementary logs and comparison figures (ZIP, 2.22 MB)](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v2/ethanol_nmr_results_v2.zip) · [ZIP SHA-256](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v2/ethanol_nmr_results_v2.zip.sha256)
+
+The supplementary ZIP also contains NWChem inputs and output logs for ethanol and TMS, practice projects, calculated curves and peak tables as CSV, charts as PDF/PNG, and viewing instructions in English and Japanese. No NWChem rerun is needed to inspect the results.
 
 | Individual file | What you can inspect |
 | --- | --- |
@@ -26,10 +28,13 @@ The archive contains NWChem inputs and output logs for ethanol and TMS, practice
 | [Calculated spectra (PDF)](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_calculated_400MHz.pdf) | Calculated ¹H (400 MHz) and ¹³C charts in an ordinary PDF viewer |
 | [Experimental comparison (PDF)](https://github.com/hnakada123/MolForma/releases/download/ethanol-nmr-data-v1/ethanol_nmr_comparison_en.pdf) | This page's comparison figure, with calculated ¹H displayed at the experimental frequency of 90 MHz |
 
-1. Save and extract the ZIP, or save the individual log files.
-2. In MolForma, choose “Result viewer → Open…” and select `logs/ethanol_nmr.out`. The “Properties” tab shows shieldings and J couplings.
-3. On “Spectra”, choose “Open TMS log…” and select `logs/tms_reference.out`. This fills both reference shieldings and displays the chart. Opening a new NMR log selects ¹H when hydrogen shieldings are present and enables splitting when J couplings are available.
-4. To compare with experiment, set the ¹H spectrometer frequency to `90 MHz`. Leave “Automatic linewidth (for display)” enabled and both range fields empty for automatic bounds. Switching the nucleus to ¹³C selects the imported carbon reference.
+1. Save `ethanol_nmr.molforma-result.json` from the link above. This file works on its own. If using the ZIP, select the same file inside the extracted folder.
+2. In an updated MolForma, choose “Result viewer → Open…” and open that file. **The NMR chart appears automatically. No separate TMS selection or numeric input is needed.**
+3. Switch the nucleus to see ¹³C. Structure, energies, orbital energies, shieldings and J couplings are also available in their tabs.
+
+The single result file embeds the ethanol NMR output and its matching TMS output. References are calculated from the embedded TMS, with the saved 90 MHz frequency for comparison and automatic linewidth/range. It does not depend on the original log paths; copying this file to another computer is sufficient. Missing calculation results are not inferred. Supplementary optimization/frequency logs and experimental comparison figures are separate files in the ZIP.
+
+Older builds cannot read this result format. Update the app, or open `logs/ethanol_nmr.out` and use “Open TMS log…” to select `logs/tms_reference.out`. Raw ethanol logs do not contain the reference and still require that selection.
 
 ### Where the parameters come from
 
@@ -48,7 +53,7 @@ For older builds without TMS import, or to check the values manually, use the fo
 | ¹H | `32.00508333` | 90 MHz | `0.0133` | Left `-1`, right `5` |
 | ¹³C | `184.45915000` | Leave at 90 MHz | `0.10` | Left `-5`, right `80` |
 
-Do not reuse these references for different calculation conditions. For manual entry, select the nucleus first, enter numbers without units, then press Enter. Use ASCII `-` for negative numbers because older builds reject the mathematical minus `−`. Saved display-settings files depend on the original log's location and are not included.
+The automatic-display result file needs none of the following manual entries. Do not reuse these references for different calculation conditions. For manual entry, select the nucleus first, enter numbers without units, then press Enter. Use ASCII `-` for negative numbers because older builds reject the mathematical minus `−`. “Save display settings…” JSON files depend on the original log location. Use “Export → Save results in one file…” for a portable file.
 
 The supplementary `logs/ethanol_geometry_interrupted.out` in the ZIP lets you inspect optimization and frequencies. Those stages finished before the subsequent J calculation was stopped; this is not a normally terminated log. Use the completed `ethanol_nmr.out` for the final NMR charts.
 
@@ -101,6 +106,8 @@ The shielding constant σ is not the experimental chemical shift δ. Use the dif
 The TMS optimization converged; a frequency check of its minimum was omitted in this run. Ethanol and TMS shieldings used the same method, basis, grid and SCF settings. If you change those conditions, recalculate TMS under the matching conditions instead of reusing these reference values.
 
 ## 4. Display the ¹H and ¹³C spectra
+
+The distributed single result file already includes these settings. For your own raw logs, select the reference once as below, then use “Export → Save results in one file…”. Opening that file restores the chart on subsequent visits.
 
 1. In “History”, select the completed ethanol NMR job from step 2 and open it in the result viewer.
 2. On the “Spectra” tab, choose “Open TMS log…” and select the TMS output from step 3 (`tms_reference.out` in the download). Both the ¹H and ¹³C references are imported.

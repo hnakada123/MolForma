@@ -26,6 +26,7 @@ class SpectroscopyView : public QWidget {
     void loadSettings(const QString &path);
     void exportCsv(const QString &path) const;
     void loadTmsReference(const QString &path);
+    void saveBundle(const QString &path) const;
   signals:
     void atomSelected(int index);
     void modeSelected(int index);
@@ -39,7 +40,7 @@ class SpectroscopyView : public QWidget {
     QString stamp;
     QJsonObject weights;
     QJsonObject references;
-    QString referenceSource;
+    QString referenceSource, referenceStamp;
     ResultLoader *referenceLoader;
     QWidget *referenceControls;
     QPushButton *referenceOpen, *referenceCancel;
