@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "results/spectrum.h"
 #include "foundation/i18n.h"
+#include "model/topology.h"
 #include "results/result_summary.h"
 #include <QSet>
 #include <algorithm>
@@ -26,6 +27,47 @@ double required(const QJsonObject &p, const QString &key) {
     return p[key].toDouble();
 }
 } // namespace
+QJsonObject tmsShieldingReference(const ResultData &result) {
+    if (result.frames.isEmpty() || result.frames.last().molecule.atoms.size() != 17 ||
+        (result.properties.contains("spin_multiplicity") && result.properties["spin_multiplicity"] != 1))
+        fail(tr("TMS（Si(CH₃)₄）の構造と遮蔽定数を含む計算ログを選んでください。"));
+    const auto &molecule = result.frames.last().molecule;
+    const Topology topology(molecule);
+    QMap<QString, int> counts;
+    for (int i = 0; i < molecule.atoms.size(); ++i) {
+        const auto &atom = molecule.atoms[i];
+        QMap<QString, int> neighbors;
+        for (int j : topology.neighbors(i))
+            ++neighbors[molecule.atoms[j].element];
+        if (atom.ghost || atom.charge || atom.radical ||
+            (atom.element == "Si"  ? neighbors != QMap<QString, int>{{"C", 4}}
+             : atom.element == "C" ? neighbors != QMap<QString, int>{{"Si", 1}, {"H", 3}}
+             : atom.element == "H" ? neighbors != QMap<QString, int>{{"C", 1}}
+                                   : true))
+            fail(tr("TMS（Si(CH₃)₄）の構造と遮蔽定数を含む計算ログを選んでください。"));
+        ++counts[atom.element];
+    }
+    if (counts != QMap<QString, int>{{"Si", 1}, {"C", 4}, {"H", 12}})
+        fail(tr("TMS（Si(CH₃)₄）の構造と遮蔽定数を含む計算ログを選んでください。"));
+    QSet<int> atoms;
+    QMap<QString, double> sums;
+    QMap<QString, int> shieldings;
+    for (const auto &value : result.properties["shielding"].toArray()) {
+        const auto row = value.toObject();
+        const int index = row["atom"].toInt() - 1;
+        if (index < 0 || index >= molecule.atoms.size() || atoms.contains(index) ||
+            row["element"].toString() != molecule.atoms[index].element || !row["isotropic"].isDouble() ||
+            !std::isfinite(row["isotropic"].toDouble()))
+            fail(tr("TMSの基準には、水素12個・炭素4個すべての有効な遮蔽定数が必要です。"));
+        atoms.insert(index);
+        const auto element = row["element"].toString();
+        sums[element] += row["isotropic"].toDouble();
+        ++shieldings[element];
+    }
+    if (shieldings["H"] != 12 || shieldings["C"] != 4)
+        fail(tr("TMSの基準には、水素12個・炭素4個すべての有効な遮蔽定数が必要です。"));
+    return {{"1H", sums["H"] / 12}, {"13C", sums["C"] / 4}};
+}
 QString eprIsotope(const QString &element) {
     static const QMap<QString, QString> isotopes{{"H", "1H"},    {"C", "13C"},  {"N", "14N"},   {"O", "17O"},
                                                  {"F", "19F"},   {"P", "31P"},  {"Si", "29Si"}, {"S", "33S"},

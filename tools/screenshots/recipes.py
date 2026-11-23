@@ -730,10 +730,11 @@ def residue_mutation_figures(g):
 
 
 def ethanol_nmr_figures(g):
-    """Recipe 17; MOLFORMA_ETHANOL_NMR_LOG names a completed ethanol shielding/J log."""
+    """Recipe 17; MOLFORMA_ETHANOL_NMR_LOG and MOLFORMA_TMS_NMR_LOG name completed logs."""
     log = os.environ.get("MOLFORMA_ETHANOL_NMR_LOG")
-    if not log or not os.path.isfile(log):
-        raise ValueError("Set MOLFORMA_ETHANOL_NMR_LOG to a completed ethanol shielding/J log")
+    tms = os.environ.get("MOLFORMA_TMS_NMR_LOG")
+    if not log or not os.path.isfile(log) or not tms or not os.path.isfile(tms):
+        raise ValueError("Set MOLFORMA_ETHANOL_NMR_LOG and MOLFORMA_TMS_NMR_LOG to completed logs")
     g.open_dialog(SAMPLES + "ethanol_nmr.molforma.json")
     g.tab(1)
     section(g, "properties")
@@ -744,12 +745,15 @@ def ethanol_nmr_figures(g):
     g.tab_text("resultsDetails", g.T("スペクトル"))
     g.select("spectrumKind", index=0)
     g.select("spectrumNucleus", index=0)
-    g.set("spectrumReference", "32.00508333")
-    g.set("spectrumCoupling", True)
+    g.activate("spectrumOpenReference")
+    g.wait(g.tool("ui_file_dialog", target=g.modal(), path=os.path.realpath(tms), accept=True))
+    for _ in range(100):
+        if g.item("spectrumReference").get("text"):
+            break
+        time.sleep(.1)
+    else:
+        raise RuntimeError("TMS reference did not load")
     g.set("spectrumSpectrometer", 90)
-    g.set("spectrumWidth", 0.0133)
-    g.set("spectrumMinimum", "-1")
-    g.set("spectrumMaximum", "5")
     g.snap("ethanol_nmr/02_spectrum")
 
 

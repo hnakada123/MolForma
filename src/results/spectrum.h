@@ -19,6 +19,9 @@ struct SpectrumData {
 // "coupling", NMR draws first-order multiplets from the log's spin–spin couplings at spectrometer_mhz
 // (¹H): topologically equivalent nuclei form one peak ("atoms", "multiplet" such as "dt", "j_hz").
 SpectrumData calculateSpectrum(const ResultData &result, const QJsonObject &parameters);
+// Mean shieldings of all twelve H and four C atoms of a complete TMS molecule, keyed by 1H/13C.
+// Refuses other structures and incomplete/invalid shielding tables; does not compare calculation levels.
+QJsonObject tmsShieldingReference(const ResultData &result);
 // What a conformer adds to the averaged spectra of its set: the peaks of the kinds ir, raman, uv and
 // ecd its result holds, and "shielding" [{atom, element, isotropic}] of a singlet. Kinds without data
 // are left out.

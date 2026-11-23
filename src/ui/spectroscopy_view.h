@@ -10,8 +10,10 @@ class QLabel;
 class QTableWidget;
 class QCheckBox;
 class QFormLayout;
+class QPushButton;
 namespace mf {
 class ChartView;
+class ResultLoader;
 class SpectroscopyView : public QWidget {
     Q_OBJECT
   public:
@@ -23,6 +25,7 @@ class SpectroscopyView : public QWidget {
     void saveSettings(const QString &path) const;
     void loadSettings(const QString &path);
     void exportCsv(const QString &path) const;
+    void loadTmsReference(const QString &path);
   signals:
     void atomSelected(int index);
     void modeSelected(int index);
@@ -35,16 +38,23 @@ class SpectroscopyView : public QWidget {
     SpectrumData spectrum;
     QString stamp;
     QJsonObject weights;
+    QJsonObject references;
+    QString referenceSource;
+    ResultLoader *referenceLoader;
+    QWidget *referenceControls;
+    QPushButton *referenceOpen, *referenceCancel;
+    QLabel *referenceInfo;
     QComboBox *kind, *nucleus;
     QLineEdit *reference, *minimum, *maximum;
     QDoubleSpinBox *width;
     QDoubleSpinBox *microwave, *spectrometer;
-    QCheckBox *derivative, *coupling;
+    QCheckBox *derivative, *coupling, *automaticWidth;
     int peakOfStick(int stick) const;
     int firstStick(int peak) const;
     QLabel *message;
     ChartView *chart;
     QTableWidget *peaks, *nuclei;
     void refresh();
+    void updateReference();
 };
 } // namespace mf

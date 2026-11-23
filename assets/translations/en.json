@@ -3583,5 +3583,17 @@
         "%n chains"
     ],
     "配座とジョブの件数が一致しません。": "The number of conformers and jobs does not match.",
-    "配座セットの比較条件が不正です。": "The conformer set comparison settings are invalid."
+    "配座セットの比較条件が不正です。": "The conformer set comparison settings are invalid.",
+    "TMS（Si(CH₃)₄）の構造と遮蔽定数を含む計算ログを選んでください。": "Choose a calculation log containing the TMS (Si(CH₃)₄) structure and shieldings.",
+    "TMSの基準には、水素12個・炭素4個すべての有効な遮蔽定数が必要です。": "The TMS reference requires valid shieldings for all 12 hydrogen and 4 carbon atoms.",
+    "TMSログを開く…": "Open TMS log…",
+    "対象分子と同じ手法・基底・溶媒条件のTMSのログを選びます。水素12個と炭素4個の遮蔽定数を平均します。計算条件の一致は自動判定しません。": "Choose a TMS log calculated with the same method, basis and solvent conditions as the sample. Shieldings are averaged over 12 hydrogen and 4 carbon atoms. Matching calculation conditions are not checked automatically.",
+    "同じ計算条件のTMSログを開く": "Open a TMS log with matching calculation conditions",
+    "実測と比較する場合は、実験装置の¹H測定周波数を指定します。計算ログからは決まりません。既定の400 MHzでも計算ピークを確認できます。": "For comparison with experiment, use the instrument’s ¹H frequency. It is not determined by the calculation log. The default 400 MHz is sufficient to view calculated peaks.",
+    "線幅を自動調整（表示用）": "Automatic linewidth (for display)",
+    "¹Hの多重線は約1.2 Hz、それ以外の¹Hは0.05 ppm、¹³Cは0.10 ppmで表示します。実験の線幅の予測ではありません。": "Displays ¹H multiplets at about 1.2 Hz, other ¹H spectra at 0.05 ppm, and ¹³C at 0.10 ppm. These widths do not predict experimental linewidths.",
+    "すべての計算ピークが入る範囲を自動で選びます。": "Automatically choose a range containing all calculated peaks.",
+    "TMSの遮蔽定数を読み込んでいます…": "Loading TMS shieldings…",
+    "基準: %1（¹H: %2、¹³C: %3 ppm）": "Reference: %1 (¹H: %2, ¹³C: %3 ppm)",
+    "「TMSログを開く…」で、対象分子と同じ計算条件のTMSの結果を選んでください。基準値を自動入力します。値がわかっている場合は基準遮蔽定数を直接入力できます。": "Choose “Open TMS log…” and select TMS calculated with the same conditions as the sample to fill the references automatically. You can also enter a known reference shielding directly."
 }

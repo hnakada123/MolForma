@@ -31,7 +31,54 @@ SpectroscopyView::SpectroscopyView(UiServices &uiServices, QWidget *parent)
     reference = new QLineEdit;
     reference->setObjectName("spectrumReference");
     reference->setPlaceholderText(tr("同じ条件のTMS等の遮蔽定数"));
-    form->addRow(tr("基準遮蔽定数 / ppm"), reference);
+    referenceControls = new QWidget;
+    auto *referenceRow = new QHBoxLayout(referenceControls);
+    referenceRow->setContentsMargins(0, 0, 0, 0);
+    referenceRow->addWidget(reference, 1);
+    referenceOpen = new QPushButton(tr("TMSログを開く…"));
+    referenceOpen->setObjectName("spectrumOpenReference");
+    referenceOpen->setToolTip(tr("対象分子と同じ手法・基底・溶媒条件のTMSのログを選びます。水素12個と炭素4個"
+                                 "の遮蔽定数を平均します。計算条件の一致は自動判定しません。"));
+    referenceRow->addWidget(referenceOpen);
+    referenceCancel = new QPushButton(tr("キャンセル"));
+    referenceCancel->setObjectName("spectrumCancelReference");
+    referenceRow->addWidget(referenceCancel);
+    form->addRow(tr("基準遮蔽定数 / ppm"), referenceControls);
+    referenceInfo = new QLabel;
+    referenceInfo->setObjectName("spectrumReferenceInfo");
+    referenceInfo->setTextFormat(Qt::PlainText);
+    referenceInfo->setWordWrap(true);
+    form->addRow(referenceInfo);
+    referenceLoader = new ResultLoader(this);
+    connect(referenceOpen, &QPushButton::clicked, this, [this] {
+        uiContext.safe([this] {
+            const auto path = QFileDialog::getOpenFileName(this, tr("同じ計算条件のTMSログを開く"),
+                                                           QFileInfo(result.source).absolutePath(),
+                                                           "NWChem (*.out *.log);;All files (*)");
+            if (!path.isEmpty())
+                loadTmsReference(path);
+        });
+    });
+    connect(referenceCancel, &QPushButton::clicked, this, [this] {
+        referenceLoader->cancel();
+        refresh();
+    });
+    connect(referenceLoader, &ResultLoader::failed, this, [this](const QString &error) {
+        refresh();
+        message->setText(error);
+    });
+    connect(referenceLoader, &ResultLoader::loaded, this, [this](const ResultData &r) {
+        try {
+            const auto values = tmsShieldingReference(r);
+            references = values;
+            referenceSource = r.source;
+            updateReference();
+            refresh();
+        } catch (const std::exception &e) {
+            refresh();
+            message->setText(QString::fromUtf8(e.what()));
+        }
+    });
     coupling = new QCheckBox(tr("J結合で分裂させる（一次の多重線）"));
     coupling->setObjectName("spectrumCoupling");
     coupling->setToolTip(tr("計算したJ結合で、等価な核をまとめた多重線にします（¹H・¹⁹F・³¹Pとの結合。¹³Cは"
@@ -43,6 +90,8 @@ SpectroscopyView::SpectroscopyView(UiServices &uiServices, QWidget *parent)
     spectrometer->setDecimals(1);
     spectrometer->setValue(400);
     spectrometer->setSuffix(" MHz");
+    spectrometer->setToolTip(tr("実測と比較する場合は、実験装置の¹H測定周波数を指定します。計算ログからは決ま"
+                                "りません。既定の400 MHzでも計算ピークを確認できます。"));
     form->addRow(tr("測定周波数（¹H）"), spectrometer);
     width = new QDoubleSpinBox;
     width->setObjectName("spectrumWidth");
@@ -50,6 +99,12 @@ SpectroscopyView::SpectroscopyView(UiServices &uiServices, QWidget *parent)
     width->setRange(.0001, 100000);
     width->setValue(.05);
     form->addRow(tr("半値全幅（横軸の単位）"), width);
+    automaticWidth = new QCheckBox(tr("線幅を自動調整（表示用）"));
+    automaticWidth->setObjectName("spectrumAutomaticWidth");
+    automaticWidth->setChecked(true);
+    automaticWidth->setToolTip(tr("¹Hの多重線は約1.2 Hz、それ以外の¹Hは0.05 ppm、¹³Cは0.10 "
+                                  "ppmで表示します。実験の線幅の予測ではありません。"));
+    form->addRow(automaticWidth);
     microwave = new QDoubleSpinBox;
     microwave->setObjectName("spectrumMicrowave");
     microwave->setRange(.1, 1000);
@@ -70,6 +125,15 @@ SpectroscopyView::SpectroscopyView(UiServices &uiServices, QWidget *parent)
     range->addWidget(minimum);
     range->addWidget(new QLabel("…"));
     range->addWidget(maximum);
+    auto *autoRange = new QPushButton(tr("自動"));
+    autoRange->setObjectName("spectrumAutomaticRange");
+    autoRange->setToolTip(tr("すべての計算ピークが入る範囲を自動で選びます。"));
+    range->addWidget(autoRange);
+    connect(autoRange, &QPushButton::clicked, this, [this] {
+        minimum->clear();
+        maximum->clear();
+        refresh();
+    });
     form->addRow(tr("表示範囲（小 → 大）"), range);
     message = new QLabel;
     message->setObjectName("spectrumMessage");
@@ -130,18 +194,23 @@ SpectroscopyView::SpectroscopyView(UiServices &uiServices, QWidget *parent)
             saveFigure(chart, path);
         }
     });
-    for (auto *line : {reference, minimum, maximum})
+    for (auto *line : {minimum, maximum})
         connect(line, &QLineEdit::editingFinished, this, &SpectroscopyView::refresh);
+    connect(reference, &QLineEdit::editingFinished, this, [this] {
+        const auto value = parameters().value("reference_ppm");
+        const auto key = nucleus->currentData().toString();
+        if (value != references.value(key)) {
+            references[key] = value;
+            referenceSource.clear();
+        }
+        refresh();
+    });
+    connect(automaticWidth, &QCheckBox::toggled, this, &SpectroscopyView::refresh);
     connect(width, &QDoubleSpinBox::valueChanged, this, &SpectroscopyView::refresh);
     connect(microwave, &QDoubleSpinBox::valueChanged, this, &SpectroscopyView::refresh);
     connect(derivative, &QCheckBox::toggled, this, &SpectroscopyView::refresh);
     connect(spectrometer, &QDoubleSpinBox::valueChanged, this, &SpectroscopyView::refresh);
-    connect(coupling, &QCheckBox::toggled, this, [this](bool on) {
-        // Multiplets need lines narrower than their couplings: about 1 Hz.
-        const QSignalBlocker block(width);
-        width->setValue(on ? std::max(.0005, 1.2 / spectrometer->value()) : .05);
-        refresh();
-    });
+    connect(coupling, &QCheckBox::toggled, this, &SpectroscopyView::refresh);
     connect(kind, &QComboBox::currentIndexChanged, this, [this] {
         minimum->clear();
         maximum->clear();
@@ -152,7 +221,9 @@ SpectroscopyView::SpectroscopyView(UiServices &uiServices, QWidget *parent)
         refresh();
     });
     connect(nucleus, &QComboBox::currentIndexChanged, this, [this] {
-        reference->clear();
+        updateReference();
+        minimum->clear();
+        maximum->clear();
         weights = {};
         refresh();
     });
@@ -189,6 +260,15 @@ SpectroscopyView::SpectroscopyView(UiServices &uiServices, QWidget *parent)
         refresh();
     });
     refresh();
+}
+void SpectroscopyView::loadTmsReference(const QString &path) {
+    uiContext.checkMcpPath(path);
+    referenceLoader->start({path});
+    refresh();
+}
+void SpectroscopyView::updateReference() {
+    const auto value = references.value(nucleus->currentData().toString());
+    reference->setText(value.isDouble() ? QString::number(value.toDouble(), 'g', 16) : QString());
 }
 int SpectroscopyView::peakOfStick(int stick) const {
     return spectrum.stickPeaks.isEmpty() ? stick : spectrum.stickPeaks.value(stick, -1);
@@ -231,7 +311,11 @@ void SpectroscopyView::setParameters(const QJsonObject &p) {
     calculateSpectrum(result, p); // Validate everything before changing the visible settings.
     const QSignalBlocker blockKind(kind), blockNucleus(nucleus), blockWidth(width), blockNuclei(nuclei),
         blockMicrowave(microwave), blockDerivative(derivative), blockCoupling(coupling),
-        blockSpectrometer(spectrometer);
+        blockSpectrometer(spectrometer), blockAutomaticWidth(automaticWidth);
+    referenceLoader->cancel();
+    references = {};
+    referenceSource.clear();
+    automaticWidth->setChecked(false); // Saved parameters carry an explicit width.
     kind->setCurrentIndex(kind->findData(p["kind"].toString()));
     nucleus->setCurrentIndex(nucleus->findData(p["nucleus"].toString("1H")));
     width->setValue(p["width"].toDouble());
@@ -253,14 +337,21 @@ void SpectroscopyView::setParameters(const QJsonObject &p) {
                              qMakePair(QString("minimum"), minimum), qMakePair(QString("maximum"), maximum)})
         pair.second->setText(p.contains(pair.first) ? QString::number(p[pair.first].toDouble(), 'g', 16)
                                                     : QString());
+    if (p.contains("reference_ppm"))
+        references[nucleus->currentData().toString()] = p["reference_ppm"];
     refresh();
 }
 void SpectroscopyView::setResult(const ResultData &r) {
-    if (result.source != r.source || stamp != resultSourceStamp(r.source)) {
+    const bool changed = result.source != r.source || stamp != resultSourceStamp(r.source);
+    if (changed) {
+        referenceLoader->cancel();
+        references = {};
+        referenceSource.clear();
         reference->clear();
         minimum->clear();
         maximum->clear();
         weights = {};
+        automaticWidth->setChecked(true);
     }
     result = r;
     {
@@ -303,6 +394,13 @@ void SpectroscopyView::setResult(const ResultData &r) {
     else if (!r.properties.contains("shielding") && r.properties.contains("ord"))
         kind->setCurrentIndex(kind->findData("ord"));
     stamp = resultSourceStamp(r.source);
+    if (changed && r.properties.contains("shielding")) {
+        bool hydrogen = false;
+        for (const auto &value : r.properties["shielding"].toArray())
+            hydrogen |= value.toObject()["element"] == "H";
+        nucleus->setCurrentIndex(hydrogen ? 0 : 1);
+        coupling->setChecked(!r.properties["spinspin"].toArray().isEmpty());
+    }
     refresh();
 }
 void SpectroscopyView::refresh() {
@@ -314,7 +412,28 @@ void SpectroscopyView::refresh() {
     nuclei->setVisible(epr);
     form->setRowVisible(width, kind->currentData() != "ord");
     form->setRowVisible(nucleus, nmr);
-    form->setRowVisible(reference, nmr);
+    form->setRowVisible(referenceControls, nmr);
+    const bool loadingReference = referenceLoader->active();
+    referenceOpen->setEnabled(!loadingReference);
+    referenceCancel->setVisible(loadingReference);
+    reference->setEnabled(nmr && !loadingReference);
+    referenceInfo->setText(loadingReference ? tr("TMSの遮蔽定数を読み込んでいます…")
+                           : referenceSource.isEmpty()
+                               ? QString()
+                               : tr("基準: %1（¹H: %2、¹³C: %3 ppm）")
+                                     .arg(QFileInfo(referenceSource).fileName(),
+                                          QString::number(references["1H"].toDouble(), 'f', 8),
+                                          QString::number(references["13C"].toDouble(), 'f', 8)));
+    referenceInfo->setToolTip(referenceSource);
+    form->setRowVisible(referenceInfo, nmr && !referenceInfo->text().isEmpty());
+    form->setRowVisible(automaticWidth, nmr);
+    width->setEnabled(!nmr || !automaticWidth->isChecked());
+    if (nmr && automaticWidth->isChecked()) {
+        const QSignalBlocker blockWidth(width);
+        width->setValue(nucleus->currentData() == "13C" ? .1
+                        : coupling->isChecked()         ? std::max(.0005, 1.2 / spectrometer->value())
+                                                        : .05);
+    }
     const bool couplings = nmr && result.properties.contains("spinspin");
     form->setRowVisible(coupling, couplings);
     form->setRowVisible(spectrometer, couplings);
@@ -327,9 +446,11 @@ void SpectroscopyView::refresh() {
     form->setRowVisible(microwave, epr);
     form->setRowVisible(derivative, epr);
     nucleus->setEnabled(nmr);
-    reference->setEnabled(nmr);
     peaks->setColumnHidden(2, !nmr);
     try {
+        if (nmr && reference->text().trimmed().isEmpty())
+            fail(tr("「TMSログを開く…」で、対象分子と同じ計算条件のTMSの結果を選んでください。基準値を自動入"
+                    "力します。値がわかっている場合は基準遮蔽定数を直接入力できます。"));
         spectrum = calculateSpectrum(result, parameters());
         chart->setReversedX(spectrum.reversed);
         chart->setXRange(spectrum.parameters["minimum"].toDouble(),

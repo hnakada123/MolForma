@@ -853,6 +853,61 @@ class ResultsTest : public QObject, ResultFiles {
         view.setResult(parsed);
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, view.loadSettings(settingsFile));
     }
+    void nmrReferenceWorkflow() {
+        const auto path = save("reference-tms.out", tmsReferenceLog());
+        auto target = readResult(path);
+        target.properties["spinspin"] = QJsonArray{
+            QJsonObject{{"a", 6}, {"b", 7}, {"isotope_a", "1-H"}, {"isotope_b", "1-H"}, {"hz", 5.0}}};
+        TestUiServices services;
+        SpectroscopyView view(services);
+        view.setResult(target);
+        view.show();
+        auto *reference = view.findChild<QLineEdit *>("spectrumReference");
+        auto *message = view.findChild<QLabel *>("spectrumMessage");
+        auto *nucleus = view.findChild<QComboBox *>("spectrumNucleus");
+        auto *width = view.findChild<QDoubleSpinBox *>("spectrumWidth");
+        auto *frequency = view.findChild<QDoubleSpinBox *>("spectrumSpectrometer");
+        auto *autoWidth = view.findChild<QCheckBox *>("spectrumAutomaticWidth");
+        QVERIFY(reference->text().isEmpty());
+        QVERIFY(message->text().contains("TMSログを開く"));
+        QVERIFY(autoWidth->isChecked());
+        QVERIFY(!width->isEnabled());
+        QCOMPARE(width->value(), .003);
+        frequency->setValue(90);
+        QCOMPARE(width->value(), .0133);
+        view.loadTmsReference(path);
+        QTRY_VERIFY_WITH_TIMEOUT(!reference->text().isEmpty(), 10000);
+        QVERIFY(services.checkedPaths.contains(path));
+        QVERIFY(std::abs(view.parameters()["reference_ppm"].toDouble() - 32.055) < 1e-10);
+        QVERIFY(!view.findChild<ChartView *>("spectrumChart")->seriesData().isEmpty());
+        view.findChild<QLineEdit *>("spectrumMinimum")->setText("-1");
+        view.findChild<QLineEdit *>("spectrumMaximum")->setText("5");
+        nucleus->setCurrentIndex(1);
+        QVERIFY(std::abs(view.parameters()["reference_ppm"].toDouble() - 180.15) < 1e-10);
+        QVERIFY(!view.parameters().contains("minimum"));
+        QVERIFY(!view.parameters().contains("maximum"));
+        QCOMPARE(width->value(), .1);
+        nucleus->setCurrentIndex(0);
+        QVERIFY(std::abs(view.parameters()["reference_ppm"].toDouble() - 32.055) < 1e-10);
+        autoWidth->setChecked(false);
+        width->setValue(.02);
+        frequency->setValue(200);
+        QCOMPARE(width->value(), .02);
+        // A failed import keeps the working reference and chart.
+        view.loadTmsReference(save("not-tms.out", "NWChem\n" + geometry()));
+        QTRY_VERIFY_WITH_TIMEOUT(message->text().contains("Si(CH₃)₄"), 10000);
+        QVERIFY(std::abs(view.parameters()["reference_ppm"].toDouble() - 32.055) < 1e-10);
+        // References are scoped to this target, including an import still in flight.
+        view.loadTmsReference(path);
+        target.source = save("another-target.out", tmsReferenceLog());
+        view.setResult(target);
+        QTest::qWait(100);
+        QVERIFY(reference->text().isEmpty());
+        QVERIFY(view.findChild<QPushButton *>("spectrumOpenReference")->isEnabled());
+        QVERIFY(!view.findChild<QPushButton *>("spectrumCancelReference")->isVisible());
+        nucleus->setCurrentIndex(1);
+        QVERIFY(reference->text().isEmpty());
+    }
     void spectrumRangeInput_data() {
         QTest::addColumn<QString>("lower");
         QTest::addColumn<QString>("upper");

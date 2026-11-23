@@ -24,6 +24,46 @@ inline QString geometry() {
            " No. Tag Charge X Y Z\n ---- ---- ------ ----- ----- -----\n"
            " 1 O 8.0 0.0 0.0 0.0\n 2 H 1.0 0.758 0.0 0.504\n 3 H 1.0 -0.758 0.0 0.504\n\n";
 }
+// A TMS geometry and synthetic shielding table, for reference import through the real log reader.
+inline QString tmsReferenceLog() {
+    const auto molecule = mf::Document::fromXyz(
+        "17\nTMS\nC 0.92531677 0.05533749 -0.03222677\nSi 0.30075812 -0.34658816 -1.752366\n"
+        "C 0.92528425 -2.03725363 -2.26439158\nC -1.57289768 -0.34658436 -1.75237273\n"
+        "C 0.92531781 0.94219121 -2.96049998\nH 0.57181985 -0.68590833 0.69053451\n"
+        "H 0.57182607 1.04005856 0.28728428\nH 2.0190206 0.06066049 -0.00933892\n"
+        "H 0.57181823 -2.80631846 -1.57134191\nH 0.57180903 -2.29254462 -3.26769632\n"
+        "H 2.01900673 -2.0597148 -2.27120506\nH -1.95959186 0.6328136 -1.45575891\n"
+        "H -1.95959519 -0.57940372 -2.74886227\nH -1.95960845 -1.09315494 -1.0525\n"
+        "H 0.57182748 1.93869499 -2.67997696\nH 2.01901061 0.95928865 -2.97657491\n"
+        "H 0.57180645 0.7264572 -3.97304639\n");
+    QString log = "NWChem\n Output coordinates in angstroms (scale by 1.8897 to convert to a.u.)\n\n"
+                  " No. Tag Charge X Y Z\n ---- ---- ------ ----- ----- -----\n";
+    for (int i = 0; i < molecule.atoms.size(); ++i) {
+        const auto &a = molecule.atoms[i];
+        log += QString(" %1 %2 %3 %4 %5 %6\n")
+                   .arg(i + 1)
+                   .arg(a.element)
+                   .arg(a.element == "H"   ? 1
+                        : a.element == "C" ? 6
+                                           : 14)
+                   .arg(a.position.x(), 0, 'f', 8)
+                   .arg(a.position.y(), 0, 'f', 8)
+                   .arg(a.position.z(), 0, 'f', 8);
+    }
+    log += "\nChemical Shielding Tensors (GIAO, in ppm)\n";
+    int hydrogen = 0, carbon = 0;
+    for (int i = 0; i < molecule.atoms.size(); ++i) {
+        const auto element = molecule.atoms[i].element;
+        const double sigma = element == "H"   ? 32 + .01 * hydrogen++
+                             : element == "C" ? 180 + .1 * carbon++
+                                              : 450;
+        log += QString("Atom: %1 %2\nisotropic = %3\nanisotropy = 1\n")
+                   .arg(i + 1)
+                   .arg(element)
+                   .arg(sigma, 0, 'f', 4);
+    }
+    return log;
+}
 inline QString cubeText(bool multiple = false) {
     QString s = "CUBE regression\nlinear field\n";
     s += multiple ? "-1 1 2 3\n" : "1 1 2 3\n";

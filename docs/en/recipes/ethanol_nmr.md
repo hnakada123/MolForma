@@ -28,14 +28,27 @@ The archive contains NWChem inputs and output logs for ethanol and TMS, practice
 
 1. Save and extract the ZIP, or save the individual log files.
 2. In MolForma, choose “Result viewer → Open…” and select `logs/ethanol_nmr.out`. The “Properties” tab shows shieldings and J couplings.
-3. On “Spectra”, select NMR and the nucleus, enable “Split by J couplings (first-order multiplets)”, then enter the settings below. Enter each range bound in its own field, using numbers only, and press Enter to apply it.
+3. On “Spectra”, choose “Open TMS log…” and select `logs/tms_reference.out`. This fills both reference shieldings and displays the chart. Opening a new NMR log selects ¹H when hydrogen shieldings are present and enables splitting when J couplings are available.
+4. To compare with experiment, set the ¹H spectrometer frequency to `90 MHz`. Leave “Automatic linewidth (for display)” enabled and both range fields empty for automatic bounds. Switching the nucleus to ¹³C selects the imported carbon reference.
+
+### Where the parameters come from
+
+| Parameter | Source and action |
+| --- | --- |
+| Nucleus | Choose the nuclei to observe: ¹H for hydrogen, ¹³C for carbon. The initial choice is ¹H when hydrogen shieldings are present in the log. |
+| Reference shielding | Import TMS calculated with the same method, basis and solvent conditions. MolForma averages its 12 hydrogen and 4 carbon shieldings, so no manual averaging is needed. Matching calculation conditions must be checked by the user. |
+| Spectrometer frequency (¹H) | An experimental instrument setting. The experimental ¹H data in this recipe were recorded at 90 MHz, so use 90 for comparison. The default 400 MHz is sufficient to view calculated peaks. Chemical shifts in ppm stay the same; J splittings in ppm change. |
+| FWHM | A display linewidth. Automatic mode uses about 1.2 Hz for ¹H multiplets and 0.10 ppm for ¹³C. These are not predictions of experimental linewidths. Turn automatic mode off only when you want to adjust the width, for example to match experiment. |
+| Range | Automatically chosen to include all calculated peaks. “Auto” clears manual bounds; switching the nucleus also restores automatic bounds. |
+
+For older builds without TMS import, or to check the values manually, use the following table. To enter a width directly in builds with “Automatic linewidth (for display)”, turn that option off first.
 
 | Nucleus | Reference shielding / ppm | Spectrometer frequency (¹H) | FWHM / ppm | Range (low → high) |
 | --- | ---: | --- | ---: | --- |
 | ¹H | `32.00508333` | 90 MHz | `0.0133` | Left `-1`, right `5` |
 | ¹³C | `184.45915000` | Leave at 90 MHz | `0.10` | Left `-5`, right `80` |
 
-Opening a log does not set the reference automatically. Changing the nucleus clears the reference field, so select the nucleus before entering its reference. Use the ASCII `-` for negative numbers: older builds reject a pasted mathematical minus `−`, leaving the chart empty. Saved display-settings files depend on the original log's location, so they are not included. Step 4 below also explains the display controls.
+Do not reuse these references for different calculation conditions. For manual entry, select the nucleus first, enter numbers without units, then press Enter. Use ASCII `-` for negative numbers because older builds reject the mathematical minus `−`. Saved display-settings files depend on the original log's location and are not included.
 
 The supplementary `logs/ethanol_geometry_interrupted.out` in the ZIP lets you inspect optimization and frequencies. Those stages finished before the subsequent J calculation was stopped; this is not a normally terminated log. Use the completed `ethanol_nmr.out` for the final NMR charts.
 
@@ -78,7 +91,7 @@ The shielding constant σ is not the experimental chemical shift δ. Use the dif
 1. Save the ethanol project and open the TMS practice file `tms_nmr.molforma.json`. To build TMS yourself, use the SMILES `C[Si](C)(C)C`.
 2. Select B3LYP/6-311G**, spherical basis functions, charge 0, a singlet, gas phase, the `fine` grid and `verytight` SCF convergence. For TMS, use geometry optimization with `tight` optimization convergence.
 3. Enable GIAO NMR shielding and disable J couplings, then run. TMS J couplings are unnecessary for obtaining the reference.
-4. Check optimization convergence and completion of the shielding calculation. Average the isotropic shieldings in “Properties” separately over the 12 hydrogens and the four carbons. Do not include Si in either average.
+4. Check optimization convergence and completion of the shielding calculation. “Open TMS log…” averages the isotropic shieldings over the 12 hydrogens for ¹H and the four carbons for ¹³C, excluding Si. You can also calculate the averages from “Properties” and compare them with the values below.
 
 | Reference | Mean TMS shielding in this run / ppm |
 | --- | ---: |
@@ -90,16 +103,16 @@ The TMS optimization converged; a frequency check of its minimum was omitted in 
 ## 4. Display the ¹H and ¹³C spectra
 
 1. In “History”, select the completed ethanol NMR job from step 2 and open it in the result viewer.
-2. On the “Spectra” tab, choose NMR and ¹H, and enter `32.00508333` for the reference shielding in ppm.
-3. Enable splitting by J couplings (first-order multiplets). Set the ¹H spectrometer frequency to `90 MHz` and the full width at half maximum to `0.0133 ppm` (about 1.2 Hz).
-4. Enter `-1` in the left range field and `5` in the right field, then press Enter. The chart places larger ppm values on the left.
+2. On the “Spectra” tab, choose “Open TMS log…” and select the TMS output from step 3 (`tms_reference.out` in the download). Both the ¹H and ¹³C references are imported.
+3. Check that ¹H and splitting by J couplings are selected. Set the ¹H spectrometer frequency to `90 MHz` to match experiment.
+4. Leave linewidth and range on automatic. At 90 MHz, the width becomes about `0.0133 ppm`. Only to fix the axis to that of the comparison figure, enter `-1` in the left range field and `5` in the right, then press Enter. Larger ppm values appear on the left.
 5. Select peak-table rows to identify the CH₃, CH₂ and OH atoms.
 
 ![Ethanol ¹H NMR in the result viewer with a TMS reference and J splittings at 90 MHz](images/ethanol_nmr/02_spectrum.png)
 
-For ¹³C, change the nucleus, set the reference to `184.45915000`, the width to `0.10 ppm` and the range from `-5` to `80`. In this splitting model, ¹³C is proton-decoupled, so ethanol has two carbon peaks. The frequency field specifies the ¹H frequency; do not enter the experimental ¹³C frequency of 25.16 MHz there.
+For ¹³C, switch the nucleus. The imported reference becomes `184.45915000`, the automatic width becomes `0.10 ppm`, and the range adjusts to include the carbon peaks. In this splitting model, ¹³C is proton-decoupled, so ethanol has two carbon peaks. The frequency field specifies the ¹H frequency; do not enter the experimental ¹³C frequency of 25.16 MHz there.
 
-Changing the display to 400 MHz leaves δ in ppm and J in Hz unchanged. The separation in ppm changes according to J / ν₀. A 1.2 Hz linewidth corresponds to `0.0030 ppm` at 400 MHz.
+Changing the display to 400 MHz leaves δ in ppm and J in Hz unchanged. The separation in ppm changes according to J / ν₀. With automatic linewidth enabled, the width follows the frequency and becomes about `0.0030 ppm` at 400 MHz.
 
 Use the buttons on the spectrum tab to export the chart or display settings. Changing the linewidth does not change the original shieldings or J values. MolForma groups nuclei with equivalent connectivity and averages their values for first-order multiplets. This is not population-weighted conformational averaging; the two CH₂ hydrogens are grouped together too. The model omits second-order effects, OH exchange, and experimental integrals and linewidths. See the [Result viewer](../features/results.md).
 
@@ -141,7 +154,7 @@ For further work, match solvent conditions, consider population-weighted conform
 
 ## Troubleshooting
 
-- **The chart and peak table are empty:** read the message below the settings. If it asks for a numeric `minimum`, retype the left range bound as ASCII `-1` (`-5` for ¹³C), then press Enter. You can also clear both range fields to use automatic bounds. For a `reference_ppm` message, select the nucleus and enter its reference shielding from the table. Do not include units or `…` in the input fields.
+- **The chart and peak table are empty:** first import the reference with “Open TMS log…”. For manual inputs, read the message below the settings. If it asks for a numeric `minimum`, retype the left range bound as ASCII `-1` (`-5` for ¹³C), then press Enter. You can also clear both range fields to use automatic bounds. For a `reference_ppm` message, select the nucleus and enter its reference shielding from the table. Do not include units or `…` in the input fields.
 - **All peaks are displaced:** check that the reference shielding is entered and belongs to the selected nucleus. Enter the calculated TMS shielding, not its chemical shift of 0 ppm.
 - **Splitting is unavailable:** the loaded log has no J couplings or their calculation has not completed. Check the J-coupling table in “Properties”.
 - **The calculation takes too long:** begin with shieldings to learn peak positions, then add J couplings when time allows. “All atom pairs” is unnecessary for this recipe.

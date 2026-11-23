@@ -157,6 +157,33 @@ class ResultReadersTest : public QObject, ResultFiles {
         qputenv("XDG_CONFIG_HOME", settings.path().toUtf8());
         qputenv("XDG_DATA_HOME", settings.filePath("data").toUtf8());
     }
+    void tmsReference() {
+        const auto r = readResult(save("tms.out", tmsReferenceLog()));
+        const auto ref = tmsShieldingReference(r);
+        QVERIFY(std::abs(ref["1H"].toDouble() - 32.055) < 1e-10);
+        QVERIFY(std::abs(ref["13C"].toDouble() - 180.15) < 1e-10);
+        auto invalid = r;
+        invalid.frames.last().molecule.atoms[1].element = "C";
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, tmsShieldingReference(invalid));
+        invalid = r;
+        invalid.frames.last().molecule.bonds.removeLast();
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, tmsShieldingReference(invalid));
+        invalid = r;
+        auto rows = r.properties["shielding"].toArray();
+        rows.removeLast();
+        invalid.properties["shielding"] = rows;
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, tmsShieldingReference(invalid));
+        rows.append(rows.first());
+        invalid.properties["shielding"] = rows;
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, tmsShieldingReference(invalid));
+        invalid = r;
+        rows = r.properties["shielding"].toArray();
+        auto row = rows[0].toObject();
+        row["isotropic"] = QJsonValue();
+        rows[0] = row;
+        invalid.properties["shielding"] = rows;
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, tmsShieldingReference(invalid));
+    }
     void cachedReadings() {
         // The loader's session cache gives what reading the file again gives: for another isovalue,
         // dataset or orbital, and after the file changed or its entries were damaged.
