@@ -146,6 +146,8 @@ References: [NWChem Raman](https://nwchemgit.github.io/Properties.html#raman), [
 3. Select peaks to identify their atoms, vibrations or excited states. NMR also allows editing weights. Changing width or weights does not change the log.
 4. Use “Save display settings…” for JSON, “CSV…” for peaks and curve, and “Figure…” for the chart as PNG, PDF or SVG. To reuse settings, open the same result file and choose “Load display settings…”.
 
+Enter numbers without units in the reference shielding and range fields, then press Enter or move to another field to apply them. Both ASCII `-` and the mathematical minus `−` are accepted. Changing the nucleus clears the reference field; enter the reference for the newly selected nucleus. Invalid inputs leave the chart and peak table empty, with an explanation below the settings.
+
 ![First-derivative solution ESR of the methyl radical, using 9.5 GHz, 0.1 mT width and the hydrogen nuclei](images/results/05_epr.png)
 
 **Figure 5** S = 1/2 solution ESR from calculated g and A tensors. Choose the nuclei, microwave frequency and linewidth; this is not a natural-abundance mixture.

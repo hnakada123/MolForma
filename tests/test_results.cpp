@@ -853,6 +853,50 @@ class ResultsTest : public QObject, ResultFiles {
         view.setResult(parsed);
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, view.loadSettings(settingsFile));
     }
+    void spectrumRangeInput_data() {
+        QTest::addColumn<QString>("lower");
+        QTest::addColumn<QString>("upper");
+        QTest::addColumn<QPointF>("range");
+        QTest::addColumn<bool>("valid");
+        QTest::newRow("typed") << QString("-1") << QString("5") << QPointF(-1, 5) << true;
+        QTest::newRow("copied-proton-range") << QString("−1") << QString("5") << QPointF(-1, 5) << true;
+        QTest::newRow("copied-carbon-range") << QString("−5") << QString("80") << QPointF(-5, 80) << true;
+        QTest::newRow("negative-upper") << QString("−1") << QString("−0.1") << QPointF(-1, -.1) << true;
+        QTest::newRow("invalid") << QString("−x") << QString("5") << QPointF() << false;
+        QTest::newRow("units") << QString("-1 ppm") << QString("5") << QPointF() << false;
+    }
+    void spectrumRangeInput() {
+        QFETCH(QString, lower);
+        QFETCH(QString, upper);
+        QFETCH(QPointF, range);
+        QFETCH(bool, valid);
+        ResultData r;
+        r.properties["shielding"] =
+            QJsonArray{QJsonObject{{"atom", 1}, {"element", "H"}, {"isotropic", 30.0}}};
+        TestUiServices services;
+        SpectroscopyView view(services);
+        view.setResult(r);
+        view.show();
+        view.findChild<QLineEdit *>("spectrumReference")->setText("32");
+        view.findChild<QLineEdit *>("spectrumMinimum")->setText(lower);
+        auto *maximum = view.findChild<QLineEdit *>("spectrumMaximum");
+        maximum->setText(upper);
+        QTest::keyClick(maximum, Qt::Key_Return);
+        const auto *chart = view.findChild<ChartView *>("spectrumChart");
+        const auto *peaks = view.findChild<QTableWidget *>("spectrumPeaks");
+        if (valid) {
+            QVERIFY(view.parameters()["minimum"].isDouble());
+            QVERIFY(view.parameters()["maximum"].isDouble());
+            QCOMPARE(view.parameters()["minimum"].toDouble(), range.x());
+            QCOMPARE(view.parameters()["maximum"].toDouble(), range.y());
+            QCOMPARE(peaks->rowCount(), 1);
+            QVERIFY(!chart->seriesData().isEmpty());
+            QVERIFY(!chart->seriesData()[0].points.isEmpty());
+        } else {
+            QCOMPARE(peaks->rowCount(), 0);
+            QVERIFY(chart->seriesData().isEmpty());
+        }
+    }
     void spinSpinCouplingsAndMultiplets() {
         // CH3F as NWChem prints its shieldings and indirect spin–spin couplings.
         QString log = "NWChem\n Output coordinates in angstroms (scale by 1.8897 to convert to a.u.)\n\n"

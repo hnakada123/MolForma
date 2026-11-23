@@ -211,7 +211,8 @@ QJsonObject SpectroscopyView::parameters() const {
         if (pair.second->text().trimmed().isEmpty())
             continue;
         bool ok;
-        const auto n = pair.second->text().toDouble(&ok);
+        // A minus copied from the manual or a paper is often U+2212, not ASCII '-'.
+        const auto n = pair.second->text().replace(QChar(0x2212), QChar('-')).toDouble(&ok);
         p[pair.first] = ok ? QJsonValue(n) : QJsonValue();
     }
     if (p["kind"] == "epr") {

@@ -28,14 +28,14 @@ The archive contains NWChem inputs and output logs for ethanol and TMS, practice
 
 1. Save and extract the ZIP, or save the individual log files.
 2. In MolForma, choose “Result viewer → Open…” and select `logs/ethanol_nmr.out`. The “Properties” tab shows shieldings and J couplings.
-3. Choose NMR on “Spectra”, enter the values below, and enable “Split by J couplings (first-order multiplets)”.
+3. On “Spectra”, select NMR and the nucleus, enable “Split by J couplings (first-order multiplets)”, then enter the settings below. Enter each range bound in its own field, using numbers only, and press Enter to apply it.
 
 | Nucleus | Reference shielding / ppm | Spectrometer frequency (¹H) | FWHM / ppm | Range (low → high) |
 | --- | ---: | --- | ---: | --- |
-| ¹H | 32.00508333 | 90 MHz | 0.0133 | −1 … 5 |
-| ¹³C | 184.45915000 | Leave at 90 MHz | 0.10 | −5 … 80 |
+| ¹H | `32.00508333` | 90 MHz | `0.0133` | Left `-1`, right `5` |
+| ¹³C | `184.45915000` | Leave at 90 MHz | `0.10` | Left `-5`, right `80` |
 
-Opening a log does not set the reference automatically. Saved display-settings files depend on the original log's location, so they are not included. Step 4 below also explains the display controls.
+Opening a log does not set the reference automatically. Changing the nucleus clears the reference field, so select the nucleus before entering its reference. Use the ASCII `-` for negative numbers: older builds reject a pasted mathematical minus `−`, leaving the chart empty. Saved display-settings files depend on the original log's location, so they are not included. Step 4 below also explains the display controls.
 
 The supplementary `logs/ethanol_geometry_interrupted.out` in the ZIP lets you inspect optimization and frequencies. Those stages finished before the subsequent J calculation was stopped; this is not a normally terminated log. Use the completed `ethanol_nmr.out` for the final NMR charts.
 
@@ -92,12 +92,12 @@ The TMS optimization converged; a frequency check of its minimum was omitted in 
 1. In “History”, select the completed ethanol NMR job from step 2 and open it in the result viewer.
 2. On the “Spectra” tab, choose NMR and ¹H, and enter `32.00508333` for the reference shielding in ppm.
 3. Enable splitting by J couplings (first-order multiplets). Set the ¹H spectrometer frequency to `90 MHz` and the full width at half maximum to `0.0133 ppm` (about 1.2 Hz).
-4. Set the displayed range from `−1` to `5`, entering the smaller value first. The chart places larger ppm values on the left.
+4. Enter `-1` in the left range field and `5` in the right field, then press Enter. The chart places larger ppm values on the left.
 5. Select peak-table rows to identify the CH₃, CH₂ and OH atoms.
 
 ![Ethanol ¹H NMR in the result viewer with a TMS reference and J splittings at 90 MHz](images/ethanol_nmr/02_spectrum.png)
 
-For ¹³C, change the nucleus, set the reference to `184.45915000`, the width to `0.10 ppm` and the range from `−5` to `80`. In this splitting model, ¹³C is proton-decoupled, so ethanol has two carbon peaks. The frequency field specifies the ¹H frequency; do not enter the experimental ¹³C frequency of 25.16 MHz there.
+For ¹³C, change the nucleus, set the reference to `184.45915000`, the width to `0.10 ppm` and the range from `-5` to `80`. In this splitting model, ¹³C is proton-decoupled, so ethanol has two carbon peaks. The frequency field specifies the ¹H frequency; do not enter the experimental ¹³C frequency of 25.16 MHz there.
 
 Changing the display to 400 MHz leaves δ in ppm and J in Hz unchanged. The separation in ppm changes according to J / ν₀. A 1.2 Hz linewidth corresponds to `0.0030 ppm` at 400 MHz.
 
@@ -141,6 +141,7 @@ For further work, match solvent conditions, consider population-weighted conform
 
 ## Troubleshooting
 
+- **The chart and peak table are empty:** read the message below the settings. If it asks for a numeric `minimum`, retype the left range bound as ASCII `-1` (`-5` for ¹³C), then press Enter. You can also clear both range fields to use automatic bounds. For a `reference_ppm` message, select the nucleus and enter its reference shielding from the table. Do not include units or `…` in the input fields.
 - **All peaks are displaced:** check that the reference shielding is entered and belongs to the selected nucleus. Enter the calculated TMS shielding, not its chemical shift of 0 ppm.
 - **Splitting is unavailable:** the loaded log has no J couplings or their calculation has not completed. Check the J-coupling table in “Properties”.
 - **The calculation takes too long:** begin with shieldings to learn peak positions, then add J couplings when time allows. “All atom pairs” is unnecessary for this recipe.
