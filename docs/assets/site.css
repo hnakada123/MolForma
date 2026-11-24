@@ -309,8 +309,8 @@ pre.code { flex: 1.2 1 440px; min-width: 0; }
 .recipes .head, .pages .head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 32px; margin-bottom: 28px; }
 .recipes .head > div, .pages .head > div { flex: 1 1 520px; min-width: 0; }
 .recipes .head h2, .pages .head h2 { margin-bottom: 8px; }
-.recipes ul, .pages ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; }
-.recipes li, .pages li { flex: 1 1 250px; min-width: 0; display: flex; }
+.recipes ul, .pages ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); gap: 12px; }
+.recipes li, .pages li { min-width: 0; display: flex; }
 .recipes li a, .pages li a {
   flex: 1;
   display: flex;
@@ -326,7 +326,7 @@ pre.code { flex: 1.2 1 440px; min-width: 0; }
 .recipes .no, .pages .no { font: 500 12px/1.4 var(--mono); color: var(--accent); }
 .recipes .title, .pages .title { font-weight: 700; font-size: 16px; line-height: 1.45; word-break: auto-phrase; }
 .recipes .molecule, .pages .summary { font-size: 14px; line-height: 1.55; color: var(--body); }
-.recipes .calc { margin-top: auto; padding-top: 6px; font: 12px/1.5 var(--mono); color: var(--mute); }
+.recipes .calc { margin-top: auto; padding-top: 6px; font: 12px/1.5 var(--mono); color: var(--mute); word-break: auto-phrase; }
 
 .start { align-items: flex-start; }
 .start > div { flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 14px; color: var(--body); }
