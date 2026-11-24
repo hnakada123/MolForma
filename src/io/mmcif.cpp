@@ -359,7 +359,7 @@ MacromoleculeContents mmcifContents(const MmcifEntry &entry) {
     for (const auto &a : entry.atoms)
         if (a.model == first)
             count.add(QString("%1\n%2\n%3\n%4").arg(a.chain).arg(a.number).arg(a.insertion, a.residue),
-                      a.chain, a.residue, a.kind,
+                      a.chain, a.residue, a.kind, a.altloc,
                       a.kind == ResidueKind::Polymer ? entry.descriptions.value(a.entity) : QString());
     return contents;
 }
@@ -388,6 +388,7 @@ QVector<MmcifAtom> selectMmcif(const QVector<MmcifAtom> &atoms, const Macromolec
         fail(tr("mmCIFにモデル %1 の原子がありません。").arg(model));
     if (chosen.isEmpty())
         fail(tr("選んだ鎖・成分に原子がありません。"));
+    checkMacromoleculeAtoms(chosen.size());
     return chosen;
 }
 } // namespace mf

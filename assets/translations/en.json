@@ -595,6 +595,8 @@
         "Water (%n molecule)",
         "Water (%n molecules)"
     ],
+    "選んだ範囲には%1個の原子があります。MolFormaで開けるのは%2原子までです。読み込む鎖や成分を減らしてください。": "The chosen part has %1 atoms. MolForma opens at most %2 atoms. Choose fewer chains or components to read.",
+    "選んだ範囲: %1原子（MolFormaで開けるのは%2原子まで）": "Chosen: %1 atoms (MolForma opens at most %2)",
     "選んだ鎖・成分に原子がありません。": "The chosen chains and components have no atoms.",
     "%1 は展開すると %2 MiB を超えるため読み込めません。": "%1 exceeds %2 MiB when decompressed and cannot be read.",
     "%1 をgzipの圧縮データとして読めません（壊れているか、途中で切れています）。": "%1 cannot be read as gzip-compressed data (it is damaged or cut short).",

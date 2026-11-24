@@ -183,6 +183,53 @@ class CoordinatesTest : public QObject {
         writeFile(single, "ATOM      1  CA  GLY A   1       0.000   0.000   0.000  1.00  0.00           C\n");
         QVERIFY(chooseStructureImport(&parent, single));
     }
+    // An entry of more atoms than MolForma opens (a virus capsid) starts with the chains from the top that it
+    // opens, shows the atoms chosen and takes no more.
+    void importChainsOfLargeEntries() {
+        QTemporaryDir dir;
+        const auto path = dir.filePath("large.cif");
+        QByteArray text =
+            "data_LARGE\nloop_\n_atom_site.group_PDB\n_atom_site.id\n_atom_site.type_symbol\n"
+            "_atom_site.label_atom_id\n_atom_site.label_comp_id\n_atom_site.auth_asym_id\n"
+            "_atom_site.auth_seq_id\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\n";
+        // Chains A and B of half the limit each, and C of one atom more.
+        const int half = MacromoleculeAtomLimit / 2;
+        for (int i = 0; i <= MacromoleculeAtomLimit; ++i)
+            text += "ATOM " + QByteArray::number(i + 1) + " C CA GLY " +
+                    (i < half       ? "A"
+                     : i < 2 * half ? "B"
+                                    : "C") +
+                    ' ' + QByteArray::number(i + 1) + " 0 0 0\n";
+        writeFile(path, text);
+        QWidget parent;
+        QList<Qt::CheckState> states;
+        QString over;
+        bool okOver = true;
+        QTimer::singleShot(0, &parent, [&] {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            QVERIFY(dialog);
+            auto *chains = dialog->findChild<QListWidget *>("importChains");
+            auto *atoms = dialog->findChild<QLabel *>("importAtoms");
+            auto *ok = dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok);
+            for (int i = 0; i < chains->count(); ++i)
+                states << chains->item(i)->checkState();
+            chains->item(2)->setCheckState(Qt::Checked);
+            over = atoms->text();
+            okOver = ok->isEnabled();
+            chains->item(0)->setCheckState(Qt::Unchecked);
+            ok->click();
+        });
+        const auto options = chooseStructureImport(&parent, path);
+        QCOMPARE(states, (QList<Qt::CheckState>{Qt::Checked, Qt::Checked, Qt::Unchecked}));
+        QVERIFY(over.contains(QString::number(MacromoleculeAtomLimit + 1)));
+        QVERIFY(!okOver);
+        QVERIFY(options);
+        QCOMPARE(options->selection.chains, (QStringList{"B", "C"}));
+        // Without asking, as a screenshot from the command line reads: all of it, which does not open.
+        const auto quiet = chooseStructureImport(&parent, path, false);
+        QVERIFY(quiet);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, importStructure(path, quiet->selection));
+    }
     // PDB entries download by their ID into a folder; read here from files, without the network.
     // Small-molecule crystal structures: the asymmetric unit, the symmetry operations and the cell make whole
     // molecules, across the cell's edges.

@@ -12,4 +12,10 @@ OpenBabel::OBMol toOB(const Document &d);
 // chainNames gives the residues' chains where Open Babel's one character would not hold them.
 Document fromOB(OpenBabel::OBMol &mol, bool readResidues = false,
                 const QHash<OpenBabel::OBResidue *, QString> &chainNames = {});
+// What Open Babel's PDB reader does after its bonds by distance: bond orders from the geometry
+// (OBMol::PerceiveBondOrders), typical implicit hydrogen counts, and the aromaticity that depends on both. It
+// is done for a few thousand atoms at a time, the molecules (atoms joined by bonds) kept whole: the ring
+// search of one OBMol takes time with the cube of its atoms, minutes for a large protein complex read at once
+// and days for a virus capsid, while each of their chains is a molecule of a few thousand atoms.
+void perceiveBondOrdersByMolecule(OpenBabel::OBMol &mol);
 } // namespace mf

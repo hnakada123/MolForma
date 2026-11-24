@@ -5,6 +5,7 @@
 #include <QSet>
 #include <QStringList>
 #include <QVector>
+#include <array>
 
 namespace mf {
 // What a PDB or PDBx/mmCIF entry holds, and the part of it to read: the same for both formats, whose readers
@@ -13,16 +14,17 @@ namespace mf {
 // The residues of an entry: polymer chains (proteins and nucleic acids, with their modified residues), the
 // other hetero groups (ligands, ions, sugars) and water.
 enum class ResidueKind { Polymer, Ligand, Water };
+// The most atoms read of an entry. MolForma edits a structure and cuts the part of it that NWChem calculates;
+// its views and panels follow every edit of the whole document, which a virus capsid of millions of atoms
+// would keep busy for minutes.
+constexpr int MacromoleculeAtomLimit = 100000;
+// Fails, naming the limit, for a selection of more atoms than MacromoleculeAtomLimit.
+void checkMacromoleculeAtoms(qsizetype atoms);
 struct MacromoleculeChain {
-    QString id, description; // The molecule's name, where the file gives it (COMPND, _entity).
-    int residues = 0;        // Of the polymer.
-    QStringList groups;      // The names of the other residues (ligands, water), once each.
-};
-struct MacromoleculeContents {
-    QStringList models;
-    bool altlocs = false;
-    QVector<MacromoleculeChain> chains;
-    int polymers = 0, ligands = 0, waters = 0; // Residues of each kind, in the first model.
+    QString id, description;    // The molecule's name, where the file gives it (COMPND, _entity).
+    int residues = 0;           // Of the polymer.
+    QStringList groups;         // The names of the other residues (ligands, water), once each.
+    std::array<int, 3> atoms{}; // Of each ResidueKind, at one alternate location of each residue.
 };
 struct MacromoleculeSelection {
     int model = 1;
@@ -31,19 +33,30 @@ struct MacromoleculeSelection {
     bool polymer = true, ligands = true, water = true;
     bool keeps(const QString &chain, ResidueKind kind) const;
 };
-// The chains and residues of an entry, counted from the atoms of its first model.
+struct MacromoleculeContents {
+    QStringList models;
+    bool altlocs = false;
+    QVector<MacromoleculeChain> chains;
+    int polymers = 0, ligands = 0, waters = 0; // Residues of each kind, in the first model.
+    // The atoms of the first model that a selection keeps, its model aside: an estimate where the locations
+    // of a residue differ in their atoms.
+    int atoms(const MacromoleculeSelection &selection = {}) const;
+};
+// The chains, residues and atoms of an entry, counted from the atoms of its first model.
 class MacromoleculeCount {
   public:
     explicit MacromoleculeCount(MacromoleculeContents &contents) : contents(contents) {}
     // An atom: its residue (a text that tells the residues of the entry apart), the residue's chain, name
-    // and kind, and the name of the chain's molecule where the atom's record leads to one.
+    // and kind, its alternate location, and the name of the chain's molecule where the atom's record leads to
+    // one.
     void add(const QString &residue, const QString &chain, const QString &code, ResidueKind kind,
-             const QString &description = {});
+             const QString &altloc, const QString &description = {});
 
   private:
     MacromoleculeContents &contents;
     QSet<QString> residues;
     QHash<QString, int> chains;
+    QHash<QString, QString> locations; // The first alternate location of each residue that has them.
 };
 // Which alternate location of each residue is read: the one chosen for the entry, or in each residue the
 // one whose atoms have the highest total occupancy (the first of equals, by name).

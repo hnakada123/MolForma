@@ -677,12 +677,14 @@ class CoreTest : public QObject {
         // And one count of what an entry holds, from the atoms of either format.
         MacromoleculeContents contents;
         MacromoleculeCount count(contents);
-        count.add("GLY A 1", "A", "GLY", ResidueKind::Polymer);
-        count.add("GLY A 1", "A", "GLY", ResidueKind::Polymer, "LYSOZYME");
-        count.add("ALA A 2", "A", "ALA", ResidueKind::Polymer, "LYSOZYME");
-        count.add("ZN A 101", "A", "ZN", ResidueKind::Ligand);
-        count.add("ZN A 102", "A", "ZN", ResidueKind::Ligand);
-        count.add("HOH B 201", "B", "HOH", ResidueKind::Water);
+        count.add("GLY A 1", "A", "GLY", ResidueKind::Polymer, {});
+        count.add("GLY A 1", "A", "GLY", ResidueKind::Polymer, {}, "LYSOZYME");
+        count.add("ALA A 2", "A", "ALA", ResidueKind::Polymer, "A", "LYSOZYME");
+        count.add("ALA A 2", "A", "ALA", ResidueKind::Polymer, "B", "LYSOZYME");
+        count.add("ALA A 2", "A", "ALA", ResidueKind::Polymer, "A", "LYSOZYME");
+        count.add("ZN A 101", "A", "ZN", ResidueKind::Ligand, {});
+        count.add("ZN A 102", "A", "ZN", ResidueKind::Ligand, {});
+        count.add("HOH B 201", "B", "HOH", ResidueKind::Water, {});
         QCOMPARE(contents.chains.size(), 2);
         QCOMPARE(contents.chains[0].description, QString("LYSOZYME"));
         QCOMPARE(contents.chains[0].residues, 2);
@@ -691,6 +693,93 @@ class CoreTest : public QObject {
         QCOMPARE(contents.polymers, 2);
         QCOMPARE(contents.ligands, 2);
         QCOMPARE(contents.waters, 1);
+        // The atoms, at one location of each residue (the first): what a selection would read.
+        QVERIFY((contents.chains[0].atoms == std::array<int, 3>{4, 2, 0}));
+        QVERIFY((contents.chains[1].atoms == std::array<int, 3>{0, 0, 1}));
+        QCOMPARE(contents.atoms(), 7);
+        MacromoleculeSelection selection;
+        selection.chains = {"B"};
+        QCOMPARE(contents.atoms(selection), 1);
+        selection = {};
+        selection.ligands = false;
+        QCOMPARE(contents.atoms(selection), 5);
+    }
+    // An entry of more atoms than MolForma opens (3J3Q, a virus capsid of 2.4 million) fails at its
+    // selection, before any bond is looked for; its chains open a part at a time.
+    void macromoleculeAtomLimit() {
+        checkMacromoleculeAtoms(MacromoleculeAtomLimit);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, checkMacromoleculeAtoms(MacromoleculeAtomLimit + 1));
+        QVector<MmcifAtom> atoms(MacromoleculeAtomLimit + 1);
+        for (int i = 0; i < atoms.size(); ++i) {
+            atoms[i].chain = i ? "B" : "A";
+            atoms[i].number = i + 1;
+            atoms[i].name = "CA";
+            atoms[i].residue = "GLY";
+            atoms[i].element = "C";
+        }
+        try {
+            selectMmcif(atoms, {});
+            QFAIL("The selection exceeds the limit.");
+        } catch (const std::runtime_error &e) {
+            QVERIFY(QString::fromUtf8(e.what()).contains(QString::number(MacromoleculeAtomLimit + 1)));
+            QVERIFY(QString::fromUtf8(e.what()).contains(QString::number(MacromoleculeAtomLimit)));
+        }
+        MacromoleculeSelection chain;
+        chain.chains = {"B"};
+        QCOMPARE(selectMmcif(atoms, chain).size(), MacromoleculeAtomLimit);
+        // In PDB files too, counting the atoms of the location read.
+        QString pdb;
+        for (int i = 1; i < MacromoleculeAtomLimit; ++i)
+            pdb += QString::asprintf(
+                "ATOM  %5d  CA  GLY A%4d       0.000   0.000   0.000  1.00  0.00           C\n", i % 100000,
+                i % 10000);
+        const QString located =
+            "ATOM      1  CA AGLY Z   1       0.000   0.000   0.000  0.60  0.00           C\n"
+            "ATOM      2  CA BGLY Z   1       1.000   0.000   0.000  0.40  0.00           C\n";
+        QCOMPARE(preparePdb(pdb + located, {}).count('\n'), MacromoleculeAtomLimit);
+        QVERIFY_THROWS_EXCEPTION(
+            std::runtime_error,
+            preparePdb(pdb + QString(located).replace("AGLY", " GLY").replace("BGLY", " GLY"), {}));
+    }
+    // Bond orders and aromaticity are perceived a few thousand atoms at a time, the molecules kept whole: 500
+    // benzene rings, 3000 atoms, make two pieces, and a ring split at 2000 atoms would lose its aromaticity.
+    void bondOrdersByMolecule() {
+        QTemporaryDir dir;
+        QString pdb;
+        for (int ring = 0; ring < 500; ++ring)
+            for (int k = 0; k < 6; ++k)
+                pdb += QString::asprintf(
+                    "HETATM%5d  C%d  BNZ A%4d    %8.3f%8.3f%8.3f  1.00  0.00           C\n", 6 * ring + k + 1,
+                    k + 1, ring + 1, 8.0 * (ring % 20) + 1.39 * std::cos(k * M_PI / 3),
+                    8.0 * (ring / 20) + 1.39 * std::sin(k * M_PI / 3), 0.0);
+        for (const auto &name : {"rings.pdb", "rings.cif"}) {
+            auto text = pdb;
+            if (QString(name).endsWith(".cif")) { // The same atoms as a PDBx/mmCIF table.
+                text = "data_RINGS\nloop_\n_atom_site.group_PDB\n_atom_site.id\n_atom_site.type_symbol\n"
+                       "_atom_site.label_atom_id\n_atom_site.label_comp_id\n_atom_site.auth_asym_id\n"
+                       "_atom_site.auth_seq_id\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\n";
+                for (const auto &line : pdb.split('\n', Qt::SkipEmptyParts))
+                    text += QStringList{"HETATM",
+                                        line.mid(6, 5).trimmed(),
+                                        "C",
+                                        line.mid(12, 4).trimmed(),
+                                        "BNZ",
+                                        "A",
+                                        line.mid(22, 4).trimmed(),
+                                        line.mid(30, 8).trimmed(),
+                                        line.mid(38, 8).trimmed(),
+                                        line.mid(46, 8).trimmed()}
+                                .join(' ') +
+                            '\n';
+            }
+            writeFile(dir.filePath(name), text.toUtf8());
+            const auto d = importStructure(dir.filePath(name));
+            QCOMPARE(d.atoms.size(), 3000);
+            QCOMPARE(d.bonds.size(), 3000);
+            for (const auto &bond : d.bonds)
+                QCOMPARE(bond.kind, QString("aromatic"));
+            QCOMPARE(d.residues.size(), 500);
+        }
     }
     void mmcifChainsAndComponents() {
         const QByteArray atoms =

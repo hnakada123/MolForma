@@ -45,10 +45,15 @@ chooseMacromolecule(QWidget *parent, const MacromoleculeContents &contents, bool
         altloc->addItems({automatic, "A", "B", "C"});
         form->addRow(tr("代替位置（自動: 残基ごとの占有率最大）"), altloc);
     }
+    // An entry of more atoms than MolForma opens (a virus capsid) starts with the chains from the top that it
+    // does open, and shows what is chosen.
+    const bool large = contents.atoms() > MacromoleculeAtomLimit;
     QListWidget *chains = nullptr;
     if (contents.chains.size() > 1) {
         chains = new QListWidget;
         chains->setObjectName("importChains");
+        int counted = 0;
+        bool fits = true;
         for (const auto &chain : contents.chains) {
             auto label = chain.id.isEmpty() ? QString("-") : chain.id;
             // A chain of ligands or water alone shows their names.
@@ -61,7 +66,11 @@ chooseMacromolecule(QWidget *parent, const MacromoleculeContents &contents, bool
             auto *item = new QListWidgetItem(label, chains);
             item->setData(Qt::UserRole, chain.id);
             item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-            item->setCheckState(Qt::Checked);
+            const int atoms = chain.atoms[0] + chain.atoms[1] + chain.atoms[2];
+            fits = fits && (!counted || counted + atoms <= MacromoleculeAtomLimit);
+            if (fits)
+                counted += atoms;
+            item->setCheckState(!large || fits ? Qt::Checked : Qt::Unchecked);
         }
         chains->setMinimumWidth(std::min(chains->sizeHintForColumn(0) + 40, 720));
         form->addRow(tr("鎖"), chains);
@@ -82,6 +91,13 @@ chooseMacromolecule(QWidget *parent, const MacromoleculeContents &contents, bool
         }
         kindBoxes << box;
     }
+    QLabel *size = nullptr;
+    if (large) {
+        size = new QLabel;
+        size->setObjectName("importAtoms");
+        size->setWordWrap(true);
+        form->addRow(size);
+    }
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     form->addRow(buttons);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -94,12 +110,30 @@ chooseMacromolecule(QWidget *parent, const MacromoleculeContents &contents, bool
                 ids << chains->item(i)->data(Qt::UserRole).toString();
         return ids;
     };
-    // Something must be left to read.
+    // The chains and kinds chosen; a kind the entry does not have stays chosen, as in the files without a
+    // choice.
+    const auto chosen = [&] {
+        auto next = selection;
+        if (chains && chosenChains().size() < chains->count())
+            next.chains = chosenChains();
+        next.polymer = !kindBoxes[0] || kindBoxes[0]->isChecked();
+        next.ligands = !kindBoxes[1] || kindBoxes[1]->isChecked();
+        next.water = !kindBoxes[2] || kindBoxes[2]->isChecked();
+        return next;
+    };
+    // Something must be left to read, and no more than MolForma opens.
     const auto update = [&] {
+        const int atoms = large ? contents.atoms(chosen()) : 0;
+        if (size)
+            size->setText(tr("選んだ範囲: %1原子（MolFormaで開けるのは%2原子まで）")
+                              .arg(atoms)
+                              .arg(MacromoleculeAtomLimit));
         buttons->button(QDialogButtonBox::Ok)
             ->setEnabled((!chains || !chosenChains().isEmpty()) &&
-                         (kinds < 2 || std::any_of(kindBoxes.begin(), kindBoxes.end(), checked)));
+                         (kinds < 2 || std::any_of(kindBoxes.begin(), kindBoxes.end(), checked)) &&
+                         atoms <= MacromoleculeAtomLimit);
     };
+    update();
     if (chains)
         QObject::connect(chains, &QListWidget::itemChanged, &dialog, update);
     for (auto *box : kindBoxes)
@@ -111,12 +145,11 @@ chooseMacromolecule(QWidget *parent, const MacromoleculeContents &contents, bool
         selection.model = model->currentText().toInt();
     if (altloc && altloc->currentText() != automatic)
         selection.altloc = altloc->currentText().trimmed();
-    if (chains && chosenChains().size() < chains->count())
-        selection.chains = chosenChains();
-    // A kind the entry does not have stays chosen, as in the files without a choice.
-    selection.polymer = !kindBoxes[0] || kindBoxes[0]->isChecked();
-    selection.ligands = !kindBoxes[1] || kindBoxes[1]->isChecked();
-    selection.water = !kindBoxes[2] || kindBoxes[2]->isChecked();
+    const auto next = chosen();
+    selection.chains = next.chains;
+    selection.polymer = next.polymer;
+    selection.ligands = next.ligands;
+    selection.water = next.water;
     return selection;
 }
 // What to read of a small-molecule crystal structure: the molecules that complete the asymmetric unit (one

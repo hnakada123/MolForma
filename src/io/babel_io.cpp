@@ -18,8 +18,8 @@ namespace mf {
 using namespace OpenBabel;
 // The atoms of a PDBx/mmCIF file, made a molecule the way Open Babel reads a PDB file: atoms with their
 // residues, bonds by distance, bond orders from the geometry and typical hydrogen counts, which aromaticity
-// depends on. Its residue templates add no bonds there (they look up atom names without the PDB columns'
-// padding), so they are left out here too.
+// depends on (perceiveBondOrdersByMolecule, as for PDB files). Its residue templates add no bonds there (they
+// look up atom names without the PDB columns' padding), so they are left out here too.
 static Document mmcifStructure(const QVector<MmcifAtom> &atoms) {
     OBMol mol;
     mol.SetChainsPerceived(); // The residues are the file's.
@@ -46,10 +46,8 @@ static Document mmcifStructure(const QVector<MmcifAtom> &atoms) {
     }
     mol.EndModify();
     mol.ConnectTheDots();
-    mol.PerceiveBondOrders();
+    perceiveBondOrdersByMolecule(mol);
     mol.SetChainsPerceived(); // EndModify() cleared it.
-    for (unsigned int i = 1; i <= mol.NumAtoms(); ++i)
-        OBAtomAssignTypicalImplicitHydrogens(mol.GetAtom(i));
     return fromOB(mol, true, chains);
 }
 Document importBabelStructure(const QString &path, const MacromoleculeSelection &selection) {
@@ -75,9 +73,14 @@ Document importBabelStructure(const QString &path, const MacromoleculeSelection 
         OBConversion conversion;
         if (!conversion.SetInFormat(ext.toLatin1().constData()))
             fail(tr("対応していない形式です: %1").arg(ext));
+        // The PDB reader's bonds by distance, without its bond orders of the whole file at once.
+        if (ext == "pdb")
+            conversion.AddOption("s", OBConversion::INOPTIONS);
         OBMol mol;
         if (!conversion.ReadString(&mol, bytes.toStdString()) || !mol.NumAtoms())
             fail(tr("構造ファイルを読み込めません。"));
+        if (ext == "pdb")
+            perceiveBondOrdersByMolecule(mol);
         d = fromOB(mol, ext == "pdb");
     }
     auto meta = d.data["metadata"].toObject();

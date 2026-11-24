@@ -74,6 +74,79 @@ OBMol toOB(const Document &d) {
     mol.SetTotalSpinMultiplicity(d.multiplicity);
     return mol;
 }
+void perceiveBondOrdersByMolecule(OBMol &mol) {
+    const int count = int(mol.NumAtoms());
+    // The molecules, numbered in the order of their first atoms.
+    QVector<int> molecule(count + 1, -1);
+    QVector<int> sizes;
+    for (int start = 1; start <= count; ++start) {
+        if (molecule[start] >= 0)
+            continue;
+        molecule[start] = sizes.size();
+        QVector<int> pending{start};
+        int size = 0;
+        while (!pending.isEmpty()) {
+            auto *atom = mol.GetAtom(pending.takeLast());
+            ++size;
+            for (auto it = atom->BeginBonds(); it != atom->EndBonds(); ++it)
+                if (const int next = int((*it)->GetNbrAtomIdx(atom)); molecule[next] < 0) {
+                    molecule[next] = sizes.size();
+                    pending << next;
+                }
+        }
+        sizes << size;
+    }
+    // Pieces of whole molecules of some 2000 atoms: a protein chain alone, or many waters together, whose
+    // perception one at a time would cost more than the perception itself.
+    constexpr int pieceAtoms = 2000;
+    QVector<int> piece(sizes.size());
+    int pieces = 0, filled = 0;
+    for (int m = 0; m < sizes.size(); ++m) {
+        if (filled >= pieceAtoms) {
+            ++pieces;
+            filled = 0;
+        }
+        piece[m] = pieces;
+        filled += sizes[m];
+    }
+    QVector<QVector<OBAtom *>> atoms(sizes.isEmpty() ? 0 : pieces + 1);
+    QVector<QVector<OBBond *>> bonds(atoms.size());
+    for (int i = 1; i <= count; ++i)
+        atoms[piece[molecule[i]]] << mol.GetAtom(i);
+    for (auto it = mol.BeginBonds(); it != mol.EndBonds(); ++it)
+        bonds[piece[molecule[int((*it)->GetBeginAtomIdx())]]] << *it;
+    QVector<int> local(count + 1); // The number of an atom in its piece.
+    for (int p = 0; p < atoms.size(); ++p) {
+        OBMol part;
+        part.BeginModify();
+        for (auto *source : atoms[p]) {
+            auto *atom = part.NewAtom();
+            atom->SetAtomicNum(source->GetAtomicNum());
+            atom->SetVector(source->GetVector());
+            atom->SetFormalCharge(source->GetFormalCharge());
+            local[int(source->GetIdx())] = int(atom->GetIdx());
+        }
+        for (auto *bond : bonds[p])
+            part.AddBond(local[int(bond->GetBeginAtomIdx())], local[int(bond->GetEndAtomIdx())],
+                         bond->GetBondOrder());
+        part.EndModify();
+        part.PerceiveBondOrders();
+        for (unsigned int k = 1; k <= part.NumAtoms(); ++k)
+            OBAtomAssignTypicalImplicitHydrogens(part.GetAtom(k));
+        for (int k = 0; k < bonds[p].size(); ++k) {
+            const auto *bond = part.GetBond(k);
+            bonds[p][k]->SetBondOrder(bond->GetBondOrder());
+            bonds[p][k]->SetAromatic(bond->IsAromatic()); // Asking perceives the piece's aromaticity.
+        }
+        for (int k = 0; k < atoms[p].size(); ++k) {
+            const auto *atom = part.GetAtom(k + 1);
+            atoms[p][k]->SetFormalCharge(atom->GetFormalCharge());
+            atoms[p][k]->SetImplicitHCount(atom->GetImplicitHCount());
+            atoms[p][k]->SetAromatic(atom->IsAromatic());
+        }
+    }
+    mol.SetAromaticPerceived();
+}
 // chainNames gives the residues' chains where Open Babel's one character would not hold them.
 Document fromOB(OBMol &mol, bool readResidues, const QHash<OBResidue *, QString> &chainNames) {
     Document d;
@@ -123,13 +196,14 @@ Document fromOB(OBMol &mol, bool readResidues, const QHash<OBResidue *, QString>
                                                 : "single";
         d.bonds.append({ids[b->GetBeginAtomIdx()], ids[b->GetEndAtomIdx()], kind, {}, "import"});
     }
-    // Iterate residues in atom order; pointers are only lookup keys, never ordering keys.
+    // Iterate residues in atom order; pointers are only lookup keys, never ordering keys. Each is new, added
+    // once (updateResidue would look for its ID among those before it, for the square of the residues).
     QSet<OBResidue *> seen;
     for (auto *key : residueOf)
         if (key && residues.contains(key) && !seen.contains(key)) {
             seen.insert(key);
             const auto &r = residues[key];
-            updateResidue(d, r);
+            d.residues << r;
             d.chains[r.chain] << r.id;
         }
     const Topology topology(d);

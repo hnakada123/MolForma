@@ -77,7 +77,7 @@ MacromoleculeContents pdbContents(const QString &text) {
         if (first) { // The residue: its name, chain, number and insertion code.
             const auto chain = chainOf(line);
             count.add(line.mid(17, 10), chain, line.mid(17, 3).trimmed(), kindOf(line, sequence),
-                      names.value(chain));
+                      line.mid(16, 1).trimmed(), names.value(chain));
         }
     }
     return contents;
@@ -108,6 +108,7 @@ QString preparePdb(const QString &text, const MacromoleculeSelection &selection)
     }
     QString out;
     QSet<int> serials;
+    qsizetype atoms = 0;
     for (auto l : chosen) {
         // Open Babel takes a blank line, as the end of a file without END, for a broken file.
         if (l.startsWith("MODEL") || l.startsWith("ENDMDL") || l.trimmed().isEmpty())
@@ -118,6 +119,7 @@ QString preparePdb(const QString &text, const MacromoleculeSelection &selection)
             if (l.size() > 16)
                 l[16] = ' ';
             serials.insert(l.mid(6, 5).trimmed().toInt());
+            ++atoms;
         }
         // Open Babel drops a CONECT record that names an atom left out, with a warning.
         if (l.startsWith("CONECT")) {
@@ -132,6 +134,7 @@ QString preparePdb(const QString &text, const MacromoleculeSelection &selection)
     }
     if (inModel && serials.isEmpty())
         fail(tr("選んだ鎖・成分に原子がありません。"));
+    checkMacromoleculeAtoms(atoms);
     return out;
 }
 } // namespace mf

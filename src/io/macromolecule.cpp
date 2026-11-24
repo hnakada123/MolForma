@@ -1,23 +1,50 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "io/macromolecule.h"
+#include "foundation/error.h"
+#include "foundation/i18n.h"
 
 namespace mf {
+void checkMacromoleculeAtoms(qsizetype atoms) {
+    if (atoms > MacromoleculeAtomLimit)
+        fail(tr("選んだ範囲には%1個の原子があります。MolFormaで開けるのは%2原子までです。読み込む鎖や成分を"
+                "減らしてください。")
+                 .arg(atoms)
+                 .arg(MacromoleculeAtomLimit));
+}
 bool MacromoleculeSelection::keeps(const QString &chain, ResidueKind kind) const {
     return (chains.isEmpty() || chains.contains(chain)) && (kind == ResidueKind::Polymer  ? polymer
                                                             : kind == ResidueKind::Ligand ? ligands
                                                                                           : water);
 }
+int MacromoleculeContents::atoms(const MacromoleculeSelection &selection) const {
+    int count = 0;
+    for (const auto &chain : chains)
+        for (const auto kind : {ResidueKind::Polymer, ResidueKind::Ligand, ResidueKind::Water})
+            if (selection.keeps(chain.id, kind))
+                count += chain.atoms[int(kind)];
+    return count;
+}
 void MacromoleculeCount::add(const QString &residue, const QString &chain, const QString &code,
-                             ResidueKind kind, const QString &description) {
-    if (residues.contains(residue))
-        return;
-    residues.insert(residue);
+                             ResidueKind kind, const QString &altloc, const QString &description) {
     auto it = chains.find(chain);
     if (it == chains.end()) {
         it = chains.insert(chain, contents.chains.size());
-        contents.chains.append({chain, {}, 0, {}});
+        contents.chains.append({chain, {}, 0, {}, {}});
     }
     auto &entry = contents.chains[*it];
+    // The atoms of one location, as if the first of the residue were read.
+    if (!altloc.isEmpty()) {
+        auto &first = locations[residue];
+        if (first.isEmpty())
+            first = altloc;
+        if (first == altloc)
+            ++entry.atoms[int(kind)];
+    } else {
+        ++entry.atoms[int(kind)];
+    }
+    if (residues.contains(residue))
+        return;
+    residues.insert(residue);
     if (entry.description.isEmpty())
         entry.description = description;
     if (kind != ResidueKind::Polymer && !entry.groups.contains(code))
