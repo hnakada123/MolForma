@@ -600,6 +600,8 @@
     "%1 %2 %3%4 の原子 %5": "atom %5 of %1 %2 %3%4",
     "元素の分かる原子がありません。": "No atom has a known element.",
     "構造ファイルの取込み": "Structure file import",
+    "読込中": "Reading",
+    "%1 を読み込んでいます…": "Reading %1…",
     "元素の分からない原子（PDBのUNX: 未知の原子・イオンなど）は読み込みませんでした:\n%1": "Atoms of unknown elements (such as UNX, an unknown atom or ion in the PDB) were not read:\n%1",
     "選んだ鎖・成分に原子がありません。": "The chosen chains and components have no atoms.",
     "%1 は展開すると %2 MiB を超えるため読み込めません。": "%1 exceeds %2 MiB when decompressed and cannot be read.",

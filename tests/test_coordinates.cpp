@@ -16,6 +16,8 @@
 #include "ui/structure_import.h"
 #include <QtTest>
 #include <QtWidgets>
+#include <atomic>
+#include <thread>
 using namespace mf;
 // Older Qt6 versions only accept integer positions for drag-enter events (as in McpGui).
 using DragPosition =
@@ -264,9 +266,14 @@ class CoordinatesTest : public QObject {
         QList<Qt::CheckState> states;
         QString over;
         bool okOver = true;
-        QTimer::singleShot(0, &parent, [&] {
+        // After the reading, which a slow computer may show in its own dialog.
+        std::function<void()> answer = [&] {
             auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
             QVERIFY(dialog);
+            if (dialog->objectName() == "structureReadingDialog") {
+                QTimer::singleShot(10, &parent, answer);
+                return;
+            }
             auto *chains = dialog->findChild<QListWidget *>("importChains");
             auto *atoms = dialog->findChild<QLabel *>("importAtoms");
             auto *ok = dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok);
@@ -277,7 +284,8 @@ class CoordinatesTest : public QObject {
             okOver = ok->isEnabled();
             chains->item(0)->setCheckState(Qt::Unchecked);
             ok->click();
-        });
+        };
+        QTimer::singleShot(0, &parent, answer);
         const auto options = chooseStructureImport(&parent, path);
         QCOMPARE(states, (QList<Qt::CheckState>{Qt::Checked, Qt::Checked, Qt::Unchecked}));
         QVERIFY(over.contains(QString::number(MacromoleculeAtomLimit + 1)));
@@ -288,6 +296,41 @@ class CoordinatesTest : public QObject {
         const auto quiet = chooseStructureImport(&parent, path, false);
         QVERIFY(quiet);
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, importStructure(path, quiet->selection));
+    }
+    // Files are read for the choice on another thread: what takes a moment returns without a dialog, longer
+    // reading shows one while the window's events go on, which stops waiting for it at once, and errors come
+    // through.
+    void readingInBackground() {
+        using namespace std::chrono_literals;
+        QWidget parent;
+        bool read = false;
+        QVERIFY(readInBackground(&parent, "small.xyz", [&read] { read = true; }));
+        QVERIFY(read);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error,
+                                 readInBackground(&parent, "broken.pdb", [] { fail("broken"); }));
+        // Work that goes on until the test lets it end.
+        const auto slow = [](std::shared_ptr<std::atomic_bool> end) {
+            return [end] {
+                while (!*end)
+                    std::this_thread::sleep_for(10ms);
+            };
+        };
+        auto end = std::make_shared<std::atomic_bool>(false);
+        QString shown;
+        QTimer::singleShot(0, &parent, [&] {
+            auto *dialog = qobject_cast<QProgressDialog *>(QApplication::activeModalWidget());
+            QVERIFY(dialog);
+            shown = dialog->objectName() + ": " + dialog->labelText();
+            dialog->findChild<QPushButton *>()->click();
+        });
+        QVERIFY(!readInBackground(&parent, "large.cif", slow(end)));
+        QCOMPARE(shown, QString("structureReadingDialog: large.cif を読み込んでいます…"));
+        *end = true;
+        // Work that ends while the dialog shows closes it.
+        end = std::make_shared<std::atomic_bool>(false);
+        QTimer::singleShot(0, &parent, [end] { *end = true; });
+        QVERIFY(readInBackground(&parent, "large.cif", slow(end)));
+        QVERIFY(!QApplication::activeModalWidget());
     }
     // PDB entries download by their ID into a folder; read here from files, without the network.
     // Small-molecule crystal structures: the asymmetric unit, the symmetry operations and the cell make whole

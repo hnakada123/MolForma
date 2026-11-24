@@ -10,13 +10,19 @@
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QInputDialog>
 #include <QLabel>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QThreadPool>
+#include <QTimer>
+#include <chrono>
+#include <future>
 
 namespace mf {
 // The wait cursor while a file is read, until the dialogs or the document show.
@@ -36,6 +42,41 @@ class Reading {
   private:
     bool waiting = true;
 };
+bool readInBackground(QWidget *parent, const QString &path, std::function<void()> work) {
+    using namespace std::chrono_literals;
+    auto done = std::make_shared<std::promise<void>>();
+    auto future = done->get_future();
+    QThreadPool::globalInstance()->start([done, work = std::move(work)] {
+        try {
+            work();
+            done->set_value();
+        } catch (...) {
+            done->set_exception(std::current_exception());
+        }
+    });
+    // A file read in a moment opens as before, without a dialog and without running the event loop.
+    Reading reading;
+    if (future.wait_for(400ms) != std::future_status::ready) {
+        QProgressDialog dialog(tr("%1 を読み込んでいます…").arg(QFileInfo(path).fileName()), tr("中止"), 0, 0,
+                               parent);
+        dialog.setObjectName("structureReadingDialog");
+        dialog.setWindowTitle(tr("読込中"));
+        dialog.setWindowModality(Qt::ApplicationModal);
+        dialog.setMinimumDuration(0);
+        QTimer poll;
+        QObject::connect(&poll, &QTimer::timeout, &dialog, [&] {
+            if (future.wait_for(0s) == std::future_status::ready)
+                dialog.accept();
+        });
+        QObject::connect(&dialog, &QProgressDialog::canceled, &dialog, &QDialog::reject);
+        poll.start(50);
+        reading.done();
+        if (dialog.exec() != QDialog::Accepted)
+            return false;
+    }
+    future.get(); // The work's exception, if it failed.
+    return true;
+}
 // What to read of a PDB or mmCIF entry, chosen in one dialog: the model, the alternate location, the chains
 // and the kinds of residues. The dialog appears only where the entry offers a choice.
 static std::optional<MacromoleculeSelection>
@@ -225,28 +266,47 @@ std::optional<StructureImportOptions> chooseStructureImport(QWidget *parent, con
     bool ok = true;
     const bool pdb = suffix == "pdb" || suffix == "ent", cif = suffix == "cif" || suffix == "mmcif";
     if (pdb || cif) {
-        Reading reading;
-        const auto bytes = readStructureFile(path);
-        if (cif && crystalCif(bytes)) {
-            const auto read = readCrystal(bytes);
-            reading.done();
-            const auto crystal = chooseCrystal(parent, read, ask);
+        struct Read {
+            bool crystal = false;
+            QByteArray bytes; // Of a small-molecule crystal structure, read here.
+            std::shared_ptr<const MmcifEntry> mmcif;
+            MacromoleculeContents contents;
+        };
+        const auto read = std::make_shared<Read>();
+        if (!readInBackground(parent, path, [read, path, cif] {
+                auto bytes = readStructureFile(path);
+                if (cif && crystalCif(bytes)) {
+                    read->crystal = true;
+                    read->bytes = std::move(bytes);
+                    return;
+                }
+                // The entry read here is what the structure is read from, not the file again.
+                if (cif) {
+                    read->mmcif = std::make_shared<const MmcifEntry>(readMmcif(bytes));
+                    read->contents = mmcifContents(*read->mmcif);
+                } else
+                    read->contents = pdbContents(QString::fromUtf8(bytes));
+            }))
+            return std::nullopt;
+        if (read->crystal) {
+            const auto crystal = chooseCrystal(parent, readCrystal(read->bytes), ask);
             if (!crystal)
                 return std::nullopt;
             options.crystal = *crystal;
             return options;
         }
-        // The entry read here is what the structure is read from, not the file again.
-        if (cif)
-            options.mmcif = std::make_shared<const MmcifEntry>(readMmcif(bytes));
-        const auto contents = pdb ? pdbContents(QString::fromUtf8(bytes)) : mmcifContents(*options.mmcif);
-        reading.done();
-        const auto selection = chooseMacromolecule(parent, contents, ask);
+        options.mmcif = read->mmcif;
+        const auto selection = chooseMacromolecule(parent, read->contents, ask);
         if (!selection)
             return std::nullopt;
         options.selection = *selection;
     } else if (suffix == "xyz") {
-        const auto frames = xyzFrames(QString::fromUtf8(readStructureFile(path)));
+        const auto read = std::make_shared<QStringList>();
+        if (!readInBackground(parent, path, [read, path] {
+                *read = xyzFrames(QString::fromUtf8(readStructureFile(path)));
+            }))
+            return std::nullopt;
+        const auto &frames = *read;
         options.frame = 0;
         if (!ask) {
             options.frame = int(frames.size()) - 1;
