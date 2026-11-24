@@ -108,6 +108,28 @@ void McpServer::registerTools() {
             return summary();
         });
     };
+    // Edits that read a file, which also return notes: what the file holds that was not read (atoms of
+    // unknown elements, the parts of an NWChem input that MolForma does not convert).
+    const auto load = [&](McpToolSpec spec,
+                          std::function<QStringList(Document &, const QJsonObject &)> operation) {
+        spec.properties["preview"] = QJsonObject{{"type", "boolean"}, {"default", true}};
+        spec.mutation = true;
+        spec.output = summarySchema();
+        auto properties = spec.output["properties"].toObject();
+        properties["notes"] = strings();
+        spec.output["properties"] = properties;
+        spec.output["required"] = spec.output["required"].toArray() + "notes";
+        const auto name = spec.name;
+        add(spec, [this, name, operation](const QJsonObject &args) {
+            QStringList notes;
+            this->edit(
+                "MCP: " + name, [&](Document &next) { notes = operation(next, args); },
+                args["preview"].toBool(true));
+            auto out = summary();
+            out["notes"] = QJsonArray::fromStringList(notes);
+            return out;
+        });
+    };
     const auto requireAtoms = [](const Document &d, const Ids &ids) { d.indices(ids); };
 
     add({.name = "list_documents",
@@ -392,7 +414,7 @@ void McpServer::registerTools() {
              else
                  next = Document::fromProject(parseJson(args["text"].toString().toUtf8()));
          });
-    edit({.name = "open_file",
+    load({.name = "open_file",
           .title = "Open structure file",
           .description =
               "Load a local XYZ/MOL/SDF/Mol2/CML/PDB/mmCIF/MolForma project file, NWChem input (.nw) or "
@@ -407,7 +429,10 @@ void McpServer::registerTools() {
               "Small-molecule CIF files (fractional coordinates) read the formula unit (the molecules of the "
               "asymmetric unit, completed across the cell) or with cell the unit cell's contents; "
               "minorDisorder adds the minor disorder groups. Files "
-              "may be gzip-compressed (.gz). Maximum file size: 8 MiB, also after decompressing.",
+              "may be gzip-compressed (.gz). Maximum file size: 8 MiB, also after decompressing. "
+              "notes lists what the file holds that was not read: atoms of unknown elements (such as "
+              "UNX, an unknown atom or ion, element X) and the directives of an NWChem input that "
+              "MolForma does not convert.",
           .properties = {{"path", type("string")},
                          {"frame", QJsonObject{{"type", "integer"}, {"minimum", 0}}},
                          {"model", QJsonObject{{"type", "integer"}, {"minimum", 1}}},
@@ -435,7 +460,7 @@ void McpServer::registerTools() {
              const int frame = args.contains("frame") ? args["frame"].toInt() : -1;
              if (suffix == "json") {
                  next = importStructure(path);
-                 return;
+                 return QStringList();
              }
              MacromoleculeSelection selection;
              selection.model = args.contains("model") ? args["model"].toInt() : 1;
@@ -448,7 +473,8 @@ void McpServer::registerTools() {
              CrystalSelection crystal;
              crystal.cell = args["cell"].toBool();
              crystal.minor = args["minorDisorder"].toBool();
-             const auto imported = importStructure(path, selection, frame, crystal);
+             const auto read = importStructureWithNotes(path, {selection, frame, crystal, {}});
+             const auto &imported = read.document;
              replaceCoordinateStructure(next, imported);
              if (QStringList{"nw", "nwinp", "gjf", "com", "gau"}.contains(suffix)) {
                  next.charge = imported.charge;
@@ -462,11 +488,12 @@ void McpServer::registerTools() {
                          settings[key] = current[key];
                  next.data["nwchem"] = settings;
              }
+             return read.notes;
          });
     const auto number = [](double minimum, double maximum) {
         return QJsonObject{{"type", "number"}, {"minimum", minimum}, {"maximum", maximum}};
     };
-    edit({.name = "cut_out_site",
+    load({.name = "cut_out_site",
           .title = "Cut out site",
           .description =
               "Cut out a site, such as the active site of a protein, as a cluster model for quantum "
@@ -486,7 +513,8 @@ void McpServer::registerTools() {
               "the "
               "site replaces the current structure, the total charge set to the site's and calculation "
               "settings kept, so that structures of more than 10,000 atoms can be cut; without path the "
-              "current document is cut. Maximum file size: 8 MiB, also after decompressing.",
+              "current document is cut. Maximum file size: 8 MiB, also after decompressing. notes "
+              "lists the atoms of the file that were not read, as in open_file.",
           .properties = {{"path", type("string")},
                          {"model", QJsonObject{{"type", "integer"}, {"minimum", 1}}},
                          {"altloc", type("string")},
@@ -508,6 +536,7 @@ void McpServer::registerTools() {
          [this](Document &next, const QJsonObject &args) {
              const auto path = args["path"].toString();
              Document source = next;
+             QStringList notes;
              if (!path.isEmpty()) {
                  if (args.contains("ids"))
                      fail("With path, give the center as residues: the file's atoms have no IDs yet.");
@@ -523,7 +552,9 @@ void McpServer::registerTools() {
                  selection.altloc = args["altloc"].toString();
                  for (const auto &chain : args["chains"].toArray())
                      selection.chains << chain.toString();
-                 source = importStructure(path, selection);
+                 auto read = importStructureWithNotes(path, {selection, -1, {}, {}});
+                 source = read.document;
+                 notes = read.notes;
              }
              Ids center = args.contains("ids") ? idsFromJson(args["ids"]) : Ids();
              for (const auto &value : args["residues"].toArray()) {
@@ -553,6 +584,7 @@ void McpServer::registerTools() {
                  cutOutNwchemSite(next, kept, cut);
              else
                  replaceWithNwchemSite(next, source, kept, cut);
+             return notes;
          });
     add({.name = "export_document",
          .title = "Export document",

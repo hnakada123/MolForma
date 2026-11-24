@@ -14,6 +14,7 @@
 #include <QInputDialog>
 #include <QLabel>
 #include <QListWidget>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QRadioButton>
 
@@ -274,5 +275,23 @@ std::optional<StructureImportOptions> chooseStructureImport(QWidget *parent, con
 StructureImport importChosenStructure(const QString &path, const StructureImportOptions &options) {
     Reading reading;
     return importStructureWithNotes(path, options);
+}
+void showImportNotes(QWidget *parent, const QString &path, const QStringList &notes, bool calculation) {
+    const bool nwchem = QStringList{"nw", "nwinp"}.contains(structureSuffix(path));
+    if (notes.isEmpty() || (nwchem && !calculation))
+        return;
+    QStringList items;
+    for (const auto &note : notes.mid(0, 20))
+        items << tr("・%1").arg(note);
+    QMessageBox box(
+        QMessageBox::Information, nwchem ? tr("NWChem入力の取込み") : tr("構造ファイルの取込み"),
+        (nwchem ? tr("構造・電荷・多重度と、MolFormaで扱える計算条件を取り込みました。\n\n"
+                     "取り込まなかった項目:\n%1")
+                : tr("元素の分からない原子（PDBのUNX: 未知の原子・イオンなど）は読み込みませんでした:"
+                     "\n%1"))
+            .arg(items.join('\n')),
+        QMessageBox::Ok, parent);
+    box.setTextFormat(Qt::PlainText); // The items quote the input file.
+    box.exec();
 }
 } // namespace mf

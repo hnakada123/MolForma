@@ -12,4 +12,9 @@ std::optional<StructureImportOptions> chooseStructureImport(QWidget *parent, con
                                                             bool ask = true);
 // The structure as chosen, read with the wait cursor: the largest entries of the PDB take seconds.
 StructureImport importChosenStructure(const QString &path, const StructureImportOptions &options);
+// What a file held that its reading left out (StructureImport::notes), in a message box if there is any: the
+// atoms of unknown elements of a PDB or mmCIF entry, and with calculation (where the reading takes over an
+// NWChem input's calculation settings, as opening it does) the parts of the input that it did not take over.
+void showImportNotes(QWidget *parent, const QString &path, const QStringList &notes,
+                     bool calculation = false);
 } // namespace mf

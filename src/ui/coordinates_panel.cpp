@@ -1043,9 +1043,11 @@ void CoordinatesPanel::importPath(const QString &path) {
     const auto options = chooseStructureImport(this, path);
     if (!options)
         return;
+    const auto imported = importChosenStructure(path, *options);
+    showImportNotes(this, path, imported.notes);
     if (base != editorContext.revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
-    previewStructure(importChosenStructure(path, *options).document);
+    previewStructure(imported.document);
     uiContext.setPreference(Preference::directory, QFileInfo(path).absolutePath());
 }
 void CoordinatesPanel::dragEnterEvent(QDragEnterEvent *event) {

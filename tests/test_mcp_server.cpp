@@ -579,6 +579,32 @@ class McpServerTest : public QObject {
         QVERIFY(!failed(change(server, "open_file", {{"path", cif}, {"cell", true}, {"preview", false}})));
         QCOMPARE(committed(server).formula(), QString("H8O4"));
     }
+    // open_file and cut_out_site name the atoms of a file that they did not read (UNX, element X).
+    void unreadAtomsAreNamed() {
+        QTemporaryDir dir;
+        const auto pdb = dir.filePath("unx.pdb");
+        writeFile(pdb, "HETATM    1 ZN    ZN A 101       0.000   0.000   0.000  1.00  0.00          ZN\n"
+                       "HETATM    2 UNK  UNX A1005       5.000   0.000   0.000  1.00  0.00           X\n");
+        const QJsonArray notes{"UNX A 1005 の原子 UNK"};
+        McpServer server;
+        auto response = change(server, "open_file", {{"path", pdb}, {"preview", false}});
+        QVERIFY(!failed(response));
+        QCOMPARE(data(response)["notes"].toArray(), notes);
+        QCOMPARE(committed(server).formula(), QString("Zn"));
+        response = change(server, "cut_out_site",
+                          {{"path", pdb},
+                           {"residues", QJsonArray{QJsonObject{{"code", "ZN"}}}},
+                           {"hydrogens", false},
+                           {"preview", false}});
+        QVERIFY2(!failed(response), qPrintable(QString::fromUtf8(QJsonDocument(response).toJson())));
+        QCOMPARE(data(response)["notes"].toArray(), notes);
+        // A file that has none.
+        const auto xyz = dir.filePath("h2.xyz");
+        writeFile(xyz, "2\nH2\nH 0 0 0\nH 0 0 .74\n");
+        response = change(server, "open_file", {{"path", xyz}, {"preview", false}});
+        QVERIFY(!failed(response));
+        QCOMPARE(data(response)["notes"].toArray(), QJsonArray());
+    }
     void cutOutSite() {
         QTemporaryDir dir;
         Document peptide;

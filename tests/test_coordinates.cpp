@@ -208,18 +208,38 @@ class CoordinatesTest : public QObject {
         const auto path = dir.filePath("unx.pdb");
         writeFile(path, "HETATM    1 ZN    ZN A 101       0.000   0.000   0.000  1.00  0.00          ZN\n"
                         "HETATM    2 UNK  UNX A1005       5.000   0.000   0.000  1.00  0.00           X\n");
-        for (const bool ask : {true, false}) {
-            MainWindow w;
-            QString shown;
-            QTimer::singleShot(0, &w, [&shown] {
+        QString shown;
+        const auto answer = [&shown](QObject *context) {
+            shown.clear();
+            QTimer::singleShot(0, context, [&shown] {
                 if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
                     shown = box->text();
                     box->accept();
                 }
             });
+        };
+        for (const bool ask : {true, false}) {
+            MainWindow w;
+            answer(&w);
             w.loadPath(path, ask);
             QCOMPARE(shown.contains("UNX A 1005 の原子 UNK"), ask);
             QCOMPARE(w.document().atoms.size(), 1);
+        }
+        // The coordinate table's replacement too (and a fragment or the structure compared with, read alike).
+        MainWindow w;
+        w.loadDocument(water());
+        answer(&w);
+        w.findChild<CoordinatesPanel *>()->importPath(path);
+        QVERIFY(shown.contains("UNX A 1005 の原子 UNK"));
+        QVERIFY(w.hasCandidate());
+        QCOMPARE(w.candidate()->atoms.size(), 1);
+        // What an NWChem input holds that is not taken over is said only where its calculation is.
+        QWidget parent;
+        const auto nw = dir.filePath("input.nw");
+        for (const bool calculation : {true, false}) {
+            answer(&parent);
+            showImportNotes(&parent, nw, {"scf"}, calculation);
+            QCOMPARE(shown.contains("scf"), calculation);
         }
     }
     // An entry of more atoms than MolForma opens (a virus capsid) starts with the chains from the top that it

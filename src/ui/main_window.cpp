@@ -6,7 +6,6 @@
 #include "editing/stereochemistry.h"
 #include "foundation/files.h"
 #include "foundation/i18n.h"
-#include "foundation/structure_file.h"
 #include "io/babel_io.h"
 #include "io/structure_io.h"
 #include "model/settings.h"
@@ -1032,22 +1031,8 @@ void MainWindow::loadPath(const QString &p, bool ask) {
     auto next = imported.document;
     // What an NWChem input holds that MolForma did not take over, or the atoms of unknown elements that a PDB
     // or mmCIF entry has.
-    if (ask && !imported.notes.isEmpty()) {
-        QStringList items;
-        for (const auto &note : imported.notes.mid(0, 20))
-            items << tr("・%1").arg(note);
-        const bool nwchem = QStringList{"nw", "nwinp"}.contains(structureSuffix(p));
-        QMessageBox box(
-            QMessageBox::Information, nwchem ? tr("NWChem入力の取込み") : tr("構造ファイルの取込み"),
-            (nwchem ? tr("構造・電荷・多重度と、MolFormaで扱える計算条件を取り込みました。\n\n"
-                         "取り込まなかった項目:\n%1")
-                    : tr("元素の分からない原子（PDBのUNX: 未知の原子・イオンなど）は読み込みませんでした:"
-                         "\n%1"))
-                .arg(items.join('\n')),
-            QMessageBox::Ok, this);
-        box.setTextFormat(Qt::PlainText); // The items quote the input file.
-        box.exec();
-    }
+    if (ask)
+        showImportNotes(this, p, imported.notes, true);
     if (base != revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
     if (!p.endsWith(".json", Qt::CaseInsensitive))
