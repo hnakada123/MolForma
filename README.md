@@ -85,7 +85,7 @@ MCPクライアントからも操作できます。GUIを表示する場合は `
 
 マニュアル・実習・MCPの説明は、`docs/` から生成したHTMLを公開している https://hnakada123.github.io/MolForma/ でも読めます。
 
-機能の対応範囲、制限事項、検証例は [docs/features.md](docs/features.md)（画面・タブごとのページの一覧）を参照してください。分子を組んで計算し結果を確かめるまでを題材ごとに通す実習（エタノール・金属錯体・ペプチド・BSSE補正・ラジカル・遷移状態・NMR・ラマンなど18題材、画面写真と練習データ付き）は [docs/recipes.md](docs/recipes.md)（英語は [docs/en/recipes.md](docs/en/recipes.md)）にあり、「ヘルプ → 操作ガイド・マニュアル」でも読めます。
+機能の対応範囲、制限事項、検証例は [docs/features.md](docs/features.md)（画面・タブごとのページの一覧）を参照してください。分子を組んで計算し結果を確かめるまでを題材ごとに通す実習（エタノール・金属錯体・ペプチド・BSSE補正・ラジカル・遷移状態・NMR・ラマン・ESRなど19題材、画面写真と練習データ付き）は [docs/recipes.md](docs/recipes.md)（英語は [docs/en/recipes.md](docs/en/recipes.md)）にあり、「ヘルプ → 操作ガイド・マニュアル」でも読めます。
 
 計算事例として、[硤合反応の付加モデルをCodexで計画し計算する](docs/calculations/soai_addition.md)を公開しています。自己触媒を含まない47原子モデルについて、計算計画、方法、収束までの経過、相対エネルギー、電子密度・分子軌道の解釈をまとめています。
 

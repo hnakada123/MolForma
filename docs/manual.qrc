@@ -477,6 +477,15 @@
   <file>en/recipes/images/benzene_raman/02_spectrum.png</file>
   <file>en/recipes/images/benzene_raman/03_vibrations.png</file>
   <file>recipes/samples/benzene_raman.molforma.json</file>
+  <file>recipes/methyl_epr.md</file>
+  <file>recipes/images/methyl_epr/01_settings.png</file>
+  <file>recipes/images/methyl_epr/02_spectrum.png</file>
+  <file>recipes/images/methyl_epr/03_carbon13.png</file>
+  <file>en/recipes/methyl_epr.md</file>
+  <file>en/recipes/images/methyl_epr/01_settings.png</file>
+  <file>en/recipes/images/methyl_epr/02_spectrum.png</file>
+  <file>en/recipes/images/methyl_epr/03_carbon13.png</file>
+  <file>recipes/samples/methyl_epr.molforma.json</file>
 </qresource><qresource prefix="/icons">
   <file alias="molforma.png">../packaging/molforma-256.png</file>
 </qresource></RCC>

@@ -20,6 +20,13 @@ with the ring breathing selected and the IR of the same job, after `benzene_rama
 `benzene_raman.molforma.json` once (B3LYP/6-31G*, optimization → frequencies → Raman: about an hour at 8 MPI
 processes).
 
+For recipe 19, `recipes.py ja|en methyl_epr_figures` captures the changed calculation settings and the solution ESR
+of the methyl radical, first with its protons and then with its carbon-13 too, after `methyl_epr_jobs` has run the
+practice file `methyl_epr.molforma.json` (B3LYP/def2-TZVP with ZORA, optimization → g and A tensors, then a single
+point of the structure as built: about a minute each at 8 MPI processes). `methyl_epr_basis_jobs` and
+`methyl_epr_pyramid_jobs` (after `methyl_epr_jobs`) run the calculations of the page's tables: other basis sets,
+and the carbon moved out of the plane by 0.1, 0.2 and 0.3 Å.
+
 | Script | What it does |
 | --- | --- |
 | `features.py jobs` | Runs ethanol (with MOLDEN output) and dimethyl ether at B3LYP/6-31G*, optimization → frequencies, for the result viewer and history |

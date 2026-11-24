@@ -784,6 +784,91 @@ def benzene_raman_figures(g):
     g.snap("benzene_raman/03_vibrations")
 
 
+def methyl_epr_jobs(g):
+    """Recipe 19: the methyl radical at B3LYP/def2-TZVP with ZORA, optimization → g and A tensors, then the same
+    properties of the structure as built (a single point); under a minute each at 8 MPI processes."""
+    g.open(SAMPLES + "methyl_epr.molforma.json")
+    g.setup_execution(8)
+    calculate(g, "methyl_epr/opt")
+    g.edit("set_nwchem", settings={"task": "energy"})
+    calculate(g, "methyl_epr/built")
+
+
+def face_on(g, target, labels):
+    """Turns a 3D view by drags until the triangle of three atoms looks largest: their plane faces the viewer."""
+    def area():
+        p = {i["label"]: (i["x"], i["y"]) for i in g.item(target, limit=500)["items"]}
+        (ax, ay), (bx, by), (cx, cy) = (p[label] for label in labels)
+        return abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2
+
+    w, h = g.item(target, limit=1)["geometry"][2:4]
+    best = area()
+    for step in (40, 15, 5, 2):
+        for dx, dy in ((0, step), (0, -step), (step, 0), (-step, 0)):
+            while True:
+                g.wait(g.tool("ui_input", target=target, action="drag", button="left", x=w / 2, y=h / 2,
+                              endX=w / 2 + dx, endY=h / 2 + dy), 0.2)
+                now = area()
+                if now <= best:
+                    g.wait(g.tool("ui_input", target=target, action="drag", button="left", x=w / 2 + dx,
+                                  y=h / 2 + dy, endX=w / 2, endY=h / 2), 0.2)
+                    break
+                best = now
+
+
+def methyl_epr_figures(g):
+    """Recipe 19 after methyl_epr_jobs: the changed calculation settings, the ESR of the optimized radical with its
+    protons (the default nuclei) and with its carbon-13 included as well."""
+    g.open_dialog(SAMPLES + "methyl_epr.molforma.json")
+    g.tab(1)
+    g.activate("calculationChangeFilter_changed", seconds=0.6)
+    g.snap("methyl_epr/01_settings")
+    g.activate("calculationChangeFilter_all")
+    results(g, "methyl_epr/opt", "スペクトル")
+    assert g.item("spectrumChart")["visible"]
+    face_on(g, "resultsView", ("H2", "H3", "H4"))
+    g.select("spectrumEprNuclei", index=1, seconds=0.6)  # A proton: the 3D view marks it.
+    g.snap("methyl_epr/02_spectrum")
+    g.tool("ui_edit_cell", target="spectrumEprNuclei", row=0, column=0, value=True)
+    g.select("spectrumEprNuclei", index=0, seconds=0.6)
+    g.snap("methyl_epr/03_carbon13")
+
+
+def methyl_epr_basis_jobs(g):
+    """A table of recipe 19: the practice file (optimization → g and A tensors) with other basis sets."""
+    for basis in ("6-31g*", "6-311+g**", "x2c-tzvpall"):
+        g.new()
+        g.open(SAMPLES + "methyl_epr.molforma.json")
+        g.setup_execution(8)
+        g.edit("set_nwchem", settings={"basis": basis})
+        calculate(g, f"methyl_epr/basis_{basis}")
+
+
+def methyl_epr_pyramid_jobs(g):
+    """A table of recipe 19 after methyl_epr_jobs: single points of the optimized structure with its carbon moved out
+    of the plane of the hydrogens by 0.1, 0.2 and 0.3 Å."""
+    g.open(SAMPLES + "methyl_epr.molforma.json")
+    g.setup_execution(8)
+    g.edit("set_nwchem", settings={"task": "energy"})
+    g.tool("results_action", action="open_directory", path=job("methyl_epr/opt"))
+    g.idle()
+    frame = g.tool("get_results", section="frames", offset=0, limit=100)["items"][-1]
+    atoms, _ = g.atoms()
+    final = [[float(x) for x in line.split()[1:4]] for line in frame["xyz"].splitlines()[2:2 + len(atoms)]]
+    hydrogens = [final[i] for i, a in enumerate(atoms) if a["element"] == "H"]
+    center = [sum(h[k] for h in hydrogens) / 3 for k in range(3)]
+    u = [hydrogens[1][k] - hydrogens[0][k] for k in range(3)]
+    v = [hydrogens[2][k] - hydrogens[0][k] for k in range(3)]
+    normal = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]
+    length = sum(x * x for x in normal) ** 0.5
+    normal = [x / length for x in normal]
+    for shift in (0.1, 0.2, 0.3):
+        positions = [{"id": a["id"], "position": [center[k] + shift * normal[k] for k in range(3)]
+                      if a["element"] == "C" else final[i]} for i, a in enumerate(atoms)]
+        g.edit("set_positions", positions=positions)
+        calculate(g, f"methyl_epr/pyramid_{shift:.1f}")
+
+
 RECIPES = [atoms_and_bonds, atoms_and_bonds_run, atoms_and_bonds_variations, caffeine_smiles, my_parts, phenoxyl_radical,
            stereochemistry, aromatic_substitution]
 
