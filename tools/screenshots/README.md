@@ -15,6 +15,11 @@ Set `MOLFORMA_ETHANOL_NMR_LOG` to an absolute path to a completed ethanol shield
 calculated with that recipe's settings. The script uses the bundled `ethanol_nmr.molforma.json` and
 does not run NWChem. The experimental comparison is a scientific plot, not a GUI screenshot.
 
+For recipe 18, `recipes.py ja|en benzene_raman_figures` captures the normal Raman settings, the Raman spectrum
+with the ring breathing selected and the IR of the same job, after `benzene_raman_job` has run the practice file
+`benzene_raman.molforma.json` once (B3LYP/6-31G*, optimization → frequencies → Raman: about an hour at 8 MPI
+processes).
+
 | Script | What it does |
 | --- | --- |
 | `features.py jobs` | Runs ethanol (with MOLDEN output) and dimethyl ether at B3LYP/6-31G*, optimization → frequencies, for the result viewer and history |

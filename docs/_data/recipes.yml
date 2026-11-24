@@ -51,3 +51,6 @@
 - page: ethanol_nmr
   ja: {title: NMRの計算と実測比較, molecule: エタノールとTMS、¹H・¹³C NMR, calc: B3LYP/6-311G** 遮蔽定数・J結合}
   en: {title: Calculating NMR and comparing with experiment, molecule: "Ethanol and TMS, ¹H and ¹³C NMR", calc: B3LYP/6-311G** shieldings and J couplings}
+- page: benzene_raman
+  ja: {title: 通常ラマンの計算と実測比較, molecule: ベンゼンのラマンとIR, calc: B3LYP/6-31G* 最適化 → 振動数 → ラマン}
+  en: {title: Calculating normal Raman and comparing with experiment, molecule: Raman and IR of benzene, calc: B3LYP/6-31G* optimization → frequencies → Raman}

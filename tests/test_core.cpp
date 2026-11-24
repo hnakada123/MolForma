@@ -1162,6 +1162,7 @@ class CoreTest : public QObject {
         const Sample samples[]{{"ethanol", "C2H6O", 9, 0, 1, "task dft frequencies"},
                                {"ethanol_nmr", "C2H6O", 9, 0, 1, "spinspin 15"},
                                {"tms_nmr", "C4H12Si", 17, 0, 1, "shielding"},
+                               {"benzene_raman", "C6H6", 12, 0, 1, "task dft raman"},
                                {"ethanol_opt", "C2H6O", 9, 0, 1, "task dft"},
                                {"ethanol_od", "C2H6O", 9, 0, 1, "mass 2.014101778"},
                                {"co_en_complex", "C4H16Cl2CoN4", 27, 1, 1, "library \"def2-svp\""},

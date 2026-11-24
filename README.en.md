@@ -85,7 +85,7 @@ MolForma can also be operated from MCP clients. Give `molforma --mcp-gui` as the
 
 The manual, recipes and MCP guide are also published as HTML generated from `docs/` at https://hnakada123.github.io/MolForma/en/.
 
-See [docs/en/features.md](docs/en/features.md) (a list of pages per screen and tab) for the scope of the features, limitations and verified examples. [docs/en/recipes.md](docs/en/recipes.md) has recipes that go from building a molecule to calculating it and checking the results, one subject at a time (17 subjects such as ethanol, a metal complex, a peptide, BSSE correction, a radical, a transition state and NMR, with screenshots and practice files). They also open with “Help → Guide and manual”.
+See [docs/en/features.md](docs/en/features.md) (a list of pages per screen and tab) for the scope of the features, limitations and verified examples. [docs/en/recipes.md](docs/en/recipes.md) has recipes that go from building a molecule to calculating it and checking the results, one subject at a time (18 subjects such as ethanol, a metal complex, a peptide, BSSE correction, a radical, a transition state, NMR and Raman, with screenshots and practice files). They also open with “Help → Guide and manual”.
 
 The case study [Planning and calculating a Soai addition model with Codex](docs/en/calculations/soai_addition.md) documents a 47-atom model without an autocatalyst, including its plan, method, convergence history, relative energies and interpretation of density and molecular orbitals.
 

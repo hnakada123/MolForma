@@ -746,6 +746,44 @@ def ethanol_nmr_figures(g):
     g.snap("ethanol_nmr/02_spectrum")
 
 
+def benzene_raman_job(g):
+    """Recipe 18: benzene at B3LYP/6-31G*, optimization → frequencies → normal Raman (532 nm), 8 MPI processes."""
+    g.open(SAMPLES + "benzene_raman.molforma.json")
+    g.setup_execution(8)
+    calculate(g, "benzene_raman/raman")
+
+
+TILT = 100  # Pixels of a vertical drag in the 3D view: 0.6° each.
+
+
+def benzene_raman_figures(g):
+    """Recipe 18 after benzene_raman_job: the settings, the Raman spectrum with the ring breathing selected, and the
+    IR of the same job with the out-of-plane C–H bend (the strongest IR band) selected."""
+    g.open_dialog(SAMPLES + "benzene_raman.molforma.json")
+    g.tab(1)
+    section(g, "properties")
+    g.snap("benzene_raman/01_settings")
+    results(g, "benzene_raman/raman", "スペクトル")
+    assert g.item("spectrumChart")["visible"]
+    modes = g.tool("get_results", section="modes")["items"]
+    peaks = g.tool("get_results", section="spectrum_peaks", parameters={"kind": "raman", "width": 10})["items"]
+    # The ring breathing: the Raman band between 900 and 1100 cm⁻¹ (B3LYP/6-31G* puts it near 1020).
+    breathing = next(i for i, p in enumerate(peaks) if 900 < p["x"] < 1100 and p["weight"] > 1)
+    g.select("spectrumPeaks", index=breathing, seconds=0.6)
+    g.set(g.find(g.T("矢印")), True, seconds=0.6)
+    g.tab_text("resultsDetails", g.T("スペクトル"))  # Choosing a mode shows the "Vibrations" tab.
+    g.snap("benzene_raman/02_spectrum")
+    g.tab_text("resultsDetails", g.T("振動"))
+    bend = max((m for m in modes if not m.get("rigid")), key=lambda m: m.get("intensity") or 0)
+    g.tool("results_action", action="select_mode", index=bend["index"])
+    time.sleep(0.6)
+    # Tilt the ring away from the viewer so that the out-of-plane motion shows.
+    w, h = g.item("resultsView", limit=1)["geometry"][2:4]
+    g.wait(g.tool("ui_input", target="resultsView", action="drag", button="left", x=w / 2, y=h / 2,
+                  endX=w / 2, endY=h / 2 - TILT), 0.6)
+    g.snap("benzene_raman/03_vibrations")
+
+
 RECIPES = [atoms_and_bonds, atoms_and_bonds_run, atoms_and_bonds_variations, caffeine_smiles, my_parts, phenoxyl_radical,
            stereochemistry, aromatic_substitution]
 
