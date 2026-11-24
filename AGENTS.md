@@ -73,87 +73,66 @@ by responsibility, with paired headers and implementations in the same directory
   `pdb_download.*` owns PDB identifiers/URLs and `pubchem.*` the query, cache naming and 3D-to-2D fallback.
   The download services use Qt Network without widgets; recovery choices, progress and file dialogs stay in
   the UI.
-- `src/nwchem/`: `nwchem.*` owns computational setting specifications, defaults, presets and applicability
-  (also of the sections of "2 計算条件": `NwchemSection` with its keys, and `nwchemSectionUse`, whose
-  result the panel puts into words; never compare translated text),
-  and the settings that follow an edit: the point charges of a site cut out (`cutOutNwchemSite`,
-  `replaceWithNwchemSite`) and the task and name of a calculation derived from another
-  (`deriveNwchemCalculation`: "_ts", "_irc", within `MaximumNwchemNameLength`).
+- `src/nwchem/`: `nwchem.*` owns setting specifications, defaults, presets, applicability and
+  "2 計算条件" sections (`NwchemSection`, `nwchemSectionUse`; panels verbalize results, never compare
+  translated text). It also owns site-cut point charges (`cutOutNwchemSite`, `replaceWithNwchemSite`)
+  and derived tasks/names (`deriveNwchemCalculation`: "_ts", "_irc", within `MaximumNwchemNameLength`).
   `nwchem_catalog.*` shares basis/functionals and pasted-basis parsing; `nwchem_paths.*` handles
-  constraints, scans, fragments and NEB endpoints. `nwchem_validation.*` validates primitive settings
-  and chemical combinations. `nwchem_plan.*` owns the task plan, the one source of
-  which tasks a calculation has: ordered steps with their phase, command and whether a continued restart
-  skips them (the first `finished` generated ones). Restart validation compares its commands with the
-  finished tasks and must not generate input to discover tasks. `nwchem_input.cpp`, which generates the
-  complete input, and `nwchem_output.*` write every task as the plan's next generated step
-  (`NwchemTaskCursor`, `NwchemInputBuilder::task`) and nothing for a skipped one; never take tasks out of
-  generated text. `task` lines of the additional input are the user's text: steps that are counted, but
-  neither skipped nor written by the generator. `nwchem_plan.*` also reads what the input of a saved job
-  says of its run for the progress view (`nwchemInputStages`, `nwchemInputDriverSteps`); the results layer
-  reads what NWChem wrote, never its input. `input_builder.h` records source lines as input is generated; do not infer them
-  by diffing or parsing generated text. `nwchem_advanced.*` defines typed overrides and applicability.
-  `nwchem_geometry.*` generates geometry fragments and fixed-atom constraints.
-  `nwchem_output.*` validates visualization settings and generates CUBE/MOLDEN output
-  tasks. `execution_environment.*` owns the machine-wide part of running calculations: the functions
-  that read and save what Preferences keep of it (the execution settings of new documents, the remote
-  destinations, the preparation lines and header templates of job scripts) and the snapshot of all of
-  it, `ExecutionEnvironment`, with its one loader `executionEnvironment()`.
-  Running a calculation from this computer is one file per responsibility, and `nwchem_execution.h`
-  only includes them all for code outside this folder (files here include what they use):
-  `execution_settings.*` owns the launch settings of a document (defaults, ranges, getters and setters),
-  the paths they name (`absolutePath`, `networkPath`, `untrustedNetworkPath`) and their checks
-  (`validateExecution`: each `ExecutionCheck` names its setting by `key`; find a check by that, not by
-  its label). `execution_plan.*` owns the plan of a job (`ExecutionPlan`, `executionPlan`,
-  `executionPreviewPlan`), the command shown for it (`executionCommand`) and the immutable run bundle
-  (`saveExecutionBundle`). `job_script.*` owns `job.sh` for runs on another computer
-  (`executionJobScript`), the header templates of schedulers with their placeholders
-  (`defaultJobHeader`, `jobHeaderErrors`, `renderJobHeader`), the submit command as texts show it
-  (`jobSubmitCommand`) and the preview of a remote job (`remoteJobPreview`). `run_process.*` owns the
-  processes of a run as its record names them (`executionProcessIdentity`, `executionProcessGone`,
-  `executionRunGone`, `runSupervised`) and the request to stop one (`requestRunStop`).
-  `nwchem_run.*` owns `NwchemRun`, which controls a cancellable NWChem process:
-  as a child process, or through a supervisor (`run_supervisor.*`: `runJobMain`, the executable's
-  `--run-job <job>` mode, and `runSupervisorProgram`) that outlives the window and is followed and
-  stopped through `run.json` and `stop.request`. `execution_detail.h` declares the few helpers these
-  files share (shell quoting, control characters, the job root, the stop request), each defined once.
-  Runs on a remote destination are split the same way, with `remote_execution.h` including them all:
-  `remote_host.*` (the destinations `RemoteHost`, their checks and words), `remote_shell.*` (internal:
-  scripts and replies over the ssh and scp of this computer), `remote_supervisor.*` (`remoteJobMain`,
-  which copies a job there, submits, follows and fetches it, and `resumeRemoteRun`), `remote_run.*`
-  (what the record of a remote run says: `remoteRun`, `remoteRunText`) and `remote_probe.*`
-  (`RemoteProbe`, "接続を確認").
-  The checks and generators (`validateExecution`, `executionPlan`, `executionPreviewPlan`,
-  `executionJobScript`, `saveExecutionBundle`, `untrustedNetworkPath`; `remoteJobPreview`) take the
-  `ExecutionEnvironment` as an argument and read no preference themselves, nor does anything they
-  call: the argument defaults to the loader for single calls, and `NwchemRun::start`, the queue
-  (registering an entry, its turn), `RunSession::saveBundle` and the remote supervisor load one snapshot
-  where a run or a save begins and pass it down. A test hands them a hand-built snapshot
-  (`test_services executionUsesTheEnvironmentItIsGiven`).
-  `nwchem_queue.*` runs saved bundles in sequence and keeps the waiting ones in a file between
-  sessions; a chained entry (`QueueChain`) takes the structure of an earlier entry's job
-  (`chainedDocument`) when that has finished and saves its bundle only then. `run_session.*` owns the
-  calculations of one session: the run, the queue over it, the bundle saved last, the conformer batch and
-  what the session leaves for the next one (the supervisor, the stored queue with its lock, the running
-  job in Preferences `execution/running`: besides `execution_environment.*` the only preference this
-  layer reads or writes). It has no widgets and no say in who may run what: the window
-  and the headless MCP server each hold one and check a request at their own gate before asking it.
-  NEB (`task` "neb") keeps
-  its end in the setting `neb_end` (positions by atom ID, kept through `Document::remove`/`renameIds` and the project adapter). `nwchem_restart.*` prepares documents that go on from a job's NWChem database
-  (settings `restart`: the input says `restart`, has no geometry and skips finished tasks) and
-  copies its files into the new job. `run_record.*` owns the job folder and its record `run.json`:
-  the file names (`JobFile`), the one reader and writer of the record (`readRunRecord`, `writeRunRecord`),
-  what the end of a run records (`recordRunEnd`), the plan a record was saved from (`runRecordPlan`) and
-  the typed view `RunRecord` (state, times, exit code, summary, diagnostics, remote part). UI and MCP read
-  records only through it; do not name a file of a job folder or parse `run.json` elsewhere.
-  `history.*` scans saved bundles and validates snapshots; `history_list.cpp` gives the history as a
-  list shows it (`historyList`: the jobs that match a search and a state, in an order, with ΔE against a
-  reference job; the state of a job in a word, `historyStateName`; what keeps two energies from being
-  compared, `historyDifference`), so that the history tab only shows it;
-  `history_import.cpp` registers runs made outside MolForma. `result_files.*` interprets
-  job manifests and supplies the result-file list, including visualization outputs and excluding
-  intermediate NEB paths, to the generic result readers.
-  `conformer_set.*` owns version-1 conformer-set persistence, job associations, cancellable result
-  loading and population/spectrum-member preparation; its UI only supplies settings and actions.
+  constraints, scans, fragments and NEB endpoints; `nwchem_validation.*` checks settings and chemistry.
+  `nwchem_plan.*` is the sole task source: ordered phases/commands and restart skips (the first
+  `finished` generated steps). Restart validation compares plan commands with finished tasks;
+  never generate input to discover tasks or extract tasks from generated text. `nwchem_input.cpp`
+  and `nwchem_output.*` emit the next generated step through `NwchemTaskCursor`/
+  `NwchemInputBuilder::task`, omitting skipped steps. Additional-input `task` lines remain user text:
+  counted, never skipped or emitted by the generator. `nwchemInputStages`/`nwchemInputDriverSteps`
+  in `nwchem_plan.*` read saved input for progress; results readers read output only.
+  `input_builder.h` records source lines during generation; never infer them by diffing/parsing input.
+  `nwchem_advanced.*` owns typed overrides/applicability; `nwchem_geometry.*` generates geometry and
+  fixed-atom constraints; `nwchem_output.*` checks visualization settings and generates CUBE/MOLDEN tasks.
+  `execution_environment.*` reads/saves machine-wide Preferences (new-document execution defaults,
+  remote destinations, script preparation lines/header templates) and loads their `ExecutionEnvironment`
+  snapshot through `executionEnvironment()`.
+  `nwchem_execution.h` aggregates execution headers for outside callers; internal files include only
+  what they use. Responsibilities: `execution_settings.*` owns document launch defaults/ranges/accessors,
+  paths (`absolutePath`, `networkPath`, `untrustedNetworkPath`) and `validateExecution` (find each
+  `ExecutionCheck` by `key`, never label); `execution_plan.*` owns `ExecutionPlan`, `executionPlan`,
+  `executionPreviewPlan`, displayed `executionCommand` and immutable `saveExecutionBundle`;
+  `job_script.*` owns remote `job.sh` (`executionJobScript`), scheduler templates/placeholders
+  (`defaultJobHeader`, `jobHeaderErrors`, `renderJobHeader`), displayed `jobSubmitCommand` and
+  `remoteJobPreview`; `run_process.*` owns process identity/liveness (`executionProcessIdentity`,
+  `executionProcessGone`, `executionRunGone`, `runSupervised`) and `requestRunStop`.
+  `nwchem_run.*` owns cancellable `NwchemRun`, as child or persistent supervisor (`run_supervisor.*`:
+  `runJobMain`, `--run-job <job>`, `runSupervisorProgram`), followed/stopped through `run.json` and
+  `stop.request`. `execution_detail.h` declares shared shell quoting, control-character, job-root and
+  stop-request helpers; define each once.
+  `remote_execution.h` aggregates remote headers: `remote_host.*` owns `RemoteHost` validation/text;
+  `remote_shell.*` internal ssh/scp scripts/replies; `remote_supervisor.*` copy/submit/follow/fetch
+  (`remoteJobMain`, `resumeRemoteRun`); `remote_run.*` record interpretation (`remoteRun`,
+  `remoteRunText`); `remote_probe.*` connection checking (`RemoteProbe`, "接続を確認").
+  `validateExecution`, `executionPlan`, `executionPreviewPlan`, `executionJobScript`,
+  `saveExecutionBundle`, `untrustedNetworkPath` and `remoteJobPreview` take `ExecutionEnvironment`;
+  neither they nor callees read preferences. Single calls default to the loader. `NwchemRun::start`,
+  queue registration/execution, `RunSession::saveBundle` and the remote supervisor each load one
+  snapshot at run/save entry and pass it down (`test_services executionUsesTheEnvironmentItIsGiven`).
+  `nwchem_queue.*` executes bundles sequentially and persists waiting entries; `QueueChain` takes a
+  completed predecessor's structure through `chainedDocument`, then saves its bundle.
+  `run_session.*` owns the session's run, queue, last bundle, conformer batch and continuation state
+  (supervisor, persisted queue/lock, Preferences `execution/running`: this layer's only preference
+  outside `execution_environment.*`). It has no widgets or authorization rules: the window and
+  headless MCP each hold a session and gate requests before calling it.
+  NEB (`task` "neb") stores its endpoint in `neb_end` by atom ID, maintained by `Document::remove`/
+  `renameIds` and the project adapter. `nwchem_restart.*` prepares database continuations (`restart`:
+  input uses `restart`, omits geometry, skips finished tasks) and copies files to the new job.
+  `run_record.*` alone owns job filenames (`JobFile`) and `run.json` reading/writing (`readRunRecord`,
+  `writeRunRecord`), completion (`recordRunEnd`), saved plans (`runRecordPlan`) and typed `RunRecord`
+  (state, times, exit code, summary, diagnostics, remote part). UI/MCP use it exclusively;
+  never name job files or parse `run.json` elsewhere.
+  `history.*` scans bundles/validates snapshots; `history_list.cpp` supplies filtered/sorted
+  `historyList` with reference ΔE, state labels (`historyStateName`) and energy-comparison exclusions
+  (`historyDifference`); the history tab only presents it. `history_import.cpp` registers external runs.
+  `result_files.*` interprets manifests for generic readers, including visualization outputs and
+  excluding intermediate NEB paths. `conformer_set.*` owns version-1 persistence, job associations,
+  cancellable loading and population/spectrum-member preparation; its UI supplies settings/actions only.
 - `src/results/`: `results.*` holds result data and routes readers; `nwchem_log.*`,
   `xyz_reader.cpp`, `cube_reader.cpp` and `molden_reader.cpp` parse their formats. `nwchem_log.h`
   declares the log reader (`NwchemLog`, whose state is in the .cpp, and `NwchemEnergySummary`); the
@@ -176,124 +155,92 @@ by responsibility, with paired headers and implementations in the same directory
   the path with frame, energy and place, and the reference energy) and its highest point with the ends
   counted or not; the result viewer's path table and `chainedDocument` take the points of a path from
   it, not from `ResultData::properties` or from table cells.
-- `src/ui/`: `main_window.*` owns the application window, project lifecycle, shared editor context and
-  the session's `RunSession` (supervising, restoring and ending its runs; `main.cpp` asks the window).
-  The dialogs it opens are files of their own, functions that take the capabilities they use and a
-  parent, never the window: `preferences_dialog.*` ("環境設定"; the document's execution settings reach it
-  as a callback), `xtb_dialog.*` (`chooseXtbOptions` returns the chosen `XtbOptions`, the window runs
-  them) and `help_dialogs.*` (the manual viewer, which hands a practice file's link to a callback, the
-  shortcuts window, and `initManualResources` for the embedded manual and icon). The window keeps thin
-  members (`preferences`, `xtbDialog`, `showManual`, `showShortcuts`) for its menus.
-  It implements the four capabilities of `editor_context.h`, which panels/dialogs receive (only those
-  they use) with a separate widget parent; only composition/adapters (`main_window`,
-  `workspace_controller`, `mcp_gui`) include MainWindow. `EditorContext` is the document: reading it and
-  its candidate (`document`, `displayDocument`, `revision`, `hasCandidate`, `candidateName`,
-  `candidateSerial`, `ownsCandidate`: whether the one acting now may confirm the candidate in passing,
-  which a person never does to a candidate of MCP), the selection, and asking for edits, candidates and
-  chemistry jobs; never the `EditorSession` or its undo stack. `UiServices` is what every widget needs of
-  the window: `safe`, preferences, messages, the status bar, and MCP's folders as two checks
-  (`checkMcpPath` refuses a path during a request of MCP; `outsideMcpFolders` says whether a path is
-  outside them whoever acts, for the `mcpPath` mark of a widget shown between requests).
+- `src/ui/`: `main_window.*` owns project lifecycle, editor context and the session's `RunSession`
+  (supervise/restore/end runs; `main.cpp` asks the window). Dialogs take capabilities and a parent,
+  never MainWindow: `preferences_dialog.*` ("環境設定", document execution settings via callback),
+  `xtb_dialog.*` (`chooseXtbOptions` returns `XtbOptions` for the window to run), `help_dialogs.*`
+  (manual/practice-file callback, shortcuts, `initManualResources`). Menu wrappers stay thin:
+  `preferences`, `xtbDialog`, `showManual`, `showShortcuts`.
+  Panels/dialogs receive only needed `editor_context.h` capabilities plus a separate widget parent.
+  Only composition/adapters (`main_window`, `workspace_controller`, `mcp_gui`) include MainWindow.
+  `EditorContext` exposes document/candidate reads (`document`, `displayDocument`, `revision`,
+  `hasCandidate`, `candidateName`, `candidateSerial`, `ownsCandidate`), selection and requests for
+  edits/candidates/chemistry jobs; never `EditorSession` or its undo stack. `ownsCandidate` controls
+  incidental confirmation; a person never implicitly confirms MCP's candidate.
+  `UiServices` supplies `safe`, preferences, messages, status and MCP path checks: `checkMcpPath`
+  refuses paths during MCP requests; `outsideMcpFolders` checks regardless of caller, supporting
+  widgets' `mcpPath` marks between requests.
   `WorkspaceActions` is navigation only: `showPanel(QWidget *)`, `showSetting(SettingTarget, setting,
-  group)`, `showInputLine`, `refreshPanel`. A place is named by its panel or by the owner of a setting,
-  never by a tab number; a caller that has only the key of a setting asks `nwchemSettingTarget`
-  (`nwchem/nwchem.h`: the memory is the execution's), and diagnostics carry their target.
-  `ExecutionAccess` is the gate of a calculation as checks (`runCheck`: MCP's folders for a request of
-  MCP, else none; `mayChooseExecutionSettings`; `mayConfirmExecution`: the user can be asked, a request
-  of MCP is refused; `untrustedExecution`, `trustCurrentExecution`: the window forwards both to its
-  `ExecutionTrust` of `mcp/execution_trust.*`, which it tells of every change of the document and who
-  made it); no panel sees the `McpPolicy`.
-  Anything else one panel needs of another is a signal of the panel that asks, connected where the two
-  are composed: do not add a method to these interfaces for one caller.
-  The window holds the preferences store (`userPreferences()`, also handed to `DocumentStorage` for
-  the recent files); widgets reach preferences only through `UiServices::preference`/`setPreference`
-  with the keys of `model/settings.h`, never through a `QSettings` of their own: what a dialog remembers
-  (`figure_export.*`) goes the same way, and the renderer of a `MoleculeView` is passed to its
-  constructor (`RendererChoice`, from Preferences `view/renderer`) by the panel that makes it.
-  `translations.*` reads the language before there is a window.
-  `molecule_panel.*` owns the molecular workspace as the composer of its parts: the 3D view with its
-  tools and overlays, the selection, the layouts with the coordinate table and, in
-  `molecule_properties.cpp`, the property pages that hold the options of its tools ("編集", "配位",
-  "残基": the element, the bond kind, the fields the ligand and amino-acid tools read). Its other parts
-  are widgets and functions of their own files, which get the capabilities they use (`EditorContext`,
-  `UiServices`) and never include a panel (`cmake/CheckLayers.cmake`): `part_palette.*` (`PartPalette`: the palette with
-  its search, categories and element buttons, and the store of the user's parts "マイ部品" — saved
-  from the selection, read from part files, kept in Preferences; it places nothing and says what was
-  chosen with `chosen`, `choiceChanged`, `refreshed`, `showRequested`), `property_page.*`
-  (`PropertyPage`: what a page is made of — cards of forms, rows of buttons run through
-  `UiServices::safe`, controls enabled by the selection, `selection_controls.*`), the pages that need
-  only the editor context and the selection (`transform_page.*`, `attributes_page.*`,
-  `charge_page.*`), and `molecule_dialogs.*` (the dialogs of the tools as functions answered with the
-  choice: SMILES, structure report, comparison, Z-matrix, point group, solvation shell, PDB
-  diagnostics; the panel decides when one opens and makes the edit). Document transactions go through
-  the `EditorContext` (the window's `EditorSession` behind it).
-  `candidate_controls.*` shares the candidate controls across workspace tabs.
-  `structure_import.*` shares the interactive XYZ frame and PDB MODEL/ALTLOC choices.
-  `workspace_controller.*` coordinates history reuse, navigation, loading completed runs and the
-  structure the result viewer shows as the end of an NEB path (`CalculationPanel::resultStructureRequested`,
-  answered with `setNebEndFromResultStructure` or a failure); panels emit requests instead of directly
-  accessing sibling panels. The window itself connects what its header and menus show of a panel: the
-  run (`ExecutionPanel::runDisplayChanged`, `runPanelToggled`) and the state of the input
-  (`InputPreviewPanel::badgeChanged`, `settingsCommitRequested`; the panel gets the section titles of
-  "2 計算条件" as a callback). The molecular workspace composes its coordinate table and connects the
-  table's requests itself (`CoordinatesPanel::sortRequested`, `tableRequested`, `fitRequested`), telling
-  it when it stands in place of the 3D view (`setViewHidden`). `molecule_view.*` owns camera/input, Qt annotations and
-  the QPainter fallback; `vtk_molecule_renderer.*` provides optional retained
-  native VTK/OpenGL rendering; both draw by `molecule_style.h`: what is drawn (which atoms as spheres,
-  which bonds), the sizes of atoms, bonds and the backbone line, the background and the colors of bonds
-  and isosurfaces. A rule of the picture goes there, not into one of the two; the handles to click
-  (`MoleculeView::markerList`) are computed from the document and the camera, not kept from painting.
-  `editor_chrome.*` holds the window chrome proper: the header (`HeaderBar`), the
-  buttons of the tool rail (`ToolRailButton`) and the overlays of a 3D view (`OverlayHost`). What the
-  panels share besides is one file per responsibility, and a file includes those it uses (no header
-  re-exports the others): `theme.*` owns every color and the style rules (an element's color as a
-  `QColor`, the colors derived from the palette, `ChromeColors`, `chromeRules` with its tokens, the
-  rules shared by the tabs `settingsRules`, `repolish`); `line_icons.*` the stroked icons (`lineIcon`,
-  `stepIcon`, `changeIcon`); `chrome_layouts.*` the layouts (`FlowLayout`, `FormLayout`, `ToolbarFit`
-  with `setIconOnly`); `settings_widgets.*` the widgets of the settings tabs (`ChoiceButtons`,
-  `NavList`, `SettingsCard`, `Disclosure`, `StatusCard`, `ElidedLabel`, link, log and copy buttons);
-  `calculation_summary.*` the calculation in brief (`CalculationSummary`, `calculationBrief`: the one
-  file here that asks the NWChem validation); `view_controls.*` the controls bound to a
-  `MoleculeView` (`ViewControls`). The colors of run states stay with their labels in `run_progress.*`
-  (`pillColors`, `pillRules`).
-  `template_delegate.*` renders and caches the palette's molecular thumbnails and
-  tiles; `periodic_table.*` provides the element picker.
-  The numbered tabs are "1 分子" through "4 入力プレビュー". `coordinates_panel.*`
-  provides the coordinate table of "1 分子" (a `CoordinateModel` over the shown document),
-  shown under the 3D view or in its place (layouts 3D / 3D＋表 / 表). `calculation_panel.*` provides "2 計算条件"; each
-  section opens its `nwchem_advanced.*` overrides as "詳細設定". NEB endpoints read from output logs use
-  `ResultLoader`, with cancellation and a revision check before applying them. `execution_panel.*`
-  provides the settings of "3 実行設定" and the run panel below the tabs (state,
-  `run_progress.*` and log), opened from the header run pill; its form (`execution_form.*`) is
-  also that of Preferences. The panel shows the window's `RunSession` and asks it for calculations once
-  its gate has let them pass (no candidate, programs the user confirmed, MCP's folders for a request over
-  MCP: all asked of `ExecutionAccess`); it owns neither the run nor the queue. `setting_navigation.h` maps semantic setting targets to today's UI tabs
-  (`workspaceTab`): the window uses it to show the tab of an owner, a panel only for the number it writes
-  beside a link; the owner of an old job diagnostic is `RunDiagnostic::owner`. `run_progress.*` also holds the state labels of runs and their colors. `input_preview_panel.*`
-  provides the read-only "4 入力プレビュー" tab using the shared NWChem input
-  generator and execution plan.
-  `results_panel.*` provides the independent result viewer with cancellable native
-  readers, as the composer of its parts: it opens files and job folders, loads them with
-  `ResultLoader`, keeps the result with what is chosen of it (datasets, the structure, mode or
-  orbital and the playback of `results/result_presentation.*`), and owns the 3D view, the exports and
-  the tabs bound to those (概要, 軌道, 振動, CUBE / 等値面, 元ファイル), each built by a named
-  function. The tabs that only show the loaded `ResultData` are views of their own files with a
-  `setResult` entry, and what they ask of the viewer is a signal: `result_energies_view.*`,
-  `result_optimization_view.*`, `result_excitations_view.*` (`orbitalRequested`; the job's MOLDEN
-  file is a callback), `result_path_view.*` (`frameRequested`, `saddleSearchRequested`; the path is
-  that of `results/result_path.*`), `result_properties_view.*` (`atomPairSelected`), beside
-  `property_geometry_view.*` and `spectroscopy_view.*`. `result_measurement.*` is the measurement
-  over the 3D view (picked and kept atoms by number; every structure goes into the view through
-  it), `cube_combine_dialog.*` asks for the terms and the output of a sum of CUBE files, and
-  `result_detail.h` declares what these files share (tables, number texts, summary cards, the figure
-  export of a chart). UV/IR curves use `results/spectrum.*`; the panel (IR) and the view of the
-  excited states (UV) own their axis limits and units.
-  `figure_export.*` writes pictures of the 3D view (`MoleculeView::renderImage`: scale and
-  background, VTK in tiles), animations (its own GIF encoder, MP4 through `ffmpeg` from PATH, PNG
-  files) and figures of charts (PNG, PDF, and SVG with the optional Qt SVG). `history_panel.*` provides calculation history (its list a `HistoryModel`), log
-  browsing, reuse and result navigation. `mcp_gui.*` exposes GUI, execution and result tools to MCP
-  through public editor/panel operations and state snapshots; panels do not access
-  MainWindow or one another through friendship. Playback kind is explicit, independent of timer intervals.
+  group)`, `showInputLine`, `refreshPanel`. Name places by panel/setting owner, never tab number.
+  Key-only callers use `nwchemSettingTarget` (`nwchem/nwchem.h`; memory belongs to execution);
+  diagnostics carry targets. `ExecutionAccess` gates runs: `runCheck` checks MCP folders only for MCP;
+  `mayChooseExecutionSettings`; `mayConfirmExecution` permits asking users, refuses MCP;
+  `untrustedExecution`/`trustCurrentExecution` forward to `ExecutionTrust` in `mcp/execution_trust.*`,
+  notified of every document change and its actor. Panels never see `McpPolicy`.
+  Other inter-panel requests use signals connected at composition; do not expand interfaces for one caller.
+  The window owns `userPreferences()` and passes it to `DocumentStorage` for recent files.
+  Widgets, including `figure_export.*`, use `UiServices::preference`/`setPreference` with
+  `model/settings.h` keys, never their own `QSettings`. Panels pass `RendererChoice` (Preferences
+  `view/renderer`) to each `MoleculeView` constructor. `translations.*` reads language before the window.
+  `molecule_panel.*` composes 3D tools/overlays, selection, coordinate layouts and tool options in
+  `molecule_properties.cpp` ("編集", "配位", "残基": element, bond, ligand and amino-acid fields).
+  Components take `EditorContext`/`UiServices`, never include panels (`cmake/CheckLayers.cmake`):
+  `part_palette.*` (`PartPalette`) owns search/categories/elements and "マイ部品" (selection/file
+  imports persisted in Preferences), emits `chosen`, `choiceChanged`, `refreshed`, `showRequested`,
+  never places parts; `property_page.*` (`PropertyPage`) provides form cards, `UiServices::safe`
+  button rows and selection-dependent `selection_controls.*`; `transform_page.*`, `attributes_page.*`,
+  `charge_page.*` need only editor context/selection; `molecule_dialogs.*` returns choices for SMILES,
+  reports/comparison, Z-matrix, point group, solvation shell and PDB diagnostics. The panel opens dialogs
+  and edits through `EditorContext` (backed by the window's `EditorSession`). `candidate_controls.*`
+  shares candidate UI; `structure_import.*` shares XYZ frame and PDB MODEL/ALTLOC choices.
+  `workspace_controller.*` connects history reuse, navigation, completed-run loading and result
+  geometry as an NEB endpoint (`CalculationPanel::resultStructureRequested` answered by
+  `setNebEndFromResultStructure` or failure). Panels emit requests; never access siblings directly.
+  The window connects header/menu state (`ExecutionPanel::runDisplayChanged`, `runPanelToggled`,
+  `InputPreviewPanel::badgeChanged`, `settingsCommitRequested`; input preview gets calculation-section
+  titles by callback). The molecule panel connects its table's `CoordinatesPanel::sortRequested`,
+  `tableRequested`, `fitRequested` and reports when the table replaces 3D via `setViewHidden`.
+  `molecule_view.*` owns camera/input, Qt annotations and QPainter fallback; `vtk_molecule_renderer.*`
+  provides optional retained VTK/OpenGL rendering. Both use `molecule_style.h` for visibility,
+  sphere/bond/backbone sizes, background, bond/isosurface colors; keep drawing rules there.
+  Compute `MoleculeView::markerList` from document/camera, never cache handles from painting.
+  `editor_chrome.*` owns `HeaderBar`, `ToolRailButton`, `OverlayHost`. Shared helpers use direct
+  includes, no re-export headers: `theme.*` owns colors/styles (`QColor`, palette-derived colors,
+  `ChromeColors`, `chromeRules` tokens, `settingsRules`, `repolish`); `line_icons.*` owns `lineIcon`,
+  `stepIcon`, `changeIcon`; `chrome_layouts.*` owns `FlowLayout`, `FormLayout`, `ToolbarFit`/
+  `setIconOnly`; `settings_widgets.*` owns `ChoiceButtons`, `NavList`, `SettingsCard`, `Disclosure`,
+  `StatusCard`, `ElidedLabel`, link/log/copy buttons; `calculation_summary.*` owns
+  `CalculationSummary`/`calculationBrief` (the sole NWChem-validation caller among these helpers);
+  `view_controls.*` binds `ViewControls` to `MoleculeView`. `run_progress.*` owns run labels/colors
+  (`pillColors`, `pillRules`). `template_delegate.*` renders/caches palette thumbnails/tiles;
+  `periodic_table.*` supplies the element picker.
+  Numbered tabs: `coordinates_panel.*` supplies "1 分子"'s `CoordinateModel` over the displayed
+  document, below/in place of 3D (3D / 3D＋表 / 表); `calculation_panel.*` supplies "2 計算条件",
+  with each section's `nwchem_advanced.*` overrides under "詳細設定". Log-based NEB endpoints use
+  cancellable `ResultLoader` and check revision before applying. `execution_panel.*` supplies
+  "3 実行設定" and the below-tabs run panel (state, `run_progress.*`, log), opened by the header
+  run pill; `execution_form.*` is shared with Preferences. It displays the window's `RunSession`,
+  owns neither run nor queue, and calls it only after `ExecutionAccess` checks no candidate,
+  user-confirmed programs and MCP folders for MCP requests. `setting_navigation.h` maps owners to
+  tabs (`workspaceTab`): the window navigates; panels use numbers only in link labels.
+  `RunDiagnostic::owner` adapts old job diagnostics. `input_preview_panel.*` supplies read-only
+  "4 入力プレビュー" through the shared input generator/execution plan.
+  `results_panel.*` composes the independent result viewer: files/jobs loaded by cancellable
+  `ResultLoader`, dataset/structure/mode/orbital selection and `results/result_presentation.*` playback,
+  3D view, exports and bound tabs (概要, 軌道, 振動, CUBE / 等値面, 元ファイル), each built by a named
+  function. Read-only `ResultData` tabs live in separate files, expose `setResult` and emit requests:
+  `result_energies_view.*`, `result_optimization_view.*`, `result_excitations_view.*` (`orbitalRequested`,
+  job MOLDEN file via callback), `result_path_view.*` (`frameRequested`, `saddleSearchRequested`,
+  path from `results/result_path.*`), `result_properties_view.*` (`atomPairSelected`),
+  `property_geometry_view.*`, `spectroscopy_view.*`. `result_measurement.*` tracks picked/kept atoms
+  by number; every displayed structure passes through it. `cube_combine_dialog.*` asks for CUBE
+  sum terms/output; `result_detail.h` declares shared tables, numeric text, summary cards and chart
+  export helpers. UV/IR curves use `results/spectrum.*`; IR panel and UV view own axis limits/units.
+  `figure_export.*` exports 3D pictures (`MoleculeView::renderImage`: scale/background, tiled VTK),
+  animations (own GIF encoder, MP4 via PATH `ffmpeg`, PNG files) and charts (PNG/PDF, optional Qt SVG).
+  `history_panel.*` shows `HistoryModel`, logs, reuse and result navigation. `mcp_gui.*` exposes
+  GUI/execution/results through public editor/panel operations and snapshots; no MainWindow or sibling
+  friendship. Playback kind is explicit, independent of timer intervals.
 - `src/mcp/`: `server.*` implements the MCP JSON-RPC server (protocols 2026-07-28
   and legacy 2025-11-25) with document tools, candidates and undo; editor hooks
   let it operate a GUI document, otherwise it owns a headless one. `server.cpp` keeps the protocol,
