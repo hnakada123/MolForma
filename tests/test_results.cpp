@@ -1542,6 +1542,28 @@ class ResultsTest : public QObject, ResultFiles {
             QVERIFY(peak.x() > 330 && peak.x() < 350);
         }
         QVERIFY(std::abs(weight - 1) < 1e-12);
+        // The three protons differ by numerical noise only (3e-5 MHz): one 1:3:3:1 quartet, one peak a line.
+        QCOMPARE(s.peaks.size(), 4);
+        const double binomial[]{.125, .375, .375, .125};
+        for (int i = 0; i < 4; ++i)
+            QVERIFY(std::abs(s.peaks[i].toObject()["weight"].toDouble() - binomial[i]) < 1e-12);
+        const double spacing = s.peaks[1].toObject()["x"].toDouble() - s.peaks[0].toObject()["x"].toDouble();
+        QVERIFY(std::abs(spacing - 77.283 / (2.002749 * 13.99624555)) < 1e-4);
+        auto mixed = r; // A proton 1 MHz apart is not equivalent: 1:2:1 of two, split again by the third.
+        auto hyperfine = mixed.properties["epr_hyperfine"].toArray();
+        auto proton = hyperfine[3].toObject();
+        auto tensor = proton["tensor_mhz"].toArray();
+        for (int i : {0, 4, 8})
+            tensor[i] = tensor[i].toDouble() + 1;
+        proton["tensor_mhz"] = tensor;
+        hyperfine[3] = proton;
+        mixed.properties["epr_hyperfine"] = hyperfine;
+        QCOMPARE(calculateSpectrum(mixed, p).peaks.size(), 6);
+        auto carbon = p;
+        auto withCarbon = selected;
+        withCarbon.append(QJsonObject{{"atom", 1}, {"isotope", "13C"}});
+        carbon["nuclei"] = withCarbon;
+        QCOMPARE(calculateSpectrum(r, carbon).peaks.size(), 8);
         p["derivative"] = true;
         const auto derivative = calculateSpectrum(r, p);
         QVERIFY(
@@ -1555,6 +1577,11 @@ class ResultsTest : public QObject, ResultFiles {
         view.setResult(r);
         QCOMPARE(view.findChild<QTableWidget *>("spectrumEprNuclei")->rowCount(), 4);
         QCOMPARE(view.parameters()["nuclei"].toArray().size(), 3);
+        // The peak table: one row a line, without the column of atoms and modes.
+        auto *peakTable = view.findChild<QTableWidget *>("spectrumPeaks");
+        QCOMPARE(peakTable->rowCount(), 4);
+        QVERIFY(peakTable->isColumnHidden(0));
+        QCOMPARE(peakTable->item(1, 3)->text(), "0.375");
     }
     void applyResultStructure() {
         // Core rule: same atoms in the same order; fixed atoms must not have moved.

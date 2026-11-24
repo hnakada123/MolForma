@@ -51,7 +51,7 @@ The four lines of the chart lie at 335.69, 337.83, 339.97 and 342.10 mT, 2.136 m
 
 An ESR instrument modulates the magnetic field to detect the absorption, so measured spectra have the shape of the first derivative of the absorption. The default first-derivative display follows this; the center of a line is where the curve crosses zero. Turning off “Show the ESR first derivative” shows the absorption.
 
-The peak table lists the positions of the lines (mT) and their weights. The Aiso of the three hydrogens differ by about 0.002 MHz through numerical noise of the calculation, so lines that look like one are listed in separate rows (weight 0.125 each). In the chart they overlap as one line.
+The peak table lists each line's position (mT) and weight: 0.125, 0.375, 0.375 and 0.125 (1:3:3:1, adding up to 1). The Aiso of the three hydrogens differ by about 0.002 MHz through numerical noise of the calculation, but MolForma treats nuclei of one isotope whose Aiso differ by less than 0.01 MHz as equivalent.
 
 ### Results
 

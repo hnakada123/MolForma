@@ -473,6 +473,7 @@ void SpectroscopyView::refresh() {
     form->setRowVisible(microwave, epr);
     form->setRowVisible(derivative, epr);
     nucleus->setEnabled(nmr);
+    peaks->setColumnHidden(0, epr); // An ESR line belongs to no one atom.
     peaks->setColumnHidden(2, !nmr);
     try {
         if (nmr && reference->text().trimmed().isEmpty())
@@ -517,11 +518,12 @@ void SpectroscopyView::refresh() {
             for (const auto &atom : p["atoms"].toArray())
                 atoms << QString::number(atom.toInt());
             const QStringList values{
-                !atoms.isEmpty()     ? atoms.join(", ")
-                : p.contains("atom") ? QString::number(p["atom"].toInt())
-                : p.contains("mode") ? QString::number(p["mode"].toInt() + 1)
-                : p.contains("root") ? QString::number(p["root"].toInt())
-                                     : QString::number(p["raman_index"].toInt()),
+                !atoms.isEmpty()            ? atoms.join(", ")
+                : p.contains("atom")        ? QString::number(p["atom"].toInt())
+                : p.contains("mode")        ? QString::number(p["mode"].toInt() + 1)
+                : p.contains("root")        ? QString::number(p["root"].toInt())
+                : p.contains("raman_index") ? QString::number(p["raman_index"].toInt())
+                                            : QString("—"),
                 QString::number(p["x"].toDouble(), 'g', 10),
                 p.contains("shielding_ppm") ? QString::number(p["shielding_ppm"].toDouble(), 'g', 10) : "—",
                 QString::number(p["weight"].toDouble(), 'g', 10),

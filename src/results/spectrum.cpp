@@ -10,6 +10,9 @@
 namespace mf {
 namespace {
 constexpr double FreeElectronG = 2.00231930436256;
+// ESR couplings of one isotope closer than this (0.4 µT, below the narrowest lines of solution ESR) are of
+// equivalent nuclei: a calculation gives symmetric nuclei couplings that differ by numerical noise.
+constexpr double EquivalentCouplingMhz = .01;
 Mat tensor(const QJsonArray &values) {
     if (values.size() != 9)
         fail(tr("ESRには完全なg・Aテンソルが必要です。"));
@@ -352,8 +355,13 @@ void collectPeaks(const ResultData &result, SpectrumData &out) {
         QMap<int, QJsonObject> byAtom;
         for (const auto &value : all)
             byAtom[value.toObject()["atom"].toInt()] = value.toObject();
+        struct Nucleus {
+            QString isotope;
+            int twiceSpin;
+            double a;
+        };
+        QVector<Nucleus> nuclei;
         QSet<int> used;
-        QVector<QPointF> splittings{{0, 1}};
         double maximum = 0;
         for (const auto &value : p["nuclei"].toArray()) {
             const auto nucleus = value.toObject();
@@ -367,14 +375,38 @@ void collectPeaks(const ResultData &result, SpectrumData &out) {
                                   : isotope == "17O"                                     ? 5
                                   : QStringList{"33S", "35Cl", "79Br"}.contains(isotope) ? 3
                                                                                          : 1;
-            if (splittings.size() * (twiceSpin + 1) > 4096)
-                fail(tr("スペクトルは4096本までのピークに対応します。"));
             const double a = required(byAtom[atom], "isotropic_mhz");
             maximum += std::abs(a) * twiceSpin / 2;
+            nuclei.append({isotope, twiceSpin, a});
+        }
+        // n equivalent nuclei of spin I split by their mean coupling into 2nI + 1 lines, weighted as the
+        // total M of the set (binomial for spin 1/2): equal lines are one peak.
+        std::sort(nuclei.begin(), nuclei.end(), [](const Nucleus &x, const Nucleus &y) {
+            return x.isotope != y.isotope ? x.isotope < y.isotope : x.a < y.a;
+        });
+        QVector<QPointF> splittings{{0, 1}};
+        for (qsizetype first = 0, last = 0; first < nuclei.size(); first = last) {
+            double sum = 0;
+            for (last = first; last < nuclei.size() && nuclei[last].isotope == nuclei[first].isotope &&
+                               nuclei[last].a - nuclei[first].a < EquivalentCouplingMhz;
+                 ++last)
+                sum += nuclei[last].a;
+            const int twiceSpin = nuclei[first].twiceSpin;
+            const auto count = last - first;
+            QVector<double> weights{1};
+            for (qsizetype k = 0; k < count; ++k) {
+                QVector<double> next(weights.size() + twiceSpin, 0.);
+                for (qsizetype i = 0; i < weights.size(); ++i)
+                    for (int m = 0; m <= twiceSpin; ++m)
+                        next[i + m] += weights[i] / (twiceSpin + 1);
+                weights = next;
+            }
+            if (splittings.size() * weights.size() > 4096)
+                fail(tr("スペクトルは4096本までのピークに対応します。"));
             QVector<QPointF> next;
             for (const auto &s : splittings)
-                for (int m = 0; m <= twiceSpin; ++m)
-                    next.append({s.x() + a * (m - twiceSpin / 2.), s.y() / (twiceSpin + 1)});
+                for (qsizetype i = 0; i < weights.size(); ++i)
+                    next.append({s.x() + sum / count * (i - count * twiceSpin / 2.), s.y() * weights[i]});
             splittings = next;
         }
         if (maximum > microwave * .1)
