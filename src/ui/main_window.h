@@ -85,8 +85,8 @@ class MainWindow : public QMainWindow,
     void confirmCandidate() override;
     void cancelCandidate() override;
     void remoteHistory(const QString &action);
-    // Without ask, the choices of what to read are those the dialogs propose (a screenshot from the command
-    // line).
+    // Without ask, the choices of what to read are those the dialogs propose and what was not read goes
+    // unreported (a screenshot from the command line, with nobody to close a message).
     void loadPath(const QString &path, bool ask = true);
     bool chemistryRunning() const override {
         return chemistry.active();

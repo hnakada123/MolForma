@@ -5,6 +5,7 @@
 #include "io/crystal.h"
 #include "io/mmcif.h"
 #include "io/structure_io.h"
+#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
@@ -17,6 +18,23 @@
 #include <QRadioButton>
 
 namespace mf {
+// The wait cursor while a file is read, until the dialogs or the document show.
+class Reading {
+  public:
+    Reading() {
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+    }
+    ~Reading() {
+        done();
+    }
+    void done() {
+        if (std::exchange(waiting, false))
+            QApplication::restoreOverrideCursor();
+    }
+
+  private:
+    bool waiting = true;
+};
 // What to read of a PDB or mmCIF entry, chosen in one dialog: the model, the alternate location, the chains
 // and the kinds of residues. The dialog appears only where the entry offers a choice.
 static std::optional<MacromoleculeSelection>
@@ -204,16 +222,25 @@ std::optional<StructureImportOptions> chooseStructureImport(QWidget *parent, con
     StructureImportOptions options;
     const auto suffix = structureSuffix(path);
     bool ok = true;
-    const bool pdb = suffix == "pdb" || suffix == "ent";
-    if ((suffix == "cif" || suffix == "mmcif") && crystalCif(readStructureFile(path))) {
-        const auto crystal = chooseCrystal(parent, readCrystal(readStructureFile(path)), ask);
-        if (!crystal)
-            return std::nullopt;
-        options.crystal = *crystal;
-    } else if (pdb || suffix == "cif" || suffix == "mmcif") {
+    const bool pdb = suffix == "pdb" || suffix == "ent", cif = suffix == "cif" || suffix == "mmcif";
+    if (pdb || cif) {
+        Reading reading;
         const auto bytes = readStructureFile(path);
-        const auto selection = chooseMacromolecule(
-            parent, pdb ? pdbContents(QString::fromUtf8(bytes)) : mmcifContents(readMmcif(bytes)), ask);
+        if (cif && crystalCif(bytes)) {
+            const auto read = readCrystal(bytes);
+            reading.done();
+            const auto crystal = chooseCrystal(parent, read, ask);
+            if (!crystal)
+                return std::nullopt;
+            options.crystal = *crystal;
+            return options;
+        }
+        // The entry read here is what the structure is read from, not the file again.
+        if (cif)
+            options.mmcif = std::make_shared<const MmcifEntry>(readMmcif(bytes));
+        const auto contents = pdb ? pdbContents(QString::fromUtf8(bytes)) : mmcifContents(*options.mmcif);
+        reading.done();
+        const auto selection = chooseMacromolecule(parent, contents, ask);
         if (!selection)
             return std::nullopt;
         options.selection = *selection;
@@ -243,5 +270,9 @@ std::optional<StructureImportOptions> chooseStructureImport(QWidget *parent, con
             return std::nullopt;
     }
     return options;
+}
+StructureImport importChosenStructure(const QString &path, const StructureImportOptions &options) {
+    Reading reading;
+    return importStructureWithNotes(path, options);
 }
 } // namespace mf

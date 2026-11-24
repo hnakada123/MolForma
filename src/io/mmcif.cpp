@@ -6,6 +6,8 @@
 #include <cctype>
 #include <cstring>
 #include <optional>
+#include <string_view>
+#include <unordered_map>
 
 namespace mf {
 namespace {
@@ -77,18 +79,20 @@ QByteArray lower(QByteArrayView text) {
 bool isTag(const Token &t) {
     return !t.quoted && t.text.startsWith('_');
 }
+// Asked of every value of a table, so without copying it, and most values pass on their first letter.
 bool reserved(const Token &t) {
-    if (t.quoted)
+    if (t.quoted || t.text.size() < 5 || !QByteArrayView("dlsgDLSG").contains(t.text.front()))
         return false;
-    const auto word = lower(t.text.first(qMin(t.text.size(), qsizetype(7))));
-    for (const char *w : {"data_", "loop_", "save_", "global_", "stop_"})
-        if (word.startsWith(w))
+    for (const QByteArrayView word : {"data_", "loop_", "save_", "global_", "stop_"})
+        if (t.text.size() >= word.size() && t.text.first(word.size()).compare(word, Qt::CaseInsensitive) == 0)
             return true;
     return false;
 }
 // The unquoted . (inapplicable) and ? (unknown) are no value.
 QByteArrayView value(const Token &t) {
-    return !t.quoted && (t.text == "." || t.text == "?") ? QByteArrayView() : t.text;
+    return !t.quoted && t.text.size() == 1 && (t.text.front() == '.' || t.text.front() == '?')
+               ? QByteArrayView()
+               : t.text;
 }
 // The first data block of a CIF file (the whole entry in PDB files), read once: its items and tables go
 // to the reader, which has
@@ -182,11 +186,41 @@ struct Columns {
     int element, authName, labelName, authResidue, labelResidue, authChain, labelChain, authNumber,
         labelNumber, insertion, altloc, x, y, z, occupancy, charge, model, group, entity;
 };
-MmcifAtom atom(const Columns &c, const QVector<QByteArrayView> &row, int line) {
+// The texts of the atoms, one copy of each: an entry names the same atoms, residues and chains again and
+// again (2.4 million atoms of a few hundred names in 3J3Q), and their copies would cost more than the rest of
+// the reading. The views point into the file's text, which outlives the reading.
+class Texts {
+  public:
+    QString operator()(QByteArrayView text) {
+        if (text.isEmpty())
+            return {};
+        auto &copy = texts[std::string_view(text.data(), size_t(text.size()))];
+        if (copy.isNull())
+            copy = QString::fromUtf8(text);
+        return copy;
+    }
+    // The element of a type symbol: its letters, the first in upper case (a charge may follow, as in O1-).
+    QString element(QByteArrayView text) {
+        auto &symbol = elements[std::string_view(text.data(), size_t(text.size()))];
+        if (symbol.isNull()) {
+            symbol = QString(""); // Not null: known.
+            for (char ch : text) {
+                if (!std::isalpha(static_cast<unsigned char>(ch)))
+                    break;
+                symbol += symbol.isEmpty() ? QChar(ch).toUpper() : QChar(ch).toLower();
+            }
+        }
+        return symbol;
+    }
+
+  private:
+    std::unordered_map<std::string_view, QString> texts, elements;
+};
+MmcifAtom atom(const Columns &c, const QVector<QByteArrayView> &row, int line, Texts &texts) {
     const auto at = [&](int column) { return column < 0 ? QByteArrayView() : row[column]; };
     const auto either = [&](int author, int label) {
         const auto v = at(author);
-        return QString::fromUtf8(v.isEmpty() ? at(label) : v);
+        return texts(v.isEmpty() ? at(label) : v);
     };
     const auto number = [&](int column, const char *name, double missing) {
         const auto v = at(column);
@@ -201,18 +235,14 @@ MmcifAtom atom(const Columns &c, const QVector<QByteArrayView> &row, int line) {
         return n;
     };
     MmcifAtom a;
-    for (char ch : at(c.element)) {
-        if (!std::isalpha(static_cast<unsigned char>(ch)))
-            break; // A charge may follow, as in O1-.
-        a.element += a.element.isEmpty() ? QChar(ch).toUpper() : QChar(ch).toLower();
-    }
+    a.element = texts.element(at(c.element));
     a.name = either(c.authName, c.labelName);
     a.residue = either(c.authResidue, c.labelResidue);
     a.chain = either(c.authChain, c.labelChain);
     const bool author = !at(c.authNumber).isEmpty();
     a.number = int(number(author ? c.authNumber : c.labelNumber, author ? "auth_seq_id" : "label_seq_id", 0));
-    a.insertion = QString::fromUtf8(at(c.insertion));
-    a.altloc = QString::fromUtf8(at(c.altloc));
+    a.insertion = texts(at(c.insertion));
+    a.altloc = texts(at(c.altloc));
     for (int column : {c.x, c.y, c.z})
         if (at(column).isEmpty())
             fail(tr("mmCIFの%1行目の原子に座標がありません。").arg(line));
@@ -221,7 +251,7 @@ MmcifAtom atom(const Columns &c, const QVector<QByteArrayView> &row, int line) {
     a.charge = int(number(c.charge, "pdbx_formal_charge", 0));
     a.model = int(number(c.model, "pdbx_PDB_model_num", 1));
     a.hetatm = at(c.group) == "HETATM";
-    a.entity = QString::fromUtf8(at(c.entity));
+    a.entity = texts(at(c.entity));
     return a;
 }
 // An entity of the _entity table, by the names of its columns.
@@ -241,6 +271,7 @@ struct MmcifReader {
     QHash<QByteArray, QString> entityItems; // _entity items outside a loop: a table of one entity.
     std::optional<Columns> columns;         // Of the table being read, when it is _atom_site.
     QList<QByteArray> tags;
+    Texts texts;
     void block(QByteArrayView) {}
     void item(const QByteArray &tag, QByteArrayView value, int line) {
         if (tag.startsWith("_atom_site.")) {
@@ -260,7 +291,7 @@ struct MmcifReader {
     }
     void row(const QVector<QByteArrayView> &values, int line) {
         if (columns) {
-            atoms << atom(*columns, values, line);
+            atoms << atom(*columns, values, line, texts);
             return;
         }
         QHash<QByteArray, QString> named;
@@ -275,7 +306,7 @@ MmcifEntry readMmcif(const QByteArray &text) {
     readBlock(text, reader);
     auto &atoms = reader.atoms;
     if (!reader.itemTags.isEmpty())
-        atoms << atom(Columns(reader.itemTags), reader.itemValues, reader.itemLine);
+        atoms << atom(Columns(reader.itemTags), reader.itemValues, reader.itemLine, reader.texts);
     if (atoms.isEmpty())
         fail(tr("mmCIFに原子の表（_atom_site）がありません。"));
     if (!reader.entityItems.isEmpty())
@@ -356,11 +387,19 @@ MacromoleculeContents mmcifContents(const MmcifEntry &entry) {
     }
     const int first = contents.models.first().toInt();
     MacromoleculeCount count(contents);
-    for (const auto &a : entry.atoms)
-        if (a.model == first)
-            count.add(QString("%1\n%2\n%3\n%4").arg(a.chain).arg(a.number).arg(a.insertion, a.residue),
-                      a.chain, a.residue, a.kind, a.altloc,
-                      a.kind == ResidueKind::Polymer ? entry.descriptions.value(a.entity) : QString());
+    // The atoms of a residue follow one another: its key is made once.
+    const MmcifAtom *previous = nullptr;
+    QString residue;
+    for (const auto &a : entry.atoms) {
+        if (a.model != first)
+            continue;
+        if (!previous || a.number != previous->number || a.chain != previous->chain ||
+            a.insertion != previous->insertion || a.residue != previous->residue)
+            residue = QString("%1\n%2\n%3\n%4").arg(a.chain).arg(a.number).arg(a.insertion, a.residue);
+        previous = &a;
+        count.add(residue, a.chain, a.residue, a.kind, a.altloc,
+                  a.kind == ResidueKind::Polymer ? entry.descriptions.value(a.entity) : QString());
+    }
     return contents;
 }
 QVector<MmcifAtom> selectMmcif(const QVector<MmcifAtom> &atoms, const MacromoleculeSelection &selection) {
@@ -368,21 +407,30 @@ QVector<MmcifAtom> selectMmcif(const QVector<MmcifAtom> &atoms, const Macromolec
     const auto residue = [](const MmcifAtom &a) {
         return QString("%1\n%2\n%3").arg(a.chain).arg(a.number).arg(a.insertion);
     };
+    // Whether an atom's chain and kind are chosen: asked again only where they change, as the chains of an
+    // entry with many (and the selection's list of them) would make it slow.
+    const MmcifAtom *last = nullptr;
+    bool kept = false;
+    const auto keeps = [&](const MmcifAtom &a) {
+        if (!last || a.chain != last->chain || a.kind != last->kind)
+            kept = selection.keeps(a.chain, a.kind);
+        last = &a;
+        return kept;
+    };
     AltlocChoice locations(selection.altloc);
     int inModel = 0;
     for (const auto &a : atoms)
         if (a.model == model) {
             ++inModel;
-            if (selection.keeps(a.chain, a.kind))
+            if (!a.altloc.isEmpty() && keeps(a))
                 locations.add(residue(a), a.altloc, a.occupancy);
         }
     QVector<MmcifAtom> chosen;
-    for (auto a : atoms) {
-        if (a.model != model || !selection.keeps(a.chain, a.kind) ||
-            (!a.altloc.isEmpty() && !locations.keeps(residue(a), a.altloc)))
+    for (const auto &a : atoms) {
+        if (a.model != model || !keeps(a) || (!a.altloc.isEmpty() && !locations.keeps(residue(a), a.altloc)))
             continue;
-        a.altloc.clear();
         chosen << a;
+        chosen.last().altloc.clear();
     }
     if (!inModel)
         fail(tr("mmCIFにモデル %1 の原子がありません。").arg(model));

@@ -741,6 +741,30 @@ class CoreTest : public QObject {
             std::runtime_error,
             preparePdb(pdb + QString(located).replace("AGLY", " GLY").replace("BGLY", " GLY"), {}));
     }
+    // Atoms of unknown elements (UNX, an unknown atom or ion, has the element X) are left out, named in the
+    // notes, and the rest of the entry opens (10AX: a protein, three zinc ions, sinefungin and one UNX).
+    void unknownElements() {
+        QTemporaryDir dir;
+        const auto pdb = dir.filePath("unx.pdb"), cif = dir.filePath("unx.cif");
+        writeFile(pdb, "HETATM    1 ZN    ZN A 101       0.000   0.000   0.000  1.00  0.00          ZN\n"
+                       "HETATM    2 UNK  UNX A1005       5.000   0.000   0.000  1.00  0.00           X\n");
+        const QByteArray table =
+            "data_UNX\nloop_\n_atom_site.group_PDB\n_atom_site.id\n_atom_site.type_symbol\n"
+            "_atom_site.label_atom_id\n_atom_site.label_comp_id\n_atom_site.auth_asym_id\n"
+            "_atom_site.auth_seq_id\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n"
+            "_atom_site.Cartn_z\n";
+        writeFile(cif, table + "HETATM 1 ZN ZN ZN A 101 0 0 0\nHETATM 2 X UNK UNX A 1005 5 0 0\n");
+        for (const auto &path : {pdb, cif}) {
+            const auto imported = importStructureWithNotes(path);
+            QCOMPARE(imported.document.atoms.size(), 1);
+            QCOMPARE(imported.document.atoms[0].element, QString("Zn"));
+            QCOMPARE(imported.document.residues.size(), 1);
+            QCOMPARE(imported.notes, QStringList{"UNX A 1005 の原子 UNK"});
+        }
+        // An entry of nothing else does not open.
+        writeFile(cif, table + "HETATM 2 X UNK UNX A 1005 5 0 0\n");
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, importStructure(cif));
+    }
     // Bond orders and aromaticity are perceived a few thousand atoms at a time, the molecules kept whole: 500
     // benzene rings, 3000 atoms, make two pieces, and a ring split at 2000 atoms would lose its aromaticity.
     void bondOrdersByMolecule() {

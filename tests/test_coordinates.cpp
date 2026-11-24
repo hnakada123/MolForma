@@ -183,6 +183,45 @@ class CoordinatesTest : public QObject {
         writeFile(single, "ATOM      1  CA  GLY A   1       0.000   0.000   0.000  1.00  0.00           C\n");
         QVERIFY(chooseStructureImport(&parent, single));
     }
+    // The entry read for the choice is the one the structure is read from: the largest entries of the PDB
+    // take seconds to read.
+    void importReadsTheEntryOnce() {
+        QTemporaryDir dir;
+        const auto path = dir.filePath("entry.cif");
+        writeFile(path, "data_ENTRY\nloop_\n_atom_site.group_PDB\n_atom_site.id\n_atom_site.type_symbol\n"
+                        "_atom_site.label_atom_id\n_atom_site.label_comp_id\n_atom_site.auth_asym_id\n"
+                        "_atom_site.auth_seq_id\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\n"
+                        "ATOM 1 C CA GLY A 1 0 0 0\nATOM 2 C CA GLY B 1 0 5 0\n");
+        QWidget parent;
+        const auto options = chooseStructureImport(&parent, path, false);
+        QVERIFY(options && options->mmcif);
+        writeFile(path, "data_ENTRY\n"); // Changed after the choice: not read again.
+        const auto imported = importChosenStructure(path, *options);
+        QCOMPARE(imported.document.atoms.size(), 2);
+        QCOMPARE(imported.document.data["metadata"].toObject()["source_file"].toString(), path);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, importStructure(path));
+    }
+    // Opening an entry names the atoms of unknown elements it leaves out; a screenshot, with nobody to close
+    // the message, does not wait for one.
+    void openingUnknownElementsShowsThem() {
+        QTemporaryDir dir;
+        const auto path = dir.filePath("unx.pdb");
+        writeFile(path, "HETATM    1 ZN    ZN A 101       0.000   0.000   0.000  1.00  0.00          ZN\n"
+                        "HETATM    2 UNK  UNX A1005       5.000   0.000   0.000  1.00  0.00           X\n");
+        for (const bool ask : {true, false}) {
+            MainWindow w;
+            QString shown;
+            QTimer::singleShot(0, &w, [&shown] {
+                if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                    shown = box->text();
+                    box->accept();
+                }
+            });
+            w.loadPath(path, ask);
+            QCOMPARE(shown.contains("UNX A 1005 の原子 UNK"), ask);
+            QCOMPARE(w.document().atoms.size(), 1);
+        }
+    }
     // An entry of more atoms than MolForma opens (a virus capsid) starts with the chains from the top that it
     // opens, shows the atoms chosen and takes no more.
     void importChainsOfLargeEntries() {

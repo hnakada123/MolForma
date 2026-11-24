@@ -6,6 +6,7 @@
 #include "editing/stereochemistry.h"
 #include "foundation/files.h"
 #include "foundation/i18n.h"
+#include "foundation/structure_file.h"
 #include "io/babel_io.h"
 #include "io/structure_io.h"
 #include "model/settings.h"
@@ -1023,22 +1024,27 @@ void MainWindow::loadPath(const QString &p, bool ask) {
         return;
     StructureImport imported;
     try {
-        imported = importStructureWithNotes(p, options->selection, options->frame, options->crystal);
+        imported = importChosenStructure(p, *options);
     } catch (const std::exception &e) {
         // Reading errors name the file (the messages themselves give the line where they can).
         fail(tr("%1 を読み込めません。\n%2").arg(QFileInfo(p).fileName(), QString::fromUtf8(e.what())));
     }
     auto next = imported.document;
-    // What an NWChem input holds that MolForma did not take over.
-    if (!imported.notes.isEmpty()) {
+    // What an NWChem input holds that MolForma did not take over, or the atoms of unknown elements that a PDB
+    // or mmCIF entry has.
+    if (ask && !imported.notes.isEmpty()) {
         QStringList items;
         for (const auto &note : imported.notes.mid(0, 20))
             items << tr("・%1").arg(note);
-        QMessageBox box(QMessageBox::Information, tr("NWChem入力の取込み"),
-                        tr("構造・電荷・多重度と、MolFormaで扱える計算条件を取り込みました。\n\n"
-                           "取り込まなかった項目:\n%1")
-                            .arg(items.join('\n')),
-                        QMessageBox::Ok, this);
+        const bool nwchem = QStringList{"nw", "nwinp"}.contains(structureSuffix(p));
+        QMessageBox box(
+            QMessageBox::Information, nwchem ? tr("NWChem入力の取込み") : tr("構造ファイルの取込み"),
+            (nwchem ? tr("構造・電荷・多重度と、MolFormaで扱える計算条件を取り込みました。\n\n"
+                         "取り込まなかった項目:\n%1")
+                    : tr("元素の分からない原子（PDBのUNX: 未知の原子・イオンなど）は読み込みませんでした:"
+                         "\n%1"))
+                .arg(items.join('\n')),
+            QMessageBox::Ok, this);
         box.setTextFormat(Qt::PlainText); // The items quote the input file.
         box.exec();
     }

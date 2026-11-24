@@ -57,6 +57,8 @@ class MacromoleculeCount {
     QSet<QString> residues;
     QHash<QString, int> chains;
     QHash<QString, QString> locations; // The first alternate location of each residue that has them.
+    QString last;                      // The residue of the atom before, in the chain numbered current.
+    int current = -1;
 };
 // Which alternate location of each residue is read: the one chosen for the entry, or in each residue the
 // one whose atoms have the highest total occupancy (the first of equals, by name).

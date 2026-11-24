@@ -1301,7 +1301,7 @@ void MoleculePanel::addFragmentFromFile() {
         return;
     if (base != editorContext.revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
-    const auto fragment = importStructure(p, options->selection, options->frame, options->crystal);
+    const auto fragment = importChosenStructure(p, *options).document;
     edit(tr("ファイルから断片を追加"), [&](Document &d) { insertFragment(d, fragment); }, true);
     view->keepInView();
 }
@@ -1561,7 +1561,7 @@ void MoleculePanel::compareDialog() {
         return;
     if (base != editorContext.revision())
         fail(tr("読込中に分子が変更されました。読込をやり直してください。"));
-    const auto reference = importStructure(p, options->selection, options->frame, options->crystal);
+    const auto reference = importChosenStructure(p, *options).document;
     const auto fit = superpose(document(), reference);
     if (!askSuperposition(this, QFileInfo(p).fileName(), fit))
         return;

@@ -98,8 +98,8 @@ Document gaussianStructure(const QString &text) {
     d.multiplicity = multiplicity;
     return d;
 }
-StructureImport importStructureWithNotes(const QString &path, const MacromoleculeSelection &selection,
-                                         int xyzFrame, const CrystalSelection &crystal) {
+StructureImport importStructureWithNotes(const QString &path, const StructureImportOptions &options) {
+    const auto &[selection, xyzFrame, crystal, mmcif] = options;
     const auto ext = structureSuffix(path);
     if (ext == "json") {
         if (compressedFile(path))
@@ -120,21 +120,33 @@ StructureImport importStructureWithNotes(const QString &path, const Macromolecul
     }
     if (ext == "gjf" || ext == "com" || ext == "gau")
         return {gaussianStructure(QString::fromUtf8(readStructureFile(path))), {}};
+    StructureImport imported;
     if (ext == "cif" || ext == "mmcif") {
+        if (mmcif) {
+            imported.document = importMmcif(*mmcif, path, selection, &imported.notes);
+            return imported;
+        }
+        const auto bytes = readStructureFile(path);
         // A crystal structure of a small molecule, rather than an entry of the PDB.
-        if (const auto bytes = readStructureFile(path); crystalCif(bytes)) {
+        if (crystalCif(bytes)) {
             auto d = crystalStructure(readCrystal(bytes), crystal);
             auto meta = d.data["metadata"].toObject();
             meta["source_file"] = path;
             d.data["metadata"] = meta;
             return {d, {}};
         }
+        imported.document = importMmcif(readMmcif(bytes), path, selection, &imported.notes);
+        return imported;
     }
-    return {importBabelStructure(path, selection), {}};
+    imported.document = importBabelStructure(path, selection, &imported.notes);
+    return imported;
+}
+Document importStructure(const QString &path, const StructureImportOptions &options) {
+    return importStructureWithNotes(path, options).document;
 }
 Document importStructure(const QString &path, const MacromoleculeSelection &selection, int xyzFrame,
                          const CrystalSelection &crystal) {
-    return importStructureWithNotes(path, selection, xyzFrame, crystal).document;
+    return importStructureWithNotes(path, {selection, xyzFrame, crystal, {}}).document;
 }
 bool nebEndFileIsLog(const QString &path) {
     const QFileInfo info(path);

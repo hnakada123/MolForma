@@ -26,25 +26,35 @@ int MacromoleculeContents::atoms(const MacromoleculeSelection &selection) const 
 }
 void MacromoleculeCount::add(const QString &residue, const QString &chain, const QString &code,
                              ResidueKind kind, const QString &altloc, const QString &description) {
+    // The atoms of one location, as if the first of the residue were read.
+    const auto count = [&] {
+        if (!altloc.isEmpty()) {
+            auto &first = locations[residue];
+            if (first.isEmpty())
+                first = altloc;
+            if (first != altloc)
+                return;
+        }
+        ++contents.chains[current].atoms[int(kind)];
+    };
+    // The atoms of a residue follow one another, and the residue (whose text names its chain) of the atom
+    // before needs no lookup.
+    if (current >= 0 && residue == last) {
+        count();
+        return;
+    }
+    last = residue;
     auto it = chains.find(chain);
     if (it == chains.end()) {
         it = chains.insert(chain, contents.chains.size());
         contents.chains.append({chain, {}, 0, {}, {}});
     }
-    auto &entry = contents.chains[*it];
-    // The atoms of one location, as if the first of the residue were read.
-    if (!altloc.isEmpty()) {
-        auto &first = locations[residue];
-        if (first.isEmpty())
-            first = altloc;
-        if (first == altloc)
-            ++entry.atoms[int(kind)];
-    } else {
-        ++entry.atoms[int(kind)];
-    }
+    current = *it;
+    count();
     if (residues.contains(residue))
         return;
     residues.insert(residue);
+    auto &entry = contents.chains[current];
     if (entry.description.isEmpty())
         entry.description = description;
     if (kind != ResidueKind::Polymer && !entry.groups.contains(code))
