@@ -7,11 +7,32 @@ Calculate the g tensor and hyperfine coupling tensors of the simplest π radical
 | Molecule | Methyl radical CH₃• (4 atoms, charge 0, doublet) |
 | Features | Placing and deleting atoms, unpaired electrons on the “Attributes” page, multiplicity and reference (UKS), relativistic Hamiltonian (ZORA), ESR g and A tensors, the result viewer's “Spectra” (solution ESR), choosing the nuclei to include |
 | Calculation | Gas phase, B3LYP/def2-TZVP (ZORA), geometry optimization → g and A tensors; for comparison, a single point of the structure as built |
-| Run time | About 1 minute (8 MPI processes: optimization 42 seconds, g and A 15 seconds); the single point of step 5 takes about 20 seconds |
+| Run time | About 1 minute (8 MPI processes: optimization 42 seconds, g and A 15 seconds); the single point of step 5 takes about 20 seconds; without NWChem, open the completed results below for comparison |
 | Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux; run on 2026-11-24 through MolForma MCP |
 | Practice data | [`methyl_epr.molforma.json`](../../recipes/samples/methyl_epr.molforma.json) (the methyl radical as built, with the calculation settings) |
 
 The practice file holds the structure and the calculation settings only, without results or run settings. To run the calculation yourself, check NWChem, MPI and the job folder in “3 Run settings”.
+
+## Open the completed results (no recalculation needed)
+
+**[Download the calculation log (.out, 1.54 MB)](https://github.com/hnakada123/MolForma/releases/download/methyl-epr-data-v1/methyl_epr.out)** · [SHA-256](https://github.com/hnakada123/MolForma/releases/download/methyl-epr-data-v1/methyl_epr.out.sha256)
+
+[Full set including comparison tables and figures (ZIP, 2.68 MB)](https://github.com/hnakada123/MolForma/releases/download/methyl-epr-data-v1/methyl_epr_results_v1.zip) · [ZIP SHA-256](https://github.com/hnakada123/MolForma/releases/download/methyl-epr-data-v1/methyl_epr_results_v1.zip.sha256)
+
+This is the NWChem output log of this page's calculation (2026-11-24). One log holds the geometry optimization and the g and A tensors, so no NWChem rerun is needed to inspect the results. Besides this log, the ZIP contains the logs of step 5 (the structure as built) and of the tables of step 6 (basis sets, carbon moved out of the plane), the input files, the practice project, the structures as XYZ, tables of the hyperfine couplings, g tensor, line positions and experimental comparisons as CSV, the calculated curves as CSV, the charts as PDF and PNG, and viewing instructions in English and Japanese.
+
+| Individual file | What you can inspect |
+| --- | --- |
+| [Calculated spectra (PDF)](https://github.com/hnakada123/MolForma/releases/download/methyl-epr-data-v1/methyl_epr_calculated.pdf) | Calculated solution ESR with the protons alone and with ¹³C too (9.5 GHz, FWHM 0.1 mT, first derivative), with splitting diagrams, in an ordinary PDF viewer |
+| [Experimental comparison (PDF)](https://github.com/hnakada123/MolForma/releases/download/methyl-epr-data-v1/methyl_epr_comparison_en.pdf) | The comparisons of step 6 as a figure: four lines drawn from the experimental g and a against the calculated ones, and the hyperfine couplings as the carbon moves and as the basis set changes |
+
+1. Save `methyl_epr.out` above. With the ZIP, choose `logs/methyl_epr.out` in the extracted folder.
+2. In MolForma, open that file with “Result viewer → Open…”.
+3. Choose the “Spectra” tab on the right to show the solution ESR chart. From there, item 3 of step 3 and step 4 work as written. For step 5, open `logs/methyl_epr_as_built.out` of the ZIP the same way.
+
+Reading ESR (g and A tensors, solution ESR) requires MolForma 1.1.0 or later (currently a build of GitHub's main). MolForma 1.0.0 cannot display ESR; use the PDFs and CSVs instead.
+
+Only the hostname and NWChem build-source path have been redacted in the distributed log. Coordinates and numerical results are unchanged. This is a viewing dataset; NWChem restart databases and orbital files are not included. See `README.en.txt` in the archive for details.
 
 ## 1. Build the methyl radical
 
@@ -108,10 +129,10 @@ The calculation gives the magnitude of a for ¹H 7% too small and for ¹³C 30% 
 
 | Basis set | C–H / Å | Isotropic g value | a(¹H) / mT | a(¹³C) / mT |
 | --- | ---: | ---: | ---: | ---: |
-| 6-31G* (Cartesian 6d functions) | 1.083 | 2.00274 | −2.532 | +4.411 |
-| 6-311+G** | 1.081 | 2.00283 | −2.252 | +2.552 |
+| 6-31G* (Cartesian 6d functions) | 1.083 | 2.00274 | −2.532 | +4.410 |
+| 6-311+G** | 1.081 | 2.00283 | −2.252 | +2.551 |
 | def2-TZVP (this recipe) | 1.079 | 2.00283 | −2.136 | +2.689 |
-| x2c-TZVPall | 1.079 | 2.00283 | −2.136 | +2.751 |
+| x2c-TZVPall | 1.079 | 2.00283 | −2.136 | +2.750 |
 
 The other table moves only the carbon of the optimized structure of step 3 perpendicular to the plane of the three hydrogens and calculates single points at the same settings (the hydrogens stay put, so the C–H bonds also lengthen a little).
 
@@ -120,7 +141,7 @@ The other table moves only the carbon of the optimized structure of step 3 perpe
 | 0 (optimized structure) | 0° | 1.079 | 0 | 2.00283 | −2.136 | +2.689 |
 | 0.1 | 5.3° | 1.084 | 0.33 | 2.00282 | −1.980 | +3.600 |
 | 0.2 | 10.5° | 1.097 | 1.74 | 2.00282 | −1.558 | +6.151 |
-| 0.3 | 15.5° | 1.120 | 5.24 | 2.00281 | −0.977 | +9.891 |
+| 0.3 | 15.5° | 1.120 | 5.24 | 2.00281 | −0.977 | +9.890 |
 
 ## 7. Assess where the calculation is useful
 
