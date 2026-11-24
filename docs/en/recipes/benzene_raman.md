@@ -7,11 +7,32 @@ Calculate the normal Raman spectrum of benzene at B3LYP/6-31G* and put it next t
 | Molecule | Benzene C₆H₆ (12 atoms, charge 0, singlet) |
 | Features | Skeleton template, normal Raman (excitation wavelength), the result viewer's “Spectra” (Raman activities) and “Vibrations” (IR intensities), showing a mode from a peak |
 | Calculation | Gas phase, B3LYP/6-31G*, optimization → frequencies → normal Raman (excitation wavelength 532 nm) |
-| Run time | About 60 minutes (8 MPI processes: optimization about 20 seconds, frequencies about 3 minutes, Raman about 57 minutes) |
+| Run time | About 60 minutes (8 MPI processes: optimization about 20 seconds, frequencies about 3 minutes, Raman about 57 minutes); if time is short, open the completed results below for comparison |
 | Computer | AMD Ryzen 7 2700X (8 cores, 16 threads), 32 GB of memory, NWChem 7.3.1 on Linux; run on 2026-11-24 through MolForma MCP |
 | Practice data | [`benzene_raman.molforma.json`](../../recipes/samples/benzene_raman.molforma.json) (benzene placed from the part, with the calculation settings) |
 
 The practice file holds the structure and the calculation settings only, without results or run settings. To run the calculation yourself, check NWChem, MPI and the job folder in “3 Run settings”.
+
+## Open the completed results (no recalculation needed)
+
+**[Download the calculation log (.out, 5.47 MB)](https://github.com/hnakada123/MolForma/releases/download/benzene-raman-data-v1/benzene_raman.out)** · [SHA-256](https://github.com/hnakada123/MolForma/releases/download/benzene-raman-data-v1/benzene_raman.out.sha256)
+
+[Full set including comparison tables and figures (ZIP, 2.27 MB)](https://github.com/hnakada123/MolForma/releases/download/benzene-raman-data-v1/benzene_raman_results_v1.zip) · [ZIP SHA-256](https://github.com/hnakada123/MolForma/releases/download/benzene-raman-data-v1/benzene_raman_results_v1.zip.sha256)
+
+This is the NWChem output log of this page's calculation (2026-11-24). One log holds the optimization, the frequencies and the Raman activities, so no NWChem rerun is needed to inspect the results. Besides the log, the ZIP contains the input file, the practice project, the optimized structure as XYZ, tables of all vibrations and of the experimental comparisons as CSV, the calculated curves as CSV, the charts as PDF and PNG, and viewing instructions in English and Japanese.
+
+| Individual file | What you can inspect |
+| --- | --- |
+| [Calculated spectra (PDF)](https://github.com/hnakada123/MolForma/releases/download/benzene-raman-data-v1/benzene_raman_calculated.pdf) | Calculated Raman activities and IR intensities (unscaled, FWHM 20 cm⁻¹) in an ordinary PDF viewer |
+| [Experimental comparison (PDF)](https://github.com/hnakada123/MolForma/releases/download/benzene-raman-data-v1/benzene_raman_comparison_en.pdf) | The comparisons of steps 5 and 6 as a figure: the calculation ×0.960 against the experimental fundamentals, Raman activities and converted intensities |
+
+1. Save `benzene_raman.out` above. With the ZIP, choose `logs/benzene_raman.out` in the extracted folder.
+2. In MolForma, open that file with “Result viewer → Open…”.
+3. Choose the “Spectra” tab on the right to show the normal Raman chart. From there, item 3 of step 3 and step 4 work as written.
+
+Reading Raman activities requires MolForma 1.1.0 or later (currently a build of GitHub's main). MolForma 1.0.0 cannot display the Raman chart; use the PDFs and CSVs instead.
+
+Only the hostname and NWChem build-source path have been redacted in the distributed log. Coordinates and numerical results are unchanged. This is a viewing dataset; NWChem restart databases and orbital files are not included. See `README.en.txt` in the archive for details.
 
 ## 1. Place benzene
 
@@ -76,7 +97,7 @@ Put the values of the two tabs side by side by frequency, and no vibration has b
 
 Benzene (D6h) has a center of symmetry. Vibrations symmetric with respect to it (labels with g) change the polarizability and can be Raman active; antisymmetric ones (u) change the dipole moment and can be IR active. So no vibration appears in both spectra (mutual exclusion). Some vibrations appear in neither. In a molecule without a center of symmetry, such as the ethanol of [recipe 1](atoms_and_bonds.md), the same vibrations appear in both IR and Raman.
 
-MolForma's table of vibrations gives no symmetry labels. The labels in the next section are matched to the literature assignments by the order of the frequencies, degeneracy and activity.
+MolForma's table of vibrations gives no symmetry labels. The labels in the next section are matched to the literature assignments by the order of the frequencies, degeneracy and activity, and checked with the characters of the D6h operations applied to the displacement vectors. `tables/vibrations.csv` of the completed results gives the species of all 30 vibrations.
 
 ## 5. Compare with experiment
 

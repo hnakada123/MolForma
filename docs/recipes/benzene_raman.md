@@ -7,11 +7,32 @@
 | 分子 | ベンゼン C₆H₆（12原子・電荷 0・一重項） |
 | 使う機能 | 骨格テンプレート、通常ラマン（励起波長）、結果ビューアの「スペクトル」（ラマン活性）と「振動」（IR強度）、ピークからの振動の表示 |
 | 計算 | 気相、B3LYP/6-31G*、最適化 → 振動数 → 通常ラマン（励起波長 532 nm） |
-| 計算時間の目安 | 約60分（MPI 8プロセス。最適化 約20秒、振動数 約3分、ラマン 約57分） |
+| 計算時間の目安 | 約60分（MPI 8プロセス。最適化 約20秒、振動数 約3分、ラマン 約57分）。時間がとれない場合は下の計算済みデータを開いて比較する |
 | 計算環境 | AMD Ryzen 7 2700X（8コア・16スレッド）、メモリ 32 GB、NWChem 7.3.1（Linux）。2026-11-24にMolForma MCPから実行 |
 | 練習データ | [`benzene_raman.molforma.json`](samples/benzene_raman.molforma.json)（部品から置いたベンゼンと計算条件） |
 
 練習データは構造と計算条件だけで、計算結果や実行設定は含めていません。自分で計算する場合は「3 実行設定」でNWChem・MPI・保存先を確認してください。
+
+## 計算済みデータを開く（再計算不要）
+
+**[計算ログをダウンロード（.out・5.47 MB）](https://github.com/hnakada123/MolForma/releases/download/benzene-raman-data-v1/benzene_raman.out)** · [SHA-256](https://github.com/hnakada123/MolForma/releases/download/benzene-raman-data-v1/benzene_raman.out.sha256)
+
+[比較表・図も含む一式（ZIP・2.27 MB）](https://github.com/hnakada123/MolForma/releases/download/benzene-raman-data-v1/benzene_raman_results_v1.zip) · [ZIPのSHA-256](https://github.com/hnakada123/MolForma/releases/download/benzene-raman-data-v1/benzene_raman_results_v1.zip.sha256)
+
+このページの計算（2026-11-24）のNWChem出力ログです。最適化・振動数・ラマン活性が1つのログに入っているので、結果を見るためにNWChemを再実行する必要はありません。ZIPにはログのほか、入力ファイル、練習用プロジェクト、最適化構造のXYZ、全振動と実測比較の表（CSV）、計算曲線のCSV、チャートのPDF・PNG、日本語・英語の開き方を収録しています。
+
+| 個別に開くファイル | 確認できるもの |
+| --- | --- |
+| [計算スペクトル（PDF）](https://github.com/hnakada123/MolForma/releases/download/benzene-raman-data-v1/benzene_raman_calculated.pdf) | ラマン活性とIR強度の計算チャート（スケールなし、半値全幅 20 cm⁻¹）。PDFビューアで閲覧 |
+| [実測との比較チャート（PDF）](https://github.com/hnakada123/MolForma/releases/download/benzene-raman-data-v1/benzene_raman_comparison_ja.pdf) | 手順5・6の比較を図にしたもの。×0.960の計算と実測の基本振動数、ラマン活性と換算した強度 |
+
+1. 上の `benzene_raman.out` を保存します。ZIPを使う場合は、展開したフォルダー内の `logs/benzene_raman.out` を選びます。
+2. MolFormaの「結果ビューア → 開く…」で、そのファイルを開きます。
+3. 右側の「スペクトル」タブを選ぶと、通常ラマンのチャートが表示されます。以降は手順3の3と手順4をそのまま行えます。
+
+ラマン活性の読み込みはMolForma 1.1.0以降の機能です（現時点ではGitHubのmainからビルドした版）。1.0.0ではラマンのチャートを表示できないため、PDFとCSVで確認してください。
+
+配布ログではホスト名とNWChemのビルド元パスのみ伏せ、座標や計算結果の数値は変更していません。閲覧用データで、NWChemの再開用データベースや軌道ファイルは含みません。詳しくは同梱の `README.ja.txt` を参照してください。
 
 ## 1. ベンゼンを置く
 
@@ -76,7 +97,7 @@
 
 ベンゼン（D6h）は対称中心をもちます。対称中心について対称な振動（記号にgが付く）は分極率を変えるのでラマン活性になり得て、反対称な振動（u）は双極子モーメントを変えるのでIR活性になり得ます。そのため同じ振動が両方のスペクトルに出ることはありません（交互禁制）。どちらにも出ない振動もあります。対称中心のない分子（例えば[題材1](atoms_and_bonds.md)のエタノール）では、同じ振動がIRにもラマンにも出ます。
 
-MolFormaの振動の表は対称性の記号を付けません。次の節の記号は、文献の帰属と、振動数の順・縮退・活性の有無で対応させたものです。
+MolFormaの振動の表は対称性の記号を付けません。次の節の記号は、文献の帰属と、振動数の順・縮退・活性の有無で対応させ、変位ベクトルにD6hの対称操作を当てた指標でも確かめたものです。計算済みデータの `tables/vibrations.csv` に、30個すべての振動の対称種があります。
 
 ## 5. 実測と比べる
 
