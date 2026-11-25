@@ -30,7 +30,7 @@ This is the NWChem output log of this page's calculation (2026-11-24). One log h
 2. In MolForma, open that file with “Result viewer → Open…”.
 3. Choose the “Spectra” tab on the right to show the normal Raman chart. From there, item 3 of step 3 and step 4 work as written.
 
-Reading Raman activities requires MolForma 1.1.0 or later (currently a build of GitHub's main). MolForma 1.0.0 cannot display the Raman chart; use the PDFs and CSVs instead.
+Reading Raman activities requires MolForma 1.1.0 or later. MolForma 1.0.0 cannot display the Raman chart; use the PDFs and CSVs instead.
 
 Only the hostname and NWChem build-source path have been redacted in the distributed log. Coordinates and numerical results are unchanged. This is a viewing dataset; NWChem restart databases and orbital files are not included. See `README.en.txt` in the archive for details.
 
