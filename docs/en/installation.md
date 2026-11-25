@@ -6,7 +6,7 @@ The software MolForma needs and how to install it on each OS. MolForma is built 
 
 | OS | Steps | Contents |
 | --- | --- | --- |
-| Arch Linux | [Installing on Arch Linux](installation/arch_linux.md) | Making a package from the PKGBUILD and installing it with pacman (with its dependencies), NWChem from the AUR; checking VTK rendering, updating and removing, troubleshooting |
+| Arch Linux | [Installing on Arch Linux](installation/arch_linux.md) | A built package is on [Releases](https://github.com/hnakada123/MolForma/releases) (since 1.1.0). Making a package from the PKGBUILD and installing it with pacman (with its dependencies), NWChem from the AUR; checking VTK rendering, updating and removing, troubleshooting |
 | Ubuntu 26.04 LTS | [Installing on Ubuntu](installation/ubuntu.md) | Development packages and NWChem with apt, building from source, making a deb package and installing it with apt; checking VTK rendering, updating and removing, troubleshooting |
 | macOS (Apple silicon) | [Installing on macOS](installation/macos.md) | A ready-built DMG is on [Releases](https://github.com/hnakada123/MolForma/releases) (macOS 27 or later). Libraries (Qt, Open Babel, RDKit, VTK) and NWChem with Homebrew, building from source, making a DMG of `MolForma.app` with the libraries and installing it into the Applications folder; using it on other Macs and distributing it, updating and removing, troubleshooting |
 | Windows 11 | [Installing on Windows](installation/windows.md) | Building with Visual Studio (MSVC) and vcpkg, Open Babel, RDKit and VTK also from source, and installing into a folder that holds Qt and the rest; NWChem in Ubuntu on WSL, started through the included batch files; updating and removing, troubleshooting |

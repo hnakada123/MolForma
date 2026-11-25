@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Builds the Arch Linux package of the MolForma 1.1.0 release from its tag on GitHub, with RDKit and
+# VTK: the package in MolForma-1.1.0-arch-linux-x86_64.zip of
+# https://github.com/hnakada123/MolForma/releases/tag/v1.1.0, which also holds the copy of this file
+# it was built with (docs/installation/arch_linux.md). It builds as ../PKGBUILD (molforma-git, of the
+# main branch) does, from the tag's source; a new release changes pkgver and the archive's SHA-256.
+# "makepkg -sif" in the folder of this file builds it again against the libraries of this computer.
+
+pkgname=molforma
+pkgver=1.1.0
+pkgrel=1
+pkgdesc='Molecular editor, input builder and result viewer for NWChem'
+arch=('x86_64')
+url='https://hnakada123.github.io/MolForma/'
+license=('GPL-2.0-or-later')
+# Arch's VTK links Open MPI (libvtkParallelMPI and others) without depending on it.
+depends=('qt6-base' 'qt6-svg' 'openbabel' 'rdkit' 'vtk' 'openmpi' 'zlib')
+# VTK's CMake files need fast_float and nlohmann-json, and RDKit's need Boost.
+makedepends=('cmake' 'ninja' 'eigen' 'boost' 'fast_float' 'nlohmann-json')
+# The tests measure laid out text, which needs a font (a clean chroot has none).
+checkdepends=('ttf-dejavu')
+optdepends=('nwchem: running calculations (AUR)'
+            'qt6-translations: Japanese texts of the Qt standard dialogs'
+            'noto-fonts-cjk: Japanese font'
+            'ffmpeg: exporting videos as MP4')
+conflicts=('molforma-git')
+source=("MolForma-$pkgver.tar.gz::https://github.com/hnakada123/MolForma/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('d2eea28b399a7480b88c41421a47c74b13327f115900b003f0adadc2182118ba')
+
+build() {
+  cmake -S "MolForma-$pkgver" -B build -G Ninja -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr
+  # Stop rather than package a build that silently left out VTK or RDKit.
+  grep -q -- '-DMOLFORMA_HAS_VTK=1' build/build.ninja ||
+    { error 'CMake cannot use VTK (see the "VTK development dependency unavailable" lines)'; return 1; }
+  grep -q -- '-DMOLFORMA_HAS_RDKIT=1' build/build.ninja ||
+    { error 'CMake cannot use RDKit'; return 1; }
+  cmake --build build
+}
+
+check() {
+  ctest --test-dir build --output-on-failure
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+}

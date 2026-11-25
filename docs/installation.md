@@ -6,7 +6,7 @@ MolFormaを動かすのに必要なソフトウェアと、OSごとのインス�
 
 | OS | 手順 | 主な内容 |
 | --- | --- | --- |
-| Arch Linux | [Arch Linuxでのインストール](installation/arch_linux.md) | PKGBUILDからパッケージを作ってpacmanでインストール（依存パッケージも自動で導入）、AURからNWChem。VTK描画の確認、更新・削除、困ったとき |
+| Arch Linux | [Arch Linuxでのインストール](installation/arch_linux.md) | ビルド済みのパッケージは[Releases](https://github.com/hnakada123/MolForma/releases)にある（1.1.0から）。PKGBUILDからパッケージを作ってpacmanでインストール（依存パッケージも自動で導入）、AURからNWChem。VTK描画の確認、更新・削除、困ったとき |
 | Ubuntu 26.04 LTS | [Ubuntuでのインストール](installation/ubuntu.md) | aptで開発用パッケージとNWChemを入れ、ソースからビルドしてdebパッケージを作り、aptでインストール。VTK描画の確認、更新・削除、困ったとき |
 | macOS（Apple silicon） | [macOSでのインストール](installation/macos.md) | ビルド済みのDMGは[Releases](https://github.com/hnakada123/MolForma/releases)にある（macOS 27以降）。Homebrewでライブラリ（Qt・Open Babel・RDKit・VTK）とNWChemを入れ、ソースからビルドして、ライブラリを含めた `MolForma.app` のDMGを作り、「アプリケーション」フォルダーにインストール。ほかのMacで使う・配布するとき、更新・削除、困ったとき |
 | Windows 11 | [Windowsでのインストール](installation/windows.md) | Visual Studio（MSVC）とvcpkgでビルドし、Open Babel・RDKit・VTKもソースからビルドして、Qtなどを含めたフォルダーにインストール。NWChemはWSLのUbuntuに入れ、付属のバッチファイルから起動。更新・削除、困ったとき |

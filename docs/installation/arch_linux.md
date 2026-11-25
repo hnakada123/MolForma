@@ -4,7 +4,24 @@ MolFormaをArch Linuxのパッケージとして作り、pacmanでインスト�
 
 対象はArch Linux（x86-64）とMolForma 1.1.0です。2026-10-28にMolForma 1.0.0の手順を確認しました（[確認した構成](#確認した構成)）。
 
-MolFormaのパッケージは公式リポジトリにもAURにもありません（2026-10-28時点）。PKGBUILDはGitHubのmainブランチのソースを取得してビルドします。インストールしたパッケージはpacmanで管理するので、削除は `pacman -R` で行えます。
+MolFormaのパッケージは公式リポジトリにもAURにもありません（2026-10-28時点）。PKGBUILDはGitHubのmainブランチのソースを取得してビルドします。インストールしたパッケージはpacmanで管理するので、削除は `pacman -R` で行えます。1.1.0からは、リリースのソースからビルドしたパッケージ `molforma` も[Releases](https://github.com/hnakada123/MolForma/releases)にあります（[リリースのパッケージを使う](#リリースのパッケージを使う)）。
+
+## リリースのパッケージを使う
+
+[Releases](https://github.com/hnakada123/MolForma/releases)の `MolForma-<版>-arch-linux-x86_64.zip` には、リリースのタグのソースからビルドしたパッケージ `molforma`、ビルドに使ったPKGBUILD（リポジトリの `packaging/arch/release/PKGBUILD`）、インストール手順（`INSTALL.md`、英語は `INSTALL.en.md`）、ライセンスが入っています。ビルドせずに、ZIPを展開してpacmanで入れられます。下の[必要なパッケージ](#必要なパッケージ)の実行時の依存パッケージは、pacmanが公式リポジトリから自動で入れます。
+
+```sh
+bsdtar -xf MolForma-1.1.0-arch-linux-x86_64.zip
+cd MolForma-1.1.0-arch-linux-x86_64
+sudo pacman -Syu
+sudo pacman -U ./molforma-1.1.0-1-x86_64.pkg.tar.zst
+```
+
+- ビルドしたときの公式リポジトリのライブラリが必要です。1.1.0は2026-11-25の公式リポジトリでビルドしたため、Qt 6.12以降が必要です。システムを最新にしてから入れてください。
+- 後のシステムの更新でライブラリの版が変わり、`error while loading shared libraries` などで起動しなくなった場合は、ZIPを展開したフォルダーで `makepkg -sif` を実行します。同じPKGBUILDで、リリースのソースを手元のライブラリに合わせてビルドし直します。
+- `molforma` と、下の手順で作る `molforma-git` は同時に入れられません。一方を入れると、もう一方を削除するか聞かれます。
+- パッケージには署名をしていません。ZIPのSHA-256はリリースノートにあります。
+- NWChemは[2. NWChemを入れる（AUR）](#2-nwchemを入れるaur)のとおり入れます。起動と確認は[4. 起動して確認する](#4-起動して確認する)と同じです（配置したファイルは `pacman -Ql molforma` で一覧できます）。削除は `sudo pacman -R molforma` です。
 
 ## 必要なパッケージ
 
@@ -17,9 +34,11 @@ MolFormaのパッケージは公式リポジトリにもAURにもありません
 | 実行時 | `openbabel` | 構造ファイルの読み書き、力場による整形、SMILESからの3D構造（フォーマットプラグインと力場データを含む） |
 | 実行時 | `rdkit` | 厳密な立体判定（R/S・E/Z）、残基認識 |
 | 実行時 | `vtk` | 3D画面をVTK（OpenGL）で描画 |
+| 実行時 | `openmpi` | VTKのライブラリが使う（ArchのVTKのパッケージは、リンクしているOpen MPIを依存パッケージに含めていない） |
 | 実行時 | `zlib` | gzipで圧縮した構造ファイルの読込 |
 | ビルド時 | `git`、`cmake`、`ninja`、`eigen` | ソースの取得とビルド |
-| ビルド時 | `boost`、`fast_float`、`nlohmann-json`、`openmpi` | RDKit・VTKのCMakeの設定が参照するもの |
+| ビルド時 | `boost`、`fast_float`、`nlohmann-json` | RDKit・VTKのCMakeの設定が参照するもの |
+| テスト時 | `ttf-dejavu` | テスト（文字を含む画面の配置の確認）に使うフォント |
 
 次のパッケージは、必要に応じて自分で入れます。
 
@@ -139,7 +158,7 @@ sudo pacman -R molforma-git
 | 日本語が四角で表示される | `noto-fonts-cjk` などの日本語フォントを入れます |
 | 日本語表示なのに、ファイル選択などQtの標準ダイアログに英語が残る | `qt6-translations` を入れます |
 | 「実行前の確認」でNWChemやMPIランチャーが見つからない | 端末で `command -v nwchem mpirun` を確認します。NWChemを別の場所に入れた場合は、「3 実行設定」でパスを指定します |
-| `error while loading shared libraries` で起動しない | システム更新で共有ライブラリが変わりました。[更新する](#更新する)のとおり `makepkg -sif` で作り直します |
+| `error while loading shared libraries` で起動しない | システム更新で共有ライブラリが変わりました。[更新する](#更新する)のとおり `makepkg -sif` で作り直します。リリースのパッケージは、ZIPを展開したフォルダーで `makepkg -sif` を実行します |
 
 ## 確認した構成
 
@@ -158,5 +177,7 @@ sudo pacman -R molforma-git
 | Open MPI | 5.0.11 |
 
 NWChemは `~/.nwchemrc` を置かずに `mpirun -np 2 nwchem` で起動し、水素分子のHF/6-31G*計算が完了することを確かめました。依存パッケージを入れ済みの環境での確認で、作ったパッケージのpacmanでのインストール（`-i`）と、新しい環境での `makepkg -s`・yayによる依存の自動インストールは含みません。パッケージの実行ファイルは、展開して起動できることと版が1.0.0であることを確かめています。
+
+2026-11-25に、1.1.0のリリースのパッケージ（`molforma` 1.1.0-1）を、Dockerの新しいコンテナ（`archlinux:base-devel`、その日の公式リポジトリ）で `packaging/arch/release/PKGBUILD` から `makepkg -s` で作り、全20件のテストが通ることを確かめました。使ったのはQt 6.12.0、Open Babel 3.2.1、RDKit 2026.09.2、VTK 9.7.2、Open MPI 5.0.11です。別の新しいコンテナ（`archlinux:latest`）に `pacman -U` で入れ、依存パッケージが自動で入り、足りないライブラリがないこと、版が1.1.0であること、オフスクリーンの画面写真を作れること、`--mcp-gui` からSMILESで3D構造（候補）を作れることを確かめました。このとき、Open MPIのない環境では `libmpi.so.40` が見つからずに起動しないこと（ArchのVTKがOpen MPIをリンクしながら依存パッケージに含めていないため）と、フォントのない環境では画面の配置のテストが失敗することが分かり、2つのPKGBUILDの実行時の依存に `openmpi` を、テストの依存に `ttf-dejavu` を加えました。実際のデスクトップでの表示とNWChemでの計算は、このパッケージでは確認していません。
 
 関連: [OS別インストール・必要パッケージ](../installation.md)、[3D描画](../features/rendering.md)、[「3 実行設定」](../features/execution.md)

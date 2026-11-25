@@ -9,9 +9,12 @@ pkgdesc='Molecular editor, input builder and result viewer for NWChem'
 arch=('x86_64')
 url='https://hnakada123.github.io/MolForma/'
 license=('GPL-2.0-or-later')
-depends=('qt6-base' 'qt6-svg' 'openbabel' 'rdkit' 'vtk' 'zlib')
-# VTK's CMake files need fast_float, nlohmann-json and Open MPI, and RDKit's need Boost.
-makedepends=('git' 'cmake' 'ninja' 'eigen' 'boost' 'fast_float' 'nlohmann-json' 'openmpi')
+# Arch's VTK links Open MPI (libvtkParallelMPI and others) without depending on it.
+depends=('qt6-base' 'qt6-svg' 'openbabel' 'rdkit' 'vtk' 'openmpi' 'zlib')
+# VTK's CMake files need fast_float and nlohmann-json, and RDKit's need Boost.
+makedepends=('git' 'cmake' 'ninja' 'eigen' 'boost' 'fast_float' 'nlohmann-json')
+# The tests measure laid out text, which needs a font (a clean chroot has none).
+checkdepends=('ttf-dejavu')
 optdepends=('nwchem: running calculations (AUR)'
             'qt6-translations: Japanese texts of the Qt standard dialogs'
             'noto-fonts-cjk: Japanese font'

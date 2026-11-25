@@ -41,7 +41,7 @@ cmake --install build --prefix /tmp/molforma-install
 
 インストールすると、デスクトップのランチャー（`share/applications/molforma.desktop`）、アイコン、`*.molforma.json` と `*.nw` のMIME型も配置します。説明書は実行ファイルに組み込んでおり、「ヘルプ → 操作ガイド・マニュアル」（F1）で読めます。未保存の作業は1分ごとに自動保存し、異常終了した場合は次の起動時に復旧を確認します。
 
-Linuxでは、[Releases](https://github.com/hnakada123/MolForma/releases) のZIPにあるAppImageを、ビルドせずに使えます。Apple siliconのMac（macOS 27以降）では、macOS用のZIPにあるDMGを使えます。x64のWindows 11では、Windows用のZIPにあるフォルダーを使えます。OSごとの必要なパッケージとインストール手順は「[OS別インストール・必要パッケージ](docs/installation.md)」にあります。Arch Linuxでは `packaging/arch/PKGBUILD` からパッケージを作り、pacmanでインストールできます。Ubuntuなどでは、ビルドしたフォルダーで `cpack -G DEB` を実行するとdebパッケージを作れます。ディストリビューションによらず動くAppImageは、`packaging/appimage/` のDockerfileとスクリプトで作れます。macOSではHomebrewでライブラリとNWChemを入れてビルドし、ビルドしたフォルダーで `cpack -G DragNDrop` を実行すると、ライブラリを含めた `MolForma.app` のディスクイメージ（DMG）を作れます。WindowsではVisual Studio（MSVC）でビルドし、`cmake --install` でQtなどを含めたフォルダーを作ります（NWChemはWSLのものを使います）。
+Linuxでは、[Releases](https://github.com/hnakada123/MolForma/releases) のZIPにあるAppImageを、ビルドせずに使えます。Apple siliconのMac（macOS 27以降）では、macOS用のZIPにあるDMGを使えます。x64のWindows 11では、Windows用のZIPにあるフォルダーを使えます。OSごとの必要なパッケージとインストール手順は「[OS別インストール・必要パッケージ](docs/installation.md)」にあります。Arch Linuxでは、Releases のArch Linux用のZIPにあるパッケージ（1.1.0から）か、`packaging/arch/PKGBUILD` から作ったパッケージを、pacmanでインストールできます。Ubuntuなどでは、ビルドしたフォルダーで `cpack -G DEB` を実行するとdebパッケージを作れます。ディストリビューションによらず動くAppImageは、`packaging/appimage/` のDockerfileとスクリプトで作れます。macOSではHomebrewでライブラリとNWChemを入れてビルドし、ビルドしたフォルダーで `cpack -G DragNDrop` を実行すると、ライブラリを含めた `MolForma.app` のディスクイメージ（DMG）を作れます。WindowsではVisual Studio（MSVC）でビルドし、`cmake --install` でQtなどを含めたフォルダーを作ります（NWChemはWSLのものを使います）。
 
 ## 操作
 
@@ -105,7 +105,7 @@ MCPクライアントからも操作できます。GUIを表示する場合は `
 | `src/results/` | 計算結果の読込み、等値面生成、MOLDEN分子軌道の評価、スペクトル・エネルギー比較 |
 | `src/ui/` | メインウィンドウ、各パネル、分子描画、UI部品、GUIを操作するMCPツール |
 | `src/mcp/` | MCPサーバー（stdio・JSON-RPC）、共通ツール定義、画面なしの計算・結果読込、アクセス制限 |
-| `packaging/` | デスクトップ連携（`.desktop`、アイコン、MIME型）、Arch Linuxの `PKGBUILD`（`arch/`）、AppImageのビルド環境と配布ファイルの作成（`appimage/`）、WindowsでWSLのNWChemを起動するバッチファイルと配布ファイルの作成（`windows/`）、macOSのアプリケーションバンドルの設定とアイコン、配布ファイルの作成（`macos/`）。`docs/manual.qrc` で説明書とアイコンを実行ファイルに組み込み |
+| `packaging/` | デスクトップ連携（`.desktop`、アイコン、MIME型）、Arch Linuxの `PKGBUILD`（`arch/`: mainのもの、`arch/release/`: リリースのもの）、AppImageのビルド環境と配布ファイルの作成（`appimage/`）、WindowsでWSLのNWChemを起動するバッチファイルと配布ファイルの作成（`windows/`）、macOSのアプリケーションバンドルの設定とアイコン、配布ファイルの作成（`macos/`）。`docs/manual.qrc` で説明書とアイコンを実行ファイルに組み込み |
 | `tools/screenshots/` | マニュアル・実習の画面写真を `molforma --mcp-gui` の操作で撮るスクリプト（開発用。MolForma本体はPythonに依存しません） |
 | `tools/templates/` | 多座配位子・η配位・溶媒の部品を `assets/library.json` へ加えるスクリプト（開発用、RDKitを使用） |
 

@@ -4,7 +4,24 @@ How to make MolForma an Arch Linux package and install it with pacman. `makepkg`
 
 These steps are for Arch Linux (x86-64) and MolForma 1.1.0. The procedure was checked with MolForma 1.0.0 on 2026-10-28 (see [Verified configuration](#verified-configuration)).
 
-MolForma has no package in the official repositories or the AUR (as of 2026-10-28). The PKGBUILD fetches the source of the main branch on GitHub and builds it. As pacman manages the installed package, `pacman -R` removes it.
+MolForma has no package in the official repositories or the AUR (as of 2026-10-28). The PKGBUILD fetches the source of the main branch on GitHub and builds it. As pacman manages the installed package, `pacman -R` removes it. Since 1.1.0, [Releases](https://github.com/hnakada123/MolForma/releases) also has the package `molforma` built from the release's source (see [Using the release package](#using-the-release-package)).
+
+## Using the release package
+
+`MolForma-<version>-arch-linux-x86_64.zip` on [Releases](https://github.com/hnakada123/MolForma/releases) holds the package `molforma` built from the source of the release tag, the PKGBUILD it was built with (the repository's `packaging/arch/release/PKGBUILD`), an install guide (`INSTALL.en.md`, in Japanese `INSTALL.md`) and the licenses. Extract the ZIP and install it with pacman, without building anything. pacman installs the run-time dependencies of [Required packages](#required-packages) below from the official repositories automatically.
+
+```sh
+bsdtar -xf MolForma-1.1.0-arch-linux-x86_64.zip
+cd MolForma-1.1.0-arch-linux-x86_64
+sudo pacman -Syu
+sudo pacman -U ./molforma-1.1.0-1-x86_64.pkg.tar.zst
+```
+
+- It needs the libraries of the official repositories it was built with. 1.1.0 was built with those of 2026-11-25, so it needs Qt 6.12 or later. Bring the system up to date before installing it.
+- If a later system update changes the libraries and it stops starting, with `error while loading shared libraries` or the like, run `makepkg -sif` in the folder of the extracted ZIP. The same PKGBUILD builds the release's source again against the computer's libraries.
+- `molforma` and `molforma-git`, made by the steps below, cannot be installed together. Installing one asks whether to remove the other.
+- The package is not signed. The SHA-256 of the ZIP is in the release notes.
+- Install NWChem as in [2. Install NWChem (AUR)](#2-install-nwchem-aur). Starting and checking are as in [4. Start and check](#4-start-and-check) (`pacman -Ql molforma` lists the installed files). `sudo pacman -R molforma` removes it.
 
 ## Required packages
 
@@ -17,9 +34,11 @@ MolForma has no package in the official repositories or the AUR (as of 2026-10-2
 | Run time | `openbabel` | Reading and writing structure files, force-field cleanup, 3D structures from SMILES (includes the format plugins and force-field data) |
 | Run time | `rdkit` | Strict stereo perception (R/S, E/Z), residue recognition |
 | Run time | `vtk` | Drawing the 3D view with VTK (OpenGL) |
+| Run time | `openmpi` | Used by VTK's libraries (Arch's VTK package does not name the Open MPI it links as a dependency) |
 | Run time | `zlib` | Reading gzip-compressed structure files |
 | Build time | `git`, `cmake`, `ninja`, `eigen` | Fetching the source and building |
-| Build time | `boost`, `fast_float`, `nlohmann-json`, `openmpi` | What the CMake configurations of RDKit and VTK refer to |
+| Build time | `boost`, `fast_float`, `nlohmann-json` | What the CMake configurations of RDKit and VTK refer to |
+| Test time | `ttf-dejavu` | A font for the tests (checks of laid out text) |
 
 Install these yourself as needed.
 
@@ -139,7 +158,7 @@ The application settings (`~/.config/MolForma/`), autosaves (`~/.local/share/Mol
 | Japanese text shows as boxes | Install a Japanese font such as `noto-fonts-cjk` |
 | With the Japanese interface, Qt's standard dialogs such as file selection keep English text | Install `qt6-translations` |
 | The pre-run check cannot find NWChem or the MPI launcher | Check `command -v nwchem mpirun` in a terminal. If NWChem is installed elsewhere, set its path in “3 Run settings” |
-| It does not start, with `error while loading shared libraries` | A system update changed shared libraries. Make it again with `makepkg -sif` as in [Updating](#updating) |
+| It does not start, with `error while loading shared libraries` | A system update changed shared libraries. Make it again with `makepkg -sif` as in [Updating](#updating). For the release package, run `makepkg -sif` in the folder of the extracted ZIP |
 
 ## Verified configuration
 
@@ -158,5 +177,7 @@ On 2026-10-28, on Arch Linux (x86-64) with the configuration below, `makepkg` ma
 | Open MPI | 5.0.11 |
 
 NWChem was started with `mpirun -np 2 nwchem` without a `~/.nwchemrc` and completed an HF/6-31G* calculation of the hydrogen molecule. This was checked on a system with the dependencies already installed; installing the package with pacman (`-i`) and installing the dependencies automatically with `makepkg -s` and yay on a new system are not covered. The package's executable, unpacked, was checked to start and to report version 1.0.0.
+
+On 2026-11-25, the package of the 1.1.0 release (`molforma` 1.1.0-1) was made with `makepkg -s` from `packaging/arch/release/PKGBUILD` in a new Docker container (`archlinux:base-devel`, with that day's official repositories), and all 20 tests passed. It used Qt 6.12.0, Open Babel 3.2.1, RDKit 2026.09.2, VTK 9.7.2 and Open MPI 5.0.11. Installed with `pacman -U` in another new container (`archlinux:latest`), it brought in its dependencies automatically with no library missing, reported version 1.1.0, wrote an offscreen screenshot and, over `--mcp-gui`, made a 3D structure (a candidate) from SMILES. This showed that it does not start without Open MPI, as `libmpi.so.40` is missing (Arch's VTK links Open MPI without naming it as a dependency), and that the layout tests fail without any font; both PKGBUILDs got `openmpi` as a run-time dependency and `ttf-dejavu` for the tests. Display on a real desktop and calculations with NWChem were not checked with this package.
 
 See also: [Installation and required packages by OS](../installation.md), [3D rendering](../features/rendering.md), [“3 Run settings”](../features/execution.md)

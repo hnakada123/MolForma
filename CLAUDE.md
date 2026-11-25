@@ -203,7 +203,9 @@ Key cross-cutting designs:
   the recipes' practice files in `docs/recipes/samples/` are embedded too, so that their links open them
   (`MainWindow::useSample`; `test_core recipeSamples` checks their contents).
   `packaging/` holds the desktop entry, icon and MIME types installed by `cmake --install`, and `packaging/arch/PKGBUILD`
-  (an Arch Linux `molforma-git` package of GitHub's main, with RDKit and VTK; see `docs/installation/arch_linux.md`).
+  (an Arch Linux `molforma-git` package of GitHub's main, with RDKit and VTK; see `docs/installation/arch_linux.md`)
+  with `packaging/arch/release/PKGBUILD` (the package `molforma` of a release tag, put with it into the release's
+  `MolForma-<version>-arch-linux-x86_64.zip`).
   The CPack settings at the end of `CMakeLists.txt` make a Debian/Ubuntu package with `cpack -G DEB` in the build
   folder (`dpkg-shlibdeps` finds the libraries; see `docs/installation/ubuntu.md`). `packaging/appimage/` builds an
   AppImage in Docker (Ubuntu 24.04 with Qt 6.4, VTK built for Qt 6; `build.sh` runs linuxdeploy and appimagetool and
