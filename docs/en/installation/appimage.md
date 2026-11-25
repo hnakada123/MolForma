@@ -153,6 +153,8 @@ On 2026-11-05, the 1.0.0 release, which no longer holds OpenSSL, was checked. On
 
 On 2026-11-10, the build environment and the AppImage were made again from the 1.1.0 source. All of MolForma’s CTest suites (16) passed in the build environment. On Arch Linux the AppImage was started without extracting it (with FUSE): a calculation went on after its `--mcp --mcp-keep-runs` session ended, the next session followed and stopped it, and no process or mount was left afterwards. The process that supervised the calculation was the AppImage itself, started with `--run-job` ([Keep calculations running after the window closes](../features/execution.md#keep-calculations-running-after-the-window-closes)). A test program stood in for NWChem in this check.
 
+On 2026-11-25, the 1.1.0 release was made. The build environment was made again with `UPDATES` set to that day, and all of MolForma’s CTest suites (20) passed in it. On Arch Linux the AppImage was started without extracting it (with FUSE): it reported version 1.1.0, wrote an offscreen screenshot and, over `--mcp-gui`, made a 3D structure (a candidate) from SMILES. The release ZIP holds the same AppImage that was checked. Containers of other distributions were not checked this time.
+
 VTK rendering on a real GPU and the actual display on a Wayland desktop were not checked with the AppImage.
 
 See also: [Installation and required packages by OS](../installation.md), [Installing on Arch Linux](arch_linux.md), [Installing on Ubuntu](ubuntu.md)

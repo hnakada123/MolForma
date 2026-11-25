@@ -153,6 +153,8 @@ docker run --rm -e OWNER="$(id -u):$(id -g)" -v "$PWD:/src:ro" -v "$PWD/build-ap
 
 2026-11-10に、1.1.0のソースでビルド環境とAppImageを作り直しました。ビルド環境ではMolFormaのCTest（16件）がすべて通りました。Arch LinuxではAppImageを展開せずに（FUSEで）起動し、`--mcp --mcp-keep-runs` のセッションを終えた後も計算が続くこと、次のセッションからその計算を追跡・停止できること、終了後にプロセスとマウントが残らないことを確かめました。このとき計算を見張るプロセスは、AppImage自身が `--run-job` で起動したものです（[ウィンドウを閉じても計算を続ける](../features/execution.md#ウィンドウを閉じても計算を続ける)）。この確認では試験用のプログラムをNWChemの代わりに使っています。
 
+2026-11-25に、1.1.0の配布版を作りました。`UPDATES` にその日の日付を指定してビルド環境を作り直し、ビルド環境ではMolFormaのCTest（20件）がすべて通りました。Arch LinuxではAppImageを展開せずに（FUSEで）起動し、版が1.1.0であること、オフスクリーンの画面写真を作れること、`--mcp-gui` からSMILESで3D構造（候補）を作れることを確かめました。配布用のZIPには、確かめたものと同じAppImageが入っています。このときは、ほかのディストリビューションのコンテナでは確認していません。
+
 実機のGPUでのVTKの描画と、Waylandのデスクトップでの実際の表示は、AppImageでは確認していません。
 
 関連: [OS別インストール・必要パッケージ](../installation.md)、[Arch Linuxでのインストール](arch_linux.md)、[Ubuntuでのインストール](ubuntu.md)
