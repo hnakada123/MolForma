@@ -141,7 +141,7 @@ template <class Reader> void readBlock(const QByteArray &text, Reader &reader) {
                 if (started)
                     break;
                 started = true;
-                reader.block(token.text.mid(5));
+                reader.block(token.text.sliced(5));
             }
             more = tokens.next(token);
         }

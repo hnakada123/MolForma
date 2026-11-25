@@ -876,7 +876,8 @@ class ExecutionTest : public QObject, RunFixture {
              "echo \"$!;fake\"\n"},
             {"squeue", "#!/bin/sh\nwhile [ $# -gt 0 ]; do [ \"$1\" = \"-j\" ] && id=$2; shift; done\n"
                        "if kill -0 \"$id\" 2>/dev/null; then echo RUNNING; fi\n"},
-            {"scancel", "#!/bin/sh\ntouch \"$HOME/.cancelled-$1\"\nkill -TERM -- \"-$1\" 2>/dev/null\n"},
+            // The job's session is its process group. Without "--", which dash's kill refuses.
+            {"scancel", "#!/bin/sh\ntouch \"$HOME/.cancelled-$1\"\nkill -TERM \"-$1\" 2>/dev/null\n"},
             {"sacct",
              "#!/bin/sh\nwhile [ $# -gt 0 ]; do [ \"$1\" = \"-j\" ] && id=$2; shift; done\n"
              "if [ -f \"$HOME/.cancelled-$id\" ]; then echo 'CANCELLED by 1000'; else echo COMPLETED; fi\n"}};

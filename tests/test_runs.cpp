@@ -956,7 +956,7 @@ class RunsTest : public QObject, RunFixture {
             e.energyMethod = "SCF";
             e.status = status;
             e.energy = energy;
-            e.created = QDateTime(QDate(2026, 11, day), QTime(12, 0), QTimeZone::UTC);
+            e.created = QDateTime(QDate(2026, 11, day), QTime(12, 0), QTimeZone::utc());
             e.valid = true;
             return e;
         };
