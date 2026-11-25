@@ -249,6 +249,7 @@ MolFormaを終了してから、新しいDMGの `MolForma` を「アプリケー
 - FinderやDockから起動したときと同じ最小のPATH（`/usr/bin:/bin:/usr/sbin:/sbin`）で起動した `MolForma.app` が、既定の実行設定のまま `/opt/homebrew/bin` のNWChemと `mpirun` を見つけ、MPI 2プロセスの水素分子の計算を完了すること。
 - `~/.nwchemrc` を置かずに `mpirun -np 2 nwchem` で水素分子のHF/6-31G*計算が完了し、SCFエネルギーが −1.126755317965 Hartree になること。MolFormaの実行設定のテスト（実際のNWChemを使う任意のテスト、[「3 実行設定」](../features/execution.md)）で、MPI 2プロセスの水のHF/STO-3G計算が完了し、SCFエネルギーが −74.945628203255 Hartree になること。
 - 2026-11-05に `packaging/macos/release.sh` で作ったDMG（84 MB）で、次のことを確かめました。Qtのすべてのモジュールがこのスクリプトでビルドしたものであり、OpenSSLのファイルがないこと。そのQtでCTestの16件が通ること。`/opt/homebrew`・`/usr/local` を読めなくしたサンドボックス（`sandbox-exec`）で起動し、読み込まれるライブラリがアプリの中とmacOSのものだけであること。同じサンドボックスで、SMILESからの3D構造とPDBからのダウンロード（1CRN）ができること（操作のためにoffscreenの表示部品を足したコピーで確認）。最小のPATHで、MPI 2プロセスの水のSCF計算が完了すること。ダウンロードの印（`com.apple.quarantine`）を付けたDMGのアプリから、`xattr -dr` で印を取り除けること。
+- 2026-11-25に、同じMac（macOS 27.2.1に更新済み）で `packaging/macos/release.sh` を使って1.1.0のリリースを作り（RDKit 2026.09.2、VTK 9.7.2、CMake 4.5.0。ほかの版は表のとおり）、次のことを確かめました。このスクリプトでビルドしたQtでCTestの20件すべてが通ること。スクリプトによるバンドルの検査（署名、OpenSSLのファイルがないこと、アプリの外へのリンクがないこと）が通ること。DMG（88 MB）に `MolForma.app`（214 MB、35のHomebrewパッケージのライブラリとこのQtを含む）があること。リリースのZIPのDMGからコピーしたアプリ（offscreenの表示部品を足したもの）が、`/opt/homebrew`・`/usr/local` を読めなくしたサンドボックスでも、プロジェクトファイルと、アプリの中のOpen Babelのプラグインで読み込んだMol2ファイルの画面の写真（`--screenshot`）を撮れること。サンドボックスの外で起動しても、読み込まれるライブラリ（`DYLD_PRINT_LIBRARIES`）がアプリの中とmacOSのものだけであること。NWChemでの計算、ダウンロード、`xattr -dr` は、このときは確かめていません。
 
 | 項目 | 版 |
 | --- | --- |
