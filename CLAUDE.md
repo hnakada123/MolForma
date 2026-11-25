@@ -207,7 +207,8 @@ Key cross-cutting designs:
   with `packaging/arch/release/PKGBUILD` (the package `molforma` of a release tag, put with it into the release's
   `MolForma-<version>-arch-linux-x86_64.zip`).
   The CPack settings at the end of `CMakeLists.txt` make a Debian/Ubuntu package with `cpack -G DEB` in the build
-  folder (`dpkg-shlibdeps` finds the libraries; see `docs/installation/ubuntu.md`). `packaging/appimage/` builds an
+  folder (`dpkg-shlibdeps` finds the libraries; see `docs/installation/ubuntu.md`); `packaging/ubuntu/build-deb.sh`
+  makes the release's deb from its tag on Ubuntu 26.04, put with it into `MolForma-<version>-ubuntu-26.04-amd64.zip`. `packaging/appimage/` builds an
   AppImage in Docker (Ubuntu 24.04 with Qt 6.4, VTK built for Qt 6; `build.sh` runs linuxdeploy and appimagetool and
   sets Open Babel's `BABEL_LIBDIR`/`BABEL_DATADIR` in an AppRun hook, leaving OpenSSL to the computer; `release.sh` makes the
   release ZIP and the tar of the sources (Ubuntu packages, VTK, runtime, AppRun); see `docs/installation/appimage.md`). That

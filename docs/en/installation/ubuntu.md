@@ -4,7 +4,24 @@ How to build MolForma from source on Ubuntu, make a deb package and install it w
 
 These steps are for Ubuntu 26.04 LTS (amd64) and MolForma 1.1.0. The procedure was checked with MolForma 1.0.0 on 2026-10-28 in Docker's `ubuntu:26.04` (26.04.1 LTS) (see [Verified configuration](#verified-configuration)).
 
-MolForma has no package in Ubuntu's official repositories or in a PPA (as of 2026-10-28). You build it from the source on GitHub and make a deb package (`molforma_1.1.0_amd64.deb`) with CPack, which comes with CMake. As apt manages the installed package, `apt remove` removes it.
+MolForma has no package in Ubuntu's official repositories or in a PPA (as of 2026-10-28). You build it from the source on GitHub and make a deb package (`molforma_1.1.0_amd64.deb`) with CPack, which comes with CMake. As apt manages the installed package, `apt remove` removes it. Since 1.1.0, [Releases](https://github.com/hnakada123/MolForma/releases) also has a deb package built on Ubuntu 26.04 LTS (see [Using the release package](#using-the-release-package)).
+
+## Using the release package
+
+`MolForma-<version>-ubuntu-26.04-amd64.zip` on [Releases](https://github.com/hnakada123/MolForma/releases) holds a deb package built on Ubuntu 26.04 LTS from the source of the release tag, the script that made it (the repository's `packaging/ubuntu/build-deb.sh`), an install guide (`INSTALL.en.md`, in Japanese `INSTALL.md`) and the licenses. Extract the ZIP and install it with apt, without building anything. apt installs the packages used at run time (the paragraph below the table of [Required packages](#required-packages)) from the official repositories automatically.
+
+```sh
+unzip MolForma-1.1.0-ubuntu-26.04-amd64.zip
+cd MolForma-1.1.0-ubuntu-26.04-amd64
+sudo apt update
+sudo apt install ./molforma_1.1.0_amd64.deb
+```
+
+- It is for Ubuntu 26.04 LTS only. Other versions of Ubuntu cannot satisfy its dependencies and do not install it (checked with 26.10). On them, build from source with the steps below.
+- Its name and version (`molforma` 1.1.0) are those of the package the steps below make. To replace one with the other, add `--reinstall`, as in `sudo apt install --reinstall ./molforma_1.1.0_amd64.deb`.
+- On Ubuntu 26.04 with the packages of [1. Install the packages](#1-install-the-packages) (all of them, with RDKit, VTK and Qt SVG) and `curl`, `build-deb.sh` run in an empty folder makes a deb of the same configuration. It checks the tag's source by SHA-256 before building, stops if it cannot use RDKit, VTK or Qt SVG, and makes the deb after the tests.
+- The package is not signed. The SHA-256 of the ZIP is in the release notes.
+- Install NWChem as in [2. Install NWChem](#2-install-nwchem). Starting and checking are as in [5. Start and check](#5-start-and-check) (`dpkg -L molforma` lists the installed files). `sudo apt remove molforma` removes it.
 
 ## Required packages
 
@@ -155,6 +172,7 @@ The application settings (`~/.config/MolForma/`), autosaves (`~/.local/share/Mol
 | The configuration stops with `The link interface of target "RDKit::rdkit_base" contains: Boost::serialization … but the target was not found` | `librdkit-dev` does not install Boost's development packages. Install `libboost-iostreams-dev` and `libboost-serialization-dev` and start again from the configuration |
 | It reports `MolForma rendering: QPainter (Qt6-enabled VTK development package not found)` | Check that `libvtk9-dev` and `libvtk9-qt-dev` are installed. Install what the `VTK development dependency unavailable:` lines name and start again from the configuration |
 | `cpack` stops with `CPackDeb: file utility is not available` | Install `file` with `sudo apt install file` and run `cpack -G DEB` again |
+| Installing the release deb says `unmet dependencies` | The release deb is for Ubuntu 26.04 LTS only. On other versions, build from source as in [3. Get the source and build](#3-get-the-source-and-build) |
 | After updating, apt says `molforma is already the newest version` and does not install it again | The version number is the same; use `sudo apt install --reinstall ./molforma_1.1.0_amd64.deb` |
 | The 3D view shows “Rendering: QPainter (CPU) · simplified, OpenGL unavailable” at its top left | OpenGL 3.2 or later is unavailable. Check the GPU driver (`glxinfo -B` from `mesa-utils` shows the OpenGL implementation and version in use). It may be unavailable over remote desktops and in virtual machines |
 | Rotation is slow although VTK draws | If `glxinfo -B` reports `llvmpipe` or similar, OpenGL is rendered in software |
@@ -185,5 +203,7 @@ On 2026-10-28, in Docker's `ubuntu:26.04` (Ubuntu 26.04.1 LTS, amd64), the follo
 | Open MPI | 5.0.10 |
 
 A real desktop (VTK rendering on a GPU, GNOME's list of applications) and other versions such as Ubuntu 24.04 LTS were not checked.
+
+On 2026-11-25, the deb package of the 1.1.0 release was made in a new Docker `ubuntu:26.04` (26.04.1 LTS, with that day's updates). With the packages of [1. Install the packages](#1-install-the-packages) (with RDKit, VTK and Qt SVG) installed, `packaging/ubuntu/build-deb.sh` run as a regular user passed all 20 tests. It used Qt 6.10.2, Open Babel 3.1.1, RDKit 2025.03.6, VTK 9.5.2, GCC 15.2.0 and CMake 4.2.3. Installed with `apt install ./molforma_1.1.0_amd64.deb` in another new `ubuntu:26.04` container, it brought in its dependencies and recommended packages (`fonts-noto-cjk`, `qt6-translations-l10n`) automatically with no library missing, reported version 1.1.0, wrote an offscreen screenshot and, over `--mcp-gui`, made a 3D structure (a candidate) from SMILES. In a `ubuntu:26.10` container its dependencies could not be satisfied and it was not installed. Display on a real desktop and calculations with NWChem were not checked with this package.
 
 See also: [Installation and required packages by OS](../installation.md), [3D rendering](../features/rendering.md), [“3 Run settings”](../features/execution.md)

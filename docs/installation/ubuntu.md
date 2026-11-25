@@ -4,7 +4,24 @@ MolFormaをUbuntuでソースからビルドし、debパッケージを作って
 
 対象はUbuntu 26.04 LTS（amd64）とMolForma 1.1.0です。2026-10-28に、Dockerの `ubuntu:26.04`（26.04.1 LTS）でMolForma 1.0.0の手順を確認しました（[確認した構成](#確認した構成)）。
 
-MolFormaのパッケージは、Ubuntuの公式リポジトリにもPPAにもありません（2026-10-28時点）。GitHubのソースからビルドし、CMakeに含まれるCPackでdebパッケージ（`molforma_1.1.0_amd64.deb`）を作ります。インストールしたパッケージはaptで管理するので、削除は `apt remove` で行えます。
+MolFormaのパッケージは、Ubuntuの公式リポジトリにもPPAにもありません（2026-10-28時点）。GitHubのソースからビルドし、CMakeに含まれるCPackでdebパッケージ（`molforma_1.1.0_amd64.deb`）を作ります。インストールしたパッケージはaptで管理するので、削除は `apt remove` で行えます。1.1.0からは、Ubuntu 26.04 LTSでビルドしたdebパッケージも[Releases](https://github.com/hnakada123/MolForma/releases)にあります（[リリースのパッケージを使う](#リリースのパッケージを使う)）。
+
+## リリースのパッケージを使う
+
+[Releases](https://github.com/hnakada123/MolForma/releases)の `MolForma-<版>-ubuntu-26.04-amd64.zip` には、リリースのタグのソースからUbuntu 26.04 LTSでビルドしたdebパッケージ、それを作ったスクリプト（リポジトリの `packaging/ubuntu/build-deb.sh`）、インストール手順（`INSTALL.md`、英語は `INSTALL.en.md`）、ライセンスが入っています。ビルドせずに、ZIPを展開してaptで入れられます。実行時に使うパッケージ（[必要なパッケージ](#必要なパッケージ)の表の下の段落）は、aptが公式リポジトリから自動で入れます。
+
+```sh
+unzip MolForma-1.1.0-ubuntu-26.04-amd64.zip
+cd MolForma-1.1.0-ubuntu-26.04-amd64
+sudo apt update
+sudo apt install ./molforma_1.1.0_amd64.deb
+```
+
+- Ubuntu 26.04 LTS専用です。ほかの版のUbuntuでは依存関係を満たせないため入りません（26.10で確認）。ほかの版では、下の手順でソースからビルドしてください。
+- パッケージの名前と版（`molforma` 1.1.0）は、下の手順で作るものと同じです。一方からもう一方に入れ替えるときは、`sudo apt install --reinstall ./molforma_1.1.0_amd64.deb` のように `--reinstall` を付けます。
+- `build-deb.sh` は、[1. パッケージを入れる](#1-パッケージを入れる)のパッケージ（RDKit・VTK・Qt SVGを含むすべて）と `curl` を入れたUbuntu 26.04で、空のフォルダーで実行すると、同じ構成のdebを作ります。タグのソースをSHA-256で確かめてからビルドし、RDKit・VTK・Qt SVGのどれかを使えないときは止まり、テストの後にdebを作ります。
+- パッケージには署名をしていません。ZIPのSHA-256はリリースノートにあります。
+- NWChemは[2. NWChemを入れる](#2-nwchemを入れる)のとおり入れます。起動と確認は[5. 起動して確認する](#5-起動して確認する)と同じです（配置したファイルは `dpkg -L molforma` で一覧できます）。削除は `sudo apt remove molforma` です。
 
 ## 必要なパッケージ
 
@@ -155,6 +172,7 @@ sudo apt remove molforma
 | 構成が `The link interface of target "RDKit::rdkit_base" contains: Boost::serialization … but the target was not found` のエラーで止まる | `librdkit-dev` はBoostの開発用パッケージを入れません。`libboost-iostreams-dev`・`libboost-serialization-dev` を入れ、構成からやり直します |
 | `MolForma rendering: QPainter (Qt6-enabled VTK development package not found)` と出る | `libvtk9-dev`・`libvtk9-qt-dev` を入れたか確認します。`VTK development dependency unavailable:` の行に出たものを入れ、構成からやり直します |
 | `cpack` が `CPackDeb: file utility is not available` で止まる | `sudo apt install file` で `file` を入れ、`cpack -G DEB` をやり直します |
+| リリースのdebを入れると `unmet dependencies`（依存関係を満たせない）と出る | リリースのdebはUbuntu 26.04 LTS専用です。ほかの版では、[3. ソースを取得してビルドする](#3-ソースを取得してビルドする)からビルドします |
 | 更新したのに `molforma is already the newest version` と出て入れ直されない | 版番号が同じため、`sudo apt install --reinstall ./molforma_1.1.0_amd64.deb` とします |
 | 3D画面の左上に「描画: QPainter（CPU）· OpenGLを使えないため簡易表示」と出る | OpenGL 3.2以上を使えません。GPUドライバーを確認します（`mesa-utils` の `glxinfo -B` で、使われているOpenGLの実装と版が分かります）。リモートデスクトップや仮想マシンでは使えない場合があります |
 | VTKで描画しているのに回転が遅い | `glxinfo -B` で `llvmpipe` などと出る場合は、ソフトウェアのOpenGLで描画しています |
@@ -185,5 +203,7 @@ sudo apt remove molforma
 | Open MPI | 5.0.10 |
 
 実機のデスクトップ（GPUでのVTKの描画、GNOMEのアプリ一覧）と、Ubuntu 24.04 LTSなどほかの版は確認していません。
+
+2026-11-25に、1.1.0のリリースのdebパッケージを、Dockerの新しい `ubuntu:26.04`（26.04.1 LTS、その日の更新を適用）で作りました。[1. パッケージを入れる](#1-パッケージを入れる)のパッケージ（RDKit・VTK・Qt SVGを含む）を入れ、一般ユーザーで `packaging/ubuntu/build-deb.sh` を実行して、全20件のテストが通ることを確かめました。使ったのはQt 6.10.2、Open Babel 3.1.1、RDKit 2025.03.6、VTK 9.5.2、GCC 15.2.0、CMake 4.2.3です。別の新しい `ubuntu:26.04` のコンテナに `apt install ./molforma_1.1.0_amd64.deb` で入れ、依存パッケージと推奨パッケージ（`fonts-noto-cjk`・`qt6-translations-l10n`）が自動で入り、足りないライブラリがないこと、版が1.1.0であること、オフスクリーンの画面写真を作れること、`--mcp-gui` からSMILESで3D構造（候補）を作れることを確かめました。`ubuntu:26.10` のコンテナでは、依存関係を満たせず入りませんでした。実機のデスクトップでの表示とNWChemでの計算は、このパッケージでは確認していません。
 
 関連: [OS別インストール・必要パッケージ](../installation.md)、[3D描画](../features/rendering.md)、[「3 実行設定」](../features/execution.md)
