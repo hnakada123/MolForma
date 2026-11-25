@@ -393,6 +393,8 @@ if(BUILD_TESTING)
         input_preview results history output molden translations PROPERTIES TIMEOUT 120)
     # Remote runs wait for the looks of their supervisors (every 10 seconds at the least).
     set_tests_properties(execution PROPERTIES TIMEOUT 240)
+    # The editor's test takes about 100 seconds on Windows alone, longer beside another test.
+    set_tests_properties(editor PROPERTIES TIMEOUT 240)
 endif()
 if(APPLE)
     # macOS: MolForma.app, which holds the libraries it uses (Qt, Open Babel with its format plugins and
