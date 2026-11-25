@@ -389,7 +389,10 @@ class ResultsTest : public QObject, ResultFiles {
     }
     void outcomeOverviewAndDock() {
         // A log cut short (no "Total times"): two structures, an optimization, orbitals 1–2 and modes.
-        QTemporaryDir job;
+        // The folder's name, shown in the bar, is short and the same in every run.
+        QTemporaryDir folder;
+        const QDir job(folder.filePath("h2o"));
+        QVERIFY(job.mkpath("."));
         const QString log =
             "NWChem\n" + geometry() + geometry() +
             " maximum gradient threshold         (gmax) =   0.000450\n"

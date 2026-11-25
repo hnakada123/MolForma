@@ -865,9 +865,15 @@ class ExecutionTest : public QObject, RunFixture {
         if (!QFile::link(fake, bin + "/ssh") || !QFile::link(fake, bin + "/scp"))
             return false;
         const QMap<QString, QByteArray> scripts{
-            // The job runs at once, in a session of its own; its ID is its PID.
-            {"sbatch", "#!/bin/sh\n[ \"$1\" = \"--parsable\" ] && shift\n"
-                       "setsid bash \"$1\" > /dev/null 2>&1 < /dev/null &\necho \"$!;fake\"\n"},
+            // The job runs at once, in a session of its own; its ID is its PID. macOS has no setsid.
+            {"sbatch",
+             "#!/bin/sh\n[ \"$1\" = \"--parsable\" ] && shift\n"
+             "if command -v setsid > /dev/null; then\n"
+             "  setsid bash \"$1\" > /dev/null 2>&1 < /dev/null &\n"
+             "else\n"
+             "  perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' bash \"$1\" > /dev/null 2>&1 < /dev/null &\n"
+             "fi\n"
+             "echo \"$!;fake\"\n"},
             {"squeue", "#!/bin/sh\nwhile [ $# -gt 0 ]; do [ \"$1\" = \"-j\" ] && id=$2; shift; done\n"
                        "if kill -0 \"$id\" 2>/dev/null; then echo RUNNING; fi\n"},
             {"scancel", "#!/bin/sh\ntouch \"$HOME/.cancelled-$1\"\nkill -TERM -- \"-$1\" 2>/dev/null\n"},
