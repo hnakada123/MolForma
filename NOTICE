@@ -33,7 +33,10 @@ distributes them under the same terms. The folder of a release (packaging/window
 leaves out what does not go with the GPL version 2 or MolForma does not need: Qt's OpenSSL
 backend, so that Qt's TLS is Windows' own, and Microsoft's runtime and compiler DLLs, which
 come from the computer. Its release ZIP holds the license texts in licenses/, and the release
-also offers the source of the libraries it holds.
+also offers the source of the libraries it holds. The release's installer of the same folder
+(packaging/windows/molforma.iss) is made with Inno Setup (Copyright (C) 1997-2026 Jordan
+Russell, portions Copyright (C) 2000-2026 Martijn Laan; Inno Setup License), whose setup and
+uninstaller programs it holds.
 On macOS, MolForma.app made with "cpack -G DragNDrop" (packaging/macos) holds the Qt,
 Open Babel, RDKit, VTK and other Homebrew libraries it uses, with the license files of
 their packages and a list of those packages and their licenses in

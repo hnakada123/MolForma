@@ -7,6 +7,7 @@ Source: https://github.com/hnakada123/MolForma
 To start
   Keep this folder where you like, for example in %LOCALAPPDATA%\Programs, and start
   bin\molforma.exe. No installation is needed. To remove MolForma, delete the folder.
+  If MolForma-<version>-windows-x86_64-setup.exe installed it, remove it in Settings > Apps instead.
 
   MolForma is not signed, so Windows may stop it the first time ("Windows protected your PC").
   Press "More info", then "Run anyway".
@@ -56,6 +57,7 @@ NWChem向けの分子エディタ・計算入力作成・結果表示アプリ�
 起動のしかた
   このフォルダーを好きな場所（例: %LOCALAPPDATA%\Programs）に置き、bin\molforma.exe を起動します。
   インストールは不要です。削除するときは、フォルダーを削除します。
+  MolForma-<版>-windows-x86_64-setup.exe で入れた場合は、「設定 → アプリ」から削除します。
 
   署名をしていないため、最初はWindowsに止められることがあります（「WindowsによってPCが保護されました」）。
   「詳細情報」を押してから「実行」を押します。

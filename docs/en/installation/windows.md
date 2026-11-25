@@ -4,9 +4,14 @@ How to build MolForma from source on Windows with Microsoft Visual C++ (MSVC) an
 
 The steps are for Windows 11 (x64) and MolForma 1.1.0. The procedure was checked with MolForma 1.0.0 on 2026-10-28 on Windows 11 Home with Visual Studio Community 2026 ([Verified configuration](#verified-configuration)).
 
-There is no installer of MolForma for Windows. You build it from the source on GitHub, and `cmake --install` makes a MolForma folder that holds the Qt and Open Babel files it needs. NWChem has no official Windows build, so the Ubuntu package in WSL is used, started through two batch files that come with MolForma (`nwchem.cmd` and `mpirun.cmd`). NWChem can also be built as a native Windows program, without WSL ([Building NWChem on Windows](nwchem_mingw64.md)).
+This page builds MolForma from the source on GitHub, and `cmake --install` makes a MolForma folder that holds the Qt and Open Babel files it needs. NWChem has no official Windows build, so the Ubuntu package in WSL is used, started through two batch files that come with MolForma (`nwchem.cmd` and `mpirun.cmd`). NWChem can also be built as a native Windows program, without WSL ([Building NWChem on Windows](nwchem_mingw64.md)).
 
-A ready-built folder is in the ZIP on [Releases](https://github.com/hnakada123/MolForma/releases) (`MolForma-<version>-windows-x86_64.zip`). On Windows 11 (x64), keep the unpacked folder where you like and start `bin\molforma.exe`. MolForma is not signed, so if “Windows protected your PC” appears the first time, press “More info”, then “Run anyway”. If it does not start, install the latest [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe). Calculations also need [7. Install NWChem (WSL)](#7-install-nwchem-wsl) (with `nwchem-wsl` of the unpacked folder). To make it yourself, follow these steps.
+A ready-built MolForma is on [Releases](https://github.com/hnakada123/MolForma/releases) as an installer (`MolForma-<version>-windows-x86_64-setup.exe`, since 1.1.0) and a ZIP (`MolForma-<version>-windows-x86_64.zip`), for Windows 11 (x64).
+
+- **Installer**: by default it installs MolForma for you alone, without administrator rights, in `%LOCALAPPDATA%\Programs\MolForma`, with “MolForma” in the Start menu (its first screen can also install it for all users in `Program Files`). On a PC without the MSVC runtime, or with an older one, it says so at the end and asks whether to download Microsoft's installer of it. The installer of a newer version replaces the earlier one in the same folder. Remove it with “MolForma” in Settings > Apps > Installed apps.
+- **ZIP**: keep the unpacked folder where you like and start `bin\molforma.exe`. Nothing is installed; to remove it, delete the folder. If it does not start, install the latest [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vc14/vc_redist.x64.exe).
+
+Neither is signed, so if “Windows protected your PC” appears the first time, press “More info”, then “Run anyway”. Calculations also need [7. Install NWChem (WSL)](#7-install-nwchem-wsl) (with `nwchem-wsl` of the installed or unpacked folder). To make it yourself, follow these steps.
 
 ## Required software
 
@@ -235,23 +240,24 @@ The settings are kept in `%APPDATA%\MolForma\MolForma.ini` and the autosave copi
 
 ## Making the release files
 
-The files on [Releases](https://github.com/hnakada123/MolForma/releases) are made in the “x64 Native Tools Command Prompt for VS”, in the source folder, as follows. Open Babel, RDKit and VTK of the steps above are required, and Qt needs its source component too (`C:\Qt\<version>\Src`).
+The files on [Releases](https://github.com/hnakada123/MolForma/releases) are made in the “x64 Native Tools Command Prompt for VS”, in the source folder, as follows. Open Babel, RDKit and VTK of the steps above are required, and Qt needs its source component too (`C:\Qt\<version>\Src`). [Inno Setup](https://jrsoftware.org/isinfo.php) 6 makes the installer (`winget install JRSoftware.InnoSetup`).
 
 ```bat
 "C:\Program Files\Git\bin\bash.exe" packaging/windows/release.sh
 ```
 
-The environment variable `DEV` names the folder of the libraries (by default `C:/dev`) and `QT_PREFIX` the Qt (by default `C:/Qt/6.12.0/msvc2022_64`). The script does the following, in about 5 minutes on a 4-core PC apart from the build.
+The environment variable `DEV` names the folder of the libraries (by default `C:/dev`), `QT_PREFIX` the Qt (by default `C:/Qt/6.12.0/msvc2022_64`) and `ISCC` Inno Setup's compiler (by default `ISCC.exe` where Inno Setup 6 is usually installed). The script does the following, in about 5 minutes on a 4-core PC apart from the build.
 
 1. It builds MolForma in `build-release` and runs the tests.
 2. It makes the folder with `cmake --install` and takes out what is not distributed. Qt's OpenSSL plugin (`qopensslbackend.dll`) goes because OpenSSL's license does not go with the GPL version 2 (Qt's TLS is then Windows' Schannel). `vc_redist.x64.exe`, `d3dcompiler_47.dll`, `dxcompiler.dll` and `dxil.dll`, which `windeployqt` adds, go because the GPL's exception for system libraries does not reach parts handed out with the program, and `opengl32sw.dll` (software OpenGL) because nothing uses it.
 3. It collects the license texts of Qt, Open Babel, RDKit, VTK and the vcpkg libraries, and a list of them, in `licenses/`.
 4. It checks that all programs and DLLs link only what the folder and Windows have, that what was taken out is gone, and that the folder's `molforma.exe` starts with a minimal PATH (a window appears for a moment).
-5. It makes these two files in `build-release/`.
+5. It makes these three files in `build-release/`. The installer is made from `packaging/windows/molforma.iss` and holds the same folder as the ZIP; the MSVC runtime it asks for is as new as the MSVC of the build (the environment variable `VCToolsVersion`).
 
 | File | Contents |
 | --- | --- |
 | `MolForma-<version>-windows-x86_64.zip` | The MolForma folder with `README.txt`, `LICENSE`, `NOTICE`, `SOURCES.txt` (where the sources are) and `licenses/` (the licenses of the bundled libraries) |
+| `MolForma-<version>-windows-x86_64-setup.exe` | The installer of the same folder (Inno Setup 6, in Japanese and English) |
 | `MolForma-<version>-windows-third-party-sources.tar` | The sources and patches of Qt's modules (`qtbase`, `qtsvg`, `qtimageformats`, `qttranslations`), Open Babel, RDKit, VTK, and Boost, Eigen, zlib and libxml2 of vcpkg (about 340 MB) |
 
 `SOURCES.txt` points to the source of the commit it was made from and to the release tag `v<version>`. Since the source must be public, the script runs only on a clean, pushed commit. For a trial, set the environment variable `DRAFT` to `1` first.
@@ -271,9 +277,11 @@ cmake --install build --prefix "%LOCALAPPDATA%\Programs\MolForma"
 
 After changing the Qt version, rebuild VTK with that Qt too, delete the `build` of MolForma and configure again with the new Qt folder in `CMAKE_PREFIX_PATH`. Delete the installed folder before installing again, so that no files of the old Qt remain.
 
+If you installed the release's installer, run the installer of the new version; it replaces the earlier one in the same folder.
+
 ### Removing
 
-Delete the installed folder `%LOCALAPPDATA%\Programs\MolForma` and, if you made it, the Start menu shortcut (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\MolForma.lnk`). The settings (`%APPDATA%\MolForma`), autosave copies (`%LOCALAPPDATA%\MolForma`) and calculation jobs (by default `%USERPROFILE%\MolForma\jobs`) remain; delete them by hand if you no longer need them. The build folders under `C:\dev` (MolForma, Open Babel, RDKit, VTK, vcpkg and their `*-install` folders) can also be deleted. Remove NWChem with `wsl sudo apt remove nwchem` followed by `wsl sudo apt autoremove`.
+If you installed the release's installer, remove it with “Uninstall” of “MolForma” in Settings > Apps > Installed apps. Otherwise delete the installed folder `%LOCALAPPDATA%\Programs\MolForma` and, if you made it, the Start menu shortcut (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\MolForma.lnk`). Either way, the settings (`%APPDATA%\MolForma`), autosave copies (`%LOCALAPPDATA%\MolForma`) and calculation jobs (by default `%USERPROFILE%\MolForma\jobs`) remain; delete them by hand if you no longer need them. The build folders under `C:\dev` (MolForma, Open Babel, RDKit, VTK, vcpkg and their `*-install` folders) can also be deleted. Remove NWChem with `wsl sudo apt remove nwchem` followed by `wsl sudo apt autoremove`.
 
 ## Troubleshooting
 

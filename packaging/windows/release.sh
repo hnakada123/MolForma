@@ -1,9 +1,11 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Makes the files of a Windows release in build-release (docs/installation/windows.md): a ZIP of the folder
-# that "cmake --install" makes, with the licenses and the list of sources, and a tar of the sources of what
-# that folder holds. It runs in the Git Bash of Git for Windows, started from the x64 Native Tools Command
-# Prompt, on the libraries that page builds: DEV is their folder (C:/dev), QT_PREFIX the MSVC Qt.
+# that "cmake --install" makes, with the licenses and the list of sources, an installer of the same folder
+# (molforma.iss, compiled by Inno Setup 6) and a tar of the sources of what that folder holds. It runs in the
+# Git Bash of Git for Windows, started from the x64 Native Tools Command Prompt, on the libraries that page
+# builds: DEV is their folder (C:/dev), QT_PREFIX the MSVC Qt, ISCC Inno Setup's compiler (else its usual
+# places).
 #
 # The folder holds no OpenSSL backend of Qt, whose license (Apache-2.0) does not go with the GPL version 2 of
 # Open Babel, so Qt's TLS is Windows' own (Schannel). It holds none of Microsoft's runtime or compiler DLLs
@@ -35,6 +37,13 @@ vtk=9.7.1
 vtk_sha256=cae04fd355004cb916a409db79d53a208f1221e975aeacc7540ee67b148ee91a
 openbabel_tag=openbabel-3-2-1
 rdkit_tag=Release_2026_09_1
+setup=$release-setup.exe
+# Inno Setup's compiler, installed for the user alone (its default without administrator) or for all users.
+iscc=${ISCC:-}
+for candidate in "${LOCALAPPDATA:-}/Programs/Inno Setup 6/ISCC.exe" "${PROGRAMFILES:-}/Inno Setup 6/ISCC.exe" \
+    "${PROGRAMFILES:-} (x86)/Inno Setup 6/ISCC.exe"; do
+    [ -n "$iscc" ] || [ ! -f "$candidate" ] || iscc=$candidate
+done
 
 fail() {
     echo "release.sh: $*" >&2
@@ -53,7 +62,8 @@ if [ -z "${DRAFT:-}" ]; then
     [ -z "$(git -C "$src" status --porcelain)" ] || fail "the checkout has changes"
     [ -n "$(git -C "$src" branch -r --contains "$commit")" ] || fail "$commit is not pushed"
 fi
-command -v cl >/dev/null || fail "start this from the x64 Native Tools Command Prompt"
+command -v cl >/dev/null && [ -n "${VCToolsVersion:-}" ] || fail "start this from the x64 Native Tools Command Prompt"
+[ -f "$iscc" ] || fail "no Inno Setup 6: install it, or give its ISCC.exe as ISCC"
 [ "$(git -C "$(tree openbabel)" describe --tags)" = "$openbabel_tag" ] || fail "Open Babel is not $openbabel_tag"
 [ "$(git -C "$(tree rdkit)" tag --points-at HEAD)" = "$rdkit_tag" ] || fail "RDKit is not $rdkit_tag"
 mkdir -p "$log"
@@ -177,7 +187,7 @@ make_files() {
     {
         echo "The source of MolForma $version and of what its Windows folder holds"
         echo
-        echo "MolForma, with the scripts that make the folder (packaging/windows):"
+        echo "MolForma, with the scripts that make the folder and its installer (packaging/windows):"
         echo "  $repository/tree/$commit"
         if git -C "$src" diff --quiet "$tag" "$commit" -- src assets; then
             echo "  Its source code (src, assets) is that of the tag $tag."
@@ -202,7 +212,17 @@ make_files() {
     rm -f "$work/$release.zip" "$work/$sources.tar"
     # Windows' tar writes ZIP files; Git for Windows has no zip.
     (cd "$work" && "$(cygpath -u "$SYSTEMROOT/System32/tar.exe")" -a -cf "$release.zip" "$release")
-    (cd "$work" && tar -cf "$sources.tar" "$sources" && sha256sum "$release.zip" "$sources.tar")
+    (cd "$work" && tar -cf "$sources.tar" "$sources")
+}
+
+# The installer asks for a runtime of Microsoft as new as the compiler (VCToolsVersion, set by the prompt).
+make_installer() {
+    step "Making the installer"
+    rm -f "$work/$setup"
+    "$iscc" -Q "-DVersion=$version" "-DFolder=$(cygpath -w "$here")" "-DOutput=$(cygpath -w "$work")" \
+        "-DRuntime=$VCToolsVersion" "$(cygpath -w "$src/packaging/windows/molforma.iss")" >"$log/installer.log"
+    [ -s "$work/$setup" ] || fail "Inno Setup made no $setup"
+    (cd "$work" && sha256sum "$release.zip" "$setup" "$sources.tar")
 }
 
 build_molforma
@@ -211,4 +231,5 @@ collect_licenses
 check_folder
 collect_sources
 make_files
-step "Done: $work/$release.zip, $work/$sources.tar"
+make_installer
+step "Done: $work/$release.zip, $work/$setup, $work/$sources.tar"

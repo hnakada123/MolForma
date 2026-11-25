@@ -4,9 +4,14 @@ MolFormaをWindowsでMicrosoft Visual C++（MSVC）を使ってソースから�
 
 対象はWindows 11（x64）とMolForma 1.1.0です。2026-10-28に、Windows 11 HomeとVisual Studio Community 2026でMolForma 1.0.0の手順を確認しました（[確認した構成](#確認した構成)）。
 
-MolFormaのWindows用のインストーラーはありません。GitHubのソースからビルドし、`cmake --install` で、実行に必要なQt・Open BabelのファイルをまとめたMolFormaのフォルダーを作ります。NWChemはWindows版が公式には配布されていないため、WSLのUbuntuのパッケージを使い、MolFormaに付属する2つのバッチファイル（`nwchem.cmd`・`mpirun.cmd`）から起動します。WSLを使わずに、NWChemをWindowsネイティブにビルドする方法もあります（[WindowsでNWChemをビルドする](nwchem_mingw64.md)）。
+このページでは、GitHubのソースからビルドし、`cmake --install` で、実行に必要なQt・Open BabelのファイルをまとめたMolFormaのフォルダーを作ります。NWChemはWindows版が公式には配布されていないため、WSLのUbuntuのパッケージを使い、MolFormaに付属する2つのバッチファイル（`nwchem.cmd`・`mpirun.cmd`）から起動します。WSLを使わずに、NWChemをWindowsネイティブにビルドする方法もあります（[WindowsでNWChemをビルドする](nwchem_mingw64.md)）。
 
-ビルド済みのフォルダーは、[Releases](https://github.com/hnakada123/MolForma/releases) のZIP（`MolForma-<版>-windows-x86_64.zip`）にあります。x64のWindows 11なら、ZIPを展開したフォルダーを好きな場所に置き、`bin\molforma.exe` を起動します。署名をしていないため、最初に「WindowsによってPCが保護されました」と表示されたら、「詳細情報」を押してから「実行」を押します。起動できないときは、最新の[Microsoft Visual C++ 再頒布可能パッケージ（x64）](https://aka.ms/vc14/vc_redist.x64.exe)を入れます。計算には[7. NWChemを入れる（WSL）](#7-nwchemを入れるwsl)も行います（`nwchem-wsl` は展開したフォルダーのものを指定します）。自分で作る場合は、次の手順です。
+ビルド済みのMolFormaは、[Releases](https://github.com/hnakada123/MolForma/releases) にインストーラー（`MolForma-<版>-windows-x86_64-setup.exe`、1.1.0から）とZIP（`MolForma-<版>-windows-x86_64.zip`）があります。x64のWindows 11で使えます。
+
+- **インストーラー**: 実行すると、既定では自分のユーザーだけに、管理者の権限なしで `%LOCALAPPDATA%\Programs\MolForma` に入れ、スタートメニューに「MolForma」を作ります（最初の画面で、すべてのユーザー向けに `Program Files` に入れることも選べます）。MSVCの実行時ライブラリがないか古いPCでは、最後にそのことを表示し、Microsoftからインストーラーをダウンロードするか尋ねます。新しい版のインストーラーは、前の版を同じフォルダーで置き換えます。削除は「設定 → アプリ → インストールされているアプリ」の「MolForma」から行います。
+- **ZIP**: 展開したフォルダーを好きな場所に置き、`bin\molforma.exe` を起動します。インストールは不要で、削除するときはフォルダーを削除します。起動できないときは、最新の[Microsoft Visual C++ 再頒布可能パッケージ（x64）](https://aka.ms/vc14/vc_redist.x64.exe)を入れます。
+
+どちらも署名をしていないため、最初に「WindowsによってPCが保護されました」と表示されたら、「詳細情報」を押してから「実行」を押します。計算には[7. NWChemを入れる（WSL）](#7-nwchemを入れるwsl)も行います（`nwchem-wsl` は、インストールしたフォルダーか展開したフォルダーのものを指定します）。自分で作る場合は、次の手順です。
 
 ## 必要なソフトウェア
 
@@ -235,23 +240,24 @@ MolFormaの「編集 → 環境設定」で、実行設定の既定値を次の�
 
 ## リリースのファイルを作る
 
-[Releases](https://github.com/hnakada123/MolForma/releases) に載せるファイルは、「x64 Native Tools Command Prompt for VS」で、ソースのフォルダーから次のように作ります。上の手順のOpen Babel・RDKit・VTKは必須です。Qtには、ソースのコンポーネント（`C:\Qt\<版>\Src`）も入れておきます。
+[Releases](https://github.com/hnakada123/MolForma/releases) に載せるファイルは、「x64 Native Tools Command Prompt for VS」で、ソースのフォルダーから次のように作ります。上の手順のOpen Babel・RDKit・VTKは必須です。Qtには、ソースのコンポーネント（`C:\Qt\<版>\Src`）も入れておきます。インストーラーを作るため、[Inno Setup](https://jrsoftware.org/isinfo.php) 6も入れておきます（`winget install JRSoftware.InnoSetup`）。
 
 ```bat
 "C:\Program Files\Git\bin\bash.exe" packaging/windows/release.sh
 ```
 
-ライブラリのフォルダーは環境変数 `DEV`（既定は `C:/dev`）で、Qtは `QT_PREFIX`（既定は `C:/Qt/6.12.0/msvc2022_64`）で指定します。スクリプトは次のことを行います。4コアのPCで、ビルドを除いて約5分かかります。
+ライブラリのフォルダーは環境変数 `DEV`（既定は `C:/dev`）で、Qtは `QT_PREFIX`（既定は `C:/Qt/6.12.0/msvc2022_64`）で、Inno Setupのコンパイラーは `ISCC`（既定はInno Setup 6の通常のインストール先の `ISCC.exe`）で指定します。スクリプトは次のことを行います。4コアのPCで、ビルドを除いて約5分かかります。
 
 1. `build-release` でMolFormaをビルドし、テストを実行します。
 2. `cmake --install` でフォルダーを作り、配布しないものを除きます。QtのOpenSSLのプラグイン（`qopensslbackend.dll`）は、OpenSSLのライセンスがGPL-2.0と両立しないため除きます（QtのTLSはWindowsのSchannelになります）。`windeployqt` が入れる `vc_redist.x64.exe`・`d3dcompiler_47.dll`・`dxcompiler.dll`・`dxil.dll` は、GPLのシステムライブラリの例外が、プログラムに添えて配る部品には及ばないため除き、`opengl32sw.dll`（ソフトウェアOpenGL）も、使わないので除きます。
 3. Qt・Open Babel・RDKit・VTK・vcpkgのライブラリのライセンスの文面と一覧を `licenses/` に集めます。
 4. すべてのプログラムとDLLがフォルダーとWindowsのものだけをリンクしていること、除いたものがないこと、最小のPATHでフォルダーの `molforma.exe` が起動することを確かめます（ウィンドウが一瞬表示されます）。
-5. `build-release/` に次の2つのファイルを作ります。
+5. `build-release/` に次の3つのファイルを作ります。インストーラーは `packaging/windows/molforma.iss` から作り、ZIPと同じフォルダーを入れます。必要とするMSVCの実行時ライブラリの版は、ビルドに使ったMSVCの版（環境変数 `VCToolsVersion`）です。
 
 | ファイル | 内容 |
 | --- | --- |
 | `MolForma-<版>-windows-x86_64.zip` | MolFormaのフォルダーと、`README.txt`、`LICENSE`、`NOTICE`、`SOURCES.txt`（ソースの入手先）、`licenses/`（同梱ライブラリのライセンス） |
+| `MolForma-<版>-windows-x86_64-setup.exe` | 同じフォルダーのインストーラー（Inno Setup 6。日本語と英語） |
 | `MolForma-<版>-windows-third-party-sources.tar` | Qtのモジュール（`qtbase`・`qtsvg`・`qtimageformats`・`qttranslations`）、Open Babel、RDKit、VTK、vcpkgのBoost・Eigen・zlib・libxml2のソースとパッチ（約340 MB） |
 
 `SOURCES.txt` は、作ったコミットのソースとリリースのタグ `v<版>` を指します。ソースを公開するため、スクリプトは変更のない、プッシュしたコミットでだけ動きます。試すときは、環境変数 `DRAFT` に `1` を設定してから実行します。
@@ -271,9 +277,11 @@ cmake --install build --prefix "%LOCALAPPDATA%\Programs\MolForma"
 
 Qtの版を変えた場合は、VTKもそのQtでビルドし直し、MolFormaの `build` を削除して、新しいQtのフォルダーを `CMAKE_PREFIX_PATH` に指定して構成からやり直します。インストール先も一度削除してから入れ直すと、古いQtのファイルが残りません。
 
+リリースのインストーラーで入れた場合は、新しい版のインストーラーを実行します。前の版を同じフォルダーで置き換えます。
+
 ### 削除する
 
-インストールしたフォルダー `%LOCALAPPDATA%\Programs\MolForma` と、作った場合はスタートメニューのショートカット（`%APPDATA%\Microsoft\Windows\Start Menu\Programs\MolForma.lnk`）を削除します。設定（`%APPDATA%\MolForma`）、自動保存（`%LOCALAPPDATA%\MolForma`）、計算のジョブ（既定は `%USERPROFILE%\MolForma\jobs`）は残ります。不要なら手動で削除してください。ビルドに使った `C:\dev` の下のフォルダー（MolForma・Open Babel・RDKit・VTK・vcpkgと、それぞれの `*-install`）も、不要なら削除できます。NWChemは `wsl sudo apt remove nwchem` の後に `wsl sudo apt autoremove` で削除できます。
+リリースのインストーラーで入れた場合は、「設定 → アプリ → インストールされているアプリ」の「MolForma」の「アンインストール」で削除します。自分で入れた場合は、インストールしたフォルダー `%LOCALAPPDATA%\Programs\MolForma` と、作った場合はスタートメニューのショートカット（`%APPDATA%\Microsoft\Windows\Start Menu\Programs\MolForma.lnk`）を削除します。どちらの場合も、設定（`%APPDATA%\MolForma`）、自動保存（`%LOCALAPPDATA%\MolForma`）、計算のジョブ（既定は `%USERPROFILE%\MolForma\jobs`）は残ります。不要なら手動で削除してください。ビルドに使った `C:\dev` の下のフォルダー（MolForma・Open Babel・RDKit・VTK・vcpkgと、それぞれの `*-install`）も、不要なら削除できます。NWChemは `wsl sudo apt remove nwchem` の後に `wsl sudo apt autoremove` で削除できます。
 
 ## 困ったとき
 
