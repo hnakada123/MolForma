@@ -781,8 +781,10 @@ class ExecutionTest : public QObject, RunFixture {
                  qPrintable(slurm));
         QVERIFY(slurm.contains("\nmodule load nwchem/7.3.1\nexport SCRATCH=/work/$USER\n"));
         QVERIFY(slurm.contains("\nexport OMP_NUM_THREADS='2'\n"));
-        // A path of this computer is shown, not exported, on the other one.
-        QVERIFY(slurm.contains("\n# export NWCHEM_BASIS_LIBRARY='/opt/nwchem/libraries/'\n"));
+        // A path of this computer is shown, not exported, on the other one (on Windows with its drive).
+        const auto basis =
+            QDir::cleanPath(QDir(files.path()).absoluteFilePath("/opt/nwchem/libraries")) + '/';
+        QVERIFY2(slurm.contains("\n# export NWCHEM_BASIS_LIBRARY='" + basis + "'\n"), qPrintable(slurm));
         QVERIFY(slurm.contains("\n'mpirun' -np 8 'nwchem' input.nw > output.out 2> stderr.err\n"));
         // NWChem's exit code stays beside its output.
         QVERIFY(slurm.endsWith("\nstatus=$?\necho \"$status\" > exit_code\nexit \"$status\"\n"));
@@ -804,7 +806,9 @@ class ExecutionTest : public QObject, RunFixture {
         // "ジョブとして保存" takes the script along; a run of this computer needs none.
         const auto saved = saveExecutionBundle(d, files.path());
         QCOMPARE(QString::fromUtf8(readFile(saved.directory + "/job.sh")), shell);
+#ifndef Q_OS_WIN // Windows tells executables by their suffix.
         QVERIFY(QFileInfo(saved.directory + "/job.sh").isExecutable());
+#endif
         QCOMPARE(readObject(saved.directory + "/run.json")["job_script"].toString(), "job.sh");
         historyDocument(saved.directory); // Still the bundle that was saved.
         setExecutionSetting(d, "executable", helper);

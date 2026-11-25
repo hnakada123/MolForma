@@ -86,8 +86,9 @@ class RunsTest : public QObject, RunFixture {
         queue.move(id2, 0);
         QCOMPARE(queue.entries()[0].id, id2);
         QStringList started;
+        // Each job as it begins (on Windows the process starts within start(): no change shows Starting).
         connect(&run, &NwchemRun::changed, &queue, [&] {
-            if (run.state() == RunState::Starting)
+            if (run.active() && (started.isEmpty() || started.last() != run.plan().directory))
                 started << run.plan().directory;
         });
         queue.resume();
