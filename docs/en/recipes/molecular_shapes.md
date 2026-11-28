@@ -7,11 +7,15 @@ Open and rotate the carbon nanotube, 18-crown-6, C₆₀ fullerene and [6]helice
 | Molecules | Four shapes: a tube, a ring, a sphere and a helix |
 | Features | Open projects and SDF files, rotate, zoom, display styles, coordinate table, From SMILES, Get from PubChem |
 | Calculation | None in this exercise. The files are structure models, not NWChem optimization results |
-| Practice data | Download the “Project” for the molecule you want from the next table |
+| Practice data | Download all files in the ZIP below, or individual molecules from the table |
 
 ![The four molecules in the Japanese introduction video: carbon nanotube, 18-crown-6, C60 fullerene and 6-helicene, from left to right](../../recipes/images/molecular_shapes.jpg)
 
 ## 1. Open the molecules from the video
+
+**[Download all four molecules (ZIP)](https://hnakada123.github.io/MolForma/recipes/samples/molecular_shapes.zip)**
+
+The ZIP contains the same four projects and three SDF files linked in the table below. Extract the ZIP after downloading it, then open a `.molforma.json` file in MolForma. In the in-app manual, the ZIP link opens in your browser for download.
 
 | Molecule | Formula, atoms and bonds | Project (the structure in the video) | SDF for import |
 | --- | --- | --- | --- |
@@ -20,7 +24,7 @@ Open and rotate the carbon nanotube, 18-crown-6, C₆₀ fullerene and [6]helice
 | C₆₀ fullerene | C₆₀, 60 atoms, 90 bonds | [c60.molforma.json](../../recipes/samples/c60.molforma.json) | [c60.sdf](../../recipes/samples/c60.sdf) |
 | [6]Helicene | C₂₆H₁₆, 42 atoms, 47 bonds | [helicene.molforma.json](../../recipes/samples/helicene.molforma.json) | [helicene.sdf](../../recipes/samples/helicene.sdf) |
 
-1. Click a “Project” link to save the file. From the in-app manual, choosing where to save it also opens the molecule.
+1. Download and extract the ZIP, or click a “Project” link to save an individual file. For individual projects in the in-app manual, choosing where to save the file also opens the molecule.
 2. In MolForma, choose “File → Open…” and open the saved `.molforma.json` file.
 3. In “1 Molecule”, click “Fit to view”. Compare the formula and atom and bond counts in the status bar with the table.
 4. Open another file in the same way to view a different molecule. To keep your edits, first save a separate copy with “File → Save as…”.
