@@ -1,0 +1,1795 @@
+{
+    "coordinate_units": "angstrom",
+    "document": {
+        "atoms": [
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "83ce5730dad3452e9029e0cd8b059fb6",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -1.4066,
+                    -2.9747,
+                    -1.1307
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "e4fb8a930c894c4abb1dd6d102e27e8d",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -0.6988,
+                    -2.5373,
+                    -2.2759
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "589ec3c27df64b598208775e93838a7a",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -2.2759,
+                    -0.6988,
+                    -2.5373
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "2e2a81ea4f4c49e7b355b448aaac1e52",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -1.1307,
+                    -1.4066,
+                    -2.9747
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "5ca59f49797e4999ab83412d91e65a5f",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -2.9747,
+                    -1.1307,
+                    -1.4066
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "1961fcd4e55b4f65a5a354944183b4e5",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -2.5373,
+                    -2.2759,
+                    -0.6988
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "8e540294437040e589ba6cc4555ac206",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -0.6988,
+                    -2.5373,
+                    2.2759
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "4468223ade744a198b8d4c2892265b93",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -1.4066,
+                    -2.9747,
+                    1.1307
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "08a3ae57aa1d4dcaa0be1a93a2113982",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -2.5373,
+                    2.2759,
+                    -0.6988
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "ba73b20c4e154f9ba2aaef9fd026b5d4",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -2.9747,
+                    1.1307,
+                    -1.4066
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "a14a8add840e4bf9aae7debbbce3940a",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    2.2759,
+                    -0.6988,
+                    -2.5373
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "b2a897b39cfd44ec9c78b6b2ac824121",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    1.1307,
+                    -1.4066,
+                    -2.9747
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "2bb8090d5b804b95aee198b70747e3f8",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    0,
+                    0.7077,
+                    -3.4066
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "867fc2b86cc7461f8772971e1f8cdc6a",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    0,
+                    -0.7077,
+                    -3.4066
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "5c590fddf52245ac99a787aa47855774",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -1.1307,
+                    1.4066,
+                    -2.9747
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "6de3a9f1addd4ae18532bd1d754088b4",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -2.2759,
+                    0.6988,
+                    -2.5373
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "1dbe14a2b90f4fa2855e538893b28ad3",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -0.6988,
+                    2.5373,
+                    -2.2759
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "ef1232a5e135425ab06d8cf4c7bc4289",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -1.4066,
+                    2.9747,
+                    -1.1307
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "fe6d339ef6a44e949913c5d21abdcdca",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    1.1307,
+                    1.4066,
+                    -2.9747
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "27b2e0a067e84a1ca9d4eb1e61883269",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    2.2759,
+                    0.6988,
+                    -2.5373
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "5d4a5fa84c1e464780222fdded52af05",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    1.4066,
+                    -2.9747,
+                    -1.1307
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "9c53376306d54814acc21534764f0e80",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    0.6988,
+                    -2.5373,
+                    -2.2759
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "6641c843ca244962a20a5600e420b1ce",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    0.7077,
+                    -3.4066,
+                    0
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "cfba20168afa4283ab596f726227ed3b",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -0.7077,
+                    -3.4066,
+                    0
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "000f2a768ec04c64a613c36cab82d051",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    1.4066,
+                    -2.9747,
+                    1.1307
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "f431eb530cde41d8810bc4f46d61df81",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    0.6988,
+                    -2.5373,
+                    2.2759
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "e46b3f90620945bb8584ee27bf720fd0",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    2.5373,
+                    -2.2759,
+                    -0.6988
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "4fbd711cff9d4895a4a2dc805fd5753b",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    2.9747,
+                    -1.1307,
+                    -1.4066
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "baf5ee3ed48040118a1a0b3dfafe0f4d",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -2.9747,
+                    -1.1307,
+                    1.4066
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "a1acd897479b4554a813dc7e098778e3",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -2.5373,
+                    -2.2759,
+                    0.6988
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "ab53224a3a07430a8480843a2ffab8e3",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -3.4066,
+                    0,
+                    0.7077
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "80b414ce59b54d52a7f6240f7801736e",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -3.4066,
+                    0,
+                    -0.7077
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "5f023e82f6024c3e89470620beaedaa2",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -2.2759,
+                    -0.6988,
+                    2.5373
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "9a91ec9219cf42a3a4acac337ce0dee1",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -1.1307,
+                    -1.4066,
+                    2.9747
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "c75f019779f74f76b68533c9bdc4b211",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -2.9747,
+                    1.1307,
+                    1.4066
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "ebbedb8cfb8a45f68505321ea8012912",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -2.5373,
+                    2.2759,
+                    0.6988
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "3404e1fd351148c6943a108515b13402",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    0,
+                    0.7077,
+                    3.4066
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "7b6e5419793243d692f4daadcb506b88",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    0,
+                    -0.7077,
+                    3.4066
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "8fb3f9332a1b4e39b4a7d50c4ade120b",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -0.6988,
+                    2.5373,
+                    2.2759
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "6699e7323c104585b17acb70432db606",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -1.4066,
+                    2.9747,
+                    1.1307
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "5a02e5d8bcd6413ba75905747bfbad24",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -1.1307,
+                    1.4066,
+                    2.9747
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "eb56ac7615dc4d6a801bfe3e69ad36b0",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -2.2759,
+                    0.6988,
+                    2.5373
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "4a2d7c5cea194a15939a4dc2e5cc2b04",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    0.7077,
+                    3.4066,
+                    0
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "73094d46f6ab4ef4af7a66432ab22e3b",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    -0.7077,
+                    3.4066,
+                    0
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "1bb6ca634ea44b4cb40b641eec7480bc",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    2.5373,
+                    2.2759,
+                    -0.6988
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "7861d1f6c1d94aeda6ad46740914e22b",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    2.9747,
+                    1.1307,
+                    -1.4066
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "0bc626fcbc6249a0933fcaf20b66e2ad",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    1.4066,
+                    2.9747,
+                    -1.1307
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "5735aaaa69e147c9a49332cbdd0420ca",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    0.6988,
+                    2.5373,
+                    -2.2759
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "51aa5d3c48da47d3a178cb5aae7d6b49",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    1.4066,
+                    2.9747,
+                    1.1307
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "10b1047b48bb41459b3c15f5a1b83652",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    0.6988,
+                    2.5373,
+                    2.2759
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "3ddbbd8f3eb4413d927f04c4f2949b61",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    2.2759,
+                    -0.6988,
+                    2.5373
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "bde31b8435384caa98cd8869d1a57e10",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    1.1307,
+                    -1.4066,
+                    2.9747
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "71237e9230c4478d9ec1e9db5d237721",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    3.4066,
+                    0,
+                    0.7077
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "8eb3d2523453442495c268ec4b46a14f",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    3.4066,
+                    0,
+                    -0.7077
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "4db88883ae974300ab58c96549e38f5c",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    2.9747,
+                    -1.1307,
+                    1.4066
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "803c14a20be342558ac5c8d445c1ba2c",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    2.5373,
+                    -2.2759,
+                    0.6988
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "ee83e4692de54547904fe930f41548a0",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    2.2759,
+                    0.6988,
+                    2.5373
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "b0a1ffc315bd4ebb9dc70bb3d21a8712",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    1.1307,
+                    1.4066,
+                    2.9747
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "05513b68c51a431089cb4de9fcd22d61",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    2.9747,
+                    1.1307,
+                    1.4066
+                ],
+                "radical": 0,
+                "stereo": ""
+            },
+            {
+                "auto_hydrogen": false,
+                "element": "C",
+                "fixed": false,
+                "formal_charge": 0,
+                "ghost": false,
+                "id": "347c1fca57ed405e8dd0fb4ca3b21671",
+                "isotope_mass_number": null,
+                "mass_amu": null,
+                "metadata": {},
+                "name": "",
+                "position": [
+                    2.5373,
+                    2.2759,
+                    0.6988
+                ],
+                "radical": 0,
+                "stereo": ""
+            }
+        ],
+        "bonds": [
+            {
+                "a": "e4fb8a930c894c4abb1dd6d102e27e8d",
+                "b": "83ce5730dad3452e9029e0cd8b059fb6",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "2e2a81ea4f4c49e7b355b448aaac1e52",
+                "b": "e4fb8a930c894c4abb1dd6d102e27e8d",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "2e2a81ea4f4c49e7b355b448aaac1e52",
+                "b": "589ec3c27df64b598208775e93838a7a",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "5ca59f49797e4999ab83412d91e65a5f",
+                "b": "589ec3c27df64b598208775e93838a7a",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "1961fcd4e55b4f65a5a354944183b4e5",
+                "b": "83ce5730dad3452e9029e0cd8b059fb6",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "1961fcd4e55b4f65a5a354944183b4e5",
+                "b": "5ca59f49797e4999ab83412d91e65a5f",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "4468223ade744a198b8d4c2892265b93",
+                "b": "8e540294437040e589ba6cc4555ac206",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "ba73b20c4e154f9ba2aaef9fd026b5d4",
+                "b": "08a3ae57aa1d4dcaa0be1a93a2113982",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "b2a897b39cfd44ec9c78b6b2ac824121",
+                "b": "a14a8add840e4bf9aae7debbbce3940a",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "867fc2b86cc7461f8772971e1f8cdc6a",
+                "b": "2e2a81ea4f4c49e7b355b448aaac1e52",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "867fc2b86cc7461f8772971e1f8cdc6a",
+                "b": "b2a897b39cfd44ec9c78b6b2ac824121",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "867fc2b86cc7461f8772971e1f8cdc6a",
+                "b": "2bb8090d5b804b95aee198b70747e3f8",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "5c590fddf52245ac99a787aa47855774",
+                "b": "2bb8090d5b804b95aee198b70747e3f8",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "6de3a9f1addd4ae18532bd1d754088b4",
+                "b": "589ec3c27df64b598208775e93838a7a",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "6de3a9f1addd4ae18532bd1d754088b4",
+                "b": "ba73b20c4e154f9ba2aaef9fd026b5d4",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "6de3a9f1addd4ae18532bd1d754088b4",
+                "b": "5c590fddf52245ac99a787aa47855774",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "1dbe14a2b90f4fa2855e538893b28ad3",
+                "b": "5c590fddf52245ac99a787aa47855774",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "ef1232a5e135425ab06d8cf4c7bc4289",
+                "b": "08a3ae57aa1d4dcaa0be1a93a2113982",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "ef1232a5e135425ab06d8cf4c7bc4289",
+                "b": "1dbe14a2b90f4fa2855e538893b28ad3",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "fe6d339ef6a44e949913c5d21abdcdca",
+                "b": "2bb8090d5b804b95aee198b70747e3f8",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "27b2e0a067e84a1ca9d4eb1e61883269",
+                "b": "a14a8add840e4bf9aae7debbbce3940a",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "27b2e0a067e84a1ca9d4eb1e61883269",
+                "b": "fe6d339ef6a44e949913c5d21abdcdca",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "9c53376306d54814acc21534764f0e80",
+                "b": "e4fb8a930c894c4abb1dd6d102e27e8d",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "9c53376306d54814acc21534764f0e80",
+                "b": "b2a897b39cfd44ec9c78b6b2ac824121",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "9c53376306d54814acc21534764f0e80",
+                "b": "5d4a5fa84c1e464780222fdded52af05",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "6641c843ca244962a20a5600e420b1ce",
+                "b": "5d4a5fa84c1e464780222fdded52af05",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "cfba20168afa4283ab596f726227ed3b",
+                "b": "83ce5730dad3452e9029e0cd8b059fb6",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "cfba20168afa4283ab596f726227ed3b",
+                "b": "4468223ade744a198b8d4c2892265b93",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "cfba20168afa4283ab596f726227ed3b",
+                "b": "6641c843ca244962a20a5600e420b1ce",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "000f2a768ec04c64a613c36cab82d051",
+                "b": "6641c843ca244962a20a5600e420b1ce",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "f431eb530cde41d8810bc4f46d61df81",
+                "b": "8e540294437040e589ba6cc4555ac206",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "f431eb530cde41d8810bc4f46d61df81",
+                "b": "000f2a768ec04c64a613c36cab82d051",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "e46b3f90620945bb8584ee27bf720fd0",
+                "b": "5d4a5fa84c1e464780222fdded52af05",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "4fbd711cff9d4895a4a2dc805fd5753b",
+                "b": "a14a8add840e4bf9aae7debbbce3940a",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "4fbd711cff9d4895a4a2dc805fd5753b",
+                "b": "e46b3f90620945bb8584ee27bf720fd0",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "a1acd897479b4554a813dc7e098778e3",
+                "b": "1961fcd4e55b4f65a5a354944183b4e5",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "a1acd897479b4554a813dc7e098778e3",
+                "b": "4468223ade744a198b8d4c2892265b93",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "a1acd897479b4554a813dc7e098778e3",
+                "b": "baf5ee3ed48040118a1a0b3dfafe0f4d",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "ab53224a3a07430a8480843a2ffab8e3",
+                "b": "baf5ee3ed48040118a1a0b3dfafe0f4d",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "80b414ce59b54d52a7f6240f7801736e",
+                "b": "5ca59f49797e4999ab83412d91e65a5f",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "80b414ce59b54d52a7f6240f7801736e",
+                "b": "ba73b20c4e154f9ba2aaef9fd026b5d4",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "80b414ce59b54d52a7f6240f7801736e",
+                "b": "ab53224a3a07430a8480843a2ffab8e3",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "5f023e82f6024c3e89470620beaedaa2",
+                "b": "baf5ee3ed48040118a1a0b3dfafe0f4d",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "9a91ec9219cf42a3a4acac337ce0dee1",
+                "b": "8e540294437040e589ba6cc4555ac206",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "9a91ec9219cf42a3a4acac337ce0dee1",
+                "b": "5f023e82f6024c3e89470620beaedaa2",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "c75f019779f74f76b68533c9bdc4b211",
+                "b": "ab53224a3a07430a8480843a2ffab8e3",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "ebbedb8cfb8a45f68505321ea8012912",
+                "b": "08a3ae57aa1d4dcaa0be1a93a2113982",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "ebbedb8cfb8a45f68505321ea8012912",
+                "b": "c75f019779f74f76b68533c9bdc4b211",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "7b6e5419793243d692f4daadcb506b88",
+                "b": "9a91ec9219cf42a3a4acac337ce0dee1",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "7b6e5419793243d692f4daadcb506b88",
+                "b": "3404e1fd351148c6943a108515b13402",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "6699e7323c104585b17acb70432db606",
+                "b": "ebbedb8cfb8a45f68505321ea8012912",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "6699e7323c104585b17acb70432db606",
+                "b": "8fb3f9332a1b4e39b4a7d50c4ade120b",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "5a02e5d8bcd6413ba75905747bfbad24",
+                "b": "3404e1fd351148c6943a108515b13402",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "5a02e5d8bcd6413ba75905747bfbad24",
+                "b": "8fb3f9332a1b4e39b4a7d50c4ade120b",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "eb56ac7615dc4d6a801bfe3e69ad36b0",
+                "b": "5f023e82f6024c3e89470620beaedaa2",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "eb56ac7615dc4d6a801bfe3e69ad36b0",
+                "b": "c75f019779f74f76b68533c9bdc4b211",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "eb56ac7615dc4d6a801bfe3e69ad36b0",
+                "b": "5a02e5d8bcd6413ba75905747bfbad24",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "73094d46f6ab4ef4af7a66432ab22e3b",
+                "b": "ef1232a5e135425ab06d8cf4c7bc4289",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "73094d46f6ab4ef4af7a66432ab22e3b",
+                "b": "6699e7323c104585b17acb70432db606",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "73094d46f6ab4ef4af7a66432ab22e3b",
+                "b": "4a2d7c5cea194a15939a4dc2e5cc2b04",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "7861d1f6c1d94aeda6ad46740914e22b",
+                "b": "27b2e0a067e84a1ca9d4eb1e61883269",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "7861d1f6c1d94aeda6ad46740914e22b",
+                "b": "1bb6ca634ea44b4cb40b641eec7480bc",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "0bc626fcbc6249a0933fcaf20b66e2ad",
+                "b": "4a2d7c5cea194a15939a4dc2e5cc2b04",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "0bc626fcbc6249a0933fcaf20b66e2ad",
+                "b": "1bb6ca634ea44b4cb40b641eec7480bc",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "5735aaaa69e147c9a49332cbdd0420ca",
+                "b": "1dbe14a2b90f4fa2855e538893b28ad3",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "5735aaaa69e147c9a49332cbdd0420ca",
+                "b": "fe6d339ef6a44e949913c5d21abdcdca",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "5735aaaa69e147c9a49332cbdd0420ca",
+                "b": "0bc626fcbc6249a0933fcaf20b66e2ad",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "51aa5d3c48da47d3a178cb5aae7d6b49",
+                "b": "4a2d7c5cea194a15939a4dc2e5cc2b04",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "10b1047b48bb41459b3c15f5a1b83652",
+                "b": "8fb3f9332a1b4e39b4a7d50c4ade120b",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "10b1047b48bb41459b3c15f5a1b83652",
+                "b": "51aa5d3c48da47d3a178cb5aae7d6b49",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "bde31b8435384caa98cd8869d1a57e10",
+                "b": "f431eb530cde41d8810bc4f46d61df81",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "bde31b8435384caa98cd8869d1a57e10",
+                "b": "7b6e5419793243d692f4daadcb506b88",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "bde31b8435384caa98cd8869d1a57e10",
+                "b": "3ddbbd8f3eb4413d927f04c4f2949b61",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "8eb3d2523453442495c268ec4b46a14f",
+                "b": "4fbd711cff9d4895a4a2dc805fd5753b",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "8eb3d2523453442495c268ec4b46a14f",
+                "b": "7861d1f6c1d94aeda6ad46740914e22b",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "8eb3d2523453442495c268ec4b46a14f",
+                "b": "71237e9230c4478d9ec1e9db5d237721",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "4db88883ae974300ab58c96549e38f5c",
+                "b": "3ddbbd8f3eb4413d927f04c4f2949b61",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "4db88883ae974300ab58c96549e38f5c",
+                "b": "71237e9230c4478d9ec1e9db5d237721",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "803c14a20be342558ac5c8d445c1ba2c",
+                "b": "000f2a768ec04c64a613c36cab82d051",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "803c14a20be342558ac5c8d445c1ba2c",
+                "b": "e46b3f90620945bb8584ee27bf720fd0",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "803c14a20be342558ac5c8d445c1ba2c",
+                "b": "4db88883ae974300ab58c96549e38f5c",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "ee83e4692de54547904fe930f41548a0",
+                "b": "3ddbbd8f3eb4413d927f04c4f2949b61",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "b0a1ffc315bd4ebb9dc70bb3d21a8712",
+                "b": "3404e1fd351148c6943a108515b13402",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "b0a1ffc315bd4ebb9dc70bb3d21a8712",
+                "b": "10b1047b48bb41459b3c15f5a1b83652",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "b0a1ffc315bd4ebb9dc70bb3d21a8712",
+                "b": "ee83e4692de54547904fe930f41548a0",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "05513b68c51a431089cb4de9fcd22d61",
+                "b": "71237e9230c4478d9ec1e9db5d237721",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "05513b68c51a431089cb4de9fcd22d61",
+                "b": "ee83e4692de54547904fe930f41548a0",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "347c1fca57ed405e8dd0fb4ca3b21671",
+                "b": "1bb6ca634ea44b4cb40b641eec7480bc",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "347c1fca57ed405e8dd0fb4ca3b21671",
+                "b": "51aa5d3c48da47d3a178cb5aae7d6b49",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            },
+            {
+                "a": "347c1fca57ed405e8dd0fb4ca3b21671",
+                "b": "05513b68c51a431089cb4de9fcd22d61",
+                "kind": "aromatic",
+                "source": "import",
+                "stereo": ""
+            }
+        ],
+        "centers": [],
+        "chains": {},
+        "charge": 0,
+        "id": "867f1184e586475798a8b80bbd672d92",
+        "metadata": {
+            "source_dimension": 3,
+            "source_file": "c60.sdf",
+            "source_format": "sdf"
+        },
+        "multiplicity": 1,
+        "parts": [],
+        "point_charges": [],
+        "residues": [],
+        "units": "angstrom"
+    },
+    "format": "molforma-project",
+    "version": 1
+}

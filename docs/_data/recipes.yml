@@ -57,3 +57,6 @@
 - page: methyl_epr
   ja: {title: ESR（EPR）の計算と実測比較, molecule: メチルラジカルの溶液ESR, calc: B3LYP/def2-TZVP 最適化 → g・A}
   en: {title: Calculating ESR (EPR) and comparing with experiment, molecule: Solution ESR of the methyl radical, calc: B3LYP/def2-TZVP optimization → g and A}
+- page: molecular_shapes
+  ja: {title: 分子のかたちを眺める（動画の4分子）, molecule: カーボンナノチューブ・18-クラウン-6・C₆₀・［6］ヘリセン, calc: 計算不要・構造の鑑賞}
+  en: {title: Explore molecular shapes (four molecules from the video), molecule: "Carbon nanotube, 18-crown-6, C₆₀, [6]helicene", calc: Viewing only; no calculation}

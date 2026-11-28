@@ -304,7 +304,7 @@ class TranslationsTest : public QObject {
             names << "features/" + page;
         for (const auto &recipe : QDir(":/docs/recipes").entryList({"*.md"}))
             names << "recipes/" + recipe;
-        QCOMPARE(names.size(), 3 + 12 + 19);
+        QCOMPARE(names.size(), 3 + 12 + 20);
         for (const auto &name : std::as_const(names)) {
             QVERIFY2(QFile::exists(":/docs/en/" + name), qPrintable(name));
             const auto japaneseLevels = headingLevels(":/docs/" + name);

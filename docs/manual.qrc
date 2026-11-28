@@ -486,6 +486,16 @@
   <file>en/recipes/images/methyl_epr/02_spectrum.png</file>
   <file>en/recipes/images/methyl_epr/03_carbon13.png</file>
   <file>recipes/samples/methyl_epr.molforma.json</file>
+  <file>recipes/molecular_shapes.md</file>
+  <file>en/recipes/molecular_shapes.md</file>
+  <file>recipes/images/molecular_shapes.jpg</file>
+  <file>recipes/samples/nanotube.molforma.json</file>
+  <file>recipes/samples/crown.molforma.json</file>
+  <file>recipes/samples/c60.molforma.json</file>
+  <file>recipes/samples/helicene.molforma.json</file>
+  <file>recipes/samples/nanotube.sdf</file>
+  <file>recipes/samples/c60.sdf</file>
+  <file>recipes/samples/helicene.sdf</file>
 </qresource><qresource prefix="/icons">
   <file alias="molforma.png">../packaging/molforma-256.png</file>
 </qresource></RCC>

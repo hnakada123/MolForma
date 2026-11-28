@@ -1,14 +1,14 @@
 # Recipes by topic (from building a molecule to a calculation)
 
-These recipes take one molecule each from an empty window (or a structure file, or an earlier result) to an NWChem calculation and its results, using MolForma's interface only. Pick the topic closest to the molecule you want to build; along the way you try the features it needs (atoms and bonds, skeletons and substituents, coordination centers and ligands, peptides from a sequence, stereochemistry, point charges, BSSE correction, transition-state searches, reusing results, isotopes, your own parts and more).
+These recipes use MolForma to build molecules and inspect their shapes or calculation results. Recipes 1–19 go from an empty window (or a structure file, or an earlier result) to an NWChem calculation and its results. Recipe 20 opens the four molecules from the introduction video for viewing, without running a calculation. Pick the topic closest to the molecule you want to build; along the way you try the features it needs (atoms and bonds, skeletons and substituents, coordination centers and ligands, peptides from a sequence, stereochemistry, point charges, BSSE correction, transition-state searches, reusing results, isotopes, your own parts and more).
 
 The calculations in recipes 1–16 were run on 2026-10-26 on a PC with an AMD Ryzen 7 2700X (8 cores, 16 threads) and 32 GB of memory, using NWChem 7.3.1 (Linux, 2–8 MPI processes). Their run times were measured on this PC too; they depend strongly on the CPU and its core count, the number of MPI processes and other calculations running at the same time. The NMR results in recipe 17 were calculated on 2026-11-12 and the normal Raman results in recipe 18 and the ESR results in recipe 19 on 2026-11-24; each page records the conditions and experimental sources. Another NWChem version or process count may also change the last digits of energies or the number of optimization steps.
 
 ## Using these recipes
 
 - **By feature**: “[Features](features.md)” describes each part of the window and what every button does, one page per screen.
-- **By topic**: the 19 recipes on this page. Each starts from a new molecule (or a structure file or a calculation result) and goes through the calculation settings, the run and the results.
-- **The pages**: “What you build” → steps → calculation settings → run and results → “Troubleshooting”. Names in quotes (“Clean up all”) are as shown in the window.
+- **By topic**: the 20 recipes on this page, from opening and viewing structures to setting up calculations, running them and inspecting results.
+- **The pages**: “What you build” → steps → calculation settings → run and results → “Troubleshooting”. Recipe 20 instead covers viewing and the sources and construction methods of its data, without a calculation. Names in quotes (“Clean up all”) are as shown in the window.
 - **Practice data**: The finished projects (`.molforma.json`) are linked under “Practice data” in the table of each recipe (`docs/recipes/samples/` of the repository). The web manual downloads them from the links; in the app's “Guide and manual”, clicking a link saves a copy where you choose and opens it (a part file `.molforma-part.json` goes to “My parts”). Use them to start halfway or to compare with your own. They carry no run settings (NWChem executable, job folder and so on), so check “3 Run settings” before running.
 
 ### Built structures and calculated ones
@@ -40,6 +40,7 @@ The total charge and multiplicity of the calculation are set in “Charge and sp
 | 17 | [Calculating NMR and comparing with experiment](recipes/ethanol_nmr.md) | Ethanol and TMS | NMR shieldings, J couplings, TMS reference, ¹H/¹³C spectra, experimental comparison and interpretation | B3LYP/6-311G** shieldings and J couplings |
 | 18 | [Calculating normal Raman and comparing with experiment](recipes/benzene_raman.md) | Benzene (12 atoms) | Normal Raman (excitation wavelength), the Raman activity spectrum, modes from peaks, comparison with IR (mutual exclusion), scale factors, experimental comparison and interpretation | B3LYP/6-31G* optimization → frequencies → Raman |
 | 19 | [Calculating ESR (EPR) and comparing with experiment](recipes/methyl_epr.md) | Methyl radical (4 atoms, doublet) | ESR g and A tensors (ZORA), the solution ESR spectrum, splitting by equivalent nuclei (1:3:3:1), including ¹³C, the sign of hyperfine couplings, vibration and ¹³C, experimental comparison and interpretation | B3LYP/def2-TZVP optimization → g and A |
+| 20 | [Explore molecular shapes (four molecules from the video)](recipes/molecular_shapes.md) | Carbon nanotube, 18-crown-6, C₆₀ and [6]helicene | Practice files, rotation and display styles, SMILES, PubChem, data sources | Viewing only; no calculation |
 
 ## Not in these recipes
 
